@@ -460,23 +460,86 @@
 .survey-hub .documents-mobile-search-row,
 .survey-hub .documents-mobile-list,
 .survey-hub .projects-mobile-layout,
+.survey-hub .archive-mobile-search-row,
 .survey-hub .archive-mobile-list {
   display: none;
 }
 
-/* KAL-430 — Archive type filter. A segmented row of small buttons in the
-   header actions; the active one is tinted gold so the current scope of the
-   list is readable at a glance without opening a menu. */
-.survey-hub .archive-filter-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
+/* Archive's filter/sort menu (owner call 2026-08-07). Visually the Documents
+   ledger's sort menu, but declared at base scope rather than inside the mobile
+   media query, because Archive renders the control at BOTH breakpoints: no
+   column header can express "show only templates", so the desktop cannot fall
+   back on header clicks the way Documents does. */
+.survey-hub .archive-sort-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: 196px;
+  padding: 5px;
+  background: var(--ink-700);
+  border: 1px solid var(--ink-500);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.45);
 }
 
-.survey-hub .archive-filter-button.active {
-  border-color: var(--gold);
+.survey-hub .archive-sort-menu button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 5px;
+  padding: 8px 9px;
+  background: transparent;
+  color: var(--bone-100);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.survey-hub .archive-sort-menu button.active {
+  background: var(--ink-600);
   color: var(--gold);
+  font-weight: 700;
+}
+
+/* Group headings inside the menu — the same micro-label treatment the hub uses
+   for a section caption (.section-label): uppercase, tracked, muted. */
+.survey-hub .archive-sort-menu-label {
+  padding: 7px 9px 3px;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-300);
+  font-weight: 700;
+}
+
+.survey-hub .archive-sort-menu-label:not(:first-child) {
+  margin-top: 3px;
+  border-top: 1px solid var(--ink-600);
+}
+
+/* Desktop header actions: the filter control beside the search field, the same
+   pairing the mobile row uses. */
+.survey-hub .archive-desktop-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.survey-hub .archive-filter-button {
+  min-width: 78px;
+  padding: 5px 8px;
+}
+
+.survey-hub .archive-filter-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .survey-hub .documents-desktop-search,
@@ -2939,16 +3002,40 @@
     padding-top: 8px;
     border-top: 1px solid var(--ink-600);
     display: grid;
-    gap: 4px;
+    gap: 6px;
   }
 
+  /* A child row is a thumbnail plus a name. The 38px indent lines the
+     thumbnail up under the card's own 28px lead column plus its 10px gap, so
+     the children hang beneath the parent rather than floating. */
   .survey-hub .archive-mobile-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 38px;
+    min-width: 0;
+  }
+
+  .survey-hub .archive-mobile-child-name {
     color: var(--ink-200);
     font-size: 11.5px;
-    padding-left: 30px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* Archive's header actions mirror .documents-mobile-search-row exactly. */
+  .survey-hub .archive-mobile-search-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    position: relative;
+    min-width: 0;
+  }
+
+  .survey-hub .archive-desktop-search {
+    display: none;
   }
 }
 

@@ -14,8 +14,8 @@
    every decision it makes lives in ./archiveScreenModel so it can be tested
    without a DOM.
 */
-import { useCallback, useMemo, useState } from 'react';
-import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack } from './HubShell';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack, Search } from './HubShell';
 /* The app-wide icon set. Aliased because HubShell exports its own `Icon` for
    the hub's type glyphs; this one carries the shared chevrons. */
 import AppIcon from '../Icons';
@@ -28,8 +28,11 @@ import { DELETE_FOREVER_COPY } from '../services/archiveContract';
 import {
   ARCHIVE_FILTERS,
   DEFAULT_ARCHIVE_SORT,
+  ARCHIVE_SORT_OPTIONS,
   archiveTypeLabel,
   archivedDateLabel,
+  matchedOnChildOnly,
+  namedSortFor,
   buildBulkFailureMessage,
   buildBulkOutcomeMessage,
   collaboratorInitials,
@@ -151,10 +154,30 @@ export default function ArchiveScreen({
   const [previewCollapsedIds, setPreviewCollapsedIds] = useState(defaultPreviewCollapsedIds);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  /* Name search, matching the Documents ledger's. */
+  const [search, setSearch] = useState('');
+  /* The one filter/sort menu, shared by the mobile and desktop header slots. */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  const desktopMenuRef = useRef(null);
+
+  /* Click-away close, copied from the Documents ledger's sort menu. Both header
+     slots render the control (only one is visible per breakpoint), so a click
+     inside EITHER counts as inside. */
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDown = (e) => {
+      const inMobile = menuRef.current && menuRef.current.contains(e.target);
+      const inDesktop = desktopMenuRef.current && desktopMenuRef.current.contains(e.target);
+      if (!inMobile && !inDesktop) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [menuOpen]);
 
   const rows = useMemo(
-    () => visibleArchiveItems(items, { filter, sortKey, sortDir }),
-    [items, filter, sortKey, sortDir],
+    () => visibleArchiveItems(items, { filter, sortKey, sortDir, search }),
+    [items, filter, sortKey, sortDir, search],
   );
 
   const onHeaderClick = (key) => {
@@ -260,28 +283,98 @@ export default function ArchiveScreen({
     </span>
   );
 
-  /* Type filter — a segmented row. 'All' is the default because Archive is a
-     mixed, short-lived list and hiding types by default would hide the very
-     row someone came here to rescue. */
-  const headerActions = (
-    <div className="archive-filter-row" role="group" aria-label="Filter archive by type">
-      {/* Styled with the hub's own miniButtonStyle, NOT the global `.btn`
-          class: `.btn:not(:disabled):hover` carries an app-wide translateY(-1px)
-          lift that nothing else in the hub uses, so these buttons were bobbing
-          on hover while every neighbouring control stayed still. */}
+  /* ----------------------------------------------------------------------
+     Header — rebuilt on the Documents / Projects structure (owner call
+     2026-08-07: "this should be formatted a little bit more similar to the
+     Projects and Documents where I'm able to search").
+
+     Both of those screens build the same thing: the count and the Select
+     button live in the SUBTITLE, and the actions slot holds a mobile search
+     row (a filter menu plus a full-width Search) and a desktop Search. Archive
+     now does exactly that, so its bespoke chip row is gone.
+
+     One deliberate difference: the menu renders on desktop too. On Documents
+     the menu is mobile-only because its desktop equivalent is clicking a column
+     header — and Archive has those. But no column header can express "show me
+     only templates", and Archive is the one screen with a mixed list, so
+     removing the menu on desktop would delete a capability rather than move it.
+     Same control, same markup, rendered in both slots.
+     ---------------------------------------------------------------------- */
+  const activeSortLabel = ARCHIVE_SORT_OPTIONS.find(({ key }) => key === sortKey)?.label
+    || namedSortFor(sortKey, sortDir)?.label
+    || 'Sort';
+
+  const filterMenu = (
+    <div className="archive-sort-menu" role="menu">
+      {/* Type — Archive's own axis. Kept inside the one menu rather than a
+          separate chip row so the actions slot holds what the other screens
+          hold: a search field. */}
+      <div className="archive-sort-menu-label" role="presentation">Show</div>
       {ARCHIVE_FILTERS.map(({ key, label }) => (
         <button
           key={key}
           type="button"
-          className={`archive-filter-button${filter === key ? ' active' : ''}`}
-          aria-pressed={filter === key}
-          onClick={() => setFilter(key)}
-          style={filter === key
-            ? { ...miniButtonStyle({ borderColor: 'var(--gold)' }), color: 'var(--gold)' }
-            : miniButtonStyle()}
-        >{label}</button>
+          role="menuitemradio"
+          aria-checked={filter === key}
+          className={filter === key ? 'active' : ''}
+          onClick={() => { setFilter(key); setMenuOpen(false); }}
+        >
+          <span>{label}</span>
+          <span>{filter === key ? '✓' : ''}</span>
+        </button>
+      ))}
+      <div className="archive-sort-menu-label" role="presentation">Sort by</div>
+      {ARCHIVE_SORT_OPTIONS.map(({ key, label }) => (
+        <button
+          key={key}
+          type="button"
+          role="menuitemradio"
+          aria-checked={sortKey === key}
+          className={sortKey === key ? 'active' : ''}
+          onClick={() => { onHeaderClick(key); }}
+        >
+          <span>{label}</span>
+          <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
+        </button>
       ))}
     </div>
+  );
+
+  const filterButton = (
+    <button
+      className="btn archive-filter-button"
+      type="button"
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      onClick={() => setMenuOpen((open) => !open)}
+    >
+      <Icon name="filter" size={12} />
+      <span>{activeSortLabel}</span>
+    </button>
+  );
+
+  const searchField = (width) => (
+    <Search placeholder="Search archive..." value={search} onChange={setSearch} width={width} />
+  );
+
+  const headerActions = (
+    <>
+      {/* Mobile: filter menu + full-width search, exactly the
+          .documents-mobile-search-row arrangement. */}
+      <div className="archive-mobile-search-row" ref={menuRef}>
+        {filterButton}
+        {menuOpen && filterMenu}
+        {searchField('100%')}
+      </div>
+      {/* Desktop: the same two controls, at their natural widths. */}
+      <div className="archive-desktop-search" ref={desktopMenuRef}>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          {filterButton}
+          {menuOpen && filterMenu}
+        </span>
+        {searchField(240)}
+      </div>
+    </>
   );
 
   const checkGlyph = (checked) => (
@@ -635,7 +728,10 @@ export default function ArchiveScreen({
 
   const renderRow = (item) => {
     const checked = selectedIds.has(item.id);
-    const expanded = isRowExpanded(expandedIds, item.id);
+    /* A project kept in the list only because a CHILD matched the search opens
+       automatically — otherwise the row that justified the match sits hidden
+       behind a collapsed chevron. */
+    const expanded = isRowExpanded(expandedIds, item.id) || matchedOnChildOnly(item, search);
     const isProject = item.type === 'project' && item.childCount > 0;
     const active = selectMode ? checked : previewId === item.id;
     const subline = rowSubline(item);
@@ -750,7 +846,10 @@ export default function ArchiveScreen({
 
   const renderMobileCard = (item) => {
     const checked = selectedIds.has(item.id);
-    const expanded = isRowExpanded(expandedIds, item.id);
+    /* A project kept in the list only because a CHILD matched the search opens
+       automatically — otherwise the row that justified the match sits hidden
+       behind a collapsed chevron. */
+    const expanded = isRowExpanded(expandedIds, item.id) || matchedOnChildOnly(item, search);
     const isProject = item.type === 'project' && item.childCount > 0;
     return (
       <div
@@ -801,9 +900,23 @@ export default function ArchiveScreen({
           </div>
         </div>
         {isProject && expanded && (
+          /* Child documents. These were a bare name with no art at all, so an
+             expanded project on mobile said nothing about WHICH drawings travel
+             with it (owner's 2026-08-07 screenshot). They now carry the same
+             30px page thumbnail every other document in Archive uses — the
+             desktop child rows, the desktop ledger rows and the project preview
+             tree all render ROW_THUMB, and a document should not change size
+             just because the viewport did.
+
+             Deliberately NOT the mobile Documents card's 52x54 art: that is a
+             CARD's primary art, and three of them stacked inside one card is
+             how the 148px monster card looked before it was fixed. */
           <div className="archive-mobile-children">
             {item.children.map((child) => (
-              <div key={child.id} className="archive-mobile-child">{child.name}</div>
+              <div key={child.id} className="archive-mobile-child">
+                {rowThumb(child.id, child.filePath)}
+                <span className="archive-mobile-child-name">{child.name}</span>
+              </div>
             ))}
           </div>
         )}
@@ -850,8 +963,14 @@ export default function ArchiveScreen({
     </div>
   );
 
+  /* A search that finds nothing says so in the Documents ledger's words ("No
+     documents match your search."); an empty type filter keeps its own
+     message. Naming the reason is what tells the user whether to clear the
+     search box or the filter. */
   const noMatchLine = (
-    <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>No archived items of this type.</div>
+    <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>
+      {search.trim() ? 'No archived items match your search.' : 'No archived items of this type.'}
+    </div>
   );
 
   return (

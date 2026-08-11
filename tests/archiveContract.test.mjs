@@ -132,12 +132,42 @@ test("a project's children carry their own Archived and Days remaining", () => {
   assert.equal(item.children[2].daysRemaining, item.daysRemaining);
 });
 
+test("a project's size is the sum of the documents that travel with it", () => {
+  // The honest answer to "how much comes back if I restore this", and what lets
+  // a project take a real position in the Size sort instead of sinking to the
+  // bottom with the templates.
+  const withSizes = normalizeProjectItem(
+    { id: 'proj-1', user_id: 'owner-1', name: 'Harbour works', user_archived_at: day(-2), archive_group_id: 'grp-1' },
+    [
+      { id: 'a', name: 'Level 1', file_size: 1000, archive_group_id: 'grp-1' },
+      { id: 'b', name: 'Level 2', file_size: 2500, archive_group_id: 'grp-1' },
+      { id: 'c', name: 'Level 3', archive_group_id: 'grp-1' },
+    ],
+    { now: NOW },
+  );
+  assert.equal(withSizes.fileSize, 3500);
+  assert.deepEqual(withSizes.children.map((c) => c.fileSize), [1000, 2500, null]);
+
+  // Nothing reported a size → null, NOT 0. "No size" and "empty" are different
+  // statements, and the Size sort relies on the difference.
+  const noSizes = normalizeProjectItem(
+    { id: 'p', user_id: 'o', name: 'P', user_archived_at: day(-1) },
+    [{ id: 'x', name: 'X' }],
+    { now: NOW },
+  );
+  assert.equal(noSizes.fileSize, null);
+  assert.equal(normalizeProjectItem({ id: 'p', name: 'P', user_archived_at: day(-1) }, [], { now: NOW }).fileSize, null);
+
+  // A template owns no file at all.
+  assert.equal(normalizeTemplateItem({ id: 't', name: 'T', user_archived_at: day(-1) }, { now: NOW }).fileSize, undefined);
+});
+
 test('the project child query selects the columns those columns need', () => {
   // archiveService.loadArchive duplicates this list; both must carry file_path
   // AND the two user_archive_* columns or child rows silently go blank.
   const projectService = readSrc('../src/services/projectArchiveService.js');
   const service = readSrc('../src/services/archiveService.js');
-  for (const column of ['file_path', 'user_archived_at', 'user_archive_expires_at']) {
+  for (const column of ['file_path', 'file_size', 'user_archived_at', 'user_archive_expires_at']) {
     assert.match(
       projectService,
       new RegExp(`\\.from\\('documents'\\)[\\s\\S]*?\\.select\\('[^']*\\b${column}\\b[^']*'\\)`),

@@ -9,7 +9,11 @@ import { test } from 'node:test';
 import {
   ARCHIVE_FILTERS,
   ARCHIVE_SORTS,
+  ARCHIVE_SORT_OPTIONS,
+  archiveItemSize,
   archiveTypeLabel,
+  matchedOnChildOnly,
+  searchArchiveItems,
   archivedDateLabel,
   buildBulkFailureMessage,
   buildBulkOutcomeMessage,
@@ -87,10 +91,11 @@ test('all four type filters narrow the list, and All shows everything', () => {
   assert.deepEqual(ALL.map((i) => i.id), ['p1', 'd1', 't1']);
 });
 
-test('all four named sorts map onto a (sortKey, sortDir) pair and order correctly', () => {
+test('the named sorts map onto a (sortKey, sortDir) pair and order correctly', () => {
   assert.deepEqual(ARCHIVE_SORTS.map((s) => s.label), [
-    'Recently archived', 'Oldest archived', 'Name A–Z', 'Name Z–A',
+    'Recently archived', 'Oldest archived', 'Name A–Z', 'Name Z–A', 'Size',
   ]);
+  assert.deepEqual(sortStateForNamedSort('largest'), { sortKey: 'size', sortDir: 'desc' });
   assert.deepEqual(sortStateForNamedSort('recent'), { sortKey: 'archived', sortDir: 'desc' });
   assert.deepEqual(sortStateForNamedSort('oldest'), { sortKey: 'archived', sortDir: 'asc' });
   assert.deepEqual(sortStateForNamedSort('az'), { sortKey: 'name', sortDir: 'asc' });
@@ -112,6 +117,101 @@ test('all four named sorts map onto a (sortKey, sortDir) pair and order correctl
   assert.deepEqual(
     visibleArchiveItems(ALL, { filter: 'all', sortKey: 'name', sortDir: 'asc' }).map((i) => i.id),
     ['p1', 't1', 'd1'],
+  );
+});
+
+test('the sort menu is the Documents ledger\'s list, with the date field renamed', () => {
+  /* Owner asked (2026-08-07) to "filter by: file, project, most recently
+     archived, size" — which is DocumentsLedger's own sortOptions
+     (File / Project / Last edited / Size) with the date row renamed to
+     Archive's equivalent. Same control, four rows, one word changed. */
+  assert.deepEqual(
+    ARCHIVE_SORT_OPTIONS.map((o) => [o.key, o.label]),
+    [['name', 'File'], ['project', 'Project'], ['archived', 'Most recently archived'], ['size', 'Size']],
+  );
+  const DOCS = read('../src/home/DocumentsLedger.jsx');
+  assert.match(DOCS, /\['name', 'File'\],\s*\n\s*\['project', 'Project'\],[\s\S]*?\['size', 'Size'\],/, 'Documents is the reference list');
+  // Size opens biggest-first, exactly as the Documents ledger's size sort does.
+  assert.deepEqual(nextSortState({ sortKey: 'name', sortDir: 'asc' }, 'size'), { sortKey: 'size', sortDir: 'desc' });
+  assert.match(DOCS, /key === 'edited' \|\| key === 'size' \? 'desc' : 'asc'/);
+});
+
+test('sorting by size parks items that HAVE no size at the end, both directions', () => {
+  /* Only documents carry bytes. A project reports the sum of its children; a
+     template owns no file at all. Treating "no size" as zero would rank a
+     template as the smallest thing in the list, which is a different claim. */
+  const sized = (id, name, bytes) => item({ id, name, fileSize: bytes });
+  const list = [
+    sized('big', 'Big drawing', 9_000_000),
+    item({ id: 'tpl', name: 'A template', type: 'template' }),
+    sized('small', 'Small note', 1_000),
+    item({ id: 'tpl2', name: 'Z template', type: 'template' }),
+  ];
+  assert.equal(archiveItemSize(list[0]), 9_000_000);
+  assert.equal(archiveItemSize(list[1]), null, 'a template has no size, not zero');
+  assert.equal(archiveItemSize(null), null);
+
+  assert.deepEqual(
+    sortArchiveItems(list, 'size', 'desc').map((i) => i.id),
+    ['big', 'small', 'tpl', 'tpl2'],
+  );
+  // Ascending flips only the SIZED items; the sizeless ones stay at the end.
+  assert.deepEqual(
+    sortArchiveItems(list, 'size', 'asc').map((i) => i.id),
+    ['small', 'big', 'tpl', 'tpl2'],
+  );
+  // Sizeless items tie-break by name so their order is stable.
+  assert.deepEqual(
+    sortArchiveItems([list[3], list[1]], 'size', 'desc').map((i) => i.name),
+    ['A template', 'Z template'],
+  );
+});
+
+test('sorting by project groups documents under their project, projectless last', () => {
+  const list = [
+    item({ id: 'd1', name: 'Doc one', projectName: 'Zulu' }),
+    item({ id: 't1', name: 'Loose template', type: 'template' }),
+    item({ id: 'p1', name: 'Alpha', type: 'project' }),
+    item({ id: 'd2', name: 'Doc two', projectName: 'Alpha' }),
+  ];
+  // A project sorts under its OWN name; a document under its project's.
+  assert.deepEqual(
+    sortArchiveItems(list, 'project', 'asc').map((i) => i.id),
+    ['p1', 'd2', 'd1', 't1'],
+  );
+  // The template has no project and lands last regardless of direction.
+  assert.equal(sortArchiveItems(list, 'project', 'desc').at(-1).id, 't1');
+});
+
+test('search filters by name and reaches inside a project', () => {
+  // Same rule as the Documents ledger: case-insensitive substring on the name.
+  assert.deepEqual(searchArchiveItems(ALL, 'site').map((i) => i.id), ['d1']);
+  assert.deepEqual(searchArchiveItems(ALL, 'SITE').map((i) => i.id), ['d1'], 'case-insensitive');
+  assert.deepEqual(searchArchiveItems(ALL, '  atri  ').map((i) => i.id), ['p1'], 'trimmed');
+  assert.deepEqual(searchArchiveItems(ALL, '').map((i) => i.id), ['p1', 'd1', 't1'], 'empty shows everything');
+  assert.deepEqual(searchArchiveItems(ALL, 'zzzz'), []);
+
+  // A project is kept when a CHILD matches, and its children narrow to the hits
+  // so opening it shows the match rather than the whole group.
+  const childHit = searchArchiveItems(ALL, 'Level 1');
+  assert.deepEqual(childHit.map((i) => i.id), ['p1']);
+  assert.deepEqual(childHit[0].children.map((c) => c.name), ['Level 1']);
+  assert.equal(childHit[0].childCount, 1);
+  // Matching the project's OWN name keeps every child.
+  assert.equal(searchArchiveItems(ALL, 'Atrium')[0].children.length, 2);
+  // The source list is never mutated.
+  assert.equal(project.children.length, 2);
+
+  // Such a project is force-opened, so the matching child is actually visible.
+  assert.equal(matchedOnChildOnly(childHit[0], 'Level 1'), true);
+  assert.equal(matchedOnChildOnly(project, 'Atrium'), false, 'a name match does not force-open');
+  assert.equal(matchedOnChildOnly(project, ''), false);
+  assert.equal(matchedOnChildOnly(doc, 'Site'), false, 'only projects have children');
+
+  // Search composes with the type filter and the sort.
+  assert.deepEqual(
+    visibleArchiveItems(ALL, { search: 'e', filter: 'template' }).map((i) => i.id),
+    ['t1'],
   );
 });
 
@@ -599,6 +699,60 @@ test('avatar initials come from the name, falling back to the invited email', ()
   assert.equal(collaboratorInitials({ email: 'dana.smith@example.com' }), 'D');
   assert.equal(collaboratorInitials({}), '—');
   assert.equal(collaboratorInitials(null), '—');
+});
+
+test('the header is built on the Documents / Projects structure', () => {
+  /* Owner call 2026-08-07: "this should be formatted a little bit more similar
+     to the Projects and Documents where I'm able to search." Both of those put
+     the count and Select in the SUBTITLE, and a mobile search row plus a
+     desktop Search in the actions slot. The bespoke chip row is gone. */
+  const DOCS = read('../src/home/DocumentsLedger.jsx');
+  const PROJECTS = read('../src/home/ProjectsFolderTree.jsx');
+
+  // Count + Select in the subtitle, as on both reference screens.
+  assert.match(SCREEN, /const subtitle = \([\s\S]*?<b>\{rows\.length\}<\/b>[\s\S]*?\{selectMode \? 'Done' : 'Select'\}/);
+  assert.match(DOCS, /const subtitle = \([\s\S]*?<b>\{docs\.length\}<\/b> files/);
+
+  // Mobile search row + desktop search in the actions slot.
+  assert.match(SCREEN, /<div className="archive-mobile-search-row" ref=\{menuRef\}>/);
+  assert.match(SCREEN, /<div className="archive-desktop-search" ref=\{desktopMenuRef\}>/);
+  assert.match(DOCS, /<div className="documents-mobile-search-row"/);
+  assert.match(DOCS, /<div className="documents-desktop-search">/);
+  assert.match(PROJECTS, /<div className="projects-desktop-search">/);
+
+  // The old segmented chip row is gone from markup AND stylesheet.
+  assert.doesNotMatch(SCREEN, /archive-filter-row/);
+  assert.doesNotMatch(CSS, /\.archive-filter-row/);
+
+  // Search is a real Search field wired to the row list.
+  assert.match(SCREEN, /<Search placeholder="Search archive\.\.\." value=\{search\} onChange=\{setSearch\} width=\{width\} \/>/);
+  assert.match(SCREEN, /visibleArchiveItems\(items, \{ filter, sortKey, sortDir, search \}\)/);
+  assert.match(SCREEN, /\[items, filter, sortKey, sortDir, search\]/, 'search is in the memo deps');
+  // Empty-result copy names the reason, mirroring Documents' wording.
+  assert.match(SCREEN, /'No archived items match your search\.'/);
+  assert.match(DOCS, /No documents match your search\./);
+
+  // The filter button reuses the hub's filter icon + active-sort label pattern.
+  assert.match(SCREEN, /<Icon name="filter" size=\{12\} \/>\s*\n\s*<span>\{activeSortLabel\}<\/span>/);
+  assert.match(DOCS, /<Icon name="filter" size=\{12\} \/>\s*\n\s*<span>\{activeSortLabel\}<\/span>/);
+  // Type filtering survives, folded into that one menu rather than a chip row.
+  assert.match(SCREEN, /const filterMenu = \([\s\S]*?ARCHIVE_FILTERS\.map[\s\S]*?ARCHIVE_SORT_OPTIONS\.map/);
+  // The menu is styled at base scope, because Archive renders it on desktop too.
+  assert.match(CSS, /^\.survey-hub \.archive-sort-menu \{/m);
+});
+
+test("expanded project children carry a page thumbnail on mobile too", () => {
+  /* Owner's 2026-08-07 screenshot: an expanded project on mobile listed bare
+     names with no art, so nothing said WHICH drawings travel with it. */
+  const mobileChildren = SCREEN.match(/<div className="archive-mobile-children">[\s\S]*?\n          <\/div>/)[0];
+  assert.match(mobileChildren, /\{rowThumb\(child\.id, child\.filePath\)\}/);
+  assert.match(mobileChildren, /<span className="archive-mobile-child-name">\{child\.name\}<\/span>/);
+  // The same ROW_THUMB every other document in Archive uses — a document does
+  // not change size because the viewport did.
+  assert.match(SCREEN, /const rowThumb = \(id, filePath\) => \([\s\S]*?height=\{ROW_THUMB\}/);
+  // The child row must lay its thumbnail and name out, not stack them.
+  assert.match(CSS, /\.survey-hub \.archive-mobile-child \{[^}]*display: flex/);
+  assert.match(CSS, /\.survey-hub \.archive-mobile-child-name \{[^}]*text-overflow: ellipsis/);
 });
 
 test('the mobile card head ALWAYS renders three children, matching its three columns', () => {
