@@ -2313,6 +2313,13 @@
     border-bottom-color: var(--gold);
   }
 
+  /* UX (KAL-69): greyed italic placeholder, matching the desktop editor, so an
+     empty required row reads as "type here" rather than as short real text. */
+  .survey-hub .templates-mobile-inline-input::placeholder {
+    color: var(--ink-300);
+    font-style: italic;
+  }
+
   .survey-hub .templates-mobile-save-row {
     order: 1;
     flex: none;

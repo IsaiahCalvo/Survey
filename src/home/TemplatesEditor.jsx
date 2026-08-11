@@ -87,6 +87,7 @@ import {
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
@@ -1192,6 +1193,31 @@ export default function TemplatesEditor({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
   }));
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
+
+  /* UX (KAL-69): required-row commit rules, shared by the desktop and mobile
+     copies of the checklist and entity rows so they can never drift apart.
+
+     A blank value NEVER commits — before this, blurring an empty checklist item
+     wrote `text: ''` straight into the template and saved it, so a stray Tab
+     silently emptied a row.
+
+     Which of the two blank outcomes applies depends on whether the row already
+     holds a value, and the distinction matters:
+       - EXISTING row blanked -> quiet restore, no shake. Clearing a row must
+         never be a back-door delete; the row's delete button is the only way.
+       - FRESH blank row -> visible refusal (shake + hint), row stays open so
+         the user can just type. Escape removes it outright. */
+  const CHECKLIST_BLANK_HINT = "Can't be empty — type something or hit Esc to cancel.";
+  const ENTITY_BLANK_HINT = "Can't be empty — type a name or remove the row.";
+
+  const commitRequiredRow = (el, previousValue, hint, commit) => {
+    if (isBlank(el.value)) {
+      if (previousValue) el.value = previousValue;      // existing row: quiet revert
+      else flagRequiredInput(el, hint);                 // fresh row: refuse visibly
+      return;
+    }
+    commit(el.value.trim());
+  };
   const reorderItemsInModule = (moduleIndex, ci, activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
     mutateCategoryInModule(moduleIndex, ci, (c) => {
@@ -1921,9 +1947,9 @@ export default function TemplatesEditor({
                                 <input
                                   className="inline-edit"
                                   defaultValue={it.text}
-                                  placeholder="Checklist item"
-                                  onBlur={(e) => renameItem(i, it.id, e.currentTarget.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
+                                  placeholder="Add checklist item"
+                                  onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v))}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
                                 />
                                 <button
                                   title="Delete item" aria-label="Delete item"
@@ -2112,8 +2138,9 @@ export default function TemplatesEditor({
                           className="inline-edit cat-title"
                           defaultValue={r.role}
                           key={r.id + ':' + r.role}
+                          placeholder="Entity name"
                           onDoubleClick={(e) => e.currentTarget.select()}
-                          onBlur={(e) => renameEntity(r.id, e.currentTarget.value)}
+                          onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}
                         />
@@ -2463,9 +2490,9 @@ export default function TemplatesEditor({
                                             <input
                                               className="templates-mobile-inline-input"
                                               defaultValue={it.text}
-                                              placeholder="Checklist item"
-                                              onBlur={(e) => renameItem(ci, it.id, e.currentTarget.value)}
-                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
+                                              placeholder="Add checklist item"
+                                              onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
+                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
                                             />
                                             <button type="button" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
@@ -2588,7 +2615,8 @@ export default function TemplatesEditor({
                                   className="templates-mobile-inline-input"
                                   defaultValue={r.role}
                                   key={`mobile-entity-${r.id}:${r.role}`}
-                                  onBlur={(e) => renameEntity(r.id, e.currentTarget.value)}
+                                  placeholder="Entity name"
+                                  onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
                                 />
                                 {entityEdit ? (

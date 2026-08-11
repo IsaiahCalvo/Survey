@@ -65,6 +65,9 @@
 }
 .ed-scope .inline-edit:hover { border-bottom-color: var(--rule); }
 .ed-scope .inline-edit:focus { border-bottom-color: #d8a84e; }
+/* UX (KAL-69): placeholders are greyed italic so an empty required row reads as
+   "type here", visibly different from a row that genuinely holds short text. */
+.ed-scope .inline-edit::placeholder { color: #5a6473; font-style: italic; }
 .ed-scope .cat-title { cursor: text; border-bottom: 1px dashed transparent; }
 .ed-scope .cat-title:hover { border-bottom-color: var(--rule-strong); }
 .ed-scope .cat-title:focus { border-bottom: 1px solid #d8a84e; }

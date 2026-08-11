@@ -466,3 +466,46 @@ screen and (min-resolution: 192dpi) {
 .survey-pdfjs-page-div:has(img[id*="_tileimg_"], img[id*="_pageCanvas_"], canvas[id*="_pageCanvas_"], .survey-pdfjs-page-canvas, .survey-pdfjs-text-layer, .survey-pdfjs-image-canvas) .survey-pdfjs-spinner-pane:not(.survey-pdfjs-spin-hide) {
   display: none !important;
 }
+
+/* UX (KAL-69): the app's ONE "this field can't be empty" treatment, driven by
+   flagRequiredInput() in src/components/requiredInput.js. A refused blank commit
+   flashes the input's bottom edge and shakes it once (~320ms), then a hint
+   slides in beneath and clears itself after ~2s.
+   The red is the WARMER validation red — soft, recoverable, "fix this and move
+   on". It is deliberately NOT the cooler destructive red used for irreversible
+   actions. See docs/ui/colors.md; do not collapse the two.
+   Any future required text input adopts these classes rather than inventing its
+   own error style. */
+@keyframes required-input-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+.required-input--invalid {
+  border-bottom-color: #d97766 !important;
+  animation: required-input-shake 320ms ease-in-out;
+}
+
+@keyframes required-input-hint-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.required-input-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #d97766;
+  animation: required-input-hint-in 140ms ease-out;
+  pointer-events: none;
+}
+
+/* Respect a reduced-motion preference: keep the red edge and the hint (they
+   carry the meaning) and drop only the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .required-input--invalid { animation: none; }
+  .required-input-hint { animation: none; }
+}
