@@ -1,7 +1,7 @@
 /* src/components/collab/StorageFailureBanner.css
  * Phase 27 — Storage failure banner styles.
  * Source: .planning/phases/27-crdt-foundation/27-UI-SPEC.md Surface 2 (locked tokens).
- * All values match the CSS variable system in src/App.css. Two type weights total:
+ * All values match the CSS variable system in src/styles.css. Two type weights total:
  * 400 (regular) for body / link / secondary, 600 (semibold) reserved for the heading.
  */
 

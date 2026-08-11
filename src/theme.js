@@ -15,7 +15,7 @@ export const COLORS = {
     quaternary: '#12151c',   // deep panel surface
     elevated: '#1f2430',     // ink-600 — active row/raised surface
     dark: '#0d0f14',
-    // UX (KAL-62): mirrors --overlay-scrim in src/App.css — the app's one modal
+    // UX (KAL-62): mirrors --overlay-scrim in src/styles.css — the app's one modal
     // scrim, for JS surfaces that render outside a CSS-variable scope. Always
     // pair with backdropFilter: 'blur(8px)'. Keep the two in sync.
     overlay: 'rgba(13, 15, 20, 0.55)',

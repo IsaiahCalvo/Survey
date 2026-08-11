@@ -1,7 +1,7 @@
 /* src/components/collab/QuarantineMarkerOverlay.css
  *
  * Phase 30 — quarantine marker styles per 30-UI-SPEC.md Surface 2.
- * Locked CSS variables from src/App.css — do NOT redefine.
+ * Locked CSS variables from src/styles.css — do NOT redefine.
  *
  * UX: marker is informational, non-interactive. pointer-events: none on the
  * root so click / select / right-click on the underlying annotation still

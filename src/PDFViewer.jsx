@@ -31627,7 +31627,7 @@ ${pageBlocks}
                             cursor: 'default',
                             // UX: portaled popup lives at body level.
                             // Hardcode the same font stack as
-                            // --font-primary in src/App.css (~line 8)
+                            // --font-primary in src/styles.css
                             // — using `var(--font-primary)` here
                             // didn't take (rendered as Times New
                             // Roman per user report 2026-04-14),

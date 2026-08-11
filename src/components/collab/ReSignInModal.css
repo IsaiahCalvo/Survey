@@ -12,7 +12,7 @@
  * Class naming mirrors .storage-banner__* convention so future readers see the
  * banner + modal as a coordinated CRDT-layer recovery surface.
  *
- * All values use the locked CSS variable system from src/App.css. Two type
+ * All values use the locked CSS variable system from src/styles.css. Two type
  * weights only (400 + 600), matching the Phase 27 banner type scale.
  */
 
