@@ -22,6 +22,7 @@ import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import { closeButtonStyle, moreButtonStyle } from './hubControls';
 import Spinner from '../components/Spinner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -97,27 +98,11 @@ function parseEmails(raw) {
 const ActivityModal = ({ member, onClose }) => {
   const [sortKey, setSortKey] = React.useState("edited");
   const [sortDir, setSortDir] = React.useState("desc");
-  const previouslyFocusedRef = React.useRef(null);
+  const cardRef = React.useRef(null);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap).
-  React.useEffect(() => {
-    if (!member) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [member, onClose]);
+  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
+  // dialog, Escape closes it, and focus returns to whatever opened it.
+  useFocusTrap(cardRef, Boolean(member), { onEscape: onClose });
 
   if (!member) return null;
   const arrow = (k) => sortKey === k ? (sortDir === "asc" ? " ↑" : " ↓") : "";
@@ -133,14 +118,14 @@ const ActivityModal = ({ member, onClose }) => {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 520, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 520, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ width: 3, height: 30, background: member.color, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Activity</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4 }}>{member.name} · activity</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
           <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
@@ -182,27 +167,13 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
   const [activeInvite, setActiveInvite] = React.useState(null); // last minted link invite
-  const previouslyFocusedRef = React.useRef(null);
+  const cardRef = React.useRef(null);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap). This component is only mounted while open (the
-  // parent gates it behind `inviteOpen &&`), so the effect runs once on mount.
-  React.useEffect(() => {
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [onClose]);
+  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
+  // dialog, Escape closes it, and focus returns to whatever opened it. This
+  // component is only mounted while open (the parent gates it behind
+  // `inviteOpen &&`), so `true` is the correct isOpen.
+  useFocusTrap(cardRef, true, { onEscape: onClose });
 
   const projectId = project?.id || null;
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
@@ -266,14 +237,14 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 440, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden" }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 440, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden" }}>
         <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Invite User</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: INK_500, color: INK_200 })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
@@ -699,7 +670,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       )
                     ) : (
                       <button onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
-                        title="More"
+                        title="More" aria-label="More"
                         style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
                     )}
                   </div>
@@ -735,7 +706,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div style={{ fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
                     <div style={{ fontSize: 11.5, color: GOLD, fontWeight: 600 }}>Pending</div>
                     <button onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
-                      title="More"
+                      title="More" aria-label="More"
                       style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
                   </div>
                   {openInviteMenu === inv.id && (

@@ -253,9 +253,16 @@ canvas {
   transition: background-color 0.2s ease;
 }
 
-/* Focus styles */
+/* UX (KAL-66): ONE keyboard focus ring for the whole app — a crisp 2px brand
+   gold outline with a 2px gap so it hugs the control without touching it.
+   Gold because a keyboard-only user must be able to find their place at a
+   glance on a dark surface, and the previous translucent white ring was almost
+   invisible against #12151c panels. Crisp outline, not a glow or halo — a soft
+   ring reads as decoration, not position.
+   :focus-visible (not :focus) so a mouse click never draws it; only keyboard
+   Tab and programmatic focus do. */
 :focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline: 2px solid #d8a84e;
   outline-offset: 2px;
 }
 

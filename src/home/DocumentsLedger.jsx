@@ -270,14 +270,14 @@ export default function DocumentsLedger({
               <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
               <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
               <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
-              <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
+              <button disabled={!docSelCount} title="Share" aria-label="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
               {/* UX: one confirmation only. The delete gate lives in the hub's
                   onDelete handler (themed confirm, count-aware) so the toolbar
                   bulk delete and the row "..." menu delete both ask exactly
                   once. Do not add a second modal here. Selection is cleared
                   only when the delete actually ran, so cancelling keeps the
                   user's selection intact. */}
-              <button disabled={!docSelCount} title="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
+              <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
             </span>
           );
         })()}
@@ -349,7 +349,7 @@ export default function DocumentsLedger({
       type="button"
       onClick={(e) => openDocMenu(e, d)}
       style={moreButtonStyle()}
-      title="More"
+      title="More" aria-label="More"
     ><Icon name="more" size={14} /></button>
   );
   const renderMobileCheck = (d, size = 18) => {
@@ -477,7 +477,7 @@ export default function DocumentsLedger({
                             setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
                           }}
                           style={moreButtonStyle()}
-                          title="More"
+                          title="More" aria-label="More"
                         ><Icon name="more" size={14} /></button>
                       )}
                     </div>
@@ -519,7 +519,7 @@ export default function DocumentsLedger({
             <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
-                <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}><Icon name="close" size={13} /></button>
+                <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" style={closeButtonStyle()}><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
@@ -577,7 +577,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn" title="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="more" size={12} /></button>
+                <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="more" size={12} /></button>
               </div>
             </aside>
           )}
@@ -612,7 +612,7 @@ export default function DocumentsLedger({
                   <span>Document details</span>
                   <strong>{mobileDetailDoc.name}</strong>
                 </div>
-                <button type="button" title="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}><Icon name="close" size={13} /></button>
+                <button type="button" title="Close details" aria-label="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
                 {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}

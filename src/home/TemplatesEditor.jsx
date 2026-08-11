@@ -1444,8 +1444,8 @@ export default function TemplatesEditor({
               style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
             >{allSel ? 'None' : 'All'}</button>
             <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount })}>Duplicate</button>
-            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ disabled: !visibleSelCount, iconOnly: true })} title="Share"><Icon name="share" size={12} /></button>
-            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={12} /></button>
+            <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ disabled: !visibleSelCount, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
+            <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
           </span>
         );
       })()}
@@ -1582,8 +1582,8 @@ export default function TemplatesEditor({
                             style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}
                           >{allSel ? 'None' : 'All'}</button>
                           <button onClick={() => { if (visibleSelCount) { duplicateTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount })}>Duplicate</button>
-                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
-                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                          <button disabled={!visibleSelCount} onClick={() => { const first = visibleTemplates.find((t) => visibleSelectedIds.has(t.id)); if (first) onShare && onShare(first); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                          <button onClick={() => { if (visibleSelCount) { deleteTemplates(visibleSelectedIds); setSelTpls(new Set()); } }} disabled={!visibleSelCount} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !visibleSelCount, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
                     })()}
@@ -1661,7 +1661,7 @@ export default function TemplatesEditor({
                             setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                           }}
                           style={moreButtonStyle()}
-                          title="More"
+                          title="More" aria-label="More"
                         ><Icon name="more" size={14} /></button>
                       )}
                     </div>
@@ -1771,8 +1771,8 @@ export default function TemplatesEditor({
                           <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
                           <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
                           <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
-                          <button disabled={!c} onClick={() => deleteCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                          <button disabled={!c} onClick={() => deleteCategories(selCats)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
                     })()}
@@ -1926,7 +1926,7 @@ export default function TemplatesEditor({
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
                                 />
                                 <button
-                                  title="Delete item"
+                                  title="Delete item" aria-label="Delete item"
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
                                   onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
@@ -1983,7 +1983,7 @@ export default function TemplatesEditor({
                                       {archivedItemLabel(it)}
                                     </span>
                                     <button
-                                      title="Permanently delete (orphans historical responses)"
+                                      title="Permanently delete (orphans historical responses)" aria-label="Permanently delete (orphans historical responses)"
                                       onClick={(e) => { e.stopPropagation(); hardDeleteItem(i, it.id); }}
                                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
                                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
@@ -2036,8 +2036,8 @@ export default function TemplatesEditor({
                       <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
                       <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
                       <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={10} /></button>
-                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={10} /></button>
+                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={10} /></button>
+                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={10} /></button>
                     </>
                   );
                 })()}
@@ -2097,7 +2097,7 @@ export default function TemplatesEditor({
                         />
                         <button
                           onClick={() => setOpenColor(isOpen ? null : r.id)}
-                          title="Edit color"
+                          title="Edit color" aria-label="Edit color"
                           style={{
                             width: 18, height: 18, borderRadius: '50%',
                             /* Solid full-strength chip (Drawboard-style) so entity
@@ -2127,7 +2127,7 @@ export default function TemplatesEditor({
                             </span>
                           ) : (
                             <button
-                              title="More"
+                              title="More" aria-label="More"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -2298,7 +2298,7 @@ export default function TemplatesEditor({
                                     setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
                                   }}
                                   style={moreButtonStyle({ color: 'var(--ink-muted)' })}
-                                  title="More"
+                                  title="More" aria-label="More"
                                 ><Icon name="more" size={14} /></button>
                               )}
                             </div>
@@ -2399,8 +2399,8 @@ export default function TemplatesEditor({
                         >{allSel ? 'None' : 'All'}</button>
                         <button disabled={!c} onClick={() => duplicateCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
                         <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                        <button disabled={!c} onClick={() => deleteCategories(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                       </span>
                     );
                   })()}
@@ -2482,7 +2482,7 @@ export default function TemplatesEditor({
                                           <span>{archivedItemLabel(it)}</span>
                                           <button
                                             type="button"
-                                            title="Permanently delete"
+                                            title="Permanently delete" aria-label="Permanently delete"
                                             onClick={(e) => { e.stopPropagation(); hardDeleteItem(ci, it.id); }}
                                           ><Icon name="close" size={11} /></button>
                                         </div>
@@ -2556,8 +2556,8 @@ export default function TemplatesEditor({
                         })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)' })}>{allSel ? 'None' : 'All'}</button>
                         <button disabled={!c} onClick={() => duplicateEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Duplicate</button>
                         <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c })}>Move/Copy</button>
-                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share"><Icon name="share" size={11} /></button>
-                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete"><Icon name="trash" size={11} /></button>
+                        <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, iconOnly: true })} title="Share" aria-label="Share"><Icon name="share" size={11} /></button>
+                        <button disabled={!c} onClick={() => deleteEntities(visibleSelectedIds)} style={miniButtonStyle({ borderColor: 'var(--rule-strong)', color: 'var(--ink-soft)', disabled: !c, danger: true, iconOnly: true })} title="Delete" aria-label="Delete"><Icon name="trash" size={11} /></button>
                       </span>
                     );
                   })()}
@@ -2580,7 +2580,7 @@ export default function TemplatesEditor({
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
                                   type="button"
-                                  title="Edit color"
+                                  title="Edit color" aria-label="Edit color"
                                   onClick={() => setOpenColor(isOpen ? null : r.id)}
                                   style={{ background: c, borderColor: rowBorderColor }}
                                 />
@@ -2854,8 +2854,8 @@ export default function TemplatesEditor({
               <button onClick={() => { const allSel = selectedMods.length === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((m) => m.id))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selectedMods.length === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
               <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
-              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={12} /></button>
-              <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#d95a56' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
+              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share" aria-label="Share"><Icon name="share" size={12} /></button>
+              <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#d95a56' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete" aria-label="Delete"><Icon name="trash" size={12} /></button>
               <span style={{ flex: 1 }} />
               <button onClick={() => setModEdit(false)} style={{ background: '#d8a84e', border: '1px solid #d8a84e', color: '#15110a', borderRadius: 4, padding: '5px 16px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Done</button>
             </div>
@@ -2879,7 +2879,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8d96a6', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: '#f4f1ea', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button onClick={() => setMoveModal(null)} title="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}><Icon name="close" size={13} /></button>
+            <button onClick={() => setMoveModal(null)} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}><Icon name="close" size={13} /></button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination

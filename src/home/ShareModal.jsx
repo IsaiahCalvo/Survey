@@ -26,6 +26,7 @@ import { createTemplateInvite } from '../services/templateInviteService';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -74,7 +75,7 @@ export default function ShareModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
-  const previouslyFocusedRef = useRef(null);
+  const cardRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -88,25 +89,10 @@ export default function ShareModal({
     }
   }, [open]);
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap).
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onClose]);
+  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
+  // dialog, Escape closes it, and focus returns to whatever opened it. This
+  // replaces a hand-rolled Escape+focus-return that never trapped Tab.
+  useFocusTrap(cardRef, open, { onEscape: onClose });
 
   const noun = KIND_LABEL[kind] || 'item';
   const targetId = useMemo(() => {
@@ -194,6 +180,9 @@ export default function ShareModal({
       }}
     >
       <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
       >
@@ -204,7 +193,7 @@ export default function ShareModal({
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button onClick={onClose} title="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}

@@ -348,7 +348,7 @@ const BookmarkTreeRow = ({
               event.stopPropagation();
               onAddChild?.(item.id);
             }}
-            title="Add bookmark to group"
+            title="Add bookmark to group" aria-label="Add bookmark to group"
             style={{
               width: 24,
               height: 22,
@@ -375,7 +375,7 @@ const BookmarkTreeRow = ({
                 onDelete?.(item.id);
               }
             }}
-            title="Delete"
+            title="Delete" aria-label="Delete"
             style={{
               background: 'transparent',
               border: 'none',
@@ -2052,7 +2052,7 @@ const BookmarksPanel = ({
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#3a1f1f'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        title="Remove"
+                        title="Remove" aria-label="Remove"
                       >
                         <Icon name="trash" size={14} />
                       </button>
@@ -2437,7 +2437,7 @@ const BookmarksPanel = ({
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#3a1f1f'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        title="Remove"
+                        title="Remove" aria-label="Remove"
                       >
                         <Icon name="trash" size={14} />
                       </button>

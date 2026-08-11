@@ -137,6 +137,26 @@ const AnnotationPropertiesPanel = ({
     };
   }, [onClose]);
 
+  // Accessibility (KAL-66): focus return. The panel is portalled to body, so
+  // when it unmounts the browser drops focus onto <body> and a keyboard user
+  // is dumped back to the top of the tab order — they'd have to tab all the way
+  // through the chrome to get back to the annotation they were just editing.
+  // Remember what opened the panel and hand focus back on close.
+  // NOT the shared useFocusTrap: this is a context popover, not a modal. Its
+  // whole point is that the page behind stays live and reachable, so Tab must
+  // NOT be trapped inside it.
+  const openerRef = useRef(null);
+  useEffect(() => {
+    openerRef.current = document.activeElement;
+    return () => {
+      // Only restore if the opener is still in the document — the annotation
+      // may have been deleted from under us.
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener && opener.isConnected) opener.focus?.();
+    };
+  }, []);
+
   // Draggable header — pointerdown on the header starts a drag, pointermove
   // updates position, pointerup ends. pointer capture keeps the drag alive
   // even if the cursor temporarily leaves the header strip.
