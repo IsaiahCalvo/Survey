@@ -106,7 +106,7 @@ export const ProgressBar = ({ pct, color = 'var(--gold)' }) => (
 );
 
 /* Search field — visual only at this layer; callers wire value/onChange. */
-export const Search = ({ placeholder = 'Search…', width = 240, value, onChange }) => {
+export const Search = ({ placeholder = 'Search…', width = 240, value, onChange, dismissActionSelector = '' }) => {
   const rootRef = useRef(null);
   const inputRef = useRef(null);
   const [focused, setFocused] = useState(false);
@@ -116,6 +116,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
       <DismissBarrier
         active={focused}
         insideRefs={[rootRef]}
+        passthroughSelector={dismissActionSelector}
         onDismiss={() => {
           inputRef.current?.blur();
           setFocused(false);

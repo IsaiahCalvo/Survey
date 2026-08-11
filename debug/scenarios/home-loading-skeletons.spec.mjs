@@ -212,3 +212,46 @@ test('mobile template More menu consumes the first outside template tap', async 
   await expect(rows).toHaveCount(0);
   await expect(page.locator('.templates-mobile-detail')).toBeVisible();
 });
+
+test('mobile New category remains actionable while template search is focused', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'templates', false, true);
+
+  await page.locator('.templates-mobile-row.reorderable').first().click();
+  await expect(page.locator('.templates-mobile-detail')).toBeVisible();
+
+  const search = page.locator('input[placeholder="Search template..."]').first();
+  const categories = page.locator('.templates-mobile-categories-section .templates-mobile-category-row');
+  const initialCount = await categories.count();
+
+  await search.fill('no matching category');
+  await expect(search).toBeFocused();
+  await expect(categories).toHaveCount(0);
+
+  await page.locator('.templates-mobile-categories-section').getByRole('button', { name: 'New category' }).click();
+
+  await expect(search).toHaveValue('');
+  await expect(categories).toHaveCount(initialCount + 1);
+  const createdName = categories.last().locator('input');
+  await expect(createdName).toHaveValue('Category 1');
+  await expect(createdName).toBeFocused();
+});
+
+test('mobile New category seeds the first module in an empty template', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?hubPreview=1&tab=templates&mobileNav=tabs&nativeShell=expo&workflowE2E=1');
+  await page.locator('.templates-mobile-row.reorderable').first().waitFor();
+
+  const templates = page.locator('.templates-mobile-row.reorderable');
+  const initialTemplateCount = await templates.count();
+  await page.getByRole('button', { name: 'New template' }).first().click();
+  await expect(templates).toHaveCount(initialTemplateCount + 1);
+  await templates.first().click();
+
+  await page.locator('.templates-mobile-categories-section').getByRole('button', { name: 'New category' }).click();
+
+  await expect(page.locator('.templates-mobile-module-tabs')).toContainText('Module 1');
+  const createdName = page.locator('.templates-mobile-categories-section input[data-mobile-category-id]').last();
+  await expect(createdName).toHaveValue('Category 1');
+  await expect(createdName).toBeFocused();
+});

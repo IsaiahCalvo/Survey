@@ -891,6 +891,7 @@ export default function TemplatesEditor({
   const toggleModSel = (id) => setSelMods((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
+  const pendingCategoryFocusRef = useRef(null);
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity' }
   /* Move/Copy modal destination picks — destTpl is always meaningful;
@@ -1215,17 +1216,45 @@ export default function TemplatesEditor({
   };
   const mutateOpenModule = (fn) => mutateModuleAt(openMod, fn);
   const addCategoryToModule = (moduleIndex) => {
-    if (!tpl || !orderedMods[moduleIndex]) return;
-    const existing = (orderedMods[moduleIndex].categories || []).map((c) => c.name);
+    if (!tpl) return;
+    const targetIndex = orderedMods[moduleIndex] ? moduleIndex : (orderedMods.length ? 0 : -1);
+    const categoryId = newId('c');
+    if (mobileTemplateOpen) {
+      pendingCategoryFocusRef.current = categoryId;
+      setTemplateContentSearch('');
+    }
+
+    /* A brand-new template can have no module yet. New Category must still
+       produce a visible result, so seed its first module and category in the
+       same edit instead of silently returning. */
+    if (targetIndex < 0) {
+      const existingModules = orderedMods.map((m) => m.name);
+      let moduleNumber = 1, moduleName;
+      do { moduleName = `Module ${moduleNumber++}`; } while (existingModules.includes(moduleName));
+      const moduleId = newId('m');
+      mutateTpl(tpl.id, (t) => ({
+        ...t,
+        modules: [...t.modules, {
+          id: moduleId,
+          name: moduleName,
+          categories: [{ id: categoryId, name: 'Category 1', items: [] }],
+        }],
+      }));
+      setOpenMod(orderedMods.length);
+      setOpenCat(0);
+      return;
+    }
+
+    const existing = (orderedMods[targetIndex].categories || []).map((c) => c.name);
     let n = 1, name;
     do { name = `Category ${n++}`; } while (existing.includes(name));
-    mutateModuleAt(moduleIndex, (m) => ({
+    mutateModuleAt(targetIndex, (m) => ({
       ...m,
-      categories: [...m.categories, { id: newId('c'), name, items: [] }],
+      categories: [...(m.categories || []), { id: categoryId, name, items: [] }],
     }));
     /* Open the new category so its (empty) checklist is immediately visible. */
-    setOpenMod(moduleIndex);
-    setTimeout(() => setOpenCat((orderedMods[moduleIndex].categories || []).length), 0);
+    setOpenMod(targetIndex);
+    setTimeout(() => setOpenCat((orderedMods[targetIndex].categories || []).length), 0);
   };
   const addCategory = () => addCategoryToModule(openMod);
   const renameCategoryInModule = (moduleIndex, ci, name) => {
@@ -1589,6 +1618,7 @@ export default function TemplatesEditor({
           value={mobileTemplateOpen ? templateContentSearch : search}
           onChange={mobileTemplateOpen ? setTemplateContentSearch : setSearch}
           width="100%"
+          dismissActionSelector={mobileTemplateOpen ? '[data-search-dismiss-action]' : ''}
         />
         {!mobileTemplateOpen ? (
           <button className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={() => onCreateTemplate && onCreateTemplate()}>
@@ -1618,6 +1648,26 @@ export default function TemplatesEditor({
       ? tpl.roster.filter((entity) => String(entity.role || '').toLowerCase().includes(templateQuery))
       : tpl.roster)
     : [];
+
+  /* New Category is an explicit action, not an ambiguous background tap.
+     Reveal the new row even when a template filter was active, then focus its
+     title so the result is immediate on a phone and never lands below the
+     visible viewport unnoticed. */
+  useEffect(() => {
+    const categoryId = pendingCategoryFocusRef.current;
+    if (!categoryId || !mobileTemplateOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const input = Array.from(document.querySelectorAll(
+        '.templates-mobile-detail input[data-mobile-category-id]',
+      )).find((candidate) => candidate.dataset.mobileCategoryId === categoryId);
+      if (!input) return;
+      pendingCategoryFocusRef.current = null;
+      input.scrollIntoView({ block: 'nearest' });
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileTemplateOpen, openCat, rich, templateContentSearch]);
 
   return (
     <>
@@ -2466,7 +2516,7 @@ export default function TemplatesEditor({
               <section className="templates-mobile-section templates-mobile-categories-section">
                 <div className="templates-mobile-section-head">
                   <span>Categories</span>
-                  <button type="button" onClick={addCategory}><Icon name="plus" size={11} />New category</button>
+                  <button type="button" data-search-dismiss-action onClick={addCategory}><Icon name="plus" size={11} />New category</button>
                 </div>
                 <div className="templates-mobile-select-inline">
                   <button
@@ -2532,6 +2582,7 @@ export default function TemplatesEditor({
                                 ><CategoryDisclosureGlyph /></button>
                                 <input
                                   className="templates-mobile-inline-input"
+                                  data-mobile-category-id={c.id}
                                   defaultValue={c.name}
                                   key={`mobile-cat-${c.id}:${c.name}`}
                                   onClick={(e) => e.stopPropagation()}

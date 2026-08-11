@@ -27,13 +27,15 @@ const consume = (event) => {
  * The first pointer gesture outside a protected surface is consumed through
  * its trailing click. This matters because closing state during pointerdown
  * otherwise unmounts the listener before click, allowing the same physical
- * tap to activate the row or control underneath.
+ * tap to activate the row or control underneath. Explicit controls may opt
+ * into passthrough: they dismiss first but keep their intentional click.
  */
 export default function DismissBarrier({
   active = true,
   onDismiss,
   insideRefs = [],
   insideSelector = '',
+  passthroughSelector = '',
   dismissOnEscape = true,
 }) {
   useEffect(() => {
@@ -60,12 +62,20 @@ export default function DismissBarrier({
     };
     const onPointerDown = (event) => {
       if (resolvesInside(event.target, insideRefs, insideSelector)) return;
+      if (passthroughSelector && eventTargetElement(event.target)?.closest(passthroughSelector)) {
+        onDismiss(event);
+        return;
+      }
       consume(event);
       armTrailingClickBlocker();
       onDismiss(event);
     };
     const onClick = (event) => {
       if (resolvesInside(event.target, insideRefs, insideSelector)) return;
+      if (passthroughSelector && eventTargetElement(event.target)?.closest(passthroughSelector)) {
+        onDismiss(event);
+        return;
+      }
       consume(event);
       onDismiss(event);
     };
@@ -86,7 +96,7 @@ export default function DismissBarrier({
       // usually unmounts this component during pointerdown; removing the
       // blocker here would let that same physical gesture click through.
     };
-  }, [active, dismissOnEscape, insideRefs, insideSelector, onDismiss]);
+  }, [active, dismissOnEscape, insideRefs, insideSelector, onDismiss, passthroughSelector]);
 
   return null;
 }
