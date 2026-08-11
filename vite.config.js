@@ -239,14 +239,14 @@ export default defineConfig(({ mode }) => {
   const devAuthBootstrapToken = devAuthRelay.enabled
     ? randomBytes(24).toString('hex')
     : '';
-  // Dev build identity is logged during app bootstrap, never rendered in UI.
-  // Git hash + server start time are re-evaluated when Vite (re)starts.
-  let buildStamp = '';
+  // Keep a short source identity in every bundle. Development also includes
+  // the server start time so Expo Go users can distinguish tunnel restarts.
+  let gitHash = 'no-git';
+  try {
+    gitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+  } catch { /* not a git checkout — keep placeholder */ }
+  let buildStamp = gitHash;
   if (mode === 'development') {
-    let gitHash = 'no-git';
-    try {
-      gitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
-    } catch { /* not a git checkout — keep placeholder */ }
     const started = new Date().toTimeString().slice(0, 5);
     buildStamp = `${gitHash} · ${started}`;
   }

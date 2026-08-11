@@ -119,3 +119,21 @@ test('cold-load skeletons keep mobile Home geometry stable', async ({ page }) =>
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   }
 });
+
+test('mobile account menu consumes the first outside document tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openHub(page, 'documents', false, true);
+
+  const firstDocument = page.locator('.mobile-doc-card').first();
+  await firstDocument.waitFor();
+  await page.getByRole('button', { name: 'Open account menu' }).click();
+  await expect(page.getByRole('menu', { name: 'Account menu' })).toBeVisible();
+
+  await page.locator('.profile-menu-scrim').click({ position: { x: 40, y: 300 } });
+  await expect(page.getByRole('menu', { name: 'Account menu' })).toHaveCount(0);
+  await expect(page).toHaveURL(/hubPreview=1/);
+  await expect(firstDocument).toBeVisible();
+
+  await firstDocument.click();
+  await expect(page).toHaveURL(/testPdf=/);
+});

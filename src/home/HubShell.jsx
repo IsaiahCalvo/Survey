@@ -5,6 +5,10 @@ import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext
 import { useAuth } from '../contexts/AuthContext';
 import { getContentTypeIconColor } from '../utils/contentTypeColors.js';
 
+const HUB_BUILD_STAMP = (
+  typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
+) || 'unknown';
+
 /* Friendly per-tier label used in the bottom-left profile chip. Maps the
    raw plan/tier string from AuthContext to the short capitalised form. The
    default of "Synced · Pro" used to be hardcoded, which displayed "Pro"
@@ -214,7 +218,7 @@ const ProfileMenu = ({ userName, userMeta }) => {
               setConfirmSignOut(false);
             }}
           />
-          <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 214, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
+          <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
               <Avatar initials={initials} size={34} />
               <div style={{ minWidth: 0 }}>
@@ -241,7 +245,10 @@ const ProfileMenu = ({ userName, userMeta }) => {
                 </button>
               )}
             </div>
-            <div style={{ borderTop: '1px solid var(--ink-500)', padding: '7px 12px', fontSize: 10, color: 'var(--ink-300)' }}>Survey App v1.0</div>
+            <div className="profile-menu-build-footer">
+              <span>Survey App version 1.0</span>
+              <span>Build {HUB_BUILD_STAMP}</span>
+            </div>
           </div>
         </>
       )}

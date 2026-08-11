@@ -59,3 +59,15 @@ test('authenticated account menu consumes the first outside click before content
     /\.survey-hub \.profile-menu-scrim\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*z-index:\s*49;/s,
   );
 });
+
+test('authenticated account menu identifies the exact app build without a global overlay', () => {
+  const profileMenu = HUB_SHELL.slice(
+    HUB_SHELL.indexOf('const ProfileMenu'),
+    HUB_SHELL.indexOf('const MobileRailNav'),
+  );
+
+  assert.match(profileMenu, /Survey App version 1\.0/);
+  assert.match(profileMenu, /Build \{HUB_BUILD_STAMP\}/);
+  assert.match(HUB_SHELL, /typeof __BUILD_STAMP__ !== 'undefined'/);
+  assert.match(HUB_CSS, /\.survey-hub \.profile-menu-build-footer\s*\{[^}]*justify-content:\s*space-between;/s);
+});
