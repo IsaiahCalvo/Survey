@@ -211,6 +211,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* UX (KAL-73): 8px gap so the shared loading ring sits to the left of the
+     present-participle label without crowding it. */
+  gap: 8px;
   background: #d8a84e;
   color: #15110a;
   border: none;

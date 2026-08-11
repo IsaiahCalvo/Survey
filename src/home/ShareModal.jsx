@@ -24,6 +24,7 @@ import { createDocumentInvite, buildInviteUrl } from '../services/documentInvite
 import { createProjectInvite } from '../services/projectInviteService';
 import { createTemplateInvite } from '../services/templateInviteService';
 import { closeButtonStyle } from './hubControls';
+import Spinner from '../components/Spinner';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -263,9 +264,13 @@ export default function ShareModal({
           <button
             disabled={busy || !emails.trim() || !!blockedReason}
             onClick={sendInvite}
-            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy || !emails.trim() || blockedReason ? 'not-allowed' : 'pointer', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit' }}
+            style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? 'progress' : (!emails.trim() || blockedReason ? 'not-allowed' : 'pointer'), background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
-            {busy ? 'Sending…' : `Send ${role.toLowerCase()} invite`}
+            {/* UX (KAL-73): sending an invite is a network round-trip well over
+                500ms, so it takes the shared button loading treatment — 14px ring
+                on the left, label in its present-participle form, stays disabled. */}
+            {busy && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}
+            {busy ? 'Sending invite…' : `Send ${role.toLowerCase()} invite`}
           </button>
         </div>
       </div>

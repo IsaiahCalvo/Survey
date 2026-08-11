@@ -8,6 +8,7 @@
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
+import Spinner from '../components/Spinner';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -969,7 +970,26 @@ const PagesPanel = ({
             </div>
           );
         })}
-        {allowedPages.length === 0 && (
+        {/* UX (KAL-73): two distinct empty-looking states, deliberately kept apart.
+            Before the document reports a page count the panel is still LOADING —
+            it shows the shared 18px ring with "Loading pages…" so a slow PDF never
+            looks like an empty or broken panel. Only once the page count exists
+            does a zero-length list mean the active space genuinely filters
+            everything out, which is the real empty state below. */}
+        {!numPages ? (
+          <div style={{
+            padding: '32px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            color: '#8d96a6',
+            fontSize: '12px'
+          }}>
+            <Spinner size={18} />
+            Loading pages…
+          </div>
+        ) : allowedPages.length === 0 && (
           <div style={{
             padding: '32px 16px',
             textAlign: 'center',

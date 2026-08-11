@@ -350,6 +350,18 @@
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
+  /* UX (KAL-73): inline-flex + 8px gap so the shared loading ring can sit to the
+     left of the label without shifting the label off-centre. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* UX (KAL-73): a button mid-request reads as "working", not "broken" — the
+   progress cursor reinforces the ring while the button stays disabled. */
+.account-btn-primary:disabled {
+  cursor: progress;
 }
 
 .account-btn-primary:hover:not(:disabled) {

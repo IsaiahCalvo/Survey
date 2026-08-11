@@ -16,6 +16,7 @@ import StripeCheckout from './StripeCheckout';
 import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
 import PasswordRequirements from './PasswordRequirements';
+import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 
@@ -578,8 +579,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </div>
 
                       <div className="account-btn-group">
+                        {/* UX (KAL-73): saving the profile is a network round-trip
+                            over 500ms, so it takes the shared button loading
+                            treatment — 14px ring left of a present-participle
+                            label, disabled until the save resolves. */}
                         <button type="submit" className="account-btn-primary" disabled={loading}>
-                          {loading ? 'Saving...' : 'Save changes'}
+                          {loading && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}
+                          {loading ? 'Saving…' : 'Save changes'}
                         </button>
                         <button
                           type="button"

@@ -21,6 +21,7 @@ import React from 'react';
 import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import { closeButtonStyle, moreButtonStyle } from './hubControls';
+import Spinner from '../components/Spinner';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -309,7 +310,10 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
           <button onClick={onClose} style={{ background: "transparent", border: 0, color: INK_200, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}>Cancel</button>
-          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy || !emails.trim() || blockedReason ? "not-allowed" : "pointer", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit" }}>{busy ? "Sending…" : `Send ${emailRole} invite`}</button>
+          {/* UX (KAL-73): invite sends are a network round-trip over 500ms, so the
+              button takes the shared loading treatment — 14px ring on the left,
+              present-participle label, disabled until the request resolves. */}
+          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} style={{ opacity: busy || !emails.trim() || blockedReason ? 0.45 : 1, cursor: busy ? "progress" : (!emails.trim() || blockedReason ? "not-allowed" : "pointer"), background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy && <Spinner size={14} color="#15110a" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
         </div>
       </div>
     </div>
