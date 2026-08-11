@@ -28,7 +28,7 @@ const LoadingHeader = ({ tab }) => {
           <Block style={{ width: 112, height: 28 }} />
         </div>
         {desktopSearch('documents-desktop-search', 'Search documents')}
-        <Block className="hub-loading-primary-action" style={{ width: 76, height: 28 }} />
+        <Block className="hub-loading-primary-action documents-desktop-upload" style={{ width: 76, height: 28 }} />
       </>
     );
   }
@@ -59,7 +59,9 @@ const LoadingSubtitle = ({ tab }) => {
               Select<Block style={{ width: 34, height: 9 }} />
             </button>
           </span>
-          <Block style={{ width: 112, height: 28 }} />
+          <span className="documents-mobile-sort-control">
+            <Block style={{ width: 112, height: 28 }} />
+          </span>
         </span>
       </span>
     );

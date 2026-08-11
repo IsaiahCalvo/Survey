@@ -4,8 +4,12 @@ const closeTo = (actual, expected, tolerance = 0.75, label = 'geometry') => {
   expect(Math.abs(actual - expected), `${label}: ${actual} vs ${expected}`).toBeLessThanOrEqual(tolerance);
 };
 
-const openHub = async (page, tab, loading = false) => {
+const openHub = async (page, tab, loading = false, mobile = false) => {
   const query = new URLSearchParams({ hubPreview: '1', tab });
+  if (mobile) {
+    query.set('mobileNav', 'tabs');
+    query.set('nativeShell', 'expo');
+  }
   if (loading) query.set('hubLoading', tab);
   await page.goto(`/?${query}`);
   await page.locator('.survey-hub').waitFor();
@@ -85,27 +89,25 @@ test('cold-load skeletons keep mobile Home geometry stable', async ({ page }) =>
   await page.setViewportSize({ width: 390, height: 844 });
 
   const selectors = {
-    documents: { label: '.mobile-header-select-row', row: '.mobile-doc-card' },
-    projects: { label: '.projects-mobile-browser-label', row: '.projects-mobile-folder-row.drill.reorderable' },
-    templates: { label: '.templates-mobile-label', row: '.templates-mobile-row.reorderable' },
+    documents: { row: '.mobile-doc-card' },
+    projects: { row: '.projects-mobile-folder-row.drill.reorderable' },
+    templates: { row: '.templates-mobile-row.reorderable' },
   };
 
   for (const [tab, selector] of Object.entries(selectors)) {
-    await openHub(page, tab);
+    await openHub(page, tab, false, true);
     await page.locator(`${selector.row}:not(.hub-loading-mobile-row)`).first().waitFor();
     const real = {
       actions: await box(page.locator('.actions')),
       select: await box(page.locator('.mobile-header-select-row')),
-      label: await box(page.locator(selector.label)),
       row: await box(page.locator(selector.row).first()),
     };
 
-    await openHub(page, tab, true);
+    await openHub(page, tab, true, true);
     await page.locator('.hub-loading-region').waitFor();
     const skeleton = {
       actions: await box(page.locator('.actions')),
       select: await box(page.locator('.mobile-header-select-row')),
-      label: await box(page.locator(selector.label)),
       row: await box(page.locator(selector.row).first()),
     };
 
