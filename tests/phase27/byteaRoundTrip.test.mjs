@@ -1,20 +1,20 @@
 // tests/phase27/byteaRoundTrip.test.mjs
-// Phase 27 Wave 0 scaffold — re-enabled by KAL-257 (2026-06-10) against an
-// allowlisted cloud TEST project (see ./integrationEnv.mjs; never production).
+// Phase 27 bytea transport check. It runs against the main Survey project but
+// writes only to public.integration_test_bytea_roundtrip, a service-role-only
+// table with RLS enabled and no user policies.
 //
 // UX/architecture rationale: Yjs updates are binary. Any encode/decode delta in the
 // transport will corrupt CRDT history irreversibly (state vectors stop matching,
 // merge becomes nondeterministic). This test does the full round-trip:
 //   1. Create Y.Doc, write a Y.Map field.
 //   2. Encode update via Y.encodeStateAsUpdate(doc).
-//   3. INSERT into doc_yjs_updates as PostgREST hex bytea — the SAME wire format
+//   3. INSERT into the isolated transport table as PostgREST hex bytea — the SAME wire format
 //      the app uses (bytesToPgHex/pgHexToBytes mirror src/services/annotationDocSync.js).
 //   4. SELECT the row back, decode the hex, Y.applyUpdate onto a fresh doc.
 //   5. Assert the Y.Map field survived byte-exactly.
 //
-// Hygiene (Codex round-1/2 findings): per-run randomUUID document id (no
-// cross-run collisions), seq=1 (no Date.now() semantics), parent documents row
-// for the FK, all cleanup in finally with allocation-gated leak assertions.
+// Hygiene: per-run randomUUID row id, all cleanup in finally, and an exact
+// leak assertion. No customer/user/document row is created or modified.
 
 import { test } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
@@ -52,7 +52,7 @@ function pgHexToBytes(str) {
 }
 
 test(
-  'Yjs binary update round-trips through doc_yjs_updates.update (bytea)',
+  'Yjs binary update round-trips through the isolated PostgREST bytea transport',
   { skip: skipReason },
   async () => {
     const Y = await import('yjs');
@@ -65,19 +65,10 @@ test(
       process.env.SUPABASE_TEST_SERVICE_KEY
     );
 
-    const documentId = randomUUID();
-    const clientId = 'phase27-byteaRoundTrip-test';
-    let parentInserted = false;
-    let insertedUpdateId = null;
+    const rowId = randomUUID();
+    let rowInserted = false;
 
     try {
-      // 0. Parent row — doc_yjs_updates.document_id FK → documents(id).
-      const { error: parentErr } = await client
-        .from('documents')
-        .insert({ id: documentId, name: 'phase27-byteaRoundTrip-test' });
-      ok(!parentErr, `parent documents INSERT must succeed: ${parentErr?.message}`);
-      parentInserted = true;
-
       // 1. Build a Y.Doc with a known Y.Map field.
       const doc1 = new Y.Doc();
       doc1.getMap('annotations').set('test-key', 'test-value');
@@ -87,30 +78,28 @@ test(
 
       // 2. INSERT as PostgREST hex — the app's wire format.
       const { data: inserted, error: insertErr } = await client
-        .from('doc_yjs_updates')
+        .from('integration_test_bytea_roundtrip')
         .insert({
-          document_id: documentId,
-          client_id: clientId,
-          seq: 1,
-          update: bytesToPgHex(encoded),
-          origin: { source: 'phase27-byteaRoundTrip-test' },
+          id: rowId,
+          payload: bytesToPgHex(encoded),
         })
         .select('id')
         .single();
       ok(!insertErr, `INSERT must succeed: ${insertErr?.message}`);
       ok(inserted, 'expected one inserted row back');
-      insertedUpdateId = inserted.id;
+      strictEqual(inserted.id, rowId, 'inserted row id must match the isolated run id');
+      rowInserted = true;
 
       // 3. SELECT it back fresh.
       const { data: row, error: selectErr } = await client
-        .from('doc_yjs_updates')
-        .select('update')
-        .eq('id', insertedUpdateId)
+        .from('integration_test_bytea_roundtrip')
+        .select('payload')
+        .eq('id', rowId)
         .single();
       ok(!selectErr, `SELECT must succeed: ${selectErr?.message}`);
 
       // 4. Decode the returned hex and apply onto a fresh doc.
-      const returnedBytes = pgHexToBytes(row.update);
+      const returnedBytes = pgHexToBytes(row.payload);
       strictEqual(
         returnedBytes.length,
         encoded.length,
@@ -126,32 +115,15 @@ test(
         'round-tripped Y.Doc must preserve the Y.Map field'
       );
     } finally {
-      // Cleanup + leak verification, gated on what was actually allocated so a
-      // failed setup can never fake a clean pass. Every cleanup call asserts
-      // its own success — a Supabase error here must fail the test, not let
-      // the leak checks false-pass on empty data.
-      if (insertedUpdateId !== null) {
-        const { error: delUpdErr } = await client
-          .from('doc_yjs_updates').delete().eq('id', insertedUpdateId);
-        ok(!delUpdErr, `cleanup DELETE of update row must succeed: ${delUpdErr?.message}`);
-      }
-      if (parentInserted) {
-        const { error: delByDocErr } = await client
-          .from('doc_yjs_updates').delete().eq('document_id', documentId);
-        ok(!delByDocErr, `cleanup DELETE by document_id must succeed: ${delByDocErr?.message}`);
-        const { error: delDocErr } = await client
-          .from('documents').delete().eq('id', documentId);
-        ok(!delDocErr, `cleanup DELETE of parent document must succeed: ${delDocErr?.message}`);
-        const { data: leftovers, error: leftoverErr } = await client
-          .from('doc_yjs_updates').select('id').eq('document_id', documentId);
-        ok(!leftoverErr, `leak-check SELECT on doc_yjs_updates must succeed: ${leftoverErr?.message}`);
+      if (rowInserted) {
+        const { error: deleteError } = await client
+          .from('integration_test_bytea_roundtrip').delete().eq('id', rowId);
+        ok(!deleteError, `cleanup DELETE must succeed: ${deleteError?.message}`);
+        const { data: leftovers, error: leftoverError } = await client
+          .from('integration_test_bytea_roundtrip').select('id').eq('id', rowId);
+        ok(!leftoverError, `leak-check SELECT must succeed: ${leftoverError?.message}`);
         strictEqual((leftovers || []).length, 0,
-          `leaked doc_yjs_updates rows on test project ${maskedTestRef()}`);
-        const { data: docLeft, error: docLeftErr } = await client
-          .from('documents').select('id').eq('id', documentId);
-        ok(!docLeftErr, `leak-check SELECT on documents must succeed: ${docLeftErr?.message}`);
-        strictEqual((docLeft || []).length, 0,
-          `leaked documents row on test project ${maskedTestRef()}`);
+          `leaked isolated bytea row on project ${maskedTestRef()}`);
       }
     }
   }

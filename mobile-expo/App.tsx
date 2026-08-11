@@ -9,9 +9,6 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 const DEFAULT_SURVEY_URL = 'https://surveytool.app/mobile';
-const ANALYTICS_URL = process.env.EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_URL?.trim()
-  || 'https://analytics.agent-native.com/track';
-const ANALYTICS_PUBLIC_KEY = process.env.EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY?.trim() || '';
 const GOOGLE_IOS_CLIENT_ID = '88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku.apps.googleusercontent.com';
 const GOOGLE_REDIRECT_URI = 'com.googleusercontent.apps.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku:/oauthredirect';
 
@@ -64,6 +61,7 @@ function SurveyApp() {
   const webViewRef = useRef<WebView>(null);
   const processRecoveryRef = useRef<number[]>([]);
   const pdfDiagnosticRef = useRef<Array<Record<string, unknown>>>([]);
+  const pendingNativeAnalyticsRef = useRef<Array<Record<string, unknown>>>([]);
   const shellSessionIdRef = useRef(`expo-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const surveyLaunchUrlRef = useRef(withLaunchCacheBust(SURVEY_URL, shellSessionIdRef.current));
   const googleAuthInFlightRef = useRef(false);
@@ -163,31 +161,32 @@ function SurveyApp() {
     `);
   };
 
-  const sendAnalyticsEvent = (event: string, properties: Record<string, unknown>) => {
-    if (!ANALYTICS_PUBLIC_KEY) return;
-    void fetch(ANALYTICS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-agent-native-analytics-key': ANALYTICS_PUBLIC_KEY,
+  const queueNativeAnalyticsEvent = (event: string, properties: Record<string, unknown>) => {
+    pendingNativeAnalyticsRef.current = [...pendingNativeAnalyticsRef.current, {
+      event,
+      properties: {
+        surface: 'expo-webview',
+        os: Platform.OS,
+        route: '/mobile',
+        ...properties,
       },
-      body: JSON.stringify({
-        event,
-        sessionId: shellSessionIdRef.current,
-        anonymousId: shellSessionIdRef.current,
-        timestamp: new Date().toISOString(),
-        properties: {
-          app: 'survey',
-          surface: 'expo-webview',
-          os: Platform.OS,
-          route: '/mobile',
-          ...properties,
-        },
-        context: { source: 'survey-expo-shell' },
-      }),
-    }).catch(() => {
-      // Telemetry is write-only and must never affect app recovery.
-    });
+    }].slice(-8);
+  };
+
+  const flushNativeAnalyticsEvents = () => {
+    const pending = pendingNativeAnalyticsRef.current;
+    if (!pending.length) return;
+    const serialized = JSON.stringify(pending)
+      .replace(/</g, '\\u003c')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+    webViewRef.current?.injectJavaScript(`
+      for (const entry of ${serialized}) {
+        window.dispatchEvent(new CustomEvent('survey-native-analytics', { detail: entry }));
+      }
+      true;
+    `);
+    pendingNativeAnalyticsRef.current = [];
   };
 
   const handleGoogleSignIn = async (requestId: string) => {
@@ -283,7 +282,7 @@ function SurveyApp() {
       timestamp: now,
       lastPdfDiagnostics: pdfDiagnosticRef.current,
     });
-    sendAnalyticsEvent('$exception', {
+    queueNativeAnalyticsEvent('$exception', {
       exceptionType: 'WebViewProcessTerminated',
       fatal: true,
       unhandled: true,
@@ -291,7 +290,7 @@ function SurveyApp() {
       recoveriesInLastMinute: recent.length,
       lastPdfDiagnostics: pdfDiagnosticRef.current,
     });
-    sendAnalyticsEvent('survey_webview_process_terminated', {
+    queueNativeAnalyticsEvent('survey_webview_process_terminated', {
       source,
       recoveriesInLastMinute: recent.length,
       lastPdfDiagnostics: pdfDiagnosticRef.current,
@@ -335,7 +334,10 @@ function SurveyApp() {
         onLoadStart={() => setLoadError(false)}
         onNavigationStateChange={handleNavigationStateChange}
         onMessage={Platform.OS === 'ios' ? handleWebMessage : undefined}
-        onLoadEnd={() => webViewRef.current?.injectJavaScript(nativeSafeAreaScript)}
+        onLoadEnd={() => {
+          webViewRef.current?.injectJavaScript(nativeSafeAreaScript);
+          flushNativeAnalyticsEvents();
+        }}
         onError={() => setLoadError(true)}
         onHttpError={() => setLoadError(true)}
         onContentProcessDidTerminate={() => recoverTerminatedProcess('ios-content-process')}

@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import * as Y from 'yjs';
+import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
 
 const PAGE = { width: 612, height: 792 };
 const FAMILY_ORDER = [
@@ -25,19 +26,12 @@ function requireValue(name, value) {
 }
 
 export function readHarnessConfig(override = null) {
-  if (
-    process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS
-      !== 'I_AM_THE_TEST_ACCOUNT_COORDINATOR'
-  ) {
-    throw new Error(
-      '[ERASER_E2E_INFRA] Exact coordinator authorization is required before creating disposable users.',
-    );
-  }
   if (process.env.ERASER_PERMISSION_E2E !== '1' && override?.authorized !== true) {
     throw new Error(
-      '[ERASER_E2E_INFRA] Set ERASER_PERMISSION_E2E=1 to authorize disposable test users, rows, and storage.',
+      '[ERASER_E2E_INFRA] Set ERASER_PERMISSION_E2E=1 to authorize isolated test rows and storage.',
     );
   }
+  const accounts = override?.accounts || loadVerifiedTestAccounts({ minimumAccounts: 3 });
 
   const supabaseUrl = requireValue(
     'ERASER_E2E_SUPABASE_URL or SUPABASE_TEST_URL',
@@ -65,18 +59,15 @@ export function readHarnessConfig(override = null) {
   const allowedHosts = new Set([
     'localhost',
     '127.0.0.1',
-    'zgdkyslxbkusexmkfvgd.supabase.co',
-    ...(process.env.ERASER_E2E_ALLOWED_HOST
-      ? process.env.ERASER_E2E_ALLOWED_HOST.split(',').map((item) => item.trim()).filter(Boolean)
-      : []),
+    'cvamwtpsuvxvjdnotbeg.supabase.co',
   ]);
   if (!allowedHosts.has(host)) {
     throw new Error(
-      `[ERASER_E2E_INFRA] Refusing backend host "${host}". Use the test project or explicitly set ERASER_E2E_ALLOWED_HOST.`,
+      `[ERASER_E2E_INFRA] Refusing backend host "${host}". Use the main Survey project with leased bots.`,
     );
   }
 
-  return { supabaseUrl, serviceKey, anonKey, baseUrl };
+  return { supabaseUrl, serviceKey, anonKey, baseUrl, accounts };
 }
 
 function makeAdmin(config) {
@@ -89,16 +80,6 @@ function makeAnon(config) {
   return createClient(config.supabaseUrl, config.anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-}
-
-async function ensureUser(admin, email, password) {
-  const created = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-  if (created.error) throw new Error(`[ERASER_E2E_INFRA] createUser(${email}): ${created.error.message}`);
-  return { id: created.data.user.id, email, password };
 }
 
 async function makePdfBytes() {
@@ -140,9 +121,7 @@ export async function provisionDisposableDocument(harness) {
 
   const inserted = await admin.from('documents').insert({
     user_id: users.owner.id,
-    created_by: users.owner.id,
     name: `Eraser Permission E2E ${suffix}.pdf`,
-    title: `Eraser Permission E2E ${suffix}`,
     file_path: filePath,
     file_size: pdfBytes.length,
     archived: false,
@@ -184,8 +163,6 @@ export async function provisionDisposableDocument(harness) {
     const remember = (label, error) => {
       if (error) failures.push(`${label}: ${error.message || String(error)}`);
     };
-    remember('updates', (await admin.from('annotation_updates').delete().eq('document_id', document.id)).error);
-    remember('snapshots', (await admin.from('annotation_snapshots').delete().eq('document_id', document.id)).error);
     remember('annotations', (await admin.from('document_annotations').delete().eq('document_id', document.id)).error);
     remember('collaborators', (await admin.from('document_collaborators').delete().eq('document_id', document.id)).error);
     remember('document', (await admin.from('documents').delete().eq('id', document.id)).error);
@@ -202,8 +179,16 @@ export async function provisionHarness(configOverride = null) {
   const config = readHarnessConfig(configOverride);
   const admin = makeAdmin(config);
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const password = `Eraser-${suffix}-Pw!`;
-  const users = {};
+  const [leasedOwner, leasedCollaborator, leasedViewer] = config.accounts;
+  const users = {
+    owner: { id: leasedOwner.userId, email: leasedOwner.email, password: leasedOwner.password },
+    collaborator: {
+      id: leasedCollaborator.userId,
+      email: leasedCollaborator.email,
+      password: leasedCollaborator.password,
+    },
+    viewer: { id: leasedViewer.userId, email: leasedViewer.email, password: leasedViewer.password },
+  };
   let filePath = null;
   let document = null;
   let ownerClient = null;
@@ -221,19 +206,12 @@ export async function provisionHarness(configOverride = null) {
     if (filePath) {
       remember('storage', (await admin.storage.from('documents').remove([filePath])).error);
     }
-    for (const user of Object.values(users)) {
-      remember(`user ${user.email}`, (await admin.auth.admin.deleteUser(user.id)).error);
-    }
     if (failures.length) {
       throw new Error(`[ERASER_E2E_INFRA] cleanup failed:\n${failures.join('\n')}`);
     }
   };
 
   try {
-    users.owner = await ensureUser(admin, `eraser-owner-${suffix}@survey-test.invalid`, password);
-    users.collaborator = await ensureUser(admin, `eraser-editor-${suffix}@survey-test.invalid`, password);
-    users.viewer = await ensureUser(admin, `eraser-viewer-${suffix}@survey-test.invalid`, password);
-
     const pdfBytes = await makePdfBytes();
     filePath = `${users.owner.id}/eraser-permission-e2e/${suffix}.pdf`;
     const upload = await admin.storage
@@ -246,9 +224,7 @@ export async function provisionHarness(configOverride = null) {
 
     const inserted = await admin.from('documents').insert({
       user_id: users.owner.id,
-      created_by: users.owner.id,
       name: `Eraser Permission E2E ${suffix}.pdf`,
-      title: `Eraser Permission E2E ${suffix}`,
       file_path: filePath,
       file_size: pdfBytes.length,
       archived: false,
@@ -525,8 +501,8 @@ function buildSurveyFixtureRow({ documentId, user, id, x, y, family, locked = fa
     space_id: null,
     name: `marker ${user.email.slice(0, 6)}`,
     notes: null,
-    ball_in_court_entity_id: null,
-    ball_in_court_name: null,
+    entity_id: null,
+    entity_name: null,
     checklist_responses: {},
     changed_by: null,
     changed_date: null,
@@ -780,10 +756,27 @@ export async function makeSignedInClient(harness, account) {
   const client = createClient(harness.config.supabaseUrl, harness.config.anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const signIn = await client.auth.signInWithPassword({
+  let signIn = await client.auth.signInWithPassword({
     email: account.email,
     password: account.password,
   });
+  if (signIn.error && /captcha/i.test(signIn.error.message || '')) {
+    const admin = harness.admin || makeAdmin(harness.config);
+    const generated = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: account.email,
+    });
+    if (generated.error) {
+      throw new Error(
+        `[ERASER_E2E_INFRA] generateLink(${account.email}): ${generated.error.message}`,
+      );
+    }
+    const tokenHash = generated.data?.properties?.hashed_token;
+    if (!tokenHash) {
+      throw new Error(`[ERASER_E2E_INFRA] generateLink(${account.email}) returned no token hash`);
+    }
+    signIn = await client.auth.verifyOtp({ type: 'magiclink', token_hash: tokenHash });
+  }
   if (signIn.error) {
     throw new Error(`[ERASER_E2E_INFRA] signIn(${account.email}): ${signIn.error.message}`);
   }
@@ -847,9 +840,26 @@ export async function openDocumentAs(
   account,
   { renderer = 'pdfjs', missingIdentity = null, deferOpen = false } = {},
 ) {
-  await context.addInitScript(({ email, password }) => {
+  const authClient = await makeSignedInClient(harness, account);
+  const sessionResult = await authClient.auth.getSession();
+  const session = sessionResult.data?.session;
+  if (sessionResult.error || !session) {
+    throw new Error(
+      `[ERASER_E2E_INFRA] leased session unavailable for ${account.email}: `
+        + (sessionResult.error?.message || 'missing session'),
+    );
+  }
+  const projectRef = new URL(harness.config.supabaseUrl).hostname.split('.')[0];
+  const authStorageKey = `sb-${projectRef}-auth-token`;
+  await context.addInitScript(({ email, password, sessionValue, storageKey }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(sessionValue));
     window.localStorage.setItem('__fix20AuthOverride', JSON.stringify({ email, password }));
-  }, { email: account.email, password: account.password });
+  }, {
+    email: account.email,
+    password: account.password,
+    sessionValue: session,
+    storageKey: authStorageKey,
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));

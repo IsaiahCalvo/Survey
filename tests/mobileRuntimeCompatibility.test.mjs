@@ -339,7 +339,9 @@ test('Expo forwards narrow PDF diagnostics and reports WebView process terminati
   assert.doesNotMatch(EXPO_APP_SOURCE, /console\.error\('\[Survey shell\] WebView process terminated/);
   assert.match(EXPO_APP_SOURCE, /pdfDiagnosticRef\.current = \[\.\.\.pdfDiagnosticRef\.current, diagnostic\]\.slice\(-24\)/);
   assert.match(EXPO_APP_SOURCE, /survey_webview_process_terminated/);
-  assert.match(EXPO_APP_SOURCE, /EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
+  assert.doesNotMatch(EXPO_APP_SOURCE, /EXPO_PUBLIC_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY/);
+  assert.match(EXPO_APP_SOURCE, /survey-native-analytics/);
+  assert.match(EXPO_APP_SOURCE, /pendingNativeAnalyticsRef/);
   assert.match(EXPO_APP_SOURCE, /lastPdfDiagnostics: pdfDiagnosticRef\.current/);
   assert.match(EXPO_APP_SOURCE, /window\.__surveyShellSessionId/);
 });

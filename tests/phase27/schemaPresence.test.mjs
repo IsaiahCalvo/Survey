@@ -9,26 +9,14 @@
 // because Yjs binary updates MUST round-trip exactly — any encoding-layer rewrite
 // (text, jsonb) would corrupt CRDT history.
 //
-// Re-enabled by KAL-257 (2026-06-10): runs via `npm run test:integration`
-// against an allowlisted cloud TEST project (see ./integrationEnv.mjs).
-// PostgREST does NOT expose information_schema, so this reads the test-only
-// view public.test_schema_columns created by scripts/bootstrap-test-db.sql
-// (same columns, same filters — assertions unchanged).
+// Runs via `npm run test:integration` against the main Survey project. It reads
+// PostgREST's OpenAPI schema and performs no database writes.
 
 import { test } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-import { integrationSkipReason } from './integrationEnv.mjs';
+import { integrationSkipReason, loadPublicOpenApiSchema } from './integrationEnv.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '..', '..');
-
-const skipReason = integrationSkipReason()
-  || (!existsSync(resolve(REPO_ROOT, 'node_modules/@supabase/supabase-js/package.json'))
-    ? '@supabase/supabase-js not installed yet'
-    : false);
+const skipReason = integrationSkipReason();
 
 // Expected columns per table — sourced from 27-RESEARCH.md schema design.
 // information_schema.columns reports types in lower-case canonical form.
@@ -68,28 +56,18 @@ test(
   'Phase 27 schema: doc_yjs_updates / doc_yjs_state / activity_log columns + types match research spec',
   { skip: skipReason },
   async () => {
-    const { createClient } = await import('@supabase/supabase-js');
-    // Service key only — no anon fallback (see integrationEnv.mjs).
-    const client = createClient(
-      process.env.SUPABASE_TEST_URL,
-      process.env.SUPABASE_TEST_SERVICE_KEY
-    );
+    const schema = await loadPublicOpenApiSchema();
 
     for (const [tableName, expectedColumns] of Object.entries(EXPECTED)) {
-      const { data: rows, error } = await client
-        .from('test_schema_columns')
-        .select('column_name, data_type')
-        .eq('table_schema', 'public')
-        .eq('table_name', tableName);
-      ok(!error, `query for ${tableName} columns must not error: ${error?.message}`);
-      ok(Array.isArray(rows), `expected an array of column rows for ${tableName}`);
+      const definition = schema.definitions[tableName];
+      ok(definition, `${tableName} must be exposed by PostgREST OpenAPI`);
       for (const expected of expectedColumns) {
-        const actual = rows.find((r) => r.column_name === expected.column_name);
+        const actual = definition.properties?.[expected.column_name];
         ok(actual, `${tableName}.${expected.column_name} column must exist`);
         strictEqual(
-          actual.data_type,
+          actual.format,
           expected.data_type,
-          `${tableName}.${expected.column_name} expected ${expected.data_type}, got ${actual.data_type}`
+          `${tableName}.${expected.column_name} expected ${expected.data_type}, got ${actual.format}`
         );
       }
     }

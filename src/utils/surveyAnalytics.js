@@ -1,30 +1,53 @@
-const DEFAULT_ENDPOINT = 'https://analytics.agent-native.com/track';
+import { createAnalyticsRateLimiter } from './analyticsRateLimiter.js';
+
+const DEFAULT_ENDPOINT = '/api/analytics/track';
 const SESSION_STORAGE_KEY = 'survey-analytics-session-id';
 const BLOCKED_PROPERTY = /(?:email|filename|fileName|token|password|authorization|content|annotation)/i;
+const URL_VALUE = /\b(?:https?|file):\/\/[^\s<>"'`]+/gi;
+const EMAIL_VALUE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const JWT_VALUE = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+const BEARER_VALUE = /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
+const KNOWN_KEY_VALUE = /\b(?:anpk_|sk_(?:live|test)_|sb_(?:secret|publishable)_|AIza)[A-Za-z0-9_-]{12,}\b/g;
+const NAMED_SECRET_VALUE = /\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|authorization|password|secret|signature|sig)\b\s*(?:=|:)\s*["']?[^\s,"'}]+["']?/gi;
+const ABSOLUTE_PATH_VALUE = /(?:\/[A-Za-z0-9._ -]+){2,}\/[A-Za-z0-9._ -]+|\b[A-Z]:\\(?:[^\\\r\n]+\\)*[^\\\r\n]+/g;
+const DOCUMENT_NAME_VALUE = /\b[^\s<>"'`/\\]+\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|tiff?)\b/gi;
 
-const analyticsPublicKey = import.meta.env.VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY?.trim() || '';
-const analyticsEndpoint = import.meta.env.VITE_AGENT_NATIVE_ANALYTICS_URL?.trim() || DEFAULT_ENDPOINT;
+const analyticsPublicKey = import.meta.env?.VITE_AGENT_NATIVE_ANALYTICS_PUBLIC_KEY?.trim() || '';
+const analyticsEndpoint = import.meta.env?.VITE_AGENT_NATIVE_ANALYTICS_URL?.trim() || DEFAULT_ENDPOINT;
+const analyticsRateLimiter = createAnalyticsRateLimiter();
 
-const safeString = (value, limit = 240) => String(value || '').replace(/[\r\n]+/g, ' ').slice(0, limit);
+const safeIdentifier = (value, limit = 240) => String(value || '').replace(/[\r\n]+/g, ' ').slice(0, limit);
 
-const sanitizeProperties = (value, depth = 0) => {
+export const redactAnalyticsString = (value, limit = 240) => String(value || '')
+  .replace(/[\r\n]+/g, ' ')
+  .replace(URL_VALUE, '[url]')
+  .replace(BEARER_VALUE, 'Bearer [redacted]')
+  .replace(JWT_VALUE, '[token]')
+  .replace(KNOWN_KEY_VALUE, '[key]')
+  .replace(NAMED_SECRET_VALUE, '[secret]')
+  .replace(EMAIL_VALUE, '[email]')
+  .replace(ABSOLUTE_PATH_VALUE, '[path]')
+  .replace(DOCUMENT_NAME_VALUE, '[file]')
+  .slice(0, limit);
+
+export const sanitizeAnalyticsProperties = (value, depth = 0) => {
   if (depth > 3 || value == null) return value == null ? null : undefined;
-  if (typeof value === 'string') return safeString(value);
+  if (typeof value === 'string') return redactAnalyticsString(value);
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (Array.isArray(value)) {
-    return value.slice(-24).map((entry) => sanitizeProperties(entry, depth + 1)).filter((entry) => entry !== undefined);
+    return value.slice(-24).map((entry) => sanitizeAnalyticsProperties(entry, depth + 1)).filter((entry) => entry !== undefined);
   }
   if (typeof value !== 'object') return undefined;
   return Object.fromEntries(Object.entries(value)
     .filter(([key]) => !BLOCKED_PROPERTY.test(key))
     .slice(0, 30)
-    .map(([key, entry]) => [key, sanitizeProperties(entry, depth + 1)])
+    .map(([key, entry]) => [key, sanitizeAnalyticsProperties(entry, depth + 1)])
     .filter(([, entry]) => entry !== undefined));
 };
 
 const getSessionId = () => {
   if (typeof window === 'undefined') return 'server';
-  if (window.__surveyShellSessionId) return safeString(window.__surveyShellSessionId, 100);
+  if (window.__surveyShellSessionId) return safeIdentifier(window.__surveyShellSessionId, 100);
   try {
     const existing = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (existing) return existing;
@@ -37,12 +60,14 @@ const getSessionId = () => {
 };
 
 export function trackSurveyAnalyticsEvent(event, properties = {}) {
-  if (!analyticsPublicKey || typeof window === 'undefined' || typeof fetch !== 'function') return false;
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
+  // Hard client ceiling: analytics must never create an unbounded event bill or
+  // error-loop storm. No retries and no session replay are installed here.
+  if (!analyticsRateLimiter.allow()) return false;
   const sessionId = getSessionId();
   const path = /^\/mobile(?:\/|$)/.test(window.location.pathname) ? '/mobile' : window.location.pathname;
   const payload = {
-    publicKey: analyticsPublicKey,
-    event: safeString(event, 100),
+    event: safeIdentifier(event, 100),
     anonymousId: sessionId,
     sessionId,
     timestamp: new Date().toISOString(),
@@ -50,13 +75,18 @@ export function trackSurveyAnalyticsEvent(event, properties = {}) {
       app: 'survey',
       surface: window.ReactNativeWebView ? 'expo-webview' : 'web',
       path,
-      ...sanitizeProperties(properties),
+      ...sanitizeAnalyticsProperties(properties),
     },
     context: { source: 'survey-web' },
   };
+  const headers = { 'Content-Type': 'application/json' };
+  if (analyticsPublicKey) {
+    payload.publicKey = analyticsPublicKey;
+    headers['x-agent-native-analytics-key'] = analyticsPublicKey;
+  }
   void fetch(analyticsEndpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload),
     keepalive: true,
   }).catch(() => {});
@@ -80,7 +110,7 @@ export function installSurveyAnalytics() {
   window.addEventListener('error', (event) => {
     trackSurveyAnalyticsEvent('$exception', {
       exceptionType: 'JavaScriptError',
-      message: safeString(event.message),
+      message: event.message,
       line: event.lineno || null,
       column: event.colno || null,
       fatal: false,
@@ -90,9 +120,14 @@ export function installSurveyAnalytics() {
   window.addEventListener('unhandledrejection', (event) => {
     trackSurveyAnalyticsEvent('$exception', {
       exceptionType: 'UnhandledPromiseRejection',
-      message: safeString(event.reason?.message || event.reason),
+      message: event.reason?.message || event.reason,
       fatal: false,
       unhandled: true,
     });
+  });
+  window.addEventListener('survey-native-analytics', (event) => {
+    const name = event?.detail?.event;
+    if (typeof name !== 'string' || !name) return;
+    trackSurveyAnalyticsEvent(name, event?.detail?.properties || {});
   });
 }

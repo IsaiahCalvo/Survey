@@ -226,8 +226,11 @@ function devAuthBootstrapPlugin(env, bootstrapToken, relay) {
 
 export default defineConfig(({ mode }) => {
   const projectEnv = resolveViteConfigEnv(mode, __dirname);
+  const persistentDevAuth = process.env.SURVEY_DEV_AUTH_DISABLED === '1'
+    ? {}
+    : readPersistentDevAuthEnv();
   const env = mode === 'development'
-    ? { ...readPersistentDevAuthEnv(), ...projectEnv }
+    ? { ...persistentDevAuth, ...projectEnv }
     : projectEnv;
   if (mode === 'development' && process.env.SURVEY_DEV_AUTH_EMAIL) {
     env.VITE_DEV_AUTO_LOGIN_EMAIL = process.env.SURVEY_DEV_AUTH_EMAIL;

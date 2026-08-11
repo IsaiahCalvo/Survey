@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -80,4 +80,14 @@ test('dev-auth relay rejects every email except its exact configured owner', asy
   } finally {
     await rm(emptyEnvRoot, { recursive: true, force: true });
   }
+});
+
+test('eraser harness disables the machine-persistent owner login', async () => {
+  const viteSource = await readFile(new URL('../vite.config.js', import.meta.url), 'utf8');
+  assert.match(viteSource, /process\.env\.SURVEY_DEV_AUTH_DISABLED === '1'/);
+  const eraserConfig = await readFile(
+    new URL('../playwright.eraser-permissions.config.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(eraserConfig, /SURVEY_DEV_AUTH_DISABLED:\s*'1'/);
 });

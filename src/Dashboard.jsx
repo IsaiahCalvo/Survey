@@ -25,6 +25,7 @@ import { countSurveyMarkersReferencingChecklistItem } from './services/documentA
 import { computeContentSha256 } from './services/contentHash';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
+import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
@@ -1604,6 +1605,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await handleDocumentClick(data);
       return data;
     };
+    // Phase 35 eraser E2E compatibility aliases. DEV-only and backed by the
+    // same production open/metadata paths as the app.
+    window.__eraserE2EOpenDocumentById = window.__fix20OpenDocumentById;
+    window.__eraserE2EPrimeDocumentMetadataCache = (documentId) => (
+      resolveDocumentMetadata(documentId)
+    );
     // KAL-49 harness — dev-only probe used by scripts/kal49-document-lock-e2e.mjs
     // to drive a Supabase annotation INSERT against the *current authenticated
     // session* so the verifier can prove the RLS deny path. Same shape as the
@@ -1640,6 +1647,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       if (window.__fix20OpenDocumentById) {
         delete window.__fix20OpenDocumentById;
       }
+      delete window.__eraserE2EOpenDocumentById;
+      delete window.__eraserE2EPrimeDocumentMetadataCache;
       if (window.__kal49Harness) {
         delete window.__kal49Harness;
       }
