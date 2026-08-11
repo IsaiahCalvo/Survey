@@ -712,9 +712,26 @@ BEGIN
     SELECT COALESCE(array_agg(DISTINCT file_path) FILTER (WHERE file_path IS NOT NULL), ARRAY[]::TEXT[])
       INTO v_paths
       FROM public.documents
-     WHERE project_id = p_project_id;
+     WHERE project_id = p_project_id
+       AND user_archived_at IS NOT NULL;
 
-    DELETE FROM public.documents WHERE project_id = p_project_id;
+    -- KAL-431 SAFETY FIX 2026-08-07: only ever destroy documents that were
+    -- ARCHIVED as part of this project. archive_project() archives just the
+    -- project owner's rows, so a collaborator's document stays LIVE inside a
+    -- shared project -- and the original unfiltered DELETE destroyed it with no
+    -- archive entry and no undo. A live row is never purge-able, full stop.
+    --
+    -- documents.project_id is ON DELETE CASCADE, so dropping the project row
+    -- below would take any surviving live document with it. Detach them first:
+    -- losing the folder association is recoverable, losing the document is not.
+    UPDATE public.documents
+       SET project_id = NULL
+     WHERE project_id = p_project_id
+       AND user_archived_at IS NULL;
+
+    DELETE FROM public.documents
+     WHERE project_id = p_project_id
+       AND user_archived_at IS NOT NULL;
     GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
     DELETE FROM public.projects WHERE id = p_project_id;
