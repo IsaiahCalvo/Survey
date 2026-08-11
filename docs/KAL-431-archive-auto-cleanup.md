@@ -2,8 +2,15 @@
 
 _Written: 2026-08-11 15:20_
 
-**Status: built and proved, NOT enabled anywhere.** Nothing in this change runs
-until a human explicitly schedules it. Production has not been touched.
+**Status: ENABLED on production 2026-08-11 (owner-directed).** Migration applied,
+Edge Function deployed with its cron secret, and a pg_cron job
+(`archive-purge-sweep`, daily 03:00 UTC, limit 100) calls it via pg_net.
+Verified end to end the same day: dry-run and real bounded invokes both
+succeeded through the Edge Function (runs 4-5, nothing due, nothing deleted).
+Two production-only fixes were needed and are pinned in the migration: explicit
+REVOKE from anon/authenticated (hosted default privileges auto-grant EXECUTE),
+and TRUNCATE instead of an unfiltered scratch-table DELETE (pg-safeupdate).
+Disable any time: `SELECT cron.unschedule('archive-purge-sweep');`
 
 ---
 

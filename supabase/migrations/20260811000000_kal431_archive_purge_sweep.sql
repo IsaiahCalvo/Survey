@@ -191,7 +191,10 @@ BEGIN
     CREATE TEMP TABLE IF NOT EXISTS kal431_candidates (
         kind TEXT, item_id UUID, owner_id UUID, expires_at TIMESTAMPTZ, kind_rank INT
     ) ON COMMIT DROP;
-    DELETE FROM pg_temp.kal431_candidates;
+    -- TRUNCATE, not an unfiltered DELETE: hosted Supabase runs pg-safeupdate on
+    -- the PostgREST path, which rejects any DELETE without a WHERE — even on a
+    -- scratch temp table. Caught on the first Edge-Function invoke 2026-08-11.
+    TRUNCATE pg_temp.kal431_candidates;
 
     INSERT INTO pg_temp.kal431_candidates (kind, item_id, owner_id, expires_at, kind_rank)
     SELECT * FROM (
