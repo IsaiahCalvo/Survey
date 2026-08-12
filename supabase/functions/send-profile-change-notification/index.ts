@@ -5,7 +5,6 @@ import {
   EMAIL_GOLD,
   EMAIL_P_STYLE as P,
   EMAIL_FINE_STYLE as FINE,
-  EMAIL_LIST_STYLE as LIST,
 } from '../_shared/emailLayout.ts'
 
 // Transactional email via Brevo (consolidated to one email service 2026-07-05).
@@ -88,25 +87,20 @@ Deno.serve(async (req) => {
     // Email HTML content — rendered through the shared branded frame
     // (supabase/functions/_shared/emailLayout.ts, docs/design/email-style-guide.md).
     const emailHtml = renderEmailLayout({
-      heading: 'Account security alert',
+      heading: 'Your account was updated',
       headingColor: EMAIL_DANGER,
+      preheader: `Changed: ${fieldList}. If this wasn't you, act now.`,
+      footerReason: `You're receiving this because your Survey account details changed.`,
       bodyHtml:
         `<p style="${P}">Hello ${escapeHtml(userName)},</p>` +
-        `<p style="${P}">This email confirms that the following information on your Survey account was recently changed:</p>` +
-        `<p style="${P}"><strong>Changed: ${escapeHtml(fieldList)}</strong></p>` +
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">` +
-        `<tr><td style="background-color: #f9f1df; border-left: 4px solid ${EMAIL_GOLD}; padding: 14px 16px; ` +
-        `font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #1f2430;">` +
-        `<strong>If this wasn't you:</strong> please contact us immediately at ` +
-        `<strong>isaiahcalvo123@gmail.com</strong>.` +
+        `<p style="${P}">This email confirms that the following information on your Survey account was recently changed: <strong>${escapeHtml(fieldList)}</strong>. If you made this change, no action is needed.</p>` +
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="em-tile" ` +
+        `style="margin:20px 0 0;background-color:#faf9f6;border:1px solid #e5e0d4;border-left:4px solid ${EMAIL_GOLD};border-radius:8px;">` +
+        `<tr><td style="padding:14px 16px;font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;line-height:1.5;">` +
+        `<span class="em-ink" style="color:#1a1d24;"><strong>If this wasn't you:</strong> reset your password immediately and contact us at ` +
+        `<strong>isaiahcalvo123@gmail.com</strong> &#8212; someone may have access to your account.</span>` +
         `</td></tr></table>` +
-        `<p style="${P}">For your security:</p>` +
-        `<ul style="${LIST}">` +
-        `<li>Never share your password with anyone</li>` +
-        `<li>Use a strong, unique password</li>` +
-        `<li>Contact us if you notice any suspicious activity</li>` +
-        `</ul>` +
-        `<p style="${FINE}">This is an automated security notification from Survey. &copy; ${new Date().getFullYear()} Survey. All rights reserved.</p>`,
+        `<p style="${FINE}" class="em-mut">This is an automated security notification from Survey.</p>`,
     })
 
     // Send email via Brevo transactional API (one email service across the app)

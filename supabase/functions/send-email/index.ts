@@ -2,6 +2,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import {
     renderEmailLayout,
     emailButton,
+    emailFileCard,
+    emailDetailRows,
     EMAIL_DANGER,
     EMAIL_P_STYLE as P,
     EMAIL_MUTED_STYLE as MUTED,
@@ -93,18 +95,22 @@ Deno.serve(async (req) => {
         const templates = {
             'trial-ending': (data: any) => renderEmailLayout({
                 heading: 'Your trial is ending soon',
+                preheader: `Your Pro trial ends on ${data.trialEndDate}.`,
+                footerReason: `You're receiving this because you have a Survey Pro trial.`,
                 bodyHtml:
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
                     `<p style="${P}">Your Pro trial will end in <strong>${data.daysLeft} days</strong> on ${data.trialEndDate}.</p>` +
                     `<p style="${P}">To continue enjoying all Pro features, no action is needed — your subscription will automatically start at $9.99/month.</p>` +
                     `<p style="${P}"><strong>Want to cancel?</strong> You can do so anytime before ${data.trialEndDate} with no charge.</p>` +
                     emailButton('Manage subscription', data.portalUrl) +
-                    `<p style="${MUTED}">Questions? Reply to this email for support.</p>`,
+                    `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
             }),
 
             'payment-failed': (data: any) => renderEmailLayout({
                 heading: 'Payment failed',
                 headingColor: EMAIL_DANGER,
+                preheader: `We couldn't process your Pro subscription payment.`,
+                footerReason: `You're receiving this because a payment on your Survey subscription failed.`,
                 bodyHtml:
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
                     `<p style="${P}">We were unable to process your payment for your Pro subscription ($9.99/month).</p>` +
@@ -115,11 +121,13 @@ Deno.serve(async (req) => {
                     `<li>If payment fails again, your subscription may be canceled</li>` +
                     `</ul>` +
                     emailButton('Update payment method', data.portalUrl) +
-                    `<p style="${MUTED}">Questions? Reply to this email for support.</p>`,
+                    `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
             }),
 
             'subscription-canceled': (data: any) => renderEmailLayout({
                 heading: 'Subscription canceled',
+                preheader: `You've been moved to the Free plan.`,
+                footerReason: `You're receiving this because your Survey subscription changed.`,
                 bodyHtml:
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
                     `<p style="${P}">Your Pro subscription has been canceled as requested.</p>` +
@@ -134,18 +142,19 @@ Deno.serve(async (req) => {
             }),
 
             'payment-succeeded': (data: any) => renderEmailLayout({
-                heading: 'Payment received',
+                heading: 'Thanks — payment received',
+                preheader: `Your ${data.planName || 'Survey'} subscription is active.`,
+                footerReason: `You're receiving this because a payment was made on your Survey subscription.`,
                 bodyHtml:
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">Thank you! Your payment of <strong>$${data.amount}</strong> has been received.</p>` +
-                    `<p style="${P}"><strong>Subscription details:</strong></p>` +
-                    `<ul style="${LIST}">` +
-                    `<li>Plan: ${data.planName}</li>` +
-                    `<li>Amount: $${data.amount}</li>` +
-                    `<li>Next billing date: ${data.nextBillingDate}</li>` +
-                    `</ul>` +
-                    emailButton('View receipt', data.portalUrl) +
-                    `<p style="${MUTED}">Questions about your billing? Contact us at support@yourcompany.com</p>`,
+                    `<p style="${P}">Your subscription is active. Here's your receipt.</p>` +
+                    emailDetailRows([
+                        ['Plan', String(data.planName || 'Survey Pro')],
+                        ['Amount', `$${data.amount}`],
+                        ['Next billing date', String(data.nextBillingDate || '—')],
+                    ]) +
+                    emailButton('View billing', data.portalUrl) +
+                    `<p style="${MUTED}" class="em-mut">Questions about your billing? Reply to this email for support.</p>`,
             }),
 
             // ==============================================================
@@ -153,44 +162,48 @@ Deno.serve(async (req) => {
             // ==============================================================
 
             'document-invite': (data: any) => renderEmailLayout({
-                heading: `You're invited to ${data.documentName || 'a document'}`,
+                heading: `${data.inviterName || 'A Survey user'} invited you to Survey`,
+                preheader: 'Accept the invitation to see what has been shared with you.',
+                footerReason: `You're receiving this because ${data.inviterName || 'a Survey user'} invited you to Survey.`,
                 bodyHtml:
-                    `<p style="${P}">Hi,</p>` +
                     `<p style="${P}"><strong>${data.inviterName || 'A Survey user'}</strong> invited you to join <strong>${data.documentName || 'a document'}</strong> as <strong>${data.role || 'Viewer'}</strong> on Survey.</p>` +
-                    emailButton('Open invite', data.inviteUrl) +
-                    `<p style="${MUTED}">This invite expires on ${data.expiresAt || '7 days from now'}.</p>` +
-                    `<p style="${MUTED}">If the button doesn't work, copy and paste this link:<br/><span style="font-family: monospace; word-break: break-all;">${data.inviteUrl}</span></p>` +
-                    `<p style="${FINE}">If you weren't expecting this invite, you can safely ignore this email.</p>`,
+                    emailFileCard(data.documentName || 'Shared document', `Invited by ${data.inviterName || 'a Survey user'}`) +
+                    emailButton('Accept invitation', data.inviteUrl) +
+                    `<p style="${MUTED}" class="em-mut">This invite expires on ${data.expiresAt || '7 days from now'}.</p>` +
+                    `<p style="${FINE}" class="em-mut">If you weren't expecting this invite, you can safely ignore this email.</p>`,
             }),
 
             'document-shared': (data: any) => renderEmailLayout({
-                heading: `${data.documentName || 'A document'} was shared with you`,
+                heading: `${data.sharedByName || 'A Survey user'} shared a document with you`,
+                preheader: 'Open it in Survey to see pages, markups, and survey data.',
+                footerReason: `You're receiving this because ${data.sharedByName || 'a Survey user'} shared a document with this address.`,
                 bodyHtml:
-                    `<p style="${P}">Hi,</p>` +
-                    `<p style="${P}"><strong>${data.sharedByName || 'A Survey user'}</strong> shared <strong>${data.documentName || 'a document'}</strong> with you on Survey.</p>` +
-                    `<p style="${P}">Your role is: <strong>${data.role || 'Viewer'}</strong>.</p>` +
-                    emailButton(`Open ${data.documentName || 'document'}`, data.documentUrl || data.appUrl || '#') +
-                    `<p style="${MUTED}">Access is already active; no invitation acceptance is required.</p>`,
+                    `<p style="${P}">You now have access to this document in Survey as <strong>${data.role || 'Viewer'}</strong>. Open it to view pages, markups, and the latest survey data.</p>` +
+                    emailFileCard(data.documentName || 'Shared document', `Shared by ${data.sharedByName || 'a Survey user'}`) +
+                    emailButton('Open document', data.documentUrl || data.appUrl || '#') +
+                    `<p style="${MUTED}" class="em-mut">Access is already active; no invitation acceptance is required.</p>`,
             }),
 
             'permission-changed': (data: any) => renderEmailLayout({
-                heading: `Your access changed on ${data.documentName || 'a document'}`,
+                heading: 'Your access level changed',
+                preheader: `${data.changedByName || 'An owner'} updated your access level.`,
+                footerReason: `You're receiving this because your access on a shared document changed.`,
                 bodyHtml:
-                    `<p style="${P}">Hi,</p>` +
-                    `<p style="${P}"><strong>${data.changedByName || 'An owner'}</strong> changed your access to <strong>${data.documentName || 'a document'}</strong>.</p>` +
-                    `<p style="${P}">Your new role is: <strong>${data.newRole || 'Viewer'}</strong>${data.oldRole ? ' (was <strong>' + data.oldRole + '</strong>)' : ''}.</p>` +
-                    emailButton(`Open ${data.documentName || 'document'}`, data.documentUrl || data.appUrl || '#') +
-                    `<p style="${MUTED}">Permission changes apply immediately. If you have unsaved changes, they may be blocked from saving after a downgrade.</p>`,
+                    `<p style="${P}"><strong>${data.changedByName || 'An owner'}</strong> changed your role on this document to <strong>${data.newRole || 'Viewer'}</strong>${data.oldRole ? ' (was <strong>' + data.oldRole + '</strong>)' : ''}.</p>` +
+                    emailFileCard(data.documentName || 'Shared document', `Updated by ${data.changedByName || 'an owner'}`) +
+                    emailButton('Open document', data.documentUrl || data.appUrl || '#') +
+                    `<p style="${MUTED}" class="em-mut">Permission changes apply immediately. If you have unsaved changes, they may be blocked from saving after a downgrade.</p>`,
             }),
 
             'access-removed': (data: any) => renderEmailLayout({
-                heading: `Your access to ${data.documentName || 'a document'} was removed`,
+                heading: 'Your access was removed',
                 headingColor: EMAIL_DANGER,
+                preheader: 'You no longer have access to this document.',
+                footerReason: `You're receiving this because your access on a shared document changed.`,
                 bodyHtml:
-                    `<p style="${P}">Hi,</p>` +
-                    `<p style="${P}"><strong>${data.removedByName || 'An owner'}</strong> removed your access to <strong>${data.documentName || 'a document'}</strong> on Survey.</p>` +
-                    `<p style="${P}">You can no longer open, view, or edit this item. If you believe this was a mistake, contact the owner directly.</p>` +
-                    `<p style="${FINE}">This is an automated notification. Please do not reply.</p>`,
+                    `<p style="${P}"><strong>${data.removedByName || 'An owner'}</strong> removed your access to the document below. If you think this is a mistake, ask them to share it with you again.</p>` +
+                    emailFileCard(data.documentName || 'Shared document', `Access removed by ${data.removedByName || 'an owner'}`) +
+                    `<p style="${FINE}" class="em-mut">This is an automated notification. Please do not reply.</p>`,
             }),
         };
 
