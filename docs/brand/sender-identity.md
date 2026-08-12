@@ -34,9 +34,18 @@ _Written: 2026-08-11. Owner-directed. Companion to docs/design/email-style-guide
 
 ## Owner-only steps (accounts; assistant may not create accounts or enter passwords)
 
-- **Apple Branded Mail**: business.apple.com → sign in → add brand → upload
-  `apple-branded-mail-1024.png` → link domain surveytool.app. Review ≤7 business days.
-- **Google account trick**: accounts.google.com/signup → "Use your existing email" →
-  no-reply@surveytool.app (verification arrives via the routing rule above) → set the
-  profile photo to the Survey icon.
-- **Gravatar**: gravatar.com → account for no-reply@surveytool.app → upload the icon.
+- **Apple Branded Mail**: PARKED 2026-08-12 at wizard step 4/4. Brand, logo (white bg),
+  and domain are saved; the domain TXT check PASSED (`apple-domain-verification=…`
+  added at Cloudflare, verified ✓). Blocker: Apple demands a SECOND verification —
+  EIN / business license / sales-tax permit / lease / utility bill — and the owner
+  has none of these. Resume at business.apple.com → Brands → Branded Mail if a
+  qualifying document ever exists.
+- **Google account trick**: DEFERRED by owner ("one thing at a time"); the routing
+  rule it needs is already live.
+- **Gravatar**: DONE 2026-08-12 ✓. Owner created the account (it landed on his Gmail
+  address); assistant added no-reply@surveytool.app as a second address (verification
+  arrived via the Cloudflare routing rule), assigned the crosshair avatar to it, set
+  profile name "Survey" + bio + Mustard (black/gold) theme. Publicly verified:
+  `https://gravatar.com/avatar/6ddb225139e2cc7ec82715a835841ac38c599362f5a48e9ebac8efd0fce3e219`
+  returns HTTP 200 (that's sha256 of no-reply@surveytool.app). Spark and other
+  Gravatar-reading mail apps now show the Survey mark.
