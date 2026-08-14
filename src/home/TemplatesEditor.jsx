@@ -2722,7 +2722,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
                                             />
-                                            <button type="button" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
+                                            <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                         )}
                                       </SortableRearrangeRow>

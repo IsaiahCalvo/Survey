@@ -59,7 +59,10 @@ final class NativePinchUITests: XCTestCase {
         // This is deliberately not a JavaScript TouchEvent or browser mouse shim.
         let gestureSurface = app.buttons["PDF gesture surface"]
         XCTAssertTrue(gestureSurface.waitForExistence(timeout: 10), "Named PDF gesture surface did not become accessible")
-        gestureSurface.pinch(withScale: 0.5, velocity: -1.0)
+        // Fit Page is the document-aware minimum. Pinch inward from that floor
+        // so this case proves native input enters manual zoom instead of asking
+        // the viewer to cross its intentional lower bound.
+        gestureSurface.pinch(withScale: 1.5, velocity: 1.0)
 
         // Let the viewer commit the gesture and finish its raster resize before
         // taking evidence. The JS path owns zoom state; XCTest owns the input.

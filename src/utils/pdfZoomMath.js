@@ -34,6 +34,8 @@ export function getDocumentMinimumScale({
   viewportHeight,
   pageHeights,
   pageGap,
+  viewportWidth,
+  pageWidths,
   fixedTopInset = 0,
   fixedBottomInset = 0,
   absoluteMinimumScale = ABSOLUTE_MIN_SCALE,
@@ -49,10 +51,18 @@ export function getDocumentMinimumScale({
     (Number(viewportHeight) || 0) - (Number(fixedTopInset) || 0) - (Number(fixedBottomInset) || 0),
   );
   const safeGap = Math.max(0, Number(pageGap) || 0);
-  const scale = availableHeight / (
+  const heightScale = availableHeight / (
     heights.reduce((sum, height) => sum + height, 0)
     + ((heights.length + 1) * safeGap)
   );
+  const widths = Array.isArray(pageWidths)
+    ? pageWidths.map(Number).filter((width) => Number.isFinite(width) && width > 0)
+    : [];
+  const availableWidth = Number(viewportWidth);
+  const widthScale = widths.length > 0 && Number.isFinite(availableWidth) && availableWidth > 0
+    ? availableWidth / Math.max(...widths)
+    : Number.POSITIVE_INFINITY;
+  const scale = Math.min(heightScale, widthScale);
   return Math.max(absoluteMinimumScale, Math.min(maximumScale, scale));
 }
 

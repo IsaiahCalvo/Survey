@@ -76,7 +76,7 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
   const addItem = category.getByRole('button', { name: 'Add checklist item', exact: false });
   await addItem.click();
   const itemText = 'Desktop item persists after reload';
-  await commit(category.locator('input[placeholder="Checklist item"]').last(), itemText);
+  await commit(category.locator('input[placeholder="Add checklist item"]').last(), itemText);
   await save(page);
 
   let templates = await readTemplates(page);
@@ -104,9 +104,9 @@ export async function runDesktopSurveyTemplateWorkflow({ page, baseUrl, artifact
 
   // Disposable item delete.
   await reloadedCategory.getByRole('button', { name: 'Add checklist item', exact: false }).click();
-  const disposableItem = reloadedCategory.locator('input[placeholder="Checklist item"]').last();
+  const disposableItem = reloadedCategory.locator('input[placeholder="Add checklist item"]').last();
   await commit(disposableItem, 'Disposable desktop item');
-  await disposableItem.locator('xpath=..').getByRole('button', { name: '×', exact: true }).click();
+  await disposableItem.locator('xpath=..').getByRole('button', { name: 'Delete item', exact: true }).click();
 
   // Disposable category delete via the center-pane Select controls.
   await center.getByRole('button', { name: 'New category', exact: true }).click();

@@ -138,10 +138,12 @@ function getFitWidthForContainer(containerWidth, metrics) {
   const available = Math.max(1, Number(containerWidth) - metrics.padX * 2);
   return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
 }
-function getMinimumScaleForLayout(dims, containerHeight, metrics) {
+function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth) {
   return getDocumentMinimumScale({
     viewportHeight: containerHeight,
     pageHeights: dims.map((dim) => dim.h),
+    viewportWidth: getFitWidthForContainer(containerWidth, metrics),
+    pageWidths: dims.map((dim) => dim.w),
     pageGap: metrics.gap,
     fixedTopInset: metrics.padTop,
     fixedBottomInset: metrics.padBottom,
@@ -1040,6 +1042,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       dims,
       containerHRef.current,
       layoutMetricsRef.current,
+      containerWRef.current,
     );
     const targetScale = Math.min(maxScale, Math.max(minimumScale, requestedScale));
     const originContentX = Number(gesture.originContentX) || 0;
@@ -1086,6 +1089,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       dims,
       containerHRef.current,
       layoutMetricsRef.current,
+      containerWRef.current,
     );
     const newScale = Math.min(maxScale, Math.max(minimumScale, targetScale));
     if (Math.abs(newScale - oldScale) < 1e-4) return;
@@ -1117,7 +1121,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     const dims = dimsPtRef.current;
     if (!el || dims.length === 0) return;
-    const minimumScale = getMinimumScaleForLayout(dims, el.clientHeight, layoutMetricsRef.current);
+    const minimumScale = getMinimumScaleForLayout(
+      dims,
+      el.clientHeight,
+      layoutMetricsRef.current,
+      el.clientWidth,
+    );
     if (scaleRef.current + 1e-4 < minimumScale) {
       applyAnchoredScale(minimumScale, el.clientWidth / 2, el.clientHeight / 2);
     }
@@ -1237,6 +1246,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         dimsPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
+        containerWRef.current,
       );
       const previewScale = getWheelZoomScale(committed * liveZoomRef.current, {
         deltaY: e.deltaY,
@@ -1603,6 +1613,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           dimsPtRef.current,
           containerHRef.current,
           layoutMetricsRef.current,
+          containerWRef.current,
         );
         nextLiveZoom = Math.max(
           minimumScale / committedScale,
@@ -1987,6 +1998,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         dimsPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
+        containerWRef.current,
       ),
       get pageCount() { return numPagesRef.current || 0; },
       get currentPageNumber() { return currentPageRef.current || 1; },

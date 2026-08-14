@@ -373,6 +373,28 @@ async function verifyTreeAfterReload({ page, touch, baseUrl, ids }) {
   invariant(await itemInput.inputValue() === ids.itemText, 'Checklist item text changed after hard reload');
 }
 
+async function openEntityColorPanel(touch, modal, row, label) {
+  const colorPanel = modal.locator('.templates-mobile-color-panel').first();
+  for (let attempt = 0; attempt < 3 && !await colorPanel.isVisible().catch(() => false); attempt += 1) {
+    await tapLocator(touch, row.getByTitle('Edit color'), `Open ${label} color picker`);
+    if (!await colorPanel.isVisible().catch(() => false)) {
+      // Renaming blurs the input and closes the picker. DismissBarrier keeps a
+      // short trailing shield so that blur gesture cannot activate underlying
+      // UI; retry only after that bounded shield expires.
+      await wait(950);
+    }
+  }
+  await colorPanel.waitFor({ state: 'visible', timeout: 10_000 });
+  await colorPanel.scrollIntoViewIfNeeded();
+  return colorPanel;
+}
+
+async function tapEntityColorControl(touch, locator, label) {
+  const target = locator.first();
+  await target.scrollIntoViewIfNeeded();
+  return tapExposedLocator(touch, target, label);
+}
+
 async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) {
   await tapLocator(touch, page.getByRole('button', { name: 'Entities', exact: true }), 'Open Entities');
   const modal = page.getByRole('dialog', { name: 'Entities', exact: true });
@@ -383,10 +405,10 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   let rows = modal.locator('.templates-mobile-entity-row');
   let inspectorRow = rows.last();
   await fillAndCommit(inspectorRow.locator('input'), 'Inspector');
-  let colorPanel = modal.locator('.templates-mobile-color-panel:visible');
-  await tapLocator(touch, colorPanel.getByTitle('#00FF00'), 'Inspector fill green');
-  await tapLocator(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Inspector border tab');
-  await tapLocator(touch, colorPanel.getByTitle('#0000FF'), 'Inspector border blue');
+  let colorPanel = await openEntityColorPanel(touch, modal, inspectorRow, 'Inspector');
+  await tapEntityColorControl(touch, colorPanel.getByTitle('#00FF00'), 'Inspector fill green');
+  await tapEntityColorControl(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Inspector border tab');
+  await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Inspector border blue');
   await tapLocator(touch, inspectorRow.getByTitle('Edit color'), 'Close Inspector color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
   await page.waitForTimeout(950);
@@ -406,12 +428,12 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   rows = modal.locator('.templates-mobile-entity-row');
   const ownerRow = rows.last();
   await fillAndCommit(ownerRow.locator('input'), 'Owner');
-  colorPanel = modal.locator('.templates-mobile-color-panel:visible');
-  await tapLocator(touch, colorPanel.getByTitle('#FF0000'), 'Owner fill red');
-  await tapLocator(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Owner border tab');
-  await tapLocator(touch, colorPanel.getByTitle('#0000FF'), 'Owner border blue before match fill');
+  colorPanel = await openEntityColorPanel(touch, modal, ownerRow, 'Owner');
+  await tapEntityColorControl(touch, colorPanel.getByTitle('#FF0000'), 'Owner fill red');
+  await tapEntityColorControl(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Owner border tab');
+  await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Owner border blue before match fill');
   const matchFill = colorPanel.getByRole('checkbox');
-  await tapLocator(touch, matchFill, 'Owner match fill');
+  await tapEntityColorControl(touch, matchFill, 'Owner match fill');
   invariant(await matchFill.isChecked(), 'Owner Match fill did not enable');
   await tapLocator(touch, ownerRow.getByTitle('Edit color'), 'Close Owner color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
@@ -421,12 +443,12 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   // therefore wait for the shield's bounded fallback before the next gesture.
   await page.waitForTimeout(950);
 
-  inspectorRow = modal.locator('.templates-mobile-entity-row:has(input[value="Inspector"])');
   const reorderedOwnerRow = modal.locator('.templates-mobile-entity-row:has(input[value="Owner"])');
+  const firstEntityRow = modal.locator('.templates-mobile-entity-row').first();
   await dragBetween(
     touch,
     reorderedOwnerRow.locator('xpath=..'),
-    inspectorRow.locator('xpath=..'),
+    firstEntityRow.locator('xpath=..'),
     'entity touch reorder',
   );
   await page.waitForTimeout(1_000);
@@ -599,7 +621,7 @@ async function coverDeletes({ page, touch, ids }) {
   await tapLocator(touch, primaryCategory.getByRole('button', { name: 'Add checklist item', exact: false }), 'Add disposable checklist item');
   const disposableItem = primaryCategory.locator('.templates-mobile-item-row').last();
   await fillAndCommit(disposableItem.locator('input'), 'Disposable mobile item');
-  await tapLocator(touch, disposableItem.getByRole('button', { name: '×', exact: true }), 'Delete checklist item');
+  await tapLocator(touch, disposableItem.getByRole('button', { name: 'Delete item', exact: true }), 'Delete checklist item');
 
   // Category delete through mobile Select mode.
   await tapLocator(touch, page.getByRole('button', { name: 'New category', exact: true }), 'New disposable category');

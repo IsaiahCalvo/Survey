@@ -57,6 +57,18 @@ test('single-page minimum keeps one page-gap above and below the page', () => {
   assert.ok(Math.abs(minimumScale - 0.7803398058252428) < 1e-12);
 });
 
+test('narrow mobile viewport uses width as the limiting zoom-out floor', () => {
+  const minimumScale = getDocumentMinimumScale({
+    viewportHeight: 643,
+    pageHeights: [792],
+    pageGap: 16,
+    viewportWidth: 346,
+    pageWidths: [612],
+  });
+
+  assert.ok(Math.abs(minimumScale - (346 / 612)) < 1e-12);
+});
+
 test('multi-page minimum includes fixed insets and one outer gap per edge', () => {
   const minimumScale = getDocumentMinimumScale({
     viewportHeight: 900,

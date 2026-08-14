@@ -315,7 +315,12 @@ async function moveObject(page, touch, toolId, id, edited, storageKeys) {
   } else {
     target = await selectObject(page, touch, toolId, id);
   }
-  const start = await interactionPoint(target, toolId, `${toolId} move target`);
+  // Callout connector segments can cross pre-existing PDF annotations. Use an
+  // exposed, hit-tested point on the exact callout instead of assuming the
+  // segment midpoint is the topmost interactive element.
+  const start = toolId === 'callout'
+    ? await mobileMenuPoint(target, toolId, `${toolId} move target`)
+    : await interactionPoint(target, toolId, `${toolId} move target`);
   const end = { x: start.x + 18, y: start.y + 16 };
   await touch.drag(start, end, { steps: 9 });
   const moved = toolId === 'callout'
