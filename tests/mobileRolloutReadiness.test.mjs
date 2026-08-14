@@ -47,6 +47,8 @@ test('Expo update metadata requires the exact shell hash and pinned runtime', ()
     }],
   };
   assert.doesNotThrow(() => assertExpoUpdateFreshness(update, hash, 'exposdk:54.0.0'));
+  update.currentPage[0].message = `"shell:${hash} release:abc" (30 seconds ago by isaiahcalvo)`;
+  assert.doesNotThrow(() => assertExpoUpdateFreshness(update, hash, 'exposdk:54.0.0'));
   assert.throws(() => assertExpoUpdateFreshness(update, 'b'.repeat(64), 'exposdk:54.0.0'), /stale or absent/);
   assert.throws(() => assertExpoUpdateFreshness(update, hash, 'exposdk:55.0.0'), /runtime/);
 });

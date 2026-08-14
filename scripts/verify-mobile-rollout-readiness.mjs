@@ -158,7 +158,9 @@ export function assertExpoUpdateFreshness(payload, expectedSourceHash, expectedR
   assert.ok(latest, 'Expo Go branch has no published iOS update');
   assert.equal(latest.platforms, 'ios', 'Latest Expo Go update is not the iOS update');
   assert.equal(latest.runtimeVersion, expectedRuntimeVersion, 'Published Expo runtime does not match app.json');
-  assert.match(latest.message || '', new RegExp(`(?:^|\\s)shell:${expectedSourceHash}(?:\\s|$)`), 'Published Expo shell hash is stale or absent');
+  // EAS CLI decorates the raw message with quotes and relative-time/author copy.
+  // Keep exact hash matching while accepting that presentation wrapper.
+  assert.match(latest.message || '', new RegExp(`(?:^|[^0-9a-f])shell:${expectedSourceHash}(?:[^0-9a-f]|$)`, 'i'), 'Published Expo shell hash is stale or absent');
   assert.match(latest.group || '', /^[0-9a-f-]{36}$/, 'Published Expo update group is missing');
   return { group: latest.group, runtimeVersion: latest.runtimeVersion, sourceHash: expectedSourceHash };
 }
