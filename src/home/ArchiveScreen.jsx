@@ -92,6 +92,9 @@ const ROW_ART_W = 34;
 
 /* Shared chevron size — matches PDFViewer's disclosure chevrons in dense lists. */
 const CHEVRON_SIZE = 12;
+/* Mobile cards use the same disclosure size as the hub's other expandable
+   mobile rows; the denser desktop ledger keeps the 12px glyph above. */
+const MOBILE_CHEVRON_SIZE = 18;
 
 /* The name cell's leading slot, which holds a project's disclosure chevron.
    It is exactly the Documents ledger's name-cell left padding (14px), and it
@@ -434,10 +437,10 @@ export default function ArchiveScreen({
 
      Still ONE glyph that rotates rather than a swapped down/right pair, so the
      open/close transition survives the swap. */
-  const chevron = (open) => (
+  const chevron = (open, size = CHEVRON_SIZE) => (
     <AppIcon
       name="chevronDown"
-      size={CHEVRON_SIZE}
+      size={size}
       color="#8d96a6"
       style={{
         display: 'block', flex: 'none',
@@ -879,7 +882,7 @@ export default function ArchiveScreen({
                 aria-expanded={expanded}
                 title={expanded ? 'Hide documents' : 'Show documents'}
                 onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
-              >{chevron(expanded)}</button>
+              >{chevron(expanded, MOBILE_CHEVRON_SIZE)}</button>
             ) : null)}
           </div>
           <div style={{ minWidth: 0 }}>

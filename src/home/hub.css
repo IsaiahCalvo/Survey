@@ -1454,7 +1454,8 @@
   }
 
   .survey-hub .documents-ledger-body,
-  .survey-hub .projects-tab-body {
+  .survey-hub .projects-tab-body,
+  .survey-hub .archive-body {
     position: static;
     z-index: 1;
     padding: 8px 10px 10px !important;
@@ -3260,9 +3261,12 @@
     border: 0;
     color: var(--ink-200);
     font: inherit;
-    font-size: 12px;
     line-height: 1;
-    padding: 6px;
+    width: 28px;
+    height: 44px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
     cursor: pointer;
   }
 

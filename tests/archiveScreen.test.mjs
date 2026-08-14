@@ -635,9 +635,10 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
   assert.match(SCREEN, /import AppIcon from '\.\.\/Icons'/);
   assert.match(
     SCREEN,
-    /const chevron = \(open\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{CHEVRON_SIZE\}\s*\n\s*color="#8d96a6"/,
+    /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="#8d96a6"/,
   );
   assert.match(SCREEN, /const CHEVRON_SIZE = 12;/);
+  assert.match(SCREEN, /const MOBILE_CHEVRON_SIZE = 18;/);
   // No literal chevron characters may survive anywhere in the screen.
   assert.doesNotMatch(SCREEN, /[▾▴▸▹►▼]/, 'no text-glyph chevrons remain');
 
@@ -654,7 +655,20 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
 
   // Both trees and the mobile card go through the same helper.
   assert.match(SCREEN, /const disclosureButton = \(open, onToggle, label = 'documents'\) => \([\s\S]*?\{chevron\(open\)\}<\/button>/);
-  assert.match(SCREEN, /className="archive-mobile-disclosure"[\s\S]*?\{chevron\(expanded\)\}/);
+  assert.match(SCREEN, /className="archive-mobile-disclosure"[\s\S]*?\{chevron\(expanded, MOBILE_CHEVRON_SIZE\)\}/);
+});
+
+test('mobile Archive matches the hub list inset and disclosure hit target', () => {
+  assert.match(
+    CSS,
+    /\.survey-hub \.archive-body \{[\s\S]*?padding: 8px 10px 10px !important;/,
+    'Archive starts 8px below the mobile header like Documents, Projects, and Templates',
+  );
+  assert.match(
+    CSS,
+    /\.survey-hub \.archive-mobile-disclosure \{[\s\S]*?width: 28px;[\s\S]*?height: 44px;[\s\S]*?place-items: center;/,
+    'the larger mobile chevron keeps a 44px touch target without changing the card grid',
+  );
 });
 
 test('the preview shows collaborator glyphs only when the item really is shared', () => {
