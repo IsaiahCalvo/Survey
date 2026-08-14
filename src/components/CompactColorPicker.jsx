@@ -49,6 +49,7 @@ const hexToHsv = (hex) => {
  *  - onClose
  *  - showOpacity  when false, hides the opacity slider + % field — for pickers
  *                 of things that have no transparency (e.g. counter pins)
+ *  - attachedHeader when true, joins the picker to a tab/header directly above
  */
 const CompactColorPicker = ({
     color,
@@ -57,6 +58,7 @@ const CompactColorPicker = ({
     onClose,
     showOpacity = true,
     marginRight = 0,
+    attachedHeader = false,
     // 2026-05-25: First preset cell behaviour.
     //   'transparent' (default) — zero-alpha picker; click sets opacity 0.
     //   { kind: 'match', color }  — Match Fill picker; click snapshots the
@@ -259,7 +261,8 @@ const CompactColorPicker = ({
             width: '260px',
             background: '#0d0f14',
             border: '1px solid #2a3140',
-            borderRadius: '8px',
+            borderTop: attachedHeader ? 'none' : undefined,
+            borderRadius: attachedHeader ? '0 0 8px 8px' : '8px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             padding: '12px',
             display: 'flex',
@@ -481,16 +484,17 @@ const CompactColorPicker = ({
             )}
 
             {/* Footer: Hex Input */}
-            <div style={{ display: 'flex', gap: '8px', paddingTop: '8px', borderTop: '1px solid #2a3140' }}>
+            <div style={{ display: 'flex', gap: '8px', minWidth: 0, paddingTop: '8px', borderTop: '1px solid #2a3140' }}>
                 <div style={{
                     background: localHex,
                     width: '32px',
                     height: '32px',
+                    flexShrink: 0,
                     borderRadius: '4px',
                     border: '1px solid #3a4252',
                     opacity: transparentMode ? 0 : (showOpacity ? localOpacity / 100 : 1)
                 }} />
-                <div style={{ flex: 1, background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #2a3140' }}>
+                <div style={{ flex: '1 1 auto', minWidth: 0, background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #2a3140' }}>
                     <span style={{ color: '#5a6473', fontSize: '12px', marginRight: '4px' }}>#</span>
                     <input
                         type="text"
@@ -507,6 +511,7 @@ const CompactColorPicker = ({
                             border: 'none',
                             color: '#e8e2d4',
                             width: '100%',
+                            minWidth: 0,
                             fontSize: '12px',
                             outline: 'none',
                             fontFamily: 'monospace'
@@ -514,9 +519,10 @@ const CompactColorPicker = ({
                     />
                 </div>
                 {showOpacity && (
-                    <div style={{ background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #2a3140', width: '50px' }}>
+                    <div style={{ background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 6px', border: '1px solid #2a3140', width: '72px', flex: '0 0 72px' }}>
                         <input
                             type="number"
+                            aria-label="Opacity percentage"
                             min="0"
                             max="100"
                             value={Math.round(localOpacity)}
@@ -529,13 +535,15 @@ const CompactColorPicker = ({
                                 background: 'transparent',
                                 border: 'none',
                                 color: '#e8e2d4',
-                                width: '100%',
+                                flex: '1 1 auto',
+                                minWidth: 0,
+                                width: 'auto',
                                 fontSize: '12px',
                                 outline: 'none',
                                 textAlign: 'center'
                             }}
                         />
-                        <span style={{ color: '#5a6473', fontSize: '10px' }}>%</span>
+                        <span style={{ color: '#5a6473', fontSize: '10px', flexShrink: 0 }}>%</span>
                     </div>
                 )}
             </div>

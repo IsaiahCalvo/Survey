@@ -1,6 +1,38 @@
 // Counter Survey Marker geometry helpers — render geometry + drag-preview cleanup. Lifted verbatim from PDFViewer; all capture-free.
 
-export function getCounterRenderGeometry(bodyX, bodyY, radius, pointerAngleDeg) {
+const COUNTER_LABEL_MAX_WIDTH_RATIO = 1.55;
+const COUNTER_LABEL_BASE_FONT_RATIO = 1.05;
+// System UI bold digits are typically about 0.56-0.64em wide. Using 0.7em
+// keeps the layout conservative across platform fallbacks while Canvas/PDF
+// renderers apply an exact max-width guard as a second line of defense.
+const COUNTER_LABEL_DIGIT_ADVANCE_EM = 0.7;
+
+/**
+ * Return a zoom-independent page-space layout for a counter label.
+ *
+ * The old absolute 11px floor outgrew counters below radius 6. This layout is
+ * proportional to the bubble and also caps multi-digit labels to the inner
+ * 77.5% of its diameter. It intentionally supports labels beyond three digits
+ * even though current counter UI is limited to plain numeric series.
+ */
+export function getCounterLabelLayout(radius, label) {
+    const numericRadius = Number(radius);
+    const safeRadius = Math.max(0.01, Number.isFinite(numericRadius) ? Math.abs(numericRadius) : 14);
+    const text = String(label ?? '');
+    const glyphCount = Math.max(1, Array.from(text).length);
+    const maxWidth = safeRadius * COUNTER_LABEL_MAX_WIDTH_RATIO;
+    const baseFontSize = safeRadius * COUNTER_LABEL_BASE_FONT_RATIO;
+    const widthLimitedFontSize = maxWidth / (glyphCount * COUNTER_LABEL_DIGIT_ADVANCE_EM);
+    const widthLimited = widthLimitedFontSize < baseFontSize;
+    return {
+      fontSize: Math.min(baseFontSize, widthLimitedFontSize),
+      maxWidth,
+      glyphCount,
+      widthLimited,
+    };
+  }
+
+export function getCounterRenderGeometry(bodyX, bodyY, radius, pointerAngleDeg, displayNumber = 1) {
     const angleRad = (pointerAngleDeg * Math.PI) / 180;
     const tipExtension = Math.max(5, radius * 0.5);
     const tipDistance = radius + tipExtension;
@@ -13,9 +45,10 @@ export function getCounterRenderGeometry(bodyX, bodyY, radius, pointerAngleDeg) 
     const t1y = bodyY + Math.sin(t1Angle) * radius;
     const t2x = bodyX + Math.cos(t2Angle) * radius;
     const t2y = bodyY + Math.sin(t2Angle) * radius;
+    const labelLayout = getCounterLabelLayout(radius, displayNumber);
     return {
       pathD: `M ${tipX},${tipY} L ${t1x},${t1y} A ${radius},${radius} 0 1 1 ${t2x},${t2y} Z`,
-      fontSize: Math.max(11, radius * 1.05),
+      fontSize: labelLayout.fontSize,
       center: { x: bodyX, y: bodyY },
       radius,
       tip: { x: tipX, y: tipY },
@@ -32,12 +65,23 @@ export function removeCounterDragPreview(drag) {
 
 export function updateCounterDragPreview(drag) {
     if (!drag?.previewPath || !drag?.previewText) return;
-    const geometry = getCounterRenderGeometry(drag.bodyX, drag.bodyY, drag.radius, drag.angle);
+    const geometry = getCounterRenderGeometry(
+      drag.bodyX,
+      drag.bodyY,
+      drag.radius,
+      drag.angle,
+      drag.displayNumber ?? 1,
+    );
     drag.previewPath.setAttribute('d', geometry.pathD);
     drag.previewPath.setAttribute('fill', drag.color || '#ef4444');
     drag.previewText.setAttribute('x', String(drag.bodyX));
     drag.previewText.setAttribute('y', String(drag.bodyY));
     drag.previewText.setAttribute('font-size', String(geometry.fontSize));
+    // Font size is already conservatively capped. Avoid textLength here: SVG
+    // expands shorter glyph runs to that exact width instead of acting as a
+    // max-width constraint, which made previews disagree with Canvas/PDF.
+    drag.previewText.removeAttribute?.('textLength');
+    drag.previewText.removeAttribute?.('lengthAdjust');
     drag.previewText.textContent = String(drag.displayNumber ?? 1);
   }
 
@@ -63,6 +107,7 @@ export function createCounterDragPreview(overlayEl, drag) {
     text.setAttribute('font-family', '-apple-system, system-ui, sans-serif');
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'central');
+    text.style.fontVariantNumeric = 'tabular-nums';
     text.style.userSelect = 'none';
     text.style.pointerEvents = 'none';
 

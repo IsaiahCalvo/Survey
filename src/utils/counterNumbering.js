@@ -116,12 +116,12 @@ export function getCounterSeriesList(annotationsByPage) {
  * 0-360 ring between existing series hues, then returning the midpoint.
  * Saturation/lightness are fixed at S=70%, L=50% per design.
  *
- * existingColors: array of hex strings (e.g. ['#ef4444', '#22c55e']).
+ * existingColors: array of CSS hex/rgb(a) strings.
  * Returns: a hex string for the next color.
  */
 export function pickNextSeriesColor(existingColors) {
   const hues = (existingColors || [])
-    .map(hexToHue)
+    .map(colorToHue)
     .filter((h) => h !== null)
     .sort((a, b) => a - b);
 
@@ -148,21 +148,34 @@ export function pickNextSeriesColor(existingColors) {
 
 // ---------- color helpers ----------
 
-function hexToHue(hex) {
-  if (typeof hex !== 'string') return null;
-  const m = hex.trim().replace('#', '');
-  if (m.length !== 3 && m.length !== 6) return null;
-  const full =
-    m.length === 3
-      ? m
+function colorToHue(color) {
+  if (typeof color !== 'string') return null;
+  const value = color.trim();
+  let channels;
+  if (value.startsWith('#')) {
+    const hex = value.slice(1);
+    if (hex.length !== 3 && hex.length !== 6) return null;
+    const full =
+      hex.length === 3
+        ? hex
           .split('')
           .map((c) => c + c)
           .join('')
-      : m;
-  const r = parseInt(full.slice(0, 2), 16) / 255;
-  const g = parseInt(full.slice(2, 4), 16) / 255;
-  const b = parseInt(full.slice(4, 6), 16) / 255;
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+        : hex;
+    channels = [
+      parseInt(full.slice(0, 2), 16),
+      parseInt(full.slice(2, 4), 16),
+      parseInt(full.slice(4, 6), 16),
+    ];
+  } else {
+    const match = value.match(
+      /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+)?\s*\)$/i,
+    );
+    if (!match) return null;
+    channels = match.slice(1, 4).map(Number);
+  }
+  if (channels.some((channel) => !Number.isFinite(channel))) return null;
+  const [r, g, b] = channels.map((channel) => Math.max(0, Math.min(255, channel)) / 255);
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const d = max - min;

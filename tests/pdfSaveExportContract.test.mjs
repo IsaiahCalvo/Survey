@@ -28,6 +28,7 @@ import {
 } from '../src/utils/pdfAppAnnotationMetadata.js';
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
+import { getCounterLabelLayout } from '../src/utils/counterGeometry.js';
 
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
   + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
@@ -229,6 +230,14 @@ test('print PDF helper draws counters with the counter pin path before the gener
   // On-page + orientation proof: tests/printFlattenOnPage.test.mjs.
   assert.match(PDF_LIB_SOURCE, /A \$\{radius\} \$\{radius\} 0 1 1/);
   assert.match(PDF_LIB_SOURCE, /counter pin path flattened/);
+  assert.match(PDF_LIB_SOURCE, /getCounterLabelLayout\(radius, text\)/);
+  assert.match(PDF_LIB_SOURCE, /fontSize \*= labelLayout\.maxWidth \/ textWidth/);
+});
+
+test('native counter appearance stream caps its label using shared layout', () => {
+  assert.match(PDF_LIB_SOURCE, /getCounterLabelLayout\(radius, label\)/);
+  assert.match(PDF_LIB_SOURCE, /fontSize \*= labelLayout\.maxWidth \/ approximateTextWidth/);
+  assert.doesNotMatch(PDF_LIB_SOURCE, /Math\.max\(6, radius \* 0\.95\)/);
 });
 
 test('print PDF helper keeps regular circles and ellipses on the generic ellipse path', () => {
@@ -450,6 +459,49 @@ test('PDF export embeds explicit counter metadata on app-created counter pins', 
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test('PDF counter appearance keeps a three-digit label inside a radius-4 pin', async () => {
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    {
+      1: {
+        objects: [{
+          type: 'circle',
+          left: 24,
+          top: 36,
+          radius: 4,
+          fill: '#ef4444',
+          data: {
+            type: 'counter',
+            id: 'counter-small',
+            displayNumber: 100,
+            pointerAngle: 225,
+            seriesId: 'series-small',
+            seriesStart: 100,
+          },
+        }],
+      },
+    },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-test' },
+  );
+
+  const doc = await PDFDocument.load(bytes);
+  const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'));
+  const annotDict = doc.context.lookup(annots.asArray()[0]);
+  const appearance = doc.context.lookup(annotDict.get(PDFName.of('AP')));
+  const normal = doc.context.lookup(appearance.get(PDFName.of('N')));
+  const appearanceText = new TextDecoder().decode(decodePDFRawStream(normal).decode());
+  const fontMatch = appearanceText.match(/\/F1\s+([0-9.]+)\s+Tf/);
+  assert.ok(fontMatch, 'appearance must set the counter label font');
+
+  const fontSize = Number(fontMatch[1]);
+  const layout = getCounterLabelLayout(4, 100);
+  assert.ok(fontSize <= layout.fontSize + 1e-6);
+  assert.ok(3 * fontSize * 0.556 <= layout.maxWidth + 1e-6);
+  assert.match(appearanceText, /\(100\)\s+Tj/);
 });
 
 test('PDF export contract includes only regular viewer annotations and excludes survey, space, and region scope', () => {

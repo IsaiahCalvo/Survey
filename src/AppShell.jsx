@@ -564,6 +564,39 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   }, [bottomToolbarApi?.activeTool]);
 
+  // Formatting popovers share one exclusive layer. Capture-phase dismissal
+  // runs before trigger buttons stop propagation, so opening one control
+  // reliably closes every peer and clicking the page closes them all.
+  useEffect(() => {
+    const onDown = (event) => {
+      const target = event.target;
+      const inside = (selector) => !!target?.closest?.(selector);
+      if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker]')) {
+        bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
+      }
+      if (!inside('[data-counter-series-menu]')) setShowCounterSeriesMenu(false);
+      if (!inside('[data-style-menu]')) setShowStyleMenu(false);
+      if (!inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
+      if (!inside('[data-eraser-type-menu]')) setShowEraserTypeMenu(false);
+      if (!inside('[data-font-color-picker]')) setShowFontColorPicker(false);
+      if (!inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
+      if (!inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
+      if (!inside('[data-align-grid]')) setShowAlignGrid(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [bottomToolbarApi?.setShowAnnotationColorPicker]);
+
+  // Keyboard/tool-driven selection changes do not necessarily produce a page
+  // click. Treat any context change as leaving the previous popover layer.
+  useEffect(() => {
+    bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
+    setShowCounterSeriesMenu(false);
+    setShowStyleMenu(false);
+    setShowArrowheadMenu(false);
+    setShowEraserTypeMenu(false);
+  }, [bottomToolbarApi?.contextTool]);
+
   /*
    * LeftRail/PDFSidebar API audit (UX 2026-05-13 chrome lift)
    *
@@ -1958,6 +1991,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      and a faint hairline ring lifts pure black off the dark
                      toolbar — both behaviours come from .ctx-color-swatch. */
                   <button
+                    data-annotation-color-trigger
                     onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
                     onMouseDown={(e) => e.stopPropagation()}
                     className="ctx-color-swatch"
@@ -1990,6 +2024,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      user picks colours so they always see what the next pin
                      will look like, instead of an abstract ring + disc. */
                   <button
+                    data-annotation-color-trigger
                     onClick={() => {
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                     }}
@@ -2034,6 +2069,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* 2026-05-25: Fill + border swatch. Checker shows through
                      low-opacity fills, faint hairline lifts black borders. */
                   <button
+                    data-annotation-color-trigger
                     onClick={() => {
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
                     }}
@@ -2257,7 +2293,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   };
                   return (
-                    <div style={{
+                    <div data-annotation-color-picker style={{
                       position: 'absolute',
                       top: '100%',
                       left: '50%',
@@ -2313,6 +2349,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           color={currentColor}
                           opacity={currentOpacity}
                           marginRight="53px"
+                          attachedHeader={isShape}
                           onChange={applyChange}
                           onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
                           firstPreset={(shapeOneVisibleRule && !onFillTab)
@@ -2441,10 +2478,73 @@ export default function App({ devPreviewReturnTab = null }) {
                     fontFamily: FONT_FAMILY,
                     textAlign: 'center'
                   }}
-                  {...chromeTip('Width', 'below')}
-                  title="Width"
+                  {...chromeTip(
+                    bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser'
+                      ? 'Size'
+                      : 'Width',
+                    'below'
+                  )}
+                  title={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
+                  aria-label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
                 />
                 )}
+                {bottomToolbarApi.contextTool === 'counter'
+                  && bottomToolbarApi.selectedCounterSeriesId
+                  && bottomToolbarApi.onSelectedCounterSeriesStartChange && (() => {
+                    const startLocked = bottomToolbarApi.selectedCounterSeriesSize !== 1;
+                    const startTitle = startLocked
+                      ? 'Start number is set after a second counter is added'
+                      : 'Start number';
+                    return (
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: startLocked ? '#5a6473' : '#8d96a6',
+                          fontSize: '11px',
+                          fontFamily: FONT_FAMILY,
+                        }}
+                        title={startTitle}
+                      >
+                        Start
+                        <input
+                          key={`${bottomToolbarApi.selectedCounterSeriesId}:${bottomToolbarApi.selectedCounterSeriesStart}`}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          className="no-spin-buttons"
+                          defaultValue={bottomToolbarApi.selectedCounterSeriesStart ?? 1}
+                          disabled={startLocked}
+                          onInput={(event) => {
+                            event.currentTarget.value = event.currentTarget.value.replace(/[^0-9]/g, '');
+                          }}
+                          onBlur={(event) => {
+                            const next = Math.max(1, Math.floor(Number(event.currentTarget.value) || 1));
+                            event.currentTarget.value = String(next);
+                            bottomToolbarApi.onSelectedCounterSeriesStartChange(next);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') event.currentTarget.blur();
+                          }}
+                          aria-label="Counter start number"
+                          style={{
+                            width: '42px',
+                            height: '20px',
+                            padding: '4px',
+                            background: '#3a4252',
+                            color: '#e8e2d4',
+                            border: '1px solid transparent',
+                            borderRadius: '5px',
+                            fontSize: '12px',
+                            fontFamily: FONT_FAMILY,
+                            textAlign: 'center',
+                            opacity: startLocked ? 0.55 : 1,
+                          }}
+                        />
+                      </label>
+                    );
+                  })()}
                 {/* 2026-05-25: Style picker — solid/dashed/dotted for line + arrow;
                     solid/dashed/dotted/cloud for rectangle; solid/dashed/dotted
                     for ellipse (no cloud option). Always opens downward. */}
