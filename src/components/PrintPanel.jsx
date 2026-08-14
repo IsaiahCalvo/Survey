@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import DismissBarrier from './DismissBarrier';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -200,6 +201,7 @@ function PagePicker({ value, options, onChange }) {
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const dismissInsideRefs = useMemo(() => [wrapRef], []);
 
   useEffect(() => {
     setDraft(String(value));
@@ -211,17 +213,6 @@ function PagePicker({ value, options, onChange }) {
     const activeEl = listRef.current.querySelector('[data-active="true"]');
     if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
   }, [menuOpen, value]);
-
-  // Close when clicking outside the picker.
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const onDocMouseDown = (e) => {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [menuOpen]);
 
   const commit = useCallback((raw) => {
     const n = parseInt(String(raw).replace(/[^0-9]/g, ''), 10);
@@ -248,6 +239,11 @@ function PagePicker({ value, options, onChange }) {
 
   return (
     <span className="pp-ppicker" ref={wrapRef}>
+      <DismissBarrier
+        active={menuOpen}
+        insideRefs={dismissInsideRefs}
+        onDismiss={() => setMenuOpen(false)}
+      />
       <input
         ref={inputRef}
         className="pp-preview-page-input"

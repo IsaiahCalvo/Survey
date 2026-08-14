@@ -196,35 +196,35 @@ test('BL-23 tripwire: buildRich accepts a mint param and every legacy-mint site 
   assert.doesNotMatch(editorSrc, /\?\.id \?\? newId\(/);
 });
 
-test('BL-23 tripwire: dirty clears only via revision+request-conditional promise handlers in both save paths', () => {
-  // handleSaveTemplates and deleteTemplates each: capture rev + req, conditional then + catch
+test('BL-23 tripwire: dirty clears only via revision+request-conditional promise handlers in every save path', () => {
+  // handleSaveTemplates, deleteTemplates, and duplicateTemplates each capture
+  // rev + req and use conditional then + catch settlement.
   const revCaptures = editorSrc.match(/const rev = editRevisionRef\.current;/g) || [];
-  assert.equal(revCaptures.length, 2);
+  assert.equal(revCaptures.length, 3);
   const reqCaptures = editorSrc.match(/const req = \+\+saveReqSeqRef\.current;/g) || [];
-  assert.equal(reqCaptures.length, 2);
-  // both paths dispatch through the serializing chain — never call onSaveTemplates directly
+  assert.equal(reqCaptures.length, 3);
+  // all paths dispatch through the serializing chain — never call onSaveTemplates directly
   const chained = editorSrc.match(/dispatchTemplatesSave\(/g) || [];
-  assert.equal(chained.length, 2); // the 2 dispatch sites (definition is `= useCallback(`)
+  assert.equal(chained.length, 3); // the 3 dispatch sites (definition is `= useCallback(`)
   assert.match(editorSrc, /const dispatchTemplatesSave = useCallback\(/);
   const directCalls = editorSrc.match(/Promise\.resolve\(onSaveTemplates\(/g) || [];
   assert.equal(directCalls.length, 1); // only inside dispatchTemplatesSave's run()
-  const condClears = editorSrc.match(/\.then\(\(\) => \{ if \(editRevisionRef\.current === rev && saveReqSeqRef\.current === req\) setDirty\(false\); \}\)/g) || [];
-  assert.equal(condClears.length, 2);
-  const condRestores = editorSrc.match(/if \(editRevisionRef\.current === rev && saveReqSeqRef\.current === req\) setDirty\(true\);/g) || [];
-  assert.equal(condRestores.length, 2);
+  const guardedSettlements = editorSrc.match(/if \(editRevisionRef\.current === rev && saveReqSeqRef\.current === req\) \{/g) || [];
+  assert.equal(guardedSettlements.length, 6);
   // no synchronous clear after dispatching a save: the only unconditional
   // setDirty(false) sites are reloadFromProps and the no-handler fallbacks
   const unconditionalClears = editorSrc.match(/setDirty\(false\)/g) || [];
-  assert.equal(unconditionalClears.length, 5); // reloadFromProps + 2× no-onSaveTemplates fallback + 2× conditional (then) clears
+  assert.equal(unconditionalClears.length, 7); // authoritative reload + 3× no-handler fallback + 3× guarded clear
 });
 
 test('BL-23 tripwire: markEdited is the only mutation dirty path; no onSaveTemplates inside a setRich updater', () => {
   assert.match(editorSrc, /const markEdited = useCallback\(\(\) => \{ editRevisionRef\.current \+= 1; setDirty\(true\); \}/);
-  // bare setDirty(true) survives only inside the revision-conditional catches
+  // bare setDirty(true) survives only in guarded save catches, Cancel reload
+  // failure, and markEdited.
   const bareDirtyTrue = (editorSrc.match(/setDirty\(true\)/g) || []).length;
-  const conditionalDirtyTrue = (editorSrc.match(/if \(editRevisionRef\.current === rev && saveReqSeqRef\.current === req\) setDirty\(true\);/g) || []).length;
   const inMarkEdited = (editorSrc.match(/editRevisionRef\.current \+= 1; setDirty\(true\);/g) || []).length;
-  assert.equal(bareDirtyTrue, conditionalDirtyTrue + inMarkEdited);
+  assert.equal(bareDirtyTrue, 5);
+  assert.equal(inMarkEdited, 1);
   // impure-updater tripwire: no save call inside any setRich(prev => …) updater
   for (const m of editorSrc.matchAll(/setRich\(\(prev\) => \{([\s\S]*?)\}\);/g)) {
     assert.ok(!m[1].includes('onSaveTemplates'), 'onSaveTemplates must not be called inside a setRich updater');
@@ -233,28 +233,22 @@ test('BL-23 tripwire: markEdited is the only mutation dirty path; no onSaveTempl
   assert.match(editorSrc, /const next = rich\.filter\(\(t\) => !ids\.has\(t\.id\)\);\s*\n\s*markEdited\(\);/);
 });
 
-test('BL-23 tripwire: Cancel invalidates in-flight save/delete settlements (revision bump before reload)', () => {
+test('BL-23 tripwire: Cancel invalidates settlements and waits for authoritative reload', () => {
   const cancel = editorSrc.slice(editorSrc.indexOf('const handleCancelEdits'));
-  const block = cancel.slice(0, cancel.indexOf('};') + 2);
+  const block = cancel.slice(0, 1600);
   assert.match(block, /editRevisionRef\.current \+= 1;/);
-  assert.match(block, /reloadFromProps\(\);/);
+  assert.match(block, /reloadTemplatesAfterPendingSave\(\{/);
+  assert.match(block, /pendingSave: saveChainRef\.current/);
+  assert.match(block, /apply: applyAuthoritativeTemplates/);
+  assert.match(block, /setDirty\(true\);/);
 });
 
-test('BL-23 tripwire: Dashboard persistTemplates counts row failures and throws; outer catch rethrows', () => {
-  assert.match(dashboardSrc, /let rowFailures = 0;/);
-  // queued saves must diff against the freshest persisted rows, not the closure's render-time templates
-  assert.match(dashboardSrc, /const baselineTemplates = \(supabaseRowsRef\.current \|\| \[\]\)\.map/);
-  assert.match(dashboardSrc, /const currentTemplateIds = new Set\(baselineTemplates\.map/);
-  assert.match(dashboardSrc, /for \(const template of baselineTemplates\)/);
-  // the rows ref is render-synced AND advanced synchronously from the refetch result
+test('BL-23 tripwire: Dashboard saves one atomic snapshot and rethrows failures', () => {
   assert.match(dashboardSrc, /supabaseRowsRef\.current = supabaseTemplates;/);
-  assert.match(dashboardSrc, /const freshRows = await refetchTemplates\(\);/);
+  assert.match(dashboardSrc, /const freshRows = await persistTemplateSnapshot\(\{/);
+  assert.match(dashboardSrc, /persist: replaceSupabaseTemplates/);
   assert.match(dashboardSrc, /supabaseRowsRef\.current = freshRows;/);
-  // resolver consults the fresh rows ref, not only render state
   assert.match(dashboardSrc, /\(supabaseRowsRef\.current \|\| supabaseTemplates \|\| \[\]\)\.find/);
-  const increments = dashboardSrc.match(/rowFailures \+= 1;/g) || [];
-  assert.equal(increments.length, 4); // delete, orphan-create, update, create
-  assert.match(dashboardSrc, /if \(rowFailures > 0\) \{\s*\n\s*throw new Error/);
   assert.match(dashboardSrc, /console\.error\('Error persisting templates:', err\);\s*\n\s*throw err;/);
 });
 

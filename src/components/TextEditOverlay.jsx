@@ -263,6 +263,9 @@ export default function TextEditOverlay({
   // Rich-text bridge ({api, state}) — same keys the AppShell sub-row binds.
   // ---------------------------------------------------------------------
   const publishBridge = useCallback(() => {
+    // Style changes publish after paint. A commit can happen before that queued
+    // frame runs; never let the late frame resurrect a bridge we just cleared.
+    if (committedRef.current) return;
     if (typeof onRichTextEditorChange !== 'function') return;
     const s = styleRef.current;
     const applyStyle = (key, val) => {
@@ -310,6 +313,11 @@ export default function TextEditOverlay({
   const commitAndClose = useCallback((opts = {}) => {
     if (committedRef.current) return;
     committedRef.current = true;
+    // The formatting bridge represents an actively-mounted editor, not the
+    // last editor state. Clear it at the commit boundary so a same-gesture
+    // selection (notably a callout leader) cannot inherit the stale text strip
+    // while React is still unmounting this overlay.
+    if (typeof onRichTextEditorChange === 'function') onRichTextEditorChange(null);
     const s = styleRef.current;
     const g = geomRef.current;
     const text = readText();
@@ -363,13 +371,14 @@ export default function TextEditOverlay({
     } else {
       onEditCommit(updated);
     }
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, pad, authorId]);
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId]);
 
   const cancelAndClose = useCallback(() => {
     if (committedRef.current) return;
     committedRef.current = true;
+    if (typeof onRichTextEditorChange === 'function') onRichTextEditorChange(null);
     if (typeof onEditCancel === 'function') onEditCancel();
-  }, [onEditCancel]);
+  }, [onEditCancel, onRichTextEditorChange]);
 
   const commitRef = useRef(commitAndClose);
   useEffect(() => { commitRef.current = commitAndClose; }, [commitAndClose]);

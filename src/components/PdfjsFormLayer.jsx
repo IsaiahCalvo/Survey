@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { shouldApplyPersistedFormValue } from './pdfjsFormLocalValueGuard.js';
 
 /**
  * PdfjsFormLayer — interactive form-field (Widget) overlay for one page under
@@ -71,7 +72,7 @@ function ensureFormLayerCss() {
 // Reflect persisted form values onto the freshly built (or late-updated) inputs.
 // Covers checkbox/radio booleans + any field the annotationStorage seed didn't
 // drive, and never touches the element the user is actively editing.
-function applyPersistedToInputs(div, seed) {
+function applyPersistedToInputs(div, seed, localDirtyValues) {
   if (!div || !Array.isArray(seed) || seed.length === 0) return;
   const active = typeof document !== 'undefined' ? document.activeElement : null;
   const elByFieldId = new Map();
@@ -82,6 +83,7 @@ function applyPersistedToInputs(div, seed) {
   });
   for (const pv of seed) {
     if (!pv || pv.fieldId == null) continue;
+    if (!shouldApplyPersistedFormValue(localDirtyValues, pv.fieldId, pv.value)) continue;
     const el = elByFieldId.get(String(pv.fieldId));
     if (!el || el === active) continue;
     if (el.type === 'checkbox' || el.type === 'radio') {
@@ -114,6 +116,11 @@ export default function PdfjsFormLayer({
   // that arrive after mount (reload hydration / a collaborator's edit).
   const persistedRef = useRef(persistedValues);
   persistedRef.current = persistedValues;
+  // A blur-save from one field can re-render persistedValues while another
+  // field's newer edit is still inside the 400ms save debounce. Keep that
+  // newer DOM value authoritative until the parent echoes it back; otherwise
+  // the stale cross-field snapshot visibly flips a checkbox/text value back.
+  const localDirtyValuesRef = useRef(new Map());
   const persistedSignature = useMemo(
     () => (Array.isArray(persistedValues)
       ? persistedValues.map((v) => `${v?.fieldId}=${v?.value}`).join('|')
@@ -136,6 +143,7 @@ export default function PdfjsFormLayer({
     let cancelled = false;
     const div = ref.current;
     if (!div || !pdf || !pageNumber) return undefined;
+    div.removeAttribute('data-persistence-ready');
     const detachers = [];
 
     (async () => {
@@ -203,15 +211,34 @@ export default function PdfjsFormLayer({
             rect: meta.rect ?? null,
             element: el,
           });
-          const onChange = () => cbRef.current.onFieldChange?.(emit(readValue()));
+          const recordLocalValue = () => {
+            const value = readValue();
+            if (fieldId != null) localDirtyValuesRef.current.set(String(fieldId), value);
+            return value;
+          };
+          const onInput = () => {
+            const value = recordLocalValue();
+            cbRef.current.onFieldChange?.(emit(value));
+          };
+          const onChange = () => {
+            // React can echo the input event's persisted snapshot before the
+            // browser dispatches checkbox change. Reuse the value captured by
+            // input so that intermediate render cannot flip the DOM back.
+            const key = fieldId == null ? null : String(fieldId);
+            const value = key != null && localDirtyValuesRef.current.has(key)
+              ? localDirtyValuesRef.current.get(key)
+              : recordLocalValue();
+            if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!value;
+            cbRef.current.onFieldChange?.(emit(value));
+          };
           const onFocus = () => cbRef.current.onFieldFocus?.({ fieldId, element: el });
           const onBlur = () => cbRef.current.onFieldBlur?.(emit(readValue()));
-          el.addEventListener('input', onChange);
+          el.addEventListener('input', onInput);
           el.addEventListener('change', onChange);
           el.addEventListener('focus', onFocus);
           el.addEventListener('blur', onBlur);
           detachers.push(() => {
-            el.removeEventListener('input', onChange);
+            el.removeEventListener('input', onInput);
             el.removeEventListener('change', onChange);
             el.removeEventListener('focus', onFocus);
             el.removeEventListener('blur', onBlur);
@@ -221,7 +248,8 @@ export default function PdfjsFormLayer({
         // Post-render: paint persisted values onto the live inputs (covers
         // checkbox/radio + any field the storage seed didn't drive). Reload has
         // nothing focused, so saved values show immediately.
-        applyPersistedToInputs(div, seedNow);
+        applyPersistedToInputs(div, seedNow, localDirtyValuesRef.current);
+        div.setAttribute('data-persistence-ready', 'true');
 
         // Lock the field layer to the ACTUAL page geometry, not the React scale
         // prop. On wheel/pinch zoom the engine resizes the page host but does NOT
@@ -252,6 +280,7 @@ export default function PdfjsFormLayer({
 
     return () => {
       cancelled = true;
+      div.removeAttribute('data-persistence-ready');
       detachers.forEach((fn) => { try { fn(); } catch { /* noop */ } });
     };
     // NOTE: `scale` is deliberately NOT a dependency — zoom is ridden by the
@@ -274,7 +303,7 @@ export default function PdfjsFormLayer({
         try { pdf.annotationStorage.setValue(String(pv.fieldId), { value: pv.value }); } catch { /* ignore */ }
       }
     }
-    applyPersistedToInputs(div, seed);
+    applyPersistedToInputs(div, seed, localDirtyValuesRef.current);
     return undefined;
     // persistedValues is read fresh whenever its signature changes.
   }, [pdf, pageNumber, persistedSignature]); // eslint-disable-line react-hooks/exhaustive-deps

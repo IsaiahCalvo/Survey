@@ -10,37 +10,79 @@
  * "annotations of a type we don't recognize" — never raw PDF subtype jargon.
  * Only genuinely-invisible types trigger it; annotations imported as visible
  * (even locked) proxies — sticky notes, underline/strikeout/squiggly — never
- * do. No action buttons; auto-dismisses after 12s or on the X.
+ * do. No action buttons; compact notices auto-dismiss after 3s, expanded
+ * notices after 5s, and the X dismisses immediately.
  *
  * Default export UnsupportedAnnotationsNotice takes `unsupportedCounts`
  * ({ Stamp: 2, ... } from the importer) and `onDismiss`.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';
+
+const COLLAPSED_DISMISS_MS = 3000;
+const EXPANDED_DISMISS_MS = 5000;
+const EXIT_ANIMATION_MS = 300;
 
 const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [isExiting, setIsExiting] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches
+  ));
+  const dismissCompletionRef = useRef(null);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const noticeIdentity = Object.entries(unsupportedCounts || {})
+    .filter(([, count]) => Number(count) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([type, count]) => `${type}:${count}`)
+    .join('|');
 
-  useEffect(() => {
-    // Auto-dismiss after 12 seconds — the message is a full sentence with
-    // counts, so it gets a little longer on screen than a one-liner toast.
-    const timer = setTimeout(() => {
-      handleDismiss();
-    }, 12000);
-
-    return () => clearTimeout(timer);
+  const clearDismissCompletion = useCallback(() => {
+    if (dismissCompletionRef.current !== null) {
+      clearTimeout(dismissCompletionRef.current);
+      dismissCompletionRef.current = null;
+    }
   }, []);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
+    clearDismissCompletion();
     setIsExiting(true);
-    setTimeout(() => {
+    dismissCompletionRef.current = setTimeout(() => {
+      dismissCompletionRef.current = null;
       setIsVisible(false);
-      if (onDismiss) {
-        onDismiss();
-      }
-    }, 300); // Match animation duration
-  };
+      onDismissRef.current?.();
+    }, EXIT_ANIMATION_MS);
+  }, [clearDismissCompletion]);
+
+  useEffect(() => {
+    const query = window.matchMedia?.('(max-width: 720px)');
+    if (!query) return undefined;
+    const update = () => setIsMobile(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+
+  useEffect(() => () => clearDismissCompletion(), [clearDismissCompletion]);
+
+  useEffect(() => {
+    clearDismissCompletion();
+    setIsVisible(true);
+    setIsExiting(false);
+    setIsExpanded(false);
+  }, [clearDismissCompletion, noticeIdentity]);
+
+  useEffect(() => {
+    if (!isVisible || isExiting) return undefined;
+    const dismissAfter = isMobile && !isExpanded
+      ? COLLAPSED_DISMISS_MS
+      : EXPANDED_DISMISS_MS;
+    const timer = setTimeout(handleDismiss, dismissAfter);
+
+    return () => clearTimeout(timer);
+  }, [handleDismiss, isExpanded, isExiting, isMobile, isVisible, noticeIdentity]);
 
   const message = formatUnsupportedAnnotationNotice(unsupportedCounts);
   if (!isVisible || !message) {
@@ -49,27 +91,41 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
 
   return (
     <div
+      role={isMobile ? 'button' : undefined}
+      tabIndex={isMobile ? 0 : undefined}
+      aria-expanded={isMobile ? isExpanded : undefined}
+      aria-label={isMobile
+        ? `Unsupported annotation. ${isExpanded ? 'Hide' : 'Show'} details`
+        : undefined}
+      onClick={() => { if (isMobile) setIsExpanded((expanded) => !expanded); }}
+      onKeyDown={(event) => {
+        if (!isMobile || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        setIsExpanded((expanded) => !expanded);
+      }}
       style={{
         position: 'fixed',
-        bottom: 20,
-        right: 20,
-        maxWidth: 400,
+        bottom: isMobile ? 'calc(var(--mobile-viewer-dock-height, 72px) + 12px)' : 20,
+        right: isMobile ? 12 : 20,
+        width: isMobile && isExpanded ? 'calc(100vw - 116px)' : 'auto',
+        maxWidth: isMobile ? (isExpanded ? 340 : 248) : 400,
         backgroundColor: '#1a1a1a',
         border: '1px solid #2a3140',
         borderRadius: 8,
-        padding: '12px 16px',
+        padding: isMobile ? '10px 12px' : '12px 16px',
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
         zIndex: 10000,
         display: 'flex',
-        alignItems: 'flex-start',
-        gap: 12,
+        alignItems: isMobile && !isExpanded ? 'center' : 'flex-start',
+        gap: isMobile ? 9 : 12,
         opacity: isExiting ? 0 : 1,
         transform: isExiting ? 'translateY(10px)' : 'translateY(0)',
         transition: 'opacity 0.3s ease, transform 0.3s ease',
+        cursor: isMobile ? 'pointer' : 'default',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
       }}
     >
-      {/* Info icon */}
+      {/* Circled information mark: explanatory notice, not visibility toggle. */}
       <div
         style={{
           flexShrink: 0,
@@ -81,19 +137,16 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         }}
       >
         <svg
+          aria-label="Information"
           width="20"
           height="20"
           viewBox="0 0 20 20"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <circle cx="10" cy="10" r="9" stroke="#d8a84e" strokeWidth="1.5" fill="none" />
-          <path
-            d="M10 6V6.5M10 9V14"
-            stroke="#d8a84e"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
+          <circle cx="10" cy="10" r="8" stroke="#d8a84e" strokeWidth="1.5" />
+          <circle cx="10" cy="6.2" r="1" fill="#d8a84e" />
+          <path d="M10 9V14" stroke="#d8a84e" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
       </div>
 
@@ -104,25 +157,28 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
             fontSize: 13,
             fontWeight: 500,
             color: '#e8e2d4',
-            marginBottom: 4,
+            marginBottom: !isMobile || isExpanded ? 4 : 0,
+            whiteSpace: isMobile && !isExpanded ? 'nowrap' : 'normal',
           }}
         >
-          Some annotations aren’t displayed
+          {isMobile ? 'Unsupported annotation' : 'Some annotations aren’t displayed'}
         </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: '#8d96a6',
-            lineHeight: 1.4,
-          }}
-        >
-          {message}
-        </div>
+        {(!isMobile || isExpanded) && (
+          <div
+            style={{
+              fontSize: 12,
+              color: '#8d96a6',
+              lineHeight: 1.4,
+            }}
+          >
+            {message}
+          </div>
+        )}
       </div>
 
       {/* Dismiss button */}
       <button
-        onClick={handleDismiss}
+        onClick={(event) => { event.stopPropagation(); handleDismiss(); }}
         style={{
           flexShrink: 0,
           background: 'none',

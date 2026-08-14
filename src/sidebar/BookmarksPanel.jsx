@@ -20,6 +20,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { showToast } from '../utils/toast';
 import Icon from '../Icons';
+import DismissBarrier from '../components/DismissBarrier';
+import { prepareAtomicBookmarkEdit } from './bookmarkEditUtils.js';
 import {
   BOOKMARK_INDENTATION_WIDTH,
   GROUP_AUTO_EXPAND_OFFSET_PX,
@@ -436,6 +438,9 @@ const BookmarksPanel = ({
   const [isEditMode, setIsEditMode] = useState(initialEditMode);
   const [newBookmarkName, setNewBookmarkName] = useState('');
   const [newBookmarkPages, setNewBookmarkPages] = useState('');
+  const [mobileEditingBookmarkId, setMobileEditingBookmarkId] = useState(null);
+  const [mobileEditName, setMobileEditName] = useState('');
+  const [mobileEditPage, setMobileEditPage] = useState('');
   const [showBookmarkGroupModal, setShowBookmarkGroupModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupBookmarks, setGroupBookmarks] = useState([]);
@@ -443,6 +448,7 @@ const BookmarksPanel = ({
   const [targetGroupId, setTargetGroupId] = useState(null);
   const [addToGroupBookmarks, setAddToGroupBookmarks] = useState([]);
   const menuRef = useRef(null);
+  const createMenuInsideRefs = useMemo(() => [menuRef], []);
 
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
@@ -1116,6 +1122,28 @@ const BookmarksPanel = ({
     setShowCreateMenu(false);
   }, [newBookmarkName, newBookmarkPages, onBookmarkCreate, numPages]);
 
+  const beginMobileBookmarkEdit = useCallback((item) => {
+    setMobileEditingBookmarkId(item.id);
+    setMobileEditName(item.name || '');
+    setMobileEditPage(item.pageIds?.[0]?.toString() || '');
+  }, []);
+
+  const saveMobileBookmarkEdit = useCallback((item) => {
+    const result = prepareAtomicBookmarkEdit({
+      bookmarks,
+      bookmark: item,
+      name: mobileEditName,
+      page: mobileEditPage,
+      numPages,
+    });
+    if (!result.ok) {
+      showToast(result.error, 'warn');
+      return;
+    }
+    onBookmarkUpdate?.(item.id, result.updates);
+    setMobileEditingBookmarkId(null);
+  }, [bookmarks, mobileEditName, mobileEditPage, numPages, onBookmarkUpdate]);
+
   const handleNewBookmarkPageChange = useCallback((value) => {
     const sanitized = value.replace(/[^\d]/g, '');
     if (!sanitized) {
@@ -1368,20 +1396,6 @@ const BookmarksPanel = ({
     setAddToGroupBookmarks([]);
   }, [targetGroupId, addToGroupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowCreateMenu(false);
-      }
-    };
-
-    if (showCreateMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showCreateMenu]);
-
   if (mobileMode) {
     // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the
     // demo (BookmarkRow.tsx / HubTray bookmarks branch). flattenedItems already
@@ -1394,6 +1408,39 @@ const BookmarksPanel = ({
     // correct real behavior.
     return (
       <div className="mobile-bookmark-list">
+        <div className="mobile-bookmark-toolbar">
+          <button
+            type="button"
+            className="mobile-bookmark-add"
+            aria-label={showCreateMenu ? 'Cancel new bookmark' : 'Add bookmark'}
+            onClick={() => setShowCreateMenu((shown) => !shown)}
+          >
+            <Icon name={showCreateMenu ? 'close' : 'plus'} size={13} color="currentColor" />
+            {showCreateMenu ? 'Cancel' : 'Add bookmark'}
+          </button>
+        </div>
+        {showCreateMenu && (
+          <div className="mobile-bookmark-editor" aria-label="New bookmark">
+            <input
+              type="text"
+              aria-label="Bookmark name"
+              value={newBookmarkName}
+              placeholder="Bookmark name"
+              onChange={(event) => setNewBookmarkName(event.target.value)}
+            />
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max={numPages || undefined}
+              aria-label="Bookmark page"
+              value={newBookmarkPages}
+              placeholder="Page"
+              onChange={(event) => setNewBookmarkPages(event.target.value)}
+            />
+            <button type="button" onClick={handleCreateBookmark}>Create</button>
+          </div>
+        )}
         {flattenedItems.length === 0 ? (
           <div className="mobile-bookmark-empty">
             <Icon name="bookmark" size={20} color="#8d96a6" />
@@ -1413,7 +1460,32 @@ const BookmarksPanel = ({
               ? 'Folder'
               : (item.pageIds?.[0] ? `Page ${item.pageIds[0]}` : 'Bookmark');
             return (
-              <div
+              mobileEditingBookmarkId === item.id && !isFolder ? (
+                <div
+                  key={item.id}
+                  className="mobile-bookmark-editor mobile-bookmark-editor-existing"
+                  aria-label={`Edit bookmark ${item.name}`}
+                  style={{ marginLeft: depth * 14 }}
+                >
+                  <input
+                    type="text"
+                    aria-label="Bookmark name"
+                    value={mobileEditName}
+                    onChange={(event) => setMobileEditName(event.target.value)}
+                  />
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    max={numPages || undefined}
+                    aria-label="Bookmark page"
+                    value={mobileEditPage}
+                    onChange={(event) => setMobileEditPage(event.target.value)}
+                  />
+                  <button type="button" onClick={() => saveMobileBookmarkEdit(item)}>Save</button>
+                  <button type="button" className="secondary" onClick={() => setMobileEditingBookmarkId(null)}>Cancel</button>
+                </div>
+              ) : <div
                 key={item.id}
                 className="mobile-bookmark-row"
                 style={{ marginLeft: depth * 14 }}
@@ -1439,6 +1511,16 @@ const BookmarksPanel = ({
                   </span>
                 </button>
                 <div className="mobile-bookmark-moves">
+                  {!isFolder && (
+                    <button
+                      type="button"
+                      className="mobile-bookmark-move"
+                      aria-label={`Edit bookmark ${item.name}`}
+                      onClick={() => beginMobileBookmarkEdit(item)}
+                    >
+                      <Icon name="edit" size={13} color="currentColor" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="mobile-bookmark-move"
@@ -1456,6 +1538,14 @@ const BookmarksPanel = ({
                     onClick={() => handleMobileMoveBookmark(item.id, 1)}
                   >
                     <Icon name="chevronDown" size={13} color="currentColor" />
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-bookmark-move mobile-bookmark-delete"
+                    aria-label={`Delete bookmark ${item.name}`}
+                    onClick={() => handleDelete(item.id)}
+                  >
+                    <Icon name="trash" size={13} color="currentColor" />
                   </button>
                 </div>
               </div>
@@ -1632,6 +1722,11 @@ const BookmarksPanel = ({
         borderTop: '1px solid #2a3140'
       }}>
         <div style={{ position: 'relative' }} ref={menuRef}>
+          <DismissBarrier
+            active={showCreateMenu}
+            insideRefs={createMenuInsideRefs}
+            onDismiss={() => setShowCreateMenu(false)}
+          />
           <button
             onClick={() => setShowCreateMenu(!showCreateMenu)}
             style={{

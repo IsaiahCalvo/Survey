@@ -32,7 +32,7 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
       try {
         const page = await pdf.getPage(pageNumber);
         if (cancelled) return;
-        const annots = await page.getAnnotations();
+        const annots = await page.getAnnotations({ intent: 'display' });
         if (cancelled) return;
         const viewport = page.getViewport({ scale: 1, rotation: page.rotate });
         const pageWidth = viewport.width || 1;
@@ -41,7 +41,11 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
         for (const a of annots) {
           if (a.subtype !== 'Link') continue;
           if (!a.url && a.dest == null) continue;
-          const r = viewport.convertToViewportRectangle(a.rect);
+          // pdf.js 5 removed PageViewport.convertToViewportRectangle. Convert
+          // both corners with the supported point API and normalize below.
+          const start = viewport.convertToViewportPoint(a.rect[0], a.rect[1]);
+          const end = viewport.convertToViewportPoint(a.rect[2], a.rect[3]);
+          const r = [start[0], start[1], end[0], end[1]];
           const x = Math.min(r[0], r[2]);
           const y = Math.min(r[1], r[3]);
           const w = Math.abs(r[2] - r[0]);

@@ -9,7 +9,19 @@ html.survey-viewer-open #root {
   overscroll-behavior: none;
 }
 
+/* Select-mode Survey Marker action. The SVG owns selection geometry; this
+   action group stays hidden outside the narrow mobile viewer. Its viewBox
+   dimensions are container-measured so the button remains 76x48 CSS px. */
+.survey-marker-touch-delete {
+  display: none;
+}
+
 @media (max-width: 720px) {
+  html.survey-viewer-open .survey-marker-touch-delete {
+    display: inline;
+    overflow: visible;
+  }
+
   html.survey-viewer-open,
   html.survey-viewer-open body,
   html.survey-viewer-open #root,
@@ -336,9 +348,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
 .mobile-pdf-tools__button {
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -501,6 +513,47 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-shadow: 0 0 0 2px #20242c;
 }
 
+.mobile-pdf-tools__sync-details {
+  position: fixed;
+  width: min(320px, calc(100vw - 64px));
+  min-width: 0;
+  padding: 7px 8px 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateY(-50%);
+  border: 1px solid #343b49;
+  border-radius: 10px;
+  background: #181c24;
+  color: #e8e2d4;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  text-align: left;
+  z-index: 3100;
+}
+
+.mobile-pdf-tools__sync-details [data-sync-message] {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #e8e2d4;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-pdf-tools__sync-details button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
 .mobile-pdf-tools__avatar {
   width: 28px;
   height: 28px;
@@ -603,7 +656,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  overflow-x: auto;
+  /* Compact strips are only 36px tall. Keep vertical overflow visible so a
+     control can expose a 44px hit target without painting a 44px-tall visual
+     or having that target clipped by the strip's scroll container. The
+     combinations used by eraser/shapes/arrows fit this width at 390px. */
+  overflow: visible;
   color: #f2f2f2;
   background: #202126;
   border: 0;
@@ -615,7 +672,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties--text {
-  justify-content: center;
+  /* A centred overflowing flex row clips equal width from both ends; on a
+     390px phone that put Font color left of the rail with no scroll path back
+     to it. Anchor the row at its scroll origin so every control is reachable. */
+  height: 52px;
+  min-height: 52px;
+  justify-content: flex-start;
+  scroll-padding-inline: 8px;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .mobile-pdf-properties--actions,
@@ -635,6 +702,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 800;
+}
+
+.mobile-pdf-properties--actions > button,
+.mobile-pdf-properties__keep {
+  position: relative;
+}
+
+.mobile-pdf-properties--actions > button::after,
+.mobile-pdf-properties__keep::after {
+  content: '';
+  position: absolute;
+  inset-block: calc((44px - 100%) / -2);
+  inset-inline: 0;
 }
 
 .mobile-pdf-properties--actions > button:disabled { opacity: 0.4; }
@@ -818,10 +898,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    rollers (eraser mode, line style, arrowhead, survey module). Trigger mirrors
    the sibling strip controls; open menu below uses the demo dark context-menu
    chrome (#181B20 / #3C424D / radius 8 / 34px rows / gold active — Phase D). */
-.mobile-styled-select { position: relative; flex: 0 0 auto; }
+.mobile-styled-select {
+  position: relative;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
 
 .mobile-styled-select__trigger {
-  height: 24px;
+  min-height: 44px;
   padding: 0 8px;
   display: flex;
   align-items: center;
@@ -833,6 +919,33 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 5px;
   font-size: 12px;
   font-weight: 700;
+}
+
+/* Non-text property strips preserve their compact 24px visual control while
+   the button's transparent pseudo-element supplies the full 44px target. The
+   parent strip deliberately leaves vertical overflow visible above. */
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select {
+  height: 24px;
+  min-height: 24px;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger {
+  position: relative;
+  height: 24px;
+  min-height: 24px;
+}
+
+.mobile-pdf-properties:not(.mobile-pdf-properties--text) > .mobile-styled-select .mobile-styled-select__trigger::after {
+  content: '';
+  position: absolute;
+  inset-block: -10px;
+  inset-inline: 0;
+}
+
+.mobile-pdf-properties--text > .mobile-styled-select,
+.mobile-pdf-properties--text > .mobile-styled-select .mobile-styled-select__trigger {
+  height: 44px;
+  min-height: 44px;
 }
 
 .mobile-styled-select__trigger > span {
@@ -864,7 +977,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-styled-select__menu > button {
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 8px;
   display: flex;
   align-items: center;
@@ -914,6 +1027,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__format.is-active {
   color: var(--accent-primary, #d8a84e);
   background: var(--gold-bg, #2a2218);
+}
+
+/* Live text formatting is intentionally a single horizontal strip. Keep its
+   compact visuals, but give every direct interactive control an iOS-sized hit
+   target while the strip itself supplies horizontal scrolling. */
+.mobile-pdf-properties--text > button,
+.mobile-pdf-properties--text > select,
+.mobile-pdf-properties--text > input {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
 }
 
 .mobile-pdf-properties__menu-anchor {
@@ -2814,6 +2938,58 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
 }
 
+.mobile-bookmark-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mobile-bookmark-add,
+.mobile-bookmark-editor button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 12px;
+  color: #15110a;
+  background: #d8a84e;
+  border: 0;
+  border-radius: 6px;
+  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+}
+
+.mobile-bookmark-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px auto;
+  gap: 6px;
+  align-items: center;
+  padding: 7px;
+  background: #1b1f25;
+  border: 1px solid #333944;
+  border-radius: 6px;
+}
+
+.mobile-bookmark-editor-existing {
+  grid-template-columns: minmax(0, 1fr) 58px auto auto;
+}
+
+.mobile-bookmark-editor input {
+  min-width: 0;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  color: #f2f2f2;
+  background: #242a33;
+  border: 1px solid #3a4252;
+  border-radius: 5px;
+  font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+}
+
+.mobile-bookmark-editor button.secondary {
+  color: #e8e2d4;
+  background: #2a3140;
+}
+
 .mobile-bookmark-row {
   min-height: 38px;
   display: flex;
@@ -2898,6 +3074,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-bookmark-move:disabled {
   opacity: 0.36;
   cursor: default;
+}
+
+.mobile-bookmark-delete {
+  color: #ef8e8e;
 }
 
 .mobile-bookmark-empty {

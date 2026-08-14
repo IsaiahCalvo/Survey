@@ -1,4 +1,5 @@
 // Minimalist SVG Icons Component
+import { getContentTypeIconColor } from './utils/contentTypeColors.js';
 
 const ICON_RENDERERS = {
     // Document/File icons
@@ -72,6 +73,13 @@ const ICON_RENDERERS = {
     history: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3.0156 10H7M3.0156 10V6M3.0156 10L6.34315 6.34315C9.46734 3.21895 14.5327 3.21895 17.6569 6.34315C20.781 9.46734 20.781 14.5327 17.6569 17.6569C14.5327 20.781 9.46734 20.781 6.34315 17.6569C5.55928 16.873 4.97209 15.9669 4.58158 15M12 9V13L15 14.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+
+    retry: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M20 11a8 8 0 1 0-2.34 5.66" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M20 5v6h-6" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
 
@@ -460,7 +468,17 @@ const ICON_RENDERERS = {
     ),
 };
 
-const Icon = ({ name, size = 16, color = 'currentColor', style, className }) =>
-  ICON_RENDERERS[name]?.(size, color, style, className) ?? null;
+const DEFAULT_CONTENT_TYPE_BY_ICON = {
+  document: 'document',
+  template: 'template',
+};
+
+const Icon = ({ name, size = 16, color, contentType, style, className }) => {
+  const resolvedColor = color || getContentTypeIconColor(
+    contentType || DEFAULT_CONTENT_TYPE_BY_ICON[name],
+    'currentColor',
+  );
+  return ICON_RENDERERS[name]?.(size, resolvedColor, style, className) ?? null;
+};
 
 export default Icon;

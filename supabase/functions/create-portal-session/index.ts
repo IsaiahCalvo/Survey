@@ -1,5 +1,6 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { resolveBillingReturnUrl } from '../_shared/billingReturn.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -78,11 +79,11 @@ Deno.serve(async (req) => {
 
         console.log('Customer ID:', subscription.stripe_customer_id);
 
-        // Create portal session
-        const origin = req.headers.get('origin') || 'http://localhost:5173';
+        const body = await req.json().catch(() => ({}));
+        const returnUrl = resolveBillingReturnUrl(body?.returnUrl, req.headers.get('origin'));
         const session = await stripe.billingPortal.sessions.create({
             customer: subscription.stripe_customer_id,
-            return_url: `${origin}`,
+            return_url: returnUrl,
         });
 
         console.log('Portal session created:', session.id);

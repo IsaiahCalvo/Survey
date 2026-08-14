@@ -566,6 +566,22 @@ input[type="text"].space-name-inline:focus {
   transition: color 0.15s ease, opacity 0.15s ease, background 0.15s ease;
 }
 
+@media (max-width: 720px) {
+  .region-action-controls {
+    grid-template-columns: repeat(3, 44px);
+    column-gap: 0;
+  }
+
+  .region-edit-button,
+  .region-visibility-button,
+  .region-delete-button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .region-delete-button {
   color: #d95a56;
   cursor: pointer;

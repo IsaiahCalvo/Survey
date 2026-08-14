@@ -8,13 +8,15 @@
    store yet (page count, revision, per-event activity) fall back gracefully
    without changing the layout.
 */
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
-import { MoveCopyModal } from './BulkModals';
+import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
+import DismissBarrier from '../components/DismissBarrier';
+import useModalFocusTrap from './useModalFocusTrap';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -37,20 +39,6 @@ const MENU_HEX = {
 function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const ref = useRef(null);
 
-  useEffect(() => {
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    const t = setTimeout(() => {
-      document.addEventListener('mousedown', onDown, true);
-      document.addEventListener('keydown', onKey, true);
-    }, 0);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener('mousedown', onDown, true);
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [onClose]);
-
   if (!anchorRect) return null;
 
   const estHeight = items.length * 34 + 8;
@@ -59,48 +47,51 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
   const left = Math.max(8, Math.min(anchorRect.right - minWidth, window.innerWidth - minWidth - 8));
 
   return createPortal(
-    <div
-      ref={ref}
-      role="menu"
-      style={{
-        position: 'fixed',
-        top,
-        left,
-        zIndex: 4000,
-        background: MENU_HEX.card,
-        border: `1px solid ${MENU_HEX.rule}`,
-        borderRadius: 8,
-        padding: 4,
-        minWidth,
-        boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-      }}
-    >
-      {items.map((it) => (
-        <button
-          key={it.label}
-          role="menuitem"
-          disabled={it.disabled}
-          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-          style={{
-            display: 'block',
-            width: '100%',
-            textAlign: 'left',
-            background: 'transparent',
-            border: 0,
-            color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
-            padding: '7px 10px',
-            fontSize: 12,
-            borderRadius: 4,
-            cursor: it.disabled ? 'not-allowed' : 'pointer',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          {it.label}
-        </button>
-      ))}
-    </div>,
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        role="menu"
+        style={{
+          position: 'fixed',
+          top,
+          left,
+          zIndex: 4000,
+          background: MENU_HEX.card,
+          border: `1px solid ${MENU_HEX.rule}`,
+          borderRadius: 8,
+          padding: 4,
+          minWidth,
+          boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+        }}
+      >
+        {items.map((it) => (
+          <button
+            key={it.label}
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              background: 'transparent',
+              border: 0,
+              color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
+              padding: '7px 10px',
+              fontSize: 12,
+              borderRadius: 4,
+              cursor: it.disabled ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>,
     document.body,
   );
 }
@@ -135,6 +126,7 @@ export default function DocumentsLedger({
   onShare,
   onDuplicate,
   onDelete,
+  onRename,
   onMoveCopy,
   onLockDocument,
 }) {
@@ -146,11 +138,23 @@ export default function DocumentsLedger({
   const [selDocs, setSelDocs] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState(null);
   const [docMenu, setDocMenu] = useState(null);
   const [clipboardDoc, setClipboardDoc] = useState(null);
   const [mobileDetailId, setMobileDetailId] = useState(null);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
   const mobileSortRef = useRef(null);
+  const mobileDetailModalRef = useRef(null);
+  const mobileDetailCloseRef = useRef(null);
+  const mobileDetailOpenerRef = useRef(null);
+  const closeMobileDetail = useCallback(() => setMobileDetailId(null), []);
+  useModalFocusTrap({
+    active: Boolean(mobileDetailId),
+    containerRef: mobileDetailModalRef,
+    initialFocusRef: mobileDetailCloseRef,
+    returnFocusRef: mobileDetailOpenerRef,
+    onClose: closeMobileDetail,
+  });
 
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
@@ -209,15 +213,6 @@ export default function DocumentsLedger({
     if (selId == null && docs.length) setSelId(docs[0].id);
   }, [docs, selId]);
 
-  useEffect(() => {
-    if (!mobileSortOpen) return undefined;
-    const onDown = (e) => {
-      if (mobileSortRef.current && !mobileSortRef.current.contains(e.target)) setMobileSortOpen(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [mobileSortOpen]);
-
   const sel = docs.find((d) => d.id === selId) || docs[0];
   const toggleDocSel = (id) => setSelDocs((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -243,47 +238,13 @@ export default function DocumentsLedger({
   const clearSel = () => setSelDocs(new Set());
   const showDocumentDetails = (doc) => {
     if (typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches) {
+      mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
       setMobileDetailId(doc.id);
       return;
     }
     setSelId(doc.id);
     setPreviewOpen(true);
   };
-
-  const subtitle = (
-    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span className="documents-file-count"><b>{docs.length}</b> files</span>
-      <span className="documents-select-row mobile-header-select-row">
-        <button
-          className="mobile-header-select-button"
-          onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
-          style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
-        >
-          {docSelectMode ? 'Done' : 'Select'}
-        </button>
-        {docSelectMode && (() => {
-          const docSelCount = selDocs.size;
-          const allSel = docSelCount === docs.length && docs.length > 0;
-          const baseBtn = miniButtonStyle();
-          return (
-            <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-              <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
-              <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
-              <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
-              <button disabled={!docSelCount} title="Share" aria-label="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
-              {/* UX: one confirmation only. The delete gate lives in the hub's
-                  onDelete handler (themed confirm, count-aware) so the toolbar
-                  bulk delete and the row "..." menu delete both ask exactly
-                  once. Do not add a second modal here. Selection is cleared
-                  only when the delete actually ran, so cancelling keeps the
-                  user's selection intact. */}
-              <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
-            </span>
-          );
-        })()}
-      </span>
-    </span>
-  );
 
   const sortOptions = [
     ['name', 'File'],
@@ -292,41 +253,85 @@ export default function DocumentsLedger({
     ['size', 'Size'],
   ];
   const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
+
+  const subtitle = (
+    <>
+    <DismissBarrier
+      active={mobileSortOpen}
+      insideRefs={[mobileSortRef]}
+      onDismiss={() => setMobileSortOpen(false)}
+    />
+    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="documents-file-count"><b>{docs.length}</b> files</span>
+      <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row" ref={mobileSortRef}>
+        <span className="documents-mobile-select-main">
+          <button
+            className="mobile-header-select-button"
+            onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
+            style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
+          >
+            {docSelectMode ? 'Done' : 'Select'}
+          </button>
+          {docSelectMode && (() => {
+            const docSelCount = selDocs.size;
+            const allSel = docSelCount === docs.length && docs.length > 0;
+            const baseBtn = miniButtonStyle();
+            return (
+              <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+                <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
+                <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount })}>Duplicate</button>
+                <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={miniButtonStyle({ disabled: !docSelCount })}>Move/Copy</button>
+                <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={miniButtonStyle({ disabled: !docSelCount, iconOnly: true })}><Icon name="share" size={12} /></button>
+                <button disabled={!docSelCount} title="Delete" aria-label="Delete" onClick={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }} style={miniButtonStyle({ disabled: !docSelCount, danger: true, iconOnly: true })}><Icon name="trash" size={12} /></button>
+              </span>
+            );
+          })()}
+        </span>
+        <span className="documents-mobile-sort-control">
+          <button
+            className="btn documents-mobile-filter"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={mobileSortOpen}
+            onClick={() => setMobileSortOpen((open) => !open)}
+          >
+            <span className="documents-mobile-filter-visual">
+              <Icon name="filter" size={12} />
+              <span>{activeSortLabel}</span>
+            </span>
+          </button>
+          {mobileSortOpen && (
+            <div className="documents-mobile-sort-menu" role="menu">
+              {sortOptions.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="menuitem"
+                  className={sortKey === key ? 'active' : ''}
+                  onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
+                >
+                  <span>{label}</span>
+                  <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
+      </span>
+    </span>
+    </>
+  );
+
   const actions = (
     <>
-      <div className="documents-mobile-search-row" ref={mobileSortRef}>
-        <button
-          className="btn documents-mobile-filter"
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={mobileSortOpen}
-          onClick={() => setMobileSortOpen((open) => !open)}
-        >
-          <Icon name="filter" size={12} />
-          <span>{activeSortLabel}</span>
-        </button>
-        {mobileSortOpen && (
-          <div className="documents-mobile-sort-menu" role="menu">
-            {sortOptions.map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="menuitem"
-                className={sortKey === key ? 'active' : ''}
-                onClick={() => { onHeaderClick(key); setMobileSortOpen(false); }}
-              >
-                <span>{label}</span>
-                <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
+        <button className="btn primary hub-mobile-primary-action" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
       </div>
       <div className="documents-desktop-search">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
-      <button className="btn primary" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
+      <button className="btn primary documents-desktop-upload" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
     </>
   );
 
@@ -341,8 +346,9 @@ export default function DocumentsLedger({
   };
   const openDocMenu = (e, d) => {
     e.stopPropagation();
+    const trigger = e.currentTarget;
     const rect = e.currentTarget.getBoundingClientRect();
-    setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
+    setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
   };
   const renderMobileMore = (d) => (
     <button
@@ -377,6 +383,7 @@ export default function DocumentsLedger({
     return (
       <div
         key={`mobile-${d.id}`}
+        data-document-id={d.id}
         className="mobile-doc-card"
         onClick={() => openMobileDoc(d)}
         role="button"
@@ -450,6 +457,7 @@ export default function DocumentsLedger({
                 return (
                   <div
                     key={d.id}
+                    data-document-id={d.id}
                     onClick={() => { if (docSelectMode) { toggleDocSel(d.id); return; } setSelId(d.id); setPreviewOpen(true); }}
                     onDoubleClick={() => !docSelectMode && onOpenDocument && onOpenDocument(d.raw)}
                     style={{
@@ -474,8 +482,9 @@ export default function DocumentsLedger({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            const trigger = e.currentTarget;
                             const rect = e.currentTarget.getBoundingClientRect();
-                            setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
+                            setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect, trigger }));
                           }}
                           style={moreButtonStyle()}
                           title="More" aria-label="More"
@@ -578,7 +587,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
-                <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="more" size={12} /></button>
+                <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={12} /></button>
               </div>
             </aside>
           )}
@@ -601,12 +610,14 @@ export default function DocumentsLedger({
           {docs.length > 0 && docs.map(renderMobileCard)}
         </div>
         {mobileDetailDoc ? (
-          <div className="documents-mobile-detail-scrim" onClick={() => setMobileDetailId(null)}>
+          <div className="documents-mobile-detail-scrim" onClick={closeMobileDetail}>
             <section
+              ref={mobileDetailModalRef}
               className="documents-mobile-detail-modal slim-scroll"
               role="dialog"
               aria-modal="true"
               aria-label={`${mobileDetailDoc.name} details`}
+              tabIndex={-1}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="documents-mobile-detail-head">
@@ -614,7 +625,7 @@ export default function DocumentsLedger({
                   <span>Document details</span>
                   <strong>{mobileDetailDoc.name}</strong>
                 </div>
-                <button type="button" title="Close details" aria-label="Close details" onClick={() => setMobileDetailId(null)} style={closeButtonStyle()}><Icon name="close" size={13} /></button>
+                <button ref={mobileDetailCloseRef} type="button" title="Close details" aria-label="Close details" onClick={closeMobileDetail} style={closeButtonStyle()}><Icon name="close" size={13} /></button>
               </div>
               <div className="documents-mobile-detail-meta">
                 {[mobileDetailDoc.project === 'Sandbox' ? null : mobileDetailDoc.project, mobileDetailDoc.size, mobileDetailDoc.pages != null ? `${mobileDetailDoc.pages} pages` : null].filter(Boolean).join(' · ')}
@@ -653,7 +664,17 @@ export default function DocumentsLedger({
       onClose={() => setMoveOpen(false)}
       projects={projects}
       count={selDocs.size}
-      onConfirm={(destId, mode) => { onMoveCopy && onMoveCopy(selectedRaw(), destId, mode); clearSel(); }}
+      onConfirm={async (destId, mode) => {
+        await onMoveCopy?.(selectedRaw(), destId, mode);
+        clearSel();
+      }}
+    />
+    <RenameModal
+      open={!!renameTarget}
+      onClose={() => setRenameTarget(null)}
+      title="Rename document"
+      initialName={renameTarget?.name || ''}
+      onConfirm={(name) => onRename?.(renameTarget, name)}
     />
     {docMenu && (() => {
       const doc = docs.find((d) => d.id === docMenu.id);
@@ -666,6 +687,7 @@ export default function DocumentsLedger({
           onClose={() => setDocMenu(null)}
           items={[
             { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },
+            { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },

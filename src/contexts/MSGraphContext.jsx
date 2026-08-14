@@ -10,6 +10,13 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { buildConnectionMarkerRow, buildMainAuthAccount } from '../services/microsoftConnectionMarker';
+import {
+    cleanMicrosoftReturnUrl,
+    microsoftRedirectUriFor,
+    microsoftReturnUrlFor,
+} from '../utils/microsoftOAuthRouting';
+
+export { microsoftRedirectUriFor, microsoftReturnUrlFor } from '../utils/microsoftOAuthRouting';
 
 // Main-process token custody (PLAN.md Amendment 2026-06-08(b) #5): in Electron,
 // sign-in runs in the SYSTEM browser via msal-node in the main process — the only
@@ -27,10 +34,23 @@ const GRAPH_SCOPES = ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All']
 
 // Azure app client ID
 const AZURE_CLIENT_ID = '0da81a9e-2b05-46ee-b826-5efc5114c765';
-const AZURE_REDIRECT_URI = 'http://localhost:5173';
+const MS_OAUTH_REDIRECT_URI_KEY = 'ms_oauth_redirect_uri';
+const MS_OAUTH_RETURN_URL_KEY = 'ms_oauth_return_url';
 const MS_REFRESH_COOLDOWN_MS = 60 * 1000;
 const MS_HARD_REFRESH_BLOCK_MS = 30 * 60 * 1000;
 const MS_REFRESH_BLOCK_UNTIL_KEY = 'ms_refresh_block_until';
+
+const restoreMicrosoftReturnUrl = (returnUrl) => {
+    try {
+        window.history.replaceState(
+            {},
+            document.title,
+            cleanMicrosoftReturnUrl(returnUrl, window.location.origin),
+        );
+    } catch {
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+};
 
 const readRefreshBlockUntil = () => {
     if (typeof window === 'undefined') return 0;
@@ -664,6 +684,8 @@ export const MSGraphProvider = ({ children }) => {
     const clearOAuthSession = useCallback(() => {
         sessionStorage.removeItem('ms_pkce_verifier');
         sessionStorage.removeItem('ms_oauth_state');
+        sessionStorage.removeItem(MS_OAUTH_REDIRECT_URI_KEY);
+        sessionStorage.removeItem(MS_OAUTH_RETURN_URL_KEY);
     }, []);
 
     const completeOAuthLogin = useCallback(async (code, returnedState) => {
@@ -678,7 +700,12 @@ export const MSGraphProvider = ({ children }) => {
             throw new Error('OAuth session expired - please try again');
         }
 
-        // Exchange code for tokens
+        const redirectUri = sessionStorage.getItem(MS_OAUTH_REDIRECT_URI_KEY)
+            || microsoftRedirectUriFor();
+
+        // Exchange code for tokens using the exact redirect URI that started
+        // this PKCE transaction. It can be production /mobile, web root, or a
+        // registered local development origin — never a hardcoded localhost.
         const tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
         const tokenResponse = await fetch(tokenUrl, {
             method: 'POST',
@@ -687,7 +714,7 @@ export const MSGraphProvider = ({ children }) => {
                 client_id: AZURE_CLIENT_ID,
                 scope: [...GRAPH_SCOPES, 'openid', 'profile', 'offline_access'].join(' '),
                 code,
-                redirect_uri: AZURE_REDIRECT_URI,
+                redirect_uri: redirectUri,
                 grant_type: 'authorization_code',
                 code_verifier: codeVerifier,
             }).toString(),
@@ -778,16 +805,19 @@ export const MSGraphProvider = ({ children }) => {
                 .replace(/=+$/, '');
 
             const state = crypto.randomUUID();
+            const redirectUri = microsoftRedirectUriFor();
 
             // Store PKCE verifier for later use
             sessionStorage.setItem('ms_pkce_verifier', codeVerifier);
             sessionStorage.setItem('ms_oauth_state', state);
+            sessionStorage.setItem(MS_OAUTH_REDIRECT_URI_KEY, redirectUri);
+            sessionStorage.setItem(MS_OAUTH_RETURN_URL_KEY, microsoftReturnUrlFor());
 
             // Build authorization URL
             const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize');
             authUrl.searchParams.set('client_id', AZURE_CLIENT_ID);
             authUrl.searchParams.set('response_type', 'code');
-            authUrl.searchParams.set('redirect_uri', AZURE_REDIRECT_URI);
+            authUrl.searchParams.set('redirect_uri', redirectUri);
             authUrl.searchParams.set('scope', [...GRAPH_SCOPES, 'openid', 'profile', 'offline_access'].join(' '));
             authUrl.searchParams.set('response_mode', 'query');
             authUrl.searchParams.set('state', state);
@@ -797,7 +827,7 @@ export const MSGraphProvider = ({ children }) => {
 
             // In Electron, use a dedicated OAuth window so app state (open PDF/export flow) is preserved.
             if (window?.electronAPI?.openOAuthWindow) {
-                const oauthResult = await window.electronAPI.openOAuthWindow(authUrl.toString(), AZURE_REDIRECT_URI);
+                const oauthResult = await window.electronAPI.openOAuthWindow(authUrl.toString(), redirectUri);
                 if (!oauthResult?.success || !oauthResult?.url) {
                     throw new Error(oauthResult?.error || 'Microsoft sign-in was cancelled');
                 }
@@ -838,11 +868,12 @@ export const MSGraphProvider = ({ children }) => {
         const code = urlParams.get('code');
         const state = urlParams.get('state');
         const errorParam = urlParams.get('error');
+        const returnUrl = sessionStorage.getItem(MS_OAUTH_RETURN_URL_KEY) || microsoftReturnUrlFor();
 
         if (errorParam) {
             setError(urlParams.get('error_description') || errorParam);
             clearOAuthSession();
-            window.history.replaceState({}, document.title, window.location.pathname);
+            restoreMicrosoftReturnUrl(returnUrl);
             return false;
         }
 
@@ -858,7 +889,7 @@ export const MSGraphProvider = ({ children }) => {
             return false;
         } finally {
             clearOAuthSession();
-            window.history.replaceState({}, document.title, window.location.pathname);
+            restoreMicrosoftReturnUrl(returnUrl);
             oauthProcessing.current = false;
         }
     }, [clearOAuthSession, completeOAuthLogin]);

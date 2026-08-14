@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { buildBillingReturnUrl, openExternalDestination } from '../utils/accountPlatform';
 
 const StripeCheckout = (props) => {
     const [loading, setLoading] = useState(false);
@@ -21,7 +22,8 @@ const StripeCheckout = (props) => {
             const { data, error } = await supabase.functions.invoke('create-checkout-session', {
                 body: {
                     tier: props.tier || 'pro',
-                    billingPeriod: props.billingPeriod || 'monthly'
+                    billingPeriod: props.billingPeriod || 'monthly',
+                    returnUrl: buildBillingReturnUrl(),
                 }
             });
 
@@ -34,13 +36,7 @@ const StripeCheckout = (props) => {
             }
 
             if (data?.url) {
-                // Use Electron API if available, otherwise open in new tab (for web browser testing)
-                if (window.electronAPI?.openExternal) {
-                    await window.electronAPI.openExternal(data.url);
-                } else {
-                    // Fallback for web browser (non-Electron environment)
-                    window.open(data.url, '_blank');
-                }
+                await openExternalDestination(data.url);
             } else {
                 throw new Error('No checkout URL returned');
             }

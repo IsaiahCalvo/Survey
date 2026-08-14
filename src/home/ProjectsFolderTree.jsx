@@ -12,10 +12,9 @@
    team panel and the "Last edited by" column render the true prototype
    behavior. All fall back gracefully when member data is absent.
 
-   Interaction model: every button and menu is wired to LOCAL React state —
-   there is no backend. New Project / Duplicate / Delete mutate a local copy
-   of the project list; file menu actions (Copy/Paste/Share/Details), Add
-   files, select-mode toolbars and drag-reorder all visibly change state.
+   Interaction model: the component keeps an optimistic local mirror for
+   responsiveness, while host callbacks persist project/document mutations.
+   Standalone preview mode falls back to local-only behavior.
    The per-project "more" menu and the file-row "more" menu are rendered as
    fixed-position popups via createPortal to document.body, anchored to the
    trigger button's bounding rect — so no parent's overflow:hidden/auto can
@@ -24,6 +23,7 @@
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
@@ -32,6 +32,8 @@ import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
 import { miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
+import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
+import DismissBarrier from '../components/DismissBarrier';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -74,30 +76,39 @@ const shortWhen = (d) => {
 const initialsOf = (name) => (name || '')
   .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
 
+/* Project rows use the same team summary on desktop and mobile. Keeping this
+   shared prevents mobile from substituting file or activity metadata. */
+const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
+  <div
+    className="project-team-summary"
+    aria-label={`${memberIds.length} team ${memberIds.length === 1 ? 'member' : 'members'}`}
+    style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, marginTop: 3 }}
+  >
+    <AvatarStack
+      members={memberIds.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+      size={14}
+    />
+    <span className="mono meta" style={{ fontSize: 9.5 }}>{memberIds.length}</span>
+  </div>
+);
+
 let LOCAL_ID = 1;
 const nextLocalId = () => `local-${Date.now()}-${LOCAL_ID++}`;
-
+const orderByStoredIds = (rows, storedIds = []) => {
+  if (!Array.isArray(storedIds) || storedIds.length === 0) return rows;
+  const rank = new Map(storedIds.map((id, index) => [id, index]));
+  return [...rows].sort((a, b) => {
+    const aRank = rank.has(a.id) ? rank.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bRank = rank.has(b.id) ? rank.get(b.id) : Number.MAX_SAFE_INTEGER;
+    return aRank - bRank;
+  });
+};
 /* Fixed-position popup menu, portalled to <body>.
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
    overflow clipping. `align` decides which corner of the anchor it hangs from. */
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
   const ref = useRef(null);
-
-  useEffect(() => {
-    const onDocDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    // Defer attach so the click that opened the menu doesn't immediately close it.
-    const t = setTimeout(() => {
-      document.addEventListener('mousedown', onDocDown, true);
-      document.addEventListener('keydown', onKey, true);
-    }, 0);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener('mousedown', onDocDown, true);
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [onClose]);
 
   if (!anchorRect) return null;
 
@@ -113,38 +124,41 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
   left = Math.max(8, Math.min(left, window.innerWidth - minWidth - 8));
 
   return createPortal(
-    <div
-      ref={ref}
-      role="menu"
-      style={{
-        position: 'fixed', top, left, zIndex: 4000,
-        background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
-        padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-      }}
-    >
-      {items.map((it) => (
-        <button
-          key={it.label}
-          role="menuitem"
-          disabled={it.disabled}
-          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-            background: 'transparent', border: 0,
-            color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
-            padding: '7px 10px', fontSize: 12, borderRadius: 4,
-            cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          {it.iconNode
-            ? it.iconNode
-            : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
-          {it.label}
-        </button>
-      ))}
-    </div>,
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        role="menu"
+        style={{
+          position: 'fixed', top, left, zIndex: 4000,
+          background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
+          padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+        }}
+      >
+        {items.map((it) => (
+          <button
+            key={it.label}
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+              background: 'transparent', border: 0,
+              color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
+              padding: '7px 10px', fontSize: 12, borderRadius: 4,
+              cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            {it.iconNode
+              ? it.iconNode
+              : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>,
     document.body,
   );
 }
@@ -159,8 +173,14 @@ export default function ProjectsFolderTree({
   onNav,
   onOpenDocument,
   onCreateProject,
+  onRenameProject,
   onUpload,
   onDeleteProjects,
+  onDuplicateProjects,
+  onDuplicateDocuments,
+  onMoveCopyDocuments,
+  projectPreferences = {},
+  onProjectPreferencesChange,
   onDeleteDocuments,
   onLockDocument,
   onShare,
@@ -169,17 +189,18 @@ export default function ProjectsFolderTree({
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
 
-  // Local, mutable copy of the project list. Seeded from the `projects` prop
-  // and re-synced when the prop changes; New Project / Duplicate / Delete /
-  // rename / reorder all mutate THIS list so the UI visibly responds with no
-  // backend. `localProjects` is the single source of truth for rendering.
+  // Optimistic project mirror, reconciled from durable host data and the
+  // user's persisted display order.
   const [localProjects, setLocalProjects] = useState(projects);
-  useEffect(() => { setLocalProjects(projects); }, [projects]);
+  useEffect(() => {
+    setLocalProjects(orderByStoredIds(projects, projectPreferences.projectOrder));
+  }, [projects, projectPreferences.projectOrder]);
 
-  // Local, mutable copy of documents — Add files / file duplicate / file
-  // delete / file reorder mutate this so file rows visibly change.
+  // Optimistic document mirror, reconciled from durable host data/order.
   const [localDocs, setLocalDocs] = useState(documents);
-  useEffect(() => { setLocalDocs(documents); }, [documents]);
+  useEffect(() => {
+    setLocalDocs(orderDocumentsByProject(documents, projectPreferences.documentOrderByProject));
+  }, [documents, projectPreferences.documentOrderByProject]);
 
   const [openId, setOpenId] = useState(projects[0]?.id ?? null);
   const [mobileProjectLayout, setMobileProjectLayout] = useState('drill');
@@ -211,14 +232,15 @@ export default function ProjectsFolderTree({
   // header "Manage Team" button and the per-project menu's "Manage project".
   const [teamModalProject, setTeamModalProject] = useState(null);
 
-  // Pinned-project ids. A pinned project sorts to the TOP of the left list
-  // and shows a pin icon in place of its drag grabber. Local-only state.
-  const [pinnedIds, setPinnedIds] = useState(() => new Set());
-  const togglePin = useCallback((id) => setPinnedIds((prev) => {
-    const next = new Set(prev);
+  // Project ordering/pins are user preferences (persisted by the host).
+  const [pinnedIds, setPinnedIds] = useState(() => new Set(projectPreferences.pinnedIds || []));
+  useEffect(() => setPinnedIds(new Set(projectPreferences.pinnedIds || [])), [projectPreferences.pinnedIds]);
+  const togglePin = useCallback((id) => {
+    const next = new Set(pinnedIds);
     next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  }), []);
+    setPinnedIds(next);
+    onProjectPreferencesChange?.({ pinnedIds: [...next] });
+  }, [pinnedIds, onProjectPreferencesChange]);
 
   // Hidden <input type="file"> for the real OS file picker. Add files /
   // Upload files programmatically .click() this; the picked File objects are
@@ -278,6 +300,19 @@ export default function ProjectsFolderTree({
   const mobileDrillProject = mobileDrillOpenId
     ? filtered.find((p) => p.id === mobileDrillOpenId) || null
     : null;
+  const mobileSwipeSurfaceRef = useRef(null);
+  const closeMobileProject = useCallback(() => {
+    setMobileDrillOpenId(null);
+    setFileMenu(null);
+    setFileSelect(false);
+    setFileSearch('');
+    setSelFiles(new Set());
+  }, []);
+  const captureMobileProjectList = useMobileEdgeSwipeBack({
+    enabled: Boolean(mobileDrillProject) && !teamModalProject,
+    onBack: closeMobileProject,
+    surfaceRef: mobileSwipeSurfaceRef,
+  });
   const mobileDrillAllFiles = useMemo(
     () => (mobileDrillProject ? localDocs.filter((d) => d.project_id === mobileDrillProject.id) : []),
     [localDocs, mobileDrillProject],
@@ -453,7 +488,13 @@ export default function ProjectsFolderTree({
     setOpenId(id);
   }, [onCreateProject, localProjects.length, user]);
 
-  const duplicateProjects = useCallback((ids) => {
+  const duplicateProjects = useCallback(async (ids) => {
+    const targets = pickByIds(localProjects, ids);
+    if (onDuplicateProjects && targets.length > 0) {
+      await onDuplicateProjects(targets);
+      setSelProj(new Set());
+      return;
+    }
     setLocalProjects((prev) => {
       const out = [...prev];
       ids.forEach((id) => {
@@ -463,7 +504,7 @@ export default function ProjectsFolderTree({
       });
       return out;
     });
-  }, []);
+  }, [localProjects, onDuplicateProjects]);
 
   const deleteProjects = useCallback(async (ids) => {
     const set = new Set(ids);
@@ -478,24 +519,24 @@ export default function ProjectsFolderTree({
   }, [localProjects, onDeleteProjects]);
 
   const renameProject = useCallback((id, name) => {
+    const project = localProjects.find((item) => item.id === id);
     setLocalProjects((prev) => prev.map((p) => (
       p.id === id ? { ...p, name, updated_at: new Date().toISOString() } : p
     )));
-  }, []);
+    if (project && onRenameProject) void onRenameProject(project, name);
+  }, [localProjects, onRenameProject]);
 
   const reorderProjects = useCallback((fromId, toId) => {
     if (fromId == null || toId == null || fromId === toId) return;
-    setLocalProjects((prev) => {
-      // `filtered` may be a search subset — reorder by the actual project ids.
-      const out = [...prev];
-      const fi = out.findIndex((p) => p.id === fromId);
-      const ti = out.findIndex((p) => p.id === toId);
-      if (fi < 0 || ti < 0) return prev;
-      const [moved] = out.splice(fi, 1);
-      out.splice(ti, 0, moved);
-      return out;
-    });
-  }, []);
+    const out = [...localProjects];
+    const fi = out.findIndex((p) => p.id === fromId);
+    const ti = out.findIndex((p) => p.id === toId);
+    if (fi < 0 || ti < 0) return;
+    const [moved] = out.splice(fi, 1);
+    out.splice(ti, 0, moved);
+    setLocalProjects(out);
+    onProjectPreferencesChange?.({ projectOrder: out.map((project) => project.id) });
+  }, [localProjects, onProjectPreferencesChange]);
 
   /* ---- Document mutations (local state) -------------------------------- */
 
@@ -538,12 +579,20 @@ export default function ProjectsFolderTree({
     setLocalDocs((prev) => [...prev, ...docs]);
   }, [localProjects, user]);
 
-  const duplicateFiles = useCallback((docIds) => {
+  const duplicateFiles = useCallback(async (docIds) => {
     if (!open) return;
-    const clones = pickByIds(openFiles, docIds)
-      .map((f) => ({ ...f, id: nextLocalId(), name: `${f.name} (copy)`, updated_at: new Date().toISOString() }));
+    const targets = pickByIds(openFiles, docIds);
+    if (onDuplicateDocuments && targets.length > 0) {
+      await onDuplicateDocuments(targets, open.id);
+      setSelFiles(new Set());
+      return;
+    }
+    const clones = targets.map((file) => {
+      const cloneId = nextLocalId();
+      return { ...file, id: cloneId, name: `${file.name} (copy)`, updated_at: new Date().toISOString() };
+    });
     if (clones.length) setLocalDocs((prev) => [...prev, ...clones]);
-  }, [open, openFiles]);
+  }, [open, openFiles, onDuplicateDocuments]);
 
   const deleteFiles = useCallback((docIds) => {
     const targets = pickByIds(openFiles, docIds);
@@ -564,30 +613,38 @@ export default function ProjectsFolderTree({
 
   const reorderFiles = useCallback((fromId, toId) => {
     if (fromId == null || toId == null || fromId === toId || !open) return;
-    setLocalDocs((prev) => {
-      // Split docs into this project's slice (in display order) and the rest,
-      // reorder the slice, then stitch back together.
-      const slice = [];
-      const rest = [];
-      prev.forEach((d) => { (d.project_id === open.id ? slice : rest).push(d); });
-      const from = slice.findIndex((d) => d.id === fromId);
-      const to = slice.findIndex((d) => d.id === toId);
-      if (from < 0 || to < 0) return prev;
-      const [moved] = slice.splice(from, 1);
-      slice.splice(to, 0, moved);
-      return [...rest, ...slice];
-    });
-  }, [open]);
+    const slice = localDocs.filter((document) => document.project_id === open.id);
+    const rest = localDocs.filter((document) => document.project_id !== open.id);
+    const from = slice.findIndex((document) => document.id === fromId);
+    const to = slice.findIndex((document) => document.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = slice.splice(from, 1);
+    slice.splice(to, 0, moved);
+    setLocalDocs([...rest, ...slice]);
+    onProjectPreferencesChange?.((currentPreferences) => (
+      mergeProjectDocumentOrder(
+        currentPreferences,
+        open.id,
+        slice.map((document) => document.id),
+      )
+    ));
+  }, [localDocs, open, onProjectPreferencesChange]);
 
   // Move or copy the given document ids to a destination project. 'move'
   // re-parents the originals; 'copy' clones them into the destination and
   // leaves the originals in place. Ids are resolved against the OPEN
   // project's current files — a stale id (doc deleted/moved meanwhile) is a
   // silent no-op, never a wrong target.
-  const moveCopyFiles = useCallback((docIds, destId, mode) => {
+  const moveCopyFiles = useCallback(async (docIds, destId, mode) => {
     if (!open || destId == null) return;
-    const ids = new Set(pickByIds(openFiles, docIds).map((d) => d.id));
+    const targets = pickByIds(openFiles, docIds);
+    const ids = new Set(targets.map((d) => d.id));
     if (ids.size === 0) return;
+    if (onMoveCopyDocuments) {
+      await onMoveCopyDocuments(targets, destId, mode);
+      setSelFiles(new Set());
+      return;
+    }
     setLocalDocs((prev) => {
       if (mode === 'copy') {
         const clones = prev
@@ -605,33 +662,31 @@ export default function ProjectsFolderTree({
       ));
     });
     setSelFiles(new Set());
-  }, [open, openFiles]);
+  }, [open, openFiles, onMoveCopyDocuments]);
 
   const copyFile = useCallback((f) => { if (f) setClipboard(f); }, []);
-  const pasteFile = useCallback(() => {
+  const pasteFile = useCallback(async () => {
     if (!clipboard || !open) return;
+    if (onDuplicateDocuments) {
+      await onDuplicateDocuments([clipboard], open.id);
+      return;
+    }
     setLocalDocs((prev) => [
       ...prev,
       { ...clipboard, id: nextLocalId(), project_id: open.id, name: `${clipboard.name} (copy)`, updated_at: new Date().toISOString() },
     ]);
-  }, [clipboard, open]);
+  }, [clipboard, open, onDuplicateDocuments]);
 
   /* ---- Render ---------------------------------------------------------- */
 
   const actions = (
     <>
-      <div className={`projects-mobile-search-actions ${mobileDrillProject ? 'with-back' : 'with-create'}`}>
+      <div className={`projects-mobile-search-actions hub-mobile-search-actions ${mobileDrillProject ? 'with-back' : 'with-create'}`}>
         {mobileDrillProject ? (
           <button
             type="button"
             className="projects-mobile-back-button"
-            onClick={() => {
-              setMobileDrillOpenId(null);
-              setFileMenu(null);
-              setFileSelect(false);
-              setFileSearch('');
-              setSelFiles(new Set());
-            }}
+            onClick={closeMobileProject}
           >
             <span className="projects-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Projects
           </button>
@@ -643,7 +698,7 @@ export default function ProjectsFolderTree({
           onChange={mobileDrillProject ? setFileSearch : setSearch}
         />
         {!mobileDrillProject ? (
-          <button className="btn primary projects-mobile-create-button" onClick={handleNewProject}>
+          <button className="btn primary projects-mobile-create-button hub-mobile-primary-action" onClick={handleNewProject}>
             <Icon name="plus" size={12} />New project
           </button>
         ) : null}
@@ -656,6 +711,7 @@ export default function ProjectsFolderTree({
   const mobileProjectActions = (
     <div className="projects-mobile-select-row mobile-header-select-row">
       <button
+        data-testid="project-select-toggle"
         className="mobile-header-select-button"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
       >
@@ -681,6 +737,7 @@ export default function ProjectsFolderTree({
               title="Share" aria-label="Share"
             ><Icon name="share" size={12} /></button>
             <button
+              data-testid="delete-selected-projects"
               disabled={!selCount}
               onClick={() => { void deleteProjects([...selProj]); }}
               style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
@@ -765,6 +822,7 @@ export default function ProjectsFolderTree({
     return (
       <div
         key={`${keyPrefix}-${f.id}`}
+        data-document-id={f.id}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
@@ -806,6 +864,7 @@ export default function ProjectsFolderTree({
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
+      mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
     >
       <div className="projects-tab-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <div className="projects-desktop-layout" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, height: '100%', minHeight: 0 }}>
@@ -821,6 +880,7 @@ export default function ProjectsFolderTree({
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
               <button
+                data-testid="project-select-toggle"
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
                 style={miniSelectButtonStyle()}
               >
@@ -852,6 +912,7 @@ export default function ProjectsFolderTree({
                   ><Icon name="share" size={11} /></button>
                   {/* Delete — removes each selected project and lets the host persist it when wired. */}
                   <button
+                    data-testid="delete-selected-projects"
                     disabled={!selCount}
                     onClick={() => { void deleteProjects([...selProj]); }}
                     style={miniButtonStyle({ disabled: !selCount, danger: true, iconOnly: true })}
@@ -881,6 +942,7 @@ export default function ProjectsFolderTree({
                   {({ attributes, listeners, isDragging }) => (
                   <div
                     data-drag-rearrange-row
+                    data-project-id={p.id}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
@@ -914,13 +976,7 @@ export default function ProjectsFolderTree({
                       {/* Owner-avatar stack (first 3 team members) + member
                           count. Every project shows at least the owner glyph —
                           ids are resolved to real initials, never shown raw. */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <AvatarStack
-                          members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
-                          size={14}
-                        />
-                        <span className="mono meta" style={{ fontSize: 9.5 }}>{projMembers.length}</span>
-                      </div>
+                      <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                     </div>
                     {jobsEdit ? (
                       <span
@@ -1082,6 +1138,7 @@ export default function ProjectsFolderTree({
                             {({ attributes, listeners, isDragging }) => (
                           <div
                             data-drag-rearrange-row
+                            data-document-id={f.id}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
@@ -1225,7 +1282,7 @@ export default function ProjectsFolderTree({
                     <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
                   <button className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                  <button className="btn" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                  <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
                 </div>
                 <div className="projects-mobile-file-list">
                   {mobileDrillFiles.length === 0 ? (
@@ -1258,16 +1315,17 @@ export default function ProjectsFolderTree({
               </>
             ) : (
               <>
-                <div className="projects-mobile-browser-label">Project folders</div>
                 <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
                   {filtered.map((p) => {
                     const isSel = selProj.has(p.id);
                     const isPinned = pinnedIds.has(p.id);
+                    const projMembers = projectTeam(p);
                     return (
                       <SortableRearrangeRow key={`drill-folder-${p.id}`} id={p.id}>
                         {({ attributes, listeners, isDragging }) => (
                           <div
                             data-drag-rearrange-row
+                            data-project-id={p.id}
                             role="button"
                             tabIndex={0}
                             className="projects-mobile-folder-row drill reorderable"
@@ -1276,6 +1334,7 @@ export default function ProjectsFolderTree({
                                 toggleProjSel(p.id);
                                 return;
                               }
+                              captureMobileProjectList();
                               setOpenId(p.id);
                               setMobileDrillOpenId(p.id);
                               setFileSearch('');
@@ -1300,10 +1359,9 @@ export default function ProjectsFolderTree({
                                 style={{ width: 24, height: 24 }}
                               />
                             )}
-                            <span className="projects-mobile-folder-glyph"><Icon name="folder" size={17} /></span>
                             <span className="projects-mobile-folder-copy">
                               <strong>{p.name}</strong>
-                              <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
+                              <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                             </span>
                             {jobsEdit ? (
                               <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
@@ -1924,7 +1982,7 @@ export default function ProjectsFolderTree({
         onClose={() => setMoveOpen(false)}
         projects={localProjects}
         count={pickByIds(openFiles, moveIds).length}
-        onConfirm={(destId, mode) => { moveCopyFiles(moveIds, destId, mode); }}
+        onConfirm={(destId, mode) => moveCopyFiles(moveIds, destId, mode)}
       />
     </HubShell>
   );

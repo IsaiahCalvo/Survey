@@ -25,6 +25,7 @@ import { acceptDocumentInvite } from '../services/documentInviteService';
 import { acceptProjectInvite } from '../services/projectInviteService';
 import { acceptTemplateInvite } from '../services/templateInviteService';
 import { supabase } from '../supabaseClient';
+import { buildAppDestination } from '../utils/accountPlatform';
 
 const PENDING_KEY = 'kal31_pending_invite_token';
 
@@ -49,7 +50,7 @@ function getTokenFromPath() {
 function goHome() {
   if (typeof window !== 'undefined') {
     try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
-    window.location.assign('/');
+    window.location.assign(buildAppDestination());
   }
 }
 
@@ -172,7 +173,7 @@ export default function InviteAcceptPage() {
     if (kindNoun === 'document' && result?.documentId) {
       if (typeof window !== 'undefined') {
         // App.jsx reads ?docId= for direct-open. Fall back to home.
-        window.location.assign(`/?docId=${encodeURIComponent(result.documentId)}`);
+        window.location.assign(buildAppDestination({ params: { docId: result.documentId } }));
       }
       return;
     }
@@ -191,7 +192,7 @@ export default function InviteAcceptPage() {
     // If the app doesn't honor that query, simply reload so the AuthProvider
     // re-evaluates and the standard sign-in surface shows.
     if (typeof window !== 'undefined') {
-      window.location.assign(`/?signIn=1&invite=${encodeURIComponent(token || '')}`);
+      window.location.assign(buildAppDestination({ params: { signIn: '1', invite: token || '' } }));
     }
   };
 

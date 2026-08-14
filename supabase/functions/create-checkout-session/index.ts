@@ -1,6 +1,9 @@
 
 import Stripe from "npm:stripe@20.4.1";
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { resolveBillingReturnUrl, withBillingResult } from '../_shared/billingReturn.ts';
+import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
+import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -54,7 +57,7 @@ Deno.serve(async (req) => {
         }
 
         // Parse request body
-        const { tier = 'pro', billingPeriod = 'monthly' } = await req.json();
+        const { tier = 'pro', billingPeriod = 'monthly', returnUrl } = await req.json();
 
         // Validate tier
         if (!['pro', 'enterprise'].includes(tier)) {
@@ -80,33 +83,42 @@ Deno.serve(async (req) => {
         }
 
         // Check if user already has a Stripe customer ID
-        const { data: subscription } = await supabase
+        const { data: subscription, error: subscriptionError } = await supabase
             .from('user_subscriptions')
             .select('stripe_customer_id')
             .eq('user_id', user.id)
-            .single();
+            .maybeSingle();
+        if (subscriptionError) throw subscriptionError;
 
-        let customerId = subscription?.stripe_customer_id;
-
-        // Create Stripe customer if doesn't exist
-        if (!customerId) {
-            const customer = await stripe.customers.create({
+        const customerId = await ensurePersistedStripeCustomer({
+            existingCustomerId: subscription?.stripe_customer_id,
+            createCustomer: () => stripe.customers.create({
                 email: user.email,
                 metadata: {
                     supabase_user_id: user.id,
                 },
-            });
-            customerId = customer.id;
+            }),
+            persistCandidate: async (candidateId) => {
+                const { error } = await supabase
+                    .from('user_subscriptions')
+                    .update({ stripe_customer_id: candidateId })
+                    .eq('user_id', user.id)
+                    .is('stripe_customer_id', null);
+                if (error) throw error;
+            },
+            readAuthoritative: async () => {
+                const { data, error } = await supabase
+                    .from('user_subscriptions')
+                    .select('stripe_customer_id')
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+                if (error) throw error;
+                return data?.stripe_customer_id || null;
+            },
+            removeCustomer: (candidateId) => deleteStripeCustomer(stripe, candidateId),
+        });
 
-            // Update user_subscriptions with customer ID
-            await supabase
-                .from('user_subscriptions')
-                .update({ stripe_customer_id: customerId })
-                .eq('user_id', user.id);
-        }
-
-        // Get origin for redirect URLs
-        const origin = req.headers.get('origin') || 'http://localhost:5173';
+        const billingReturnUrl = resolveBillingReturnUrl(returnUrl, req.headers.get('origin'));
 
         // Create checkout session
         const sessionParams: Stripe.Checkout.SessionCreateParams = {
@@ -119,8 +131,8 @@ Deno.serve(async (req) => {
                 },
             ],
             mode: 'subscription',
-            success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/pricing`,
+            success_url: withBillingResult(billingReturnUrl, 'success'),
+            cancel_url: withBillingResult(billingReturnUrl, 'cancelled'),
             metadata: {
                 user_id: user.id,
                 tier: tier,

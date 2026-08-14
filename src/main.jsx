@@ -2,6 +2,9 @@
 import './utils/randomUUIDPolyfill';
 import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
+import { installSurveyAnalytics } from './utils/surveyAnalytics';
+
+installSurveyAnalytics();
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
 // new version deployed while this tab was open, so the old hashed chunk is
@@ -114,6 +117,24 @@ if (typeof window !== 'undefined') {
   console.log = (...args) => capture('', _log, args);
   console.warn = (...args) => capture('console.warn @ ', _warn, args);
   console.error = (...args) => capture('console.error @ ', _error, args);
+})();
+
+// Build identity belongs in console/save logs, never in product chrome. This
+// runs before route selection so desktop, web, Expo, Capacitor, and dev-only
+// harness routes all report the exact build they loaded.
+(() => {
+  const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown';
+  const devStamp = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : '';
+  if (devStamp) {
+    console.log('[Survey build]', { version, runtime: 'dev-server', build: devStamp });
+    return;
+  }
+
+  const releaseUrl = new URL('release.json', document.baseURI).href;
+  fetch(releaseUrl, { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+    .then((release) => console.log('[Survey build]', { version, runtime: 'release', ...release }))
+    .catch((error) => console.log('[Survey build]', { version, runtime: 'release', marker: 'unavailable', error: error.message }));
 })();
 
 // BULLETPROOF Cmd+Shift+L (2026-05-03) — capture-phase, install-once,
@@ -375,6 +396,13 @@ if (import.meta.env.DEV) {
     devRouteActive = true;
     import('./prototype/AtomicEraseHarness.jsx').then(({ default: AtomicEraseHarness }) => {
       createRoot(document.getElementById('root')).render(<AtomicEraseHarness />);
+    });
+  }
+  const mobileTextFormattingHarness = params.get('mobileTextFormattingHarness');
+  if (!devRouteActive && mobileTextFormattingHarness) {
+    devRouteActive = true;
+    import('./dev/MobileTextFormattingHarness').then(({ default: MobileTextFormattingHarness }) => {
+      createRoot(document.getElementById('root')).render(<MobileTextFormattingHarness />);
     });
   }
   const testPdf = params.get('testPdf');

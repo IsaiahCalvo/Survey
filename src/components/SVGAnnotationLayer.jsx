@@ -2505,6 +2505,15 @@ const SVGAnnotationLayer = memo(({
     surveyMarkerDragRef.current = null;
   }, [isSelectTool]);
 
+  const deleteSelectedSurveyMarker = useCallback(() => {
+    if (!selectedSurveyMarkerId) return;
+    onDeleteSurveyMarker?.(selectedSurveyMarkerId);
+    setSelectedSurveyMarkerId(null);
+    setHoveredSurveyMarkerId(null);
+    setSurveyMarkerPreviewBounds(null);
+    surveyMarkerDragRef.current = null;
+  }, [onDeleteSurveyMarker, selectedSurveyMarkerId]);
+
   useEffect(() => {
     if (!isSelectTool || !selectedSurveyMarkerId) return;
 
@@ -2521,16 +2530,12 @@ const SVGAnnotationLayer = memo(({
 
       e.preventDefault();
       e.stopPropagation();
-      onDeleteSurveyMarker?.(selectedSurveyMarkerId);
-      setSelectedSurveyMarkerId(null);
-      setHoveredSurveyMarkerId(null);
-      setSurveyMarkerPreviewBounds(null);
-      surveyMarkerDragRef.current = null;
+      deleteSelectedSurveyMarker();
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isSelectTool, onDeleteSurveyMarker, selectedSurveyMarkerId]);
+  }, [deleteSelectedSurveyMarker, isSelectTool, selectedSurveyMarkerId]);
 
   useLayoutEffect(() => {
     if (!pendingSurveyMarkerSelection) return;
@@ -2830,6 +2835,7 @@ const SVGAnnotationLayer = memo(({
           />
         )}
         <rect
+          data-survey-marker-hit-target="true"
           x={bbox.left}
           y={bbox.top}
           width={Math.max(bbox.width, 10)}
@@ -2894,6 +2900,27 @@ const SVGAnnotationLayer = memo(({
       angle: preview?.angle ?? selectedSurveyMarkerEntry.bbox.angle,
     });
   }, [selectedSurveyMarkerEntry, surveyMarkerPreviewBounds]);
+
+  const selectedSurveyMarkerDeleteBounds = useMemo(() => {
+    if (!selectedSurveyMarkerRotationBounds) return null;
+    // inverseScale is derived from the SVG element's measured client width,
+    // keeping this touch target 76x48 CSS px without coordinating zoom in JS.
+    const controlWidth = 76 * inverseScale;
+    // Four-pixel safety margin keeps the measured target >=44px after SVG
+    // subpixel rounding on high-DPR mobile viewports.
+    const controlHeight = 48 * inverseScale;
+    const gap = 8 * inverseScale;
+    const marker = selectedSurveyMarkerRotationBounds;
+    const preferredX = marker.x + marker.width + gap;
+    const preferredY = marker.y - controlHeight - gap;
+    const fallbackY = marker.y + marker.height + gap;
+    return {
+      x: Math.max(0, Math.min(width - controlWidth, preferredX)),
+      y: Math.max(0, Math.min(height - controlHeight, preferredY >= 0 ? preferredY : fallbackY)),
+      width: controlWidth,
+      height: controlHeight,
+    };
+  }, [height, inverseScale, selectedSurveyMarkerRotationBounds, width]);
 
   const rotationInputAnnotationIndex = selectedSurveyMarkerRotationBounds
     ? `survey:${selectedSurveyMarkerId}`
@@ -4734,6 +4761,53 @@ const SVGAnnotationLayer = memo(({
       {surveyMarkerElements.length > 0 && (
         <g className="survey-markers" style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}>
           {surveyMarkerElements.map(renderSurveyMarkerEntry)}
+        </g>
+      )}
+      {isSelectTool && selectedSurveyMarkerDeleteBounds && typeof onDeleteSurveyMarker === 'function' && (
+        <g
+          className="survey-marker-touch-delete"
+          role="button"
+          aria-label="Delete Survey Marker"
+          tabIndex={0}
+          transform={`translate(${selectedSurveyMarkerDeleteBounds.x} ${selectedSurveyMarkerDeleteBounds.y})`}
+          pointerEvents="all"
+          style={{ cursor: 'pointer' }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => {
+            // One pointer release owns touch/mouse activation. Avoid also
+            // handling the synthetic click a touch release may emit.
+            e.preventDefault();
+            e.stopPropagation();
+            deleteSelectedSurveyMarker();
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            e.stopPropagation();
+            deleteSelectedSurveyMarker();
+          }}
+        >
+          <rect
+            width={selectedSurveyMarkerDeleteBounds.width}
+            height={selectedSurveyMarkerDeleteBounds.height}
+            rx={8 * inverseScale}
+            fill="#6f3037"
+            stroke="#8c3a42"
+            strokeWidth={inverseScale}
+          />
+          <text
+            x={selectedSurveyMarkerDeleteBounds.width / 2}
+            y={selectedSurveyMarkerDeleteBounds.height / 2}
+            fill="#fff"
+            fontFamily="Helvetica"
+            fontSize={12 * inverseScale}
+            fontWeight="800"
+            textAnchor="middle"
+            dominantBaseline="central"
+            pointerEvents="none"
+          >
+            Delete
+          </text>
         </g>
       )}
       {filteredCallouts}

@@ -731,7 +731,7 @@ test('the header is built on the Documents / Projects structure', () => {
   // Mobile search row + desktop search in the actions slot.
   assert.match(SCREEN, /<div className="archive-mobile-search-row" ref=\{menuRef\}>/);
   assert.match(SCREEN, /<div className="archive-desktop-search" ref=\{desktopMenuRef\}>/);
-  assert.match(DOCS, /<div className="documents-mobile-search-row"/);
+  assert.match(DOCS, /<div className="documents-mobile-search-actions hub-mobile-search-actions"/);
   assert.match(DOCS, /<div className="documents-desktop-search">/);
   assert.match(PROJECTS, /<div className="projects-desktop-search">/);
 
@@ -897,7 +897,7 @@ test('archived rows leave the Documents, Projects and Templates lists', () => {
   // One filter per live read. `archived` (the Free-tier downgrade flag) and
   // `user_archived_at` (the 30-day Archive) are separate and both survive.
   const filters = DATABASE_HOOKS.match(/\.is\('user_archived_at', null\)/g) || [];
-  assert.equal(filters.length, 4, 'owned documents, collaborator documents, projects, templates');
+  assert.equal(filters.length, 5, 'owned documents, collaborator documents, owned projects, collaborator projects, templates');
   assert.match(DATABASE_HOOKS, /\.eq\('archived', false\)\s*\n[\s\S]{0,400}?\.is\('user_archived_at', null\)/);
 });
 

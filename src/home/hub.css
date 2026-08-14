@@ -65,6 +65,20 @@
 .survey-hub .who { margin-top: auto; display: flex; align-items: center; gap: 7px; padding-top: 10px; border-top: 1px solid var(--ink-500); }
 .survey-hub .who .name { font-size: 11.5px; font-weight: 600; line-height: 1.15; }
 .survey-hub .who .who-meta { font-size: 10px; color: var(--ink-200); }
+.survey-hub .profile-signin {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gold);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.survey-hub .profile-signin:hover { background: rgba(216,168,78,0.1); }
 
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
@@ -73,6 +87,7 @@
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
 .survey-hub .projects-mobile-summary,
 .survey-hub .templates-mobile-summary,
+.survey-hub .documents-mobile-search-actions,
 .survey-hub .projects-mobile-search-actions,
 .survey-hub .templates-mobile-search-actions,
 .survey-hub .templates-mobile-layout {
@@ -405,6 +420,34 @@
   gap: 4px;
 }
 
+/* Keep the first outside press on a real hit target until its click finishes.
+   Removing an overlay on pointer-down can retarget the release to the document
+   or control underneath, recreating the click-through this scrim prevents. */
+.survey-hub .profile-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  display: block;
+  background: transparent;
+  cursor: default;
+}
+
+.survey-hub .profile-menu-popup {
+  z-index: 50;
+}
+
+.survey-hub .profile-menu-build-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--ink-500);
+  padding: 7px 12px;
+  color: var(--ink-300);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .survey-hub .profile-menu-actions > button {
   min-height: 34px;
 }
@@ -457,7 +500,7 @@
 .survey-hub .mobile-home-tabs,
 .survey-hub .mobile-profile,
 .survey-hub .mobile-rail-nav,
-.survey-hub .documents-mobile-search-row,
+.survey-hub .documents-mobile-sort-control,
 .survey-hub .documents-mobile-list,
 .survey-hub .projects-mobile-layout,
 .survey-hub .archive-mobile-search-row,
@@ -616,6 +659,8 @@
   .survey-hub {
     --mobile-header-h: 140px;
     --mobile-tabs-h: calc(56px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    --mobile-list-card-h: 64px;
+    --hub-mobile-primary-action-font-size: 11.5px;
     position: relative;
     width: 100vw;
     min-height: 100dvh;
@@ -653,9 +698,39 @@
     display: block;
   }
 
+  /* Interactive iOS-style edge back. The shared screen surface follows the
+     finger; the shadow makes the outgoing page edge legible over the shell. */
+  .survey-hub .main.mobile-edge-swipe-surface {
+    z-index: 2;
+    background: var(--ink-900);
+    backface-visibility: hidden;
+  }
+
+  .survey-hub .main.mobile-edge-swipe-underlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
+    pointer-events: none;
+    backface-visibility: hidden;
+    will-change: transform, opacity;
+    background: var(--ink-900);
+  }
+
+  .survey-hub .main.mobile-edge-swipe-active,
+  .survey-hub .main.mobile-edge-swipe-settling {
+    box-shadow: -16px 0 30px rgba(0, 0, 0, 0.34);
+  }
+
   .survey-hub .header {
     position: fixed;
-    top: 0;
+    /* Capacitor/plain mobile web fills the screen edge-to-edge, so fixed
+       chrome must clear WebKit's top safe area itself. Expo already pads its
+       WebView natively and is overridden below to avoid double-counting. */
+    top: env(safe-area-inset-top, 0px);
     left: 0;
     right: 0;
     z-index: 90;
@@ -669,6 +744,10 @@
     flex: none;
     background: var(--ink-900);
     border-bottom: 1px solid rgba(42,49,64,0.72);
+  }
+
+  html[data-native-shell="expo"] .survey-hub .header {
+    top: 0;
   }
 
   .survey-hub .header-title-block {
@@ -863,11 +942,10 @@
     width: 100% !important;
   }
 
-  .survey-hub .projects-mobile-search-actions,
-  .survey-hub .templates-mobile-search-actions {
+  .survey-hub .hub-mobile-search-actions {
     display: grid !important;
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 112px;
     gap: 8px;
     width: 100%;
   }
@@ -888,14 +966,79 @@
     padding: 0 9px;
   }
 
+  /* Keep the compact 28px header chrome, while its transparent hit layer is
+     44px tall. Generated content belongs to the button for hit testing, so a
+     tap in the added area activates the same control without shifting rows. */
+  .survey-hub .hub-mobile-primary-action,
+  .survey-hub .projects-mobile-search-actions .projects-mobile-back-button,
+  .survey-hub .templates-mobile-search-actions .templates-mobile-back-button,
+  .survey-hub .mobile-header-select-button,
+  .survey-hub .documents-mobile-filter,
+  .survey-hub .mobile-profile .profile-signin,
+  .survey-hub .templates-mobile-save-row button,
+  .survey-hub .templates-mobile-entities-button,
+  .survey-hub .templates-mobile-section-head button,
+  .survey-hub .templates-mobile-add-line,
+  .survey-hub .templates-mobile-module-group-head button {
+    position: relative;
+  }
+
+  .survey-hub .hub-mobile-primary-action::after,
+  .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
+  .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after,
+  .survey-hub .mobile-header-select-button::after,
+  .survey-hub .documents-mobile-filter::after,
+  .survey-hub .mobile-profile .profile-signin::after,
+  .survey-hub .templates-mobile-save-row button::after,
+  .survey-hub .templates-mobile-entities-button::after,
+  .survey-hub .templates-mobile-section-head button::after,
+  .survey-hub .templates-mobile-add-line::after,
+  .survey-hub .templates-mobile-module-group-head button::after {
+    content: '';
+    position: absolute;
+    inset-block: -8px;
+    inset-inline: 0;
+    z-index: 1;
+    background: transparent;
+    pointer-events: auto;
+  }
+
+  /* Header actions and the lower sort/filter row are only ~38px apart. Keep
+     each target at 44px without letting their transparent hit layers overlap:
+     primary actions grow upward, while the sort control grows downward. */
+  .survey-hub .hub-mobile-primary-action::after,
+  .survey-hub .projects-mobile-search-actions .projects-mobile-back-button::after,
+  .survey-hub .templates-mobile-search-actions .templates-mobile-back-button::after {
+    inset-block: -16px 0;
+  }
+
+  .survey-hub .documents-mobile-filter::after {
+    inset-block: -8px;
+  }
+
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-create-button {
     height: 28px;
-    min-width: 104px;
+    width: 112px;
+    min-width: 112px;
     padding: 0 10px;
-    font-size: 11.5px;
     justify-content: center;
     white-space: nowrap;
+  }
+
+  .survey-hub .hub-mobile-primary-action {
+    width: 112px;
+    min-width: 112px;
+    height: 28px;
+    padding-inline: 10px;
+    font-size: var(--hub-mobile-primary-action-font-size);
+    justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .survey-hub .documents-desktop-upload {
+    display: none;
   }
 
   .survey-hub .actions .btn {
@@ -906,7 +1049,10 @@
   .survey-hub .mobile-header-select-row {
     order: 4;
     width: 100%;
-    height: 28px;
+    height: 44px;
+    margin-block: -8px;
+    padding-block: 8px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -918,6 +1064,7 @@
 
   .survey-hub .mobile-header-select-button {
     height: 28px;
+    min-width: 44px;
     flex: none;
     display: inline-flex;
     align-items: center;
@@ -957,26 +1104,76 @@
     display: none;
   }
 
+  .survey-hub .documents-mobile-select-sort-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 112px;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  .survey-hub .documents-mobile-select-main {
+    min-width: 0;
+    height: 44px;
+    margin-block: -8px;
+    padding-block: 8px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .survey-hub .documents-mobile-select-main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .survey-hub .documents-mobile-sort-control {
+    display: flex;
+    align-items: center;
+    width: 112px;
+    height: 44px;
+    margin-block: -8px;
+    box-sizing: border-box;
+    position: relative;
+  }
+
   .survey-hub .documents-desktop-search,
   .survey-hub .projects-desktop-search,
   .survey-hub .templates-desktop-search {
     display: none;
   }
 
-  .survey-hub .documents-mobile-search-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
-    position: relative;
-    min-width: 0;
-  }
-
   .survey-hub .documents-mobile-filter {
-    min-width: 78px;
-    padding: 5px 8px;
+    width: 112px;
+    min-width: 112px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    justify-content: center;
   }
 
-  .survey-hub .documents-mobile-filter span {
+  .survey-hub .documents-mobile-filter::after {
+    display: none;
+  }
+
+  .survey-hub .documents-mobile-filter-visual {
+    width: 112px;
+    height: 28px;
+    box-sizing: border-box;
+    padding: 5px 10px;
+    border: 1px solid var(--ink-500);
+    border-radius: 6px;
+    background: var(--ink-700);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .survey-hub .documents-mobile-filter-visual span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -986,7 +1183,7 @@
   .survey-hub .documents-mobile-sort-menu {
     position: absolute;
     top: calc(100% + 6px);
-    left: 0;
+    right: 0;
     z-index: 30;
     width: 176px;
     padding: 5px;
@@ -1146,7 +1343,7 @@
     display: block;
     order: 2;
     flex: none;
-    max-width: 46px;
+    max-width: none;
     position: absolute;
     top: 14px;
     right: 14px;
@@ -1160,10 +1357,18 @@
   }
 
   .survey-hub .mobile-profile .who > button {
-    width: 38px !important;
-    height: 38px;
+    width: 44px !important;
+    height: 44px;
     padding: 0 !important;
     justify-content: center;
+  }
+
+  .survey-hub .mobile-profile .who > button.profile-signin {
+    width: auto !important;
+    min-width: 64px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0 12px !important;
   }
 
   .survey-hub .mobile-profile .who > button > div:not(:first-child) {
@@ -1178,6 +1383,9 @@
   }
 
   .survey-hub .mobile-home-tabs {
+    --mobile-tab-safe-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    --mobile-tab-corner-inset: min(8px, max(0px, calc(var(--mobile-tab-safe-bottom) - 10px)));
+    --mobile-tab-lower-offset: min(3px, max(0px, calc(var(--mobile-tab-safe-bottom) - 10px)));
     position: fixed;
     left: 0;
     right: 0;
@@ -1187,17 +1395,19 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 0;
     height: var(--mobile-tabs-h);
-    padding: 4px 0 calc(4px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    padding: 4px
+      max(var(--native-safe-area-right, env(safe-area-inset-right, 0px)), var(--mobile-tab-corner-inset))
+      calc(4px + var(--mobile-tab-safe-bottom) - var(--mobile-tab-lower-offset))
+      max(var(--native-safe-area-left, env(safe-area-inset-left, 0px)), var(--mobile-tab-corner-inset));
     box-sizing: border-box;
-    align-items: center;
+    align-items: end;
     background: #0d0f14;
     border-top: 1px solid var(--ink-500);
     box-shadow: none;
   }
 
   .survey-hub.hub-native-shell-expo .mobile-home-tabs {
-    padding-top: 4px;
-    padding-bottom: calc(4px + var(--native-safe-area-bottom, 0px));
+    --mobile-tab-safe-bottom: var(--native-safe-area-bottom, 10px);
   }
 
   .survey-hub .mobile-home-tabs::before {
@@ -1353,8 +1563,9 @@
     grid-template-columns: 28px minmax(0, 1fr) 52px;
     gap: 10px;
     align-items: center;
-    padding: 10px;
-    min-height: 74px;
+    padding: 4px 10px;
+    height: var(--mobile-list-card-h);
+    min-height: var(--mobile-list-card-h);
   }
 
   .survey-hub .mobile-project-card {
@@ -1455,7 +1666,8 @@
   .survey-hub .projects-mobile-folder-row {
     width: 100%;
     min-width: 0;
-    min-height: 62px;
+    height: var(--mobile-list-card-h);
+    min-height: var(--mobile-list-card-h);
     border: 1px solid var(--ink-500);
     border-radius: 8px;
     background: var(--ink-700);
@@ -1464,7 +1676,7 @@
     grid-template-columns: 34px minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
-    padding: 10px;
+    padding: 4px 10px;
     font: inherit;
     text-align: left;
   }
@@ -1474,7 +1686,7 @@
   }
 
   .survey-hub .projects-mobile-folder-row.reorderable {
-    grid-template-columns: 24px 34px minmax(0, 1fr) 28px;
+    grid-template-columns: 24px minmax(0, 1fr) 28px;
   }
 
   .survey-hub .projects-mobile-folder-row.active,
@@ -1484,8 +1696,8 @@
   }
 
   .survey-hub .projects-mobile-folder-glyph {
-    width: 34px;
-    height: 34px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     display: grid;
     place-items: center;
@@ -1517,6 +1729,13 @@
   .survey-hub .projects-mobile-disclosure {
     color: var(--ink-200);
     font-size: 11px;
+  }
+
+  .survey-hub .projects-mobile-folder-copy small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .survey-hub .projects-mobile-disclosure,
@@ -2129,6 +2348,10 @@
     padding: 0 0 14px;
   }
 
+  .survey-hub .templates-editor-body {
+    padding: 8px 10px 10px !important;
+  }
+
   .survey-hub.hub-mobile-nav-rail .templates-mobile-layout {
     min-height: calc(100dvh - var(--mobile-header-h));
     /* 2026-07-12 (defect #8): var-first inset (Android WebView env()=0). */
@@ -2153,7 +2376,8 @@
   .survey-hub .templates-mobile-row {
     width: 100%;
     min-width: 0;
-    min-height: 74px;
+    height: var(--mobile-list-card-h);
+    min-height: var(--mobile-list-card-h);
     border: 1px solid var(--ink-500);
     border-radius: 8px;
     background: var(--ink-700);
@@ -2162,22 +2386,12 @@
     grid-template-columns: 34px minmax(0, 1fr) 28px;
     gap: 10px;
     align-items: center;
-    padding: 10px;
+    padding: 4px 10px;
     cursor: pointer;
   }
 
   .survey-hub .templates-mobile-row.reorderable {
-    grid-template-columns: 24px 34px minmax(0, 1fr) 28px;
-  }
-
-  .survey-hub .templates-mobile-glyph {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    background: rgba(194,147,230,0.16);
-    color: var(--lilac);
+    grid-template-columns: 24px minmax(0, 1fr) 28px;
   }
 
   .survey-hub .templates-mobile-copy {
@@ -2200,6 +2414,14 @@
   .survey-hub .templates-mobile-module-strip small {
     color: var(--ink-200);
     font-size: 11px;
+  }
+
+  .survey-hub .templates-mobile-copy small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .survey-hub .templates-mobile-swatches {
@@ -2542,7 +2764,11 @@
 
   .survey-hub .templates-mobile-select-inline {
     min-width: 0;
-    min-height: 28px;
+    height: 44px;
+    min-height: 44px;
+    margin-block: -8px;
+    padding-block: 8px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -2570,13 +2796,13 @@
   }
 
   .survey-hub .templates-mobile-category-row {
-    grid-template-columns: 24px 24px minmax(0, 1fr) 28px 20px;
-    min-height: 42px;
+    grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px;
+    min-height: 44px;
   }
 
-  .survey-hub .templates-mobile-category-row > button {
-    width: 24px;
-    height: 24px;
+  .survey-hub .templates-mobile-category-toggle {
+    width: 44px;
+    height: 44px;
     border: 0;
     border-radius: 5px;
     background: transparent;
@@ -2585,12 +2811,15 @@
     place-items: center;
     padding: 0;
     font: inherit;
-    font-size: 21px;
-    font-weight: 800;
+    line-height: 1;
     transform: rotate(0deg);
   }
 
-  .survey-hub .templates-mobile-category-row > button.open {
+  .survey-hub .templates-mobile-category-toggle > svg {
+    display: block;
+  }
+
+  .survey-hub .templates-mobile-category-toggle.open {
     transform: rotate(90deg);
     color: var(--gold);
   }
@@ -2609,15 +2838,15 @@
   }
 
   .survey-hub .templates-mobile-item-row {
-    grid-template-columns: 20px minmax(0, 1fr) 24px;
-    min-height: 34px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    min-height: 44px;
     padding: 6px 0;
     border-top: 1px solid rgba(42,49,64,0.58);
   }
 
   .survey-hub .templates-mobile-item-row > button {
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     border: 0;
     background: transparent;
     color: var(--ink-200);
@@ -2651,9 +2880,9 @@
   }
 
   .survey-hub .templates-mobile-archived > div:not(:first-child) {
-    min-height: 30px;
+    min-height: 44px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 24px;
+    grid-template-columns: minmax(0, 1fr) 44px;
     gap: 8px;
     align-items: center;
     border-top: 1px dashed rgba(42,49,64,0.58);
@@ -2671,8 +2900,8 @@
   }
 
   .survey-hub .templates-mobile-archived button {
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     border: 0;
     background: transparent;
     color: #d95a56;
@@ -2696,8 +2925,25 @@
   }
 
   .survey-hub .templates-mobile-entity-row {
-    grid-template-columns: 24px 22px minmax(0, 1fr) 28px;
+    grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
     min-height: 44px;
+  }
+
+  .survey-hub [data-drag-rearrange-handle] {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .survey-hub button[title="More"] {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  /* Right-edge list columns are visually 28px wide. Center the 44px target
+     on that column so neither side is clipped by the scrollport. */
+  .survey-hub .projects-mobile-folder-row.reorderable > button[title="More"],
+  .survey-hub .templates-mobile-row.reorderable > button[title="More"] {
+    justify-self: center;
   }
 
   .survey-hub .templates-mobile-modal-scrim {
@@ -2710,7 +2956,7 @@
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
     /* 2026-07-12 (demo parity defect #8): var-first inset (Android WebView
        reports env()=0; the native shell publishes the real value). */
@@ -2764,7 +3010,8 @@
   }
 
   .survey-hub .templates-mobile-entity-modal-head button {
-    height: 30px;
+    min-width: 44px;
+    height: 44px;
     border: 1px solid var(--ink-500);
     border-radius: 7px;
     background: var(--ink-700);
@@ -2786,16 +3033,26 @@
   }
 
   .survey-hub .templates-mobile-entity-row > button[title="Edit color"] {
-    width: 20px;
-    height: 20px;
-    border: 1.5px solid currentColor;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
     padding: 0;
   }
 
+  .survey-hub .templates-mobile-entity-row > button[title="Edit color"] > span {
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid var(--entity-border-color, currentColor);
+    border-radius: 50%;
+    background: var(--entity-color, currentColor);
+  }
+
   .survey-hub .templates-mobile-more {
-    width: 28px;
-    height: 28px;
+    width: 44px;
+    height: 44px;
     border: 0;
     border-radius: 6px;
     background: transparent;

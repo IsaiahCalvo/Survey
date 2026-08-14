@@ -84,6 +84,7 @@ import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
 import { normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -207,6 +208,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -270,6 +272,8 @@ import {
   applyRegionMaskToCanvasContext,
   buildOutlinePageLookup,
   categoryExists,
+  cloneMissingTransferCategories,
+  persistTemplateBeforeDocumentMutation,
   clampWheelDelta,
   cloneOverlayRecorderPayload,
   coercePageNumber,
@@ -1039,6 +1043,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pdf-lib rewrite/retry path or Pdfjs render path can't recover.
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [loadRetryToken, setLoadRetryToken] = useState(0);
+  const firstPagePaintAnalyticsRef = useRef({
+    startedAt: 0,
+    byteSizeBucket: 'unknown',
+    reported: true,
+  });
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -1923,8 +1932,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the pdf.js page hosts re-layout — the same contract Pdfjs gets via
   // beginPdfjsScaleConfirmPending. Engine-gated: only runs under pdf.js;
   // under Pdfjs this is never wired (the prop is undefined), so it is inert.
-  const handlePdfjsZoomPhase = useCallback((phase) => {
+  const handlePdfjsZoomPhase = useCallback((phase, payload) => {
     if (phase === 'gesture-start') cancelInitialFitPageRef.current?.();
+    if (
+      phase === 'gesture-start'
+      && (payload?.source === 'pinch' || payload?.source === 'wheel')
+    ) {
+      // A no-op fit command emits no scale commit and can leave its source token
+      // pending. A real user gesture must always override that token so its later
+      // commit is presented and persisted as manual zoom.
+      pdfjsZoomSourceRef.current = ZOOM_MODES.MANUAL;
+    }
     if (false) return;
     // INVARIANT: keep this bump — Canvas tools (Fabric draw/eraser/edit) watch
     // zoomGeneration to auto-commit in-progress work before the host re-layouts.
@@ -7046,9 +7064,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     scheduleTextSearchHighlightRefresh('engine-zoom-commit', 0);
   }, [scheduleTextSearchHighlightRefresh]);
 
-  const handlePdfjsPageRenderComplete = useCallback(() => {
+  const handlePdfjsPageRenderComplete = useCallback((payload) => {
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
+    const paintState = firstPagePaintAnalyticsRef.current;
+    if (payload?.pageNumber !== 1 || paintState.reported || !paintState.startedAt) return;
+    paintState.reported = true;
+    const recordPaint = () => {
+      if (firstPagePaintAnalyticsRef.current !== paintState) return;
+      trackSurveyAnalyticsEvent('survey_pdf_first_page_painted', {
+        byteSizeBucket: paintState.byteSizeBucket,
+        ms: Math.round(performance.now() - paintState.startedAt),
+      });
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(recordPaint);
+    else setTimeout(recordPaint, 0);
   }, [reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsWrapperWheel = useCallback((event) => {
@@ -9809,11 +9839,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       const overlay = attachOverlayToPageDiv(pageNumber);
       const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-      const groupCount = wrapper?.querySelectorAll?.('[data-annotation-index]')?.length ?? 0;
       const isGated = wrapper?.getAttribute?.('data-annotation-hydration-gated') === 'true';
       const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
       const visibleWrapper = !!wrapper && wrapperStyle?.display !== 'none' && wrapperStyle?.visibility !== 'hidden';
-      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && (!visibleWrapper || groupCount === 0));
+      const svgRoot = wrapper?.querySelector?.(`[data-svg-annotation-layer="${pageNumber}"]`) || null;
+      // Raw page objects are not the same as visible SVG groups: imported PDF
+      // appearances, scope filters, and hydration can intentionally produce
+      // zero [data-annotation-index] children. Treating that valid state as a
+      // broken overlay remounted SVGAnnotationLayer every five seconds, which
+      // disconnected an active touch handle and dropped resize/rotation.
+      // Recover only when the owned layer itself is missing or hidden.
+      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && (!visibleWrapper || !svgRoot));
 
       if (!mismatch) {
         annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;
@@ -11063,6 +11099,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handleRequestCalloutEditMode]);
 
+  // Mobile has no reliable browser dblclick gesture. Give line/arrow/counter
+  // selections an explicit touch entry into the existing SVG bbox transform
+  // mode instead of making their resize/rotation chrome desktop-only.
+  const handleEnterBBoxEditFromStrip = useCallback(() => {
+    const sel = selectedToolbarAnnotationRef.current;
+    const annot = sel?.annotation;
+    if (!sel || sel.annotationIndex == null || !annot) return;
+    const type = String(annot.type || '').toLowerCase();
+    const isCounter = annot?.data?.type === 'counter';
+    if (!isCounter && type !== 'line' && type !== 'polygon' && type !== 'polyline') return;
+    setEditingAnnotation({
+      pageNumber: sel.pageNumber,
+      index: sel.annotationIndex,
+      type: annot.type,
+      editType: 'bbox',
+      data: annot,
+    });
+  }, []);
+
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
@@ -11432,6 +11487,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           redoHistoryRef.current = [currentState, ...redoHistoryRef.current].slice(0, 50);
           redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
           setRedoHistory(redoHistoryRef.current);
+          // A new action after Undo must checkpoint the restored state before
+          // clearing Redo. Keeping the pre-undo hash here made that checkpoint
+          // look duplicate, so Survey Marker delete-after-move had no Undo.
+          lastCheckpointHashRef.current = null;
           pushHistoryDebugEvent('legacy_annotation_undo_applied', {
             historySource: shouldScopeCallouts ? 'callout history' : 'legacy history',
             chosenStack: 'legacyUndoHistory',
@@ -11693,6 +11752,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         undoHistoryRef.current = [...undoHistoryRef.current, currentState].slice(-50);
         undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
         setUndoHistory(undoHistoryRef.current);
+        lastCheckpointHashRef.current = null;
         pushHistoryDebugEvent('legacy_annotation_redo_applied', {
           historySource: shouldScopeCallouts ? 'callout history' : 'legacy history',
           chosenStack: 'legacyRedoHistory',
@@ -11858,13 +11918,84 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
 
 
-  // Sidebar handlers — page add / delete / duplicate / reorder / rotate /
-  // mirror / reset / cut-copy-paste / insert-blank. Extracted to the
-  // usePageOperations hook; the four state cells stay here (they are
-  // co-serialized with bookmarks + spaces in the sidebar localStorage
-  // effects, out of this concern) and are passed in. Returned handlers keep
-  // their names so the leftRail publisher + PageAnnotationLayer render sites
-  // below are unchanged.
+  // Page mutations stage one complete physical-page identity graph. The hook
+  // persists the rewritten PDF first; only then does this callback publish the
+  // remapped annotation/sidebar stores together. `_surveyPdfId` stays stable,
+  // so the same-document reload path cannot hydrate the pre-mutation keys.
+  const pageStructureStateRef = useRef(null);
+  pageStructureStateRef.current = {
+    annotationsByPage: annotationsByPageRef.current || {},
+    surveyMarkers: surveyMarkersRef.current || {},
+    annotations: annotations || {},
+    pageNames: pageNames || {},
+    pageTransformations: pageTransformations || {},
+    bookmarks: bookmarks || [],
+    spaces: spacesRef.current || [],
+    regionOverlayDisabled: regionOverlayDisabled || new Map(),
+  };
+  const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
+  const persistPageMutationFile = useCallback((file) => (
+    onUpdatePDFFile?.(file, tabId)
+  ), [onUpdatePDFFile, tabId]);
+  const commitPageStructureState = useCallback((next, operation) => {
+    pageStructureStateRef.current = next;
+    annotationsByPageRef.current = next.annotationsByPage;
+    surveyMarkersRef.current = next.surveyMarkers;
+    spacesRef.current = next.spaces;
+    setAnnotationsByPage(next.annotationsByPage);
+    setSurveyMarkers(next.surveyMarkers);
+    setAnnotations(next.annotations);
+    setPageNames(next.pageNames);
+    setPageTransformations(next.pageTransformations);
+    setBookmarks(next.bookmarks);
+    setSpaces(next.spaces);
+    setRegionOverlayDisabled(next.regionOverlayDisabled);
+    setUndoHistory([]);
+    setRedoHistory([]);
+    clearAnnotationSelectionForContextChange('page-structure-change');
+
+    // Persist synchronously at the commit boundary. React effects retain their
+    // normal backup writes, but a hard reopen immediately after the action sees
+    // the transformed graph rather than racing a later effect.
+    if (pdfId) {
+      saveAnnotationsByPage(pdfId, next.annotationsByPage);
+      saveSurveyMarkers(pdfId, next.surveyMarkers);
+      try {
+        localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
+          pageNames: next.pageNames,
+          bookmarks: next.bookmarks,
+          spaces: next.spaces,
+          activeSpaceId,
+          pageTransformations: next.pageTransformations,
+        }));
+        localStorage.setItem(
+          `regionOverlayStates_${pdfId}`,
+          JSON.stringify(Object.fromEntries(next.regionOverlayDisabled || new Map())),
+        );
+      } catch (error) {
+        console.error('Error committing page mutation metadata:', error);
+      }
+    }
+
+    const pageCountDelta = operation?.type === 'delete'
+      ? -1
+      : ['insert', 'duplicate', 'copy'].includes(operation?.type) ? 1 : 0;
+    setPageNum((current) => pageNumberAfterOperation(
+      current,
+      operation,
+      Math.max(1, Number(numPages || 1) + pageCountDelta),
+    ));
+  }, [
+    activeSpaceId,
+    clearAnnotationSelectionForContextChange,
+    numPages,
+    pdfId,
+    setRegionOverlayDisabled,
+  ]);
+
+  // Sidebar handlers — page add / delete / duplicate / physical reorder /
+  // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
+  // page transformation because PDF pages have no native mirror primitive.
   const {
     handleDuplicatePage,
     handleRenamePage,
@@ -11883,16 +12014,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleInsertBlankPage,
   } = usePageOperations({
     pdfFile,
-    onUpdatePDFFile,
-    pageNames,
+    onUpdatePDFFile: persistPageMutationFile,
+    getPageState: getPageStructureState,
+    commitPageState: commitPageStructureState,
     setPageNames,
     setPageTransformations,
     clipboardPage,
     setClipboardPage,
     clipboardType,
     setClipboardType,
-    pageNum,
-    setPageNum,
   });
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
@@ -18516,11 +18646,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
     transportState: yjsTransportState,
-    isSharedDocument: yjsIsDocShared !== false || (
+    isSharedDocument: yjsIsDocShared === true || (
       yjsDocRole === 'editor'
       && !!documentOwnerId
       && documentOwnerId !== user?.id
-    ),
+    ) ? true : yjsIsDocShared,
   }), [
     cloudSyncStatus,
     documentOwnerId,
@@ -18529,6 +18659,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     yjsIsDocShared,
     yjsTransportState,
   ]);
+  const lastSyncAnalyticsKeyRef = useRef('');
+  useEffect(() => {
+    if (!cloudSyncEnabled) return;
+    const stage = displayedCloudSyncStatus?.stage || 'idle';
+    const errorText = String(displayedCloudSyncStatus?.error || '').toLowerCase();
+    const reason = stage !== 'error'
+      ? stage
+      : /permission|42501|access|authentication/.test(errorText)
+        ? 'access'
+        : /timed[_ -]?out|timeout/.test(errorText)
+          ? 'timeout'
+          : /realtime|network|offline|fetch|connection|websocket|channel/.test(errorText)
+            ? 'connection'
+            : /quota|storage|indexeddb|database/.test(errorText)
+              ? 'storage'
+              : 'unknown';
+    const queueDepth = Math.max(0, Number(cloudSyncQueueSize) || 0);
+    const queueDepthBucket = queueDepth === 0 ? 'none' : queueDepth === 1 ? 'one' : queueDepth <= 5 ? 'two-to-five' : 'over-five';
+    const analyticsKey = `${stage}:${reason}:${queueDepthBucket}:${String(yjsIsDocShared)}`;
+    if (lastSyncAnalyticsKeyRef.current === analyticsKey) return;
+    lastSyncAnalyticsKeyRef.current = analyticsKey;
+    trackSurveyAnalyticsEvent('survey_cloud_sync_status_changed', {
+      stage,
+      reason,
+      queueDepthBucket,
+      sharedState: yjsIsDocShared === true ? 'shared' : yjsIsDocShared === false ? 'private' : 'checking',
+    });
+  }, [cloudSyncEnabled, cloudSyncQueueSize, displayedCloudSyncStatus, yjsIsDocShared]);
   applyDurableEraseHistoryTransitionRef.current = applyDurableEraseHistoryTransition;
   const applyEraseHistoryTransitionFromToast = useCallback((transition) => {
     const mutationId = transition?.mutationId || null;
@@ -20784,6 +20942,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
+      const analyticsLoadStartedAt = performance.now();
+      firstPagePaintAnalyticsRef.current = {
+        startedAt: analyticsLoadStartedAt,
+        byteSizeBucket: 'unknown',
+        reported: false,
+      };
+      trackSurveyAnalyticsEvent('survey_pdf_open_requested', {
+        cloudDocument: Boolean(pdfFile?.id),
+      });
       perfLoad.start(docName);
       // Hoisted so the outer catch's rewrite-and-retry path can reuse
       // bytes we've already fetched instead of re-downloading.
@@ -20816,6 +20983,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
+        const loadedByteLength = arrayBuffer.byteLength;
+        const byteSizeBucket = loadedByteLength < 1024 * 1024
+          ? 'under-1mb'
+          : loadedByteLength < 10 * 1024 * 1024
+            ? '1-10mb'
+            : loadedByteLength < 30 * 1024 * 1024 ? '10-30mb' : 'over-30mb';
+        firstPagePaintAnalyticsRef.current.byteSizeBucket = byteSizeBucket;
+        trackSurveyAnalyticsEvent('survey_pdf_bytes_ready', {
+          byteSizeBucket,
+          ms: Math.round(performance.now() - analyticsLoadStartedAt),
+        });
+
         //   size: arrayBuffer.byteLength,
         //   version: pdfjsLib.version,
         //   workerSrc: pdfjsLib.GlobalWorkerOptions.workerSrc
@@ -20837,17 +21016,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
           // First attempt: standard loading
-          // Clone buffer since PDF.js may detach it when transferring to worker
+          // Cloud/Y.Doc documents never need raw bytes after a successful
+          // parse, so transfer their original buffer to the worker and avoid a
+          // second full-size allocation. Local imports preserve the clone
+          // because their embedded annotations still need the original bytes.
+          const transferCloudBytes = Boolean(pdfFile?.id);
+          const primaryPdfData = transferCloudBytes ? arrayBuffer : arrayBuffer.slice(0);
+          if (transferCloudBytes) arrayBuffer = null;
           const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
-            data: arrayBuffer.slice(0),
+            data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
           pdf = await loadingTask.promise;
           perfLoad.mark(docName, 'PDF.js document parsed');
+          trackSurveyAnalyticsEvent('survey_pdf_parse_completed', {
+            byteSizeBucket,
+            ms: Math.round(performance.now() - analyticsLoadStartedAt),
+            pageCount: pdf.numPages,
+          });
         } catch (firstError) {
           console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
           // Second attempt: recovery mode with lenient options
           try {
+            if (!arrayBuffer && pdfFile.filePath) {
+              const retryBlob = await downloadFromStorage(pdfFile.filePath);
+              if (!retryBlob) throw new Error('Failed to re-download PDF for recovery');
+              arrayBuffer = await retryBlob.arrayBuffer();
+            }
             // Use fresh buffer clone for recovery attempt
             const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false,
               data: arrayBuffer.slice(0),
@@ -20916,9 +21111,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const firstPage = await pdf.getPage(1);
         if (isCancelled) return;
         const firstViewport = firstPage.getViewport({ scale: 1.0 });
+        trackSurveyAnalyticsEvent('survey_pdf_first_page_ready', {
+          byteSizeBucket,
+          ms: Math.round(performance.now() - analyticsLoadStartedAt),
+          pageCount: pdf.numPages,
+        });
         setPageHeights({ 1: firstViewport.height });
         setPageSizes({ 1: { width: firstViewport.width, height: firstViewport.height } });
         setPageObjects({ 1: firstPage });
+        // Cloud/Y.Doc documents do not need the embedded-annotation import
+        // below before they are safe to display. Reveal the parsed first page
+        // now and continue sizing the rest in the background. Local uploads
+        // still wait because their PDF-native annotations must be imported
+        // before first paint to avoid a visible annotation pop-in.
+        if (pdfFile?.id) {
+          loadTrace('first page ready — lifting curtain while remaining pages size');
+          setIsLoadingPDF(false);
+          setMountedPages(new Set([1]));
+          setVisiblePagesSet(new Set([1]));
+        }
         // Local accumulator — React state is async, so the callout import
         // splitter below needs a synchronous source of page dimensions
         // built up alongside setPageSizes during the sizing loop.
@@ -21272,10 +21483,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               name: pdfFile.name,
               projectId: pdfFile.projectId,
               filePath: pdfFile.filePath,
+              supabaseFilePath: pdfFile.supabaseFilePath,
+              user_id: pdfFile.user_id || null,
               id: pdfFile.id,
               __rewrittenForParse: true,
             });
-            onUpdatePDFFile(rewrittenFile);
+            await onUpdatePDFFile(rewrittenFile, tabId);
             return;
           } catch (rewriteError) {
             console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
@@ -22431,6 +22644,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       canEnterTextEdit: !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
           && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
+      onEnterBBoxEdit: handleEnterBBoxEditFromStrip,
+      canEnterBBoxEdit: !!(selectedToolbarAnnotation && (() => {
+        const annotation = selectedToolbarAnnotation.annotation;
+        const type = String(annotation?.type || '').toLowerCase();
+        return annotation?.data?.type === 'counter'
+          || type === 'line'
+          || type === 'polygon'
+          || type === 'polyline';
+      })()),
       richTextEditor,
       textStyleDefaults,
       onTextStyleDefaultsChange: setTextStyleDefaults,
@@ -22522,6 +22744,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     arrowheadStyle,
     handleArrowheadStyleChange,
     handleEnterTextEditFromStrip,
+    handleEnterBBoxEditFromStrip,
     richTextEditor,
     textStyleDefaults,
     lineBorderStyle,
@@ -34598,7 +34821,7 @@ ${pageBlocks}
                       const itemsToCheck = transferState.items.map(itemId => items[itemId]);
                       const itemTypes = [...new Set(itemsToCheck.map(item => item.itemType))];
                       const missingCategories = itemTypes.filter(itemType =>
-                        !categoryExists(selectedTemplate, transferState.destSpaceId, itemType)
+                        !categoryExists(selectedTemplate, transferState.destModuleId, itemType)
                       );
 
                       return missingCategories.map(itemType => (
@@ -34618,22 +34841,26 @@ ${pageBlocks}
 
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
-                      onClick={() => {
-                        // Transfer as-is - clone checklists
+                      onClick={async () => {
+                        const itemTypes = [...new Set(
+                          transferState.items.map((itemId) => items[itemId]?.itemType).filter(Boolean)
+                        )];
+                        const updatedTemplate = cloneMissingTransferCategories(
+                          selectedTemplate,
+                          transferState.sourceModuleId,
+                          transferState.destModuleId,
+                          itemTypes
+                        );
                         const result = transferItems(
                           transferState.items,
-                          transferState.sourceSpaceId,
-                          transferState.destSpaceId,
-                          selectedTemplate,
+                          transferState.sourceModuleId,
+                          transferState.destModuleId,
+                          updatedTemplate,
                           items,
                           annotations
                         );
 
-                        // TODO: Actually create categories in template with cloned checklists
-                        // For now, just complete the transfer
-                        setItems(result.newItems);
-                        setAnnotations(result.updatedAnnotations);
-
+                        const supabaseTemplateId = selectedTemplate.supabaseId || null;
                         // Create surveyMarker entries for UI display (same logic as direct transfer)
                         const newSurveyMarkers = {};
                         transferState.items.forEach(itemId => {
@@ -34641,23 +34868,23 @@ ${pageBlocks}
                           if (!item) return;
 
                           const destAnnotation = Object.values(result.updatedAnnotations).find(ann =>
-                            ann.itemId === itemId && ann.spaceId === transferState.destSpaceId
+                            ann.itemId === itemId && ann.moduleId === transferState.destModuleId
                           );
 
                           if (destAnnotation && destAnnotation.pdfCoordinates) {
                             const sourceAnnotation = Object.values(annotations).find(a =>
-                              a.itemId === itemId && a.spaceId === transferState.sourceSpaceId
+                              a.itemId === itemId && a.moduleId === transferState.sourceModuleId
                             );
 
                             const sourceSurveyMarker = sourceAnnotation ? Object.values(surveyMarkers).find(h =>
-                              h.spaceId === transferState.sourceSpaceId &&
+                              h.moduleId === transferState.sourceModuleId &&
                               h.bounds &&
                               sourceAnnotation.pdfCoordinates &&
                               Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
                               Math.abs((h.bounds.y || 0) - (sourceAnnotation.pdfCoordinates.y || 0)) < 1
                             ) : null;
 
-                            const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
+                            const destModule = ((updatedTemplate.modules || updatedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
                             const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
 
                             const annotationId = `surveyMarker-${crypto.randomUUID()}`;
@@ -34673,14 +34900,40 @@ ${pageBlocks}
                           }
                         });
 
-                        if (Object.keys(newSurveyMarkers).length > 0) {
-                          setSurveyMarkers(prev => ({
-                            ...prev,
-                            ...newSurveyMarkers
-                          }));
+                        try {
+                          await persistTemplateBeforeDocumentMutation({
+                            persistTemplate: updateSupabaseTemplate && supabaseTemplateId
+                              ? () => updateSupabaseTemplate(supabaseTemplateId, {
+                                config: sanitizeTemplateConfig(updatedTemplate),
+                                updated_at: updatedTemplate.updatedAt,
+                              })
+                              : null,
+                            applyTemplate: () => {
+                              setSelectedTemplate(updatedTemplate);
+                              if (handleTemplatesChange && appTemplates) {
+                                handleTemplatesChange(appTemplates.map((template) => (
+                                  template.id === updatedTemplate.id || template.supabaseId === supabaseTemplateId
+                                    ? updatedTemplate
+                                    : template
+                                )));
+                              }
+                            },
+                            applyDocument: () => {
+                              setItems(result.newItems);
+                              setAnnotations(result.updatedAnnotations);
+                              if (Object.keys(newSurveyMarkers).length > 0) {
+                                setSurveyMarkers(prev => ({
+                                  ...prev,
+                                  ...newSurveyMarkers
+                                }));
+                              }
+                              setTransferState(null);
+                            },
+                          });
+                        } catch (error) {
+                          console.warn('Failed to persist transferred survey categories:', error);
+                          showToast('The new categories could not be saved. Nothing was copied; try again.', 'error');
                         }
-
-                        setTransferState(null);
                       }}
                       className="btn btn-primary btn-md"
                       style={{

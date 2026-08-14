@@ -85,16 +85,34 @@ const surveyTransitionE2ETemplates = [{
   }],
 }];
 
+const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
+
+const readSurveyTemplateWorkflowTemplates = () => {
+  try {
+    const value = JSON.parse(localStorage.getItem(SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY) || '[]');
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+};
+
 export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) {
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
   const surveyTransitionE2E = new URLSearchParams(window.location.search)
     .get('surveyTransitionE2E') === '1';
+  const surveyTemplateWorkflowE2E = new URLSearchParams(window.location.search)
+    .get('surveyTemplateWorkflowE2E') === '1';
   const documentDeepLinkE2E = new URLSearchParams(window.location.search)
     .get('documentDeepLinkE2E') === '1';
 
   if (surveyTransitionE2E) {
     window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
+  } else if (surveyTemplateWorkflowE2E) {
+    // The mobile workflow harness creates this tree through TemplatesEditor,
+    // then opens the real viewer. Carry that exact saved model across the
+    // dev-only route boundary without involving Supabase or test accounts.
+    window.__surveyTransitionE2ETemplates = readSurveyTemplateWorkflowTemplates();
   }
 
   useEffect(() => {

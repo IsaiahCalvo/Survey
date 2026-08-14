@@ -250,13 +250,19 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
         )}
 
         {mode !== 'confirm' && (
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form" autoComplete="on">
           {mode !== 'sso' && (
             <div className="auth-form-group">
               <label htmlFor="email">Email</label>
               <input
                 id="email"
                 type="email"
+                name="username"
+                autoComplete="username"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
@@ -273,6 +279,8 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
                 <input
                   id="firstName"
                   type="text"
+                  name="given-name"
+                  autoComplete="given-name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="John"
@@ -286,6 +294,8 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
                 <input
                   id="lastName"
                   type="text"
+                  name="family-name"
+                  autoComplete="family-name"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Doe"
@@ -302,6 +312,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
               <input
                 id="password"
                 type="password"
+                name="password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -322,6 +337,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss }) => {
               <input
                 id="confirmPassword"
                 type="password"
+                name="confirm-password"
+                autoComplete="new-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"

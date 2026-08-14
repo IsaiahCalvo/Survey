@@ -46,8 +46,15 @@ const DropTransformSuppressionContext = createContext({
 
 const getSortableRearrangeItemNode = (id) => {
   const idValue = String(id ?? '');
-  return Array.from(document.querySelectorAll('[data-sortable-rearrange-item]'))
-    .find((node) => node.dataset.sortableRearrangeItem === idValue);
+  const matches = Array.from(document.querySelectorAll('[data-sortable-rearrange-item]'))
+    .filter((node) => node.dataset.sortableRearrangeItem === idValue);
+  // Responsive desktop/mobile trees coexist in the DOM and legitimately use
+  // the same stable ids. Prefer the rendered node; measuring the hidden twin
+  // produces zero-height collision geometry and makes touch reordering a no-op.
+  return matches.find((node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }) || matches[0];
 };
 
 const getDragLayoutSnapshot = (activeId) => {
