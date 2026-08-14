@@ -14,12 +14,13 @@
    every decision it makes lives in ./archiveScreenModel so it can be tested
    without a DOM.
 */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack, Search } from './HubShell';
 /* The app-wide icon set. Aliased because HubShell exports its own `Icon` for
    the hub's type glyphs; this one carries the shared chevrons. */
 import AppIcon from '../Icons';
 import { ConfirmModal } from './BulkModals';
+import DismissBarrier from '../components/DismissBarrier';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle } from './hubControls';
@@ -168,20 +169,6 @@ export default function ArchiveScreen({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const desktopMenuRef = useRef(null);
-
-  /* Click-away close, copied from the Documents ledger's sort menu. Both header
-     slots render the control (only one is visible per breakpoint), so a click
-     inside EITHER counts as inside. */
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const onDown = (e) => {
-      const inMobile = menuRef.current && menuRef.current.contains(e.target);
-      const inDesktop = desktopMenuRef.current && desktopMenuRef.current.contains(e.target);
-      if (!inMobile && !inDesktop) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [menuOpen]);
 
   const rows = useMemo(
     () => visibleArchiveItems(items, { filter, sortKey, sortDir, search }),
@@ -607,7 +594,7 @@ export default function ArchiveScreen({
         width: ROW_ART_W, height: ROW_THUMB, flex: 'none',
         display: 'grid', placeItems: 'center',
       }}>
-        <Icon name={typeIcon[item.type] || 'doc'} size={TYPE_ICON_SIZE} color="var(--ink-200)" />
+        <Icon name={typeIcon[item.type] || 'doc'} size={TYPE_ICON_SIZE} />
       </div>
     );
   };
@@ -983,6 +970,11 @@ export default function ArchiveScreen({
 
   return (
     <>
+      <DismissBarrier
+        active={menuOpen}
+        insideRefs={[menuRef, desktopMenuRef]}
+        onDismiss={() => setMenuOpen(false)}
+      />
       <HubShell
         tab="archive"
         onNav={onNav}
@@ -1028,7 +1020,9 @@ export default function ArchiveScreen({
               <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                   <div className="section-label">Preview</div>
-                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>×</button>
+                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>
+                    <Icon name="close" size={14} />
+                  </button>
                 </div>
                 <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewItem.name}</div>
                 <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>

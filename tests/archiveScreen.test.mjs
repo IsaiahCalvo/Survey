@@ -418,7 +418,9 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // Asserted through the shared constants rather than literals, so the two can
   // never disagree when the thumbnail size is tuned again.
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
-  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} color="var\(--ink-200\)" \/>/);
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} \/>/);
+  assert.doesNotMatch(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\}[^>]*color=/,
+    'shared document/project/template colors remain authoritative');
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
   // No coloured plate may come back: no tint map, and no translucent
   // background anywhere in the screen's own styles.
@@ -823,6 +825,14 @@ test('the mobile card list is hidden on desktop and shown under 720px', () => {
   assert.match(CSS, /\.survey-hub \.archive-mobile-list \{\s*\n\s*display: none;/);
   assert.match(CSS, /@media \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
   assert.match(CSS, /@media \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
+});
+
+test('Archive transient controls follow the shared home interaction contract', () => {
+  assert.match(SCREEN, /import DismissBarrier from '\.\.\/components\/DismissBarrier';/);
+  assert.match(SCREEN, /<DismissBarrier[\s\S]*?active=\{menuOpen\}[\s\S]*?insideRefs=\{\[menuRef, desktopMenuRef\]\}[\s\S]*?onDismiss=\{\(\) => setMenuOpen\(false\)\}/);
+  assert.match(SCREEN, /title="Close preview"[\s\S]*?<Icon name="close" size=\{14\} \/>/);
+  assert.doesNotMatch(SCREEN, /title="Close preview"[^>]*>×<\/button>/,
+    'preview close uses the shared drawn icon, not a font glyph');
 });
 
 /* ------------------------------------------------------------------------
