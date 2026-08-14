@@ -505,6 +505,36 @@ test('counter pins paint the full Shottr-style bubble from radius-only circle JS
   assert.deepEqual(texts[0], ['7', 114, 214]);
 });
 
+test('counter canvas text receives a hard inner-width cap at the smallest radius', () => {
+  const texts = [];
+  const context = {
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    closePath: () => {},
+    arc: () => {},
+    fill: () => {},
+    measureText: () => ({ width: 100 }),
+    fillText: (...args) => texts.push(args),
+  };
+
+  drawAnnotationObject(context, {
+    type: 'circle',
+    left: 10,
+    top: 20,
+    radius: 4,
+    fill: '#ef4444',
+    data: { type: 'counter', displayNumber: 100 },
+  });
+
+  assert.equal(texts.length, 1);
+  assert.deepEqual(texts[0].slice(0, 3), ['100', 14, 24]);
+  assert.equal(texts[0][3], 4 * 1.55);
+  assert.match(context.font, /^700 2\./, 'three digits shrink below the old 11px floor');
+});
+
 test('viewport detail painting offsets page geometry into its tile', () => {
   const transforms = [];
   const context = {

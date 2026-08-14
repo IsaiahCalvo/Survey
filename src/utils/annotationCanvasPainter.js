@@ -33,6 +33,7 @@ import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
+import { getCounterLabelLayout } from './counterGeometry.js';
 
 const MAX_RASTER_SCALE = 2.5;
 const MAX_BACKING_DIMENSION = 8192;
@@ -933,7 +934,7 @@ function drawCounter(context, object) {
 
   const label = String(object?.data?.displayNumber ?? 1);
   if (label) {
-    const fontSize = Math.max(11, radius * 1.05);
+    const { fontSize, maxWidth } = getCounterLabelLayout(radius, label);
     context.font = `700 ${fontSize}px -apple-system, system-ui, sans-serif`;
     context.textAlign = 'center';
     context.fillStyle = isVisiblePaint(object?.data?.numberColor) ? object.data.numberColor : '#ffffff';
@@ -952,10 +953,10 @@ function drawCounter(context, object) {
     const descent = metrics?.fontBoundingBoxDescent;
     if (Number.isFinite(ascent) && Number.isFinite(descent)) {
       context.textBaseline = 'alphabetic';
-      context.fillText(label, centerX, centerY + (ascent - descent) / 2);
+      context.fillText(label, centerX, centerY + (ascent - descent) / 2, maxWidth);
     } else {
       context.textBaseline = 'middle';
-      context.fillText(label, centerX, centerY);
+      context.fillText(label, centerX, centerY, maxWidth);
     }
   }
   context.restore();

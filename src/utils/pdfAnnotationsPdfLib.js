@@ -49,6 +49,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
+import { getCounterLabelLayout } from './counterGeometry.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -1718,8 +1719,15 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       const numberColor = hexToRGB(fabricObj?.data?.numberColor || '#ffffff');
       const label = String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? '');
       const escapedLabel = label.replace(/([\\()])/g, '\\$1');
-      const fontSize = Math.max(6, radius * 0.95);
-      const approximateTextWidth = label.length * fontSize * 0.56;
+      const labelLayout = getCounterLabelLayout(radius, label);
+      let fontSize = labelLayout.fontSize;
+      // /F1 is Helvetica Bold; numeric glyphs are 0.556em wide. Keep an exact
+      // appearance-stream guard in addition to the shared conservative layout.
+      let approximateTextWidth = label.length * fontSize * 0.556;
+      if (approximateTextWidth > labelLayout.maxWidth && approximateTextWidth > 0) {
+        fontSize *= labelLayout.maxWidth / approximateTextWidth;
+        approximateTextWidth = label.length * fontSize * 0.556;
+      }
       const textX = cx - approximateTextWidth / 2;
       const textY = cy - fontSize * 0.34;
       const content = [
@@ -3037,8 +3045,13 @@ const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
   const radius = Math.max(1, (Number(obj?.radius) || 10) * Math.abs(Number(obj?.scaleX) || 1));
   const left = getObjNumber(obj, 'left');
   const top = getObjNumber(obj, 'top');
-  const fontSize = Math.max(6, radius * 0.9);
-  const textWidth = font.widthOfTextAtSize(text, fontSize);
+  const labelLayout = getCounterLabelLayout(radius, text);
+  let fontSize = labelLayout.fontSize;
+  let textWidth = font.widthOfTextAtSize(text, fontSize);
+  if (textWidth > labelLayout.maxWidth && textWidth > 0) {
+    fontSize *= labelLayout.maxWidth / textWidth;
+    textWidth = font.widthOfTextAtSize(text, fontSize);
+  }
   const fill = parsePdfDrawColor(obj?.data?.numberColor || '#ffffff', '#ffffff') || parsePdfDrawColor('#ffffff');
   page.drawText(text, {
     x: left + radius - textWidth / 2,

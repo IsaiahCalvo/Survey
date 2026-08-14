@@ -3158,6 +3158,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
   const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
   useEffect(() => { selectedToolbarAnnotationRef.current = selectedToolbarAnnotation; }, [selectedToolbarAnnotation]);
+  // The series-update callback is declared after handleSaveAnnotations. Early
+  // toolbar handlers reach it through this ref so they can keep their current
+  // declaration order without introducing a first-render TDZ crash.
+  const handleCounterGroupUpdateRef = useRef(null);
   const handlePatchSelectedAnnotation = useCallback((patch) => {
     const sel = selectedToolbarAnnotationRef.current;
     if (!sel || sel.annotationIndex == null) return;
@@ -7316,7 +7320,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const isCalloutSelected = () => !!selectedToolbarCalloutRef.current;
   const patchSelectedFill = (rgba) => {
-    const { type } = getSelectedShapeMeta();
+    const { type, isCounter, annotation } = getSelectedShapeMeta();
+    if (isCounter && annotation?.data?.seriesId) {
+      handleCounterGroupUpdateRef.current?.(annotation.data.seriesId, { fill: rgba });
+      setSelectedToolbarAnnotation((prev) => (prev
+        ? { ...prev, annotation: { ...prev.annotation, fill: rgba } }
+        : prev));
+      return;
+    }
     if (type === 'textbox') {
       handlePatchSelectedAnnotation({ backgroundColor: rgba });
     } else {
@@ -7324,13 +7335,51 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   };
   const patchSelectedStroke = (rgba) => {
-    const { isCounter } = getSelectedShapeMeta();
-    if (isCounter) {
-      handlePatchSelectedAnnotation({ data: { numberColor: rgba } });
+    const { isCounter, annotation } = getSelectedShapeMeta();
+    if (isCounter && annotation?.data?.seriesId) {
+      handleCounterGroupUpdateRef.current?.(annotation.data.seriesId, { numberColor: rgba });
+      setSelectedToolbarAnnotation((prev) => (prev
+        ? {
+            ...prev,
+            annotation: {
+              ...prev.annotation,
+              data: { ...(prev.annotation?.data || {}), numberColor: rgba },
+            },
+          }
+        : prev));
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
   };
+
+  const handleSelectedCounterSeriesStartChange = useCallback((value) => {
+    const sel = selectedToolbarAnnotationRef.current;
+    const annotation = sel?.annotation;
+    const isCounter = String(annotation?.type || '').toLowerCase() === 'circle'
+      && annotation?.data?.type === 'counter';
+    const seriesId = annotation?.data?.seriesId;
+    if (!isCounter || !seriesId) return;
+    const series = getCounterSeriesList(annotationsByPageRef.current)
+      .find((item) => item.seriesId === seriesId);
+    // Historical counter rule: the start is configurable only before a
+    // second pin makes the sequence established.
+    if ((series?.count || 0) !== 1) return;
+    const parsed = Math.max(1, Math.floor(Number(value) || 1));
+    handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart: parsed });
+    setSelectedToolbarAnnotation((prev) => (prev
+      ? {
+          ...prev,
+          annotation: {
+            ...prev.annotation,
+            data: {
+              ...(prev.annotation?.data || {}),
+              seriesStart: parsed,
+              displayNumber: parsed,
+            },
+          },
+        }
+      : prev));
+  }, []);
 
   const handleStrokeColorChange = useCallback((color) => {
     strokeColorStateRef.current = color;
@@ -7459,11 +7508,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Drawing starts on pointer-down, before clicking the page has finished
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
-        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), 1), 50));
+        const minWidth = activeTool === 'counter' || getSelectedShapeMeta().isCounter ? 4 : 1;
+        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), minWidth), 50));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
-  }, [publishToolbarDraft]);
+  }, [activeTool, publishToolbarDraft]);
 
   // Commit width value on blur (clamp to valid range)
   const handleStrokeWidthInputBlur = useCallback((event) => {
@@ -7471,21 +7521,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValueRef.current, 10);
-    if (isNaN(parsed) || parsed < 1) {
+    const minWidth = activeTool === 'counter' || getSelectedShapeMeta().isCounter ? 4 : 1;
+    if (isNaN(parsed) || parsed < minWidth) {
       // Reset to minimum if empty or invalid
-      strokeWidthInputValueRef.current = '1';
-      setStrokeWidthInputValue('1');
-      publishToolbarDraft('strokeWidthInputValue', '1');
-      handleStrokeWidthChange(1);
+      const minimumValue = String(minWidth);
+      strokeWidthInputValueRef.current = minimumValue;
+      setStrokeWidthInputValue(minimumValue);
+      publishToolbarDraft('strokeWidthInputValue', minimumValue);
+      handleStrokeWidthChange(minWidth);
     } else {
-      const clamped = Math.min(Math.max(parsed, 1), 50);
+      const clamped = Math.min(Math.max(parsed, minWidth), 50);
       const nextValue = String(clamped);
       strokeWidthInputValueRef.current = nextValue;
       setStrokeWidthInputValue(nextValue);
       publishToolbarDraft('strokeWidthInputValue', clamped);
       handleStrokeWidthChange(clamped);
     }
-  }, [handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
+  }, [activeTool, handleStrokeWidthChange, handleStrokeWidthFocusChange, publishToolbarDraft]);
 
   // Handle eraser size input changes (allows empty string while typing)
   const handleEraserSizeInputChange = useCallback((e) => {
@@ -22600,6 +22652,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    const selectedCounterSeriesId = selectionMappedTool === 'counter'
+      ? selectedAnnot?.data?.seriesId
+      : null;
+    const selectedCounterSeries = selectedCounterSeriesId
+      ? counterSeriesList.find((series) => series.seriesId === selectedCounterSeriesId)
+      : null;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -22664,6 +22722,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       activeCounterSeriesId: activeCounterSeriesIdRef.current,
       onNewCounterSeries: handleNewCounterSeries,
       onSwitchCounterSeries: handleSwitchCounterSeries,
+      selectedCounterSeriesId,
+      selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
+      selectedCounterSeriesStart: selectedCounterSeriesId
+        ? Math.max(1, Number(selectedAnnot?.data?.seriesStart) || 1)
+        : null,
+      onSelectedCounterSeriesStartChange: handleSelectedCounterSeriesStartChange,
       fillColor,
       fillOpacity,
       handleFillColorChange,
@@ -22755,6 +22819,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     counterUITick,
     handleNewCounterSeries,
     handleSwitchCounterSeries,
+    handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
     handleFillColorChange,
@@ -24975,6 +25040,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [handleSaveAnnotations]);
+  handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
 
   // UX: shared paste-annotation routine used by both the right-click Paste
   // menu item and the Cmd+V / Ctrl+V keyboard shortcut. Drops a deep clone of

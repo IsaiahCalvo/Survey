@@ -45,6 +45,7 @@ import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 // guarantee import vs internal paths produce byte-identical SVG output
 // when their Fabric input fields match.
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
+import { getCounterLabelLayout } from './counterGeometry.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -1716,7 +1717,7 @@ export const renderCounter = (obj, index) => {
   // screen space traces the bubble body away from the nub side.
   const pathD = `M ${tipX},${tipY} L ${t1x},${t1y} A ${radius},${radius} 0 1 1 ${t2x},${t2y} Z`;
 
-  const fontSize = Math.max(11, radius * 1.05);
+  const labelLayout = getCounterLabelLayout(radius, displayNumber);
   const key = `counter-${obj.id || index}`;
 
   return (
@@ -1726,13 +1727,13 @@ export const renderCounter = (obj, index) => {
         x={centerX}
         y={centerY}
         fill={obj.data?.numberColor || '#ffffff'}
-        fontSize={fontSize}
+        fontSize={labelLayout.fontSize}
         fontWeight={700}
         fontFamily="-apple-system, system-ui, sans-serif"
         textAnchor="middle"
         dominantBaseline="central"
         pointerEvents="none"
-        style={{ userSelect: 'none' }}
+        style={{ userSelect: 'none', fontVariantNumeric: 'tabular-nums' }}
       >
         {displayNumber}
       </text>

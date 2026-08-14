@@ -22,7 +22,7 @@ test('toolbar publishes synchronous pen and eraser width drafts instead of stale
   );
   assert.match(
     viewerSource,
-    /strokeWidthInputValueRef\.current = value;\s*setStrokeWidthInputValue\(value\);[\s\S]*?setStrokeWidth\(Math\.min\(Math\.max\(parseInt\(value, 10\), 1\), 50\)\);[\s\S]*?publishToolbarDraft\('strokeWidthInputValue', value\)/,
+    /strokeWidthInputValueRef\.current = value;\s*setStrokeWidthInputValue\(value\);[\s\S]*?const minWidth = activeTool === 'counter' \|\| getSelectedShapeMeta\(\)\.isCounter \? 4 : 1;[\s\S]*?setStrokeWidth\(Math\.min\(Math\.max\(parseInt\(value, 10\), minWidth\), 50\)\);[\s\S]*?publishToolbarDraft\('strokeWidthInputValue', value\)/,
   );
   assert.match(
     viewerSource,
