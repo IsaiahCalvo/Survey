@@ -346,6 +346,11 @@ verify_jwt = false
 [functions.create-portal-session]
 verify_jwt = false
 
+# Browser-invoked and self-authenticating. The function must answer an
+# unauthenticated CORS preflight before validating the caller's Bearer token.
+[functions.delete-account]
+verify_jwt = false
+
 # Browser-invoked: the gateway JWT check rejects the CORS preflight OPTIONS (no JWT on preflight),
 # breaking invoke() from the app. The function does its OWN auth (auth.getUser on the Bearer JWT +
 # registration token_hash + actor-role) and answers OPTIONS with CORS headers, so the gateway check
