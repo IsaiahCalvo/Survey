@@ -314,6 +314,24 @@ export function resolveSelection(visibleItems = [], selectedIds) {
   return visibleItems.filter((item) => selectedIds.has(item.id));
 }
 
+/**
+ * Resolve the item shown in Archive's preview pane.
+ *
+ * Selection remains deliberately top-level because restore/delete operate on
+ * a project as one unit. Preview is less restrictive: an expanded project's
+ * document is still a document, so it can be inspected without becoming an
+ * independently actionable Archive item.
+ */
+export function resolveArchivePreviewItem(visibleItems = [], previewId) {
+  if (!previewId) return null;
+  for (const item of visibleItems) {
+    if (item?.id === previewId) return item;
+    const child = (item?.children || []).find((candidate) => candidate?.id === previewId);
+    if (child) return { ...child, projectName: child.projectName || item.name || null };
+  }
+  return null;
+}
+
 /** Drop ids that no longer exist (e.g. after a restore removes rows). */
 export function pruneSelection(selectedIds, items = []) {
   const live = new Set(selectableIds(items));

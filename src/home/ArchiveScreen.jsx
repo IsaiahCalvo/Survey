@@ -48,6 +48,7 @@ import {
   nextSortState,
   normalizeBulkResult,
   pruneSelection,
+  resolveArchivePreviewItem,
   resolveSelection,
   teamAvatarSlots,
   timeRemainingLabel,
@@ -199,9 +200,11 @@ export default function ArchiveScreen({
   const { downloadDocument } = useStorage();
 
   /* The previewed row, resolved against what is actually on screen: a row that
-     was just restored, or filtered out, must not keep a stale pane open. */
+     was just restored, or filtered out, must not keep a stale pane open. A
+     project's child document may be previewed even though it remains excluded
+     from restore/delete selection. */
   const previewItem = useMemo(
-    () => rows.find((row) => row.id === previewId) || null,
+    () => resolveArchivePreviewItem(rows, previewId),
     [rows, previewId],
   );
   const showPreview = previewOpen && !selectMode && Boolean(previewItem);
@@ -218,6 +221,12 @@ export default function ArchiveScreen({
   const allSelected = isAllSelected(selectedIds, rows);
 
   const toggleRow = (id) => setSelectedIds((prev) => toggleSelection(prev, id));
+
+  const previewDocument = (id) => {
+    if (selectMode) return;
+    setPreviewId(id);
+    setPreviewOpen(true);
+  };
 
   /* Run a bulk action and report per-item truth. A resolved
      { succeeded, failed } produces the split message; a plain resolve counts
@@ -645,10 +654,19 @@ export default function ArchiveScreen({
             /* Indented leaf, carrying the same 30px page thumbnail the ledger
                rows use — these files go with the project, so the owner needs
                to see them before restoring or destroying it. */
-            <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px' }}>
+            <button
+              key={child.id}
+              type="button"
+              onClick={() => previewDocument(child.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px',
+                width: '100%', border: 0, background: 'transparent', color: 'inherit',
+                fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer',
+              }}
+            >
               {rowThumb(child.id, child.filePath)}
               <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -801,17 +819,29 @@ export default function ArchiveScreen({
           <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
-        {/* Child documents of an archived project. Descriptive only: they are
-            never selectable and carry no actions, because a project restores
-            or deletes as one unit — showing them is how the user knows what
-            travels with it. */}
+        {/* Child documents of an archived project. They remain excluded from
+            restore/delete selection because the project acts as one unit, but
+            each document can still be inspected in the same preview pane as a
+            top-level archived document. */}
         {isProject && expanded && item.children.map((child) => (
           <div
             key={child.id}
+            role="button"
+            tabIndex={selectMode ? -1 : 0}
+            aria-label={`Preview ${child.name}`}
+            aria-pressed={!selectMode ? previewId === child.id : undefined}
+            onClick={() => previewDocument(child.id)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              previewDocument(child.id);
+            }}
             style={{
               display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
               borderBottom: '1px solid var(--ink-600)',
-              borderLeft: '2px solid transparent',
+              borderLeft: previewId === child.id ? '2px solid var(--gold)' : '2px solid transparent',
+              background: previewId === child.id ? 'var(--ink-600)' : 'transparent',
+              cursor: selectMode ? 'default' : 'pointer',
               contentVisibility: 'auto',
               // 8px padding + the 30px row thumbnail + 8px padding.
               containIntrinsicSize: '0 46px',

@@ -30,6 +30,7 @@ import {
   normalizeBulkResult,
   pruneSelection,
   resolveSelection,
+  resolveArchivePreviewItem,
   selectableIds,
   sortArchiveItems,
   sortStateForNamedSort,
@@ -248,6 +249,18 @@ test('only top-level items are selectable — a project child never is', () => {
   // A child id in the selection resolves to nothing.
   assert.deepEqual(resolveSelection(ALL, new Set(['c1'])), []);
   assert.deepEqual([...toggleSelection(selected, 'p1')], []);
+});
+
+test('project children can be previewed without becoming independently selectable', () => {
+  const child = resolveArchivePreviewItem(ALL, 'c1');
+  assert.equal(child.id, 'c1');
+  assert.equal(child.type, 'document');
+  assert.equal(child.projectName, project.name);
+  assert.equal(resolveArchivePreviewItem(ALL, 'p1'), project);
+  assert.equal(resolveArchivePreviewItem(ALL, 'missing'), null);
+
+  // Previewing does not broaden the destructive-action contract.
+  assert.deepEqual(resolveSelection(ALL, new Set(['c1'])), []);
 });
 
 test('select all operates over the currently filtered list only', () => {
@@ -577,6 +590,10 @@ test("a project's child rows fill the same columns a top-level document does", (
   assert.match(SCREEN, /const daysCell = \(item, padY = ROW_PAD_Y\) => \([\s\S]*?item\.daysRemaining <= URGENT_DAYS \? DANGER : 'inherit'/);
   // No empty placeholder cells left over after the name cell.
   assert.doesNotMatch(childBlock, /<span \/>\s*\n\s*<span \/>\s*\n\s*<span \/>\s*\n\s*<\/div>/);
+  assert.match(childBlock, /aria-label=\{`Preview \$\{child\.name\}`\}/);
+  assert.match(childBlock, /onClick=\{\(\) => previewDocument\(child\.id\)\}/);
+  assert.match(childBlock, /onKeyDown=\{\(e\) => \{/);
+  assert.match(SCREEN, /resolveArchivePreviewItem\(rows, previewId\)/);
 });
 
 test('a template ROW shows its entities as glyphs under the name', () => {
