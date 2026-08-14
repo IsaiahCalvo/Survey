@@ -22301,6 +22301,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return firstKey ? sizes[firstKey] : null;
       },
       getCurrentScale: () => scaleRef.current,
+      getMinimumScale: () => pdfjsViewerRef.current?.getMinimumScale?.() || 0.01,
       setScale: (value, context = {}) => setScaleWithViewportPreservation(value, {
         ...context,
         mode: context?.mode || ZOOM_MODES.MANUAL,
@@ -22541,8 +22542,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const controller = zoomControllerRef.current;
     if (controller) {
       const normalized = clampScale(clamped / 100);
-      controller.setScale(normalized);
-      setZoomInputValue(String(Math.round(normalized * 100)));
+      const appliedScale = controller.setScale(normalized);
+      const displayedScale = Number.isFinite(Number(appliedScale)) ? Number(appliedScale) : normalized;
+      setZoomInputValue(String(Math.round(displayedScale * 100)));
     } else {
       setZoomInputValue(String(clamped));
     }

@@ -1,0 +1,80 @@
+const ABSOLUTE_MIN_SCALE = 0.01;
+const ABSOLUTE_MAX_SCALE = 40;
+const WHEEL_LINE_HEIGHT_PX = 16;
+const WHEEL_NOTCH_PX = 100;
+const WHEEL_NOTCH_FACTOR = 1.1;
+const WHEEL_EXPONENT = Math.log(WHEEL_NOTCH_FACTOR) / WHEEL_NOTCH_PX;
+
+export function getClampedZoomTranslation({
+  zoomFactor,
+  anchor,
+  contentStart,
+  contentEnd,
+  viewportStart,
+  viewportSize,
+} = {}) {
+  const factor = Number.isFinite(Number(zoomFactor)) ? Number(zoomFactor) : 1;
+  const start = Number(contentStart) || 0;
+  const end = Number(contentEnd) || start;
+  const viewStart = Number(viewportStart) || 0;
+  const viewSize = Math.max(0, Number(viewportSize) || 0);
+  const cursorTranslation = (1 - factor) * (Number(anchor) || 0);
+  const projectedSize = Math.max(0, end - start) * factor;
+
+  if (projectedSize <= viewSize) {
+    return viewStart + (viewSize / 2) - (factor * ((start + end) / 2));
+  }
+
+  const minimumTranslation = viewStart + viewSize - (factor * end);
+  const maximumTranslation = viewStart - (factor * start);
+  return Math.max(minimumTranslation, Math.min(maximumTranslation, cursorTranslation));
+}
+
+export function getDocumentMinimumScale({
+  viewportHeight,
+  pageHeights,
+  pageGap,
+  fixedTopInset = 0,
+  fixedBottomInset = 0,
+  absoluteMinimumScale = ABSOLUTE_MIN_SCALE,
+  maximumScale = ABSOLUTE_MAX_SCALE,
+} = {}) {
+  const heights = Array.isArray(pageHeights)
+    ? pageHeights.map(Number).filter((height) => Number.isFinite(height) && height > 0)
+    : [];
+  if (heights.length === 0) return absoluteMinimumScale;
+
+  const availableHeight = Math.max(
+    0,
+    (Number(viewportHeight) || 0) - (Number(fixedTopInset) || 0) - (Number(fixedBottomInset) || 0),
+  );
+  const safeGap = Math.max(0, Number(pageGap) || 0);
+  const scale = availableHeight / (
+    heights.reduce((sum, height) => sum + height, 0)
+    + ((heights.length + 1) * safeGap)
+  );
+  return Math.max(absoluteMinimumScale, Math.min(maximumScale, scale));
+}
+
+export function normalizeWheelDelta(deltaY, deltaMode = 0, viewportHeight = 800) {
+  const rawDelta = Number(deltaY) || 0;
+  if (deltaMode === 1) return rawDelta * WHEEL_LINE_HEIGHT_PX;
+  if (deltaMode === 2) return rawDelta * Math.max(1, Number(viewportHeight) || 800);
+  return rawDelta;
+}
+
+export function getWheelZoomScale(currentScale, {
+  deltaY = 0,
+  deltaMode = 0,
+  viewportHeight = 800,
+  minimumScale = ABSOLUTE_MIN_SCALE,
+  maximumScale = ABSOLUTE_MAX_SCALE,
+} = {}) {
+  const safeCurrent = Number.isFinite(Number(currentScale)) && Number(currentScale) > 0
+    ? Number(currentScale)
+    : 1;
+  const normalizedDelta = normalizeWheelDelta(deltaY, deltaMode, viewportHeight);
+  const cappedDelta = Math.max(-WHEEL_NOTCH_PX, Math.min(WHEEL_NOTCH_PX, normalizedDelta));
+  const nextScale = safeCurrent * Math.exp(-cappedDelta * WHEEL_EXPONENT);
+  return Math.max(minimumScale, Math.min(maximumScale, nextScale));
+}
