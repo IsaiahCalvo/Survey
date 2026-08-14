@@ -37,6 +37,11 @@ import {
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
+import {
+  getClampedZoomTranslation,
+  getDocumentMinimumScale,
+  getWheelZoomScale,
+} from '../utils/pdfZoomMath';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -45,14 +50,11 @@ const GAP = 16;
 const PAD = 20;
 const MOBILE_GAP = 12;
 const MOBILE_PAD_X = 14;
-const MOBILE_PAD_TOP = 52;
-const MOBILE_PAD_BOTTOM = 88;
 const MOBILE_PAGE_MAX_WIDTH = 390;
 const MIN_SCALE = 0.01;
 const MAX_SCALE = 40;
 const BASE_MAX_SCALE = 2.5; // above this the base canvas is a cheap backdrop; the detail tile owns sharpness
 const SETTLE_MS = 110;      // commit the gesture this long after the last wheel tick
-const WHEEL_GAIN = 0.01;    // factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
@@ -92,21 +94,32 @@ function resolveLayoutMetrics(isMobileSurface) {
     ? {
         gap: MOBILE_GAP,
         padX: MOBILE_PAD_X,
-        padTop: MOBILE_PAD_TOP,
-        padBottom: MOBILE_PAD_BOTTOM,
+        padTop: 0,
+        padBottom: 0,
         maxPageWidth: MOBILE_PAGE_MAX_WIDTH,
       }
     : {
         gap: GAP,
         padX: PAD,
-        padTop: PAD,
-        padBottom: PAD,
+        padTop: 0,
+        padBottom: 0,
         maxPageWidth: null,
       };
 }
 function getFitWidthForContainer(containerWidth, metrics) {
   const available = Math.max(1, Number(containerWidth) - metrics.padX * 2);
   return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
+}
+function getMinimumScaleForLayout(dims, containerHeight, metrics) {
+  return getDocumentMinimumScale({
+    viewportHeight: containerHeight,
+    pageHeights: dims.map((dim) => dim.h),
+    pageGap: metrics.gap,
+    fixedTopInset: metrics.padTop,
+    fixedBottomInset: metrics.padBottom,
+    absoluteMinimumScale: MIN_SCALE,
+    maximumScale: MAX_SCALE,
+  });
 }
 function clampToBudget(backingW, backingH, isMobileSurface = false) {
   const maxArea = isMobileSurface ? MOBILE_MAX_CANVAS_AREA : DESKTOP_MAX_CANVAS_AREA;
@@ -529,7 +542,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const metrics = layoutMetricsRef.current;
     const viewportWidth = containerWRef.current;
     const pageWidth = dim.w * nextScale;
-    return pageWidth + metrics.padX * 2 <= viewportWidth
+    return pageWidth <= viewportWidth
       ? (viewportWidth - pageWidth) / 2
       : metrics.padX;
   }, []);
@@ -538,7 +551,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dim = dimsPtRef.current[pageIndex];
     if (!dim) return 0;
     const metrics = layoutMetricsRef.current;
-    return Math.max(0, dim.w * nextScale + metrics.padX * 2 - containerWRef.current);
+    const pageWidth = dim.w * nextScale;
+    return pageWidth <= containerWRef.current
+      ? 0
+      : pageWidth + metrics.padX * 2 - containerWRef.current;
   }, []);
 
   const clampHorizontalScrollForPage = useCallback((pageIndex = currentPageRef.current - 1) => {
@@ -665,7 +681,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // way: metrics.gap is the base at 100% (scale = 1), so 100% is unchanged and
     // the gap-to-page ratio is held constant across all zoom levels.
     const gapPx = metrics.gap * scale;
-    let y = metrics.padTop;
+    // The document's outer top/bottom margins use the exact same proportional
+    // gap as the space between pages. This makes the minimum zoom a geometric
+    // boundary instead of an arbitrary percentage, including for one-page PDFs.
+    let y = metrics.padTop + gapPx;
     const tops = [];
     let maxW = 0;
     for (let i = 0; i < dims.length; i += 1) {
@@ -673,14 +692,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       y += dims[i].h * scale + gapPx;
       maxW = Math.max(maxW, dims[i].w * scale);
     }
-    const contentW = Math.max(containerW, maxW + 2 * metrics.padX);
+    const contentW = maxW <= containerW
+      ? containerW
+      : maxW + 2 * metrics.padX;
     // rawTotalH is the un-offset content height; the FIT predicate must use this,
     // never the padTop-inclusive height. padTop vertically centers any document
     // shorter than the viewport (single page / fitting page) via marginTop on the
     // content node — NOT via scroll, so scroll stays in [0, scrollHeight-clientHeight]
     // and never goes negative. Content taller than the viewport (overflow case)
     // yields padTop=0 and the layout is unchanged.
-    const rawTotalH = y - gapPx + metrics.padBottom;
+    const rawTotalH = y + metrics.padBottom;
     const padTop = Math.max(0, (containerH - rawTotalH) / 2);
     return { tops, dims, totalH: rawTotalH, rawTotalH, padTop, contentW };
   }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics]);
@@ -809,7 +830,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     pendingAnchorRef.current = null;
     const el = scrollerRef.current;
     if (!el) return;
-    const pageIndex = Math.max(0, currentPageRef.current - 1);
+    const pageIndex = Number.isInteger(p.pageIndex)
+      ? p.pageIndex
+      : Math.max(0, currentPageRef.current - 1);
     const maxLeft = getPageHorizontalScrollMax(pageIndex, scale);
     const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
     el.scrollLeft = Math.min(Math.max(0, p.left), maxLeft);
@@ -826,9 +849,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // Mirror the layout memo: gap is zoom-proportional, so anchor math at an
     // arbitrary scale sc uses metrics.gap * sc to match the layout it commits to.
     const gapPx = metrics.gap * sc;
-    let y = metrics.padTop;
+    let y = metrics.padTop + gapPx;
     for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + gapPx;
-    const rawTotalH = y - gapPx + metrics.padBottom;
+    const rawTotalH = y + metrics.padBottom;
     return Math.max(0, (containerHRef.current - rawTotalH) / 2);
   };
   // topAt returns the page's top in SCROLL space (padTop-inclusive) so cursor
@@ -837,7 +860,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const metrics = layoutMetricsRef.current;
     const dims = dimsPtRef.current;
     // Zoom-proportional gap (see layout memo): stack with metrics.gap * sc.
-    let y = metrics.padTop + padTopFor(sc);
+    let y = metrics.padTop + (metrics.gap * sc) + padTopFor(sc);
     for (let k = 0; k < i; k += 1) y += dims[k].h * sc + metrics.gap * sc;
     return y;
   };
@@ -847,7 +870,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     // Zoom-proportional gap (see layout memo): the hit band grows/shrinks with sc.
     const gapPx = metrics.gap * sc;
-    let y = metrics.padTop + padTopFor(sc);
+    let y = metrics.padTop + gapPx + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
       const h = dims[i].h * sc;
       if (cY < y + h + gapPx) return i;
@@ -861,7 +884,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     if (!el || !dims.length) return;
     const oldScale = scaleRef.current;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, targetScale));
+    const minimumScale = getMinimumScaleForLayout(
+      dims,
+      containerHRef.current,
+      layoutMetricsRef.current,
+    );
+    const newScale = Math.min(MAX_SCALE, Math.max(minimumScale, targetScale));
     if (Math.abs(newScale - oldScale) < 1e-4) return;
     // Stage 3: imperative zoom (toolbar/keyboard/fit) commits instantly — signal
     // gesture-start here so Canvas tools flush before the host re-layouts. (Wheel
@@ -876,10 +904,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const fracY = (cY - topAt(i, oldScale)) / (dims[i].h * oldScale);
     const newX = leftAt(i, newScale) + fracX * dims[i].w * newScale;
     const newY = topAt(i, newScale) + fracY * dims[i].h * newScale;
-    pendingAnchorRef.current = { left: newX - cursorX, top: newY - cursorY };
+    pendingAnchorRef.current = { left: newX - cursorX, top: newY - cursorY, pageIndex: i };
     scaleRef.current = newScale;
     setScale(newScale);
   }, []);
+
+  // A taller viewport or a rotation can raise the geometric floor after load.
+  // Keep the rendered scale inside the same document-aware contract without
+  // waiting for the next user gesture.
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    const dims = dimsPtRef.current;
+    if (!el || dims.length === 0) return;
+    const minimumScale = getMinimumScaleForLayout(dims, el.clientHeight, layoutMetricsRef.current);
+    if (scaleRef.current + 1e-4 < minimumScale) {
+      applyAnchoredScale(minimumScale, el.clientWidth / 2, el.clientHeight / 2);
+    }
+  }, [applyAnchoredScale, containerH, layoutMetrics, pageSizes, rotation]);
 
   // ---- cursor zoom: CSS-transform preview, commit on settle ----------------
   const applyWheelZoom = useCallback(() => {
@@ -901,7 +942,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     setZoomInteraction(false);
     if (!g || Math.abs(lz - 1) < 1e-4) { setLiveZoom(1); return; }
     const oldScale = scaleRef.current;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * lz));
+    const minimumScale = getMinimumScaleForLayout(
+      dimsPtRef.current,
+      containerHRef.current,
+      layoutMetricsRef.current,
+    );
+    const newScale = Math.min(MAX_SCALE, Math.max(minimumScale, oldScale * lz));
     cb.current.onZoomPhase?.('settle', {
       fromPct: Math.round(oldScale * 100),
       toPct: Math.round(newScale * 100),
@@ -932,9 +978,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         setZoomInteraction(true);
       }
       const committed = scaleRef.current;
-      let lz = liveZoomRef.current * (1 - e.deltaY * WHEEL_GAIN);
-      lz = Math.max(MIN_SCALE / committed, Math.min(MAX_SCALE / committed, lz));
-      liveZoomRef.current = lz;
+      const minimumScale = getMinimumScaleForLayout(
+        dimsPtRef.current,
+        containerHRef.current,
+        layoutMetricsRef.current,
+      );
+      const previewScale = getWheelZoomScale(committed * liveZoomRef.current, {
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        viewportHeight: el.clientHeight,
+        minimumScale,
+        maximumScale: MAX_SCALE,
+      });
+      liveZoomRef.current = previewScale / committed;
       if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       settleTimerRef.current = setTimeout(commitGesture, SETTLE_MS);
@@ -1198,11 +1254,24 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const center = getTouchCenter(event.touches, rect);
         const committedScale = scaleRef.current;
         let nextLiveZoom = getTouchDistance(event.touches) / touchState.startDistance;
-        nextLiveZoom = Math.max(MIN_SCALE / committedScale, Math.min(MAX_SCALE / committedScale, nextLiveZoom));
+        const minimumScale = getMinimumScaleForLayout(
+          dimsPtRef.current,
+          containerHRef.current,
+          layoutMetricsRef.current,
+        );
+        nextLiveZoom = Math.max(minimumScale / committedScale, Math.min(MAX_SCALE / committedScale, nextLiveZoom));
         liveZoomRef.current = nextLiveZoom;
 
         el.scrollLeft -= center.x - touchState.lastCenterX;
         el.scrollTop -= center.y - touchState.lastCenterY;
+        if (gestureRef.current) {
+          // Preserve the anchored content point and derive its cursor coordinate
+          // from the browser's actual post-clamp scroll. At a boundary this may
+          // differ from the finger centroid, correctly representing the blocked
+          // pan without introducing a CSS-transform jump.
+          gestureRef.current.originCursorX = gestureRef.current.originContentX - el.scrollLeft;
+          gestureRef.current.originCursorY = gestureRef.current.originContentY - el.scrollTop;
+        }
         touchState.lastCenterX = center.x;
         touchState.lastCenterY = center.y;
 
@@ -1403,7 +1472,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const pw = rot90 ? s0.h : s0.w;
       const ph = rot90 ? s0.w : s0.h;
       const fw = getFitWidthForContainer(el.clientWidth, metrics) / pw;
-      const fh = Math.max(1, el.clientHeight - metrics.padTop - metrics.padBottom) / ph;
+      const fh = Math.max(1, el.clientHeight - metrics.padTop - metrics.padBottom)
+        / (ph + (2 * metrics.gap));
       newScale = target === 'fitw' ? fw : Math.min(fw, fh);
     }
     applyAnchoredScale(newScale, el.clientWidth / 2, el.clientHeight / 2);
@@ -1505,6 +1575,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getPageCount: () => numPagesRef.current || 0,
       getCurrentPage: () => currentPageRef.current || 1,
       getZoomValue: () => Math.round((scaleRef.current || 1) * 100),
+      getMinimumScale: () => getMinimumScaleForLayout(
+        dimsPtRef.current,
+        containerHRef.current,
+        layoutMetricsRef.current,
+      ),
       get pageCount() { return numPagesRef.current || 0; },
       get currentPageNumber() { return currentPageRef.current || 1; },
       get zoomValue() { return Math.round((scaleRef.current || 1) * 100); },
@@ -1573,34 +1648,40 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   const loading = pageSizes.length === 0;
 
-  // ── Live-zoom transform origin: lock-to-centre on any axis that already fits ──
-  // UX intent (matches HANDOFF-zoom-pagegap-centering "lock-to-center"): cursor-
-  // anchored zoom is the feel WHILE a page overflows the viewport, but the instant an
-  // axis fits, that axis must scale about the VIEWPORT CENTRE so the page stays locked
-  // centred — zero left/right play, zero drift during the gesture, and (because the
-  // committed layout already clamps a fitting axis to centred) zero snap-back on
-  // settle. This beats the pdf.js reference demo, which cursor-anchors both axes and
-  // snaps back after every zoom. Applies equally to single-page docs.
-  //   fitsX: all pages fit the viewport width (contentW ≤ viewport) → not horizontally
-  //          scrollable → lock horizontal to centre.
-  //   fitsY: whole doc is shorter than the viewport (padTop > 0, i.e. it's already
-  //          centred via marginTop) → lock vertical to centre.
-  // The predicates read the COMMITTED scale/layout, so the origin mode is stable for
-  // the whole gesture (no mid-pinch jump); it re-evaluates on the next gesture after
-  // commit. On an overflowing axis the origin stays cursor-anchored (demo-parity feel).
-  // Regression note: commit a3380bbf ("demo-parity zoom") removed the earlier drift-
-  // clamp + settle-glide that used to prevent this drift/snap; this centre-lock is the
-  // lighter-weight replacement that keeps the single-transform preview.
-  let liveTransformOrigin = '0 0';
+  // Cursor anchoring owns an overflowing axis. As projected bounds approach the
+  // viewport, clamp that translation into the shrinking legal scroll range; the
+  // range collapses to exact centering at the fit threshold. This is continuous
+  // during the live CSS preview, so crossing the threshold cannot drift and snap.
+  let liveTranslateX = 0;
+  let liveTranslateY = 0;
   const zoomGesture = gestureRef.current;
   if (zoomGesture) {
     const scrollLeftAtStart = zoomGesture.originContentX - zoomGesture.originCursorX;
     const scrollTopAtStart = zoomGesture.originContentY - zoomGesture.originCursorY;
-    const fitsX = layout.contentW <= containerW + 0.5;
-    const fitsY = layout.padTop > 0;
-    const originX = fitsX ? scrollLeftAtStart + containerW / 2 : zoomGesture.originContentX;
-    const originY = (fitsY ? scrollTopAtStart + containerH / 2 : zoomGesture.originContentY) - layout.padTop;
-    liveTransformOrigin = `${originX}px ${originY}px`;
+    const gesturePageIndex = pageUnderContentY(zoomGesture.originContentY, scale);
+    const gesturePage = layout.dims[gesturePageIndex];
+    const documentLeft = gesturePage
+      ? getPageLeftAtScale(gesturePageIndex, scale)
+      : 0;
+    const documentRight = gesturePage
+      ? documentLeft + (gesturePage.w * scale)
+      : layout.contentW;
+    liveTranslateX = getClampedZoomTranslation({
+      zoomFactor: liveZoom,
+      anchor: zoomGesture.originContentX,
+      contentStart: documentLeft,
+      contentEnd: documentRight,
+      viewportStart: scrollLeftAtStart,
+      viewportSize: containerW,
+    });
+    liveTranslateY = getClampedZoomTranslation({
+      zoomFactor: liveZoom,
+      anchor: zoomGesture.originContentY - layout.padTop,
+      contentStart: 0,
+      contentEnd: layout.rawTotalH,
+      viewportStart: scrollTopAtStart - layout.padTop,
+      viewportSize: containerH,
+    });
   }
 
   return (
@@ -1661,13 +1742,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
             // padTop vertically centers a document shorter than the viewport via
             // margin (not scroll → scrollTop stays >= 0). Overflow docs get padTop=0.
             marginTop: layout.padTop,
-            transform: liveZoom !== 1 ? `scale(${liveZoom})` : 'none',
-            // transformOrigin is in the content node's OWN box space. On an overflowing
-            // axis it is cursor-anchored (originContentX/Y captured in scroll space, Y
-            // shifted by marginTop=padTop); on a fitting axis it is pinned to the
-            // viewport centre so the page stays locked centred with no drift/snap. See
-            // the liveTransformOrigin computation above for the full UX rationale.
-            transformOrigin: liveTransformOrigin,
+            transform: liveZoom !== 1
+              ? `translate(${liveTranslateX}px, ${liveTranslateY}px) scale(${liveZoom})`
+              : 'none',
+            transformOrigin: '0 0',
             willChange: liveZoom !== 1 ? 'transform' : 'auto',
           }}
         >

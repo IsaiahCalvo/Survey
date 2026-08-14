@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampScale } from '../src/utils/zoomController.js';
+import { clampScale, createZoomController, ZOOM_MODES } from '../src/utils/zoomController.js';
 
 test('clampScale accepts 0.01 as the zoom floor', () => {
   assert.equal(clampScale(0.01), 0.01);
@@ -36,4 +36,38 @@ test('clampScale returns DEFAULT manualScale (1.0) for NaN input', () => {
 
 test('clampScale returns DEFAULT manualScale (1.0) for non-number input', () => {
   assert.equal(clampScale('not a number'), 1.0);
+});
+
+test('controller stores and applies the viewer-provided document minimum', () => {
+  let appliedScale = null;
+  const controller = createZoomController({
+    initialManualScale: 1,
+    getMinimumScale: () => 0.78,
+    setScale: (scale) => { appliedScale = scale; },
+    persistPreferences: () => {},
+  });
+
+  assert.equal(controller.setScale(0.1), 0.78);
+  assert.equal(controller.getManualScale(), 0.78);
+  assert.equal(appliedScale, 0.78);
+});
+
+test('controller refreshes and persists a minimum that becomes known after startup', () => {
+  let minimumScale = 0.01;
+  let appliedScale = null;
+  const persisted = [];
+  const controller = createZoomController({
+    initialMode: ZOOM_MODES.MANUAL,
+    initialManualScale: 0.01,
+    getMinimumScale: () => minimumScale,
+    setScale: (scale) => { appliedScale = scale; },
+    persistPreferences: (preferences) => { persisted.push(preferences); },
+  });
+
+  minimumScale = 0.78;
+  controller.applyZoom();
+
+  assert.equal(appliedScale, 0.78);
+  assert.equal(controller.getManualScale(), 0.78);
+  assert.equal(persisted.at(-1).manualScale, 0.78);
 });

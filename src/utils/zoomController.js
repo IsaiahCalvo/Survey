@@ -114,13 +114,26 @@ export function createZoomController({
   getViewportSize,
   getPageSize,
   getCurrentScale,
+  getMinimumScale,
   setScale,
   onModeChange,
   onManualScaleChange,
   persistPreferences
 } = {}) {
+  const clampControllerScale = (value) => {
+    const globallyClamped = clampScale(value);
+    const dynamicMinimum = typeof getMinimumScale === 'function'
+      ? Number(getMinimumScale())
+      : MIN_SCALE;
+    if (!Number.isFinite(dynamicMinimum) || dynamicMinimum <= MIN_SCALE) {
+      return globallyClamped;
+    }
+    return Math.max(globallyClamped, Math.min(dynamicMinimum, MAX_SCALE));
+  };
   let mode = isValidMode(initialMode) ? initialMode : DEFAULT_ZOOM_PREFERENCES.mode;
-  let manualScale = clampScale(typeof initialManualScale === 'number' ? initialManualScale : DEFAULT_ZOOM_PREFERENCES.manualScale);
+  let manualScale = clampControllerScale(
+    typeof initialManualScale === 'number' ? initialManualScale : DEFAULT_ZOOM_PREFERENCES.manualScale,
+  );
 
   const notifyModeChange = (nextMode, context) => {
     if (typeof onModeChange === 'function') {
@@ -165,7 +178,7 @@ export function createZoomController({
       mode = nextMode;
 
       if (mode === ZOOM_MODES.MANUAL && typeof context.scale === 'number') {
-        const nextScale = clampScale(context.scale);
+        const nextScale = clampControllerScale(context.scale);
         if (Math.abs(nextScale - manualScale) > SCALE_EPSILON) {
           manualScale = nextScale;
           notifyManualScaleChange(manualScale, context);
@@ -188,7 +201,7 @@ export function createZoomController({
     },
 
     setScale: (nextScale, context = {}) => {
-      const safeScale = clampScale(nextScale);
+      const safeScale = clampControllerScale(nextScale);
       const modeChanged = mode !== ZOOM_MODES.MANUAL;
       const scaleChanged = Math.abs(manualScale - safeScale) > SCALE_EPSILON;
 
@@ -223,12 +236,18 @@ export function createZoomController({
         const pageSize = typeof getPageSize === 'function' ? getPageSize() : null;
         targetScale = computeScaleForMode(mode, viewport, pageSize);
       } else if (typeof context.scale === 'number') {
-        const safeManual = clampScale(context.scale);
+        const safeManual = clampControllerScale(context.scale);
         if (Math.abs(safeManual - manualScale) > SCALE_EPSILON) {
           manualScale = safeManual;
           notifyManualScaleChange(manualScale, context);
         }
         targetScale = manualScale;
+      }
+
+      targetScale = clampControllerScale(targetScale);
+      if (mode === ZOOM_MODES.MANUAL && Math.abs(targetScale - manualScale) > SCALE_EPSILON) {
+        manualScale = targetScale;
+        notifyManualScaleChange(manualScale, context);
       }
 
       if (context.persist !== false) {
