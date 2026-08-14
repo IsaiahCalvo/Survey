@@ -375,6 +375,15 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
     };
   });
 
+  const expectLeadControlAligned = async (row, control) => {
+    const rowBox = await row.boundingBox();
+    const controlBox = await control.boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(controlBox).not.toBeNull();
+    expect(controlBox.x - rowBox.x).toBeCloseTo(3, 0);
+    expect(controlBox.width).toBeGreaterThanOrEqual(44);
+  };
+
   await openHub(page, 'documents', false, true);
   for (const control of [
     page.getByRole('button', { name: 'Upload' }).first(),
@@ -389,6 +398,10 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
     expect(hit.topHittable).toBe(true);
     expect(hit.bottomHittable).toBe(true);
   }
+  await expectLeadControlAligned(
+    page.locator('.mobile-doc-card').first(),
+    page.locator('.mobile-doc-card').first().getByTitle('More'),
+  );
 
   await openHub(page, 'projects', false, true);
   for (const control of [
@@ -402,6 +415,10 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
     expect(hit.topHittable).toBe(true);
     expect(hit.bottomHittable).toBe(true);
   }
+  await expectLeadControlAligned(
+    page.locator('.projects-mobile-folder-row.drill.reorderable').first(),
+    page.locator('.projects-mobile-folder-row.drill.reorderable').first().locator('[data-drag-rearrange-handle]'),
+  );
 
   await openHub(page, 'templates', false, true);
   for (const control of [
@@ -415,6 +432,10 @@ test('named mobile controls provide at least 44px hit geometry', async ({ page }
     expect(listHit.topHittable).toBe(true);
     expect(listHit.bottomHittable).toBe(true);
   }
+  await expectLeadControlAligned(
+    page.locator('.templates-mobile-row.reorderable').first(),
+    page.locator('.templates-mobile-row.reorderable').first().locator('[data-drag-rearrange-handle]'),
+  );
   await page.locator('.templates-mobile-row.reorderable').first().click();
   for (const control of [
     page.locator('.templates-mobile-back-button:visible'),

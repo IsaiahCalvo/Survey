@@ -75,6 +75,10 @@ test('named compact mobile controls expose 44px hit areas without resizing heade
   assert.match(hubCss, /\.survey-hub \.documents-mobile-select-main \{[\s\S]{0,100}height: 44px;[\s\S]{0,80}margin-block: -8px/);
 });
 
+test('mobile list lead controls share the same left alignment without moving row copy', () => {
+  assert.match(hubCss, /\.survey-hub \.mobile-doc-card > :first-child,[\s\S]{0,260}\.survey-hub \.archive-mobile-card-head > :first-child \{[\s\S]{0,100}transform: translateX\(-8px\)/);
+});
+
 test('desktop Documents preview uses Share, not an ellipsis glyph', () => {
   assert.match(documents, /title="Share"[\s\S]{0,120}<Icon name="share"/);
   assert.doesNotMatch(documents, /title="Share"[\s\S]{0,120}<Icon name="more"/);

@@ -2940,6 +2940,16 @@
     height: 44px !important;
   }
 
+  /* Keep every mobile list's leading control close to the card edge while
+     preserving its full 44px touch target. The copy column stays fixed, so
+     Documents, Projects, Templates, and Archive remain text-aligned. */
+  .survey-hub .mobile-doc-card > :first-child,
+  .survey-hub .projects-mobile-folder-row.reorderable > :first-child,
+  .survey-hub .templates-mobile-row.reorderable > :first-child,
+  .survey-hub .archive-mobile-card-head > :first-child {
+    transform: translateX(-8px);
+  }
+
   /* Right-edge list columns are visually 28px wide. Center the 44px target
      on that column so neither side is clipped by the scrollport. */
   .survey-hub .projects-mobile-folder-row.reorderable > button[title="More"],
