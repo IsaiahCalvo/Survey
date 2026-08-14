@@ -412,16 +412,19 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // so it shows a PLAIN type icon in the same ROW_THUMB box — no tinted plate
   // behind it (owner call 2026-08-07: "we don't have that anywhere else in this
   // app"). The box stays so the column aligns and the row height cannot shift.
-  assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
+  assert.match(SCREEN, /const rowTypeArt = \(item, iconSize = TYPE_ICON_SIZE\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
   // A project/template's icon box is the SAME footprint a page thumbnail
   // occupies, so the art-to-name distance is one number regardless of row type.
   // Asserted through the shared constants rather than literals, so the two can
   // never disagree when the thumbnail size is tuned again.
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
-  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} \/>/);
+  assert.match(SCREEN, /const TYPE_ICON_SIZE = 24;/);
+  assert.match(SCREEN, /const MOBILE_TYPE_ICON_SIZE = 18;/);
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} \/>/);
   assert.doesNotMatch(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\}[^>]*color=/,
     'shared document/project/template colors remain authoritative');
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
+  assert.match(SCREEN, /\{rowTypeArt\(item, MOBILE_TYPE_ICON_SIZE\)\}/);
   // No coloured plate may come back: no tint map, and no translucent
   // background anywhere in the screen's own styles.
   assert.doesNotMatch(SCREEN, /TYPE_TINT/);
@@ -637,8 +640,13 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
     SCREEN,
     /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="#8d96a6"/,
   );
-  assert.match(SCREEN, /const CHEVRON_SIZE = 12;/);
+  assert.match(SCREEN, /const CHEVRON_SIZE = 16;/);
   assert.match(SCREEN, /const MOBILE_CHEVRON_SIZE = 18;/);
+  assert.match(
+    SCREEN,
+    /fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE, marginRight: 4/,
+    'desktop disclosure is larger and leaves air before the unchanged title edge',
+  );
   // No literal chevron characters may survive anywhere in the screen.
   assert.doesNotMatch(SCREEN, /[▾▴▸▹►▼]/, 'no text-glyph chevrons remain');
 
@@ -802,8 +810,9 @@ test('the mobile card head ALWAYS renders three children, matching its three col
   assert.doesNotMatch(head, /^\s{10}\{(selectMode|isProject) &&/m);
   // The lead cell swaps its CONTENTS by mode instead.
   assert.match(head, /\{selectMode \? checkGlyph\(checked\) : \(isProject \? \(/);
-  // The trailing cell carries the same type art the desktop row shows.
-  assert.match(head, /\{rowTypeArt\(item\)\}/);
+  // The trailing cell carries the same type art, with the established mobile
+  // icon size rather than inheriting the larger desktop ledger glyph.
+  assert.match(head, /\{rowTypeArt\(item, MOBILE_TYPE_ICON_SIZE\)\}/);
 
   // Geometry copied from .mobile-doc-card, not invented.
   assert.match(CSS, /\.survey-hub \.archive-mobile-card-head \{[^}]*grid-template-columns: 28px minmax\(0, 1fr\) 52px/);

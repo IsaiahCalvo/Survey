@@ -90,10 +90,11 @@ const ROW_THUMB = 44;
    box so the column stays aligned across every row type. */
 const ROW_ART_W = 34;
 
-/* Shared chevron size — matches PDFViewer's disclosure chevrons in dense lists. */
-const CHEVRON_SIZE = 12;
+/* Desktop Archive disclosure size. It stays smaller than the mobile control,
+   but must remain legible beside the full-size ledger typography. */
+const CHEVRON_SIZE = 16;
 /* Mobile cards use the same disclosure size as the hub's other expandable
-   mobile rows; the denser desktop ledger keeps the 12px glyph above. */
+   mobile rows; the denser desktop ledger keeps the 16px glyph above. */
 const MOBILE_CHEVRON_SIZE = 18;
 
 /* The name cell's leading slot, which holds a project's disclosure chevron.
@@ -131,10 +132,10 @@ const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
    icon in the thumbnail column — no tinted tile behind it (owner call
    2026-08-07: "we don't have that anywhere else in this app"). Nothing on the
    hub's desktop surfaces puts a coloured plate behind an icon, so neither does
-   this. 18px is the largest inline glyph size the hub already uses
-   (ProjectsFolderTree's folder glyphs), and var(--ink-200) is the neutral this
-   very row used before the icon moved into its own column. */
-const TYPE_ICON_SIZE = 18;
+   this. Desktop uses 24px to balance against the 44px document thumbnail;
+   mobile keeps the established 18px card glyph. */
+const TYPE_ICON_SIZE = 24;
+const MOBILE_TYPE_ICON_SIZE = 18;
 
 export default function ArchiveScreen({
   items = [],
@@ -430,10 +431,9 @@ export default function ArchiveScreen({
 
   /* The app's real chevron from src/Icons.jsx — an SVG, not the literal
      down-triangle CHARACTER this used to render (owner call 2026-08-07: "it
-     should be the same chevron used throughout the app, not this"). Size 12 at
-     #8d96a6 is how PDFViewer already draws a disclosure chevron in a dense
-     list. The test forbids any text-glyph chevron in this file, so do not
-     reintroduce one even in a comment.
+     should be the same chevron used throughout the app, not this"). The test
+     forbids any text-glyph chevron in this file, so do not reintroduce one even
+     in a comment.
 
      Still ONE glyph that rotates rather than a swapped down/right pair, so the
      open/close transition survives the swap. */
@@ -463,15 +463,15 @@ export default function ArchiveScreen({
       style={{
         background: 'transparent', border: 0, color: 'var(--ink-200)',
         cursor: 'pointer', padding: 0, lineHeight: 1,
-        fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE,
+        fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE, marginRight: 4,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       }}
     >{chevron(open)}</button>
   );
 
   /* The name cell's leading slot. Always rendered at the same width so the
-     title's left edge never moves; the chevron is pushed to the RIGHT of the
-     slot so it sits tight against the title rather than out by the icon. */
+     title's left edge never moves. The wider chevron overhangs toward the icon
+     while its right margin leaves 4px of breathing room before the title. */
   const nameLeadSlot = (content) => (
     <span style={{
       width: NAME_LEAD, flex: 'none',
@@ -587,7 +587,7 @@ export default function ArchiveScreen({
      plain type icon for a project or a template. The icon still occupies the
      same ROW_THUMB box so the column stays aligned and the row height cannot
      shift as the list mixes types — but the box is invisible. */
-  const rowTypeArt = (item) => {
+  const rowTypeArt = (item, iconSize = TYPE_ICON_SIZE) => {
     if (item.type === 'document') return rowThumb(item.id, item.filePath);
     return (
       /* Same 23x30 footprint a page thumbnail occupies, so the distance from
@@ -597,7 +597,7 @@ export default function ArchiveScreen({
         width: ROW_ART_W, height: ROW_THUMB, flex: 'none',
         display: 'grid', placeItems: 'center',
       }}>
-        <Icon name={typeIcon[item.type] || 'doc'} size={TYPE_ICON_SIZE} />
+        <Icon name={typeIcon[item.type] || 'doc'} size={iconSize} />
       </div>
     );
   };
@@ -894,7 +894,7 @@ export default function ArchiveScreen({
           {/* Trailing cell — the same type art the desktop row shows, in the
               slot the Documents card fills with its page thumbnail. */}
           <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
-            {rowTypeArt(item)}
+            {rowTypeArt(item, MOBILE_TYPE_ICON_SIZE)}
           </div>
         </div>
         {isProject && expanded && (
