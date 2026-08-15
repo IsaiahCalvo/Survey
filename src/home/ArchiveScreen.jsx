@@ -133,10 +133,10 @@ const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
    icon in the thumbnail column — no tinted tile behind it (owner call
    2026-08-07: "we don't have that anywhere else in this app"). Nothing on the
    hub's desktop surfaces puts a coloured plate behind an icon, so neither does
-   this. Desktop uses 24px to balance against the 44px document thumbnail;
-   mobile keeps the established 18px card glyph. */
+   this. Both layouts use 24px to balance against the 44px document thumbnail
+   without pretending the type glyph is itself a page preview. */
 const TYPE_ICON_SIZE = 24;
-const MOBILE_TYPE_ICON_SIZE = 18;
+const MOBILE_TYPE_ICON_SIZE = 24;
 
 export default function ArchiveScreen({
   items = [],

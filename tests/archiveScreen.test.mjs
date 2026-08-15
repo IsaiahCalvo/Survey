@@ -432,7 +432,7 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // never disagree when the thumbnail size is tuned again.
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
   assert.match(SCREEN, /const TYPE_ICON_SIZE = 24;/);
-  assert.match(SCREEN, /const MOBILE_TYPE_ICON_SIZE = 18;/);
+  assert.match(SCREEN, /const MOBILE_TYPE_ICON_SIZE = 24;/);
   assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} \/>/);
   assert.doesNotMatch(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\}[^>]*color=/,
     'shared document/project/template colors remain authoritative');
@@ -693,6 +693,11 @@ test('mobile Archive matches the hub list inset and disclosure hit target', () =
     CSS,
     /\.survey-hub \.archive-mobile-disclosure \{[\s\S]*?width: 28px;[\s\S]*?height: 44px;[\s\S]*?place-items: center;/,
     'the larger mobile chevron keeps a 44px touch target without changing the card grid',
+  );
+  assert.match(
+    CSS,
+    /\.survey-hub \.archive-mobile-card-head > :first-child \{[\s\S]*?transform: none;/,
+    'Archive centers its disclosure in the gutter instead of shifting it like a drag handle',
   );
 });
 
