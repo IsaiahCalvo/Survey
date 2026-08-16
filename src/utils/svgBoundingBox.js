@@ -735,7 +735,7 @@ function getCircleBBox(obj) {
   };
 
   // UX 2026-04-20: counter pins render a nub that sticks out past the
-  // circle body by tipExtension = max(5, radius * 0.5) in the direction
+  // circle body by tipExtension = radius * 0.5 in the direction
   // of data.pointerAngle. The plain circle bbox cut off the nub tip, so
   // the dashed selection frame visibly clipped the pointer on the side
   // opposite the bubble. Counter body stays circular (renderCounter uses
@@ -750,7 +750,7 @@ function getCircleBBox(obj) {
     const bodyTop = centerY - r;
     const bodyRight = centerX + r;
     const bodyBottom = centerY + r;
-    const tipExtension = Math.max(5, r * 0.5);
+    const tipExtension = r * 0.5;
     const tipDistance = r + tipExtension;
     const pointerAngleDeg = (obj.data.pointerAngle != null) ? obj.data.pointerAngle : 225;
     const rad = degreesToRadians(pointerAngleDeg);

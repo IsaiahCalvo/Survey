@@ -21,6 +21,7 @@ import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
+import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import {
@@ -464,6 +465,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
   // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
   const [colorPickerTab, setColorPickerTab] = useState('fill');
+  const annotationColorPickerRef = useRef(null);
 
   const [showAlignGrid, setShowAlignGrid] = useState(false);
   useEffect(() => {
@@ -2293,7 +2295,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   };
                   return (
-                    <div data-annotation-color-picker style={{
+                    <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
                       position: 'absolute',
                       top: '100%',
                       left: '50%',
@@ -2350,6 +2352,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           opacity={currentOpacity}
                           marginRight="53px"
                           attachedHeader={isShape}
+                          outsideBoundaryRef={annotationColorPickerRef}
                           onChange={applyChange}
                           onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
                           firstPreset={(shapeOneVisibleRule && !onFillTab)
@@ -2452,40 +2455,35 @@ export default function App({ devPreviewReturnTab = null }) {
                   || bottomToolbarApi.contextTool === 'callout'
                   || bottomToolbarApi.contextTool === 'counter'
                   || bottomToolbarApi.activeTool === 'eraser') && (
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="no-spin-buttons"
+                <AnnotationSizeControl
                   value={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.eraserSizeInputValue : bottomToolbarApi.strokeWidthInputValue}
-                  onChange={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.handleEraserSizeInputChange : bottomToolbarApi.handleStrokeWidthInputChange}
-                  onFocus={() => bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.setIsEraserSizeFocused(true) : bottomToolbarApi.setIsStrokeWidthFocused(true)}
-                  onBlur={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.handleEraserSizeInputBlur : bottomToolbarApi.handleStrokeWidthInputBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.target.blur();
+                  label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
+                  min={bottomToolbarApi.contextTool === 'counter' ? 4 : 1}
+                  max={bottomToolbarApi.activeTool === 'eraser' ? 100 : 50}
+                  presets={bottomToolbarApi.activeTool === 'eraser'
+                    ? ANNOTATION_SIZE_PRESETS.eraser
+                    : bottomToolbarApi.contextTool === 'counter'
+                      ? ANNOTATION_SIZE_PRESETS.counter
+                      : ANNOTATION_SIZE_PRESETS.width}
+                  onValueChange={(value) => {
+                    const handler = bottomToolbarApi.activeTool === 'eraser'
+                      ? bottomToolbarApi.handleEraserSizeInputChange
+                      : bottomToolbarApi.handleStrokeWidthInputChange;
+                    handler?.({ target: { value } });
+                  }}
+                  onValueCommit={(value) => {
+                    const handler = bottomToolbarApi.activeTool === 'eraser'
+                      ? bottomToolbarApi.handleEraserSizeInputBlur
+                      : bottomToolbarApi.handleStrokeWidthInputBlur;
+                    handler?.({ currentTarget: { value } });
+                  }}
+                  onFocusChange={(focused) => {
+                    if (bottomToolbarApi.activeTool === 'eraser') {
+                      bottomToolbarApi.setIsEraserSizeFocused?.(focused);
+                    } else {
+                      bottomToolbarApi.setIsStrokeWidthFocused?.(focused);
                     }
                   }}
-                  style={{
-                    width: '36px',
-                    height: '20px',
-                    padding: '4px 4px',
-                    background: '#3a4252',
-                    color: '#e8e2d4',
-                    border: '1px solid transparent',
-                    borderRadius: '5px',
-                    fontSize: '12px',
-                    fontFamily: FONT_FAMILY,
-                    textAlign: 'center'
-                  }}
-                  {...chromeTip(
-                    bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser'
-                      ? 'Size'
-                      : 'Width',
-                    'below'
-                  )}
-                  title={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
-                  aria-label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
                 />
                 )}
                 {bottomToolbarApi.contextTool === 'counter'

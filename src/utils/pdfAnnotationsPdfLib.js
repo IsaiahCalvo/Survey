@@ -1691,7 +1691,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       // centered number instead of a plain, unlabeled dot.
       const pointerAngle = Number(fabricObj?.data?.pointerAngle ?? 225);
       const angle = (pointerAngle * Math.PI) / 180;
-      const tipDistance = radius + Math.max(5, radius * 0.5);
+      const tipDistance = radius + radius * 0.5;
       const centerX = left + radius;
       const centerY = top + radius;
       const tipX = centerX + Math.cos(angle) * tipDistance;
@@ -3074,7 +3074,7 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
   const angleRad = (Number(pointerAngleDeg) * Math.PI) / 180;
   const dirX = Math.cos(angleRad);
   const dirY = Math.sin(angleRad);
-  const tipExtension = Math.max(5, radius * 0.5);
+  const tipExtension = radius * 0.5;
   const tipDistance = radius + tipExtension;
   const tipX = centerX + dirX * tipDistance;
   const tipY = centerY + dirY * tipDistance;

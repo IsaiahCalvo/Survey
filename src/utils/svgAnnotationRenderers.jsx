@@ -1695,7 +1695,7 @@ export const renderCounter = (obj, index) => {
   const angleRad = (pointerAngleDeg * Math.PI) / 180;
   const dirX = Math.cos(angleRad);
   const dirY = Math.sin(angleRad);
-  const tipExtension = Math.max(5, radius * 0.5);
+  const tipExtension = radius * 0.5;
   const tipDistance = radius + tipExtension;
   const tipX = centerX + dirX * tipDistance;
   const tipY = centerY + dirY * tipDistance;

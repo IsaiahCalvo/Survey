@@ -50,6 +50,8 @@ const hexToHsv = (hex) => {
  *  - showOpacity  when false, hides the opacity slider + % field — for pickers
  *                 of things that have no transparency (e.g. counter pins)
  *  - attachedHeader when true, joins the picker to a tab/header directly above
+ *  - outsideBoundaryRef optional ref whose element contains this picker plus any
+ *                 attached controls that should not dismiss it (e.g. tabs)
  */
 const CompactColorPicker = ({
     color,
@@ -59,6 +61,7 @@ const CompactColorPicker = ({
     showOpacity = true,
     marginRight = 0,
     attachedHeader = false,
+    outsideBoundaryRef = null,
     // 2026-05-25: First preset cell behaviour.
     //   'transparent' (default) — zero-alpha picker; click sets opacity 0.
     //   { kind: 'match', color }  — Match Fill picker; click snapshots the
@@ -100,7 +103,11 @@ const CompactColorPicker = ({
     // Handle click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
+            // Some callers render tabs immediately above this component. When a
+            // shared boundary is supplied, treat those tabs and the picker as one
+            // popover so switching tabs never races the outside-click dismissal.
+            const boundary = outsideBoundaryRef?.current || containerRef.current;
+            if (boundary && !boundary.contains(event.target)) {
                 if (onClose) onClose();
             }
         };
@@ -109,7 +116,7 @@ const CompactColorPicker = ({
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [onClose]);
+    }, [onClose, outsideBoundaryRef]);
 
     // Keep the local hex AND the spectrum's HSV in sync with the colour prop,
     // so opening the spectrum view starts on the real current colour.

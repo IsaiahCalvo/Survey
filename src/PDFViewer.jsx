@@ -3235,7 +3235,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   //   bodyY: number,
   //   angle: number,             // current pointerAngle in degrees (0=right, 90=down)
   //   radius: number,            // counter circle radius
-  //   tipDistance: number,       // radius + max(5, radius*0.5) — matches renderCounter
+  //   tipDistance: number,       // radius + radius*0.5 — matches renderCounter
   //   color: string,             // counter fill color
   //   dragSessionId: number,     // unique id stamped on the pending counter for find/remove
   //   shiftActive: bool,         // is Shift currently held?
@@ -25386,7 +25386,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (e.key === 'Shift' && !drag.shiftActive) {
         // Lock the tip at its CURRENT canvas position so the body can orbit
         // around it. tip = body + r*(cos angle, sin angle), where r is the
-        // tipDistance from renderCounter (radius + max(5, radius*0.5)).
+        // tipDistance from renderCounter (radius + radius*0.5).
         const angleRad = drag.angle * Math.PI / 180;
         drag.tipX = drag.bodyX + drag.tipDistance * Math.cos(angleRad);
         drag.tipY = drag.bodyY + drag.tipDistance * Math.sin(angleRad);
@@ -30845,7 +30845,7 @@ ${pageBlocks}
                                     const COUNTER_RADIUS = Math.max(4, Number(strokeWidth) || 14);
                                     // tipDistance MUST match renderCounter's formula so the
                                     // tip math (Shift-rotate) lines up with what the user sees.
-                                    const tipDistance = COUNTER_RADIUS + Math.max(5, COUNTER_RADIUS * 0.5);
+                                    const tipDistance = COUNTER_RADIUS + COUNTER_RADIUS * 0.5;
                                     // dragCreatedAt is the find key used by applyCounterDragMove
                                     // and commit/cancel. We use createdAt (preserved by the
                                     // history normalizer) instead of a custom sentinel because

@@ -34,7 +34,7 @@ export function getCounterLabelLayout(radius, label) {
 
 export function getCounterRenderGeometry(bodyX, bodyY, radius, pointerAngleDeg, displayNumber = 1) {
     const angleRad = (pointerAngleDeg * Math.PI) / 180;
-    const tipExtension = Math.max(5, radius * 0.5);
+    const tipExtension = radius * 0.5;
     const tipDistance = radius + tipExtension;
     const tipX = bodyX + Math.cos(angleRad) * tipDistance;
     const tipY = bodyY + Math.sin(angleRad) * tipDistance;
