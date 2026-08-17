@@ -15,7 +15,6 @@ import {
   getFabricStroke,
 } from './shared.js';
 
-export const FABRIC_TYPE = 'rect';
 export const PDF_SUBTYPE = 'Square';
 
 export function adaptSquare(fabricObj, { pdfDoc, page, pageHeight }) {

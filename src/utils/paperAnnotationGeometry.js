@@ -3,12 +3,7 @@ import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
 const DEFAULT_ARC_STEPS = 18;
-export const PAPER_INK_OUTLINE_MIN_WIDTH = 4;
 
-export function shouldUsePaperInkOutline(strokeWidth) {
-  const width = Number(strokeWidth);
-  return Number.isFinite(width) && width >= PAPER_INK_OUTLINE_MIN_WIDTH;
-}
 
 const isPoint = (value) => (
   Array.isArray(value)

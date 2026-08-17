@@ -165,4 +165,3 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
   );
 }
 
-export default ConfirmDeleteModal;

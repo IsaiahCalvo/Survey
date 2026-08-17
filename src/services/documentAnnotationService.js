@@ -153,26 +153,6 @@ export async function getDocumentAnnotations(documentId) {
   return { data: filteredRows, error: null };
 }
 
-/**
- * Upsert a single annotation (insert or update)
- */
-export async function upsertAnnotation(annotation) {
-  const { data, error } = await supabase
-    .from('document_annotations')
-    .upsert(annotation, {
-      onConflict: 'document_id,annotation_id',
-      ignoreDuplicates: false
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('[AnnotationSync] Error upserting annotation:', error);
-    return { data: null, error };
-  }
-
-  return { data, error: null };
-}
 
 /**
  * Upsert multiple annotations in batch
@@ -301,23 +281,6 @@ async function countSurveyMarkersReferencingChecklistItemFallback(itemId) {
   }
 }
 
-/**
- * Delete an annotation by annotation_id
- */
-export async function deleteAnnotation(documentId, annotationId) {
-  const { error } = await supabase
-    .from('document_annotations')
-    .delete()
-    .eq('document_id', documentId)
-    .eq('annotation_id', annotationId);
-
-  if (error) {
-    console.error('[AnnotationSync] Error deleting annotation:', error);
-    return { success: false, error };
-  }
-
-  return { success: true, error: null };
-}
 
 /**
  * Delete multiple annotations by annotation_ids
@@ -433,26 +396,6 @@ export async function syncAnnotationsToSupabase(documentId, userId, surveyMarker
   };
 }
 
-/**
- * Load annotations from Supabase and convert to local format
- */
-export async function loadAnnotationsFromSupabase(documentId) {
-  const { data, error } = await getDocumentAnnotations(documentId);
-
-  if (error) {
-    return { surveyMarkers: {}, error };
-  }
-
-  // Convert to local surveyMarkers format
-  const surveyMarkers = {};
-  for (const annotation of data) {
-    const localAnnotation = mapSurveyMarkerRowToLocalAnnotation(annotation);
-    if (!localAnnotation?.annotationId) continue;
-    surveyMarkers[localAnnotation.annotationId] = localAnnotation;
-  }
-
-  return { surveyMarkers, error: null };
-}
 
 // ============================================
 // REAL-TIME SUBSCRIPTIONS

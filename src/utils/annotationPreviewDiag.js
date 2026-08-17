@@ -151,22 +151,6 @@ export function recordAnnotationCommit(detail = {}) {
   log('final commit', detail);
 }
 
-export function recordAnnotationSyncAttempt(detail = {}) {
-  if (!isAnnotationPreviewDiagEnabled()) return;
-  const gesture = resolveGesture();
-  const count = Number.isFinite(detail.count) ? detail.count : 1;
-  if (gesture && detail.pointerDown) {
-    gesture.syncWritesDuringPointerDown += count;
-    if (detail.deferred) gesture.syncDeferredDuringPointerDown += count;
-  }
-  if (detail.pointerDown || detail.deferred) {
-    log('sync attempted while pointer down', {
-      gestureId: gesture?.id || null,
-      deferred: Boolean(detail.deferred),
-      ...detail,
-    });
-  }
-}
 
 export function recordAnnotationSyncPush(detail = {}) {
   if (!isAnnotationPreviewDiagEnabled()) return;

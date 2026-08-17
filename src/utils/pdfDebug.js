@@ -150,18 +150,3 @@ if (typeof window !== 'undefined') {
   };
 }
 
-export default {
-  setDebugEnabled,
-  isDebugEnabled,
-  debugLog,
-  debugWarn,
-  bumpDebugCounter,
-  emitDebugEvent,
-  getEventRate,
-  getEventRates,
-  setDebugData,
-  setPresenceDebugStatus,
-  setLastDebugError,
-  clearDebugState,
-  getDebugSnapshot
-};

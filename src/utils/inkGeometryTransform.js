@@ -664,16 +664,7 @@ export function applyPageAffineToInkObject(object, pageMatrix) {
   };
 }
 
-export const translationMatrix = (dx, dy) => [1, 0, 0, 1, dx, dy];
 
-export const scaleAroundMatrix = (scaleX, scaleY, anchorX, anchorY) => [
-  scaleX,
-  0,
-  0,
-  scaleY,
-  anchorX * (1 - scaleX),
-  anchorY * (1 - scaleY),
-];
 
 export function scaleInRotatedFrameAroundMatrix(
   scaleX,

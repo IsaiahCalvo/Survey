@@ -110,11 +110,6 @@ export function getNetworkLogSnapshot() {
   return ring.slice();
 }
 
-// Test-only helper for resetting state between unit tests.
-export function __resetNetworkLogForTests() {
-  ring.length = 0;
-  installed = false;
-}
 
 // Runtime helper for clearing the network ring buffer without uninstalling.
 // Used by window.__resetAppDiagnostics so the next reload starts with a fully

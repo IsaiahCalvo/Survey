@@ -131,19 +131,6 @@ export const TYPOGRAPHY = {
   },
 };
 
-export const SPACING = {
-  // Spacing scale (in pixels)
-  xs: '4px',
-  sm: '6px',
-  md: '8px',
-  lg: '12px',
-  xl: '16px',
-  '2xl': '20px',
-  '3xl': '24px',
-  '4xl': '32px',
-  '5xl': '40px',
-  '6xl': '48px',
-};
 
 export const BORDERS = {
   // Border radius (design.md: small radii — controls 2-6px, panels 8-10px)
@@ -187,27 +174,4 @@ export const Z_INDEX = {
   tooltip: 10001,
 };
 
-export const LAYOUT = {
-  sidebar: {
-    collapsed: '48px',
-    expanded: '280px',
-  },
-  tabBar: {
-    height: '40px',
-  },
-  toolbar: {
-    height: '48px',
-  },
-};
 
-// Export default theme object
-export default {
-  colors: COLORS,
-  typography: TYPOGRAPHY,
-  spacing: SPACING,
-  borders: BORDERS,
-  shadows: SHADOWS,
-  transitions: TRANSITIONS,
-  zIndex: Z_INDEX,
-  layout: LAYOUT,
-};

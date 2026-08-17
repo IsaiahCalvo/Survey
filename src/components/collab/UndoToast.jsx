@@ -47,4 +47,3 @@ export function UndoToast({ toast, onDismiss }) {
   );
 }
 
-export default UndoToast;

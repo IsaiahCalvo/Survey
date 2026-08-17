@@ -38,10 +38,6 @@ export const isRedoKeyEvent = (event) => {
   return isYKey(event);
 };
 
-/** True when the event belongs to the undo/redo hotkey family at all. */
-export const isUndoRedoKeyEvent = (event) => (
-  isUndoKeyEvent(event) || isRedoKeyEvent(event)
-);
 
 /** True when a matched undo/redo shortcut must not execute in PDFViewer. */
 export const isUndoRedoBlocked = (doc) => {

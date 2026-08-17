@@ -106,4 +106,3 @@ export function CleanupResidueReviewPanel({ isOpen, residueIds, onClose, onClean
   );
 }
 
-export default CleanupResidueReviewPanel;

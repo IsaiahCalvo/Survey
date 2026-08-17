@@ -104,38 +104,3 @@ export const parsePageRangeInput = (input, options = {}) => {
   };
 };
 
-export const formatPageList = (pageEntries = []) => {
-  if (!Array.isArray(pageEntries) || pageEntries.length === 0) {
-    return '';
-  }
-
-  const sorted = [...pageEntries].sort((a, b) => a - b);
-  const ranges = [];
-  let start = sorted[0];
-  let prev = sorted[0];
-
-  for (let i = 1; i < sorted.length; i += 1) {
-    const current = sorted[i];
-    if (current === prev + 1) {
-      prev = current;
-      continue;
-    }
-
-    if (start === prev) {
-      ranges.push(String(start));
-    } else {
-      ranges.push(`${start}-${prev}`);
-    }
-
-    start = current;
-    prev = current;
-  }
-
-  if (start === prev) {
-    ranges.push(String(start));
-  } else {
-    ranges.push(`${start}-${prev}`);
-  }
-
-  return ranges.join(', ');
-};

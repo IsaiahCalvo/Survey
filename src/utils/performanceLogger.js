@@ -182,10 +182,6 @@ export const perfZoom = {
   end: (scale) => perfLogger.end(`Zoom to ${scale}x`, 'zooms'),
 };
 
-export const perfScroll = {
-  start: (pageNum) => perfLogger.start(`Scroll Render Page ${pageNum}`),
-  end: (pageNum) => perfLogger.end(`Scroll Render Page ${pageNum}`, 'scrollRenders'),
-};
 
 // Functions to control debug state from UI or console
 export const setDebugEnabled = (enabled) => {

@@ -15,7 +15,6 @@ import {
   getFabricStroke,
 } from './shared.js';
 
-export const FABRIC_TYPE = 'circle';
 export const PDF_SUBTYPE = 'Circle';
 
 export function adaptCircle(fabricObj, { pdfDoc, page, pageHeight }) {

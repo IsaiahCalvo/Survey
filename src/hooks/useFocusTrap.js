@@ -127,4 +127,3 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true 
   }, [containerRef, isOpen, onEscape]);
 };
 
-export default useFocusTrap;

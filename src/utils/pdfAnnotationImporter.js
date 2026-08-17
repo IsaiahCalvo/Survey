@@ -5311,32 +5311,3 @@ export async function countUnsupportedAnnotations(pdfDoc) {
   return counts;
 }
 
-/**
- * Check if a PDF has any annotations
- * @param {PDFDocumentProxy} pdfDoc - PDF.js document
- * @returns {Promise<boolean>}
- */
-export async function pdfHasAnnotations(pdfDoc) {
-  const numPages = pdfDoc.numPages;
-
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const annotations = await page.getAnnotations();
-
-      // Check if any annotation can be edited by this importer.
-      const hasEditableAnnotations = annotations.some(ann =>
-        ann.subtype &&
-        !SILENT_IGNORE_SUBTYPES.includes(ann.subtype)
-      );
-
-      if (hasEditableAnnotations) {
-        return true;
-      }
-    } catch (error) {
-      console.error(`Error checking annotations on page ${pageNum}:`, error);
-    }
-  }
-
-  return false;
-}
