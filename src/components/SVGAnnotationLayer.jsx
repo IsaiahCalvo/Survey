@@ -4128,7 +4128,7 @@ const SVGAnnotationLayer = memo(({
             const cy = (renderObj.top || 0) + r;
             const pointerAngleDeg = renderObj.data?.pointerAngle ?? 225;
             const angleRad = (pointerAngleDeg * Math.PI) / 180;
-            const tipExt = Math.max(5, r * 0.5);
+            const tipExt = r * 0.5;
             const tipDistance = r + tipExt;
             const tipX = cx + Math.cos(angleRad) * tipDistance;
             const tipY = cy + Math.sin(angleRad) * tipDistance;
@@ -5111,7 +5111,7 @@ const SVGAnnotationLayer = memo(({
           const angleRad = (pointerAngleDeg * Math.PI) / 180;
           // Match renderCounter's tipExtension formula exactly so the handle sits ON
           // the visible nubbin tip, not floating beside it.
-          const tipExtension = Math.max(5, radius * 0.5);
+          const tipExtension = radius * 0.5;
           const tipX = cx + Math.cos(angleRad) * (radius + tipExtension);
           const tipY = cy + Math.sin(angleRad) * (radius + tipExtension);
           // UX: dampened handle sizing. The sqrt curve softens growth so the
@@ -5563,7 +5563,7 @@ const SVGAnnotationLayer = memo(({
           const r = rawRadius * Math.abs(counterBboxObj.scaleX || 1);
           const bodyX = (counterBboxObj.left || 0) + r;
           const bodyY = (counterBboxObj.top || 0) + r;
-          const tipExt = Math.max(5, r * 0.5);
+          const tipExt = r * 0.5;
           const pointerAngleDeg = counterBboxObj.data?.pointerAngle != null
             ? counterBboxObj.data.pointerAngle
             : 225;

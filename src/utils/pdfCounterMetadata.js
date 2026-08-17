@@ -22,7 +22,7 @@ export function buildPdfCounterMetadata(fabricObj, pageNumber = null) {
   const centerY = top + radius;
   const pointerAngle = data.pointerAngle ?? null;
   const pointerAngleRad = Number.isFinite(Number(pointerAngle)) ? (Number(pointerAngle) * Math.PI) / 180 : null;
-  const tipDistance = radius + Math.max(5, radius * 0.5);
+  const tipDistance = radius + radius * 0.5;
 
   return {
     app: 'SurveyApp',

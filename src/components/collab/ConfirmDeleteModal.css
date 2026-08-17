@@ -1,37 +1,18 @@
-/* src/components/collab/ConfirmDeleteModal.css
- * Phase 35 Plan 04 — confirmation modal styles for the two bulk-delete
- * variants (collaborator-all-mine + owner-cross-author).
- *
- * UX: backdrop scrim at z-index 200 sits above the UndoToast (z-index 100)
- * so the toast doesn't peek through during a delete confirmation. Card is
- * centered, max-width 480px so the body text doesn't get unwieldy on wide
- * monitors. Reuses the StorageFailureBanner color palette + button
- * conventions for visual consistency with the existing collab surfaces.
- *
- * Two type weights total (matching StorageFailureBanner): 600 for the
- * heading, 400 for body / breakdown / button labels.
- */
+/* Counter-series and collaboration delete confirmations. This deliberately
+ * mirrors ConfirmModal in src/home/BulkModals.jsx: one scrim, one compact card,
+ * one divided footer, and the same typography/button scale. */
 
 .confirm-delete-modal__backdrop {
-  /* UX: full-viewport fixed scrim. z-index 200 sits above the UndoToast
-     (100) so the toast can't peek through during the modal interval.
-     Black @ 50% opacity — same scrim density as ExcelLockedModal etc. */
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 200;
+  inset: 0;
+  z-index: 1300;
   background: rgba(13, 15, 20, 0.55);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-
   display: flex;
   align-items: center;
   justify-content: center;
-
-  /* UX: 120ms ease-out fade-in matches the existing modal cadence in this
-     repo (NewColumnsModal, ExcelLockedModal). Calm but clearly arriving. */
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   animation: confirm-delete-modal-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
 }
 
@@ -41,122 +22,114 @@
 }
 
 .confirm-delete-modal__card {
-  /* UX: 480px max-width keeps body text readable on wide monitors. 16/24
-     padding (md/lg per spec spacing) gives the heading + body breathing room.
-     Reuses bg-secondary so the modal reads as part of the same surface
-     family as the storage-failure banner / sync-status pill. */
-  background: var(--bg-secondary, #12151c);
-  border: 1px solid var(--border-primary, #2a3140);
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
+  width: 380px;
+  max-width: 92vw;
+  background: #181c24;
+  border: 1px solid #2a3140;
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  color: #f4f1ea;
+  overflow: hidden;
+}
 
-  width: 100%;
-  max-width: 480px;
-  margin: 0 16px;
-  padding: 24px;
-
-  font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
-
+.confirm-delete-modal__content {
+  padding: 18px 18px 14px;
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   gap: 12px;
 }
 
+.confirm-delete-modal__copy {
+  min-width: 0;
+  flex: 1;
+}
+
 .confirm-delete-modal__heading {
-  /* UX: 16px / weight 600 — the only weight-600 surface in the modal.
-     Slightly larger than the banner heading (14px) because the modal is
-     a heavier interruption and deserves a heavier title. */
   font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-  color: var(--text-primary, #FFFFFF);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: #f4f1ea;
   margin: 0;
 }
 
 .confirm-delete-modal__body {
-  /* UX: 14px / weight 400 — explains the count + impact. Larger than the
-     banner body (13px) because the modal is the only surface on screen
-     and the user needs to read it carefully before confirming. */
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-secondary, #e8e2d4);
-  margin: 0;
+  color: #8d96a6;
+  margin: 8px 0 0;
 }
 
 .confirm-delete-modal__breakdown-inline {
-  /* UX: per-author breakdown. 13px / weight 400 / line-height 1.5 — slightly
-     smaller than the body so it reads as supplementary metadata, not a
-     second top-line message. 16px bottom margin gives separation from the
-     button row. Color text-secondary to keep it visually subordinate.
-     Per CONTEXT.md example: "Alice — 18, Bob — 12, Carol — 5" — comma-
-     joined inline string, em dash, single paragraph (NOT a list).
-     User decision locked 2026-04-30. */
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-secondary, #e8e2d4);
-  margin: 0 0 16px 0;
+  color: #8d96a6;
+  margin: 8px 0 0;
+}
+
+.confirm-delete-modal__close {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid #2a3140;
+  color: #8d96a6;
+  cursor: pointer;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  font-family: inherit;
+  flex: none;
+}
+
+.confirm-delete-modal__close:hover {
+  color: #f4f1ea;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .confirm-delete-modal__actions {
-  /* UX: button row aligned right (Material standard for destructive
-     confirmation modals) — Cancel on the left, danger primary on the right.
-     12px gap between buttons matches the existing button-row convention
-     in this repo (NewColumnsModal etc.). */
   display: flex;
-  flex-direction: row;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: 8px;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #2a3140;
+  background: #12151c;
 }
 
 .confirm-delete-modal__btn {
-  /* UX: shared button base — 14px label, 8/16 padding, 4px radius. Reset
-     native button chrome so visual style comes entirely from these rules. */
-  font-size: 14px;
-  font-weight: 400;
   font-family: inherit;
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: 1px solid transparent;
   cursor: pointer;
-  line-height: 1.4;
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
 
-.confirm-delete-modal__btn:focus {
-  /* UX: keyboard focus ring matching existing input focus pattern
-     (src/styles.css). Especially important here because Cancel has
-     default focus per CONTEXT.md — the user must clearly see it. */
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.4);
-}
-
 .confirm-delete-modal__btn--cancel {
-  /* UX: secondary button — neutral background, outlined. Default-focused
-     button per CONTEXT.md "Cancel (default focus)". */
   background: transparent;
-  border-color: var(--border-primary, #2a3140);
-  color: var(--text-primary, #FFFFFF);
+  border: 0;
+  color: #8d96a6;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
 }
 
 .confirm-delete-modal__btn--cancel:hover {
-  background: var(--bg-tertiary, #12151c);
+  color: #f4f1ea;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .confirm-delete-modal__btn--danger {
-  /* UX: red destructive primary. Same accent-red token as the
-     StorageFailureBanner left border so the destructive language is
-     consistent across the collab surfaces. */
-  background: var(--accent-red, #d95a56);
-  border-color: var(--accent-red, #d95a56);
-  color: #FFFFFF;
+  height: 28px;
+  background: #d95a56;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  padding: 5px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .confirm-delete-modal__btn--danger:hover {
-  /* UX: darken the red on hover for clear interactivity feedback. */
-  background: var(--accent-red-hover, #c84c49);
-  border-color: var(--accent-red-hover, #c84c49);
+  background: #c84c49;
 }

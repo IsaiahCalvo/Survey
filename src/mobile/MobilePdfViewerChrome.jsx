@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from '../utils/annotationSize';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
@@ -775,6 +777,27 @@ export function MobileToolProperties({ api }) {
   const showBorderStyle = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function';
   const showArrowhead = (tool === 'arrow' || tool === 'callout') && typeof api.setArrowheadStyle === 'function';
   const showStroke = !isEraser && (WIDTH_TOOLS.has(tool) || FILL_TOOLS.has(tool));
+  const sizeLabel = isEraser || tool === 'counter' ? 'Size' : 'Width';
+  const sizeValue = isEraser ? api.eraserSizeInputValue : api.strokeWidthInputValue;
+  const sizeMin = tool === 'counter' ? COUNTER_SIZE_MIN : 1;
+  const sizeMax = isEraser ? 100 : tool === 'counter' ? COUNTER_SIZE_MAX : 50;
+  const sizePresets = isEraser
+    ? ANNOTATION_SIZE_PRESETS.eraser
+    : tool === 'counter'
+      ? ANNOTATION_SIZE_PRESETS.counter
+      : ANNOTATION_SIZE_PRESETS.width;
+  const handleSizeDraft = (value) => {
+    const handler = isEraser ? api.handleEraserSizeInputChange : api.handleStrokeWidthInputChange;
+    handler?.({ target: { value } });
+  };
+  const handleSizeCommit = (value) => {
+    const handler = isEraser ? api.handleEraserSizeInputBlur : api.handleStrokeWidthInputBlur;
+    handler?.({ currentTarget: { value } });
+  };
+  const handleSizeFocus = (focused) => {
+    if (isEraser) api.setIsEraserSizeFocused?.(focused);
+    else api.setIsStrokeWidthFocused?.(focused);
+  };
 
   if (!isEraser && !showStroke && !showFill && !showBorderStyle && !showArrowhead) return null;
 
@@ -895,16 +918,17 @@ export function MobileToolProperties({ api }) {
         </div>
       )}
       {showWidth && tool !== 'counter' && (
-        <label className="mobile-pdf-properties__number">
-          <input
-            aria-label={isEraser ? 'Eraser size' : 'Stroke width'}
-            inputMode="decimal"
-            value={isEraser ? api.eraserSizeInputValue : api.strokeWidthInputValue}
-            onChange={isEraser ? api.handleEraserSizeInputChange : api.handleStrokeWidthInputChange}
-            onFocus={() => isEraser ? api.setIsEraserSizeFocused?.(true) : api.setIsStrokeWidthFocused?.(true)}
-            onBlur={isEraser ? api.handleEraserSizeInputBlur : api.handleStrokeWidthInputBlur}
-          />
-        </label>
+        <AnnotationSizeControl
+          className="mobile-pdf-properties__size-control"
+          label={sizeLabel}
+          value={sizeValue}
+          min={sizeMin}
+          max={sizeMax}
+          presets={sizePresets}
+          onValueChange={handleSizeDraft}
+          onValueCommit={handleSizeCommit}
+          onFocusChange={handleSizeFocus}
+        />
       )}
       {tool === 'counter' && (
         <div className="mobile-pdf-properties__menu-anchor" ref={counterMenuRef}>
@@ -938,16 +962,17 @@ export function MobileToolProperties({ api }) {
         </div>
       )}
       {showWidth && tool === 'counter' && (
-        <label className="mobile-pdf-properties__number">
-          <input
-            aria-label="Stroke width"
-            inputMode="decimal"
-            value={api.strokeWidthInputValue}
-            onChange={api.handleStrokeWidthInputChange}
-            onFocus={() => api.setIsStrokeWidthFocused?.(true)}
-            onBlur={api.handleStrokeWidthInputBlur}
-          />
-        </label>
+        <AnnotationSizeControl
+          className="mobile-pdf-properties__size-control"
+          label="Size"
+          value={sizeValue}
+          min={sizeMin}
+          max={sizeMax}
+          presets={sizePresets}
+          onValueChange={handleSizeDraft}
+          onValueCommit={handleSizeCommit}
+          onFocusChange={handleSizeFocus}
+        />
       )}
       {showBorderStyle && (
         <MobileStyledSelect
@@ -1252,17 +1277,19 @@ export function MobileToolProperties({ api }) {
                       <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
                     </>
                   )}
-                  <label className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
-                    <strong>Stroke width</strong>
-                    <input
-                      inputMode="decimal"
-                      aria-label="Stroke width"
+                  <div className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
+                    <strong>{tool === 'counter' ? 'Size' : 'Width'}</strong>
+                    <AnnotationSizeControl
+                      label={tool === 'counter' ? 'Size' : 'Width'}
                       value={api.strokeWidthInputValue}
-                      onChange={api.handleStrokeWidthInputChange}
-                      onFocus={() => api.setIsStrokeWidthFocused?.(true)}
-                      onBlur={api.handleStrokeWidthInputBlur}
+                      min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
+                      max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
+                      presets={tool === 'counter' ? ANNOTATION_SIZE_PRESETS.counter : ANNOTATION_SIZE_PRESETS.width}
+                      onValueChange={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
+                      onValueCommit={(value) => api.handleStrokeWidthInputBlur?.({ currentTarget: { value } })}
+                      onFocusChange={(focused) => api.setIsStrokeWidthFocused?.(focused)}
                     />
-                  </label>
+                  </div>
                 </section>
 
                 {showArrowheadSheet && (

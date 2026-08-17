@@ -506,7 +506,7 @@ export function useSVGInteraction({
       const bodyY = (_obj_precheck.top || 0) + radius;
       const pointerAngleDeg = _obj_precheck.data.pointerAngle != null ? _obj_precheck.data.pointerAngle : 225;
       const rad = (pointerAngleDeg * Math.PI) / 180;
-      const tipExtension = Math.max(5, radius * 0.5);
+      const tipExtension = radius * 0.5;
       const tipDistance = radius + tipExtension;
       const tipX = bodyX + Math.cos(rad) * tipDistance;
       const tipY = bodyY + Math.sin(rad) * tipDistance;
@@ -1213,7 +1213,7 @@ export function useSVGInteraction({
         const bodyY = newTop + radius;
         const pointerAngleDeg = mvObj.data.pointerAngle != null ? mvObj.data.pointerAngle : 225;
         const rad = (pointerAngleDeg * Math.PI) / 180;
-        const tipExtension = Math.max(5, radius * 0.5);
+        const tipExtension = radius * 0.5;
         const tipDistance = radius + tipExtension;
         const tipX = bodyX + Math.cos(rad) * tipDistance;
         const tipY = bodyY + Math.sin(rad) * tipDistance;
@@ -2268,7 +2268,7 @@ export function useSVGInteraction({
       if (isCounterResize) {
         const baseRadius = ds.originalProps?.counterBaseRadius || objForFlip?.radius || 14;
         counterNewRadius = baseRadius * Math.abs(newScaleX);
-        const counterTipExtension = Math.max(5, counterNewRadius * 0.5);
+        const counterTipExtension = counterNewRadius * 0.5;
         resizeCommitTop = newTop + counterTipExtension;
       }
 
@@ -3960,7 +3960,7 @@ export function useSVGInteraction({
       counterBaseRadius = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
       const bodyX = (obj.left || 0) + counterBaseRadius;
       const bodyY = (obj.top || 0) + counterBaseRadius;
-      counterBaseTipExtension = Math.max(5, counterBaseRadius * 0.5);
+      counterBaseTipExtension = counterBaseRadius * 0.5;
       const pointerAngleDeg = obj.data?.pointerAngle != null ? obj.data.pointerAngle : 225;
       bbox = {
         left: bodyX - counterBaseRadius,

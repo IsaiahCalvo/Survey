@@ -151,6 +151,17 @@ function diag(line) {
       return;
     }
 
+    // The counter-series toolbar owns its own compact action menu. Because
+    // this dispatcher resolves annotations beneath floating UI, a right-click
+    // on a series row can otherwise also open the underlying pin menu.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-counter-series-menu], [data-counter-series-context-menu]')) {
+      diag('[CTXDIAG] suppressed — inside counter series menu');
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     // Region Editor owns its own right-click menu. This dispatcher runs in
     // capture phase, so without this guard it opens the page-level disabled
     // Paste menu before RegionSelectionTool can show Copy/Cut/Paste/Merge.

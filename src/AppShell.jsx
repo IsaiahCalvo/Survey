@@ -21,6 +21,9 @@ import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
+import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
+import AnnotationDropdown from './components/AnnotationDropdown';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import {
@@ -456,33 +459,47 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
   // option at once (no native select scroll). Closed on outside click.
-  const [showArrowheadMenu, setShowArrowheadMenu] = useState(false);
-  useEffect(() => {
-    if (!showArrowheadMenu) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-arrowhead-menu]')) return;
-      setShowArrowheadMenu(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [showArrowheadMenu]);
-
+  const [openAnnotationDropdown, setOpenAnnotationDropdown] = useState(null);
+  const setDropdownOpen = useCallback((key, next) => {
+    setOpenAnnotationDropdown((current) => {
+      const isOpen = current === key;
+      const shouldOpen = typeof next === 'function' ? next(isOpen) : next;
+      if (shouldOpen) return key;
+      return isOpen ? null : current;
+    });
+  }, []);
+  const showArrowheadMenu = openAnnotationDropdown === 'arrowhead';
+  const setShowArrowheadMenu = useCallback((next) => setDropdownOpen('arrowhead', next), [setDropdownOpen]);
+  const showAlignGrid = openAnnotationDropdown === 'alignment';
+  const setShowAlignGrid = useCallback((next) => setDropdownOpen('alignment', next), [setDropdownOpen]);
+  const showFontFamilyMenu = openAnnotationDropdown === 'font-family';
+  const setShowFontFamilyMenu = useCallback((next) => setDropdownOpen('font-family', next), [setDropdownOpen]);
+  const showFontSizeMenu = openAnnotationDropdown === 'font-size';
+  const setShowFontSizeMenu = useCallback((next) => setDropdownOpen('font-size', next), [setDropdownOpen]);
+  const showStyleMenu = openAnnotationDropdown === 'style';
+  const setShowStyleMenu = useCallback((next) => setDropdownOpen('style', next), [setDropdownOpen]);
+  const showCounterSeriesMenu = openAnnotationDropdown === 'counter-series';
+  const setShowCounterSeriesMenu = useCallback((next) => setDropdownOpen('counter-series', next), [setDropdownOpen]);
+  const showEraserTypeMenu = openAnnotationDropdown === 'eraser-type';
+  const setShowEraserTypeMenu = useCallback((next) => setDropdownOpen('eraser-type', next), [setDropdownOpen]);
   // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
   // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
   const [colorPickerTab, setColorPickerTab] = useState('fill');
-
-  const [showAlignGrid, setShowAlignGrid] = useState(false);
-  useEffect(() => {
-    if (!showAlignGrid) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-align-grid]')) return;
-      setShowAlignGrid(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [showAlignGrid]);
+  const annotationColorPickerRef = useRef(null);
 
   const [showFontColorPicker, setShowFontColorPicker] = useState(false);
+  useEffect(() => {
+    if (!openAnnotationDropdown) return;
+    setShowFontColorPicker(false);
+    bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
+  }, [bottomToolbarApi?.setShowAnnotationColorPicker, openAnnotationDropdown]);
+
+  useEffect(() => {
+    if (!showFontColorPicker) return;
+    setOpenAnnotationDropdown(null);
+    bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
+  }, [bottomToolbarApi?.setShowAnnotationColorPicker, showFontColorPicker]);
+
   useEffect(() => {
     if (!showFontColorPicker) return;
     const onDown = (e) => {
@@ -493,28 +510,6 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => document.removeEventListener('mousedown', onDown, true);
   }, [showFontColorPicker]);
 
-  const [showFontFamilyMenu, setShowFontFamilyMenu] = useState(false);
-  useEffect(() => {
-    if (!showFontFamilyMenu) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-font-family-menu]')) return;
-      setShowFontFamilyMenu(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [showFontFamilyMenu]);
-
-  const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
-  useEffect(() => {
-    if (!showFontSizeMenu) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-font-size-menu]')) return;
-      setShowFontSizeMenu(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [showFontSizeMenu]);
-
   useEffect(() => {
     if (!bottomToolbarApi?.richTextEditor) {
       setShowFontColorPicker(false);
@@ -524,45 +519,87 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   }, [bottomToolbarApi?.richTextEditor]);
 
-  // 2026-05-25: Border-style picker for lines and arrows.
-  const [showStyleMenu, setShowStyleMenu] = useState(false);
-  useEffect(() => {
-    if (!showStyleMenu) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-style-menu]')) return;
-      setShowStyleMenu(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [showStyleMenu]);
-
-  const [showCounterSeriesMenu, setShowCounterSeriesMenu] = useState(false);
-  useEffect(() => {
-    if (!showCounterSeriesMenu) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-counter-series-menu]')) return;
-      setShowCounterSeriesMenu(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [showCounterSeriesMenu]);
-
+  const [counterSeriesContextMenu, setCounterSeriesContextMenu] = useState(null);
+  const counterSeriesMenuTriggerRef = useRef(null);
+  const counterSeriesContextTriggerRef = useRef(null);
+  const counterSeriesContextMenuRef = useRef(null);
   useEffect(() => {
     if (bottomToolbarApi?.contextTool !== 'counter') {
       setShowCounterSeriesMenu(false);
+      setCounterSeriesContextMenu(null);
     }
   }, [bottomToolbarApi?.contextTool]);
 
-  const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
   useEffect(() => {
-    if (!showEraserTypeMenu) return;
-    const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-eraser-type-menu]')) return;
-      setShowEraserTypeMenu(false);
+    if (showCounterSeriesMenu) return;
+    setCounterSeriesContextMenu(null);
+  }, [showCounterSeriesMenu]);
+
+  useEffect(() => {
+    if (!counterSeriesContextMenu) return;
+    const liveSeries = (bottomToolbarApi?.counterSeriesList || []).find(
+      (series) => series.seriesId === counterSeriesContextMenu.seriesId,
+    );
+    if (
+      !liveSeries
+      || liveSeries.count !== counterSeriesContextMenu.count
+      || liveSeries.label !== counterSeriesContextMenu.label
+    ) {
+      setCounterSeriesContextMenu(null);
+    }
+  }, [bottomToolbarApi?.counterSeriesList, counterSeriesContextMenu]);
+
+  useEffect(() => {
+    if (!bottomToolbarApi?.showAnnotationColorPicker) return;
+    setOpenAnnotationDropdown(null);
+    setShowFontColorPicker(false);
+    setCounterSeriesContextMenu(null);
+  }, [bottomToolbarApi?.showAnnotationColorPicker]);
+
+  useEffect(() => {
+    if (!showCounterSeriesMenu || counterSeriesContextMenu) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setShowCounterSeriesMenu(false);
+      counterSeriesMenuTriggerRef.current?.focus?.();
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [showEraserTypeMenu]);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [counterSeriesContextMenu, showCounterSeriesMenu]);
+
+  useEffect(() => {
+    if (!counterSeriesContextMenu) return undefined;
+    const focusFirstItem = window.requestAnimationFrame(() => {
+      counterSeriesContextMenuRef.current?.querySelector?.('[role="menuitem"]')?.focus?.();
+    });
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setCounterSeriesContextMenu(null);
+        counterSeriesContextTriggerRef.current?.focus?.();
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const items = [...(counterSeriesContextMenuRef.current?.querySelectorAll?.('[role="menuitem"]') || [])];
+      if (items.length === 0) return;
+      event.preventDefault();
+      const currentIndex = items.indexOf(document.activeElement);
+      const nextIndex = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : event.key === 'ArrowDown'
+            ? (currentIndex + 1 + items.length) % items.length
+            : (currentIndex - 1 + items.length) % items.length;
+      items[nextIndex].focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFirstItem);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [counterSeriesContextMenu]);
 
   useEffect(() => {
     if (bottomToolbarApi?.activeTool !== 'eraser') {
@@ -577,17 +614,24 @@ export default function App({ devPreviewReturnTab = null }) {
     const onDown = (event) => {
       const target = event.target;
       const inside = (selector) => !!target?.closest?.(selector);
+      const insideDropdown = inside('[data-annotation-size-control], [data-annotation-size-popover], .annotation-dropdown, [data-annotation-dropdown-popover], [data-counter-series-context-menu]');
+      if (!insideDropdown) {
+        setOpenAnnotationDropdown(null);
+      }
       if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker]')) {
         bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
       }
-      if (!inside('[data-counter-series-menu]')) setShowCounterSeriesMenu(false);
-      if (!inside('[data-style-menu]')) setShowStyleMenu(false);
-      if (!inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
-      if (!inside('[data-eraser-type-menu]')) setShowEraserTypeMenu(false);
+      if (!insideDropdown && !inside('[data-counter-series-menu], [data-counter-series-context-menu]')) {
+        setShowCounterSeriesMenu(false);
+        setCounterSeriesContextMenu(null);
+      }
+      if (!insideDropdown && !inside('[data-style-menu]')) setShowStyleMenu(false);
+      if (!insideDropdown && !inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
+      if (!insideDropdown && !inside('[data-eraser-type-menu]')) setShowEraserTypeMenu(false);
       if (!inside('[data-font-color-picker]')) setShowFontColorPicker(false);
-      if (!inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
-      if (!inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
-      if (!inside('[data-align-grid]')) setShowAlignGrid(false);
+      if (!insideDropdown && !inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
+      if (!insideDropdown && !inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
+      if (!insideDropdown && !inside('[data-align-grid]')) setShowAlignGrid(false);
     };
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
@@ -597,7 +641,9 @@ export default function App({ devPreviewReturnTab = null }) {
   // click. Treat any context change as leaving the previous popover layer.
   useEffect(() => {
     bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
+    setOpenAnnotationDropdown(null);
     setShowCounterSeriesMenu(false);
+    setCounterSeriesContextMenu(null);
     setShowStyleMenu(false);
     setShowArrowheadMenu(false);
     setShowEraserTypeMenu(false);
@@ -1675,79 +1721,21 @@ export default function App({ devPreviewReturnTab = null }) {
                       const FONT_FAMILIES = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'];
                       const currentFamily = bottomToolbarApi.richTextEditor?.state?.fontFamily || 'Arial';
                       return (
-                        <div data-font-family-menu style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                          <button
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onClick={() => setShowFontFamilyMenu((v) => !v)}
-                            style={{
-                              height: '24px',
-                              padding: '0 8px',
-                              minWidth: '110px',
-                              background: '#3a4252',
-                              color: '#e8e2d4',
-                              border: '1px solid transparent',
-                              borderRadius: '5px',
-                              fontSize: '12px',
-                              fontFamily: FONT_FAMILY,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '6px',
-                            }}
-                            {...chromeTip('Font', 'below')}
-                            title="Font"
-                            aria-label="Font"
-                          >
-                            <span style={{ fontFamily: currentFamily, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentFamily}</span>
-                            <span style={{ color: '#8d96a6', fontSize: '9px' }}>▼</span>
-                          </button>
-                          {showFontFamilyMenu && (
-                            <div style={{
-                              position: 'absolute',
-                              top: 'calc(100% + 6px)',
-                              left: 0,
-                              zIndex: 5600,
-                              background: '#181c24',
-                              border: '1px solid #2a3140',
-                              borderRadius: '6px',
-                              padding: '4px',
-                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
-                              minWidth: '160px',
-                              maxHeight: '280px',
-                              overflowY: 'auto',
-                            }}>
-                              {FONT_FAMILIES.map((f) => {
-                                const on = f === currentFamily;
-                                return (
-                                  <button
-                                    key={f}
-                                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                    onClick={() => {
-                                      bottomToolbarApi.richTextEditor?.api?.setFontFamily?.(f);
-                                      setShowFontFamilyMenu(false);
-                                    }}
-                                    style={{
-                                      display: 'block',
-                                      width: '100%',
-                                      textAlign: 'left',
-                                      padding: '6px 10px',
-                                      background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                      color: on ? '#d8a84e' : '#e8e2d4',
-                                      border: 'none',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      fontFamily: f,
-                                      fontSize: '13px',
-                                    }}
-                                  >
-                                    {f}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
+                        <AnnotationDropdown
+                          open={showFontFamilyMenu}
+                          onOpenChange={setShowFontFamilyMenu}
+                          label="Font"
+                          value={currentFamily}
+                          options={FONT_FAMILIES.map((family) => ({
+                            value: family,
+                            label: family,
+                            style: { fontFamily: family },
+                          }))}
+                          onSelect={(family) => bottomToolbarApi.richTextEditor?.api?.setFontFamily?.(family)}
+                          contentWidth="170px"
+                          dataMarker="data-font-family-menu"
+                          preserveFocus
+                        />
                       );
                     })()}
                     {/* Font size — custom dropdown of standard increments.
@@ -1762,79 +1750,17 @@ export default function App({ devPreviewReturnTab = null }) {
                         ? FONT_SIZE_PRESETS
                         : [currentSize, ...FONT_SIZE_PRESETS];
                       return (
-                        <div data-font-size-menu style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                          <button
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onClick={() => setShowFontSizeMenu((v) => !v)}
-                            style={{
-                              height: '24px',
-                              padding: '0 8px',
-                              minWidth: '58px',
-                              background: '#3a4252',
-                              color: '#e8e2d4',
-                              border: '1px solid transparent',
-                              borderRadius: '5px',
-                              fontSize: '12px',
-                              fontFamily: FONT_FAMILY,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '6px',
-                            }}
-                            {...chromeTip('Font size', 'below')}
-                            title="Font size"
-                            aria-label="Font size"
-                          >
-                            <span>{currentSize}</span>
-                            <span style={{ color: '#8d96a6', fontSize: '9px' }}>▼</span>
-                          </button>
-                          {showFontSizeMenu && (
-                            <div style={{
-                              position: 'absolute',
-                              top: 'calc(100% + 6px)',
-                              left: 0,
-                              zIndex: 5600,
-                              background: '#181c24',
-                              border: '1px solid #2a3140',
-                              borderRadius: '6px',
-                              padding: '4px',
-                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
-                              minWidth: '72px',
-                              maxHeight: '280px',
-                              overflowY: 'auto',
-                            }}>
-                              {sizes.map((s) => {
-                                const on = s === currentSize;
-                                return (
-                                  <button
-                                    key={s}
-                                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                    onClick={() => {
-                                      bottomToolbarApi.richTextEditor?.api?.setFontSize?.(s);
-                                      setShowFontSizeMenu(false);
-                                    }}
-                                    style={{
-                                      display: 'block',
-                                      width: '100%',
-                                      textAlign: 'left',
-                                      padding: '6px 10px',
-                                      background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                      color: on ? '#d8a84e' : '#e8e2d4',
-                                      border: 'none',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      fontFamily: FONT_FAMILY,
-                                      fontSize: '13px',
-                                    }}
-                                  >
-                                    {s}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
+                        <AnnotationDropdown
+                          open={showFontSizeMenu}
+                          onOpenChange={setShowFontSizeMenu}
+                          label="Font size"
+                          value={currentSize}
+                          options={sizes.map((size) => ({ value: size, label: String(size) }))}
+                          onSelect={(size) => bottomToolbarApi.richTextEditor?.api?.setFontSize?.(size)}
+                          contentWidth="126px"
+                          dataMarker="data-font-size-menu"
+                          preserveFocus
+                        />
                       );
                     })()}
                     {/* Bold / Italic / Underline / Strikethrough toggles. */}
@@ -1891,33 +1817,15 @@ export default function App({ devPreviewReturnTab = null }) {
                       const labelFor = (v, h) => `${v}-${h === 'center' ? 'center' : h}`;
                       const isCellActive = (v, h) => v === vAlign && h === hAlign;
                       return (
-                        <div data-align-grid style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{
-                            fontSize: '10.5px',
-                            letterSpacing: '0.04em',
-                            textTransform: 'uppercase',
-                            color: '#8d96a6',
-                            fontFamily: FONT_FAMILY,
-                          }}>Align</span>
-                          <button
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onClick={() => setShowAlignGrid((v) => !v)}
-                            style={{
-                              width: '28px',
-                              height: '26px',
-                              padding: 0,
-                              background: '#1f2430',
-                              border: '1px solid #2a3140',
-                              borderRadius: '5px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                            {...chromeTip('Text alignment', 'below')}
-                            title="Text alignment"
-                            aria-label="Text alignment"
-                          >
+                        <AnnotationDropdown
+                          open={showAlignGrid}
+                          onOpenChange={setShowAlignGrid}
+                          label="Text alignment"
+                          align="end"
+                          contentWidth="116px"
+                          dataMarker="data-align-grid"
+                          preserveFocus
+                          triggerContent={(
                             <span style={{
                               display: 'grid',
                               gridTemplateColumns: 'repeat(3, 4px)',
@@ -1937,27 +1845,9 @@ export default function App({ devPreviewReturnTab = null }) {
                                 );
                               }))}
                             </span>
-                          </button>
-                          {showAlignGrid && (
-                            <div style={{
-                              position: 'absolute',
-                              top: 'calc(100% + 6px)',
-                              right: 0,
-                              zIndex: 5600,
-                              background: '#181c24',
-                              border: '1px solid #2a3140',
-                              borderRadius: '8px',
-                              padding: '10px',
-                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
-                            }}>
-                              <div style={{
-                                fontSize: '10.5px',
-                                letterSpacing: '0.04em',
-                                textTransform: 'uppercase',
-                                color: '#8d96a6',
-                                marginBottom: '8px',
-                                fontFamily: FONT_FAMILY,
-                              }}>Text alignment</div>
+                          )}
+                        >
+                            <div className="annotation-dropdown__body" style={{ padding: '8px' }}>
                               <div style={{
                                 display: 'grid',
                                 gridTemplateColumns: 'repeat(3, 26px)',
@@ -2001,8 +1891,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                 }))}
                               </div>
                             </div>
-                          )}
-                        </div>
+                        </AnnotationDropdown>
                       );
                     })()}
                   </div>,
@@ -2041,7 +1930,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
                       }}
                     />
                   </button>
@@ -2079,7 +1968,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
                       }}
                     />
                     <span style={{
@@ -2088,7 +1977,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       fontSize: '12px',
                       fontWeight: 700,
                       lineHeight: 1,
-                      color: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
+                      color: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
                       fontFamily: FONT_FAMILY,
                       pointerEvents: 'none'
                     }}>1</span>
@@ -2108,7 +1997,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       height: '24px',
                       padding: 0,
                       borderRadius: '50%',
-                      border: `2px solid ${ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
+                      border: `2px solid ${bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
                       boxSizing: 'border-box',
                       position: 'relative',
                       overflow: 'hidden',
@@ -2121,7 +2010,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
                       }}
                     />
                   </button>
@@ -2137,34 +2026,19 @@ export default function App({ devPreviewReturnTab = null }) {
                     const activeSeries = seriesList.find((s) => s.seriesId === bottomToolbarApi.activeCounterSeriesId);
                     const seriesLabel = activeSeries?.label || 'Counter series';
                     return (
-                      <div data-counter-series-menu style={{ position: 'relative' }}>
-                        <button
-                          onClick={() => setShowCounterSeriesMenu((open) => !open)}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          style={{
-                            height: '24px',
-                            padding: '0 22px 0 8px',
-                            background: '#3a4252',
-                            color: '#e8e2d4',
-                            border: '1px solid transparent',
-                            borderRadius: '5px',
-                            fontSize: '12px',
-                            fontFamily: FONT_FAMILY,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            backgroundImage:
-                              'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
-                            backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
-                            backgroundSize: '4px 4px, 4px 4px',
-                            backgroundRepeat: 'no-repeat',
-                          }}
-                          {...chromeTip('Counter series', 'below')}
-                          title="Counter series"
-                          aria-label="Counter series"
-                          aria-expanded={showCounterSeriesMenu}
-                        >
+                      <AnnotationDropdown
+                        open={showCounterSeriesMenu}
+                        onOpenChange={setShowCounterSeriesMenu}
+                        label="Counter series"
+                        triggerRef={counterSeriesMenuTriggerRef}
+                        triggerProps={{
+                          onClick: () => {
+                            bottomToolbarApi.setShowAnnotationColorPicker?.(false);
+                            setCounterSeriesContextMenu(null);
+                          },
+                        }}
+                        triggerContent={(
+                          <>
                           <span style={{
                             width: '10px',
                             height: '10px',
@@ -2174,57 +2048,20 @@ export default function App({ devPreviewReturnTab = null }) {
                             flexShrink: 0,
                           }} />
                           <span>{seriesLabel}</span>
-                        </button>
-                        {showCounterSeriesMenu && (
-                          <div style={{
-                            position: 'absolute',
-                            top: 'calc(100% + 4px)',
-                            left: 0,
-                            background: '#0d0f14',
-                            border: '1px solid #3a4252',
-                            borderRadius: '6px',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-                            padding: '4px',
-                            zIndex: 5600,
-                            minWidth: '160px',
-                            color: '#e8e2d4',
-                            fontFamily: FONT_FAMILY,
-                            fontSize: '12px',
-                          }}>
-                            <div style={{
-                              padding: '4px 8px',
-                              fontSize: '10px',
-                              color: '#8d96a6',
-                              textTransform: 'uppercase',
-                              fontWeight: 600,
-                              borderBottom: '1px solid #2a3140',
-                              marginBottom: '4px',
-                            }}>
-                              Counter Series
-                            </div>
+                          </>
+                        )}
+                        contentWidth="180px"
+                        dataMarker="data-counter-series-menu"
+                        outsideBoundarySelector="[data-counter-series-context-menu]"
+                      >
+                          <div className="annotation-dropdown__body">
                             <button
+                              className="annotation-dropdown__option"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 bottomToolbarApi.onNewCounterSeries();
                                 setShowCounterSeriesMenu(false);
                               }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                width: '100%',
-                                gap: '8px',
-                                padding: '6px 10px',
-                                background: 'transparent',
-                                border: 'none',
-                                borderRadius: '4px',
-                                color: '#e8e2d4',
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                fontFamily: 'inherit',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             >
                               + New Count
                             </button>
@@ -2244,28 +2081,47 @@ export default function App({ devPreviewReturnTab = null }) {
                               return (
                                 <button
                                   key={series.seriesId}
+                                  className={`annotation-dropdown__option${isActive ? ' is-active' : ''}`}
+                                  aria-haspopup="menu"
+                                  aria-label={`${series.label}, ${series.count} pins`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     bottomToolbarApi.onSwitchCounterSeries(series.seriesId);
+                                    bottomToolbarApi.setActiveTool?.('counter');
                                     setShowCounterSeriesMenu(false);
                                   }}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    gap: '8px',
-                                    padding: '6px 10px',
-                                    background: isActive ? '#1f2430' : 'transparent',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    color: '#e8e2d4',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontFamily: 'inherit',
+                                  onPointerDown={(e) => {
+                                    if (e.button !== 2) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    counterSeriesContextTriggerRef.current = e.currentTarget;
+                                    setCounterSeriesContextMenu({
+                                      seriesId: series.seriesId,
+                                      label: series.label,
+                                      count: series.count,
+                                      x: e.clientX || rect.left + Math.min(36, rect.width / 2),
+                                      y: e.clientY || rect.top + Math.min(24, rect.height),
+                                    });
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? '#1f2430' : 'transparent'; }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    counterSeriesContextTriggerRef.current = e.currentTarget;
+                                    setCounterSeriesContextMenu({
+                                      seriesId: series.seriesId,
+                                      label: series.label,
+                                      count: series.count,
+                                      x: rect.left + Math.min(36, rect.width / 2),
+                                      y: rect.top + Math.min(24, rect.height),
+                                    });
+                                  }}
                                 >
                                   <span style={{
                                     width: '10px',
@@ -2281,8 +2137,93 @@ export default function App({ devPreviewReturnTab = null }) {
                               );
                             })}
                           </div>
-                        )}
-                      </div>
+                        {showCounterSeriesMenu && counterSeriesContextMenu && typeof document !== 'undefined' && createPortal((
+                          <div
+                            ref={counterSeriesContextMenuRef}
+                            data-counter-series-context-menu
+                            role="menu"
+                            aria-label={`${counterSeriesContextMenu.label} actions`}
+                            style={{
+                              position: 'fixed',
+                              left: `${Math.max(8, Math.min(counterSeriesContextMenu.x, window.innerWidth - 120))}px`,
+                              top: `${Math.max(8, Math.min(counterSeriesContextMenu.y, window.innerHeight - 72))}px`,
+                              width: '112px',
+                              padding: '3px',
+                              background: '#12161d',
+                              border: '1px solid #343b49',
+                              borderRadius: '6px',
+                              boxShadow: '0 8px 18px rgba(0,0,0,0.42)',
+                              zIndex: 5700,
+                            }}
+                          >
+                            <button
+                              role="menuitem"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                bottomToolbarApi.onSwitchCounterSeries(counterSeriesContextMenu.seriesId);
+                                bottomToolbarApi.setActiveTool?.('counter');
+                                setCounterSeriesContextMenu(null);
+                                setShowCounterSeriesMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                height: '28px',
+                                padding: '0 8px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: '#e8e2d4',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                                fontSize: '12px',
+                                outline: 'none',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px #5b6574'; }}
+                              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                              Continue
+                            </button>
+                            <button
+                              role="menuitem"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const { seriesId } = counterSeriesContextMenu;
+                                setCounterSeriesContextMenu(null);
+                                const result = bottomToolbarApi.onDeleteCounterSeries?.(seriesId);
+                                setShowCounterSeriesMenu(false);
+                                if (result?.ok === false) {
+                                  showToast('This count could not be deleted. Check your permission and try again.', 'error');
+                                }
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                height: '28px',
+                                padding: '0 8px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: '#f87171',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                                fontSize: '12px',
+                                outline: 'none',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,113,113,0.12)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px #5b6574'; }}
+                              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ), document.body)}
+                      </AnnotationDropdown>
                     );
                   })()}
 
@@ -2321,7 +2262,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   };
                   return (
-                    <div data-annotation-color-picker style={{
+                    <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
                       position: 'absolute',
                       top: '100%',
                       left: '50%',
@@ -2346,7 +2287,11 @@ export default function App({ devPreviewReturnTab = null }) {
                             return (
                               <button
                                 key={k}
-                                onClick={() => setColorPickerTab(k)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setColorPickerTab(k);
+                                  bottomToolbarApi.setShowAnnotationColorPicker(true);
+                                }}
                                 onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                   background: on ? 'rgba(216,168,78,0.08)' : 'transparent',
@@ -2378,6 +2323,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           opacity={currentOpacity}
                           marginRight="53px"
                           attachedHeader={isShape}
+                          outsideBoundaryRef={annotationColorPickerRef}
                           onChange={applyChange}
                           onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
                           firstPreset={(shapeOneVisibleRule && !onFillTab)
@@ -2392,82 +2338,19 @@ export default function App({ devPreviewReturnTab = null }) {
                 )}
 
                 {bottomToolbarApi.activeTool === 'eraser' && bottomToolbarApi.setEraserMode && (
-                  <div data-eraser-type-menu style={{ position: 'relative' }}>
-                    <button
-                      onClick={() => setShowEraserTypeMenu((open) => !open)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      style={{
-                        height: '24px',
-                        padding: '0 22px 0 8px',
-                        background: '#3a4252',
-                        color: '#e8e2d4',
-                        border: '1px solid transparent',
-                        borderRadius: '5px',
-                        fontSize: '12px',
-                        fontFamily: FONT_FAMILY,
-                        cursor: 'pointer',
-                        backgroundImage:
-                          'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
-                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
-                        backgroundSize: '4px 4px, 4px 4px',
-                        backgroundRepeat: 'no-repeat'
-                      }}
-                      {...chromeTip('Eraser type', 'below')}
-                      title="Eraser type"
-                      aria-label="Eraser type"
-                      aria-expanded={showEraserTypeMenu}
-                    >
-                      {bottomToolbarApi.eraserMode === 'entire' ? 'Full stroke' : 'Partial erase'}
-                    </button>
-                    {showEraserTypeMenu && (
-                      <div style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 4px)',
-                        left: 0,
-                        background: '#0d0f14',
-                        border: '1px solid #3a4252',
-                        borderRadius: '6px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-                        padding: '4px',
-                        zIndex: 5600,
-                        minWidth: '142px',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {[
-                          ['partial', 'Partial erase'],
-                          ['entire', 'Full stroke erase']
-                        ].map(([value, label]) => {
-                          const isOn = bottomToolbarApi.eraserMode === value;
-                          return (
-                            <button
-                              key={value}
-                              onClick={() => {
-                                bottomToolbarApi.setEraserMode(value);
-                                setShowEraserTypeMenu(false);
-                              }}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                padding: '6px 10px',
-                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                color: isOn ? '#d8a84e' : '#e8e2d4',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '12px',
-                                fontFamily: FONT_FAMILY,
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                              }}
-                              onMouseEnter={(e) => { if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-                              onMouseLeave={(e) => { if (!isOn) e.currentTarget.style.background = 'transparent'; }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <AnnotationDropdown
+                    open={showEraserTypeMenu}
+                    onOpenChange={setShowEraserTypeMenu}
+                    label="Eraser type"
+                    value={bottomToolbarApi.eraserMode}
+                    options={[
+                      { value: 'partial', label: 'Partial erase' },
+                      { value: 'entire', label: 'Full stroke erase' },
+                    ]}
+                    onSelect={bottomToolbarApi.setEraserMode}
+                    contentWidth="150px"
+                    dataMarker="data-eraser-type-menu"
+                  />
                 )}
 
                 {(bottomToolbarApi.contextTool === 'pen'
@@ -2480,40 +2363,41 @@ export default function App({ devPreviewReturnTab = null }) {
                   || bottomToolbarApi.contextTool === 'callout'
                   || bottomToolbarApi.contextTool === 'counter'
                   || bottomToolbarApi.activeTool === 'eraser') && (
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="no-spin-buttons"
+                <AnnotationSizeControl
                   value={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.eraserSizeInputValue : bottomToolbarApi.strokeWidthInputValue}
-                  onChange={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.handleEraserSizeInputChange : bottomToolbarApi.handleStrokeWidthInputChange}
-                  onFocus={() => bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.setIsEraserSizeFocused(true) : bottomToolbarApi.setIsStrokeWidthFocused(true)}
-                  onBlur={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.handleEraserSizeInputBlur : bottomToolbarApi.handleStrokeWidthInputBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.target.blur();
+                  label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
+                  min={bottomToolbarApi.contextTool === 'counter' ? COUNTER_SIZE_MIN : 1}
+                  max={bottomToolbarApi.activeTool === 'eraser'
+                    ? 100
+                    : bottomToolbarApi.contextTool === 'counter'
+                      ? COUNTER_SIZE_MAX
+                      : 50}
+                  presets={bottomToolbarApi.activeTool === 'eraser'
+                    ? ANNOTATION_SIZE_PRESETS.eraser
+                    : bottomToolbarApi.contextTool === 'counter'
+                      ? ANNOTATION_SIZE_PRESETS.counter
+                      : ANNOTATION_SIZE_PRESETS.width}
+                  onValueChange={(value) => {
+                    const handler = bottomToolbarApi.activeTool === 'eraser'
+                      ? bottomToolbarApi.handleEraserSizeInputChange
+                      : bottomToolbarApi.handleStrokeWidthInputChange;
+                    handler?.({ target: { value } });
+                  }}
+                  onValueCommit={(value) => {
+                    const handler = bottomToolbarApi.activeTool === 'eraser'
+                      ? bottomToolbarApi.handleEraserSizeInputBlur
+                      : bottomToolbarApi.handleStrokeWidthInputBlur;
+                    handler?.({ currentTarget: { value } });
+                  }}
+                  onFocusChange={(focused) => {
+                    if (bottomToolbarApi.activeTool === 'eraser') {
+                      bottomToolbarApi.setIsEraserSizeFocused?.(focused);
+                    } else {
+                      bottomToolbarApi.setIsStrokeWidthFocused?.(focused);
                     }
                   }}
-                  style={{
-                    width: '36px',
-                    height: '20px',
-                    padding: '4px 4px',
-                    background: '#3a4252',
-                    color: '#e8e2d4',
-                    border: '1px solid transparent',
-                    borderRadius: '5px',
-                    fontSize: '12px',
-                    fontFamily: FONT_FAMILY,
-                    textAlign: 'center'
-                  }}
-                  {...chromeTip(
-                    bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser'
-                      ? 'Size'
-                      : 'Width',
-                    'below'
-                  )}
-                  title={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
-                  aria-label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
+                  open={openAnnotationDropdown === 'size'}
+                  onOpenChange={(open) => setDropdownOpen('size', open)}
                 />
                 )}
                 {bottomToolbarApi.contextTool === 'counter'
@@ -2577,83 +2461,20 @@ export default function App({ devPreviewReturnTab = null }) {
                     solid/dashed/dotted/cloud for rectangle; solid/dashed/dotted
                     for ellipse (no cloud option). Always opens downward. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
-                  <div data-style-menu style={{ position: 'relative' }}>
-                    <button
-                      onClick={() => setShowStyleMenu(!showStyleMenu)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      style={{
-                        height: '24px',
-                        padding: '0 22px 0 8px',
-                        background: '#3a4252',
-                        color: '#e8e2d4',
-                        border: '1px solid transparent',
-                        borderRadius: '5px',
-                        fontSize: '12px',
-                        fontFamily: FONT_FAMILY,
-                        cursor: 'pointer',
-                        backgroundImage:
-                          'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
-                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
-                        backgroundSize: '4px 4px, 4px 4px',
-                        backgroundRepeat: 'no-repeat'
-                      }}
-                      {...chromeTip('Style', 'below')}
-                      title="Style"
-                      aria-label="Style"
-                    >
-                      {{ solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', cloud: 'Cloud' }[bottomToolbarApi.lineBorderStyle] || 'Solid'}
-                    </button>
-                    {showStyleMenu && (
-                      <div style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 4px)',
-                        left: 0,
-                        background: '#0d0f14',
-                        border: '1px solid #3a4252',
-                        borderRadius: '6px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-                        padding: '4px',
-                        zIndex: 5600,
-                        minWidth: '120px',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {[
-                          ['solid','Solid'],
-                          ['dashed','Dashed'],
-                          ['dotted','Dotted'],
-                          ...(bottomToolbarApi.contextTool === 'rect' ? [['cloud','Cloud']] : [])
-                        ].map(([val, label]) => {
-                          const isOn = bottomToolbarApi.lineBorderStyle === val;
-                          return (
-                            <button
-                              key={val}
-                              onClick={() => {
-                                bottomToolbarApi.setLineBorderStyle(val);
-                                setShowStyleMenu(false);
-                              }}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                padding: '6px 10px',
-                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                color: isOn ? '#d8a84e' : '#e8e2d4',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '12px',
-                                fontFamily: FONT_FAMILY,
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                              }}
-                              onMouseEnter={(e) => { if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-                              onMouseLeave={(e) => { if (!isOn) e.currentTarget.style.background = 'transparent'; }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <AnnotationDropdown
+                    open={showStyleMenu}
+                    onOpenChange={setShowStyleMenu}
+                    label="Style"
+                    value={bottomToolbarApi.lineBorderStyle}
+                    options={[
+                      { value: 'solid', label: 'Solid' },
+                      { value: 'dashed', label: 'Dashed' },
+                      { value: 'dotted', label: 'Dotted' },
+                      ...(bottomToolbarApi.contextTool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
+                    ]}
+                    onSelect={bottomToolbarApi.setLineBorderStyle}
+                    dataMarker="data-style-menu"
+                  />
                 )}
                 {/* 2026-05-25: Bump number input — only shows for rectangle when
                     the border style is Cloud. Drives how big the cloud's wave
@@ -2698,82 +2519,16 @@ export default function App({ devPreviewReturnTab = null }) {
                     direction). Callouts have their own arrowhead end so the
                     same picker drives both. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (
-                  <div data-arrowhead-menu style={{ position: 'relative' }}>
-                    <button
-                      onClick={() => setShowArrowheadMenu(!showArrowheadMenu)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      style={{
-                        height: '24px',
-                        padding: '0 22px 0 8px',
-                        background: '#3a4252',
-                        color: '#e8e2d4',
-                        border: '1px solid transparent',
-                        borderRadius: '5px',
-                        fontSize: '12px',
-                        fontFamily: FONT_FAMILY,
-                        cursor: 'pointer',
-                        backgroundImage:
-                          'linear-gradient(45deg, transparent 50%, #8d96a6 50%), linear-gradient(135deg, #8d96a6 50%, transparent 50%)',
-                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
-                        backgroundSize: '4px 4px, 4px 4px',
-                        backgroundRepeat: 'no-repeat'
-                      }}
-                      {...chromeTip('Arrowhead', 'below')}
-                      title="Arrowhead"
-                      aria-label="Arrowhead"
-                    >
-                      {ARROWHEAD_STYLE_LABELS[bottomToolbarApi.arrowheadStyle] || 'Solid triangle'}
-                    </button>
-                    {showArrowheadMenu && (
-                      <div style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 4px)',
-                        left: 0,
-                        background: '#0d0f14',
-                        border: '1px solid #3a4252',
-                        borderRadius: '6px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-                        padding: '4px',
-                        zIndex: 5600,
-                        minWidth: '160px',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {Object.entries(ARROWHEAD_STYLE_LABELS).map(([val, label]) => {
-                          const isOn = bottomToolbarApi.arrowheadStyle === val;
-                          return (
-                            <button
-                              key={val}
-                              onClick={() => {
-                                bottomToolbarApi.setArrowheadStyle(val);
-                                setShowArrowheadMenu(false);
-                              }}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                padding: '6px 10px',
-                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                color: isOn ? '#d8a84e' : '#e8e2d4',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '12px',
-                                fontFamily: FONT_FAMILY,
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isOn) e.currentTarget.style.background = 'transparent';
-                              }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <AnnotationDropdown
+                    open={showArrowheadMenu}
+                    onOpenChange={setShowArrowheadMenu}
+                    label="Arrowhead"
+                    value={bottomToolbarApi.arrowheadStyle}
+                    options={Object.entries(ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
+                    onSelect={bottomToolbarApi.setArrowheadStyle}
+                    contentWidth="170px"
+                    dataMarker="data-arrowhead-menu"
+                  />
                 )}
                 {/* 2026-05-25: Rich-text edit entry button. Only renders when
                     the user is on the text box / callout tool or has one of
@@ -3149,16 +2904,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 return (
                   <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid #2a3140', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
-                      onClick={api.zoomOut}
-                      {...chromeTip('Zoom out', 'left')}
-                      title="Zoom out"
-                      aria-label="Zoom out"
-                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
-                    >
-                      <Icon name="minus" size={14} />
-                    </button>
-                    {zoomValue}
-                    <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
                       title="Zoom in"
@@ -3166,6 +2911,16 @@ export default function App({ devPreviewReturnTab = null }) {
                       style={{ ...footerBtn(), width: '28px', height: '28px' }}
                     >
                       <Icon name="plus" size={14} />
+                    </button>
+                    {zoomValue}
+                    <button
+                      onClick={api.zoomOut}
+                      {...chromeTip('Zoom out', 'left')}
+                      title="Zoom out"
+                      aria-label="Zoom out"
+                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
+                    >
+                      <Icon name="minus" size={14} />
                     </button>
 
                     <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />

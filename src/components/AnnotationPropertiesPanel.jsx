@@ -18,6 +18,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './AnnotationSizeControl';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from '../utils/annotationSize';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
 import { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './Callout/types';
@@ -122,6 +124,7 @@ const AnnotationPropertiesPanel = ({
       // overlay, which is a sibling portal). The closest() walk catches
       // any descendant under either root.
       if (panel.contains(e.target)) return;
+      if (e.target?.closest?.('[data-annotation-size-popover]')) return;
       // Close on any pointerdown outside the panel. This includes clicks
       // on the PDF page, toolbars, or empty background.
       onClose();
@@ -242,10 +245,6 @@ const AnnotationPropertiesPanel = ({
 
   const handleFillChange = (c) => onUpdate({ fill: c });
   const handleStrokeChange = (c) => onUpdate({ stroke: c });
-  const handleStrokeWidthDelta = (delta) => {
-    const next = Math.max(1, Math.min(40, currentStrokeWidth + delta));
-    onUpdate({ strokeWidth: next });
-  };
   // UX 2026-04-21: border-style picker handler. Delegates the transition
   // math to computeBorderStylePatch (pure + unit-tested) so the component
   // only owns glue code. Clearing pdfCloudIntensity when leaving cloud mode
@@ -270,10 +269,19 @@ const AnnotationPropertiesPanel = ({
     const next = Math.max(1, Math.min(4, current + delta));
     onUpdate({ data: { ...(annotation?.data ?? {}), pdfCloudIntensity: next } });
   };
-  const handleCounterRadiusDelta = (delta) => {
-    const next = Math.max(6, Math.min(80, counterRadius + delta));
-    onUpdate({ radius: next });
-  };
+  const renderAnnotationSizeControl = ({ label, value, min = 1, max = 50, presets, onChange }) => (
+    <AnnotationSizeControl
+      className="annotation-properties-panel__size-control"
+      label={label}
+      value={value}
+      min={min}
+      max={max}
+      presets={presets}
+      onValueChange={(next) => {
+        if (next !== '') onChange(Number.parseInt(next, 10));
+      }}
+    />
+  );
   const handleCounterNumberChange = (e) => {
     const raw = e.target.value.replace(/[^0-9]/g, '');
     onUpdate({ data: { ...(annotation?.data || {}), number: raw } });
@@ -411,11 +419,14 @@ const AnnotationPropertiesPanel = ({
           </section>
           <section style={{ marginBottom: 14 }}>
             {renderLabel('Size')}
-            {renderStepperRow(
-              `${counterRadius}px`,
-              () => handleCounterRadiusDelta(-1),
-              () => handleCounterRadiusDelta(1),
-            )}
+            {renderAnnotationSizeControl({
+              label: 'Size',
+              value: counterRadius,
+              min: COUNTER_SIZE_MIN,
+              max: COUNTER_SIZE_MAX,
+              presets: ANNOTATION_SIZE_PRESETS.counter,
+              onChange: (radius) => onUpdate({ radius }),
+            })}
           </section>
           <section style={{ marginBottom: 4 }}>
             {renderLabel('Number')}
@@ -477,11 +488,12 @@ const AnnotationPropertiesPanel = ({
           </section>
           <section style={{ marginBottom: 14 }}>
             {renderLabel('Width')}
-            {renderStepperRow(
-              `${currentStrokeWidth}px`,
-              () => handleStrokeWidthDelta(-1),
-              () => handleStrokeWidthDelta(1),
-            )}
+            {renderAnnotationSizeControl({
+              label: 'Width',
+              value: currentStrokeWidth,
+              presets: ANNOTATION_SIZE_PRESETS.width,
+              onChange: (strokeWidth) => onUpdate({ strokeWidth }),
+            })}
           </section>
           {/* UX 2026-04-21: Border Style row sits after Width so the visual
               hierarchy reads top-to-bottom (color → weight → pattern). */}
@@ -520,11 +532,12 @@ const AnnotationPropertiesPanel = ({
           </section>
           <section style={{ marginBottom: 14 }}>
             {renderLabel('Width')}
-            {renderStepperRow(
-              `${currentStrokeWidth}px`,
-              () => handleStrokeWidthDelta(-1),
-              () => handleStrokeWidthDelta(1),
-            )}
+            {renderAnnotationSizeControl({
+              label: 'Width',
+              value: currentStrokeWidth,
+              presets: ANNOTATION_SIZE_PRESETS.width,
+              onChange: (strokeWidth) => onUpdate({ strokeWidth }),
+            })}
           </section>
           {/* UX 2026-04-21: open shapes (line / arrow / polyline) get the
               two-option picker only. Cloud style is reserved for closed
@@ -579,11 +592,12 @@ const AnnotationPropertiesPanel = ({
           </section>
           <section style={{ marginBottom: 4 }}>
             {renderLabel('Width')}
-            {renderStepperRow(
-              `${currentStrokeWidth}px`,
-              () => handleStrokeWidthDelta(-1),
-              () => handleStrokeWidthDelta(1),
-            )}
+            {renderAnnotationSizeControl({
+              label: 'Width',
+              value: currentStrokeWidth,
+              presets: ANNOTATION_SIZE_PRESETS.width,
+              onChange: (strokeWidth) => onUpdate({ strokeWidth }),
+            })}
           </section>
         </>
       );

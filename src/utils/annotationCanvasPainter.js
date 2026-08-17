@@ -912,7 +912,7 @@ function drawCounter(context, object) {
   const pointerAngleDeg = object?.data?.pointerAngle != null ? toNumber(object.data.pointerAngle, 225) : 225;
 
   const angleRad = (pointerAngleDeg * Math.PI) / 180;
-  const tipExtension = Math.max(5, radius * 0.5);
+  const tipExtension = radius * 0.5;
   const tipDistance = radius + tipExtension;
   const tipX = centerX + Math.cos(angleRad) * tipDistance;
   const tipY = centerY + Math.sin(angleRad) * tipDistance;

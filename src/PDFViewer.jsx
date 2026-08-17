@@ -83,7 +83,7 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
-import { normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
+import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
@@ -177,7 +177,8 @@ import {
 } from './services/excelSyncClient';
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
-import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
+import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
@@ -352,6 +353,7 @@ import {
 } from './viewerShared';
 import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortPdfjsPagesByDistance } from './utils/regionGeometry';
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
+import { renderPathToSvgAttrs } from './utils/svgPathAttrs';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
 import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
 import { renderAnnotationHydrationPageCover } from './components/annotationHydrationCover';
@@ -3162,12 +3164,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // toolbar handlers reach it through this ref so they can keep their current
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
+  const handleDeleteCounterSeriesRef = useRef(null);
+  const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
+    handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
+  ), []);
   const handlePatchSelectedAnnotation = useCallback((patch) => {
     const sel = selectedToolbarAnnotationRef.current;
     if (!sel || sel.annotationIndex == null) return;
     const pageJSON = annotationsByPageRef.current?.[sel.pageNumber];
     if (!pageJSON || !Array.isArray(pageJSON.objects)) return;
-    const current = pageJSON.objects[sel.annotationIndex];
+    const selectedId = getAnnotationRenderIdentity(sel.annotation).annotationId;
+    const currentIndex = selectedId
+      ? pageJSON.objects.findIndex((annotation) => (
+          getAnnotationRenderIdentity(annotation).annotationId === selectedId
+        ))
+      : sel.annotationIndex;
+    const current = pageJSON.objects[currentIndex];
     if (!current) return;
     const nextObj = {
       ...current,
@@ -3178,7 +3190,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const nextPage = {
       ...pageJSON,
-      objects: pageJSON.objects.map((o, i) => (i === sel.annotationIndex ? nextObj : o)),
+      objects: pageJSON.objects.map((o, i) => (i === currentIndex ? nextObj : o)),
     };
     handleSaveAnnotations(sel.pageNumber, nextPage, {
       source: 'toolbar:selected-edit',
@@ -3253,7 +3265,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   //   bodyY: number,
   //   angle: number,             // current pointerAngle in degrees (0=right, 90=down)
   //   radius: number,            // counter circle radius
-  //   tipDistance: number,       // radius + max(5, radius*0.5) — matches renderCounter
+  //   tipDistance: number,       // radius + radius*0.5 — matches renderCounter
   //   color: string,             // counter fill color
   //   dragSessionId: number,     // unique id stamped on the pending counter for find/remove
   //   shiftActive: bool,         // is Shift currently held?
@@ -3279,6 +3291,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // walk the doc on every drag-start.
   const activeCounterSeriesIdRef = useRef(null);
   const activeCounterSeriesColorRef = useRef(null);
+  const activeCounterSeriesNumberColorRef = useRef('#ffffff');
 
   // [COUNTER MULTI-LIST] Tracks which doc paths have already had their
   // legacy (no-seriesId) counter pins wiped. Wipe runs once per doc per
@@ -4092,11 +4105,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const nextId = `series-${Date.now()}`;
     activeCounterSeriesIdRef.current = nextId;
     activeCounterSeriesColorRef.current = nextColor;
+    activeCounterSeriesNumberColorRef.current = '#ffffff';
     // [COUNTER STEP 7] Sync the bottom toolbar's color picker to the freshly
     // picked HSL hue so the very next pin preview matches the new group's
     // color. Without this, the user clicks "+ New Count" and the bottom
     // toolbar still shows the previous active series's color.
-    setStrokeColor(nextColor);
+    setFillColor(nextColor);
+    setStrokeColor('#ffffff');
     setCounterCaretPopupOpen(false);
     setCounterCaretSubmenu(null);
     setCounterUITick((t) => t + 1);
@@ -4227,11 +4242,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     activeCounterSeriesIdRef.current = series.seriesId;
     activeCounterSeriesColorRef.current = series.color;
+    activeCounterSeriesNumberColorRef.current = series.numberColor || '#ffffff';
     // [COUNTER STEP 7] Sync the bottom toolbar's color picker to the picked
     // series's fill so the "next pin" preview matches the group it'll join.
     // Without this, the user picks "Continue Count → Count 2" and drops a
     // pin, and the bottom toolbar still shows the previous group's color.
-    setStrokeColor(series.color);
+    setFillColor(series.color);
+    setStrokeColor(series.numberColor || '#ffffff');
     setCounterCaretPopupOpen(false);
     setCounterCaretSubmenu(null);
     setCounterUITick((t) => t + 1);
@@ -7262,9 +7279,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
     if (toolPrefs.strokeWidth !== undefined) {
-      setStrokeWidth(toolPrefs.strokeWidth);
+      const nextStrokeWidth = activeTool === 'counter'
+        ? Math.min(
+            Math.max(Math.round(Number(toolPrefs.strokeWidth) || 14), COUNTER_SIZE_MIN),
+            COUNTER_SIZE_MAX,
+          )
+        : toolPrefs.strokeWidth;
+      setStrokeWidth(nextStrokeWidth);
       if (!isStrokeWidthFocusedRef.current) {
-        const nextValue = String(toolPrefs.strokeWidth);
+        const nextValue = String(nextStrokeWidth);
         strokeWidthInputValueRef.current = nextValue;
         setStrokeWidthInputValue(nextValue);
       }
@@ -7384,46 +7407,104 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleStrokeColorChange = useCallback((color) => {
     strokeColorStateRef.current = color;
     setStrokeColor(color);
+    const nextNumberColor = composeColorForPatch(color, strokeOpacityStateRef.current);
+    if (activeTool === 'counter') {
+      activeCounterSeriesNumberColorRef.current = nextNumberColor;
+      const activeSeriesId = activeCounterSeriesIdRef.current;
+      const activeSeriesHasPins = activeSeriesId
+        && counterSeriesList.some((series) => series.seriesId === activeSeriesId && series.count > 0);
+      if (activeSeriesHasPins) {
+        handleCounterGroupUpdateRef.current?.(activeSeriesId, { numberColor: nextNumberColor });
+      } else {
+        // A freshly-created series has no saved pins to patch yet. Its refs are
+        // the complete source of truth until the first pin is committed.
+        setCounterUITick((tick) => tick + 1);
+      }
+    }
     if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeColor: color });
+    if (activeTool === 'counter') return;
+    if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderColor: color });
     } else if (isEditableShapeSelected()) {
-      patchSelectedStroke(composeColorForPatch(color, strokeOpacityStateRef.current));
+      patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
     strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
+    const nextNumberColor = composeColorForPatch(strokeColorStateRef.current, opacity);
+    if (activeTool === 'counter') {
+      activeCounterSeriesNumberColorRef.current = nextNumberColor;
+      const activeSeriesId = activeCounterSeriesIdRef.current;
+      const activeSeriesHasPins = activeSeriesId
+        && counterSeriesList.some((series) => series.seriesId === activeSeriesId && series.count > 0);
+      if (activeSeriesHasPins) {
+        handleCounterGroupUpdateRef.current?.(activeSeriesId, { numberColor: nextNumberColor });
+      } else {
+        setCounterUITick((tick) => tick + 1);
+      }
+    }
     if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeOpacity: opacity });
+    if (activeTool === 'counter') return;
+    if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (isEditableShapeSelected()) {
-      patchSelectedStroke(composeColorForPatch(strokeColorStateRef.current, opacity));
+      patchSelectedStroke(nextNumberColor);
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
     fillColorStateRef.current = color;
     setFillColor(color);
+    const nextFillColor = composeColorForPatch(color, fillOpacityStateRef.current);
+    if (activeTool === 'counter') {
+      activeCounterSeriesColorRef.current = nextFillColor;
+      const activeSeriesId = activeCounterSeriesIdRef.current;
+      const activeSeriesHasPins = activeSeriesId
+        && counterSeriesList.some((series) => series.seriesId === activeSeriesId && series.count > 0);
+      if (activeSeriesHasPins) {
+        handleCounterGroupUpdateRef.current?.(activeSeriesId, { fill: nextFillColor });
+      } else {
+        setCounterUITick((tick) => tick + 1);
+      }
+    }
     if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillColor: color });
+    if (activeTool === 'counter') return;
+    if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillColor: color });
     } else if (isFillableShapeSelected()) {
-      patchSelectedFill(composeColorForPatch(color, fillOpacityStateRef.current));
+      patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
     fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
+    const nextFillColor = composeColorForPatch(fillColorStateRef.current, opacity);
+    if (activeTool === 'counter') {
+      activeCounterSeriesColorRef.current = nextFillColor;
+      const activeSeriesId = activeCounterSeriesIdRef.current;
+      const activeSeriesHasPins = activeSeriesId
+        && counterSeriesList.some((series) => series.seriesId === activeSeriesId && series.count > 0);
+      if (activeSeriesHasPins) {
+        handleCounterGroupUpdateRef.current?.(activeSeriesId, { fill: nextFillColor });
+      } else {
+        setCounterUITick((tick) => tick + 1);
+      }
+    }
     if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillOpacity: opacity });
+    if (activeTool === 'counter') return;
+    if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (isFillableShapeSelected()) {
-      patchSelectedFill(composeColorForPatch(fillColorStateRef.current, opacity));
+      patchSelectedFill(nextFillColor);
     }
-  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+  }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
@@ -7508,8 +7589,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Drawing starts on pointer-down, before clicking the page has finished
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
-        const minWidth = activeTool === 'counter' || getSelectedShapeMeta().isCounter ? 4 : 1;
-        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), minWidth), 50));
+        const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+        const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
+        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), minWidth), maxWidth));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
@@ -7521,7 +7604,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValueRef.current, 10);
-    const minWidth = activeTool === 'counter' || getSelectedShapeMeta().isCounter ? 4 : 1;
+    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
     if (isNaN(parsed) || parsed < minWidth) {
       // Reset to minimum if empty or invalid
       const minimumValue = String(minWidth);
@@ -7530,7 +7615,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       publishToolbarDraft('strokeWidthInputValue', minimumValue);
       handleStrokeWidthChange(minWidth);
     } else {
-      const clamped = Math.min(Math.max(parsed, minWidth), 50);
+      const clamped = Math.min(Math.max(parsed, minWidth), maxWidth);
       const nextValue = String(clamped);
       strokeWidthInputValueRef.current = nextValue;
       setStrokeWidthInputValue(nextValue);
@@ -20240,6 +20325,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // an existing series via the caret popup once that's wired up).
     activeCounterSeriesIdRef.current = null;
     activeCounterSeriesColorRef.current = null;
+    activeCounterSeriesNumberColorRef.current = '#ffffff';
 
     const nextAnnotationCount = countAnnotationPageObjects(migratedAnnotationsByPage);
     const currentAnnotationCount = countAnnotationPageObjects(previouslyVisibleAnnotationsByPage);
@@ -22632,15 +22718,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
     if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
-    const selectedAnnot = selectedToolbarAnnotation?.annotation;
+    // Resolve the live saved object instead of relying only on the selection
+    // payload captured when the user clicked it. Saves, undo/redo, series
+    // updates, and remote sync can replace that object while it stays selected.
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation?.pageNumber]?.objects || [];
+    const selectedAnnotationId = getAnnotationRenderIdentity(
+      selectedToolbarAnnotation?.annotation,
+    ).annotationId;
+    const currentSelectedAnnot = (
+      selectedAnnotationId
+        ? pageObjects.find((annotation) => (
+            getAnnotationRenderIdentity(annotation).annotationId === selectedAnnotationId
+          ))
+        : pageObjects[selectedToolbarAnnotation?.annotationIndex]
+    ) || selectedToolbarAnnotation?.annotation;
+    const selectedAnnot = currentSelectedAnnot;
     const selectedType = String(selectedAnnot?.type || '').toLowerCase();
     let selectionMappedTool = null;
     if (selectedToolbarCallout) {
       selectionMappedTool = 'callout';
     } else if (selectedType === 'rect') selectionMappedTool = 'rect';
-    else if (selectedType === 'ellipse') selectionMappedTool = 'ellipse';
+    else if (selectedType === 'ellipse' || (selectedType === 'circle' && selectedAnnot?.data?.type !== 'counter')) selectionMappedTool = 'ellipse';
     else if (selectedType === 'path') selectionMappedTool = 'pen';
-    else if (selectedType === 'textbox') selectionMappedTool = 'text';
+    else if (selectedType === 'textbox' || selectedType === 'i-text' || selectedType === 'text') selectionMappedTool = 'text';
     else if (selectedType === 'polygon') selectionMappedTool = 'rect';
     else if (selectedType === 'polyline') selectionMappedTool = 'line';
     else if (selectedType === 'circle' && selectedAnnot?.data?.type === 'counter') {
@@ -22650,6 +22750,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         || selectedAnnot?.data?.tool === 'arrow'
         || selectedAnnot?.data?.arrowheadStyle != null;
       selectionMappedTool = isArrow ? 'arrow' : 'line';
+    } else if (
+      selectedType === 'group'
+      && selectedAnnot?.objects?.some((child) => (
+        ['line', 'polyline', 'path'].includes(String(child?.type || '').toLowerCase())
+      ))
+    ) {
+      selectionMappedTool = 'arrow';
     }
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
@@ -22660,6 +22767,100 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selectedCounterSeries = selectedCounterSeriesId
       ? counterSeriesList.find((series) => series.seriesId === selectedCounterSeriesId)
       : null;
+    const activeCounterSeriesPaint = resolveCounterSeriesPaint(
+      counterSeriesList,
+      activeCounterSeriesIdRef.current,
+      activeCounterSeriesColorRef.current || fillColor || '#ef4444',
+      activeCounterSeriesNumberColorRef.current || '#ffffff',
+    );
+    const effectivePreviewColor = (color, opacity = 1) => {
+      if (!color || color === 'transparent' || color === 'none') return 'transparent';
+      const hex = getHexFromColor(color);
+      if (!hex) return color;
+      const alphaMatch = String(color).match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/i);
+      const colorAlpha = alphaMatch ? Number(alphaMatch[1]) : 1;
+      const effectiveAlpha = Math.max(0, Math.min(1, colorAlpha * Math.max(0, Math.min(1, Number(opacity) || 0))));
+      return composeColorForPatch(hex, effectiveAlpha * 100);
+    };
+    const selectedPreviewColors = (() => {
+      if (activeTool === 'counter') {
+        return {
+          fill: effectivePreviewColor(activeCounterSeriesPaint.fill),
+          stroke: effectivePreviewColor(activeCounterSeriesPaint.numberColor),
+        };
+      }
+      // A selection can remain cached after the user arms a drawing tool. In
+      // that state the toolbar must preview the drawing tool defaults, not the
+      // stale selected object's paint.
+      if (activeTool !== 'select') return { fill: null, stroke: null };
+      if (selectedToolbarCallout?.callout) {
+        const style = selectedToolbarCallout.callout.style || {};
+        const border = style.borderColor || style.lineColor || '#1e293b';
+        const fill = style.fillColor || 'transparent';
+        const borderOpacity = Math.max(0.2, Math.min(1, Number(style.borderOpacity ?? 1)));
+        const fillOpacityValue = Math.max(0.08, Math.min(1, Number(style.fillOpacity ?? 0.4)));
+        return {
+          stroke: effectivePreviewColor(border, borderOpacity),
+          fill: effectivePreviewColor(fill, borderOpacity * fillOpacityValue),
+        };
+      }
+      if (!currentSelectedAnnot || !selectionMappedTool) return { fill: null, stroke: null };
+      const currentType = String(currentSelectedAnnot.type || '').toLowerCase();
+      const isCounter = currentType === 'circle' && currentSelectedAnnot.data?.type === 'counter';
+      const rawObjectOpacity = Number(currentSelectedAnnot.opacity ?? 1);
+      const objectOpacity = Number.isFinite(rawObjectOpacity)
+        ? Math.max(0, Math.min(1, rawObjectOpacity))
+        : 1;
+      if (isCounter) {
+        return {
+          fill: effectivePreviewColor(currentSelectedAnnot.fill || currentSelectedAnnot.data?.color || '#ef4444', objectOpacity),
+          stroke: effectivePreviewColor(currentSelectedAnnot.data?.numberColor || '#ffffff', objectOpacity),
+        };
+      }
+      if (currentType === 'path') {
+        const pathAttrs = renderPathToSvgAttrs(currentSelectedAnnot);
+        const visiblePathColor = pathAttrs.stroke && pathAttrs.stroke !== 'none' && pathAttrs.stroke !== 'transparent'
+          ? pathAttrs.stroke
+          : pathAttrs.fill;
+        return {
+          fill: 'transparent',
+          stroke: effectivePreviewColor(visiblePathColor || '#000000', pathAttrs.opacity ?? objectOpacity),
+        };
+      }
+      if (currentType === 'line' || currentType === 'polyline' || currentType === 'group') {
+        return {
+          fill: 'transparent',
+          stroke: effectivePreviewColor(currentSelectedAnnot.stroke || '#000000', objectOpacity),
+        };
+      }
+      if (currentType === 'textbox' || currentType === 'i-text' || currentType === 'text') {
+        const fillSource = currentSelectedAnnot.backgroundColor
+          || (currentType === 'textbox' ? 'transparent' : (currentSelectedAnnot.fill || '#000000'));
+        const strokeSource = currentSelectedAnnot.strokeWidth > 0 && currentSelectedAnnot.stroke
+          ? currentSelectedAnnot.stroke
+          : 'transparent';
+        return {
+          fill: effectivePreviewColor(fillSource, objectOpacity),
+          stroke: effectivePreviewColor(strokeSource, objectOpacity),
+        };
+      }
+      return {
+        fill: effectivePreviewColor(currentSelectedAnnot.fill || 'transparent', objectOpacity),
+        stroke: effectivePreviewColor(currentSelectedAnnot.stroke || 'transparent', objectOpacity),
+      };
+    })();
+    const counterToolStrokeColor = activeTool === 'counter'
+      ? (getHexFromColor(activeCounterSeriesPaint.numberColor) || strokeColor)
+      : strokeColor;
+    const counterToolStrokeOpacity = activeTool === 'counter'
+      ? getOpacityFromEntityColor(activeCounterSeriesPaint.numberColor)
+      : strokeOpacity;
+    const counterToolFillColor = activeTool === 'counter'
+      ? (getHexFromColor(activeCounterSeriesPaint.fill) || fillColor)
+      : fillColor;
+    const counterToolFillOpacity = activeTool === 'counter'
+      ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
+      : fillOpacity;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -22692,8 +22893,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
       showAnnotationColorPicker,
-      strokeColor,
-      strokeOpacity,
+      // Keep editable picker values separate from the effective swatch paint:
+      // selectedStrokeColor includes object opacity, while these base fields
+      // must not or an edit would bake opacity into the color a second time.
+      strokeColor: counterToolStrokeColor,
+      strokeOpacity: counterToolStrokeOpacity,
+      selectedStrokeColor: selectedPreviewColors.stroke,
       strokeWidthInputValue: strokeWidthInputValueRef.current,
       eraserSizeInputValue: eraserSizeInputValueRef.current,
       eraserMode,
@@ -22724,14 +22929,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       activeCounterSeriesId: activeCounterSeriesIdRef.current,
       onNewCounterSeries: handleNewCounterSeries,
       onSwitchCounterSeries: handleSwitchCounterSeries,
+      onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
         ? Math.max(1, Number(selectedAnnot?.data?.seriesStart) || 1)
         : null,
       onSelectedCounterSeriesStartChange: handleSelectedCounterSeriesStartChange,
-      fillColor,
-      fillOpacity,
+      fillColor: counterToolFillColor,
+      fillOpacity: counterToolFillOpacity,
+      selectedFillColor: selectedPreviewColors.fill,
       handleFillColorChange,
       handleFillOpacityChange,
       zoomInputValue,
@@ -22781,6 +22988,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
     activeCategoryDropdown,
@@ -22821,6 +23029,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     counterUITick,
     handleNewCounterSeries,
     handleSwitchCounterSeries,
+    handleDeleteCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -23268,11 +23477,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     //    never journaled twice.
     // Eraser multi-deletes (pure-delete fabric:batch NOT via the bulk path)
     // keep their activity row — it is their only restorable row.
-    const deletedIdsForJournal = scopedAction.type === 'fabric:delete'
-      ? [scopedAction.annotationId].filter(Boolean)
-      : scopedAction.type === 'fabric:batch'
-        ? (scopedAction.deleted || []).map((entry) => entry?.id).filter(Boolean)
-        : [];
+    const collectDeletedIdsForJournal = (historyAction) => {
+      if (historyAction?.type === 'fabric:delete') {
+        return [historyAction.annotationId].filter(Boolean);
+      }
+      if (historyAction?.type === 'fabric:batch') {
+        return (historyAction.deleted || []).map((entry) => entry?.id).filter(Boolean);
+      }
+      if (historyAction?.type === 'fabric:document-batch') {
+        return (historyAction.actions || []).flatMap(collectDeletedIdsForJournal);
+      }
+      return [];
+    };
+    const deletedIdsForJournal = collectDeletedIdsForJournal(scopedAction);
     const journaledByBulkPath = deletedIdsForJournal.length > 0
       && deletedIdsForJournal.every((id) => isBulkJournaledAnnotationId(id));
     const suppressActivityHistoryRow = deletedIdsForJournal.length > 0
@@ -25040,9 +25257,204 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       activeCounterSeriesColorRef.current = patch.fill;
       setCounterUITick((t) => t + 1);
     }
+    if (
+      Object.prototype.hasOwnProperty.call(patch, 'numberColor')
+      && activeCounterSeriesIdRef.current === seriesId
+    ) {
+      activeCounterSeriesNumberColorRef.current = patch.numberColor;
+      setCounterUITick((t) => t + 1);
+    }
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [handleSaveAnnotations]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
+
+  // Request deletion of one complete counter series. The existing shared
+  // confirmation modal handles both ordinary and cross-author series. The
+  // confirmed runner revalidates the exact pin ids before mutating, then saves
+  // every page while pushing one document-batch Undo/Redo action.
+  const handleDeleteCounterSeries = useCallback((seriesId) => {
+    if (!seriesId) return { ok: false, reason: 'missing-series' };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
+      Array.isArray(page?.objects)
+        ? page.objects.flatMap((annotation, index) => {
+          if (annotation?.data?.type !== 'counter' || annotation.data.seriesId !== seriesId) return [];
+          // Match buildBulkDeletePlan's identity precedence exactly. Synced
+          // Fabric rows use the top-level id; projected legacy rows fall back
+          // to data.id.
+          const annotationId = annotation.id ?? annotation.data.id ?? null;
+          return [{ pageKey, annotation, annotationId, index }];
+        })
+        : []
+    ));
+    const requestedPins = collectSeriesPins(annotationsByPageRef.current || {});
+    const requestedIds = requestedPins.map((entry) => entry.annotationId).filter(Boolean);
+    if (
+      requestedPins.length === 0
+      || requestedIds.length !== requestedPins.length
+      || new Set(requestedIds).size !== requestedIds.length
+    ) {
+      return { ok: false, reason: requestedPins.length === 0 ? 'not-found' : 'invalid-identity' };
+    }
+    const presenceRows = Array.isArray(documentPresenceListRef.current)
+      ? documentPresenceListRef.current
+      : [];
+    const rosterNameByUserId = new Map(
+      presenceRows
+        .filter((row) => row?.user_id && row?.display_name)
+        .map((row) => [row.user_id, row.display_name]),
+    );
+    const permissionPlan = buildBulkDeletePlan({
+      candidateIds: requestedIds,
+      annotations: requestedPins.map((entry) => entry.annotation),
+      viewerId,
+      documentOwnerId,
+      resolveAuthorName: (authorId) => rosterNameByUserId.get(authorId) ?? null,
+    });
+    if (permissionPlan.mode === 'no-op' || permissionPlan.count !== requestedPins.length) {
+      return { ok: false, reason: 'forbidden' };
+    }
+
+    const requestedIdsSorted = [...requestedIds].sort();
+    const seriesMeta = counterSeriesList.find((series) => series.seriesId === seriesId);
+    const executeConfirmedDelete = () => {
+      const liveByPage = annotationsByPageRef.current || {};
+      const livePins = collectSeriesPins(liveByPage);
+      const liveSeriesList = getCounterSeriesList(liveByPage);
+      const liveIds = livePins.map((entry) => entry.annotationId).filter(Boolean);
+      const liveIdsSorted = [...liveIds].sort();
+      if (
+        liveIds.length !== livePins.length
+        || liveIdsSorted.length !== requestedIdsSorted.length
+        || liveIdsSorted.some((id, index) => id !== requestedIdsSorted[index])
+      ) {
+        showToast('This count changed while confirmation was open. Review it and try again.', 'warn');
+        return { ok: false, reason: 'series-changed' };
+      }
+
+      const { updates, removedCount } = buildCounterSeriesDeletionUpdates(liveByPage, seriesId);
+      const pageActions = updates.map(({ pageKey, json }) => {
+        const numericKey = Number(pageKey);
+        const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+        return buildAnnotationHistoryAction({
+          pageNumber,
+          previousPage: liveByPage[pageKey],
+          nextPage: json,
+        });
+      }).filter(Boolean);
+      if (removedCount !== livePins.length || pageActions.length !== updates.length) {
+        showToast('This count could not be deleted. Please try again.', 'error');
+        return { ok: false, reason: 'invalid-plan' };
+      }
+      const documentAction = {
+        type: 'fabric:document-batch',
+        confirmedCrossAuthorDelete: permissionPlan.foreignIds.length > 0,
+        actions: pageActions,
+      };
+      const scopedDocumentAction = filterAnnotationHistoryActionByOwner(
+        documentAction,
+        viewerId,
+        documentOwnerId,
+      );
+      if (!scopedDocumentAction || scopedDocumentAction.actions?.length !== updates.length) {
+        showToast('This count could not be deleted. Check your permission and try again.', 'error');
+        return { ok: false, reason: 'forbidden' };
+      }
+
+      registerBulkJournaledAnnotationIds(liveIds);
+      updates.forEach(({ pageKey, json }) => {
+        const numericKey = Number(pageKey);
+        const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+        handleSaveAnnotations(pageNumber, json, {
+          source: 'counter:series-delete',
+          action: 'counter-series-delete',
+          checkpointPolicy: 'skip',
+          deletedCount: removedCount,
+        });
+        previewBaselineByPageRef.current.delete(String(pageNumber));
+      });
+      pushLocalAnnotationHistoryAction(scopedDocumentAction);
+
+      if (pdfFile?.id) {
+        const deletedAt = new Date().toISOString();
+        const actorName = user?.user_metadata?.full_name
+          || user?.user_metadata?.name
+          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+          || user?.email
+          || 'Someone';
+        const objectRestoreActions = livePins.map(({ annotation, annotationId, index, pageKey }) => {
+          const numericKey = Number(pageKey);
+          const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+          return {
+            annotationId,
+            pageNumber,
+            restoreAction: buildAnnotationRestoreAction({
+              type: 'fabric:delete',
+              pageNumber,
+              annotationId,
+              storageKey: annotation.data?.id || null,
+              annotation,
+              index,
+            }),
+          };
+        }).filter((entry) => entry.restoreAction);
+        const rows = buildBulkAnnotationDeleteHistoryRows({
+          objectRestoreActions,
+          totalCount: removedCount,
+          documentId: pdfFile.id,
+          userId: user?.id || null,
+          actorName,
+          deletedAt,
+        });
+        rows.forEach((row) => { void recordAndNotifyDocumentHistoryEvent(row); });
+      }
+
+      if (selectedToolbarAnnotationRef.current?.annotation?.data?.seriesId === seriesId) {
+        setSelectedToolbarAnnotation(null);
+      }
+      if (activeCounterSeriesIdRef.current === seriesId) {
+        const deletedIndex = Math.max(0, liveSeriesList.findIndex((series) => series.seriesId === seriesId));
+        const remaining = liveSeriesList.filter((series) => series.seriesId !== seriesId);
+        const fallback = remaining[Math.min(deletedIndex, remaining.length - 1)] || null;
+        activeCounterSeriesIdRef.current = fallback?.seriesId || null;
+        activeCounterSeriesColorRef.current = fallback?.color || null;
+        activeCounterSeriesNumberColorRef.current = fallback?.numberColor || '#ffffff';
+        if (fallback) {
+          setFillColor(fallback.color);
+          setStrokeColor(fallback.numberColor || '#ffffff');
+        }
+      }
+      setCounterCaretPopupOpen(false);
+      setCounterCaretSubmenu(null);
+      setCounterUITick((tick) => tick + 1);
+      appDebug(`[CSeries delete] seriesId=${seriesId} removed=${removedCount} pages=${updates.length}`);
+      return { ok: true, removedCount };
+    };
+
+    pendingDeleteCancelRef.current?.();
+    pendingDeleteCancelRef.current = null;
+    pendingDeleteRunnerRef.current = executeConfirmedDelete;
+    setPendingDeletePlan({
+      ...permissionPlan,
+      mode: 'counter-series',
+      seriesId,
+      seriesLabel: seriesMeta?.label || 'this count',
+      count: requestedPins.length,
+    });
+    return { ok: true, pending: true, count: requestedPins.length };
+  }, [
+    counterSeriesList,
+    documentOwnerId,
+    handleSaveAnnotations,
+    pdfFile?.id,
+    pushLocalAnnotationHistoryAction,
+    registerBulkJournaledAnnotationIds,
+    user?.email,
+    user?.id,
+    user?.user_metadata,
+    yjsUndoCtx?.userId,
+  ]);
+  handleDeleteCounterSeriesRef.current = handleDeleteCounterSeries;
 
   // UX: shared paste-annotation routine used by both the right-click Paste
   // menu item and the Cmd+V / Ctrl+V keyboard shortcut. Drops a deep clone of
@@ -25611,7 +26023,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (e.key === 'Shift' && !drag.shiftActive) {
         // Lock the tip at its CURRENT canvas position so the body can orbit
         // around it. tip = body + r*(cos angle, sin angle), where r is the
-        // tipDistance from renderCounter (radius + max(5, radius*0.5)).
+        // tipDistance from renderCounter (radius + radius*0.5).
         const angleRad = drag.angle * Math.PI / 180;
         drag.tipX = drag.bodyX + drag.tipDistance * Math.cos(angleRad);
         drag.tipY = drag.bodyY + drag.tipDistance * Math.sin(angleRad);
@@ -31070,7 +31482,7 @@ ${pageBlocks}
                                     const COUNTER_RADIUS = Math.max(4, Number(strokeWidth) || 14);
                                     // tipDistance MUST match renderCounter's formula so the
                                     // tip math (Shift-rotate) lines up with what the user sees.
-                                    const tipDistance = COUNTER_RADIUS + Math.max(5, COUNTER_RADIUS * 0.5);
+                                    const tipDistance = COUNTER_RADIUS + COUNTER_RADIUS * 0.5;
                                     // dragCreatedAt is the find key used by applyCounterDragMove
                                     // and commit/cancel. We use createdAt (preserved by the
                                     // history normalizer) instead of a custom sentinel because
@@ -31083,7 +31495,7 @@ ${pageBlocks}
                                     // [COUNTER MULTI-LIST] Resolve the active series. If neither
                                     // ref is set, this is the very first pin of a fresh session
                                     // (or after a doc switch) — auto-create a series using the
-                                    // CURRENT toolbar color (strokeColor). The HSL-spread picker
+                                    // CURRENT toolbar fill color. The HSL-spread picker
                                     // (pickNextSeriesColor) is reserved for the explicit "New"
                                     // button in the caret popup; for first-use, we want the pin
                                     // to match whatever the bottom-toolbar color picker shows.
@@ -31091,12 +31503,12 @@ ${pageBlocks}
                                     let seriesColor = activeCounterSeriesColorRef.current;
                                     let seriesAutoCreated = false;
                                     if (!seriesId) {
-                                      seriesColor = strokeColor || '#ef4444';
+                                      seriesColor = fillColor || '#ef4444';
                                       seriesId = `series-${Date.now()}`;
                                       activeCounterSeriesIdRef.current = seriesId;
                                       activeCounterSeriesColorRef.current = seriesColor;
                                       seriesAutoCreated = true;
-                                      appDebug(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
+                                      appDebug(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar fillColor=${fillColor})`);
                                     }
                                     // seriesStart inherits from the earliest existing pin in
                                     // this seriesId (so re-entry into a series preserves its
@@ -31131,7 +31543,10 @@ ${pageBlocks}
                                       }
                                     }
 
-                                    const color = seriesColor || strokeColor || '#ef4444';
+                                    const color = seriesColor || fillColor || '#ef4444';
+                                    const numberColor = activeCounterSeriesNumberColorRef.current
+                                      || inheritedNumberColor
+                                      || '#ffffff';
                                     const displayNumber = seriesStart + existingSeriesCounterCount;
                                     const counter = {
                                       type: 'circle',
@@ -31153,7 +31568,7 @@ ${pageBlocks}
                                         displayNumber,
                                         seriesId,
                                         seriesStart,
-                                        ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
+                                        numberColor,
                                       },
                                     };
                                     // Phase 31 - ID-at-creation stamping (assignment form). Post-cutover
@@ -31179,7 +31594,7 @@ ${pageBlocks}
                                       radius: COUNTER_RADIUS,
                                       tipDistance,
                                       color,
-                                      numberColor: inheritedNumberColor || '#ffffff',
+                                      numberColor,
                                       displayNumber,
                                       dragCreatedAt,
                                       shiftActive: false,

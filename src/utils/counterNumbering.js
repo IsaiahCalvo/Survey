@@ -65,11 +65,45 @@ export function renumberCounters(annotationsByPage) {
 }
 
 /**
+ * Builds the per-page saves needed to remove one complete counter series.
+ * Only pages containing matching pins are returned, and the input map is
+ * never mutated.
+ */
+export function buildCounterSeriesDeletionUpdates(annotationsByPage, seriesId) {
+  if (!annotationsByPage || typeof annotationsByPage !== 'object' || !seriesId) {
+    return { updates: [], removedCount: 0 };
+  }
+
+  const updates = [];
+  let removedCount = 0;
+
+  for (const pageKey of Object.keys(annotationsByPage)) {
+    const page = annotationsByPage[pageKey];
+    if (!page || !Array.isArray(page.objects)) continue;
+
+    const objects = page.objects.filter((obj) => !(
+      obj?.data?.type === 'counter' && obj.data.seriesId === seriesId
+    ));
+    const pageRemovedCount = page.objects.length - objects.length;
+    if (pageRemovedCount === 0) continue;
+
+    removedCount += pageRemovedCount;
+    updates.push({
+      pageKey,
+      json: { ...page, objects },
+      removedCount: pageRemovedCount,
+    });
+  }
+
+  return { updates, removedCount };
+}
+
+/**
  * Returns the ordered list of counter series found across all pages.
  * Series order is by the earliest createdAt of any pin in the series, so
  * "Count 1" is always the oldest series, "Count 2" the next, etc.
  *
- * Each entry: { seriesId, color, label, count, firstCreatedAt }
+ * Each entry: { seriesId, color, numberColor, label, count, firstCreatedAt }
  */
 export function getCounterSeriesList(annotationsByPage) {
   if (!annotationsByPage || typeof annotationsByPage !== 'object') {
@@ -88,6 +122,7 @@ export function getCounterSeriesList(annotationsByPage) {
         groups.set(key, {
           seriesId: key,
           color: obj.fill || '#ef4444',
+          numberColor: obj.data.numberColor || '#ffffff',
           firstCreatedAt: Number(obj.data.createdAt) || 0,
           count: 0,
         });
@@ -98,6 +133,7 @@ export function getCounterSeriesList(annotationsByPage) {
       if (ts && ts < entry.firstCreatedAt) entry.firstCreatedAt = ts;
       // Fabric copies fill onto every pin, so any non-empty fill is valid.
       if (obj.fill) entry.color = obj.fill;
+      if (obj.data.numberColor) entry.numberColor = obj.data.numberColor;
     }
   }
 
@@ -109,6 +145,21 @@ export function getCounterSeriesList(annotationsByPage) {
     ...entry,
     label: `Count ${i + 1}`,
   }));
+}
+
+export function resolveCounterSeriesPaint(
+  counterSeriesList,
+  activeSeriesId,
+  fallbackFill = '#ef4444',
+  fallbackNumberColor = '#ffffff',
+) {
+  const activeSeries = (counterSeriesList || []).find(
+    (series) => series?.seriesId === activeSeriesId,
+  );
+  return {
+    fill: activeSeries?.color || fallbackFill,
+    numberColor: activeSeries?.numberColor || fallbackNumberColor,
+  };
 }
 
 /**
