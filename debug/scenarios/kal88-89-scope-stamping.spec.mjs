@@ -124,7 +124,9 @@ test('KAL-88/89: text + counter creations stamp survey scope; eraser refuses sur
   // of survey content is covered by kal436-survey-transition.spec.mjs plus
   // the isAnnotationVisibleInSurveyMode unit tests.)
 
-  // ---- Back to standard mode. ----
+  // ---- Back to standard mode ('Close Survey panel' only exists while the
+  // panel is expanded — same expand-then-close step as KAL-436). ----
+  await page.getByRole('button', { name: 'Expand Survey panel' }).click();
   await page.getByRole('button', { name: 'Close Survey panel' }).click();
   await expect(page.getByRole('button', { name: 'Survey', exact: true })).toBeVisible();
 
