@@ -11,7 +11,7 @@ const styleSource = read('../src/components/AnnotationSizeControl.css');
 test('counter size menu exposes the exact approved preset sequence', () => {
   assert.match(
     componentSource,
-    /counter:\s*\[5, 8, 12, 16, 24, 32, 48, 64, 76\]/,
+    /counter:\s*\[5, 8, 12, 16, 24, 32, 48, 64\]/,
   );
 });
 
@@ -32,10 +32,10 @@ test('annotation size presets render as an accessible vertical list with row pre
   assert.match(styleSource, /button\.is-active\s*\{[^}]*color:\s*#f4f6f8[^}]*background:\s*#2b313a/s);
 });
 
-test('every counter preset through 76 receives a distinct preview thickness', () => {
-  const counterPresets = [5, 8, 12, 16, 24, 32, 48, 64, 76];
+test('every counter preset through 64 receives a distinct preview thickness', () => {
+  const counterPresets = [5, 8, 12, 16, 24, 32, 48, 64];
   const thicknesses = counterPresets.map((preset) => (
-    getAnnotationSizePreviewThickness(preset, 5, 76)
+    getAnnotationSizePreviewThickness(preset, 5, 64)
   ));
 
   assert.equal(new Set(thicknesses).size, counterPresets.length);
