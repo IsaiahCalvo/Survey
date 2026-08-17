@@ -2944,7 +2944,7 @@ const SVGAnnotationLayer = memo(({
   // at knee + arrowTip, and transparent 12px-stroke lines overlaying
   // line1/line2, so useSVGInteraction's pointerdown hit-test sees a
   // generous drag target. The 12px size matches the deleted HTML overlay's
-  // .callout-handle size in src/index.css (muscle-memory continuity per
+  // .callout-handle size (muscle-memory continuity per
   // 14-UI-SPEC.md Interaction Contract 4). The transparent stroke keeps
   // the overlay invisible but `pointer-events: all/stroke` makes it
   // clickable. Rendered AFTER the visible chrome (via the wrap <g> in
@@ -4640,7 +4640,7 @@ const SVGAnnotationLayer = memo(({
       height="100%"
       // UX: Plan 14-02 UX-01 — apply `tool-crosshair` class when the user is
       // in a creation tool (line / arrow / callout) AND no drag is in
-      // progress. The class is defined in src/index.css and sets
+      // progress. The class is defined in src/styles.css and sets
       // `cursor: crosshair`. Dragging state wins via the inline
       // `cursor: 'grabbing'` rule below because inline style beats class
       // specificity. See 14-UI-SPEC.md Interaction Contract 1.

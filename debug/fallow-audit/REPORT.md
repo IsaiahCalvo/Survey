@@ -124,3 +124,34 @@ electron/worker), and UI-reachability check.
 broken, maintainability 80 → 90+. Every remaining fallow finding is now either a
 deliberate staged feature, a planned migration (Syncfusion deps), or cosmetic
 over-export in sensitive code — none safe to auto-apply.
+
+---
+
+# Addendum — 2026-08-17 re-run (fallow 3.17.0, autonomous cleanup session)
+
+Re-ran `npm run audit:dead` after ~6 weeks of landed work. Headline: 4 unused
+files, 310 unused exports, 60 unused component props, 8 "unused" deps.
+
+**Validated + acted on this session (worktree project-status-c229be):**
+- `src/services/cloudSyncQueue.js` — DELETED. Zero import sites repo-wide
+  (`cloudSyncQueueSize` in PDFViewer is an unrelated variable fed by the
+  cloud-sync hook; the hydration source-assertion test pins that variable, not
+  this file). The Phase-21 offline retry queue it implemented was superseded.
+- `src/index.css` — DELETED after discovering it was NEVER imported anywhere
+  (main.jsx loads styles.css only). Three of its four rules styled the retired
+  HTML callout overlay (dead). The fourth, `.tool-crosshair`, HAS a live
+  consumer (SVGAnnotationLayer applies it for line/arrow/callout creation) but
+  the rule never loaded — i.e. the class-based crosshair-cursor contract was
+  silently inert. The rule now lives in `src/styles.css` (comment documents
+  the move); browser-verify the crosshair when convenient.
+
+**NOT acted on (validate before touching — high false-positive rate persists):**
+- `debug/fallow-audit/validate-*.mjs` "unused files": audit tooling run
+  directly with node; keep.
+- Deps: `@capacitor/android`/`@capacitor/ios` are platform packages consumed by
+  the native build tooling, never imported — keep. Mobile-tree deps
+  (mobile-demos/, mobile-expo/): hands off per the mobile-stream hold.
+- The 310 unused exports + 60 unused props are an UNVALIDATED long tail
+  (includes known intentional keeps: MSAL config, parked helpers with tests,
+  shared email-layout tokens). Work them in small validated batches with the
+  build+test gate, or not at all.

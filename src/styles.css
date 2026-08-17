@@ -1564,3 +1564,14 @@ input[type="text"].space-add-pages-input:focus-visible {
   .required-input--invalid { animation: none; }
   .required-input-hint { animation: none; }
 }
+
+/* UX: Plan 14-02 UX-01 — crosshair while a creation tool (line / arrow /
+   callout) is armed and no drag is in progress; signals "click-drag to
+   create", matching the combined-tools baseline. Applied by
+   SVGAnnotationLayer; the inline cursor:'grabbing' during drags wins over
+   this class because inline style beats class specificity. (Moved from the
+   never-imported src/index.css, whose other rules were dead — the old HTML
+   callout overlay they styled was retired in the SVG migration.) */
+.tool-crosshair {
+  cursor: crosshair;
+}
