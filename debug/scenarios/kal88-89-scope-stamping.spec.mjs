@@ -103,8 +103,12 @@ test('KAL-88/89: text + counter creations stamp survey scope; eraser refuses sur
 
   // ---- KAL-88 (counter): drop a Counter pin while survey mode is on. ----
   await page.getByRole('button', { name: 'Counter', exact: true }).click();
+  // The counter overlay intentionally swallows pointerdowns within 300ms of
+  // an edit commit (editModeCooldownRef runaway-pin guard) — let it lapse.
+  await page.waitForTimeout(400);
   await page.mouse.move(box.x + 480, box.y + 300);
   await page.mouse.down();
+  await page.mouse.move(box.x + 484, box.y + 304, { steps: 2 });
   await page.mouse.up();
   await expect.poll(async () => (await uniqueAnnotationIds(page)).length).toBe(2);
   const surveyIds = await uniqueAnnotationIds(page);
