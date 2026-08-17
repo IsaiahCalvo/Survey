@@ -163,6 +163,12 @@ const clonePlain = (value) => deepClone(value);
 // Note: callers (PDFViewer print path, tests) also pass `spaces`; it is
 // intentionally not destructured — region scope is derived from each object's
 // own regionId, so no region→space mapping is needed for this filter.
+//
+// KAL-91 (print parity with the export path's P1 policy): an EDITED imported
+// copy is the annotation's current truth, so it passes this filter and
+// flattens into the print; its stale native original is suppressed by the
+// print writer (savePDFWithFlattenedRegularAnnotationsForPrint). UNEDITED
+// imported copies stay excluded — their native annot already prints.
 export function buildPrintableRegularAnnotationPayload({
   annotationsByPage = {},
   callouts = [],
@@ -173,6 +179,7 @@ export function buildPrintableRegularAnnotationPayload({
       fabric: 0,
       callouts: 0,
       counters: 0,
+      editedImportedCopies: 0,
     },
     excluded: {
       fabric: 0,
@@ -190,6 +197,28 @@ export function buildPrintableRegularAnnotationPayload({
   };
   const printableAnnotationsByPage = {};
 
+  // Same composite pre-pass as buildPdfExportAnnotationPlan: editing ONE
+  // member of a pdfAppearanceCompositeId group makes the whole group the
+  // replacement (the native appearance is a single annot).
+  const editedAppearanceCompositeIds = new Set();
+  Object.values(annotationsByPage || {}).forEach((pageData) => {
+    (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+      const compositeId = getPdfAppearanceCompositeId(obj);
+      if (compositeId && isEditedPdfImportedObject(obj)) {
+        editedAppearanceCompositeIds.add(compositeId);
+      }
+    });
+  });
+  const isEditedImportedReplacement = (obj) => {
+    if (isEditedPdfImportedObject(obj)) return true;
+    const compositeId = getPdfAppearanceCompositeId(obj);
+    return Boolean(
+      isPdfImportedObject(obj)
+      && compositeId
+      && editedAppearanceCompositeIds.has(compositeId)
+    );
+  };
+
   const recordExcludedScope = (scope) => {
     if (scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS) {
       diagnostics.excludedByScope[scope] = (diagnostics.excludedByScope[scope] || 0) + 1;
@@ -206,7 +235,8 @@ export function buildPrintableRegularAnnotationPayload({
         diagnostics.excluded.surveyMarkers += 1;
         return;
       }
-      if (obj?.isPdfImported || obj?.pdfAnnotationId) {
+      const editedImportedReplacement = isEditedImportedReplacement(obj);
+      if (isPdfImportedObject(obj) && !editedImportedReplacement) {
         diagnostics.excluded.importedPdfNativePreserved += 1;
         return;
       }
@@ -221,6 +251,7 @@ export function buildPrintableRegularAnnotationPayload({
 
       diagnostics.included.fabric += 1;
       if (isCounter) diagnostics.included.counters += 1;
+      if (editedImportedReplacement) diagnostics.included.editedImportedCopies += 1;
       printableObjects.push(clonePlain(obj));
     });
 
@@ -3344,6 +3375,43 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
 
+  // KAL-91 — mirror of the export path's edited-replacement native
+  // suppression: an imported object only reaches the printable payload when
+  // it IS an edited replacement (unedited imported copies never pass the
+  // payload filter), so its stale native original must not also print.
+  // Removal is gated on the flatten actually succeeding for EVERY member of
+  // the replacement (composite groups count all members) — never leave the
+  // print showing neither version. Same request shape + resolver
+  // (applyNativePdfAnnotationRemovalPlan) as savePDFWithAnnotationsPdfLib.
+  const editedImportTrackers = new Map();
+  const trackEditedImportDraw = (pageNumber, obj, drawnCount) => {
+    if (!isPdfImportedObject(obj)) return;
+    const compositeId = getPdfAppearanceCompositeId(obj);
+    const key = compositeId
+      ? `${pageNumber}:composite:${compositeId}`
+      : `${pageNumber}:annot:${obj?.pdfAnnotationId}`;
+    let tracker = editedImportTrackers.get(key);
+    if (!tracker) {
+      tracker = {
+        expected: 0,
+        drawn: 0,
+        request: {
+          kind: 'edited',
+          pageNumber,
+          pdfAnnotationId: obj?.pdfAnnotationId,
+          pdfAnnotationType: obj?.pdfAnnotationType,
+          pdfNativeAnnotationIdentity:
+            obj?.data?.pdfNativeAnnotationIdentity
+            || obj?.pdfNativeAnnotationIdentity
+            || null,
+        },
+      };
+      editedImportTrackers.set(key, tracker);
+    }
+    tracker.expected += 1;
+    if (drawnCount > 0) tracker.drawn += 1;
+  };
+
   Object.entries(printablePayload.annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const pageNumber = Number.parseInt(pageKey, 10);
     const pageIndex = pageNumber - 1;
@@ -3353,7 +3421,9 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
-      flattenedPrintAnnotationsAdded += drawFlattenedObject(page, obj, pageHeight, fonts);
+      const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts);
+      flattenedPrintAnnotationsAdded += drawnCount;
+      trackEditedImportDraw(pageNumber, obj, drawnCount);
     });
   });
 
@@ -3367,6 +3437,20 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     const calloutObj = calloutToExportObject(callout, pageSize);
     if (calloutObj) flattenedPrintAnnotationsAdded += drawFlattenedCallout(page, calloutObj, pageHeight, fonts);
+  });
+
+  const editedImportDiagnostics = {
+    editedImportedNativeCopiesRemoved: 0,
+    editedImportedNativeCopiesRemoveMisses: 0,
+    deletedImportedNativeCopiesRemoved: 0,
+    deletedImportedNativeCopiesRemoveMisses: 0,
+  };
+  applyNativePdfAnnotationRemovalPlan({
+    pdfDoc,
+    requests: [...editedImportTrackers.values()]
+      .filter((tracker) => tracker.drawn > 0 && tracker.drawn === tracker.expected)
+      .map((tracker) => tracker.request),
+    exportDiagnostics: editedImportDiagnostics,
   });
 
   const regularAnnotationsIncluded =
@@ -3383,6 +3467,8 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     flattenedPrintAnnotationsAdded,
     regularAnnotationsIncluded,
     scopedAnnotationsExcluded,
+    editedImportedNativeCopiesRemoved: editedImportDiagnostics.editedImportedNativeCopiesRemoved,
+    editedImportedNativeCopiesRemoveMisses: editedImportDiagnostics.editedImportedNativeCopiesRemoveMisses,
     printableDiagnostics,
   }));
   return pdfBytes;
