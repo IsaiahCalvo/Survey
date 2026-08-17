@@ -14,8 +14,9 @@ const appShellSource = readFileSync(
 test('selected annotation swatch colors come from the current saved annotation', () => {
   assert.match(
     viewerSource,
-    /const currentSelectedAnnot = annotationsByPage\?\.\[selectedToolbarAnnotation\?\.pageNumber\]\?\.objects\?\.\[selectedToolbarAnnotation\?\.annotationIndex\]/,
+    /getAnnotationRenderIdentity\(\s*selectedToolbarAnnotation\?\.annotation,?\s*\)\.annotationId/,
   );
+  assert.match(viewerSource, /pageObjects\.find\(\(annotation\) =>/);
   assert.match(viewerSource, /selectedFillColor: selectedPreviewColors\.fill,/);
   assert.match(viewerSource, /selectedStrokeColor: selectedPreviewColors\.stroke,/);
   assert.match(viewerSource, /annotationsByPage,/);
@@ -47,10 +48,51 @@ test('selected preview cannot override an armed drawing tool or mutate picker ba
     viewerSource,
     /if \(activeTool !== 'select'\) return \{ fill: null, stroke: null \};/,
   );
-  assert.match(viewerSource, /\n\s+strokeColor,\n\s+strokeOpacity,\n\s+selectedStrokeColor:/);
-  assert.match(viewerSource, /\n\s+fillColor,\n\s+fillOpacity,\n\s+selectedFillColor:/);
-  assert.doesNotMatch(viewerSource, /strokeColor: publishedStrokeColor/);
-  assert.doesNotMatch(viewerSource, /fillColor: publishedFillColor/);
+  assert.match(viewerSource, /strokeColor: counterToolStrokeColor,/);
+  assert.match(viewerSource, /fillColor: counterToolFillColor,/);
+  assert.doesNotMatch(viewerSource, /strokeColor: selectedPreviewColors\.stroke/);
+  assert.doesNotMatch(viewerSource, /fillColor: selectedPreviewColors\.fill/);
+});
+
+test('counter draw mode previews the active series instead of unrelated tool defaults', () => {
+  assert.match(viewerSource, /const activeCounterSeriesPaint = resolveCounterSeriesPaint\(/);
+  assert.match(viewerSource, /if \(activeTool === 'counter'\) \{/);
+  assert.match(viewerSource, /fill: effectivePreviewColor\(activeCounterSeriesPaint\.fill\)/);
+  assert.match(viewerSource, /stroke: effectivePreviewColor\(activeCounterSeriesPaint\.numberColor\)/);
+  assert.match(
+    viewerSource,
+    /const numberColor = activeCounterSeriesNumberColorRef\.current\s*\|\| inheritedNumberColor\s*\|\| '#ffffff';/,
+  );
+});
+
+test('counter draw color edits patch only the active series and never a stale selection', () => {
+  const handlerBlocks = [
+    ['handleStrokeColorChange', 'handleStrokeOpacityChange', 'numberColor'],
+    ['handleStrokeOpacityChange', 'handleFillColorChange', 'numberColor'],
+    ['handleFillColorChange', 'handleFillOpacityChange', 'fill'],
+    ['handleFillOpacityChange', 'handleStrokeWidthChange', 'fill'],
+  ];
+
+  handlerBlocks.forEach(([startName, endName, patchKey]) => {
+    const start = viewerSource.indexOf(`const ${startName} = useCallback`);
+    const end = viewerSource.indexOf(`const ${endName} = useCallback`, start + 1);
+    assert.ok(start >= 0 && end > start, `${startName} source block exists`);
+    const block = viewerSource.slice(start, end);
+
+    assert.match(block, /const activeSeriesId = activeCounterSeriesIdRef\.current;/);
+    assert.match(block, /counterSeriesList\.some\(\(series\) => series\.seriesId === activeSeriesId && series\.count > 0\)/);
+    assert.match(block, new RegExp(`handleCounterGroupUpdateRef\\.current\\?\\.\\(activeSeriesId, \\{ ${patchKey}:`));
+    assert.match(block, /if \(activeTool === 'counter'\) return;/);
+    assert.match(block, /if \(activeTool !== 'select'\) return;/);
+    assert.ok(
+      block.indexOf("if (activeTool === 'counter') return;") < block.indexOf('isCalloutSelected()'),
+      `${startName} exits counter draw mode before selected-object edits`,
+    );
+  });
+});
+
+test('switching Fill and Number keeps the counter color picker open', () => {
+  assert.match(appShellSource, /setColorPickerTab\(k\);\s*bottomToolbarApi\.setShowAnnotationColorPicker\(true\);/);
 });
 
 test('callout preview matches renderer defaults and nested opacity', () => {

@@ -2320,7 +2320,11 @@ export default function App({ devPreviewReturnTab = null }) {
                             return (
                               <button
                                 key={k}
-                                onClick={() => setColorPickerTab(k)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setColorPickerTab(k);
+                                  bottomToolbarApi.setShowAnnotationColorPicker(true);
+                                }}
                                 onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                   background: on ? 'rgba(216,168,78,0.08)' : 'transparent',

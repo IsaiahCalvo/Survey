@@ -52,7 +52,7 @@
 }
 
 .annotation-size-control__popover {
-  width: 214px;
+  width: 164px;
   max-height: min(520px, calc(100vh - 24px));
   padding: 5px;
   display: flex;
@@ -92,10 +92,10 @@
   width: 100%;
   min-height: 34px;
   display: grid;
-  grid-template-columns: 76px 1fr 20px;
+  grid-template-columns: 68px 1fr 16px;
   align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
+  gap: 7px;
+  padding: 4px 7px;
   color: #d6dbe3;
   background: transparent;
   border: 0;
@@ -115,19 +115,19 @@
 }
 
 .annotation-size-control__presets button.is-active {
-  color: #f2d18d;
-  background: #2d2a22;
+  color: #f4f6f8;
+  background: #2b313a;
 }
 
 .annotation-size-control__preset-preview {
-  width: 68px;
+  width: 64px;
   height: 22px;
   display: flex;
   align-items: center;
 }
 
 .annotation-size-control__preset-stroke {
-  width: 68px;
+  width: 64px;
   height: var(--annotation-size-preview);
   max-height: 14px;
   display: block;
@@ -140,7 +140,7 @@
 }
 
 .annotation-size-control__preset-check {
-  color: #d8a84e;
+  color: #d9dee6;
   font-size: 14px;
   font-weight: 800;
   opacity: 0;
@@ -149,39 +149,6 @@
 
 .annotation-size-control__presets button.is-active .annotation-size-control__preset-check {
   opacity: 1;
-}
-
-.annotation-size-control__custom {
-  flex: 0 0 auto;
-  padding: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #aeb6c3;
-  border-top: 1px solid #2a3140;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.annotation-size-control__custom input {
-  width: 52px;
-  height: 28px;
-  padding: 0 6px;
-  box-sizing: border-box;
-  color: #f2f2f2;
-  background: #20242c;
-  border: 1px solid #3a4252;
-  border-radius: 5px;
-  outline: 0;
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.annotation-size-control__custom input:focus {
-  border-color: #d8a84e;
 }
 
 .annotation-size-control__arrow {
@@ -221,7 +188,7 @@
   }
 
   .annotation-size-control__popover {
-    width: min(214px, calc(100vw - 24px));
+    width: min(164px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);
   }
 

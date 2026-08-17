@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from '../utils/annotationSize';
 import './AnnotationSizeControl.css';
@@ -29,6 +29,8 @@ export default function AnnotationSizeControl({
   className = '',
 }) {
   const [open, setOpen] = useState(false);
+  const [focusedPresetIndex, setFocusedPresetIndex] = useState(0);
+  const presetOptionRefs = useRef([]);
   const rawValueText = value == null ? '' : String(value).trim();
   // Normalize legacy/persisted fractional values at the display boundary too;
   // the field must never visually present a decimal even before its first edit.
@@ -47,6 +49,14 @@ export default function AnnotationSizeControl({
       .filter((preset, index, list) => list.indexOf(preset) === index)
       .sort((a, b) => a - b)
   ), [max, min, presets]);
+  const selectedPresetIndex = availablePresets.findIndex((preset) => Number(valueText) === preset);
+
+  const handleOpenChange = (nextOpen) => {
+    if (nextOpen) {
+      setFocusedPresetIndex(selectedPresetIndex >= 0 ? selectedPresetIndex : 0);
+    }
+    setOpen(nextOpen);
+  };
 
   const updateDraft = (next) => {
     const raw = sanitizeAnnotationSizeDraft(next);
@@ -63,6 +73,21 @@ export default function AnnotationSizeControl({
     onValueChange?.(normalized);
     onValueCommit?.(normalized);
     if (close) setOpen(false);
+  };
+
+  const movePresetFocus = (event, currentIndex) => {
+    const lastIndex = availablePresets.length - 1;
+    let nextIndex = currentIndex;
+
+    if (event.key === 'ArrowDown') nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
+    else if (event.key === 'ArrowUp') nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = lastIndex;
+    else return;
+
+    event.preventDefault();
+    setFocusedPresetIndex(nextIndex);
+    presetOptionRefs.current[nextIndex]?.focus();
   };
 
   const inputProps = {
@@ -87,7 +112,7 @@ export default function AnnotationSizeControl({
   };
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <div className={`annotation-size-control ${className}`.trim()} data-annotation-size-control="true">
         <input {...inputProps} maxLength={3} aria-label={label} />
         <Popover.Trigger asChild>
@@ -114,15 +139,19 @@ export default function AnnotationSizeControl({
         >
           <div className="annotation-size-control__heading">{label}</div>
           <div className="annotation-size-control__presets" role="listbox" aria-label={`${label} presets`}>
-            {availablePresets.map((preset) => {
+            {availablePresets.map((preset, index) => {
               const active = Number(valueText) === preset;
               return (
                 <button
                   key={preset}
+                  ref={(element) => { presetOptionRefs.current[index] = element; }}
                   type="button"
                   role="option"
                   aria-selected={active}
+                  tabIndex={focusedPresetIndex === index ? 0 : -1}
                   className={active ? 'is-active' : ''}
+                  onFocus={() => setFocusedPresetIndex(index)}
+                  onKeyDown={(event) => movePresetFocus(event, index)}
                   onClick={() => commit(preset, { close: true })}
                 >
                   <span className="annotation-size-control__preset-preview" aria-hidden="true">
@@ -137,30 +166,6 @@ export default function AnnotationSizeControl({
               );
             })}
           </div>
-          <label className="annotation-size-control__custom">
-            <span>Custom</span>
-            <input
-              {...inputProps}
-              maxLength={3}
-              value={customValue}
-              aria-label={`Custom ${label.toLowerCase()}`}
-              onChange={(event) => updateDraft(event.target.value)}
-              onBlur={(event) => {
-                onFocusChange?.(false);
-                commit(event.currentTarget.value);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  onFocusChange?.(false);
-                  commit(event.currentTarget.value, { close: true });
-                }
-                if (event.key === '.' || event.key === ',' || event.key === '-' || event.key === '+' || event.key === 'e') {
-                  event.preventDefault();
-                }
-              }}
-            />
-          </label>
           <Popover.Arrow className="annotation-size-control__arrow" />
         </Popover.Content>
       </Popover.Portal>
