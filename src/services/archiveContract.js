@@ -42,7 +42,6 @@ export const ARCHIVE_RETENTION_DAYS = 30;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export const ARCHIVE_ITEM_TYPES = Object.freeze(['document', 'project', 'template']);
 
 function toIso(value) {
   if (!value) return null;

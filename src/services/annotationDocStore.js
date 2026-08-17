@@ -38,7 +38,6 @@ import {
 export const ANNOTATIONS_MAP = 'annotations';
 export const ERASER_OPS_MAP = 'annotationEraserOps';
 export const META_MAP = 'annoMeta';
-export const SNAPSHOT_ENCODING_VERSION = 1;
 export const DELETED_PDF_ANNOTATIONS_MAP = 'deletedPdfAnnotations';
 
 /**

@@ -314,6 +314,3 @@ if (typeof window !== 'undefined') {
   );
 }
 
-export function isShapeSpyOn() {
-  return spyOn;
-}

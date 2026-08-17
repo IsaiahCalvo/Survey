@@ -103,12 +103,6 @@ export const PdfThumb = ({ height = 110, marks = [], stamp = '', color = '#1f4a7
   </div>
 );
 
-/* Thin progress bar. */
-export const ProgressBar = ({ pct, color = 'var(--gold)' }) => (
-  <div style={{ height: 5, background: 'var(--ink-500)', borderRadius: 3, overflow: 'hidden' }}>
-    <div style={{ width: pct + '%', height: '100%', background: color }}></div>
-  </div>
-);
 
 /* Search field — visual only at this layer; callers wire value/onChange. */
 export const Search = ({ placeholder = 'Search…', width = 240, value, onChange, dismissActionSelector = '' }) => {

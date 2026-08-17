@@ -13,7 +13,6 @@ import {
   resolveAnnotationName,
 } from './shared.js';
 
-export const FABRIC_TYPES = ['textbox', 'text', 'i-text'];
 export const PDF_SUBTYPE = 'FreeText';
 
 export function adaptFreeText(fabricObj, { pdfDoc, page, pageHeight }) {

@@ -20,7 +20,6 @@ import {
   getFabricStroke,
 } from './shared.js';
 
-export const FABRIC_TYPE = 'rect';
 
 function buildQuadPointsFromBounds({ left, top, width, height }, pageHeight) {
   const minX = left;

@@ -90,4 +90,3 @@ export function flagRequiredInput(inputEl, message) {
 /** Whitespace-only counts as empty. */
 export const isBlank = (value) => !String(value ?? '').trim();
 
-export default flagRequiredInput;

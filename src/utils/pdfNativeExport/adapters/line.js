@@ -15,7 +15,6 @@ import {
   getFabricStroke,
 } from './shared.js';
 
-export const FABRIC_TYPE = 'line';
 export const PDF_SUBTYPE = 'Line';
 
 export function adaptLine(fabricObj, { pdfDoc, page, pageHeight }) {

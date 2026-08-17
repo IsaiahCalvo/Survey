@@ -122,15 +122,3 @@ export function getDeviceId() {
   return ephemeral;
 }
 
-/**
- * Test-only: reset the SSR cache. Per-window cache resets automatically because
- * the test harness swaps globalThis.window via withMockWindow().
- *
- * Not used in production code paths — only Plan 28-01 test scaffolds need it,
- * and even there, the natural window-swap semantics cover most cases.
- */
-export function _resetForTest() {
-  ssrCache = null;
-  // perWindowCache cannot be cleared without iterating; swapping globalThis.window
-  // is the supported reset path. WeakMap entries GC when the window object does.
-}

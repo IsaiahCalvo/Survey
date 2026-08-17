@@ -108,9 +108,3 @@ export async function restoreRevision(revisionId) {
   return data;
 }
 
-export default {
-  createRevision,
-  listRevisions,
-  getRevision,
-  restoreRevision,
-};

@@ -53,7 +53,6 @@ export const loadTrace = (stage, extra) => {
   return line;
 };
 
-export const dumpLoadTrace = () => buffer.join('\n');
 
 if (typeof window !== 'undefined') {
   const copy = async (text) => {

@@ -15,7 +15,6 @@ import {
   getFabricStroke,
 } from './shared.js';
 
-export const FABRIC_TYPE = 'polygon';
 export const PDF_SUBTYPE = 'Polygon';
 
 export function adaptPolygon(fabricObj, { pdfDoc, page, pageHeight }) {

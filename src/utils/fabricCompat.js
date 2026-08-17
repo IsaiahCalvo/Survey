@@ -133,4 +133,3 @@ export const fabric = {
   },
 };
 
-export default fabric;

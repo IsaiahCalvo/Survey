@@ -64,30 +64,6 @@ export const regionContainsPoint = (x, y, region, scaleFactor = 1) => {
   return polygonContainsPoint(x, y, region.coordinates, scaleFactor);
 };
 
-export const isPointInsideRegionSet = (x, y, regions, scaleFactor = 1) => {
-  if (!Array.isArray(regions) || regions.length === 0) {
-    return false;
-  }
-
-  let inside = false;
-  for (const region of regions) {
-    if (!region) {
-      continue;
-    }
-    const contains = regionContainsPoint(x, y, region, scaleFactor);
-    if (!contains) {
-      continue;
-    }
-    const operation = normalizeOperation(region.operation);
-    if (operation === REGION_OPERATIONS.ADD) {
-      inside = true;
-    } else {
-      inside = false;
-    }
-  }
-
-  return inside;
-};
 
 // Get bounding box of a region
 const getRegionBounds = (region) => {
@@ -410,104 +386,6 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion) => {
   }
 };
 
-// Merge overlapping regions in an array and apply subtractive regions
-export const mergeOverlappingRegions = (regions) => {
-  if (!Array.isArray(regions) || regions.length === 0) {
-    return regions || [];
-  }
-
-  if (regions.length === 1) {
-    // If only one region, return it (unless it's subtractive, then return empty)
-    return regions[0]?.operation === REGION_OPERATIONS.SUBTRACT ? [] : regions;
-  }
-
-  // Separate additive and subtractive regions
-  const additiveRegions = regions.filter(r => normalizeOperation(r.operation) === REGION_OPERATIONS.ADD);
-  const subtractiveRegions = regions.filter(r => normalizeOperation(r.operation) === REGION_OPERATIONS.SUBTRACT);
-
-  // First, merge overlapping additive regions
-  let merged = [...additiveRegions];
-  let changed = true;
-  const maxIterations = 100;
-  let iterations = 0;
-
-  while (changed && iterations < maxIterations) {
-    changed = false;
-    iterations++;
-
-    for (let i = 0; i < merged.length; i++) {
-      for (let j = i + 1; j < merged.length; j++) {
-        const region1 = merged[i];
-        const region2 = merged[j];
-
-        if (!region1 || !region2) {
-          continue;
-        }
-
-        const mergedRegion = mergeRegions(region1, region2);
-        if (mergedRegion) {
-          merged.splice(j, 1);
-          merged.splice(i, 1);
-          merged.push(mergedRegion);
-          changed = true;
-          break;
-        }
-      }
-      if (changed) {
-        break;
-      }
-    }
-  }
-
-  // Now apply subtractive regions to additive regions
-  // For each subtractive region, subtract it from all overlapping additive regions
-  for (const subtractRegion of subtractiveRegions) {
-    const newMerged = [];
-
-    for (const additiveRegion of merged) {
-      const subtracted = subtractRegionFromRegion(additiveRegion, subtractRegion);
-      if (subtracted && subtracted.length > 0) {
-        newMerged.push(...subtracted);
-      }
-    }
-
-    merged = newMerged;
-
-    // Merge any newly created regions that might now overlap
-    changed = true;
-    iterations = 0;
-    while (changed && iterations < maxIterations) {
-      changed = false;
-      iterations++;
-
-      for (let i = 0; i < merged.length; i++) {
-        for (let j = i + 1; j < merged.length; j++) {
-          const region1 = merged[i];
-          const region2 = merged[j];
-
-          if (!region1 || !region2) {
-            continue;
-          }
-
-          const mergedRegion = mergeRegions(region1, region2);
-          if (mergedRegion) {
-            merged.splice(j, 1);
-            merged.splice(i, 1);
-            merged.push(mergedRegion);
-            changed = true;
-            break;
-          }
-        }
-        if (changed) {
-          break;
-        }
-      }
-    }
-  }
-
-  // Return only additive regions (subtractive regions are applied, not kept as separate entities)
-  return merged;
-};
 
 // Ramer-Douglas-Peucker algorithm for polygon simplification
 const getSqDist = (p1, p2) => {

@@ -31,4 +31,3 @@ export function showToast(message, type = 'error') {
   }
 }
 
-export default showToast;

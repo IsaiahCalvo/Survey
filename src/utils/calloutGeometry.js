@@ -26,8 +26,6 @@ export const MIN_KNEE_TO_ARROW_DISTANCE = HANDLE_RADIUS * 2 + HANDLE_CLEAR_GAP;
 export const MIN_KNEE_TO_BOX_EDGE_DISTANCE = HANDLE_RADIUS + HANDLE_CLEAR_GAP;
 export const MIN_SEGMENT_LENGTH = 10; // Minimum length for line segments to keep them visible
 
-// Minimum distance required between textbox edge and arrow tip for knee to exist
-export const MIN_TEXTBOX_TO_ARROW_DISTANCE = MIN_KNEE_TO_BOX_EDGE_DISTANCE + MIN_KNEE_TO_ARROW_DISTANCE;
 
 /**
  * Finds the closest point on the textbox border to a given point

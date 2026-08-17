@@ -769,4 +769,3 @@ async function runBackfillUnlocked(args) {
   return { ranAs: 'leader', imported, skipped, cutoverCompleted };
 }
 
-export default runBackfill;

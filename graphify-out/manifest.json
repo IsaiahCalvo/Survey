@@ -2010,8 +2010,8 @@
     "semantic_hash": ""
   },
   "src/components/SVGAnnotationLayer.jsx": {
-    "mtime": 1786989256.414059,
-    "ast_hash": "c4444c623977754d5159da6be451f5c7",
+    "mtime": 1786991078.8304162,
+    "ast_hash": "bd615ef88a4988aedf62e275ebde61b6",
     "semantic_hash": ""
   },
   "src/components/SVGSelectionOverlay.jsx": {
@@ -2977,11 +2977,6 @@
   "src/services/checklistOrphanCleanup.js": {
     "mtime": 1786989256.4994342,
     "ast_hash": "418cff669c1c1d637a3bb6bac455162c",
-    "semantic_hash": ""
-  },
-  "src/services/cloudSyncQueue.js": {
-    "mtime": 1786989256.4995117,
-    "ast_hash": "8aa0d2687116aacb774432a456760aad",
     "semantic_hash": ""
   },
   "src/services/contentHash.js": {
@@ -9255,8 +9250,8 @@
     "semantic_hash": ""
   },
   "debug/fallow-audit/REPORT.md": {
-    "mtime": 1786989255.5798428,
-    "ast_hash": "710d5d56e4c1e015e71f4962c317e57b",
+    "mtime": 1786991118.009053,
+    "ast_hash": "730fa2894ce386b762b024168b10f623",
     "semantic_hash": ""
   },
   "debug/legacy-audit/2026-06-06/00-SYNTHESIS.md": {
