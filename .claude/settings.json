@@ -40,5 +40,48 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "mcp__Linear__list_issues",
+      "mcp__Linear__list_projects",
+      "mcp__Linear__list_issue_statuses",
+      "mcp__Linear__list_comments",
+      "mcp__Linear__list_issue_labels",
+      "mcp__Linear__get_issue",
+      "mcp__Linear__get_project",
+      "mcp__Linear__list_documents",
+      "mcp__Linear__get_document",
+      "mcp__Linear__save_comment",
+      "mcp__Linear__save_issue",
+      "mcp__Claude_Code_Remote__create_session",
+      "mcp__Claude_Code_Remote__get_session",
+      "mcp__Claude_Code_Remote__list_sessions",
+      "mcp__Claude_Code_Remote__list_repos",
+      "mcp__Claude_Code_Remote__list_environments",
+      "mcp__Claude_Code_Remote__list_triggers",
+      "mcp__Claude_Code_Remote__send_later",
+      "mcp__Claude_Code_Remote__update_trigger",
+      "mcp__Claude_Code_Remote__fire_trigger",
+      "mcp__Claude_Code_Remote__subscribe_pr_activity",
+      "mcp__Claude_Code_Remote__unsubscribe_pr_activity",
+      "mcp__Claude_Code_Remote__interrupt_session",
+      "mcp__Claude_Code_Remote__set_session_title",
+      "mcp__Claude_Code_Remote__set_session_tags",
+      "mcp__github__pull_request_read",
+      "mcp__github__list_pull_requests",
+      "mcp__github__list_commits",
+      "mcp__github__get_commit",
+      "mcp__github__list_branches",
+      "mcp__github__get_file_contents",
+      "mcp__github__search_code",
+      "mcp__github__search_issues",
+      "mcp__github__search_pull_requests",
+      "mcp__github__get_job_logs",
+      "mcp__github__get_check_run",
+      "mcp__github__actions_list",
+      "mcp__github__actions_get",
+      "mcp__github__create_pull_request"
+    ]
   }
 }
