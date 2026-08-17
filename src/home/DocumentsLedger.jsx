@@ -15,6 +15,7 @@ import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle, moreButtonStyle } from './hubControls';
+import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import useModalFocusTrap from './useModalFocusTrap';
 
@@ -123,6 +124,7 @@ export default function DocumentsLedger({
   onNav,
   onOpenDocument,
   onUpload,
+  uploadBusy = false,
   onShare,
   onDuplicate,
   onDelete,
@@ -322,16 +324,22 @@ export default function DocumentsLedger({
     </>
   );
 
+  /* KAL-73: cloud uploads run in the background after the picker closes; the
+     Upload button is the one fixed point that can show that work honestly.
+     Ring + participle label, disabled until the bytes are durable. */
+  const uploadButtonBody = uploadBusy
+    ? (<><Spinner size={14} color="currentColor" />Uploading…</>)
+    : (<><Icon name="upload" size={12} />Upload</>);
   const actions = (
     <>
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
-        <button className="btn primary hub-mobile-primary-action" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
+        <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       </div>
       <div className="documents-desktop-search">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
-      <button className="btn primary documents-desktop-upload" onClick={() => onUpload && onUpload()}><Icon name="upload" size={12} />Upload</button>
+      <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
     </>
   );
 

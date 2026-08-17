@@ -114,6 +114,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // dismiss; toast auto-clears after the next successful action.
   const [dashboardError, setDashboardError] = useState('');
   const [uploadInFlight, setUploadInFlight] = useState(false);
+  // KAL-73: count of background document uploads still writing to storage, so
+  // the hub's Upload button can show 'Uploading…' while bytes are in flight.
+  const [activeUploads, setActiveUploads] = useState(0);
   // KAL-23 verification hook: expose setter on window in development only so
   // automated UAT can force the toast without needing a real upload failure.
   // The user-visible upload/create paths still drive setDashboardError normally.
@@ -692,6 +695,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // of the same file overwrites the same object) and correct the page count
         // once parsed. The marks' durability is the annotation store's job now.
         (async () => {
+          setActiveUploads((count) => count + 1);
           try {
             perfUpload.mark(file.name, 'Starting cloud upload');
             const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
@@ -737,6 +741,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             perfUpload.end(file.name);
             console.error('Error uploading file in background:', err);
             setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
+          } finally {
+            setActiveUploads((count) => count - 1);
           }
         })();
 
@@ -885,6 +891,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // Background: store the bytes (content-addressed, idempotent) and correct
       // the page count once parsed.
       (async () => {
+        setActiveUploads((count) => count + 1);
         try {
           const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
           const pageCountPromise = (async () => {
@@ -931,6 +938,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         } catch (err) {
           console.error('Error uploading file in background:', err);
           setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
+        } finally {
+          setActiveUploads((count) => count - 1);
         }
       })();
 
@@ -2366,6 +2375,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
+        uploadBusy={activeUploads > 0 || uploadInFlight}
         onCreateProject={handleCreateProjectClick}
         onRenameProject={hubRenameProject}
         onCreateTemplate={openTemplateModal}

@@ -1133,8 +1133,9 @@ export default function ArchiveScreen({
         title={DELETE_FOREVER_COPY.title}
         message={DELETE_FOREVER_COPY.message}
         confirmLabel={DELETE_FOREVER_COPY.confirmLabel}
+        busyLabel="Deleting…"
         danger
-        onConfirm={() => { doDeleteForever(); }}
+        onConfirm={() => doDeleteForever()}
       />
     </>
   );

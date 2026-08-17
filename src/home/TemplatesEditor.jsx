@@ -1777,8 +1777,10 @@ export default function TemplatesEditor({
       mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
     >
       <div className="ed-scope" style={{ width: 'auto', height: 'calc(100% - 65px)', position: 'relative', overflow: 'hidden' }}>
+        {/* KAL-72: unified error-banner pattern (docs/ui/colors.md) — red is
+            the accent edge, not the text colour. */}
         {persistenceError ? (
-          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 6, border: '1px solid #cf6f6f', background: '#281b20', color: '#f3c4c4', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 8, borderLeft: '3px solid var(--accent-red, #d95a56)', background: 'rgba(217, 90, 86, 0.10)', color: '#f4f1ea', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
             {persistenceError}
           </div>
         ) : null}

@@ -32,12 +32,12 @@ import { useYDoc } from './useYDoc.js';
  *   Map keyed by annoId; one entry per remote user currently editing that anno.
  *   Returns an empty Map when:
  *     - no Y.Doc is mounted (kill-switch active OR no docId yet),
- *     - awareness is not attached to the Y.Doc / globalThis,
+ *     - getAwareness() reports no awareness on the mounted transport,
  *     - no remote users are editing anything,
  *     - all editors are the local user (filtered out by clientID).
  */
 export function useRemoteEditors() {
-  const { ydoc } = useYDoc();
+  const { ydoc, getAwareness } = useYDoc();
   // Initial state is a fresh empty Map per mount. Map identity changes on every
   // update so React's setState shallow compare always re-renders; that is OK
   // because the consumer (CollaboratorOutlineOverlay) memoizes the rect math.
@@ -48,15 +48,13 @@ export function useRemoteEditors() {
       setEditors(new Map());
       return;
     }
-    // Awareness state lookup: Phase 28's SupabaseYjsProvider attaches awareness
-    // alongside the Y.Doc. The conventional access patterns are:
-    //   1. ydoc.awareness — some Yjs ecosystem providers patch this in
-    //   2. globalThis.__crdtAwareness — explicit window-scoped publisher
-    //   3. provider.awareness — held inside the transport handle (we don't have
-    //      a clean reference to the transport handle from here today)
-    // We try (1) and (2) defensively. If neither is present, we degrade to an
-    // empty Map and the outline overlay renders nothing.
-    const awareness = ydoc.awareness ?? (typeof globalThis !== 'undefined' ? globalThis.__crdtAwareness : null) ?? null;
+    // KAL-274 — awareness comes exclusively through the typed getAwareness()
+    // accessor on the YDoc context (the transport handle's y-protocols
+    // Awareness instance). The old untyped globalThis.__crdtAwareness probe
+    // had no writer anywhere and is gone. When no transport with awareness is
+    // mounted, we degrade to an empty Map and the outline overlay renders
+    // nothing.
+    const awareness = (typeof getAwareness === 'function' ? getAwareness() : null) ?? null;
     if (!awareness) {
       setEditors(new Map());
       return;
@@ -93,7 +91,7 @@ export function useRemoteEditors() {
       // optional chaining guards against any test fake that doesn't implement it.
       awareness.off?.('change', update);
     };
-  }, [ydoc]);
+  }, [ydoc, getAwareness]);
 
   return editors;
 }
