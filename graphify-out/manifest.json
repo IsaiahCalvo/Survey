@@ -1130,8 +1130,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1786940833.415536,
-    "ast_hash": "4b8bd0a3430b3b9de496cb1ff330c9bf",
+    "mtime": 1786969072.0950816,
+    "ast_hash": "549018fa5b7b2d9ffe4e9288f7df1e77",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -11290,8 +11290,8 @@
     "semantic_hash": ""
   },
   "tests/counterSeriesContextMenu.test.mjs": {
-    "mtime": 1786941227.4710763,
-    "ast_hash": "52b8be74c2d4498005b18436b9d2f23f",
+    "mtime": 1786969072.0955942,
+    "ast_hash": "e852bc66cd16dd12a4e8bf56e8b393ed",
     "semantic_hash": ""
   },
   "tests/counterSeriesDeletionPlan.test.mjs": {

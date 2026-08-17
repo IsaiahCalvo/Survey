@@ -2312,17 +2312,23 @@ export default function App({ devPreviewReturnTab = null }) {
                                     bottomToolbarApi.setActiveTool?.('counter');
                                     setShowCounterSeriesMenu(false);
                                   }}
-                                  onContextMenu={(e) => {
+                                  onPointerDown={(e) => {
+                                    if (e.button !== 2) return;
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
                                     counterSeriesContextTriggerRef.current = e.currentTarget;
                                     setCounterSeriesContextMenu({
                                       seriesId: series.seriesId,
                                       label: series.label,
                                       count: series.count,
-                                      x: e.clientX,
-                                      y: e.clientY,
+                                      x: e.clientX || rect.left + Math.min(36, rect.width / 2),
+                                      y: e.clientY || rect.top + Math.min(24, rect.height),
                                     });
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                   }}
                                   onKeyDown={(e) => {
                                     if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;

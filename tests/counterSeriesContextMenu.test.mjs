@@ -10,6 +10,7 @@ const confirmDeleteModalSource = await readFile(
 );
 
 test('counter series rows expose right-click Continue and Delete actions', () => {
+  assert.match(appShellSource, /onPointerDown=\{\(e\) => \{\s*if \(e\.button !== 2\) return;/);
   assert.match(appShellSource, /onContextMenu=\{\(e\) => \{\s*e\.preventDefault\(\);/);
   assert.match(appShellSource, /e\.key !== 'ContextMenu'.*e\.shiftKey && e\.key === 'F10'/);
   assert.match(appShellSource, /data-counter-series-context-menu/);
