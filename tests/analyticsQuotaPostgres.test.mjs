@@ -10,6 +10,11 @@ const tool = (name) => {
   catch { return ''; }
 };
 
+// Pin a valid locale for every postgres child process: with an empty/unset LANG,
+// macOS postmaster aborts startup with "postmaster became multithreaded during
+// startup" (Homebrew PostgreSQL 16 on Darwin). LC_ALL=C sidesteps it.
+const pgEnv = { ...process.env, LC_ALL: 'C', LANG: 'C' };
+
 test('analytics quota migration atomically caps usage and prunes expired counter rows', {
   skip: !tool('initdb') || !tool('pg_ctl') || !tool('psql'),
 }, () => {
@@ -26,17 +31,17 @@ test('analytics quota migration atomically caps usage and prunes expired counter
     '-d', 'postgres',
     '-v', 'ON_ERROR_STOP=1',
     '-Atq',
-  ], { input: sql, encoding: 'utf8' }).trim();
+  ], { input: sql, encoding: 'utf8', env: pgEnv }).trim();
 
   try {
     mkdirSync(socket);
-    execFileSync('initdb', ['-D', data, '-A', 'trust', '-U', 'postgres', '--no-locale'], { stdio: 'ignore' });
+    execFileSync('initdb', ['-D', data, '-A', 'trust', '-U', 'postgres', '--no-locale'], { stdio: 'ignore', env: pgEnv });
     execFileSync('pg_ctl', [
       '-D', data,
       '-l', log,
       '-o', `-F -k ${socket} -p ${port}`,
       '-w', 'start',
-    ], { stdio: 'ignore' });
+    ], { stdio: 'ignore', env: pgEnv });
     started = true;
     psql(`
       create role anon;
@@ -81,7 +86,7 @@ test('analytics quota migration atomically caps usage and prunes expired counter
     `), 'f');
   } finally {
     if (started) {
-      try { execFileSync('pg_ctl', ['-D', data, '-m', 'fast', '-w', 'stop'], { stdio: 'ignore' }); }
+      try { execFileSync('pg_ctl', ['-D', data, '-m', 'fast', '-w', 'stop'], { stdio: 'ignore', env: pgEnv }); }
       catch { /* test failure reports from the primary assertion */ }
     }
     if (existsSync(cluster)) rmSync(cluster, { recursive: true, force: true });
