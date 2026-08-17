@@ -699,10 +699,14 @@ export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) 
   }
 
   try {
+    // KAL-285: bounded — callers only need "is anyone else using this
+    // template?" plus a few names for the confirm dialog; an unbounded
+    // select could pull thousands of rows on a widely-used template.
     let query = supabase
       .from('documents')
       .select('id, name')
-      .eq('template_id', templateId);
+      .eq('template_id', templateId)
+      .limit(100);
 
     // Exclude current survey if provided
     if (currentSurveyId) {
