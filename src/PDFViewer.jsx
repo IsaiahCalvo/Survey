@@ -176,7 +176,7 @@ import {
 } from './services/excelSyncClient';
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
-import { getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
+import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -3146,6 +3146,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // toolbar handlers reach it through this ref so they can keep their current
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
+  const handleDeleteCounterSeriesRef = useRef(null);
+  const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
+    handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
+  ), []);
   const handlePatchSelectedAnnotation = useCallback((patch) => {
     const sel = selectedToolbarAnnotationRef.current;
     if (!sel || sel.annotationIndex == null) return;
@@ -22701,6 +22705,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       activeCounterSeriesId: activeCounterSeriesIdRef.current,
       onNewCounterSeries: handleNewCounterSeries,
       onSwitchCounterSeries: handleSwitchCounterSeries,
+      onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -22799,6 +22804,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     counterUITick,
     handleNewCounterSeries,
     handleSwitchCounterSeries,
+    handleDeleteCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -23246,11 +23252,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     //    never journaled twice.
     // Eraser multi-deletes (pure-delete fabric:batch NOT via the bulk path)
     // keep their activity row — it is their only restorable row.
-    const deletedIdsForJournal = scopedAction.type === 'fabric:delete'
-      ? [scopedAction.annotationId].filter(Boolean)
-      : scopedAction.type === 'fabric:batch'
-        ? (scopedAction.deleted || []).map((entry) => entry?.id).filter(Boolean)
-        : [];
+    const collectDeletedIdsForJournal = (historyAction) => {
+      if (historyAction?.type === 'fabric:delete') {
+        return [historyAction.annotationId].filter(Boolean);
+      }
+      if (historyAction?.type === 'fabric:batch') {
+        return (historyAction.deleted || []).map((entry) => entry?.id).filter(Boolean);
+      }
+      if (historyAction?.type === 'fabric:document-batch') {
+        return (historyAction.actions || []).flatMap(collectDeletedIdsForJournal);
+      }
+      return [];
+    };
+    const deletedIdsForJournal = collectDeletedIdsForJournal(scopedAction);
     const journaledByBulkPath = deletedIdsForJournal.length > 0
       && deletedIdsForJournal.every((id) => isBulkJournaledAnnotationId(id));
     const suppressActivityHistoryRow = deletedIdsForJournal.length > 0
@@ -25028,6 +25042,194 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [handleSaveAnnotations]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
+
+  // Request deletion of one complete counter series. The existing shared
+  // confirmation modal handles both ordinary and cross-author series. The
+  // confirmed runner revalidates the exact pin ids before mutating, then saves
+  // every page while pushing one document-batch Undo/Redo action.
+  const handleDeleteCounterSeries = useCallback((seriesId) => {
+    if (!seriesId) return { ok: false, reason: 'missing-series' };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
+      Array.isArray(page?.objects)
+        ? page.objects.flatMap((annotation, index) => {
+          if (annotation?.data?.type !== 'counter' || annotation.data.seriesId !== seriesId) return [];
+          // Match buildBulkDeletePlan's identity precedence exactly. Synced
+          // Fabric rows use the top-level id; projected legacy rows fall back
+          // to data.id.
+          const annotationId = annotation.id ?? annotation.data.id ?? null;
+          return [{ pageKey, annotation, annotationId, index }];
+        })
+        : []
+    ));
+    const requestedPins = collectSeriesPins(annotationsByPageRef.current || {});
+    const requestedIds = requestedPins.map((entry) => entry.annotationId).filter(Boolean);
+    if (
+      requestedPins.length === 0
+      || requestedIds.length !== requestedPins.length
+      || new Set(requestedIds).size !== requestedIds.length
+    ) {
+      return { ok: false, reason: requestedPins.length === 0 ? 'not-found' : 'invalid-identity' };
+    }
+    const presenceRows = Array.isArray(documentPresenceListRef.current)
+      ? documentPresenceListRef.current
+      : [];
+    const rosterNameByUserId = new Map(
+      presenceRows
+        .filter((row) => row?.user_id && row?.display_name)
+        .map((row) => [row.user_id, row.display_name]),
+    );
+    const permissionPlan = buildBulkDeletePlan({
+      candidateIds: requestedIds,
+      annotations: requestedPins.map((entry) => entry.annotation),
+      viewerId,
+      documentOwnerId,
+      resolveAuthorName: (authorId) => rosterNameByUserId.get(authorId) ?? null,
+    });
+    if (permissionPlan.mode === 'no-op' || permissionPlan.count !== requestedPins.length) {
+      return { ok: false, reason: 'forbidden' };
+    }
+
+    const requestedIdsSorted = [...requestedIds].sort();
+    const seriesMeta = counterSeriesList.find((series) => series.seriesId === seriesId);
+    const executeConfirmedDelete = () => {
+      const liveByPage = annotationsByPageRef.current || {};
+      const livePins = collectSeriesPins(liveByPage);
+      const liveSeriesList = getCounterSeriesList(liveByPage);
+      const liveIds = livePins.map((entry) => entry.annotationId).filter(Boolean);
+      const liveIdsSorted = [...liveIds].sort();
+      if (
+        liveIds.length !== livePins.length
+        || liveIdsSorted.length !== requestedIdsSorted.length
+        || liveIdsSorted.some((id, index) => id !== requestedIdsSorted[index])
+      ) {
+        showToast('This count changed while confirmation was open. Review it and try again.', 'warn');
+        return { ok: false, reason: 'series-changed' };
+      }
+
+      const { updates, removedCount } = buildCounterSeriesDeletionUpdates(liveByPage, seriesId);
+      const pageActions = updates.map(({ pageKey, json }) => {
+        const numericKey = Number(pageKey);
+        const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+        return buildAnnotationHistoryAction({
+          pageNumber,
+          previousPage: liveByPage[pageKey],
+          nextPage: json,
+        });
+      }).filter(Boolean);
+      if (removedCount !== livePins.length || pageActions.length !== updates.length) {
+        showToast('This count could not be deleted. Please try again.', 'error');
+        return { ok: false, reason: 'invalid-plan' };
+      }
+      const documentAction = {
+        type: 'fabric:document-batch',
+        confirmedCrossAuthorDelete: permissionPlan.foreignIds.length > 0,
+        actions: pageActions,
+      };
+      const scopedDocumentAction = filterAnnotationHistoryActionByOwner(
+        documentAction,
+        viewerId,
+        documentOwnerId,
+      );
+      if (!scopedDocumentAction || scopedDocumentAction.actions?.length !== updates.length) {
+        showToast('This count could not be deleted. Check your permission and try again.', 'error');
+        return { ok: false, reason: 'forbidden' };
+      }
+
+      registerBulkJournaledAnnotationIds(liveIds);
+      updates.forEach(({ pageKey, json }) => {
+        const numericKey = Number(pageKey);
+        const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+        handleSaveAnnotations(pageNumber, json, {
+          source: 'counter:series-delete',
+          action: 'counter-series-delete',
+          checkpointPolicy: 'skip',
+          deletedCount: removedCount,
+        });
+        previewBaselineByPageRef.current.delete(String(pageNumber));
+      });
+      pushLocalAnnotationHistoryAction(scopedDocumentAction);
+
+      if (pdfFile?.id) {
+        const deletedAt = new Date().toISOString();
+        const actorName = user?.user_metadata?.full_name
+          || user?.user_metadata?.name
+          || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+          || user?.email
+          || 'Someone';
+        const objectRestoreActions = livePins.map(({ annotation, annotationId, index, pageKey }) => {
+          const numericKey = Number(pageKey);
+          const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+          return {
+            annotationId,
+            pageNumber,
+            restoreAction: buildAnnotationRestoreAction({
+              type: 'fabric:delete',
+              pageNumber,
+              annotationId,
+              storageKey: annotation.data?.id || null,
+              annotation,
+              index,
+            }),
+          };
+        }).filter((entry) => entry.restoreAction);
+        const rows = buildBulkAnnotationDeleteHistoryRows({
+          objectRestoreActions,
+          totalCount: removedCount,
+          documentId: pdfFile.id,
+          userId: user?.id || null,
+          actorName,
+          deletedAt,
+        });
+        rows.forEach((row) => { void recordAndNotifyDocumentHistoryEvent(row); });
+      }
+
+      if (selectedToolbarAnnotationRef.current?.annotation?.data?.seriesId === seriesId) {
+        setSelectedToolbarAnnotation(null);
+      }
+      if (activeCounterSeriesIdRef.current === seriesId) {
+        const deletedIndex = Math.max(0, liveSeriesList.findIndex((series) => series.seriesId === seriesId));
+        const remaining = liveSeriesList.filter((series) => series.seriesId !== seriesId);
+        const fallback = remaining[Math.min(deletedIndex, remaining.length - 1)] || null;
+        activeCounterSeriesIdRef.current = fallback?.seriesId || null;
+        activeCounterSeriesColorRef.current = fallback?.color || null;
+        activeCounterSeriesNumberColorRef.current = fallback?.numberColor || '#ffffff';
+        if (fallback) {
+          setFillColor(fallback.color);
+          setStrokeColor(fallback.numberColor || '#ffffff');
+        }
+      }
+      setCounterCaretPopupOpen(false);
+      setCounterCaretSubmenu(null);
+      setCounterUITick((tick) => tick + 1);
+      appDebug(`[CSeries delete] seriesId=${seriesId} removed=${removedCount} pages=${updates.length}`);
+      return { ok: true, removedCount };
+    };
+
+    pendingDeleteCancelRef.current?.();
+    pendingDeleteCancelRef.current = null;
+    pendingDeleteRunnerRef.current = executeConfirmedDelete;
+    setPendingDeletePlan({
+      ...permissionPlan,
+      mode: 'counter-series',
+      seriesId,
+      seriesLabel: seriesMeta?.label || 'this count',
+      count: requestedPins.length,
+    });
+    return { ok: true, pending: true, count: requestedPins.length };
+  }, [
+    counterSeriesList,
+    documentOwnerId,
+    handleSaveAnnotations,
+    pdfFile?.id,
+    pushLocalAnnotationHistoryAction,
+    registerBulkJournaledAnnotationIds,
+    user?.email,
+    user?.id,
+    user?.user_metadata,
+    yjsUndoCtx?.userId,
+  ]);
+  handleDeleteCounterSeriesRef.current = handleDeleteCounterSeries;
 
   // UX: shared paste-annotation routine used by both the right-click Paste
   // menu item and the Cmd+V / Ctrl+V keyboard shortcut. Drops a deep clone of

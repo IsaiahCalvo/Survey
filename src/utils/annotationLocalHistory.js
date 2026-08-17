@@ -361,6 +361,21 @@ export function buildAnnotationHistoryAction({ pageNumber, previousPage, nextPag
 
 export function invertAnnotationHistoryAction(action) {
   if (!action || typeof action !== 'object') return null;
+  if (action.type === 'fabric:document-batch') {
+    const actions = [...(action.actions || [])]
+      .reverse()
+      .map((child) => invertAnnotationHistoryAction(child))
+      .filter(Boolean);
+    return actions.length > 0
+      ? {
+        type: 'fabric:document-batch',
+        actions,
+        ...(action.confirmedCrossAuthorDelete === true
+          ? { confirmedCrossAuthorDelete: true }
+          : {}),
+      }
+      : null;
+  }
   if (action.type === 'fabric:create') {
     return {
       type: 'fabric:delete',
@@ -434,6 +449,41 @@ export function filterAnnotationHistoryActionByOwner(action, userId, documentOwn
     return action;
   }
 
+  if (action.type === 'fabric:document-batch') {
+    if (action.confirmedCrossAuthorDelete === true) {
+      return cloneJson(action);
+    }
+    const requested = Array.isArray(action.actions) ? action.actions : [];
+    const actions = requested.map((child) => (
+      filterAnnotationHistoryActionByOwner(child, userId, documentOwnerId)
+    ));
+    // Cross-page destructive actions are atomic. If any page contains an
+    // annotation outside the viewer's history scope, fail the whole action
+    // instead of producing a partial undo that cannot restore the series.
+    const mutationCount = (child) => {
+      if (!child) return 0;
+      if (child.type === 'fabric:batch') {
+        return (child.created?.length || 0)
+          + (child.deleted?.length || 0)
+          + (child.updated?.length || 0);
+      }
+      if (child.type === 'fabric:document-batch') {
+        return (child.actions || []).reduce((sum, nested) => sum + mutationCount(nested), 0);
+      }
+      return ['fabric:create', 'fabric:delete', 'fabric:update'].includes(child.type) ? 1 : 0;
+    };
+    if (
+      requested.length === 0
+      || actions.some((child, index) => (
+        !child || mutationCount(child) !== mutationCount(requested[index])
+      ))
+    ) return null;
+    return {
+      ...action,
+      actions: actions.map((child) => cloneJson(child)),
+    };
+  }
+
   if (action.type === 'fabric:create' || action.type === 'fabric:delete') {
     return isOwnAnnotation(action.annotation, userId) ? action : null;
   }
@@ -498,6 +548,12 @@ function replaceAtStorageIndex(objects, index, value, storageKey) {
 
 export function applyAnnotationHistoryAction(annotationsByPage, action) {
   if (!action || typeof action !== 'object') return annotationsByPage || {};
+  if (action.type === 'fabric:document-batch') {
+    return (action.actions || []).reduce(
+      (current, child) => applyAnnotationHistoryAction(current, child),
+      annotationsByPage || {},
+    );
+  }
   const pageKey = String(action.pageNumber);
   const current = annotationsByPage || {};
   const page = current[pageKey] || current[action.pageNumber] || { objects: [] };

@@ -34,7 +34,10 @@ test('annotation formatting popovers share one capture-phase dismissal layer', (
       "[data-annotation-color-trigger], [data-annotation-color-picker]",
       'bottomToolbarApi?.setShowAnnotationColorPicker?.(false)',
     ],
-    ['[data-counter-series-menu]', 'setShowCounterSeriesMenu(false)'],
+    [
+      '[data-counter-series-menu], [data-counter-series-context-menu]',
+      'setShowCounterSeriesMenu(false)',
+    ],
     ['[data-style-menu]', 'setShowStyleMenu(false)'],
     ['[data-arrowhead-menu]', 'setShowArrowheadMenu(false)'],
     ['[data-eraser-type-menu]', 'setShowEraserTypeMenu(false)'],

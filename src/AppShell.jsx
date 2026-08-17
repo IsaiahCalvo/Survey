@@ -534,11 +534,16 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [showStyleMenu]);
 
   const [showCounterSeriesMenu, setShowCounterSeriesMenu] = useState(false);
+  const [counterSeriesContextMenu, setCounterSeriesContextMenu] = useState(null);
+  const counterSeriesMenuTriggerRef = useRef(null);
+  const counterSeriesContextTriggerRef = useRef(null);
+  const counterSeriesContextMenuRef = useRef(null);
   useEffect(() => {
     if (!showCounterSeriesMenu) return;
     const onDown = (e) => {
-      if (e.target.closest && e.target.closest('[data-counter-series-menu]')) return;
+      if (e.target.closest && e.target.closest('[data-counter-series-menu], [data-counter-series-context-menu]')) return;
       setShowCounterSeriesMenu(false);
+      setCounterSeriesContextMenu(null);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -547,8 +552,79 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     if (bottomToolbarApi?.contextTool !== 'counter') {
       setShowCounterSeriesMenu(false);
+      setCounterSeriesContextMenu(null);
     }
   }, [bottomToolbarApi?.contextTool]);
+
+  useEffect(() => {
+    if (showCounterSeriesMenu) return;
+    setCounterSeriesContextMenu(null);
+  }, [showCounterSeriesMenu]);
+
+  useEffect(() => {
+    if (!counterSeriesContextMenu) return;
+    const liveSeries = (bottomToolbarApi?.counterSeriesList || []).find(
+      (series) => series.seriesId === counterSeriesContextMenu.seriesId,
+    );
+    if (
+      !liveSeries
+      || liveSeries.count !== counterSeriesContextMenu.count
+      || liveSeries.label !== counterSeriesContextMenu.label
+    ) {
+      setCounterSeriesContextMenu(null);
+    }
+  }, [bottomToolbarApi?.counterSeriesList, counterSeriesContextMenu]);
+
+  useEffect(() => {
+    if (!bottomToolbarApi?.showAnnotationColorPicker) return;
+    setShowCounterSeriesMenu(false);
+    setCounterSeriesContextMenu(null);
+  }, [bottomToolbarApi?.showAnnotationColorPicker]);
+
+  useEffect(() => {
+    if (!showCounterSeriesMenu || counterSeriesContextMenu) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setShowCounterSeriesMenu(false);
+      counterSeriesMenuTriggerRef.current?.focus?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [counterSeriesContextMenu, showCounterSeriesMenu]);
+
+  useEffect(() => {
+    if (!counterSeriesContextMenu) return undefined;
+    const focusFirstItem = window.requestAnimationFrame(() => {
+      counterSeriesContextMenuRef.current?.querySelector?.('[role="menuitem"]')?.focus?.();
+    });
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setCounterSeriesContextMenu(null);
+        counterSeriesContextTriggerRef.current?.focus?.();
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const items = [...(counterSeriesContextMenuRef.current?.querySelectorAll?.('[role="menuitem"]') || [])];
+      if (items.length === 0) return;
+      event.preventDefault();
+      const currentIndex = items.indexOf(document.activeElement);
+      const nextIndex = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : event.key === 'ArrowDown'
+            ? (currentIndex + 1 + items.length) % items.length
+            : (currentIndex - 1 + items.length) % items.length;
+      items[nextIndex].focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFirstItem);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [counterSeriesContextMenu]);
 
   const [showEraserTypeMenu, setShowEraserTypeMenu] = useState(false);
   useEffect(() => {
@@ -577,7 +653,10 @@ export default function App({ devPreviewReturnTab = null }) {
       if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker]')) {
         bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
       }
-      if (!inside('[data-counter-series-menu]')) setShowCounterSeriesMenu(false);
+      if (!inside('[data-counter-series-menu], [data-counter-series-context-menu]')) {
+        setShowCounterSeriesMenu(false);
+        setCounterSeriesContextMenu(null);
+      }
       if (!inside('[data-style-menu]')) setShowStyleMenu(false);
       if (!inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
       if (!inside('[data-eraser-type-menu]')) setShowEraserTypeMenu(false);
@@ -595,6 +674,7 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
     setShowCounterSeriesMenu(false);
+    setCounterSeriesContextMenu(null);
     setShowStyleMenu(false);
     setShowArrowheadMenu(false);
     setShowEraserTypeMenu(false);
@@ -2114,7 +2194,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     return (
                       <div data-counter-series-menu style={{ position: 'relative' }}>
                         <button
-                          onClick={() => setShowCounterSeriesMenu((open) => !open)}
+                          ref={counterSeriesMenuTriggerRef}
+                          onClick={() => {
+                            bottomToolbarApi.setShowAnnotationColorPicker?.(false);
+                            setCounterSeriesContextMenu(null);
+                            setShowCounterSeriesMenu((open) => !open);
+                          }}
                           onMouseDown={(e) => e.stopPropagation()}
                           style={{
                             height: '24px',
@@ -2219,10 +2304,39 @@ export default function App({ devPreviewReturnTab = null }) {
                               return (
                                 <button
                                   key={series.seriesId}
+                                  aria-haspopup="menu"
+                                  aria-label={`${series.label}, ${series.count} pins`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     bottomToolbarApi.onSwitchCounterSeries(series.seriesId);
+                                    bottomToolbarApi.setActiveTool?.('counter');
                                     setShowCounterSeriesMenu(false);
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    counterSeriesContextTriggerRef.current = e.currentTarget;
+                                    setCounterSeriesContextMenu({
+                                      seriesId: series.seriesId,
+                                      label: series.label,
+                                      count: series.count,
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                    });
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    counterSeriesContextTriggerRef.current = e.currentTarget;
+                                    setCounterSeriesContextMenu({
+                                      seriesId: series.seriesId,
+                                      label: series.label,
+                                      count: series.count,
+                                      x: rect.left + Math.min(36, rect.width / 2),
+                                      y: rect.top + Math.min(24, rect.height),
+                                    });
                                   }}
                                   style={{
                                     display: 'flex',
@@ -2257,6 +2371,82 @@ export default function App({ devPreviewReturnTab = null }) {
                             })}
                           </div>
                         )}
+                        {showCounterSeriesMenu && counterSeriesContextMenu && typeof document !== 'undefined' && createPortal((
+                          <div
+                            ref={counterSeriesContextMenuRef}
+                            data-counter-series-context-menu
+                            role="menu"
+                            aria-label={`${counterSeriesContextMenu.label} actions`}
+                            style={{
+                              position: 'fixed',
+                              left: `${Math.max(8, Math.min(counterSeriesContextMenu.x, window.innerWidth - 180))}px`,
+                              top: `${Math.max(8, Math.min(counterSeriesContextMenu.y, window.innerHeight - 88))}px`,
+                              width: '172px',
+                              padding: '4px',
+                              background: '#0d0f14',
+                              border: '1px solid #3a4252',
+                              borderRadius: '6px',
+                              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                              zIndex: 5700,
+                            }}
+                          >
+                            <button
+                              role="menuitem"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                bottomToolbarApi.onSwitchCounterSeries(counterSeriesContextMenu.seriesId);
+                                bottomToolbarApi.setActiveTool?.('counter');
+                                setCounterSeriesContextMenu(null);
+                                setShowCounterSeriesMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '7px 9px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: '#e8e2d4',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              Continue count
+                            </button>
+                            <button
+                              role="menuitem"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const { seriesId } = counterSeriesContextMenu;
+                                setCounterSeriesContextMenu(null);
+                                const result = bottomToolbarApi.onDeleteCounterSeries?.(seriesId);
+                                setShowCounterSeriesMenu(false);
+                                if (result?.ok === false) {
+                                  showToast('This count could not be deleted. Check your permission and try again.', 'error');
+                                }
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '7px 9px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: '#f87171',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,113,113,0.12)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              Delete entire count
+                            </button>
+                          </div>
+                        ), document.body)}
                       </div>
                     );
                   })()}

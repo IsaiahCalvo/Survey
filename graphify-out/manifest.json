@@ -1130,8 +1130,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1786939143.0138624,
-    "ast_hash": "ed5d29b9fc12ba3d83928207807e174c",
+    "mtime": 1786940833.415536,
+    "ast_hash": "4b8bd0a3430b3b9de496cb1ff330c9bf",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1786939160.0261023,
-    "ast_hash": "f476e30f25dd2fa0de11f96087e20cd9",
+    "mtime": 1786941227.4705563,
+    "ast_hash": "4bf267849cb06ec5a39028114560451f",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1390,8 +1390,8 @@
     "semantic_hash": ""
   },
   "src/components/collab/ConfirmDeleteModal.jsx": {
-    "mtime": 1786568822.9469638,
-    "ast_hash": "559c6986a1134ac8d3032420fba116e9",
+    "mtime": 1786940707.360246,
+    "ast_hash": "be06d0c325435e2cc763f3f04557ada2",
     "semantic_hash": ""
   },
   "src/components/collab/QuarantineMarkerOverlay.jsx": {
@@ -2345,8 +2345,8 @@
     "semantic_hash": ""
   },
   "src/utils/annotationLocalHistory.js": {
-    "mtime": 1786568823.0124648,
-    "ast_hash": "c407813543b7887f749cb9cfe29c17c7",
+    "mtime": 1786941210.9576883,
+    "ast_hash": "fa29f2bf7ae86f886d41d06a1e9dd92b",
     "semantic_hash": ""
   },
   "src/utils/annotationPreviewDiag.js": {
@@ -2435,8 +2435,8 @@
     "semantic_hash": ""
   },
   "src/utils/counterNumbering.js": {
-    "mtime": 1786934260.1503391,
-    "ast_hash": "ad860e2f0ac37a0d9faf063d8b480622",
+    "mtime": 1786939702.336233,
+    "ast_hash": "3ba8b71073bdbeb36fab69c3135c50c0",
     "semantic_hash": ""
   },
   "src/utils/counterRenumberSavePolicy.js": {
@@ -11240,8 +11240,8 @@
     "semantic_hash": ""
   },
   "tests/annotationFormattingPopoverContract.test.mjs": {
-    "mtime": 1786672832.5278566,
-    "ast_hash": "2dbfbdc2a3140897d853bddec390f119",
+    "mtime": 1786940451.432269,
+    "ast_hash": "7063b00082f5b235610d0c9f54a9c4fc",
     "semantic_hash": ""
   },
   "tests/counterControlsContract.test.mjs": {
@@ -11287,6 +11287,16 @@
   "tests/counterSizePresetBounds.test.mjs": {
     "mtime": 1786939189.841103,
     "ast_hash": "6d4e5843acc4615e30c48a4ef54ab0e6",
+    "semantic_hash": ""
+  },
+  "tests/counterSeriesContextMenu.test.mjs": {
+    "mtime": 1786941227.4710763,
+    "ast_hash": "52b8be74c2d4498005b18436b9d2f23f",
+    "semantic_hash": ""
+  },
+  "tests/counterSeriesDeletionPlan.test.mjs": {
+    "mtime": 1786941210.9580753,
+    "ast_hash": "e3482557616d5e579bec40956d8bf8d7",
     "semantic_hash": ""
   }
 }

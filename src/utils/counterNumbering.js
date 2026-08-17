@@ -65,6 +65,40 @@ export function renumberCounters(annotationsByPage) {
 }
 
 /**
+ * Builds the per-page saves needed to remove one complete counter series.
+ * Only pages containing matching pins are returned, and the input map is
+ * never mutated.
+ */
+export function buildCounterSeriesDeletionUpdates(annotationsByPage, seriesId) {
+  if (!annotationsByPage || typeof annotationsByPage !== 'object' || !seriesId) {
+    return { updates: [], removedCount: 0 };
+  }
+
+  const updates = [];
+  let removedCount = 0;
+
+  for (const pageKey of Object.keys(annotationsByPage)) {
+    const page = annotationsByPage[pageKey];
+    if (!page || !Array.isArray(page.objects)) continue;
+
+    const objects = page.objects.filter((obj) => !(
+      obj?.data?.type === 'counter' && obj.data.seriesId === seriesId
+    ));
+    const pageRemovedCount = page.objects.length - objects.length;
+    if (pageRemovedCount === 0) continue;
+
+    removedCount += pageRemovedCount;
+    updates.push({
+      pageKey,
+      json: { ...page, objects },
+      removedCount: pageRemovedCount,
+    });
+  }
+
+  return { updates, removedCount };
+}
+
+/**
  * Returns the ordered list of counter series found across all pages.
  * Series order is by the earliest createdAt of any pin in the series, so
  * "Count 1" is always the oldest series, "Count 2" the next, etc.

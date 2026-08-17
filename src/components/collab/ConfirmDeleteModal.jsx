@@ -65,6 +65,7 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
   if (plan.mode === 'no-op' || plan.mode === 'owner-own-only') return null;
 
   const isCollaboratorOwnOnly = plan.mode === 'collaborator-all-mine';
+  const isCounterSeries = plan.mode === 'counter-series';
 
   // ---------------------------------------------------------------------
   // Locked copy — collaborator variant
@@ -102,9 +103,23 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
           .join(', ')
       : null;
 
-  const heading = isCollaboratorOwnOnly ? collaboratorHeading : ownerHeading;
-  const body = isCollaboratorOwnOnly ? collaboratorBody : ownerSummary;
-  const primaryLabel = isCollaboratorOwnOnly ? collaboratorPrimaryLabel : ownerPrimaryLabel;
+  const counterSeriesHeading = `Delete ${plan.seriesLabel || 'this count'}?`;
+  const counterSeriesBody = `This will delete all ${plan.count} pins in this count across the document. This can be undone.`;
+  const heading = isCounterSeries
+    ? counterSeriesHeading
+    : isCollaboratorOwnOnly
+      ? collaboratorHeading
+      : ownerHeading;
+  const body = isCounterSeries
+    ? counterSeriesBody
+    : isCollaboratorOwnOnly
+      ? collaboratorBody
+      : ownerSummary;
+  const primaryLabel = isCounterSeries
+    ? 'Delete count'
+    : isCollaboratorOwnOnly
+      ? collaboratorPrimaryLabel
+      : ownerPrimaryLabel;
 
   // UX: stop background pointer events from bleeding through the backdrop —
   // clicking the backdrop (outside the card) cancels the modal as a
