@@ -11,6 +11,7 @@
  *
  * Pure JS — Node test runner imports this directly.
  */
+import { applyScope } from './annotationCreationCommit.js';
 
 // TEXT_PADDING lives in svgAnnotationRenderers.jsx (a .jsx module the Node
 // test runner can't import); the value is the annotation text-gutter contract
@@ -126,6 +127,11 @@ export function buildNewTextCommitJSON({
   fill = '#007AFF',
   stroke = '#000000',
   strokeWidth = 1,
+  // KAL-88 — Decision 11 companion: survey/region scope stamps, same inputs
+  // as the shape/line/freehand builders in annotationCreationCommit.js.
+  selectedModuleId = null,
+  stampRegionId = false,
+  activeRegionId = null,
 }) {
   if (!text || String(text).trim() === '') return null;
   const pad = TEXT_PADDING;
@@ -153,6 +159,7 @@ export function buildNewTextCommitJSON({
     linethrough: false,
   };
   applyTextStyle(json, style);
+  applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   ensureTextAnnotationId(json, 'Textbox');
   return json;
 }
