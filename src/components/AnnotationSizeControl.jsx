@@ -31,8 +31,11 @@ export default function AnnotationSizeControl({
   onFocusChange,
   disabled = false,
   className = '',
+  open: controlledOpen,
+  onOpenChange,
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
   const [focusedPresetIndex, setFocusedPresetIndex] = useState(0);
   const presetOptionRefs = useRef([]);
   const rawValueText = value == null ? '' : String(value).trim();
@@ -61,7 +64,8 @@ export default function AnnotationSizeControl({
     if (nextOpen) {
       setFocusedPresetIndex(selectedPresetIndex >= 0 ? selectedPresetIndex : 0);
     }
-    setOpen(nextOpen);
+    if (controlledOpen === undefined) setUncontrolledOpen(nextOpen);
+    onOpenChange?.(nextOpen);
   };
 
   const updateDraft = (next) => {
@@ -78,7 +82,7 @@ export default function AnnotationSizeControl({
     setCustomValue(normalized);
     onValueChange?.(normalized);
     onValueCommit?.(normalized);
-    if (close) setOpen(false);
+    if (close) handleOpenChange(false);
   };
 
   const movePresetFocus = (event, currentIndex) => {

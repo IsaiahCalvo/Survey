@@ -1130,8 +1130,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1786974589.7683284,
-    "ast_hash": "cf574afd1d59683d5c6007df213ac374",
+    "mtime": 1786981001.562293,
+    "ast_hash": "2c3c09c5acb02bbff31e5ebfb757f6fe",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -11240,8 +11240,8 @@
     "semantic_hash": ""
   },
   "tests/annotationFormattingPopoverContract.test.mjs": {
-    "mtime": 1786940451.432269,
-    "ast_hash": "7063b00082f5b235610d0c9f54a9c4fc",
+    "mtime": 1786980400.1064224,
+    "ast_hash": "fc037dd408cafeb7853335ca219a90fe",
     "semantic_hash": ""
   },
   "tests/counterControlsContract.test.mjs": {
@@ -11255,8 +11255,8 @@
     "semantic_hash": ""
   },
   "src/components/AnnotationSizeControl.jsx": {
-    "mtime": 1786943943.7344408,
-    "ast_hash": "cd73731fb75d53f1f8748f147021c7ca",
+    "mtime": 1786979558.0182073,
+    "ast_hash": "ec5e04ea602d05ec7289329fc7b654a0",
     "semantic_hash": ""
   },
   "src/utils/annotationSize.js": {
@@ -11302,6 +11302,16 @@
   "tests/confirmDeleteModalConvention.test.mjs": {
     "mtime": 1786975367.676631,
     "ast_hash": "4e4f26874b9fcbe3c326f3fe89acf527",
+    "semantic_hash": ""
+  },
+  "src/components/AnnotationDropdown.jsx": {
+    "mtime": 1786981928.7476153,
+    "ast_hash": "ed89be9491425b968a6134508f70f92c",
+    "semantic_hash": ""
+  },
+  "tests/annotationDropdownUniformity.test.mjs": {
+    "mtime": 1786981886.270615,
+    "ast_hash": "e9b97921cfeb8a5cb0112321271e7314",
     "semantic_hash": ""
   }
 }

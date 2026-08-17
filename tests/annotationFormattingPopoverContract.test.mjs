@@ -12,7 +12,7 @@ const between = (start, end) => {
   return appShell.slice(startIndex, endIndex);
 };
 
-test('annotation formatting popovers share one capture-phase dismissal layer', () => {
+test('annotation formatting popovers share one exclusive Radix layer', () => {
   const contract = between(
     '// Formatting popovers share one exclusive layer.',
     '// Keyboard/tool-driven selection changes',
@@ -29,34 +29,15 @@ test('annotation formatting popovers share one capture-phase dismissal layer', (
     'capture-phase listener must be removed with the same capture option',
   );
 
-  const peers = [
-    [
-      "[data-annotation-color-trigger], [data-annotation-color-picker]",
-      'bottomToolbarApi?.setShowAnnotationColorPicker?.(false)',
-    ],
-    [
-      '[data-counter-series-menu], [data-counter-series-context-menu]',
-      'setShowCounterSeriesMenu(false)',
-    ],
-    ['[data-style-menu]', 'setShowStyleMenu(false)'],
-    ['[data-arrowhead-menu]', 'setShowArrowheadMenu(false)'],
-    ['[data-eraser-type-menu]', 'setShowEraserTypeMenu(false)'],
-    ['[data-font-color-picker]', 'setShowFontColorPicker(false)'],
-    ['[data-font-family-menu]', 'setShowFontFamilyMenu(false)'],
-    ['[data-font-size-menu]', 'setShowFontSizeMenu(false)'],
-    ['[data-align-grid]', 'setShowAlignGrid(false)'],
-  ];
-
-  for (const [selector, closeAction] of peers) {
-    assert.ok(
-      contract.includes(`if (!inside('${selector}'))`),
-      `${selector} must keep only its own popover open`,
-    );
-    assert.ok(
-      contract.includes(closeAction),
-      `${selector} must participate in mutual dismissal`,
-    );
-  }
+  assert.match(appShell, /const \[openAnnotationDropdown, setOpenAnnotationDropdown\] = useState\(null\)/);
+  assert.match(appShell, /const setDropdownOpen = useCallback/);
+  assert.match(
+    contract,
+    /const insideDropdown = inside\('\[data-annotation-size-control\].*\[data-annotation-dropdown-popover\].*\[data-counter-series-context-menu\]'\)/,
+    'portaled dropdown content must count as inside before capture-phase dismissal',
+  );
+  assert.match(contract, /if \(!insideDropdown\) \{\s*setOpenAnnotationDropdown\(null\)/);
+  assert.ok((appShell.match(/<AnnotationDropdown/g) || []).length >= 7, 'annotation menus must use the shared Radix dropdown');
 
   assert.match(appShell, /data-annotation-color-trigger/);
   assert.match(appShell, /data-annotation-color-picker/);
