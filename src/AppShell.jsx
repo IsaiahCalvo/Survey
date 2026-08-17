@@ -2385,14 +2385,14 @@ export default function App({ devPreviewReturnTab = null }) {
                             aria-label={`${counterSeriesContextMenu.label} actions`}
                             style={{
                               position: 'fixed',
-                              left: `${Math.max(8, Math.min(counterSeriesContextMenu.x, window.innerWidth - 180))}px`,
-                              top: `${Math.max(8, Math.min(counterSeriesContextMenu.y, window.innerHeight - 88))}px`,
-                              width: '172px',
-                              padding: '4px',
-                              background: '#0d0f14',
-                              border: '1px solid #3a4252',
+                              left: `${Math.max(8, Math.min(counterSeriesContextMenu.x, window.innerWidth - 120))}px`,
+                              top: `${Math.max(8, Math.min(counterSeriesContextMenu.y, window.innerHeight - 72))}px`,
+                              width: '112px',
+                              padding: '3px',
+                              background: '#12161d',
+                              border: '1px solid #343b49',
                               borderRadius: '6px',
-                              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                              boxShadow: '0 8px 18px rgba(0,0,0,0.42)',
                               zIndex: 5700,
                             }}
                           >
@@ -2408,7 +2408,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               style={{
                                 display: 'block',
                                 width: '100%',
-                                padding: '7px 9px',
+                                height: '28px',
+                                padding: '0 8px',
                                 background: 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
@@ -2416,11 +2417,15 @@ export default function App({ devPreviewReturnTab = null }) {
                                 textAlign: 'left',
                                 cursor: 'pointer',
                                 font: 'inherit',
+                                fontSize: '12px',
+                                outline: 'none',
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px #5b6574'; }}
+                              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                             >
-                              Continue count
+                              Continue
                             </button>
                             <button
                               role="menuitem"
@@ -2437,7 +2442,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               style={{
                                 display: 'block',
                                 width: '100%',
-                                padding: '7px 9px',
+                                height: '28px',
+                                padding: '0 8px',
                                 background: 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
@@ -2445,11 +2451,15 @@ export default function App({ devPreviewReturnTab = null }) {
                                 textAlign: 'left',
                                 cursor: 'pointer',
                                 font: 'inherit',
+                                fontSize: '12px',
+                                outline: 'none',
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,113,113,0.12)'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px #5b6574'; }}
+                              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
                             >
-                              Delete entire count
+                              Delete
                             </button>
                           </div>
                         ), document.body)}
