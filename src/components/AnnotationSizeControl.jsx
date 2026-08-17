@@ -125,7 +125,14 @@ export default function AnnotationSizeControl({
                   className={active ? 'is-active' : ''}
                   onClick={() => commit(preset, { close: true })}
                 >
-                  {preset}
+                  <span className="annotation-size-control__preset-preview" aria-hidden="true">
+                    <span
+                      className="annotation-size-control__preset-stroke"
+                      style={{ '--annotation-size-preview': `${Math.max(1, Math.min(preset, 14))}px` }}
+                    />
+                  </span>
+                  <span className="annotation-size-control__preset-value">{preset}</span>
+                  <span className="annotation-size-control__preset-check" aria-hidden="true">✓</span>
                 </button>
               );
             })}

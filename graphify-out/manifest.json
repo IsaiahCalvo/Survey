@@ -1130,8 +1130,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1786906461.9208653,
-    "ast_hash": "1c159f9b50198d46c67b51ae7c347b18",
+    "mtime": 1786932952.0577533,
+    "ast_hash": "b78a63e8b21d235fda204e82f5437a08",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1786906373.341436,
-    "ast_hash": "577659a0643faf3cd1176c6b0f4dd762",
+    "mtime": 1786933212.6871517,
+    "ast_hash": "02ada0f09dd039e713c0631c8bd1c525",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -11255,8 +11255,8 @@
     "semantic_hash": ""
   },
   "src/components/AnnotationSizeControl.jsx": {
-    "mtime": 1786906761.0577512,
-    "ast_hash": "1d8f33ea72fe107d5ef849083751cbb7",
+    "mtime": 1786932765.318063,
+    "ast_hash": "aaf1a9063888c7cce0972705a107093a",
     "semantic_hash": ""
   },
   "src/utils/annotationSize.js": {
@@ -11267,6 +11267,16 @@
   "tests/annotationSize.test.mjs": {
     "mtime": 1786906709.1752315,
     "ast_hash": "4683110e15ce54e4747818a9ffa817bd",
+    "semantic_hash": ""
+  },
+  "tests/annotationSizeControlList.test.mjs": {
+    "mtime": 1786932728.0795658,
+    "ast_hash": "0f63dafcedb56470875f47b630eb2781",
+    "semantic_hash": ""
+  },
+  "tests/selectedAnnotationColorSwatch.test.mjs": {
+    "mtime": 1786933201.0003538,
+    "ast_hash": "c4e44100be9d97befa711128b509d008",
     "semantic_hash": ""
   }
 }

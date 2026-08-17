@@ -2015,7 +2015,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
                       }}
                     />
                   </button>
@@ -2053,7 +2053,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
                       }}
                     />
                     <span style={{
@@ -2062,7 +2062,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       fontSize: '12px',
                       fontWeight: 700,
                       lineHeight: 1,
-                      color: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
+                      color: bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
                       fontFamily: FONT_FAMILY,
                       pointerEvents: 'none'
                     }}>1</span>
@@ -2082,7 +2082,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       height: '24px',
                       padding: 0,
                       borderRadius: '50%',
-                      border: `2px solid ${ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
+                      border: `2px solid ${bottomToolbarApi.selectedStrokeColor ?? ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
                       boxSizing: 'border-box',
                       position: 'relative',
                       overflow: 'hidden',
@@ -2095,7 +2095,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span
                       className="ctx-color-fill"
                       style={{
-                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                        background: bottomToolbarApi.selectedFillColor ?? ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
                       }}
                     />
                   </button>

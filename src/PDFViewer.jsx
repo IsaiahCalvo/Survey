@@ -348,6 +348,7 @@ import {
 } from './viewerShared';
 import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortPdfjsPagesByDistance } from './utils/regionGeometry';
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
+import { renderPathToSvgAttrs } from './utils/svgPathAttrs';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
 import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
 import { renderAnnotationHydrationPageCover } from './components/annotationHydrationCover';
@@ -22417,15 +22418,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
     if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
-    const selectedAnnot = selectedToolbarAnnotation?.annotation;
+    // Resolve the live saved object instead of relying only on the selection
+    // payload captured when the user clicked it. Saves, undo/redo, series
+    // updates, and remote sync can replace that object while it stays selected.
+    const currentSelectedAnnot = annotationsByPage?.[selectedToolbarAnnotation?.pageNumber]?.objects?.[selectedToolbarAnnotation?.annotationIndex]
+      || selectedToolbarAnnotation?.annotation;
+    const selectedAnnot = currentSelectedAnnot;
     const selectedType = String(selectedAnnot?.type || '').toLowerCase();
     let selectionMappedTool = null;
     if (selectedToolbarCallout) {
       selectionMappedTool = 'callout';
     } else if (selectedType === 'rect') selectionMappedTool = 'rect';
-    else if (selectedType === 'ellipse') selectionMappedTool = 'ellipse';
+    else if (selectedType === 'ellipse' || (selectedType === 'circle' && selectedAnnot?.data?.type !== 'counter')) selectionMappedTool = 'ellipse';
     else if (selectedType === 'path') selectionMappedTool = 'pen';
-    else if (selectedType === 'textbox') selectionMappedTool = 'text';
+    else if (selectedType === 'textbox' || selectedType === 'i-text' || selectedType === 'text') selectionMappedTool = 'text';
     else if (selectedType === 'polygon') selectionMappedTool = 'rect';
     else if (selectedType === 'polyline') selectionMappedTool = 'line';
     else if (selectedType === 'circle' && selectedAnnot?.data?.type === 'counter') {
@@ -22435,6 +22441,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         || selectedAnnot?.data?.tool === 'arrow'
         || selectedAnnot?.data?.arrowheadStyle != null;
       selectionMappedTool = isArrow ? 'arrow' : 'line';
+    } else if (
+      selectedType === 'group'
+      && selectedAnnot?.objects?.some((child) => (
+        ['line', 'polyline', 'path'].includes(String(child?.type || '').toLowerCase())
+      ))
+    ) {
+      selectionMappedTool = 'arrow';
     }
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
@@ -22445,6 +22458,76 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selectedCounterSeries = selectedCounterSeriesId
       ? counterSeriesList.find((series) => series.seriesId === selectedCounterSeriesId)
       : null;
+    const effectivePreviewColor = (color, opacity = 1) => {
+      if (!color || color === 'transparent' || color === 'none') return 'transparent';
+      const hex = getHexFromColor(color);
+      if (!hex) return color;
+      const alphaMatch = String(color).match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/i);
+      const colorAlpha = alphaMatch ? Number(alphaMatch[1]) : 1;
+      const effectiveAlpha = Math.max(0, Math.min(1, colorAlpha * Math.max(0, Math.min(1, Number(opacity) || 0))));
+      return composeColorForPatch(hex, effectiveAlpha * 100);
+    };
+    const selectedPreviewColors = (() => {
+      // A selection can remain cached after the user arms a drawing tool. In
+      // that state the toolbar must preview the drawing tool defaults, not the
+      // stale selected object's paint.
+      if (activeTool !== 'select') return { fill: null, stroke: null };
+      if (selectedToolbarCallout?.callout) {
+        const style = selectedToolbarCallout.callout.style || {};
+        const border = style.borderColor || style.lineColor || '#1e293b';
+        const fill = style.fillColor || 'transparent';
+        const borderOpacity = Math.max(0.2, Math.min(1, Number(style.borderOpacity ?? 1)));
+        const fillOpacityValue = Math.max(0.08, Math.min(1, Number(style.fillOpacity ?? 0.4)));
+        return {
+          stroke: effectivePreviewColor(border, borderOpacity),
+          fill: effectivePreviewColor(fill, borderOpacity * fillOpacityValue),
+        };
+      }
+      if (!currentSelectedAnnot || !selectionMappedTool) return { fill: null, stroke: null };
+      const currentType = String(currentSelectedAnnot.type || '').toLowerCase();
+      const isCounter = currentType === 'circle' && currentSelectedAnnot.data?.type === 'counter';
+      const rawObjectOpacity = Number(currentSelectedAnnot.opacity ?? 1);
+      const objectOpacity = Number.isFinite(rawObjectOpacity)
+        ? Math.max(0, Math.min(1, rawObjectOpacity))
+        : 1;
+      if (isCounter) {
+        return {
+          fill: effectivePreviewColor(currentSelectedAnnot.fill || currentSelectedAnnot.data?.color || '#ef4444', objectOpacity),
+          stroke: effectivePreviewColor(currentSelectedAnnot.data?.numberColor || '#ffffff', objectOpacity),
+        };
+      }
+      if (currentType === 'path') {
+        const pathAttrs = renderPathToSvgAttrs(currentSelectedAnnot);
+        const visiblePathColor = pathAttrs.stroke && pathAttrs.stroke !== 'none' && pathAttrs.stroke !== 'transparent'
+          ? pathAttrs.stroke
+          : pathAttrs.fill;
+        return {
+          fill: 'transparent',
+          stroke: effectivePreviewColor(visiblePathColor || '#000000', pathAttrs.opacity ?? objectOpacity),
+        };
+      }
+      if (currentType === 'line' || currentType === 'polyline' || currentType === 'group') {
+        return {
+          fill: 'transparent',
+          stroke: effectivePreviewColor(currentSelectedAnnot.stroke || '#000000', objectOpacity),
+        };
+      }
+      if (currentType === 'textbox' || currentType === 'i-text' || currentType === 'text') {
+        const fillSource = currentSelectedAnnot.backgroundColor
+          || (currentType === 'textbox' ? 'transparent' : (currentSelectedAnnot.fill || '#000000'));
+        const strokeSource = currentSelectedAnnot.strokeWidth > 0 && currentSelectedAnnot.stroke
+          ? currentSelectedAnnot.stroke
+          : 'transparent';
+        return {
+          fill: effectivePreviewColor(fillSource, objectOpacity),
+          stroke: effectivePreviewColor(strokeSource, objectOpacity),
+        };
+      }
+      return {
+        fill: effectivePreviewColor(currentSelectedAnnot.fill || 'transparent', objectOpacity),
+        stroke: effectivePreviewColor(currentSelectedAnnot.stroke || 'transparent', objectOpacity),
+      };
+    })();
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -22477,8 +22560,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
       showAnnotationColorPicker,
+      // Keep editable picker values separate from the effective swatch paint:
+      // selectedStrokeColor includes object opacity, while these base fields
+      // must not or an edit would bake opacity into the color a second time.
       strokeColor,
       strokeOpacity,
+      selectedStrokeColor: selectedPreviewColors.stroke,
       strokeWidthInputValue: strokeWidthInputValueRef.current,
       eraserSizeInputValue: eraserSizeInputValueRef.current,
       eraserMode,
@@ -22508,6 +22595,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onSelectedCounterSeriesStartChange: handleSelectedCounterSeriesStartChange,
       fillColor,
       fillOpacity,
+      selectedFillColor: selectedPreviewColors.fill,
       handleFillColorChange,
       handleFillOpacityChange,
       zoomInputValue,
@@ -22557,6 +22645,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
     activeCategoryDropdown,
