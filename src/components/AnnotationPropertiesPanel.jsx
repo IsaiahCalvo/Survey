@@ -19,6 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './AnnotationSizeControl';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from '../utils/annotationSize';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
 import { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './Callout/types';
@@ -421,8 +422,8 @@ const AnnotationPropertiesPanel = ({
             {renderAnnotationSizeControl({
               label: 'Size',
               value: counterRadius,
-              min: 4,
-              max: 50,
+              min: COUNTER_SIZE_MIN,
+              max: COUNTER_SIZE_MAX,
               presets: ANNOTATION_SIZE_PRESETS.counter,
               onChange: (radius) => onUpdate({ radius }),
             })}

@@ -177,6 +177,7 @@ import {
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { countUnsupportedAnnotations, importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
@@ -7244,9 +7245,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
     if (toolPrefs.strokeWidth !== undefined) {
-      setStrokeWidth(toolPrefs.strokeWidth);
+      const nextStrokeWidth = activeTool === 'counter'
+        ? Math.min(
+            Math.max(Math.round(Number(toolPrefs.strokeWidth) || 14), COUNTER_SIZE_MIN),
+            COUNTER_SIZE_MAX,
+          )
+        : toolPrefs.strokeWidth;
+      setStrokeWidth(nextStrokeWidth);
       if (!isStrokeWidthFocusedRef.current) {
-        const nextValue = String(toolPrefs.strokeWidth);
+        const nextValue = String(nextStrokeWidth);
         strokeWidthInputValueRef.current = nextValue;
         setStrokeWidthInputValue(nextValue);
       }
@@ -7548,8 +7555,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Drawing starts on pointer-down, before clicking the page has finished
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
-        const minWidth = activeTool === 'counter' || getSelectedShapeMeta().isCounter ? 4 : 1;
-        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), minWidth), 50));
+        const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+        const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
+        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+        setStrokeWidth(Math.min(Math.max(parseInt(value, 10), minWidth), maxWidth));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
     }
@@ -7561,7 +7570,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // AppShell receives this handler through an effect-published API. Read the
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const parsed = parseInt(event?.currentTarget?.value ?? strokeWidthInputValueRef.current, 10);
-    const minWidth = activeTool === 'counter' || getSelectedShapeMeta().isCounter ? 4 : 1;
+    const isCounterSize = activeTool === 'counter' || getSelectedShapeMeta().isCounter;
+    const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
     if (isNaN(parsed) || parsed < minWidth) {
       // Reset to minimum if empty or invalid
       const minimumValue = String(minWidth);
@@ -7570,7 +7581,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       publishToolbarDraft('strokeWidthInputValue', minimumValue);
       handleStrokeWidthChange(minWidth);
     } else {
-      const clamped = Math.min(Math.max(parsed, minWidth), 50);
+      const clamped = Math.min(Math.max(parsed, minWidth), maxWidth);
       const nextValue = String(clamped);
       strokeWidthInputValueRef.current = nextValue;
       setStrokeWidthInputValue(nextValue);

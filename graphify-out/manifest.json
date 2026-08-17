@@ -1130,8 +1130,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1786934642.2029757,
-    "ast_hash": "6fd67083d19627273156ec891d58f445",
+    "mtime": 1786939143.0138624,
+    "ast_hash": "ed5d29b9fc12ba3d83928207807e174c",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -1155,8 +1155,8 @@
     "semantic_hash": ""
   },
   "src/PDFViewer.jsx": {
-    "mtime": 1786935218.0383883,
-    "ast_hash": "7d4a9fe62e3f533c80ebcc6a559dfa35",
+    "mtime": 1786939160.0261023,
+    "ast_hash": "f476e30f25dd2fa0de11f96087e20cd9",
     "semantic_hash": ""
   },
   "src/PageAnnotationLayer.jsx": {
@@ -1200,8 +1200,8 @@
     "semantic_hash": ""
   },
   "src/components/AnnotationPropertiesPanel.jsx": {
-    "mtime": 1786906579.86468,
-    "ast_hash": "feeccbdf6ae3c7cffb9b72ab0771c84a",
+    "mtime": 1786939143.0170162,
+    "ast_hash": "bede70b8c5ee0a1577445c45e5fdfa2e",
     "semantic_hash": ""
   },
   "src/components/AuthModal.jsx": {
@@ -7340,8 +7340,8 @@
     "semantic_hash": ""
   },
   "src/mobile/MobilePdfViewerChrome.jsx": {
-    "mtime": 1786906501.2979116,
-    "ast_hash": "1b4f5e1dc575c70ef49121d7ba884c10",
+    "mtime": 1786939143.0162265,
+    "ast_hash": "a35376a5cad7a779b165277204cce6ac",
     "semantic_hash": ""
   },
   "src/mobile/mobilePdfViewerModel.js": {
@@ -10455,8 +10455,8 @@
     "semantic_hash": ""
   },
   "tests/toolbarWidthDraft.test.mjs": {
-    "mtime": 1786673236.5940928,
-    "ast_hash": "e4817d80df1ad2af04e095ef911baaf6",
+    "mtime": 1786939189.8403826,
+    "ast_hash": "dae8594e5bb261b6af6f7693d091601b",
     "semantic_hash": ""
   },
   "src/utils/inkGeometryTransform.js": {
@@ -11255,23 +11255,23 @@
     "semantic_hash": ""
   },
   "src/components/AnnotationSizeControl.jsx": {
-    "mtime": 1786937080.2768955,
-    "ast_hash": "05b4c3a018c2076f597819cd6bc6901b",
+    "mtime": 1786938967.5522752,
+    "ast_hash": "bbc506f133281a164292ab5ed449fdb4",
     "semantic_hash": ""
   },
   "src/utils/annotationSize.js": {
-    "mtime": 1786937080.2764633,
-    "ast_hash": "080fbae5de934d86995554ebe35d5ee9",
+    "mtime": 1786939124.320784,
+    "ast_hash": "92217c0b084ff58a682bb0e108dad11f",
     "semantic_hash": ""
   },
   "tests/annotationSize.test.mjs": {
-    "mtime": 1786906709.1752315,
-    "ast_hash": "4683110e15ce54e4747818a9ffa817bd",
+    "mtime": 1786939189.839948,
+    "ast_hash": "23670302e7bd9a86f549bcb289a5fa52",
     "semantic_hash": ""
   },
   "tests/annotationSizeControlList.test.mjs": {
-    "mtime": 1786937048.2819858,
-    "ast_hash": "b689e2a0ac10c0e118ec1059420b41c8",
+    "mtime": 1786938958.2652721,
+    "ast_hash": "dda3a41e8b5f724feb8b3e61a96f7c07",
     "semantic_hash": ""
   },
   "tests/selectedAnnotationColorSwatch.test.mjs": {
@@ -11282,6 +11282,11 @@
   "tests/counterSeriesPaint.test.mjs": {
     "mtime": 1786934205.210499,
     "ast_hash": "ecf3dbfb5c896fa7df43c6eb1bf1e95b",
+    "semantic_hash": ""
+  },
+  "tests/counterSizePresetBounds.test.mjs": {
+    "mtime": 1786939189.841103,
+    "ast_hash": "6d4e5843acc4615e30c48a4ef54ab0e6",
     "semantic_hash": ""
   }
 }

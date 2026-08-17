@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from '../utils/annotationSize';
 import CompactColorPicker from '../components/CompactColorPicker';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
@@ -707,8 +708,8 @@ function MobileToolProperties({ api }) {
   const showStroke = !isEraser && (WIDTH_TOOLS.has(tool) || FILL_TOOLS.has(tool));
   const sizeLabel = isEraser || tool === 'counter' ? 'Size' : 'Width';
   const sizeValue = isEraser ? api.eraserSizeInputValue : api.strokeWidthInputValue;
-  const sizeMin = tool === 'counter' ? 4 : 1;
-  const sizeMax = isEraser ? 100 : 50;
+  const sizeMin = tool === 'counter' ? COUNTER_SIZE_MIN : 1;
+  const sizeMax = isEraser ? 100 : tool === 'counter' ? COUNTER_SIZE_MAX : 50;
   const sizePresets = isEraser
     ? ANNOTATION_SIZE_PRESETS.eraser
     : tool === 'counter'
@@ -1195,8 +1196,8 @@ function MobileToolProperties({ api }) {
                     <AnnotationSizeControl
                       label={tool === 'counter' ? 'Size' : 'Width'}
                       value={api.strokeWidthInputValue}
-                      min={tool === 'counter' ? 4 : 1}
-                      max={50}
+                      min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
+                      max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
                       presets={tool === 'counter' ? ANNOTATION_SIZE_PRESETS.counter : ANNOTATION_SIZE_PRESETS.width}
                       onValueChange={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
                       onValueCommit={(value) => api.handleStrokeWidthInputBlur?.({ currentTarget: { value } })}

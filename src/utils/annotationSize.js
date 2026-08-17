@@ -1,4 +1,7 @@
 /** Normalize an annotation size at every persisted/display boundary. */
+export const COUNTER_SIZE_MIN = 4;
+export const COUNTER_SIZE_MAX = 76;
+
 export const normalizeAnnotationSize = (value, min = 1, max = 100) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return min;

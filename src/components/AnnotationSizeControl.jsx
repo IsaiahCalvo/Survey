@@ -9,7 +9,7 @@ import './AnnotationSizeControl.css';
 
 export const ANNOTATION_SIZE_PRESETS = Object.freeze({
   width: [1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 32, 50],
-  counter: [4, 5, 6, 8, 10, 12, 16, 20, 24, 32, 40, 50],
+  counter: [5, 8, 12, 16, 24, 32, 48, 64, 76],
   eraser: [1, 4, 8, 12, 16, 24, 32, 48, 64, 80, 100],
 });
 

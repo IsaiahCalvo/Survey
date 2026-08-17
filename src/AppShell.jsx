@@ -22,6 +22,7 @@ import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import {
@@ -2462,8 +2463,12 @@ export default function App({ devPreviewReturnTab = null }) {
                 <AnnotationSizeControl
                   value={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.eraserSizeInputValue : bottomToolbarApi.strokeWidthInputValue}
                   label={bottomToolbarApi.contextTool === 'counter' || bottomToolbarApi.activeTool === 'eraser' ? 'Size' : 'Width'}
-                  min={bottomToolbarApi.contextTool === 'counter' ? 4 : 1}
-                  max={bottomToolbarApi.activeTool === 'eraser' ? 100 : 50}
+                  min={bottomToolbarApi.contextTool === 'counter' ? COUNTER_SIZE_MIN : 1}
+                  max={bottomToolbarApi.activeTool === 'eraser'
+                    ? 100
+                    : bottomToolbarApi.contextTool === 'counter'
+                      ? COUNTER_SIZE_MAX
+                      : 50}
                   presets={bottomToolbarApi.activeTool === 'eraser'
                     ? ANNOTATION_SIZE_PRESETS.eraser
                     : bottomToolbarApi.contextTool === 'counter'
