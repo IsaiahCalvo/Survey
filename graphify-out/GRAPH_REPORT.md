@@ -1,16 +1,16 @@
-# Graph Report - Survey-BetaSafeS2  (2026-08-17)
+# Graph Report - project-status-c229be  (2026-08-17)
 
 ## Corpus Check
-- 1911 files · ~4,052,886 words
+- 1912 files · ~4,053,234 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 23379 nodes · 37369 edges · 1329 communities (1160 shown, 169 thin omitted)
+- 23380 nodes · 37370 edges · 1312 communities (1153 shown, 159 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 143 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `bdfe1500`
+- Built from commit: `448bf4f8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -810,6 +810,7 @@
 - [[_COMMUNITY_Community 792|Community 792]]
 - [[_COMMUNITY_Community 793|Community 793]]
 - [[_COMMUNITY_Community 794|Community 794]]
+- [[_COMMUNITY_Community 795|Community 795]]
 - [[_COMMUNITY_Community 796|Community 796]]
 - [[_COMMUNITY_Community 797|Community 797]]
 - [[_COMMUNITY_Community 798|Community 798]]
@@ -969,7 +970,6 @@
 - [[_COMMUNITY_Community 954|Community 954]]
 - [[_COMMUNITY_Community 955|Community 955]]
 - [[_COMMUNITY_Community 956|Community 956]]
-- [[_COMMUNITY_Community 957|Community 957]]
 - [[_COMMUNITY_Community 958|Community 958]]
 - [[_COMMUNITY_Community 959|Community 959]]
 - [[_COMMUNITY_Community 960|Community 960]]
@@ -1030,11 +1030,8 @@
 - [[_COMMUNITY_Community 1015|Community 1015]]
 - [[_COMMUNITY_Community 1016|Community 1016]]
 - [[_COMMUNITY_Community 1017|Community 1017]]
-- [[_COMMUNITY_Community 1018|Community 1018]]
 - [[_COMMUNITY_Community 1019|Community 1019]]
-- [[_COMMUNITY_Community 1020|Community 1020]]
 - [[_COMMUNITY_Community 1021|Community 1021]]
-- [[_COMMUNITY_Community 1022|Community 1022]]
 - [[_COMMUNITY_Community 1023|Community 1023]]
 - [[_COMMUNITY_Community 1024|Community 1024]]
 - [[_COMMUNITY_Community 1025|Community 1025]]
@@ -1044,12 +1041,10 @@
 - [[_COMMUNITY_Community 1030|Community 1030]]
 - [[_COMMUNITY_Community 1031|Community 1031]]
 - [[_COMMUNITY_Community 1032|Community 1032]]
-- [[_COMMUNITY_Community 1033|Community 1033]]
 - [[_COMMUNITY_Community 1034|Community 1034]]
 - [[_COMMUNITY_Community 1035|Community 1035]]
 - [[_COMMUNITY_Community 1036|Community 1036]]
 - [[_COMMUNITY_Community 1037|Community 1037]]
-- [[_COMMUNITY_Community 1038|Community 1038]]
 - [[_COMMUNITY_Community 1039|Community 1039]]
 - [[_COMMUNITY_Community 1040|Community 1040]]
 - [[_COMMUNITY_Community 1041|Community 1041]]
@@ -1102,12 +1097,10 @@
 - [[_COMMUNITY_Community 1089|Community 1089]]
 - [[_COMMUNITY_Community 1090|Community 1090]]
 - [[_COMMUNITY_Community 1091|Community 1091]]
-- [[_COMMUNITY_Community 1092|Community 1092]]
 - [[_COMMUNITY_Community 1093|Community 1093]]
 - [[_COMMUNITY_Community 1094|Community 1094]]
 - [[_COMMUNITY_Community 1095|Community 1095]]
 - [[_COMMUNITY_Community 1096|Community 1096]]
-- [[_COMMUNITY_Community 1097|Community 1097]]
 - [[_COMMUNITY_Community 1098|Community 1098]]
 - [[_COMMUNITY_Community 1099|Community 1099]]
 - [[_COMMUNITY_Community 1100|Community 1100]]
@@ -1140,16 +1133,7 @@
 - [[_COMMUNITY_Community 1130|Community 1130]]
 - [[_COMMUNITY_Community 1131|Community 1131]]
 - [[_COMMUNITY_Community 1132|Community 1132]]
-- [[_COMMUNITY_Community 1133|Community 1133]]
-- [[_COMMUNITY_Community 1134|Community 1134]]
-- [[_COMMUNITY_Community 1135|Community 1135]]
-- [[_COMMUNITY_Community 1136|Community 1136]]
 - [[_COMMUNITY_Community 1137|Community 1137]]
-- [[_COMMUNITY_Community 1138|Community 1138]]
-- [[_COMMUNITY_Community 1139|Community 1139]]
-- [[_COMMUNITY_Community 1140|Community 1140]]
-- [[_COMMUNITY_Community 1141|Community 1141]]
-- [[_COMMUNITY_Community 1142|Community 1142]]
 - [[_COMMUNITY_Community 1143|Community 1143]]
 - [[_COMMUNITY_Community 1144|Community 1144]]
 - [[_COMMUNITY_Community 1148|Community 1148]]
@@ -1207,6 +1191,7 @@
 - [[_COMMUNITY_Community 1205|Community 1205]]
 - [[_COMMUNITY_Community 1206|Community 1206]]
 - [[_COMMUNITY_Community 1207|Community 1207]]
+- [[_COMMUNITY_Community 1208|Community 1208]]
 - [[_COMMUNITY_Community 1209|Community 1209]]
 - [[_COMMUNITY_Community 1210|Community 1210]]
 - [[_COMMUNITY_Community 1211|Community 1211]]
@@ -1240,59 +1225,59 @@
 ## Surprising Connections (you probably didn't know these)
 - `booleanErasePath()` --calls--> `diff`  [INFERRED]
   src/utils/geometryEraser.js → agent-cli/bench-fanout.mjs
-- `filledOutlineCommandsToPolygonSet()` --calls--> `diff`  [INFERRED]
-  src/utils/paperAnnotationGeometry.js → agent-cli/bench-fanout.mjs
 - `subtractRegionFromRegion()` --calls--> `diff`  [INFERRED]
   src/utils/regionMath.js → agent-cli/bench-fanout.mjs
 - `fuzzCases()` --calls--> `between()`  [INFERRED]
   agent-cli/eraser-torture-rig.mjs → tests/annotationFormattingPopoverContract.test.mjs
 - `fuzzCases()` --calls--> `pick()`  [INFERRED]
   agent-cli/eraser-torture-rig.mjs → src/utils/pdfAppAnnotationMetadata.js
+- `moveOrCopyDocumentsAtomically()` --calls--> `moveDocument()`  [INFERRED]
+  src/home/documentBatchOperations.js → agent-cli/full-app-durable-e2e.mjs
 
 ## Import Cycles
 - None detected.
 
-## Communities (1329 total, 169 thin omitted)
+## Communities (1312 total, 159 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.00
-Nodes (442): aa, AbortException, ac, ae, ai, an, Ao, ar (+434 more)
+Nodes (432): aa, AbortException, ac, ae, ai, an, Ao, ar (+424 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.00
-Nodes (334): BaseException(), buildCodeblocks(), buildPackets(), buildPrecincts(), calculateComponentDimensions(), calculateTileGrids(), ComponentPositionResolutionLayerIterator(), compute() (+326 more)
+Nodes (317): BaseException(), _bindElement(), _bindOccurrences(), _bindValue(), ComponentPositionResolutionLayerIterator(), compute(), _convertCmykToRgb(), _convertCmykToRgba() (+309 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.02
-Nodes (67): addCachedImageOps(), AnnotationFactory, collectActions(), createDataNode(), escapePDFName(), fetchBinaryData(), fetchDest(), fetchRemoteDest() (+59 more)
+Nodes (68): AnnotationFactory, clearGlobalCaches(), collectActions(), ColorSpaceUtils, computeIDs(), createValidAbsoluteUrl(), FeatureTest, fetchDest() (+60 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.01
-Nodes (147): addHTML(), calculateSHA512(), checkDimensions(), computeBbox(), config_Area, createWrapper(), fixDimensions(), fixTextIndent() (+139 more)
+Nodes (106): addHTML(), config_Area, fixTextIndent(), flushHTML(), getAvailableSpace(), getFloat(), getInteger(), getRatio() (+98 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.02
-Nodes (56): addNode(), addPdfFont(), addTopLevelNode(), calculationOrderIds(), content(), create(), createFromArray(), documentInfo() (+48 more)
+Nodes (59): addNode(), addPdfFont(), addTopLevelNode(), calculationOrderIds(), content(), create(), createFromArray(), documentInfo() (+51 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.02
-Nodes (58): CMapFactory, doRun(), GlyfTable, isCmd(), Jbig2Image, adjustMapping(), Ascii85Stream, AsciiHexStream (+50 more)
+Cohesion: 0.03
+Nodes (47): BinaryCMapReader, CMapFactory, doRun(), isCmd(), addHex(), adjustWidths(), Ascii85Stream, BinaryCMapStream (+39 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.02
-Nodes (148): UndoToast(), renderAnnotationHydrationPageCover(), checkFileExists(), checkFileExistsInDrive(), downloadExcelFile(), downloadExcelFileByPath(), getFileById(), getFileETag() (+140 more)
+Nodes (170): canModify(), UndoToast(), renderAnnotationHydrationPageCover(), renderAnnotationContextMenu(), useAnnotationContextMenu(), useZoomState(), TextLayer, appDebug() (+162 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.02
-Nodes (70): _addPixels(), _addPixelsNeg(), byteIn(), checkHeader(), constructor(), _createBuiltInEncoding(), _eatBits(), extractFontHeader() (+62 more)
+Cohesion: 0.03
+Nodes (58): byteIn(), checkHeader(), constructor(), _createBuiltInEncoding(), extractFontHeader(), extractFontProgram(), fetchCompressed(), fetchUncompressed() (+50 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.02
-Nodes (21): ColorSpaceUtils, DataHandler, FeatureTest, fonts_Glyph, AppearanceStreamEvaluator, Catalog, CFFPrivateDict, CFFTopDict (+13 more)
+Cohesion: 0.06
+Nodes (9): CFFFont, GlyfTable, CFF, CompositeGlyph, Glyph, PDFFunction, toNumberArray(), parseDefaultAppearance() (+1 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.02
-Nodes (56): _addNamespacePrefix(), addPara(), addString(), bezierBoundingBox(), build(), charsToGlyphs(), encodeString(), getCharPositions() (+48 more)
+Nodes (51): addString(), bezierBoundingBox(), buildCodeblocks(), buildPackets(), buildPrecincts(), calculateComponentDimensions(), calculateTileGrids(), charsToGlyphs() (+43 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.02
@@ -1300,7 +1285,7 @@ Nodes (45): applyAssist(), Arc, Area, ariaLabel(), Br, Button, Caption, ch() (+3
 
 ### Community 13 - "Community 13"
 Cohesion: 0.04
-Nodes (111): inkAnnotation, viewport, makeInternalPenPathSpec(), filledOutlineCommandsToPolygonSet(), groupRings(), translatePolygonSet(), applyPdfMatrixToPoint(), applyRawMetadataToAnnotation() (+103 more)
+Nodes (113): inkAnnotation, viewport, makeInternalPenPathSpec(), applyPdfMatrixToPoint(), applyRawMetadataToAnnotation(), buildAppearancePaintLayers(), buildDirectPdfNativeAnnotationIdentities(), buildPdfJsNativeAnnotationFingerprint() (+105 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.05
@@ -1308,79 +1293,79 @@ Nodes (95): ActiveUsersDrawer(), BottomActionBar(), FloatingContextMenu(), Floor
 
 ### Community 17 - "Community 17"
 Cohesion: 0.06
-Nodes (96): createDetachedYDoc(), encodeSnapshot(), appendOp(), appendRecordForCloudRow(), applyAuthoritativeCloudRow(), applyAuthoritativeCloudUpdate(), assertStateWritable(), attachLocalPersistenceMirror() (+88 more)
+Nodes (98): createDetachedYDoc(), encodeSnapshot(), appendOp(), appendRecordForCloudRow(), applyAuthoritativeCloudRow(), applyAuthoritativeCloudUpdate(), assertStateWritable(), attachLocalPersistenceMirror() (+90 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.03
-Nodes (33): annotationGlobals(), applyTransform(), checkFirstPage(), checkLastPage(), cleanup(), createGlobals(), destroy(), ensure() (+25 more)
+Nodes (20): annotationGlobals(), checkFirstPage(), checkLastPage(), cleanup(), createGlobals(), ensure(), fieldObjects(), hasJSActions() (+12 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.04
-Nodes (75): runDurableCalloutMigration(), backfillableRow(), buildFixtures(), buildWalHex(), bytesToPgHex(), documentRow(), fabricRect(), markerRow() (+67 more)
+Cohesion: 0.05
+Nodes (62): base64ToBytes(), bytesToBase64(), createTarget(), makeHarnessState(), materializePage(), withPaintRevision(), backfillableRow(), buildFixtures() (+54 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.04
-Nodes (79): diff, overlappingRectangles, erase(), REAL_REGENERATION_FIXTURE, fixtures, outsideCutDeviation(), paintedPolygonSet(), sampledBoundary() (+71 more)
+Nodes (89): diff, CanvasAnnotationLayer(), overlappingRectangles, erase(), REAL_REGENERATION_FIXTURE, fixtures, outsideCutDeviation(), paintedPolygonSet() (+81 more)
 
 ### Community 21 - "Community 21"
 Cohesion: 0.03
-Nodes (19): BinaryCMapReader, addHex(), AESBaseCipher, AstNode, BaseLocalCache, BasePdfManager, BaseShading, BaseStream (+11 more)
+Nodes (12): AstNode, BaseLocalCache, BasePdfManager, BaseShading, BaseStream, CMap, ColorSpace, IdentityCMap (+4 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.05
 Nodes (86): arcToCubics(), finiteNumber(), normalizeOperationalInkPath(), reflectedControl(), signedExp(), signedVectorAngle(), stableSum(), applyAppAnnotationMetadataToDict() (+78 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.03
-Nodes (18): ChunkedStreamManager, CmykICCBasedCS, fetchSync(), getUint8ArrayMemory0(), IccColorSpace, MessageHandler, ChunkedStream, DefaultAppearanceEvaluator (+10 more)
+Cohesion: 0.04
+Nodes (14): ChunkedStreamManager, getUint8ArrayMemory0(), IccColorSpace, MessageHandler, AppearanceStreamEvaluator, ChunkedStream, DefaultAppearanceEvaluator, PDFWorkerStreamRangeReader (+6 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.03
-Nodes (42): drawInk(), pointInPolygonSet(), verticalInkIntervals(), ink(), exportObject(), importRawPdf(), viewport, fixturePath (+34 more)
+Cohesion: 0.04
+Nodes (30): exportObject(), importRawPdf(), viewport, fixturePath, __dirname, LEGACY_ARROW_GROUP, PAGE_SIZES, distanceToPolygonBoundary() (+22 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.02
 Nodes (55): activeUsers, AnnotationClipboard, annotationColorChoices, AnnotationEditConfig, AnnotationEditFocus, AnnotationEditPanel(), annotationEditSectionLabel(), annotationToolIds (+47 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.03
-Nodes (21): _bindElement(), _bindOccurrences(), _bindValue(), clean(), _createOccurrences(), fallbackToSystemFont(), _findDataByNameToConsume(), forEach() (+13 more)
+Cohesion: 0.07
+Nodes (35): calculateSHA512(), checkDimensions(), computeBbox(), createWrapper(), fixDimensions(), layoutClass(), layoutNode(), applyAssist() (+27 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.04
-Nodes (24): BitModel, copyCoefficients(), InclusionTree, ColorSpace, ContextCache, decodeBitmap(), decodeIAID(), decodeInteger() (+16 more)
+Cohesion: 0.05
+Nodes (30): _addPixels(), _addPixelsNeg(), BitModel, copyCoefficients(), _eatBits(), _findTableCode(), _getBlackCode(), _getTwoDimCode() (+22 more)
 
 ### Community 28 - "Community 28"
 Cohesion: 0.05
-Nodes (63): postNativePdfDiagnostic(), AccessManagementModal(), C, labelForKind(), ROLES, acceptAnyInvite(), btnGhost(), btnPrimary() (+55 more)
+Nodes (54): AccessManagementModal(), C, labelForKind(), ROLES, ActivityModal(), COLLAB_COLORS, editedMs(), InviteModal() (+46 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.05
-Nodes (57): AccountSettings(), AuthModal(), OptionalAuthPrompt(), useOptionalAuth(), getProgressBarColor(), MetricRow(), UsageIndicator(), useAuth() (+49 more)
+Cohesion: 0.06
+Nodes (30): projectCalloutsIntoByPage(), runDurableCalloutMigration(), calloutsInSharedStore(), getAnnotationsMap(), getMetaValue(), hydrateDoc(), repairStackedInkDuplicates(), setMetaValue() (+22 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.04
-Nodes (32): accept(), add(), createDict(), emptyPrivateDictionary(), expect(), _getSequence(), getValue(), CFFCompiler (+24 more)
+Cohesion: 0.02
+Nodes (33): accept(), add(), createDict(), emptyPrivateDictionary(), expect(), _getSequence(), CFFCompiler, CFFDict (+25 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.06
-Nodes (69): C, cancelButtonStyle, overlay, PromptModal(), usePromptDialog(), ArchiveScreen(), ledgerHeader, typeIcon (+61 more)
+Cohesion: 0.08
+Nodes (54): ArchiveScreen(), ledgerHeader, typeIcon, ACTION_COPY, ARCHIVE_FILTERS, ARCHIVE_SORT_OPTIONS, ARCHIVE_SORTS, ARCHIVE_TYPE_LABELS (+46 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.04
-Nodes (40): AnnotationPropertiesPanel(), ANNOTATION_SIZE_PRESETS, AnnotationSizeControl(), PRESET_COLORS, computeBorderStylePatch(), resolvePropertiesPanelShape(), SyncStatusChip(), INITIAL_STATE (+32 more)
+Cohesion: 0.03
+Nodes (59): ARROWHEAD_STYLE_LABELS, AnnotationPropertiesPanel(), ANNOTATION_SIZE_PRESETS, AnnotationSizeControl(), PRESET_COLORS, computeBorderStylePatch(), resolvePropertiesPanelShape(), INITIAL_STATE (+51 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.03
-Nodes (25): Commands, compileCharString(), B, Br, buildHuffmanTable(), compileCharString(), compileGlyf(), EvaluatorPreprocessor (+17 more)
+Cohesion: 0.05
+Nodes (10): DataHandler, B, Br, FontSelector, _i, layoutText(), P, XFAFactory (+2 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.04
-Nodes (47): TYPE_ACCENT, AuthContext, AuthProvider(), devAuthRelayAllows(), inFlightTierByUser, isCaptchaBlockedAuthError(), runDevAuthBootstrap(), runDevAuthBootstrapIfCaptchaBlocked() (+39 more)
+Cohesion: 0.05
+Nodes (32): TYPE_ACCENT, AuthContext, GRAPH_SCOPES, MSGraphContext, MSGraphProvider(), restoreMicrosoftReturnUrl(), INITIAL_DOCUMENTS, MOBILE_WORKFLOW_STORAGE_KEYS (+24 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.05
-Nodes (65): aabb(), activateEraser(), appPageJSON(), canon(), clampBox(), coldReadPage(), CONTROL(), createThrowawayDoc() (+57 more)
+Cohesion: 0.06
+Nodes (61): aabb(), activateEraser(), appPageJSON(), canon(), clampBox(), coldReadPage(), CONTROL(), createThrowawayDoc() (+53 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.09
@@ -1391,64 +1376,64 @@ Cohesion: 0.05
 Nodes (53): log(), main(), PORT, startVite(), log(), main(), PORT, startVite() (+45 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.04
-Nodes (38): eventTargetElement(), resolvesInside(), DocumentsLedger(), initialsOf(), ledgerHeader, MENU_HEX, RIBBON, moreButtonStyle() (+30 more)
+Cohesion: 0.05
+Nodes (38): C, cancelButtonStyle, overlay, PromptModal(), usePromptDialog(), C, ConfirmModal(), MoveCopyModal() (+30 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.06
-Nodes (57): AtomicEraseHarness(), AtomicObject(), objectId(), polygonPath(), seedAnnotations(), clearEraserOpsForAnnotationIds(), getEraserOpsMap(), buildIntent() (+49 more)
+Nodes (54): AtomicEraseHarness(), AtomicObject(), objectId(), polygonPath(), seedAnnotations(), prepareAtomicErase(), buildIntent(), clone() (+46 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.06
-Nodes (16): ErrorFont, escapeString(), getModificationDate(), Dict, FakeUnicodeFont, FreeTextAnnotation, getPdfColor(), HighlightAnnotation (+8 more)
+Cohesion: 0.02
+Nodes (43): encodeToXmlString(), ErrorFont, escapePDFName(), escapeString(), getFamilyName(), getFontSubstitution(), AESBaseCipher, AstArgument (+35 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.06
-Nodes (39): PAGE_SIZE, projectGroup(), diffDeletedIds(), applyAnnotationHistoryAction(), buildAnnotationHistoryAction(), buildComparableIdMaps(), buildIdMap(), buildPreciseAnnotationHistoryAction() (+31 more)
+Cohesion: 0.07
+Nodes (36): canEraseCanvasAnnotation(), buildPage(), COUNTER, INK, PAGE_SIZES, diffDeletedIds(), applyAnnotationHistoryAction(), buildAnnotationHistoryAction() (+28 more)
 
 ### Community 42 - "Community 42"
 Cohesion: 0.08
-Nodes (61): artifacts, fixturePath, options, run(), runTool(), storageKeys, surveyRegionScenarios, assertAdvancedFinalPersistence() (+53 more)
+Nodes (63): artifacts, fixturePath, options, run(), runTool(), storageKeys, surveyRegionScenarios, assertAdvancedFinalPersistence() (+55 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.06
-Nodes (50): deepEqual(), isLegacyFabricSurveyMarkerRow(), isSurveyMarkerType(), main(), makeScratchStore(), bytesToPgHex(), computeRowsWatermark(), gunzipToString() (+42 more)
+Cohesion: 0.13
+Nodes (18): classifyAnnotationSyncError(), countSurveyMarkersReferencingChecklistItem(), countSurveyMarkersReferencingChecklistItemFallback(), deleteAnnotations(), getDocumentAnnotations(), getDocumentPresence(), loadAnnotationsFromSupabase(), removeDocumentPresence() (+10 more)
 
 ### Community 44 - "Community 44"
-Cohesion: 0.05
-Nodes (51): calloutLineStyleFromDash(), CALLOUT_PAGE_SIZE, boundsFromFabric(), buildFabricAnnotationData(), main(), mgmtQuery(), NOMINAL_PAGE, parseArgs() (+43 more)
+Cohesion: 0.08
+Nodes (34): boundsFromFabric(), buildFabricAnnotationData(), main(), mgmtQuery(), NOMINAL_PAGE, parseArgs(), verifyRoundTrip(), PDF_IMPORTED_ROW_DATA (+26 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.04
-Nodes (38): CFFFont, er, getEncoding(), getStandardFontName(), getUnicodeForGlyph(), getUnicodeRangeFor(), hr, IdentityToUnicodeMap (+30 more)
+Cohesion: 0.02
+Nodes (51): addCachedImageOps(), er, fetchBinaryData(), getEncoding(), getLookupTableFactory(), getStandardFontName(), getTilingPatternIR(), getUnicodeForGlyph() (+43 more)
 
 ### Community 46 - "Community 46"
 Cohesion: 0.06
-Nodes (10): CFFParser, CFFCompiler, CFFDict, CFFFDSelect, CFFOffsetTracker, CFFStrings, CompiledFont, lookupCmap() (+2 more)
+Nodes (9): CFFParser, CFFCompiler, CFFDict, CFFOffsetTracker, CFFPrivateDict, CFFStrings, CFFTopDict, stringToBytes() (+1 more)
 
 ### Community 47 - "Community 47"
-Cohesion: 0.06
-Nodes (26): consoleErrors, pageErrors, checks, failed, allConsole, navEvents, ART_DIR, errs (+18 more)
+Cohesion: 0.07
+Nodes (21): consoleErrors, pageErrors, checks, failed, allConsole, navEvents, ART_DIR, errs (+13 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.07
-Nodes (59): buildGroundTruthInputs(), aggregate(), ALLOWED_TABLES, appExactPrefer(), assertNoLeaks(), bucketAdd(), buildHeavyDetail(), buildOutputs() (+51 more)
+Cohesion: 0.13
+Nodes (28): normalizeRowForHash(), payloadHash(), assertVerdictsAllowlisted(), buildExpectations(), buildReport(), clone(), DIFF_KEYS, extractMaps() (+20 more)
 
 ### Community 49 - "Community 49"
 Cohesion: 0.05
-Nodes (42): corsHeaders, corsHeaders, stripe, AdminClient, corsHeaders, listOwnedStorage(), removeOwnedStorage(), styles (+34 more)
+Nodes (48): StripeCheckout(), corsHeaders, corsHeaders, stripe, AdminClient, corsHeaders, listOwnedStorage(), removeOwnedStorage() (+40 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.06
-Nodes (49): listeners, notifyLibraryChanged(), subscribeLibraryChange(), runArchiveBulk(), ARCHIVE_ITEM_TYPES, archiveConfirmCopy(), archiveDates(), baseItem() (+41 more)
+Cohesion: 0.07
+Nodes (46): runArchiveBulk(), ARCHIVE_ITEM_TYPES, archiveConfirmCopy(), archiveDates(), baseItem(), buildArchiveItems(), daysRemaining(), DELETE_FOREVER_COPY (+38 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.07
 Nodes (52): expectCurrentUnchanged(), nextPrefix(), seedPair(), waitForExpectedErase(), assertBlockedPreviewUntouched(), authorMeta(), baseData(), beginEraserStroke() (+44 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.06
-Nodes (43): clearTimers(), flagRequiredInput(), isBlank(), mountHint(), timers, miniSelectButtonStyle(), ProjectsFolderTree(), duplicateAfterByIds() (+35 more)
+Cohesion: 0.07
+Nodes (35): clearTimers(), flagRequiredInput(), isBlank(), mountHint(), timers, ACCENTS, applyTemplateOrderPreference(), buildRich() (+27 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.06
@@ -1456,83 +1441,83 @@ Nodes (44): ChangeSetRow, corsHeaders, makeWorksheetValueResolver(), resolveCate
 
 ### Community 54 - "Community 54"
 Cohesion: 0.05
-Nodes (8): Annotation, AnnotationBorderStyle, getKeyword(), MarkupAnnotation, PopupAnnotation, StampAnnotation, XhtmlNamespace, printNewAnnotations()
+Nodes (20): intersect(), Annotation, AnnotationBorderStyle, CircleAnnotation, getPdfColorArray(), getQuadPoints(), getRgbColor(), HighlightAnnotation (+12 more)
 
 ### Community 55 - "Community 55"
-Cohesion: 0.04
-Nodes (35): amend(), charCodeOf(), checkAndRepair(), convert(), getCharset(), getGlyphMapping(), getInt16(), getInt8() (+27 more)
+Cohesion: 0.06
+Nodes (32): amend(), checkAndRepair(), convert(), #E(), getCharset(), adjustMapping(), adjustWidths(), amendFallbackToUnicode() (+24 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.05
-Nodes (26): _charToGlyph(), getUint32(), addHex(), BinaryCMapStream, CMap, convertCidString(), createBuiltInCMap(), expectInt() (+18 more)
+Nodes (30): charCodeOf(), _charToGlyph(), clean(), forEach(), getGlyphMapping(), getUint32(), addHex(), BinaryCMapStream (+22 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.05
-Nodes (40): exportCalloutLineEndings(), flattenCalloutContent(), getAnnotationDicts(), makeCallout(), makePdfFile(), PAGE_SIZES, ELECTRON_MAIN_SOURCE, PDF_LIB_SOURCE (+32 more)
+Cohesion: 0.06
+Nodes (29): exportCalloutLineEndings(), flattenCalloutContent(), getAnnotationDicts(), makeCallout(), makePdfFile(), PAGE_SIZES, exportCalloutLinePieces(), flattenCalloutContent() (+21 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.07
-Nodes (40): around(), assertHealthyPolygonSet(), assertPolygonSetContained(), classifyPointInRing(), eraseScenarios, makeCarrierRichInk(), multiply(), pointInPolygonSet() (+32 more)
+Cohesion: 0.09
+Nodes (29): expectedFabricPathMatrix(), multiply(), SOURCE, applyInkGeometryMatrix(), applyPageAffineToInkObject(), commitInkObjectMove(), commitInkObjectResize(), createInkPathAffine() (+21 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.06
-Nodes (36): FabricEraserCanvas, getCalloutHitIds(), edgeCases, filledEdgeCases, centerlineBox, touch(), eraseWholeObjects(), ANNOTATION_WORKER_SOURCE (+28 more)
+Cohesion: 0.08
+Nodes (24): FabricEraserCanvas, preserveTransientPagePresentationState(), centerlineBox, ANNOTATION_WORKER_SOURCE, DEV_TEST_ROUTE_SOURCE, ERASER_SOURCE, LEGACY_LAYER_SOURCE, LIGHTWEIGHT_SOURCE (+16 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.06
-Nodes (35): retryCompensatingCleanup(), runCompensatingBatch(), committedCopyMatches(), committedMoveMatches(), createDocumentBatchRecovery(), drainCleanup(), moveOrCopyDocumentsAtomically(), parseDocumentBatchRecovery() (+27 more)
+Cohesion: 0.02
+Nodes (94): AccountSettings(), AuthModal(), OptionalAuthPrompt(), useOptionalAuth(), getProgressBarColor(), MetricRow(), UsageIndicator(), AuthProvider() (+86 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.05
-Nodes (40): ARROWHEAD_STYLE_LABELS, ARROWHEAD_STYLES, arrowPositionHandler(), calloutPositionHandler(), createArrowhead(), createCalloutGroup(), createCalloutObjects(), createImportedArrowGroupFromLine() (+32 more)
+Cohesion: 0.04
+Nodes (48): ARROWHEAD_STYLE_LABELS, ARROWHEAD_STYLES, arrowPositionHandler(), calloutPositionHandler(), createArrowhead(), createCalloutGroup(), createCalloutObjects(), createImportedArrowGroupFromLine() (+40 more)
 
 ### Community 62 - "Community 62"
-Cohesion: 0.09
-Nodes (29): ConfirmDeleteModal(), ReSignInModal(), CreateCategoryModal(), DuplicateUploadModal(), ExcelLockedModal(), ExcelSyncConfirmModal(), KeyboardShortcutsOverlay(), NewColumnsModal() (+21 more)
+Cohesion: 0.13
+Nodes (23): ConfirmDeleteModal(), ReSignInModal(), CreateCategoryModal(), DuplicateUploadModal(), ExcelLockedModal(), ExcelSyncConfirmModal(), KeyboardShortcutsOverlay(), NewColumnsModal() (+15 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.06
-Nodes (30): useConfirmDialog(), DragRearrangeHandle(), handleStyle(), getActiveOverIndices(), moveItem(), moveItemById(), moveScopedItem(), moveVisibleItemById() (+22 more)
+Cohesion: 0.04
+Nodes (49): useConfirmDialog(), DragRearrangeHandle(), handleStyle(), getActiveOverIndices(), moveItem(), moveItemById(), moveScopedItem(), moveVisibleItemById() (+41 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.08
-Nodes (33): regionEditHistoryStore, RegionSelectionTool(), spaceRegionDebug(), SpaceRegionOverlay(), calculateViewportSafePosition(), boundsOverlap(), calculateRegionCenter(), deriveRegionChromeGeometry() (+25 more)
+Cohesion: 0.05
+Nodes (49): SVGSelectionOverlay, regionEditHistoryStore, RegionSelectionTool(), spaceRegionDebug(), SpaceRegionOverlay(), calculateViewportSafePosition(), boundsOverlap(), calculateRegionCenter() (+41 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.07
-Nodes (49): applyCalloutRestore(), applyRegionRestoreToSpaces(), applySpaceRestore(), buildAnnotationDeleteHistoryRow(), buildAnnotationEraseDeleteHistoryRow(), buildAnnotationRestoreAction(), buildBulkAnnotationDeleteHistoryRows(), buildCalloutDeleteHistoryRow() (+41 more)
+Cohesion: 0.10
+Nodes (36): applyCalloutRestore(), applyRegionRestoreToSpaces(), applySpaceRestore(), buildAnnotationEraseDeleteHistoryRow(), buildAnnotationRestoreAction(), buildBulkAnnotationDeleteHistoryRows(), buildCalloutDeleteHistoryRow(), buildCalloutRestoreAction() (+28 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.08
-Nodes (35): drawAnnotation(), paintFor(), pathCache, pathFor(), annotationContains(), CanvasAnnotationLayer(), displayBounds(), distanceToSegment() (+27 more)
+Cohesion: 0.07
+Nodes (46): drawAnnotation(), paintFor(), pathCache, pathFor(), annotationContains(), displayBounds(), distanceToSegment(), DPR (+38 more)
 
 ### Community 67 - "Community 67"
 Cohesion: 0.14
 Nodes (51): direction(), distanceToEllipseBoundary(), distanceToLineSegment(), distanceToTransformedEllipseBoundary(), doesRectIntersectCircle(), doesRectIntersectCounter(), doesRectIntersectEllipse(), doesRectIntersectGroup() (+43 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.07
-Nodes (45): calloutLineDashArray(), pageSize, reactCallout, arrowheadNodeOf(), baseCallout, findAll(), innerDivOf(), line2Of() (+37 more)
+Cohesion: 0.06
+Nodes (51): calloutLineDashArray(), deepClone(), TextEditOverlay(), pageSize, reactCallout, arrowheadNodeOf(), baseCallout, findAll() (+43 more)
 
 ### Community 69 - "Community 69"
 Cohesion: 0.06
-Nodes (30): attachAuthSessionBridge(), auditResidue(), CleanupResidueReviewPanel(), CollaboratorOutlineOverlay(), buildSignature(), dedupePdfImports(), quantizePath(), roundCoord() (+22 more)
+Nodes (32): attachAuthSessionBridge(), CleanupResidueReviewPanel(), CollaboratorOutlineOverlay(), buildSignature(), dedupePdfImports(), quantizePath(), roundCoord(), createUndoManager() (+24 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.06
-Nodes (8): Color, getB(), getTransformMatrix(), LZWStream, MeshShading, MeshStreamReader, Stipple, Util
+Cohesion: 0.07
+Nodes (7): Color, getB(), LZWStream, MeshShading, MeshStreamReader, Stipple, Util
 
 ### Community 71 - "Community 71"
-Cohesion: 0.04
-Nodes (14): clearGlobalCaches(), computeIDs(), createValidAbsoluteUrl(), fixURL(), FontFinder, GlobalColorSpaceCache, _a, Button (+6 more)
+Cohesion: 0.08
+Nodes (4): Annotation, AnnotationBorderStyle, MarkupAnnotation, PopupAnnotation
 
 ### Community 72 - "Community 72"
-Cohesion: 0.08
-Nodes (34): passwordMeetsRequirements(), passwordRequirements(), resendCooldownRemainingMs(), resolveRecoveryPhase(), validateNewPassword(), DEFAULT_THEME, btnGhost(), btnPrimary() (+26 more)
+Cohesion: 0.10
+Nodes (21): passwordMeetsRequirements(), passwordRequirements(), resendCooldownRemainingMs(), resolveRecoveryPhase(), validateNewPassword(), DEFAULT_THEME, btnGhost(), btnPrimary() (+13 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.06
-Nodes (28): artifacts, fixturePath, requested, storageKeys, ArtifactRecorder, safeName(), parseCli(), printHelp() (+20 more)
+Cohesion: 0.07
+Nodes (23): artifacts, fixturePath, requested, storageKeys, ArtifactRecorder, safeName(), parseCli(), printHelp() (+15 more)
 
 ### Community 74 - "Community 74"
 Cohesion: 0.04
@@ -1560,7 +1545,7 @@ Nodes (34): EMPTY_HIGHLIGHTS, SearchHighlightLayer, buildRectanglesForMatch(), b
 
 ### Community 80 - "Community 80"
 Cohesion: 0.07
-Nodes (28): buildScopeImportPlans(), resolveUpdatedCategory(), scopeKeyFor(), SYSTEM_HEADERS, classifyRowConflict(), CONFLICT_CLASS, detectFieldConflicts(), hasRowConflict() (+20 more)
+Nodes (26): buildScopeImportPlans(), resolveUpdatedCategory(), scopeKeyFor(), SYSTEM_HEADERS, applyMarkerIdentityRecords(), buildMarkerIdentityRecord(), buildMarkerIdentityRecords(), headerRow (+18 more)
 
 ### Community 81 - "Community 81"
 Cohesion: 0.04
@@ -1575,20 +1560,24 @@ Cohesion: 0.04
 Nodes (46): 1.1 Create/Login to Stripe Account, 1.2 Verify Bank Account Connection, 1. Stripe Account Setup, 2.1 Create Pro Monthly Product, 2.2 Create Pro Annual Product, 2.3 Create Enterprise Product, 2. Create Stripe Products, 3.1 Get Stripe API Keys (+38 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.07
-Nodes (32): scheduleSnapshot(), TestTransaction, appShellSource, clearTimeout(), setTimeout(), attachObserver(), checkPageAnnotationComplete(), checkPendingWaiters() (+24 more)
+Cohesion: 0.08
+Nodes (29): appShellSource, clearTimeout(), attachObserver(), checkPageAnnotationComplete(), checkPendingWaiters(), debounceTimers, debugMark(), detachObserver() (+21 more)
 
 ### Community 85 - "Community 85"
 Cohesion: 0.04
 Nodes (45): Alternatives Considered, Anti-Patterns to Avoid, Architecture Patterns, Claude's Discretion, Code Examples, Common Pitfalls, Coordinate Conversion (Screen to ViewBox), Core (+37 more)
 
 ### Community 86 - "Community 86"
-Cohesion: 0.11
-Nodes (34): cachedCallouts, cachedObjects, EMPTY_ARR, LightweightAnnotationOverlay, paintPayloadToCanvas(), applyBlendAndOpacity(), applyRotation(), ARG_COUNT (+26 more)
+Cohesion: 0.10
+Nodes (38): cachedCallouts, cachedObjects, EMPTY_ARR, LightweightAnnotationOverlay, paintPayloadToCanvas(), applyBlendAndOpacity(), applyRotation(), ARG_COUNT (+30 more)
 
 ### Community 87 - "Community 87"
 Cohesion: 0.08
 Nodes (31): buildPageEventChains(), detectAnomalies(), detectCanvasContainerDrop(), detectFreezeOverhang(), detectRaceConditions(), detectScaleDivergence(), findNearestScreenshot(), processSession() (+23 more)
+
+### Community 88 - "Community 88"
+Cohesion: 0.03
+Nodes (15): Builder, Commands, CFFFDSelect, compileCharString(), CompiledFont, compileGlyf(), EvaluatorPreprocessor, getFloat214() (+7 more)
 
 ### Community 89 - "Community 89"
 Cohesion: 0.04
@@ -1611,8 +1600,8 @@ Cohesion: 0.04
 Nodes (44): 1. SPACES, 2. REGIONS, 3. GREY HASHED OVERLAY, 4. LIGHTBULB (Background Annotation Toggle), 5. ANNOTATIONS, 6. USER WORKFLOWS, 7. VISUAL FEEDBACK AND STATES, 8. ARCHITECTURAL CONSTRAINTS (+36 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.05
-Nodes (10): Builder, BooleanElement, DateElement, DateTime, Decimal, Float, Integer, Text (+2 more)
+Cohesion: 0.06
+Nodes (9): BooleanElement, DateElement, DateTime, Decimal, Float, Integer, Text, Time (+1 more)
 
 ### Community 95 - "Community 95"
 Cohesion: 0.05
@@ -1635,8 +1624,8 @@ Cohesion: 0.07
 Nodes (36): createMicrosoftAuthMain(), { createMsalCacheStore }, fs, GRAPH_SCOPES, path, registerMicrosoftAuthIpc(), toRendererAuthResult(), { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage } (+28 more)
 
 ### Community 100 - "Community 100"
-Cohesion: 0.07
-Nodes (11): buildRoot(), isNsAgnostic(), DatasetXMLParser, isWhitespace(), parseCff(), PDFFunction, toNumberArray(), XFAParser (+3 more)
+Cohesion: 0.08
+Nodes (13): _addNamespacePrefix(), build(), buildRoot(), _getNamespaceToUse(), isNsAgnostic(), DatasetXMLParser, isWhitespace(), parseCff() (+5 more)
 
 ### Community 101 - "Community 101"
 Cohesion: 0.05
@@ -1647,16 +1636,16 @@ Cohesion: 0.05
 Nodes (41): anchoring, embedded, user_drawn, baseline_generated_at, cutoff, documents, drift_explained, drift_explained_count (+33 more)
 
 ### Community 103 - "Community 103"
-Cohesion: 0.05
-Nodes (7): DatasetReader, encodeToXmlString(), MetadataParser, SimpleDOMNode, XmlObject, SimpleXMLParser, utf8StringToString()
+Cohesion: 0.06
+Nodes (10): Binder, createDataNode(), DatasetReader, MetadataParser, createText(), parseExpression(), SimpleDOMNode, Template (+2 more)
 
 ### Community 104 - "Community 104"
-Cohesion: 0.09
-Nodes (24): usePageOperations(), addCopiedBookmarkAssociations(), addPageClone(), asPage(), baseRemap(), clone(), pageNumberAfterOperation(), reindexAnnotationModel() (+16 more)
+Cohesion: 0.14
+Nodes (18): addCopiedBookmarkAssociations(), addPageClone(), asPage(), baseRemap(), clone(), pageNumberAfterOperation(), reindexAnnotationModel(), remapBookmarks() (+10 more)
 
 ### Community 105 - "Community 105"
-Cohesion: 0.11
-Nodes (38): artifacts, assertHealthy(), assertNear(), attachFailureGuards(), beginHubFrameProbe(), EDGE_TABS, EMPTY_COPY, endHubFrameProbe() (+30 more)
+Cohesion: 0.08
+Nodes (52): artifacts, assertHealthy(), assertNear(), attachFailureGuards(), beginHubFrameProbe(), EDGE_TABS, EMPTY_COPY, endHubFrameProbe() (+44 more)
 
 ### Community 106 - "Community 106"
 Cohesion: 0.05
@@ -1667,8 +1656,8 @@ Cohesion: 0.08
 Nodes (22): activateDrawTool(), activateEraser(), annotationBox(), annotationMarkup(), annotationSignature(), appAnnotationIds(), createFreehandStroke(), createRectangleAndText() (+14 more)
 
 ### Community 108 - "Community 108"
-Cohesion: 0.07
-Nodes (24): applyFabricCreate(), buildBackfillOrigin(), crdtBackfillDebug(), NON_HIGHLIGHT_TYPES_FOR_BACKFILL, runBackfill(), runBackfillUnlocked(), buildOrigin(), REMOTE_BC_ORIGIN (+16 more)
+Cohesion: 0.11
+Nodes (20): applyFabricCreate(), buildBackfillOrigin(), crdtBackfillDebug(), NON_HIGHLIGHT_TYPES_FOR_BACKFILL, runBackfill(), runBackfillUnlocked(), buildOrigin(), ROW (+12 more)
 
 ### Community 109 - "Community 109"
 Cohesion: 0.05
@@ -1680,23 +1669,23 @@ Nodes (38): Batch 0.1 — Define the doorway interface (no behavior change), Bat
 
 ### Community 111 - "Community 111"
 Cohesion: 0.08
-Nodes (23): annotationHasForeignFabricOwner(), createUndoManager(), getChangedRootMapIds(), getLocalFabricOrigin(), getUndoBoundaryRegistry(), getYEventPath(), markUndoneCreates(), memoizedOriginByUser (+15 more)
+Nodes (20): annotationHasForeignFabricOwner(), getChangedRootMapIds(), getYEventPath(), markUndoneCreates(), memoizedOriginByUser, prepareProtectedCreateSnapshots(), reconcileLateCollaboratorEdits(), reconcileResurrectedAnnotations() (+12 more)
 
 ### Community 112 - "Community 112"
 Cohesion: 0.05
 Nodes (39): scripts, audit:code, audit:dead, audit:dupes, audit:health, benchmark:pdf-annotations, build, check:licenses (+31 more)
 
 ### Community 113 - "Community 113"
-Cohesion: 0.12
-Nodes (33): controlHullMayReachCapsule(), convexHull(), curveCapsuleIntervals(), erasePathWithCapsules(), eraseSubpaths(), finiteCoordinateScale(), flattenSegment(), keptRuns() (+25 more)
+Cohesion: 0.05
+Nodes (48): asArr(), asDict(), bboxCmds(), extractInkAnnotations(), inkPathsToCmds(), InteractiveOverlay(), num(), DPR (+40 more)
 
 ### Community 114 - "Community 114"
-Cohesion: 0.09
-Nodes (27): formatDate(), RevisionsPanel(), buildHistoryEventRowFromDebugEvent(), buildSummary(), cacheLocalHistoryRow(), clampPreviewAnnotation(), getActorName(), getLocalHistoryStore() (+19 more)
+Cohesion: 0.16
+Nodes (20): buildHistoryEventRowFromDebugEvent(), buildSummary(), cacheLocalHistoryRow(), clampPreviewAnnotation(), getActorName(), getLocalHistoryStore(), isDeleteCheckpointTwin(), isMissingHistoryTableError() (+12 more)
 
 ### Community 115 - "Community 115"
-Cohesion: 0.11
-Nodes (33): ink(), mountEraser(), bakePagePathResult(), canonicalSurvivorPolygons(), circleGeometry(), closedRing(), createPathTransform(), erasedPathSurvivorsShareGeometry() (+25 more)
+Cohesion: 0.08
+Nodes (43): getCalloutHitIds(), edgeCases, filledEdgeCases, touch(), eraseWholeObjects(), filledMarker, getAnnotationHistoryId(), eraserStrokeTouchesObject() (+35 more)
 
 ### Community 116 - "Community 116"
 Cohesion: 0.05
@@ -1707,16 +1696,16 @@ Cohesion: 0.09
 Nodes (30): buildFormFieldObject(), usePdfjsFormFieldPersistence(), modalBlock, modalEnd, modalStart, root, src, applyAnnotationGroupId() (+22 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.10
-Nodes (31): BACKUP_ALLOWED, buildRestoreBatches(), checkSchemaCompleteness(), compareSweepTodump(), computeBackupExitCode(), DriftError, fetchDump(), fetchSweep() (+23 more)
+Cohesion: 0.11
+Nodes (32): BACKUP_ALLOWED, buildGroundTruthInputs(), buildRestoreBatches(), checkSchemaCompleteness(), compareSweepTodump(), computeBackupExitCode(), DriftError, fetchDump() (+24 more)
 
 ### Community 119 - "Community 119"
-Cohesion: 0.10
-Nodes (31): ackMaterialization(), detectAppVsExcelConflict(), fetchSince(), FRONTIER_KEY(), markerLocks, markerToRowRecord(), materializeAcceptedOps(), mergeOneMarker() (+23 more)
+Cohesion: 0.09
+Nodes (32): ackMaterialization(), detectAppVsExcelConflict(), fetchSince(), FRONTIER_KEY(), markerLocks, markerToRowRecord(), materializeAcceptedOps(), mergeOneMarker() (+24 more)
 
 ### Community 120 - "Community 120"
-Cohesion: 0.10
-Nodes (25): CHECKPOINTS, copyPageWithStorageKeys(), geometryArea(), geometryVertices(), gestureFor(), percentile(), pointInGeometry(), runComplexityScenario() (+17 more)
+Cohesion: 0.11
+Nodes (24): CHECKPOINTS, copyPageWithStorageKeys(), geometryArea(), geometryVertices(), gestureFor(), percentile(), pointInGeometry(), runComplexityScenario() (+16 more)
 
 ### Community 121 - "Community 121"
 Cohesion: 0.05
@@ -1727,20 +1716,20 @@ Cohesion: 0.06
 Nodes (35): 1. Annotation Text Rendering (data-driven, not tokenized), 2. Renderer Toggle Indicator (developer-facing chrome), Annotation Color Semantics (data-driven), Badge Appearance, Callouts (special: separate data source), Checker Sign-Off, Color, Copywriting Contract (+27 more)
 
 ### Community 123 - "Community 123"
-Cohesion: 0.12
-Nodes (32): buildAndStoreSnapshot(), bytesToPgHex(), cmdCompact(), cmdDocs(), cmdHelp(), cmdOpen(), cmdOpenFast(), cmdOpenRender() (+24 more)
+Cohesion: 0.17
+Nodes (26): buildAndStoreSnapshot(), bytesToPgHex(), cmdCompact(), cmdDocs(), cmdHelp(), cmdOpen(), cmdOpenFast(), cmdOpenRender() (+18 more)
 
 ### Community 124 - "Community 124"
-Cohesion: 0.11
-Nodes (31): buildFabricPathSvgTransform(), EDIT_IN_PLACE_TYPES, formatDashArrayForDebug(), formatPdfLineEndingsForDebug(), FREEHAND_CREATION_TOOLS, getShapeHitTargetProps(), hasVisiblePaint(), normalizeDegreesValue() (+23 more)
+Cohesion: 0.08
+Nodes (37): buildFabricPathSvgTransform(), EDIT_IN_PLACE_TYPES, formatDashArrayForDebug(), formatPdfLineEndingsForDebug(), FREEHAND_CREATION_TOOLS, getShapeHitTargetProps(), hasVisiblePaint(), normalizeDegreesValue() (+29 more)
 
 ### Community 125 - "Community 125"
 Cohesion: 0.06
 Nodes (35): dependencies, expo, expo-auth-session, expo-constants, expo-dev-client, expo-status-bar, expo-updates, expo-web-browser (+27 more)
 
 ### Community 126 - "Community 126"
-Cohesion: 0.09
-Nodes (20): BUSINESS_DRIVE_TYPES, canAttemptLiveWriteback(), classifyExcelCapability(), EXCEL_CAPABILITY, getDriveType(), LIVE_SYNC_GATE_STATUS, evaluateLiveSyncGate(), LIVE_SYNC_GATE_REASON (+12 more)
+Cohesion: 0.04
+Nodes (74): BUSINESS_DRIVE_TYPES, canAttemptLiveWriteback(), classifyExcelCapability(), EXCEL_CAPABILITY, getDriveType(), applyWritebackVerification(), classifyWorkbookRecency(), latestAppExportStamp() (+66 more)
 
 ### Community 127 - "Community 127"
 Cohesion: 0.06
@@ -1759,8 +1748,8 @@ Cohesion: 0.06
 Nodes (33): 2.1 What Spaces Are in Memory, 2.2 Save Path, 2.3 Hydrate / Load Path, 2.4 Delete Path, 2.5 Realtime / Subscription, 2.6 regionOverlayDisabled (UI State), 3.1 Region Data Shape, 3.2 Save Path (+25 more)
 
 ### Community 131 - "Community 131"
-Cohesion: 0.09
-Nodes (22): SVGSelectionOverlay, arePointsStacked(), calculateCalloutConnection(), constrainKneePosition(), distanceToBoxEdge(), findClosestBorderPoint(), isPointInsideBox(), isPointOnBorder() (+14 more)
+Cohesion: 0.07
+Nodes (12): AstArgument, AstBinaryOperation, AstLiteral, AstMin, AstVariable, AstVariableDefinition, buildAddOperation(), buildMinOperation() (+4 more)
 
 ### Community 132 - "Community 132"
 Cohesion: 0.06
@@ -1768,11 +1757,11 @@ Nodes (33): dependencies, babel-preset-expo, expo, expo-constants, expo-image-pi
 
 ### Community 133 - "Community 133"
 Cohesion: 0.11
-Nodes (30): annotationIds(), artifacts, canonicalAnnotationSnapshot(), fixturePath, GEOMETRY_FIELDS, groupMenuPoint(), initialPageCount, openGroupMenu() (+22 more)
+Nodes (28): annotationIds(), artifacts, canonicalAnnotationSnapshot(), fixturePath, GEOMETRY_FIELDS, groupMenuPoint(), initialPageCount, openGroupMenu() (+20 more)
 
 ### Community 134 - "Community 134"
-Cohesion: 0.08
-Nodes (11): parseApStream(), actorScopeKey(), cloneBytes(), cloneRecord(), createAnnotationOutbox(), createMemoryAnnotationOutbox(), normalizePendingRecord(), openDatabase() (+3 more)
+Cohesion: 0.07
+Nodes (12): parseApStream(), actorScopeKey(), cloneBytes(), cloneRecord(), createAnnotationOutbox(), createMemoryAnnotationOutbox(), normalizePendingRecord(), openDatabase() (+4 more)
 
 ### Community 135 - "Community 135"
 Cohesion: 0.10
@@ -1784,15 +1773,15 @@ Nodes (19): capitalize(), copyField(), CORS_HEADERS, handleSendInviteEmail(), js
 
 ### Community 137 - "Community 137"
 Cohesion: 0.11
-Nodes (23): buildRowRecord(), canonicalizeCellValue(), canonNumber(), canonString(), computeRowFingerprints(), diffRowFields(), fingerprint(), getSubtle() (+15 more)
+Nodes (23): classifyRowConflict(), CONFLICT_CLASS, detectFieldConflicts(), hasRowConflict(), applyExcelValuesToMarker(), buildMarkerRowValues(), resolveMarkerModuleData(), buildRowRecord() (+15 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.10
-Nodes (23): expectedFabricPathMatrix(), multiply(), SOURCE, renderText(), computeLineBboxCenter(), degreesToRadians(), getAnnotationBBox(), getAnnotationWorldAABB() (+15 more)
+Cohesion: 0.12
+Nodes (29): aggregate(), ALLOWED_TABLES, appExactPrefer(), assertNoLeaks(), bucketAdd(), buildHeavyDetail(), buildOutputs(), buildReport() (+21 more)
 
 ### Community 139 - "Community 139"
-Cohesion: 0.07
-Nodes (8): atomicObject(), canvasOperations, mountEraser(), objects(), pathObject(), replaceSvgWrapper(), svgMarkup(), TrackingMutationObserver
+Cohesion: 0.06
+Nodes (10): atomicObject(), bezierCurveTo(), canvasOperations, mountEraser(), objects(), pathObject(), quadraticCurveTo(), replaceSvgWrapper() (+2 more)
 
 ### Community 140 - "Community 140"
 Cohesion: 0.06
@@ -1807,8 +1796,8 @@ Cohesion: 0.06
 Nodes (32): Chunk 1: Properties-Panel Crash Fix + Unified Border-Style Picker, Chunk 2: Ink Normalization (Imported Pen Stroke → Native Pen Stroke), Chunk 3: Callout (FreeText) Normalization, Chunk 4: Line / Arrow Normalization (Enables Curve-on-Import), Chunk 5: Curve Export with Hidden Metadata, Chunk 6 (contingent on Task 2.4 outcome): Universal Eraser Centerline Split, Cross-Chunk Invariants (never violate), File Structure (+24 more)
 
 ### Community 143 - "Community 143"
-Cohesion: 0.10
-Nodes (6): calculateSHA384(), AESBaseCipher, ARCFourCipher, CipherTransformFactory, PDF17, PDF20
+Cohesion: 0.22
+Nodes (3): calculateSHA384(), PDF17, PDF20
 
 ### Community 144 - "Community 144"
 Cohesion: 0.06
@@ -1819,12 +1808,12 @@ Cohesion: 0.06
 Nodes (31): Acceptance Criteria, Always Protected (CLAUDE.md project-wide), Canonical References, Claude's Discretion, Counter-session lane (DO NOT STAGE), Counter-session lane stays untouched, Counter-session WIP allowlist (NEVER stage from v2.2 without explicit coordination), Counter-specific guards (from existing `[COUNTER WIP — DO NOT TOUCH]` comment at `SVGAnnotationLayer.jsx:1044-1047`) (+23 more)
 
 ### Community 146 - "Community 146"
-Cohesion: 0.13
-Nodes (27): PAGE_SIZE, roundTrip(), getAnnotationAuthorId(), projectCalloutsIntoByPage(), calloutsInSharedStore(), routeRow(), computeBounds(), deserializeRowsToAnnotationsByPage() (+19 more)
+Cohesion: 0.15
+Nodes (23): CALLOUT_PAGE_SIZE, PAGE_SIZE, roundTrip(), computeBounds(), deserializeRowsToAnnotationsByPage(), deserializeRowToCallout(), deserializeRowToFabricObject(), FABRIC_TYPE_TO_DB_TYPE (+15 more)
 
 ### Community 147 - "Community 147"
-Cohesion: 0.09
-Nodes (17): enqueueRender(), MAX_CONCURRENT_RENDERS, processRenderQueue(), renderQueue, buffer, loadTrace(), loadTraceReset(), nowMs() (+9 more)
+Cohesion: 0.07
+Nodes (21): enqueueRender(), MAX_CONCURRENT_RENDERS, processRenderQueue(), renderQueue, buildAtomicTemplatePayload(), mapAuthoritativeTemplateRows(), persistTemplateSnapshot(), reloadTemplatesAfterPendingSave() (+13 more)
 
 ### Community 148 - "Community 148"
 Cohesion: 0.06
@@ -1835,8 +1824,8 @@ Cohesion: 0.24
 Nodes (31): armCreatedSurveyInViewer(), categoryCardByName(), coverDeletes(), coverEntitiesAndReload(), coverTemplateDuplicateReload(), coverTouchReorderPersistence(), createTemplateTree(), deleteTemplateAndVerify() (+23 more)
 
 ### Community 150 - "Community 150"
-Cohesion: 0.11
-Nodes (20): base32urlDecode(), base32urlEncode(), classifyRowIdToken(), decodeId(), encodeId(), generateRowIdToken(), getSubtle(), importHmacKey() (+12 more)
+Cohesion: 0.10
+Nodes (23): base32urlDecode(), base32urlEncode(), classifyRowIdToken(), decodeId(), encodeId(), generateRowIdToken(), getSubtle(), importHmacKey() (+15 more)
 
 ### Community 151 - "Community 151"
 Cohesion: 0.06
@@ -1847,20 +1836,20 @@ Cohesion: 0.06
 Nodes (30): 5a — Coordinate converter (isolated utility, testable before any wiring), 5b — Backward-read guard in deserializer, 5c — Switch the CREATE and UPDATE write path, 5d — Remove `callouts[]` from PDFViewer state, 5e — Update edit entry to read from annotationsByPage, 5f — Add Phase 3 post-keystone undo wiring, Backfill visual verification (Phase 6), Callout Unification Plan (+22 more)
 
 ### Community 153 - "Community 153"
-Cohesion: 0.09
-Nodes (14): DPR, getFitWidthForContainer(), getMinimumScaleForLayout(), PAGE_RASTER_CACHE, pageRasterCacheClearDocument(), pageRasterCacheSet(), PdfjsViewerContainer, releaseRasterCanvas() (+6 more)
+Cohesion: 0.06
+Nodes (32): DPR, getFitWidthForContainer(), getMinimumScaleForLayout(), PAGE_RASTER_CACHE, pageRasterCacheClearDocument(), pageRasterCacheSet(), PdfjsViewerContainer, postNativePdfDiagnostic() (+24 more)
 
 ### Community 154 - "Community 154"
 Cohesion: 0.16
 Nodes (27): activateSelect(), ADVANCED_ANNOTATION_CAPABILITIES, ADVANCED_SURFACE_COVERAGE, annotationGroup(), annotationHitTarget(), annotationTransformProjection(), changed(), createStandard() (+19 more)
 
 ### Community 155 - "Community 155"
-Cohesion: 0.09
-Nodes (15): FeatureSpike(), FIXTURES, QUICK_ZOOMS, STRESS_DENSITIES, DPR, makeStressShapes(), mulberry32(), PdfPageCanvas() (+7 more)
+Cohesion: 0.12
+Nodes (14): miniButtonStyle(), miniSelectButtonStyle(), mergeProjectDocumentOrder(), orderDocumentsByProject(), editedMs(), HEX, ProjectsFolderTree(), shortWhen() (+6 more)
 
 ### Community 156 - "Community 156"
-Cohesion: 0.09
-Nodes (13): getBeginChunk(), getEndChunk(), getRangeReader(), groupChunks(), ChunkedStream, onReceiveData(), requestAllChunks(), _requestChunks() (+5 more)
+Cohesion: 0.06
+Nodes (17): decodeAndClamp(), getBeginChunk(), getEndChunk(), getRangeReader(), groupChunks(), ChunkedStream, ImageResizer, PDFImage (+9 more)
 
 ### Community 157 - "Community 157"
 Cohesion: 0.06
@@ -1904,19 +1893,19 @@ Nodes (28): Annotation Fix 21 - Export / Print UI Contract, Command+S Save, Curr
 
 ### Community 167 - "Community 167"
 Cohesion: 0.11
-Nodes (19): applyFabricDelete(), isCRDTEnabled(), YDocProvider(), ALL_TYPES_OWNED_OR_FILTER, cloudSyncDebug(), deleteAnnotation(), deleteAnnotations(), dualWriteFabricCommit() (+11 more)
+Nodes (20): isCRDTEnabled(), YDocProvider(), ALL_TYPES_OWNED_OR_FILTER, cloudSyncDebug(), deleteAnnotation(), deleteAnnotations(), dualWriteFabricCommit(), dualWriteFabricDelete() (+12 more)
 
 ### Community 168 - "Community 168"
-Cohesion: 0.13
-Nodes (22): isEnabled(), pdfName(), phase35Diag(), useSVGInteraction(), isObjectFullyInRect(), bboxFromAnnotation(), bboxFromCallout(), denormalizeCalloutPoint() (+14 more)
+Cohesion: 0.07
+Nodes (44): isEnabled(), pdfName(), phase35Diag(), cloneAnnotations(), diagLog(), useSVGInteraction(), isObjectFullyInRect(), bboxFromAnnotation() (+36 more)
 
 ### Community 169 - "Community 169"
-Cohesion: 0.11
-Nodes (21): useAnnotationDoc(), useDocumentPresenceList(), parseRegionOverlayStates(), readRegionOverlayStates(), serializeRegionOverlayStates(), storageKeyFor(), useRegionOverlayVisibility(), createUndoToastQueue() (+13 more)
+Cohesion: 0.48
+Nodes (5): parseRegionOverlayStates(), readRegionOverlayStates(), serializeRegionOverlayStates(), storageKeyFor(), useRegionOverlayVisibility()
 
 ### Community 170 - "Community 170"
-Cohesion: 0.15
-Nodes (24): arrayNumbers(), asArray(), asDict(), borderWidth(), clamp01(), cmykToRgb(), colorFromArray(), decodePdfName() (+16 more)
+Cohesion: 0.12
+Nodes (17): OneDriveFolderBrowser(), SOURCE_TYPES, checkFileExists(), checkFileExistsInDrive(), downloadExcelFile(), downloadExcelFileByPath(), getFileById(), getFileETag() (+9 more)
 
 ### Community 171 - "Community 171"
 Cohesion: 0.14
@@ -1948,7 +1937,7 @@ Nodes (27): Acceptance Criteria, Awareness signal (minimal Phase 29 lane), Bridg
 
 ### Community 178 - "Community 178"
 Cohesion: 0.10
-Nodes (20): A, annotations, B, run(), applyCalloutCommit(), applyCalloutDelete(), applyFabricCommit(), applyYUpdateToFabric() (+12 more)
+Nodes (21): A, annotations, B, run(), applyCalloutCommit(), applyCalloutDelete(), applyFabricCommit(), applyFabricDelete() (+13 more)
 
 ### Community 179 - "Community 179"
 Cohesion: 0.07
@@ -1959,8 +1948,8 @@ Cohesion: 0.07
 Nodes (27): A.1 Additive touches to `excel_workbook_registrations` (F16, Decision 1), A.2 `excel_sync_head` — per-mirror monotonic revision head (F2), A.3 `excel_sync_state` — latest-per-marker Excel-side identity + apply bookkeeping (F1, Decision 4), A.4 `excel_sync_ops` — ordered accepted-op log (Decision 16) — the fetch-since source, A.5 `excel_sync_changesets` — full per-changeset outcomes for replay-safety (F7, F19), A.6 `excel_sync_audit` — content-free, immutable (F4, Decision 7), A.7 RLS + grants for all five tables, plus the helper RPCs, (A) Migration `supabase/migrations/20260625120000_kal309_excel_sync.sql` (+19 more)
 
 ### Community 181 - "Community 181"
-Cohesion: 0.13
-Nodes (21): ARROWHEAD_STYLE_LABELS, ARROWHEAD_STYLES, CALLOUT_LINE_STYLES, createCallout(), defaultCalloutStyle, generateId(), checkSnapZone(), convertLineToPathCanvas() (+13 more)
+Cohesion: 0.10
+Nodes (30): ARROWHEAD_STYLES, CALLOUT_LINE_STYLES, calloutLineStyleFromDash(), createCallout(), defaultCalloutStyle, generateId(), checkSnapZone(), convertLineToPathCanvas() (+22 more)
 
 ### Community 182 - "Community 182"
 Cohesion: 0.07
@@ -1975,8 +1964,8 @@ Cohesion: 0.07
 Nodes (27): case, bug, cancelAtFraction, id, midAt, note, objects, pixelSkipIds (+19 more)
 
 ### Community 185 - "Community 185"
-Cohesion: 0.24
-Nodes (27): boundsFingerprint(), clickVisible(), closeDocumentPanelWithTouch(), collapseSurveySheet(), enterRegionEditor(), expandSpaceRow(), firstVisible(), hardReload() (+19 more)
+Cohesion: 0.17
+Nodes (32): boundsFingerprint(), clickVisible(), closeDocumentPanelWithTouch(), collapseSurveySheet(), enterRegionEditor(), expandSpaceRow(), firstVisible(), hardReload() (+24 more)
 
 ### Community 186 - "Community 186"
 Cohesion: 0.07
@@ -1987,16 +1976,16 @@ Cohesion: 0.07
 Nodes (27): Milestones, Phase 10: Canvas Mount/Unmount (Pen + Eraser), Phase 11: Text/Shape Editing + Zoom Cleanup, Phase 12 details archived, Phase 13: Rotation Handle Edit-Mode Polish, Phase 14: Unified SVG Callout Render + Shared Tool Foundation, Phase 15: Line/Arrow Curvature + Arrowhead Styles, Phase 16: Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag (+19 more)
 
 ### Community 188 - "Community 188"
-Cohesion: 0.07
-Nodes (8): BooleanElement, DateElement, DateTime, Decimal, Float, Integer, Time, valueToHtml()
+Cohesion: 0.06
+Nodes (9): BooleanElement, DateElement, DateTime, Decimal, Float, Integer, Text, Time (+1 more)
 
 ### Community 189 - "Community 189"
-Cohesion: 0.12
-Nodes (7): calculateMD5(), isArrayEqual(), ARCFourCipher, CipherTransformFactory, NullCipher, PDF20, PDFBase
+Cohesion: 0.10
+Nodes (8): calculateMD5(), isArrayEqual(), ARCFourCipher, CipherTransform, CipherTransformFactory, NullCipher, PDF20, PDFBase
 
 ### Community 190 - "Community 190"
-Cohesion: 0.19
-Nodes (20): cellRangePath(), classifyGraphWritebackError(), drainRowIdWritebackQueue(), normalizeCellValue(), readRowIdCell(), resolveEntryRowNumber(), rowIdCellAddress(), writeRowIdCellVerified() (+12 more)
+Cohesion: 0.11
+Nodes (14): around(), assertHealthyPolygonSet(), assertPolygonSetContained(), classifyPointInRing(), eraseScenarios, makeCarrierRichInk(), multiply(), pointInPolygonSet() (+6 more)
 
 ### Community 191 - "Community 191"
 Cohesion: 0.07
@@ -2063,8 +2052,8 @@ Cohesion: 0.08
 Nodes (25): backgroundColor, foregroundImage, adaptiveIcon, edgeToEdgeEnabled, permissions, predictiveBackGestureEnabled, expo, android (+17 more)
 
 ### Community 207 - "Community 207"
-Cohesion: 0.12
-Nodes (23): delay(), ensureViteServer(), ephemeralLoopbackUrl(), isSurveyVite(), waitForServer(), documentCount, listIdleMs, visibleThumbBudget (+15 more)
+Cohesion: 0.11
+Nodes (24): delay(), ensureViteServer(), ephemeralLoopbackUrl(), isSurveyVite(), waitForServer(), documentCount, listIdleMs, visibleThumbBudget (+16 more)
 
 ### Community 208 - "Community 208"
 Cohesion: 0.08
@@ -2075,12 +2064,12 @@ Cohesion: 0.08
 Nodes (25): 1. Executive Summary, 2.1 Auth & Session, 2.2 Open / Hydrate a Document, 2.3 Live Viewing Session / Presence, 2.4 Create / Edit / Resize / Move a Mark, 2.5 Delete, 2.6 Sharing / Permissions / Locking / Revisions / History, 2.7 Excel / Survey-Marker Sync (+17 more)
 
 ### Community 212 - "Community 212"
-Cohesion: 0.08
-Nodes (7): AstArgument, AstBinaryOperation, AstLiteral, AstMin, AstVariable, AstVariableDefinition, ExpressionBuilderVisitor
+Cohesion: 0.22
+Nodes (17): buildSurveyMarkerRow(), getSurveyMarkerScope(), ANNOTATION_VISIBILITY_SCOPE, getActivePageRegionId(), getAnnotationVisibilityScope(), getPageAnnotationVisibilityState(), getPageVisibilityControlMode(), getSpaceIdForRegionFromSpaces() (+9 more)
 
 ### Community 213 - "Community 213"
-Cohesion: 0.15
-Nodes (19): EXPORT_ACK_FIELDS, stampExportAck(), wasReceivedByExcel(), applySurveyMarkerRestore(), buildSurveyMarkerDeleteHistoryRow(), buildSurveyMarkerRestoreAction(), isProtectedFromExcelDelete(), isSurveyMarkerRestoreAction() (+11 more)
+Cohesion: 0.12
+Nodes (22): EXPORT_ACK_FIELDS, stampExportAck(), wasReceivedByExcel(), applySurveyMarkerRestore(), buildSurveyMarkerDeleteHistoryRow(), buildSurveyMarkerRestoreAction(), isProtectedFromExcelDelete(), isSurveyMarkerRestoreAction() (+14 more)
 
 ### Community 214 - "Community 214"
 Cohesion: 0.08
@@ -2139,8 +2128,8 @@ Cohesion: 0.08
 Nodes (24): case, bug, cancelAtEnd, cancelAtFraction, id, midAt, note, objects (+16 more)
 
 ### Community 228 - "Community 228"
-Cohesion: 0.13
-Nodes (16): buildBulkDeletePlan(), nameFromAnnotation(), canCommitSurveyMarkerErase(), canDelete(), canEraseCanvasAnnotation(), canModify(), canModifySurveyMarker(), filterByAuthor() (+8 more)
+Cohesion: 0.14
+Nodes (14): buildBulkDeletePlan(), nameFromAnnotation(), auditResidue(), canCommitSurveyMarkerErase(), canDelete(), canModifySurveyMarker(), filterByAuthor(), filterEraserCommitIds() (+6 more)
 
 ### Community 229 - "Community 229"
 Cohesion: 0.08
@@ -2149,10 +2138,6 @@ Nodes (24): 1. Make Production Zoom Match Demo Feel, 2026-07-09 Investigation Ad
 ### Community 230 - "Community 230"
 Cohesion: 0.08
 Nodes (25): dependencies, @azure/msal-browser, @azure/msal-node, @capacitor/android, @capacitor/core, @capacitor/ios, chokidar, @dnd-kit/core (+17 more)
-
-### Community 231 - "Community 231"
-Cohesion: 0.12
-Nodes (21): getHistoryAnnotationVisualBounds(), getHistoryObjectDiffType(), getHistoryObjectSignature(), getHistoryPathVisualBounds(), hashHistoryString(), roundHistoryDebugNumber(), toHistoryObjectDebug(), getHistoryDebugRows() (+13 more)
 
 ### Community 232 - "Community 232"
 Cohesion: 0.08
@@ -2211,16 +2196,16 @@ Cohesion: 0.08
 Nodes (23): dependencies, expo, expo-image-picker, expo-status-bar, lucide-react-native, react, react-native, react-native-safe-area-context (+15 more)
 
 ### Community 246 - "Community 246"
-Cohesion: 0.10
-Nodes (4): AlternateCS, DefaultAppearanceEvaluator, DeviceRgbCS, IndexedCS
+Cohesion: 0.06
+Nodes (7): AlternateCS, CalGrayCS, CalRGBCS, DeviceCmykCS, DeviceRgbCS, IndexedCS, LabCS
 
 ### Community 247 - "Community 247"
 Cohesion: 0.09
 Nodes (11): accounts, logDir, LOGS_ROOT, openAs(), REPO_ROOT, required, ROLE_DEFS, service (+3 more)
 
 ### Community 248 - "Community 248"
-Cohesion: 0.14
-Nodes (15): clearPendingDeleteMark(), hasPendingDeleteMark(), markPendingDelete(), triageCandidateDelete(), validSeq(), headerRow, receivedMarker(), root (+7 more)
+Cohesion: 0.23
+Nodes (12): clearPendingDeleteMark(), hasPendingDeleteMark(), markPendingDelete(), triageCandidateDelete(), validSeq(), headerRow, receivedMarker(), root (+4 more)
 
 ### Community 249 - "Community 249"
 Cohesion: 0.11
@@ -2259,8 +2244,8 @@ Cohesion: 0.09
 Nodes (22): Acceptance Criteria, Canonical References, Claude's Discretion, Deferred Ideas, DO NOT CHANGE, Established Patterns, Existing Code Insights, Existing code (lift-and-extend, not rewrite) (+14 more)
 
 ### Community 258 - "Community 258"
-Cohesion: 0.15
-Nodes (12): BACKOFF_MS, drainQueue(), enqueue(), getQuarantinedAnnoIds(), getStorage(), getStuckCount(), hasPendingForUser(), readQueue() (+4 more)
+Cohesion: 0.33
+Nodes (10): BACKOFF_MS, drainQueue(), enqueue(), getQuarantinedAnnoIds(), getStorage(), getStuckCount(), hasPendingForUser(), readQueue() (+2 more)
 
 ### Community 259 - "Community 259"
 Cohesion: 0.09
@@ -2283,8 +2268,8 @@ Cohesion: 0.09
 Nodes (22): 1. Executive Summary, 2.1 The full lifecycle, 2.2 Every store, and whether it is authoritative, 2.3 Your specific questions, answered explicitly, 2. Current Architecture, in Detail, 3.1 The single fault, 3.2 The failure chain, step by step, 3.3 Why the three patches don't fix it (+14 more)
 
 ### Community 264 - "Community 264"
-Cohesion: 0.21
-Nodes (21): classifyObjectPath(), contentPath(), fetchAllRows(), findOrphans(), findShaCollisions(), gather(), indexKey(), listAllObjects() (+13 more)
+Cohesion: 0.17
+Nodes (24): loadEnv(), loadFile(), REPO_ROOT, classifyObjectPath(), contentPath(), fetchAllRows(), findOrphans(), findShaCollisions() (+16 more)
 
 ### Community 265 - "Community 265"
 Cohesion: 0.12
@@ -2319,8 +2304,8 @@ Cohesion: 0.09
 Nodes (21): Accomplishments, clientID-as-undo-scope Anti-pattern Verification, Decisions Made, Dependency graph, Deviations from Plan, Files Created/Modified, Hand-off Notes for Plan 29-04 (App.jsx Cmd+Z waiver), Hand-off Notes for Plan 29-05 (FabricEditCanvas eraser-swipe + per-word) (+13 more)
 
 ### Community 273 - "Community 273"
-Cohesion: 0.16
-Nodes (15): cloneAnnotations(), diagLog(), applyMidpointToAnnotation(), clearMidpointFromAnnotation(), deriveMidpointFromPointer(), resolveMidpointHandlePosition(), shouldRevertEndpointCurve(), getGroupBBox() (+7 more)
+Cohesion: 0.20
+Nodes (15): deepEqual(), isLegacyFabricSurveyMarkerRow(), isSurveyMarkerType(), main(), makeScratchStore(), bytesToPgHex(), computeRowsWatermark(), gunzipToString() (+7 more)
 
 ### Community 274 - "Community 274"
 Cohesion: 0.09
@@ -2331,16 +2316,12 @@ Cohesion: 0.09
 Nodes (19): applied, APPLY_SCHEMA, BLOCKED, byDomain, DENYLIST, DOMAIN_LANES, domainFindings, domainRaw (+11 more)
 
 ### Community 276 - "Community 276"
-Cohesion: 0.10
-Nodes (7): abort(), cancelAllRequests(), AppearanceStreamEvaluator, PDFWorkerStreamRangeReader, PDFWorkerStreamReader, sendWithStream(), terminate()
+Cohesion: 0.02
+Nodes (34): abort(), applyTransform(), cancelAllRequests(), destroy(), exportData(), fontFallback(), generateImages(), getAxialAlignedBoundingBox() (+26 more)
 
 ### Community 277 - "Community 277"
-Cohesion: 0.17
-Nodes (3): Binder, JpxImage, createText()
-
-### Community 278 - "Community 278"
-Cohesion: 0.11
-Nodes (3): CalGrayCS, DeviceCmykCS, LabCS
+Cohesion: 0.18
+Nodes (6): usePageOperations(), createPageMutationFile(), persistThenCommitPageMutation(), mutatePdfPages(), pageNumber(), reorderPages()
 
 ### Community 279 - "Community 279"
 Cohesion: 0.09
@@ -2351,8 +2332,8 @@ Cohesion: 0.23
 Nodes (19): assertBuildFreshnessEvidence(), assertDeleteAccountFunction(), assertElectronPackagingContract(), assertExpoStaticContract(), assertExpoUpdateFreshness(), assertLocalMobileRollout(), assertReleaseTreeClean(), assertReleaseTreeStatus() (+11 more)
 
 ### Community 281 - "Community 281"
-Cohesion: 0.16
-Nodes (14): getOrCreateDocumentSecret(), getStorage(), randomSecretBase64(), readRecord(), resolveDocumentSecret(), secretKey(), __testing, writeRecord() (+6 more)
+Cohesion: 0.10
+Nodes (23): computeRowFingerprints(), getOrCreateDocumentSecret(), getStorage(), randomSecretBase64(), readRecord(), resolveDocumentSecret(), secretKey(), __testing (+15 more)
 
 ### Community 282 - "Community 282"
 Cohesion: 0.10
@@ -2411,8 +2392,8 @@ Cohesion: 0.15
 Nodes (18): simulatorDevServerUrl(), withSimulatorDevServer(), artifactRoot, assertSurveyViteServer(), capturePaintedFrame(), cliArgs, commandText(), compareVersions() (+10 more)
 
 ### Community 296 - "Community 296"
-Cohesion: 0.21
-Nodes (13): prepareAtomicBookmarkEdit(), applyBookmarkTreeProjection(), arrayMoveBookmarkItems(), buildSortableBookmarkTree(), flattenBookmarkTreeForSort(), getAutoExpandTargetFolder(), getBookmarkProjection(), getDragDepth() (+5 more)
+Cohesion: 0.09
+Nodes (24): FeatureSpike(), FIXTURES, QUICK_ZOOMS, STRESS_DENSITIES, createSpikeLog(), pad(), stamp(), useFrameMeter() (+16 more)
 
 ### Community 297 - "Community 297"
 Cohesion: 0.10
@@ -2479,8 +2460,8 @@ Cohesion: 0.11
 Nodes (19): build, development, development-simulator, preview, production, cli, appVersionSource, version (+11 more)
 
 ### Community 313 - "Community 313"
-Cohesion: 0.19
-Nodes (15): artifacts, options, primaryFixture, run(), runDevice(), secondaryFixture, readWorkflowModel(), restoreWorkflowModel() (+7 more)
+Cohesion: 0.34
+Nodes (12): ageOutRoster(), applyPresenceEvent(), isFreshRow(), lastSeenMs(), rosterFromMap(), rostersEqual(), rowKey(), seedRoster() (+4 more)
 
 ### Community 314 - "Community 314"
 Cohesion: 0.15
@@ -2551,8 +2532,8 @@ Cohesion: 0.11
 Nodes (18): Claude's response, Claude's response, Claude's response (revising), Claude's response (revising), Claude's response (revising), Claude's response (revising), Claude's response (revising), Claude's response (revising) (+10 more)
 
 ### Community 331 - "Community 331"
-Cohesion: 0.19
-Nodes (16): shouldPrioritizeLiveReveal(), eraserCarvedInkObject, paperInkObject, plainStrokedPath, collectSubpaths(), distance(), getFilledInkHitTargetProps(), getPathEndpoint() (+8 more)
+Cohesion: 0.17
+Nodes (18): shouldPrioritizeLiveReveal(), HarnessPath(), eraserCarvedInkObject, paperInkObject, plainStrokedPath, collectSubpaths(), distance(), getFilledInkHitTargetProps() (+10 more)
 
 ### Community 332 - "Community 332"
 Cohesion: 0.11
@@ -2563,16 +2544,16 @@ Cohesion: 0.11
 Nodes (18): Done means, If something breaks, Multi-user (2nd-account) tests we couldn't run today, Next-Session Handoff, One thing to do BEFORE any upload, Pull the new build first (do this on BOTH devices before testing), Step Zero — say this to Claude when you start, Test 1 — yellow highlight no longer doubles on second device (+10 more)
 
 ### Community 334 - "Community 334"
-Cohesion: 0.11
-Nodes (6): B, I, P, XhtmlObject, popFont(), pushData()
+Cohesion: 0.08
+Nodes (8): addPara(), B, FontSelector, I, P, XhtmlObject, popFont(), pushData()
 
 ### Community 335 - "Community 335"
 Cohesion: 0.11
 Nodes (18): Architecture, Files Touched, Implementation Plan, Option 2: SVG Display + Fabric.js Editing (Fallback Plan), Problem Recap, Risk Assessment, State Machine, Step 1: Create SVG Annotation Renderer (+10 more)
 
 ### Community 336 - "Community 336"
-Cohesion: 0.20
-Nodes (15): analyticsSource, electronMainSource, preloadSource, createAnalyticsRateLimiter(), analyticsRateLimiter, classifyAnalyticsDelivery(), deliverSurveyAnalyticsEvent(), getSessionId() (+7 more)
+Cohesion: 0.22
+Nodes (7): formatDate(), RevisionsPanel(), createRevision(), getRevision(), listRevisions(), restoreRevision(), throwIfError()
 
 ### Community 337 - "Community 337"
 Cohesion: 0.12
@@ -2654,17 +2635,13 @@ Nodes (17): Autonomous Handoff — Chrome Lift (Bottom Toolbar + Left Tool Rail)
 Cohesion: 0.11
 Nodes (17): AutoCAD Window + Crossing Selection — Implementation Plan, Chunk 1: Pure Helpers + Tests, Chunk 2: Hook Wiring (useSVGInteraction), Chunk 3: SVG Layer Render, Chunk 4: Manual UAT + Close, Deferred / Follow-up, File Structure, Task 10: Manual UAT (+9 more)
 
-### Community 357 - "Community 357"
-Cohesion: 0.21
-Nodes (3): decodeAndClamp(), PDFImage, resizeImageMask()
-
 ### Community 358 - "Community 358"
-Cohesion: 0.13
-Nodes (11): LIVE_SYNC_VERIFY_STATUS, LIVE_SYNC_VERIFY_STEP_LABELS, classifyLiveSyncProbeError(), findExportStampInValues(), runLiveSyncVerification(), VERIFY_STEP, VERIFY_STEP_ORDER, localTemplate (+3 more)
+Cohesion: 0.21
+Nodes (4): REMOTE_BC_ORIGIN, REMOTE_REALTIME_ORIGIN, connect(), createSupabaseYjsProvider()
 
 ### Community 359 - "Community 359"
-Cohesion: 0.23
-Nodes (13): applyBorderStyle(), applyScope(), buildBoundaryShapeCommitJSON(), buildFreehandCommitJSON(), buildLineCommitJSON(), composeAnnotationColor(), FABRIC_BASE_ENVELOPE, PEN_FABRIC_RESIDUE (+5 more)
+Cohesion: 0.30
+Nodes (7): SyncStatusChip(), getMobileSyncPresentation(), initialsOf(), normalizeMobilePresence(), SYNC_COLORS, getCompactSyncStatusMessage(), getSyncStatusViewModel()
 
 ### Community 360 - "Community 360"
 Cohesion: 0.39
@@ -2731,8 +2708,8 @@ Cohesion: 0.12
 Nodes (16): 1. `codex/reorder-ux-and-app-split` — the drag-and-drop reorder feature (TOP PRIORITY), 2. `origin/isaiahcalvo123/kal-24-fix-document-open-hydrate…catch-up-race` — collaboration visibility fix (high importance, merge), Branch Audit — Survey BetaSafeS2, Confirmed already in main — archive or ignore (nothing missing), Docs & already-safe (archive or ignore), Full branch-by-branch table, Nice-to-have (smaller missing fixes), `origin/isaiahcalvo123/kal-20-verify-unsupported-pdf-annotation-warning…` — test coverage only (low, cherry-pick the test) (+8 more)
 
 ### Community 376 - "Community 376"
-Cohesion: 0.14
-Nodes (8): DEFAULT_MOCK_PAGES, filterRangeChars(), ORIENT_OPTIONS, PAPER_OPTIONS, parseCustomInches(), PrintPanel(), printPanelDebug(), sanitizeRangeInput()
+Cohesion: 0.11
+Nodes (10): eventTargetElement(), resolvesInside(), DEFAULT_MOCK_PAGES, filterRangeChars(), ORIENT_OPTIONS, PAPER_OPTIONS, parseCustomInches(), PrintPanel() (+2 more)
 
 ### Community 377 - "Community 377"
 Cohesion: 0.12
@@ -2743,8 +2720,8 @@ Cohesion: 0.12
 Nodes (16): Blast radius — read this before enabling, ⚠️ Decision needed: a defect in KAL-426 that this job refuses to trigger, Enabling it on production, KAL-431 — 30-day Archive auto-cleanup, Not proved, Step 0 — confirm the scheduler (owner), Step 1 — apply the migration, Step 2 — dry run (deletes nothing) (+8 more)
 
 ### Community 379 - "Community 379"
-Cohesion: 0.17
-Nodes (14): loadEnv(), loadFile(), REPO_ROOT, __dirname, dismissAuth(), FIXTURE_PDF, [leasedAccount], main() (+6 more)
+Cohesion: 0.23
+Nodes (11): __dirname, dismissAuth(), FIXTURE_PDF, [leasedAccount], main(), PORT, record(), REPO (+3 more)
 
 ### Community 380 - "Community 380"
 Cohesion: 0.12
@@ -2759,12 +2736,12 @@ Cohesion: 0.12
 Nodes (17): build, appId, asar, extraMetadata, files, icon, linux, mac (+9 more)
 
 ### Community 383 - "Community 383"
-Cohesion: 0.23
-Nodes (4): convertToRGBA(), convertBlackAndWhiteToRGBA(), PDFImage, resizeImageMask()
+Cohesion: 0.04
+Nodes (15): convertToRGBA(), AsciiHexStream, CCITTFaxStream, convertBlackAndWhiteToRGBA(), DecodeStream, DecryptStream, FlateStream, Jbig2Stream (+7 more)
 
 ### Community 384 - "Community 384"
-Cohesion: 0.13
-Nodes (8): CFFFDSelect, CompiledFont, getSubroutineBias(), lookupCmap(), Type2Compiled, parseCharString(), parseCharStrings(), stackFn()
+Cohesion: 0.06
+Nodes (19): getInt16(), getInt8(), getUint16(), CFFFDSelect, compileCharString(), CompiledFont, compileGlyf(), getFloat214() (+11 more)
 
 ### Community 386 - "Community 386"
 Cohesion: 0.12
@@ -2779,8 +2756,8 @@ Cohesion: 0.21
 Nodes (15): assertActionState(), assertEventOrder(), attachErrorCapture(), openClient(), port, readEvents(), repoRoot, runScenario() (+7 more)
 
 ### Community 389 - "Community 389"
-Cohesion: 0.26
-Nodes (14): baseName(), excelLockFilePath(), excelOwnerFileName(), isExcelOwnerFile(), isOwnerFileFor(), parentDir(), splitPath(), detectExcelOpenState() (+6 more)
+Cohesion: 0.31
+Nodes (8): acceptAnyInvite(), btnGhost(), btnPrimary(), C, InviteAcceptPage(), acceptDocumentInvite(), acceptProjectInvite(), acceptTemplateInvite()
 
 ### Community 390 - "Community 390"
 Cohesion: 0.26
@@ -2879,7 +2856,7 @@ Cohesion: 0.23
 Nodes (7): CaptureContext, startConsoleCapture(), stopConsoleCapture(), startPerfCapture(), stopPerfCapture(), takeScreenshot(), captureState()
 
 ### Community 414 - "Community 414"
-Cohesion: 0.21
+Cohesion: 0.13
 Nodes (3): createSession(), finalizeSession(), getSessionBaseDir()
 
 ### Community 415 - "Community 415"
@@ -2903,12 +2880,12 @@ Cohesion: 0.12
 Nodes (15): Activity Log (LOG), Activity Log Power Features (LOG-EXT), Authorship & Attribution (AUTH), Comments (COMMENT), Cross-Device Resume (RESUME), Migration & Backwards Compatibility (MIGRATE), Offline & Merge (OFFLINE), Out of Scope (+7 more)
 
 ### Community 420 - "Community 420"
-Cohesion: 0.22
-Nodes (9): applyWritebackVerification(), needsChoiceSuffix(), rowIdWritebackMessage(), SYNC_STATUS, SYNC_TONE, SYNC_TONE_COLORS, syncMessagePresentation(), syncMessageTone() (+1 more)
+Cohesion: 0.24
+Nodes (6): activeTrapStack, FOCUSABLE_SELECTOR, NESTED_LAYER_SELECTOR, useModalFocusTrap(), Harness(), NestedHarness()
 
 ### Community 421 - "Community 421"
-Cohesion: 0.28
-Nodes (11): checkSessionSupport(), closeWorkbookSession(), createWorkbookSession(), getFileIdFromPath(), getUsedRange(), getWorksheets(), refreshWorkbookSession(), updateCellRange() (+3 more)
+Cohesion: 0.42
+Nodes (7): buildAnnotationDeleteHistoryRow(), user, boundsOfPathCommands(), decimatePathCommands(), isOutlineInkAnnotation(), projectAnnotationForHistoryPreview(), round2()
 
 ### Community 422 - "Community 422"
 Cohesion: 0.22
@@ -3154,6 +3131,10 @@ Nodes (11): ACTION_INTERVAL_MS_RANGE, ACTION_WEIGHTS, __dirname, __filename, isW
 Cohesion: 0.14
 Nodes (13): Acceptance criteria (Given/When/Then), DO NOT CHANGE, Files likely in scope, Handoff — Toolbar / Chrome Instant-Render Polish, One-line wake-up, Open questions to flag before any code, Reference, Resumption note (+5 more)
 
+### Community 488 - "Community 488"
+Cohesion: 0.07
+Nodes (18): FontRendererFactory, Jbig2Image, buildHuffmanTable(), decodeScan(), findNextFileMarker(), parseCff(), processSegment(), processSegments() (+10 more)
+
 ### Community 489 - "Community 489"
 Cohesion: 0.14
 Nodes (13): 1. Vercel: traffic and real-user performance, 2. `survey-analytics`: errors, replay, console, network, PDF breadcrumbs, Analytics and diagnostics, How Agent Native and `survey-clips` help, Mobile hosting and physical-device observability, Native links, Recommended rollout, Recommended topology (+5 more)
@@ -3319,8 +3300,8 @@ Cohesion: 0.24
 Nodes (8): erasePathSegment(), booleanErasePath(), createCapsulePolygon(), createCirclePolygon(), createSweptEraserPolygon(), flattenPathToPolylines(), intersectLineCircle(), subtractEraserFromPolyline()
 
 ### Community 532 - "Community 532"
-Cohesion: 0.18
-Nodes (8): assertPolygonsWithinUlps(), commitPreparedErase(), floatBitsBuffer, floatBitsView, floatUlpDistance(), nativeInk(), orderedFloatBits(), replaceDurableBase()
+Cohesion: 0.07
+Nodes (28): drawInk(), pointInPolygonSet(), verticalInkIntervals(), ink(), nativeInk(), makeOutlineInk(), CHILD_PATH, densifiedClosedRing() (+20 more)
 
 ### Community 533 - "Community 533"
 Cohesion: 0.17
@@ -3387,8 +3368,8 @@ Cohesion: 0.17
 Nodes (11): 1. TL;DR Recommendation, 2. The decision that actually matters: Expo Go vs custom dev build, 3. Comparison matrix, 4. Recommended architecture: the overlay stack, 5. COPY-FROM shortlist (what to lift, and from where), 6. Migration / build-order + spikes to run first, 7. Risks, licensing caveats, and unverified items, Footnotes (verified URLs) (+3 more)
 
 ### Community 549 - "Community 549"
-Cohesion: 0.20
-Nodes (5): renderFirstPage(), renderWaiters, thumbCache, thumbInflight, loadPdfjs()
+Cohesion: 0.14
+Nodes (8): loadThumb(), renderFirstPage(), renderWaiters, thumbCache, thumbInflight, createThumbnailStore(), thumbCacheKey(), thumbnailStore()
 
 ### Community 550 - "Community 550"
 Cohesion: 0.17
@@ -3415,8 +3396,8 @@ Cohesion: 0.20
 Nodes (9): data, migration, psqlArgs, root, run(), socket, sql(), temp (+1 more)
 
 ### Community 558 - "Community 558"
-Cohesion: 0.23
-Nodes (8): applyExcelValuesToMarker(), buildMarkerRowValues(), resolveMarkerModuleData(), baseMarker, checklist, entities, excelValues, checklist
+Cohesion: 0.25
+Nodes (5): interesting, lockWarnings, reqs, T0, trio
 
 ### Community 559 - "Community 559"
 Cohesion: 0.17
@@ -3455,8 +3436,8 @@ Cohesion: 0.18
 Nodes (10): ---------------------------------------------------------------------------, ---------------------------------------------------------------------------, 31-deferred-items.md for the deferral rationale (no v2.3 clients in the, File 1: `tests/phase31/cutoverBackfill.test.mjs`, File 2: `tests/phase31/idAtCreationStamping.test.mjs`, File 3: `tests/phase31/cutoverHydrate.test.mjs`, implemented this phase; the data path covered here is the cutover seal, itself, which UNBLOCKS the future v2.3 gate but does not implement it. (+2 more)
 
 ### Community 568 - "Community 568"
-Cohesion: 0.29
-Nodes (8): check(), main(), smMark(), byPageFrom(), check(), freshHandle(), idsOf(), main()
+Cohesion: 0.19
+Nodes (11): check(), main(), smMark(), main(), NON_HIGHLIGHT_TYPES, pgHexToBytes(), byPageFrom(), check() (+3 more)
 
 ### Community 569 - "Community 569"
 Cohesion: 0.18
@@ -3499,8 +3480,8 @@ Cohesion: 0.18
 Nodes (10): Adding a new template, Anatomy of the frame, Copy, Email-client constraints (non-negotiable), Email style guide — transactional email, Gmail sender avatar (deliberately deferred), Palette, Terminology (+2 more)
 
 ### Community 579 - "Community 579"
-Cohesion: 0.27
-Nodes (8): base64ToBytes(), bytesToBase64(), createTarget(), HarnessPath(), makeHarnessState(), materializePage(), withPaintRevision(), renderPathToSvgD()
+Cohesion: 0.39
+Nodes (6): baseCallout, getCalloutSyncFingerprint(), normalizeCalloutForSync(), normalizeCalloutsForSync(), sortPlainObject(), TRANSIENT_KEYS
 
 ### Community 580 - "Community 580"
 Cohesion: 0.18
@@ -3555,8 +3536,8 @@ Cohesion: 0.18
 Nodes (3): ALLOWED_TEST_HOSTS, __dirname, REPO_ROOT
 
 ### Community 596 - "Community 596"
-Cohesion: 0.35
-Nodes (9): captureFabricCallout(), captureSvgCallout(), clearCalloutGeomBuffer(), getCalloutGeomDump(), initBuffer(), markDoubleClickEvent(), safeAttrs(), safeComputedStyle() (+1 more)
+Cohesion: 0.36
+Nodes (5): buildCounterSeriesDeletionUpdates(), getCounterSeriesList(), hslToHex(), pickNextSeriesColor(), resolveCounterSeriesPaint()
 
 ### Community 597 - "Community 597"
 Cohesion: 0.18
@@ -3722,10 +3703,6 @@ Nodes (9): Critical project rules to honor, End-of-Phase-A acceptance recap, HAN
 Cohesion: 0.20
 Nodes (9): Design intent (bake into UX comments per project rule), Handoff — Zoom: constant page gap + lock-to-center, Hard constraints, Linear, Problem A — Page gap rides the zoom (REGRESSION — was fixed before), Problem B — No lock-to-center once a page fits (ALWAYS been broken — fresh fix, no prior good state), TWO fixes, ONE session — do NOT split, Verification (+1 more)
 
-### Community 638 - "Community 638"
-Cohesion: 0.29
-Nodes (4): loadThumb(), createThumbnailStore(), thumbCacheKey(), thumbnailStore()
-
 ### Community 639 - "Community 639"
 Cohesion: 0.20
 Nodes (9): fieldsPlaced, formCollectionLength, notes, pdfLoaded, persistenceCheck, byteLength, ok, propertiesPanel (+1 more)
@@ -3779,8 +3756,8 @@ Cohesion: 0.20
 Nodes (9): ARTS, __dirname, LOGS, PRO, projTab, ROOT, SHOTS, users (+1 more)
 
 ### Community 653 - "Community 653"
-Cohesion: 0.38
-Nodes (7): classifyWorkbookRecency(), latestAppExportStamp(), parseStampMs(), readWorkbookExportStamp(), RECENCY, staleAutoSkipMessage(), staleManualConfirmText()
+Cohesion: 0.33
+Nodes (5): panelSrc, pdfViewerSrc, rstSrc, spacesPanelSrc, trashMigrationSrc
 
 ### Community 654 - "Community 654"
 Cohesion: 0.20
@@ -4139,8 +4116,8 @@ Cohesion: 0.25
 Nodes (7): Annotation Fix 5: Eraser Hit Test, Exact Fix Made, Files Changed, Manual Verification, Remaining Risk Or Follow-Up, Root Cause Found, Tests Run
 
 ### Community 745 - "Community 745"
-Cohesion: 0.39
-Nodes (6): baseUrl, pickSummary(), run(), setZoom(), snapshot(), waitForMountedWorkers()
+Cohesion: 0.09
+Nodes (17): baseUrl, pickSummary(), run(), setZoom(), snapshot(), waitForMountedWorkers(), loadPicker(), repoRoot (+9 more)
 
 ### Community 746 - "Community 746"
 Cohesion: 0.25
@@ -4301,6 +4278,10 @@ Nodes (7): background_color, display, icons, name, short_name, start_url, theme_
 ### Community 785 - "Community 785"
 Cohesion: 0.25
 Nodes (3): Color, Stipple, makeHexColor()
+
+### Community 786 - "Community 786"
+Cohesion: 0.60
+Nodes (3): loadPdfjs(), measureOpen(), require
 
 ### Community 794 - "Community 794"
 Cohesion: 0.25
@@ -4642,10 +4623,6 @@ Nodes (6): Adding more shared types, Also deferred (do not do casually), How it'
 Cohesion: 0.43
 Nodes (4): getCalloutHistoryAuthorId(), isOwnCallout(), scopeCalloutsForHistoryRestore(), scopeHistoryStateForCalloutRestore()
 
-### Community 883 - "Community 883"
-Cohesion: 0.29
-Nodes (3): loadDocumentLockBanner(), repoRoot, require
-
 ### Community 884 - "Community 884"
 Cohesion: 0.29
 Nodes (5): DST, HERE, MATCHER_FILES, ROOT, SRC
@@ -4865,10 +4842,6 @@ Nodes (5): drainQueue(), enqueueSync(), getQueueSize(), readQueue(), writeQueue(
 ### Community 948 - "Community 948"
 Cohesion: 0.40
 Nodes (4): DEFAULT_REVIEW_MESSAGE, MESSAGES, REVIEW_REASON_MESSAGES, reviewReasonMessage()
-
-### Community 949 - "Community 949"
-Cohesion: 0.67
-Nodes (4): calculateAnnotationDetailTile(), finiteNumber(), nearlyEqual(), normalizedRect()
 
 ### Community 950 - "Community 950"
 Cohesion: 0.73
@@ -5166,10 +5139,6 @@ Nodes (4): images, info, author, version
 Cohesion: 0.70
 Nodes (3): buildAnnotationSelectionContextKey(), didAnnotationSelectionContextChange(), normalizeContextValue()
 
-### Community 1033 - "Community 1033"
-Cohesion: 0.40
-Nodes (3): loadPicker(), repoRoot, require
-
 ### Community 1035 - "Community 1035"
 Cohesion: 0.40
 Nodes (4): OVERLAY_SOURCE, SHARED_SOURCE, VIEWER_SOURCE, WORKER_SOURCE
@@ -5177,10 +5146,6 @@ Nodes (4): OVERLAY_SOURCE, SHARED_SOURCE, VIEWER_SOURCE, WORKER_SOURCE
 ### Community 1036 - "Community 1036"
 Cohesion: 0.40
 Nodes (4): DESKTOP_WORKFLOW, DEV_ROUTE, EDITOR, WORKFLOW
-
-### Community 1038 - "Community 1038"
-Cohesion: 0.50
-Nodes (4): loadSyncStatusChip(), mountChip(), repoRoot, require
 
 ### Community 1039 - "Community 1039"
 Cohesion: 0.40
@@ -5415,24 +5380,24 @@ Cohesion: 0.67
 Nodes (3): 1. System Overview, Component Responsibilities, Where the new layer sits
 
 ## Knowledge Gaps
-- **9153 isolated node(s):** `base_url`, `stamp`, `email`, `tier`, `email` (+9148 more)
+- **9154 isolated node(s):** `pgEnv`, `base_url`, `stamp`, `email`, `tier` (+9149 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **169 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **159 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `shadow()` connect `Community 8` to `Community 0`, `Community 33`, `Community 2`, `Community 3`, `Community 5`, `Community 454`, `Community 485`, `Community 648`, `Community 40`, `Community 45`, `Community 46`, `Community 21`, `Community 23`, `Community 88`, `Community 189`?**
-  _High betweenness centrality (0.070) - this node is a cross-community bridge._
-- **Why does `ColorSpaceUtils` connect `Community 8` to `Community 648`, `Community 0`?**
+- **Why does `shadow()` connect `Community 2` to `Community 0`, `Community 33`, `Community 485`, `Community 454`, `Community 5`, `Community 648`, `Community 40`, `Community 8`, `Community 45`, `Community 46`, `Community 21`, `Community 23`, `Community 88`, `Community 26`, `Community 189`, `Community 383`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
+- **Why does `t` connect `Community 55` to `Community 0`, `Community 5`, `Community 70`, `Community 45`, `Community 23`, `Community 56`?**
   _High betweenness centrality (0.056) - this node is a cross-community bridge._
-- **Why does `t` connect `Community 5` to `Community 0`, `Community 1`, `Community 2`, `Community 70`, `Community 23`, `Community 56`?**
-  _High betweenness centrality (0.052) - this node is a cross-community bridge._
-- **What connects `base_url`, `stamp`, `email` to the rest of the system?**
-  _9153 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `ColorSpaceUtils` connect `Community 2` to `Community 648`, `Community 0`?**
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._
+- **What connects `pgEnv`, `base_url`, `stamp` to the rest of the system?**
+  _9154 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.002903704366366232 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0029409136645649043 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.0031475986372128807 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0032908210761496927 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.01959145775301764 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.015428412720455493 - nodes in this community are weakly interconnected._

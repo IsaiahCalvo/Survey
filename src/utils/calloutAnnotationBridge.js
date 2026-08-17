@@ -367,10 +367,9 @@ export function calloutToAnnotationObject(callout, pageSize) {
  * removed callout never leaves a ghost — that is what makes create/edit/delete on
  * the legacy `callouts[]` path reflect immediately in the shared render.
  *
- * Flag gating is the CALLER's responsibility (this module stays zero-dependency
- * on the flag so it remains importable in Node --test). Callers must check
- * `calloutsInSharedStore()` before invoking; with the flag OFF they must not call
- * this so behavior is byte-for-byte unchanged.
+ * The shared-store keystone is permanent (the old `calloutsInSharedStore()`
+ * gate was retired 2026-06-30 and later inlined away); this module stays
+ * dependency-free so it remains importable in Node --test.
  *
  * @param {object} byPage — current annotationsByPage map ({ [page]: { objects } })
  * @param {Array<object>} calloutsList — authoritative normalized callouts[]

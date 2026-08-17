@@ -37,7 +37,6 @@ import {
   SURVEY_MARKER_TYPE,
   isSurveyMarkerType,
 } from '../utils/surveyMarkerType.js';
-import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
 
 // ----------------------------------------------------------------------------
 // Type mapping: Fabric object kind → DB annotation_type
@@ -441,10 +440,9 @@ export function serializeAnnotationsByPage(annotationsByPage, opts = {}) {
       // FLAG-ON (R2 keystone): annotationsByPage IS the persisted source and the
       // legacy callout push is disabled, so the shared push is the SOLE writer —
       // callout objects MUST serialize here (into `.fabricObject` 'callout' rows
-      // carrying data.legacyCallout so they reload via the shim). Reversing this
-      // guard flag-ON is only safe BECAUSE the legacy push is disabled flag-ON
-      // (else dual-write on the same id — the documented BLOCKER 1).
-      if (obj?.data?.type === 'callout' && !calloutsInSharedStore()) continue;
+      // carrying data.legacyCallout so they reload via the shim). Serializing
+      // callouts here is only safe BECAUSE the legacy push is retired (else
+      // dual-write on the same id — the documented BLOCKER 1).
       try {
         rows.push(serializeFabricObjectToRow(obj, { ...opts, pageNumber }));
       } catch (err) {

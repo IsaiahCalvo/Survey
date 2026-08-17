@@ -90,9 +90,6 @@ import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
-// Callout-unification keystone (Phase 5, point A) — flag-gated load projection
-// of saved callouts[] into the shared annotationsByPage store. DEFAULT OFF.
-import { calloutsInSharedStore } from './lib/calloutSharedStoreFlag';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
 import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
@@ -20347,10 +20344,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // via the shared dispatch (SVGAnnotationLayer's data.type==='callout' branch).
     // pageSize per page = the unscaled PDF page-pixel size (pageSizesRef.current),
     // which is exactly the {width,height} the SVG layer inverts with — so the
-    // bridge round-trip is lossless. callouts[] is still populated below (dual-rep
-    // during the transition; later increments switch the source of truth).
-    // Flag OFF: this whole block is skipped → byte-for-byte unchanged behavior.
-    if (calloutsInSharedStore() && Array.isArray(loadedCallouts) && loadedCallouts.length > 0) {
+    // bridge round-trip is lossless. (The shared-store keystone is permanent —
+    // the old calloutsInSharedStore() gate was retired 2026-06-30 and inlined.)
+    if (Array.isArray(loadedCallouts) && loadedCallouts.length > 0) {
       try {
         const pageSizesNow = pageSizesRef.current || {};
         const projected = { ...initialAnnotationsByPage };

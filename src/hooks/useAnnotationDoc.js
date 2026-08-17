@@ -25,7 +25,6 @@ import {
   migrateCalloutsMetaToAnnotationsMap,
   getUnmigratedMetaCallouts,
 } from '../services/calloutMetaMigration.js';
-import { calloutsInSharedStore } from '../lib/calloutSharedStoreFlag.js';
 import {
   projectCalloutsIntoByPage as projectCalloutsIntoByPageShared,
   deriveCalloutsFromByPage,
@@ -69,11 +68,10 @@ function pageCount(byPage) {
 // removed in Slice 6 (pageSizes always transitions on a fresh open: it is
 // reset + re-measured per document).
 //
-// This thin wrapper just adds the flag gate (permanently ON — kept so the
-// call-site shape matches the rest of the keystone code; the bridge stays
-// flag-agnostic so it is importable in Node --test).
+// Thin alias kept so the call-site shape matches the rest of the keystone code
+// (the old calloutsInSharedStore() gate was permanently ON and has been inlined
+// away; the bridge stays dependency-free so it is importable in Node --test).
 function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes, options) {
-  if (!calloutsInSharedStore()) return byPage;
   return projectCalloutsIntoByPageShared(byPage, calloutsList, pageSizes, options);
 }
 
