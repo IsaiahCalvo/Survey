@@ -2874,16 +2874,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 return (
                   <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid #2a3140', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
-                      onClick={api.zoomOut}
-                      {...chromeTip('Zoom out', 'left')}
-                      title="Zoom out"
-                      aria-label="Zoom out"
-                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
-                    >
-                      <Icon name="minus" size={14} />
-                    </button>
-                    {zoomValue}
-                    <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
                       title="Zoom in"
@@ -2891,6 +2881,16 @@ export default function App({ devPreviewReturnTab = null }) {
                       style={{ ...footerBtn(), width: '28px', height: '28px' }}
                     >
                       <Icon name="plus" size={14} />
+                    </button>
+                    {zoomValue}
+                    <button
+                      onClick={api.zoomOut}
+                      {...chromeTip('Zoom out', 'left')}
+                      title="Zoom out"
+                      aria-label="Zoom out"
+                      style={{ ...footerBtn(), width: '28px', height: '28px' }}
+                    >
+                      <Icon name="minus" size={14} />
                     </button>
 
                     <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />

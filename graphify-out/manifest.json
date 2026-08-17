@@ -1130,8 +1130,8 @@
     "semantic_hash": ""
   },
   "src/AppShell.jsx": {
-    "mtime": 1786981001.562293,
-    "ast_hash": "2c3c09c5acb02bbff31e5ebfb757f6fe",
+    "mtime": 1786983244.5892065,
+    "ast_hash": "a267c431db28bbca43b8c1b6390a33fb",
     "semantic_hash": ""
   },
   "src/Dashboard.jsx": {
@@ -11312,6 +11312,11 @@
   "tests/annotationDropdownUniformity.test.mjs": {
     "mtime": 1786981886.270615,
     "ast_hash": "e9b97921cfeb8a5cb0112321271e7314",
+    "semantic_hash": ""
+  },
+  "tests/zoomRailControlOrder.test.mjs": {
+    "mtime": 1786983232.5306702,
+    "ast_hash": "dd7845ba5c028879df05ff88f465227d",
     "semantic_hash": ""
   }
 }
