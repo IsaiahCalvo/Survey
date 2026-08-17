@@ -30,6 +30,7 @@ import {
   normalizeBulkResult,
   pruneSelection,
   resolveSelection,
+  resolveArchivePreviewItem,
   selectableIds,
   sortArchiveItems,
   sortStateForNamedSort,
@@ -250,6 +251,18 @@ test('only top-level items are selectable — a project child never is', () => {
   assert.deepEqual([...toggleSelection(selected, 'p1')], []);
 });
 
+test('project children can be previewed without becoming independently selectable', () => {
+  const child = resolveArchivePreviewItem(ALL, 'c1');
+  assert.equal(child.id, 'c1');
+  assert.equal(child.type, 'document');
+  assert.equal(child.projectName, project.name);
+  assert.equal(resolveArchivePreviewItem(ALL, 'p1'), project);
+  assert.equal(resolveArchivePreviewItem(ALL, 'missing'), null);
+
+  // Previewing does not broaden the destructive-action contract.
+  assert.deepEqual(resolveSelection(ALL, new Set(['c1'])), []);
+});
+
 test('select all operates over the currently filtered list only', () => {
   const documentsOnly = visibleArchiveItems(ALL, { filter: 'document' });
   const all = nextSelectAll(new Set(), documentsOnly);
@@ -412,14 +425,19 @@ test('every document in Archive renders at the one Documents-ledger thumbnail si
   // so it shows a PLAIN type icon in the same ROW_THUMB box — no tinted plate
   // behind it (owner call 2026-08-07: "we don't have that anywhere else in this
   // app"). The box stays so the column aligns and the row height cannot shift.
-  assert.match(SCREEN, /const rowTypeArt = \(item\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
+  assert.match(SCREEN, /const rowTypeArt = \(item, iconSize = TYPE_ICON_SIZE\) => \{[\s\S]*?if \(item\.type === 'document'\) return rowThumb\(item\.id, item\.filePath\);/);
   // A project/template's icon box is the SAME footprint a page thumbnail
   // occupies, so the art-to-name distance is one number regardless of row type.
   // Asserted through the shared constants rather than literals, so the two can
   // never disagree when the thumbnail size is tuned again.
   assert.match(SCREEN, /width: ROW_ART_W, height: ROW_THUMB/);
-  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{TYPE_ICON_SIZE\} color="var\(--ink-200\)" \/>/);
+  assert.match(SCREEN, /const TYPE_ICON_SIZE = 24;/);
+  assert.match(SCREEN, /const MOBILE_TYPE_ICON_SIZE = 24;/);
+  assert.match(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\} size=\{iconSize\} \/>/);
+  assert.doesNotMatch(SCREEN, /<Icon name=\{typeIcon\[item\.type\] \|\| 'doc'\}[^>]*color=/,
+    'shared document/project/template colors remain authoritative');
   assert.match(SCREEN, /\{rowTypeArt\(item\)\}/);
+  assert.match(SCREEN, /\{rowTypeArt\(item, MOBILE_TYPE_ICON_SIZE\)\}/);
   // No coloured plate may come back: no tint map, and no translucent
   // background anywhere in the screen's own styles.
   assert.doesNotMatch(SCREEN, /TYPE_TINT/);
@@ -572,6 +590,10 @@ test("a project's child rows fill the same columns a top-level document does", (
   assert.match(SCREEN, /const daysCell = \(item, padY = ROW_PAD_Y\) => \([\s\S]*?item\.daysRemaining <= URGENT_DAYS \? DANGER : 'inherit'/);
   // No empty placeholder cells left over after the name cell.
   assert.doesNotMatch(childBlock, /<span \/>\s*\n\s*<span \/>\s*\n\s*<span \/>\s*\n\s*<\/div>/);
+  assert.match(childBlock, /aria-label=\{`Preview \$\{child\.name\}`\}/);
+  assert.match(childBlock, /onClick=\{\(\) => previewDocument\(child\.id\)\}/);
+  assert.match(childBlock, /onKeyDown=\{\(e\) => \{/);
+  assert.match(SCREEN, /resolveArchivePreviewItem\(rows, previewId\)/);
 });
 
 test('a template ROW shows its entities as glyphs under the name', () => {
@@ -633,9 +655,15 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
   assert.match(SCREEN, /import AppIcon from '\.\.\/Icons'/);
   assert.match(
     SCREEN,
-    /const chevron = \(open\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{CHEVRON_SIZE\}\s*\n\s*color="#8d96a6"/,
+    /const chevron = \(open, size = CHEVRON_SIZE\) => \([\s\S]*?<AppIcon\s*\n\s*name="chevronDown"\s*\n\s*size=\{size\}\s*\n\s*color="#8d96a6"/,
   );
-  assert.match(SCREEN, /const CHEVRON_SIZE = 12;/);
+  assert.match(SCREEN, /const CHEVRON_SIZE = 16;/);
+  assert.match(SCREEN, /const MOBILE_CHEVRON_SIZE = 18;/);
+  assert.match(
+    SCREEN,
+    /fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE, marginRight: 4/,
+    'desktop disclosure is larger and leaves air before the unchanged title edge',
+  );
   // No literal chevron characters may survive anywhere in the screen.
   assert.doesNotMatch(SCREEN, /[▾▴▸▹►▼]/, 'no text-glyph chevrons remain');
 
@@ -652,7 +680,25 @@ test("the disclosure uses the app's real chevron icon, not a text glyph", () => 
 
   // Both trees and the mobile card go through the same helper.
   assert.match(SCREEN, /const disclosureButton = \(open, onToggle, label = 'documents'\) => \([\s\S]*?\{chevron\(open\)\}<\/button>/);
-  assert.match(SCREEN, /className="archive-mobile-disclosure"[\s\S]*?\{chevron\(expanded\)\}/);
+  assert.match(SCREEN, /className="archive-mobile-disclosure"[\s\S]*?\{chevron\(expanded, MOBILE_CHEVRON_SIZE\)\}/);
+});
+
+test('mobile Archive matches the hub list inset and disclosure hit target', () => {
+  assert.match(
+    CSS,
+    /\.survey-hub \.archive-body \{[\s\S]*?padding: 8px 10px 10px !important;/,
+    'Archive starts 8px below the mobile header like Documents, Projects, and Templates',
+  );
+  assert.match(
+    CSS,
+    /\.survey-hub \.archive-mobile-disclosure \{[\s\S]*?width: 28px;[\s\S]*?height: 44px;[\s\S]*?place-items: center;/,
+    'the larger mobile chevron keeps a 44px touch target without changing the card grid',
+  );
+  assert.match(
+    CSS,
+    /\.survey-hub \.archive-mobile-card-head > :first-child \{[\s\S]*?transform: none;/,
+    'Archive centers its disclosure in the gutter instead of shifting it like a drag handle',
+  );
 });
 
 test('the preview shows collaborator glyphs only when the item really is shared', () => {
@@ -731,7 +777,7 @@ test('the header is built on the Documents / Projects structure', () => {
   // Mobile search row + desktop search in the actions slot.
   assert.match(SCREEN, /<div className="archive-mobile-search-row" ref=\{menuRef\}>/);
   assert.match(SCREEN, /<div className="archive-desktop-search" ref=\{desktopMenuRef\}>/);
-  assert.match(DOCS, /<div className="documents-mobile-search-row"/);
+  assert.match(DOCS, /<div className="documents-mobile-search-actions hub-mobile-search-actions"/);
   assert.match(DOCS, /<div className="documents-desktop-search">/);
   assert.match(PROJECTS, /<div className="projects-desktop-search">/);
 
@@ -786,8 +832,9 @@ test('the mobile card head ALWAYS renders three children, matching its three col
   assert.doesNotMatch(head, /^\s{10}\{(selectMode|isProject) &&/m);
   // The lead cell swaps its CONTENTS by mode instead.
   assert.match(head, /\{selectMode \? checkGlyph\(checked\) : \(isProject \? \(/);
-  // The trailing cell carries the same type art the desktop row shows.
-  assert.match(head, /\{rowTypeArt\(item\)\}/);
+  // The trailing cell carries the same type art, with the established mobile
+  // icon size rather than inheriting the larger desktop ledger glyph.
+  assert.match(head, /\{rowTypeArt\(item, MOBILE_TYPE_ICON_SIZE\)\}/);
 
   // Geometry copied from .mobile-doc-card, not invented.
   assert.match(CSS, /\.survey-hub \.archive-mobile-card-head \{[^}]*grid-template-columns: 28px minmax\(0, 1fr\) 52px/);
@@ -823,6 +870,14 @@ test('the mobile card list is hidden on desktop and shown under 720px', () => {
   assert.match(CSS, /\.survey-hub \.archive-mobile-list \{\s*\n\s*display: none;/);
   assert.match(CSS, /@media \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
   assert.match(CSS, /@media \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
+});
+
+test('Archive transient controls follow the shared home interaction contract', () => {
+  assert.match(SCREEN, /import DismissBarrier from '\.\.\/components\/DismissBarrier';/);
+  assert.match(SCREEN, /<DismissBarrier[\s\S]*?active=\{menuOpen\}[\s\S]*?insideRefs=\{\[menuRef, desktopMenuRef\]\}[\s\S]*?onDismiss=\{\(\) => setMenuOpen\(false\)\}/);
+  assert.match(SCREEN, /title="Close preview"[\s\S]*?<Icon name="close" size=\{14\} \/>/);
+  assert.doesNotMatch(SCREEN, /title="Close preview"[^>]*>×<\/button>/,
+    'preview close uses the shared drawn icon, not a font glyph');
 });
 
 /* ------------------------------------------------------------------------
@@ -897,7 +952,7 @@ test('archived rows leave the Documents, Projects and Templates lists', () => {
   // One filter per live read. `archived` (the Free-tier downgrade flag) and
   // `user_archived_at` (the 30-day Archive) are separate and both survive.
   const filters = DATABASE_HOOKS.match(/\.is\('user_archived_at', null\)/g) || [];
-  assert.equal(filters.length, 4, 'owned documents, collaborator documents, projects, templates');
+  assert.equal(filters.length, 5, 'owned documents, collaborator documents, owned projects, collaborator projects, templates');
   assert.match(DATABASE_HOOKS, /\.eq\('archived', false\)\s*\n[\s\S]{0,400}?\.is\('user_archived_at', null\)/);
 });
 

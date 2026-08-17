@@ -23,10 +23,11 @@ import { AuthContext } from '../contexts/AuthContext';
 import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
 import { createProjectInvite } from '../services/projectInviteService';
 import { createTemplateInvite } from '../services/templateInviteService';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
-import { useFocusTrap } from '../hooks/useFocusTrap';
+import useModalFocusTrap from './useModalFocusTrap';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -75,7 +76,8 @@ export default function ShareModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeInvite, setActiveInvite] = useState(null); // last link-invite for share-link display
-  const cardRef = useRef(null);
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -89,10 +91,12 @@ export default function ShareModal({
     }
   }, [open]);
 
-  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
-  // dialog, Escape closes it, and focus returns to whatever opened it. This
-  // replaces a hand-rolled Escape+focus-return that never trapped Tab.
-  useFocusTrap(cardRef, open, { onEscape: onClose });
+  useModalFocusTrap({
+    active: open,
+    containerRef: dialogRef,
+    initialFocusRef: closeRef,
+    onClose,
+  });
 
   const noun = KIND_LABEL[kind] || 'item';
   const targetId = useMemo(() => {
@@ -144,7 +148,11 @@ export default function ShareModal({
     if (!res.success) { setError(res.error || 'Could not create invite link.'); return; }
     setActiveInvite(res.invite);
     const url = buildInviteUrl(res.invite);
-    try { await navigator.clipboard.writeText(url); } catch { /* clipboard unavailable */ }
+    const copyResult = await copyTextToClipboard(url, { surface: `${kind}_share_link` });
+    if (!copyResult.ok) {
+      setError('Invite link created, but Survey could not copy it. Select the link and copy it manually.');
+      return;
+    }
     setCopied(true);
     setSuccess(`Link copied. ${explicitLinkText}`);
     setTimeout(() => setCopied(false), 1800);
@@ -180,9 +188,12 @@ export default function ShareModal({
       }}
     >
       <div
-        ref={cardRef}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label={`Share ${noun}`}
+        data-modal-focus-layer="true"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{ width: 440, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}
       >
@@ -193,7 +204,7 @@ export default function ShareModal({
             <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>
-          <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button ref={closeRef} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
 
         {/* Single role selector — applies to both link and email per locked spec. */}

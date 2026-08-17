@@ -382,7 +382,6 @@ test('all official real-account entry points use the verified lease loader', () 
     'scripts/kal31/debug-rpc.mjs',
     'scripts/kal31/verify-acceptance.mjs',
     'tests/kal309ApplyChangesetIntegration.test.mjs',
-    'tests/phase35-e2e/eraser-permission-harness.mjs',
     'tests/rowIdSigningSecretIntegration.test.mjs',
     'tests/workbookRegistrationIntegration.test.mjs',
   ]);
@@ -576,11 +575,8 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
     join(root, 'tests/phase35-e2e/eraser-permission-harness.mjs'),
     'utf8',
   );
-  const eraserCoordinatorGuard = eraserHarness.indexOf(
-    'SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS',
-  );
-  assert.ok(eraserCoordinatorGuard >= 0);
-  assert.ok(eraserHarness.indexOf('auth.admin.createUser') > eraserCoordinatorGuard);
+  assert.match(eraserHarness, /loadVerifiedTestAccounts\(\{ minimumAccounts: 3 \}\)/);
+  assert.doesNotMatch(eraserHarness, /auth\.admin\.(?:createUser|deleteUser)/);
 
   const unclassified = [];
   for (const [relativePath, source] of browserHarnesses) {
@@ -643,24 +639,17 @@ test('account provisioner fails closed before any cloud credential access', () =
   assert.ok(cloudAccess > guard, 'cloud access must happen only after coordinator guard');
 });
 
-test('disposable-user harness authorization fails closed before cloud setup', async () => {
-  const previous = process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS;
-  delete process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS;
-  try {
-    const { readHarnessConfig } = await import('./phase35-e2e/eraser-permission-harness.mjs');
-    assert.throws(
-      () => readHarnessConfig({
-        authorized: true,
-        supabaseUrl: 'https://example.invalid',
-        serviceKey: 'service',
-        anonKey: 'anon',
-      }),
-      /exact coordinator authorization is required/i,
-    );
-  } finally {
-    if (previous == null) delete process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS;
-    else process.env.SURVEY_COORDINATOR_DISPOSABLE_TEST_USERS = previous;
-  }
+test('eraser harness requires a verified account lease before cloud setup', async () => {
+  const { readHarnessConfig } = await import('./phase35-e2e/eraser-permission-harness.mjs');
+  assert.throws(
+    () => readHarnessConfig({
+      authorized: true,
+      supabaseUrl: 'https://example.invalid',
+      serviceKey: 'service',
+      anonKey: 'anon',
+    }),
+    /must run through test-account-lease\.mjs run with a verified lease/i,
+  );
 });
 
 test('leased command supervisor is recorded before it can spawn the target', () => {

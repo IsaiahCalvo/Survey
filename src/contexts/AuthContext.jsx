@@ -17,6 +17,7 @@ import {
   getSupabaseSession,
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
+import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
 
 export const AuthContext = createContext({});
 
@@ -36,6 +37,37 @@ const authDebug = (...args) => {
 const DEV_AUTH_BOOTSTRAP_TOKEN = typeof __DEV_AUTH_BOOTSTRAP_TOKEN__ === 'string'
   ? __DEV_AUTH_BOOTSTRAP_TOKEN__
   : '';
+const DEV_AUTH_RELAY_ENABLED = import.meta.env.DEV
+  && typeof __DEV_AUTH_RELAY_ENABLED__ === 'boolean'
+  && __DEV_AUTH_RELAY_ENABLED__;
+const DEV_AUTH_RELAY_EMAIL = DEV_AUTH_RELAY_ENABLED
+  && typeof __DEV_AUTH_RELAY_EMAIL__ === 'string'
+  ? __DEV_AUTH_RELAY_EMAIL__.trim()
+  : '';
+const DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY = 'survey:dev-auth:auto-login-suppressed';
+
+const devAuthRelayAllows = (email) => DEV_AUTH_RELAY_ENABLED
+  && Boolean(DEV_AUTH_RELAY_EMAIL)
+  && String(email || '').trim().toLowerCase() === DEV_AUTH_RELAY_EMAIL.toLowerCase();
+
+const isDevAuthAutoLoginSuppressed = () => {
+  if (!DEV_AUTH_RELAY_ENABLED || typeof window === 'undefined') return false;
+  try {
+    return window.localStorage?.getItem(DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const setDevAuthAutoLoginSuppressed = (suppressed) => {
+  if (!DEV_AUTH_RELAY_ENABLED || typeof window === 'undefined') return;
+  try {
+    if (suppressed) window.localStorage?.setItem(DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY, '1');
+    else window.localStorage?.removeItem(DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY);
+  } catch {
+    console.warn('[dev-auth] could not persist owner auto-login preference');
+  }
+};
 
 const isCaptchaBlockedAuthError = (error) => {
   const code = String(error?.code || '').toLowerCase();
@@ -46,8 +78,48 @@ const isCaptchaBlockedAuthError = (error) => {
     || message.includes('human');
 };
 
-const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
-  if (!import.meta.env.DEV || !DEV_AUTH_BOOTSTRAP_TOKEN || !isCaptchaBlockedAuthError(error) || !email) {
+const requestNativeGoogleIdToken = () => {
+  if (typeof window === 'undefined' || typeof window.ReactNativeWebView?.postMessage !== 'function') {
+    return null;
+  }
+
+  const requestId = typeof window.crypto?.randomUUID === 'function'
+    ? window.crypto.randomUUID()
+    : `google-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    let timeoutId;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('survey-native-google-auth-result', handleResult);
+    };
+    const handleResult = (event) => {
+      const result = event?.detail;
+      if (!result || result.requestId !== requestId) return;
+      cleanup();
+      if (result.cancelled) {
+        resolve({ cancelled: true });
+      } else if (result.ok && typeof result.idToken === 'string' && result.idToken) {
+        resolve({ idToken: result.idToken });
+      } else {
+        reject(new Error(result.error || 'Google sign-in failed.'));
+      }
+    };
+
+    window.addEventListener('survey-native-google-auth-result', handleResult);
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Google sign-in timed out. Please try again.'));
+    }, 120_000);
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: 'survey:google-sign-in',
+      requestId,
+    }));
+  });
+};
+
+const runDevAuthBootstrap = async (email) => {
+  if (!import.meta.env.DEV || !DEV_AUTH_BOOTSTRAP_TOKEN || !devAuthRelayAllows(email)) {
     return null;
   }
   try {
@@ -78,6 +150,11 @@ const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
     }));
     return null;
   }
+};
+
+const runDevAuthBootstrapIfCaptchaBlocked = async (error, email) => {
+  if (!isCaptchaBlockedAuthError(error)) return null;
+  return runDevAuthBootstrap(email);
 };
 
 // In-flight subscription-tier reads keyed by userId. The two BOOT paths
@@ -153,12 +230,22 @@ export const AuthProvider = ({ children }) => {
       return {};
     })();
     return {
-      email: devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL,
+      email: DEV_AUTH_RELAY_ENABLED
+        ? DEV_AUTH_RELAY_EMAIL
+        : devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL,
       password: devOverride.password || import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD,
     };
   };
 
   const runDevAutoLoginIfNeeded = async (session) => {
+    // A manual Sign out is authoritative. Keep both the signed-out state and
+    // any subsequently chosen non-owner session until the user explicitly
+    // signs in as the configured dev owner again.
+    if (isDevAuthAutoLoginSuppressed()) {
+      authDebug('[dev-auto-login] skipped after explicit sign-out');
+      return session;
+    }
+
     const { email: devEmail, password: devPassword } = getDevAutoLoginCredentials();
     authDebug('[dev-auto-login] boot ' + JSON.stringify({
       hasDevEmail: !!devEmail,
@@ -170,7 +257,8 @@ export const AuthProvider = ({ children }) => {
     }));
 
     let needsAutoLogin = !session;
-    if (session && devEmail && devPassword) {
+    const hasConfiguredDevAuth = Boolean(devEmail && (devPassword || devAuthRelayAllows(devEmail)));
+    if (session && hasConfiguredDevAuth) {
       const cachedEmail = session?.user?.email;
       if (cachedEmail && cachedEmail.toLowerCase() !== devEmail.toLowerCase()) {
         authDebug('[dev-auto-login] cached session is for a different user, overriding ' + JSON.stringify({
@@ -186,11 +274,21 @@ export const AuthProvider = ({ children }) => {
 
     authDebug('[dev-auto-login] decision ' + JSON.stringify({
       needsAutoLogin,
-      willAttemptSignIn: needsAutoLogin && !!devEmail && !!devPassword
+      willAttemptSignIn: needsAutoLogin && hasConfiguredDevAuth
     }));
     if (!needsAutoLogin) return session;
 
-    if (devEmail && devPassword) {
+    if (devAuthRelayAllows(devEmail)) {
+      const bootstrapSession = await runDevAuthBootstrap(devEmail);
+      if (bootstrapSession) {
+        authDebug('[dev-auto-login] owner relay OK ' + JSON.stringify({
+          userId: bootstrapSession?.user?.id || null,
+          email: bootstrapSession?.user?.email || null
+        }));
+        return bootstrapSession;
+      }
+      console.warn('[dev-auto-login] owner relay failed; check ~/.config/survey/dev-auth.env and restart Vite.');
+    } else if (devEmail && devPassword) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: devEmail,
@@ -455,7 +553,15 @@ export const AuthProvider = ({ children }) => {
       ...(captchaToken ? { options: { captchaToken } } : {}),
     });
 
-    if (error) throw error;
+    if (error) {
+      const bootstrapSession = await runDevAuthBootstrapIfCaptchaBlocked(error, email);
+      if (bootstrapSession) {
+        setDevAuthAutoLoginSuppressed(false);
+        return { session: bootstrapSession, user: bootstrapSession.user };
+      }
+      throw error;
+    }
+    if (devAuthRelayAllows(email)) setDevAuthAutoLoginSuppressed(false);
     return data;
   };
 
@@ -465,10 +571,26 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
+    const nativeCredential = requestNativeGoogleIdToken();
+    if (nativeCredential) {
+      const result = await nativeCredential;
+      if (result.cancelled) return result;
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: result.idToken,
+      });
+      if (error) throw error;
+      return data;
+    }
+
     // For Electron, use a proper redirect URL
     // In Electron, window.location.origin might be file:// which doesn't work for OAuth
     // Use the current window location or a custom protocol
     let redirectTo = window.location.origin;
+    if (/^\/mobile(?:\/|$)/.test(window.location.pathname)) {
+      redirectTo = `${window.location.origin}/mobile`;
+    }
     
     // If we're in Electron (detected by checking for electronAPI)
     if (window.electronAPI) {
@@ -513,6 +635,10 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
+    // Persist before the network call and reload. Otherwise the dev relay sees
+    // an empty session on the next boot and immediately signs the owner back in.
+    setDevAuthAutoLoginSuppressed(true);
+
     try {
       // Try to sign out on the server
       await supabase.auth.signOut();
@@ -529,6 +655,36 @@ export const AuthProvider = ({ children }) => {
 
     // Refresh the page to clear cached user documents, projects, and templates
     window.location.reload();
+  };
+
+  // Disconnect an optional OAuth identity without signing the Survey account
+  // out. Supabase deliberately refuses to unlink the final identity because
+  // that would leave the user with no way back into the account.
+  const unlinkProvider = async (provider) => {
+    if (!isSupabaseAvailable()) throw new Error('Supabase is not configured');
+    const nextUser = await unlinkOAuthProvider({
+      auth: supabase.auth,
+      user: userRef.current,
+      provider,
+    });
+    userRef.current = nextUser;
+    setUser(nextUser);
+    return nextUser;
+  };
+
+  const deleteAccount = async () => {
+    if (!isSupabaseAvailable()) throw new Error('Supabase is not configured');
+    setDevAuthAutoLoginSuppressed(true);
+    const data = await requestAccountDeletion(supabase.functions);
+
+    // The server has removed the Auth user. Clear the local refresh token even
+    // when GoTrue can no longer accept a normal sign-out for that deleted user.
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* local state below is authoritative */ }
+    userRef.current = null;
+    setUser(null);
+    setSession(null);
+    window.location.reload();
+    return data;
   };
 
   // Resend the signup confirmation email (rate-limited server-side; the
@@ -617,6 +773,8 @@ export const AuthProvider = ({ children }) => {
     signInWithGoogle,
     signInWithSSO,
     signOut,
+    unlinkProvider,
+    deleteAccount,
     resendConfirmation,
     resetPassword,
     updatePassword,

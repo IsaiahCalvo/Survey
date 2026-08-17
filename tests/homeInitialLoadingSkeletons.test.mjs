@@ -7,6 +7,7 @@ import { isScopedRequestCurrent } from '../src/hooks/scopedRequestGuard.js';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const DASHBOARD = read('../src/Dashboard.jsx');
 const HUB = read('../src/home/SurveyHub.jsx');
+const HUB_SHELL = read('../src/home/HubShell.jsx');
 const SKELETONS = read('../src/home/HubLoadingSkeletons.jsx');
 const CSS = read('../src/home/hub.css');
 const PREVIEW = read('../src/home/HubPreview.jsx');
@@ -51,6 +52,23 @@ test('home skeletons appear only during an empty first load, never a later refet
   assert.match(HUB, /templatesInitialLoading\s*\?\s*\(/);
 });
 
+test('failed first loads render retryable tab errors instead of false empty states', () => {
+  for (const name of [
+    'documentsLoadError',
+    'projectsLoadError',
+    'templatesLoadError',
+    'onRetryDocuments',
+    'onRetryProjects',
+    'onRetryTemplates',
+  ]) {
+    assert.match(DASHBOARD, new RegExp(name));
+    assert.match(HUB, new RegExp(name));
+  }
+  assert.match(HUB, /role="alert"/);
+  assert.match(HUB, />Try again</);
+  assert.match(DATABASE_HOOKS, /setError\(null\)/);
+});
+
 test('a late request from an old user or project cannot replace the current scope', () => {
   const requestA = { requestId: 1, requestScopeKey: 'user-a:project-a' };
   const requestB = { requestId: 2, requestScopeKey: 'user-b:project-b' };
@@ -85,11 +103,15 @@ test('a late request from an old user or project cannot replace the current scop
   assert.match(DATABASE_HOOKS, /setLoadedTemplateScopeKey\(requestScopeKey\)/);
 });
 
-test('lazy tab loading never blanks the home screen', () => {
-  assert.doesNotMatch(HUB, /<Suspense fallback=\{null\}>[\s\S]{0,120}<ProjectsFolderTree/);
-  assert.doesNotMatch(HUB, /<Suspense fallback=\{null\}>[\s\S]{0,120}<TemplatesEditor/);
-  assert.match(HUB, /fallback=\{<HubLoadingSkeletons[^>]*tab="projects"/);
-  assert.match(HUB, /fallback=\{<HubLoadingSkeletons[^>]*tab="templates"/);
+test('primary tab navigation never waits on a first-visit code split', () => {
+  assert.match(HUB, /import ProjectsFolderTree from '\.\/ProjectsFolderTree'/);
+  assert.match(HUB, /import TemplatesEditor from '\.\/TemplatesEditor'/);
+  assert.doesNotMatch(HUB, /lazy\(\(\) => import\('\.\/ProjectsFolderTree'\)\)/);
+  assert.doesNotMatch(HUB, /lazy\(\(\) => import\('\.\/TemplatesEditor'\)\)/);
+  assert.match(HUB, /const navigateToTab = \(nextTab\) => \{[\s\S]*?startTransition\(\(\) => setTab\(nextTab\)\)/);
+  assert.match(HUB, /const common = \{ onNav: navigateToTab/);
+  const shellFrameEffect = HUB_SHELL.slice(HUB_SHELL.indexOf('export const HubShell'));
+  assert.match(shellFrameEffect, /useLayoutEffect\(\(\) => \{[\s\S]*?document\.documentElement\.classList\.add\(pageClass\)/);
 });
 
 test('skeletons mirror real desktop and mobile row geometry', () => {
@@ -107,8 +129,10 @@ test('skeletons mirror real desktop and mobile row geometry', () => {
   assert.match(SKELETONS, /hub-loading-project-team/);
   assert.match(SKELETONS, /hub-loading-template-content/);
   assert.match(SKELETONS, /hub-loading-entities-rail/);
-  assert.match(SKELETONS, /projects-mobile-browser-label/);
-  assert.match(SKELETONS, /templates-mobile-label/);
+  assert.doesNotMatch(SKELETONS, /projects-mobile-browser-label hub-loading-mobile-label/);
+  assert.doesNotMatch(SKELETONS, /templates-mobile-label hub-loading-mobile-label/);
+  assert.match(CSS, /--mobile-list-card-h:\s*64px/);
+  assert.match(CSS, /\.survey-hub \.templates-editor-body\s*\{[\s\S]*?padding:\s*8px 10px 10px !important/);
   assert.match(CSS, /\.survey-hub \.hub-loading-document-row\s*\{[\s\S]*?height:\s*50px/);
   assert.match(CSS, /\.survey-hub \.hub-loading-project-columns\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 148px/);
   assert.match(CSS, /\.survey-hub \.hub-loading-project-header\s*\{[\s\S]*?min-height:\s*65px/);

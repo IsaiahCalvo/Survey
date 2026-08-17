@@ -9,9 +9,11 @@
  * attempts and dispatches a `crdt:manual-retry-failed` window event on
  * exhaustion. Returns null when `enabled` is false (local-only/free tier).
  */
-import { useState, useRef } from 'react';
-import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
+import { useMemo, useState, useRef } from 'react';
+import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 import Spinner from './Spinner';
+import Icon from '../Icons';
+import DismissBarrier from './DismissBarrier';
 
 /**
  * Cloud sync status indicator.
@@ -35,10 +37,14 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   // (e.g. test seam short-circuit). Without this the chip looks broken on click.
   // Feedback 2026-04-29 from UAT log inspection.
   const [manualSyncing, setManualSyncing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const manualTimerRef = useRef(null);
+  const rootRef = useRef(null);
+  const dismissInsideRefs = useMemo(() => [rootRef], []);
 
   if (!enabled) return null;
-  const { state, label } = getSyncStatusViewModel(status, queueSize, manualSyncing);
+  const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing);
+  const compactMessage = getCompactSyncStatusMessage(status, queueSize);
 
   const colors = {
     synced:  '#2bbd7e',
@@ -51,7 +57,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   // state. Even when "Up to date", a user typing rapidly may want to manually
   // confirm a flush rather than wait for the auto-debounce.
   const canRetry = typeof onRetry === 'function';
-  const retryLabel = canRetry && !manualSyncing ? `${label} · Click to sync now` : label;
+  const accessibleLabel = `${label}. ${detail} ${retryLabel}`.trim();
 
   // UX: retry for up to ~6 seconds with exponential backoff (immediate, +1s, +2s,
   // +3s = max 4 attempts). Spinner stays orange the whole time. On success the
@@ -102,22 +108,95 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
     setManualSyncing(false);
   };
 
-  return compact
-    ? <CompactSyncStatusChip state={state} label={retryLabel} color={color} onRetry={canRetry ? handleManualClick : null} />
-    : <ExpandedSyncStatusChip state={state} label={retryLabel} color={color} onRetry={canRetry ? handleManualClick : null} />;
+  const handlePrimaryAction = () => {
+    if (state === 'synced') {
+      setDetailsOpen(false);
+      void handleManualClick();
+      return;
+    }
+    setDetailsOpen((open) => !open);
+  };
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <DismissBarrier
+        active={detailsOpen}
+        insideRefs={dismissInsideRefs}
+        onDismiss={() => setDetailsOpen(false)}
+      />
+      {compact
+        ? <CompactSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />
+        : <ExpandedSyncStatusChip state={state} label={label} accessibleLabel={accessibleLabel} color={color} detailsOpen={detailsOpen} onActivate={handlePrimaryAction} />}
+      {detailsOpen && state !== 'synced' && (
+        <div
+          id="sync-status-details"
+          className="sync-status-details"
+          role="dialog"
+          aria-label="Sync status details"
+          style={{
+            position: 'absolute',
+            left: compact ? '36px' : '50%',
+            bottom: compact ? '-12px' : 'calc(100% + 8px)',
+            transform: compact ? undefined : 'translateX(-50%)',
+            width: 'min(320px, calc(100vw - 32px))',
+            padding: '7px 8px 7px 10px',
+            borderRadius: '10px',
+            border: '1px solid #343b49',
+            background: '#181c24',
+            color: '#e8e2d4',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+            zIndex: 3000,
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span data-sync-message style={{ minWidth: 0, flex: 1, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{compactMessage}</span>
+          {canRetry && (
+            <button
+              type="button"
+              aria-label="Retry now"
+              title="Retry now"
+              onClick={() => {
+                setDetailsOpen(false);
+                void handleManualClick();
+              }}
+              style={{
+                width: '28px',
+                height: '28px',
+                flex: '0 0 28px',
+                display: 'grid',
+                placeItems: 'center',
+                border: 0,
+                borderRadius: '50%',
+                background: 'transparent',
+                color,
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
+              <Icon name="retry" size={17} color="currentColor" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function CompactSyncStatusChip({ state, label, color, onRetry }) {
+function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onActivate }) {
   const [hover, setHover] = useState(false);
-  const isClickable = typeof onRetry === 'function';
   return (
     <div
-      role={isClickable ? 'button' : 'status'}
+      role="button"
       aria-live="polite"
-      aria-label={isClickable ? label : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      onClick={isClickable ? () => onRetry() : undefined}
-      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRetry(); } } : undefined}
+      aria-label={accessibleLabel}
+      aria-expanded={detailsOpen}
+      aria-controls="sync-status-details"
+      tabIndex={0}
+      onClick={onActivate}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -128,7 +207,7 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
         width: '28px',
         height: '28px',
         color,
-        cursor: isClickable ? 'pointer' : 'default'
+        cursor: 'pointer'
       }}
     >
       {state === 'syncing' ? (
@@ -141,7 +220,7 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
           background: 'currentColor'
         }} />
       )}
-      {hover && (
+      {hover && !detailsOpen && (
         <div style={{
           position: 'absolute',
           left: '100%',
@@ -166,16 +245,17 @@ function CompactSyncStatusChip({ state, label, color, onRetry }) {
   );
 }
 
-function ExpandedSyncStatusChip({ state, label, color, onRetry }) {
-  const isClickable = typeof onRetry === 'function';
+function ExpandedSyncStatusChip({ state, label, accessibleLabel, color, detailsOpen, onActivate }) {
   return (
     <div
-      role={isClickable ? 'button' : 'status'}
+      role="button"
       aria-live="polite"
-      aria-label={isClickable ? label : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      onClick={isClickable ? () => onRetry() : undefined}
-      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRetry(); } } : undefined}
+      aria-label={accessibleLabel}
+      aria-expanded={detailsOpen}
+      aria-controls="sync-status-details"
+      tabIndex={0}
+      onClick={onActivate}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
       title={label}
       style={{
         display: 'inline-flex',
@@ -190,7 +270,7 @@ function ExpandedSyncStatusChip({ state, label, color, onRetry }) {
         fontWeight: 500,
         userSelect: 'none',
         whiteSpace: 'nowrap',
-        cursor: isClickable ? 'pointer' : 'default'
+        cursor: 'pointer'
       }}
     >
       {state === 'syncing' ? (

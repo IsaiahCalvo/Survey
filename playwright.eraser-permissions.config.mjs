@@ -1,20 +1,10 @@
 import { defineConfig } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { loadEnv } from 'vite';
-
-function mainRepositoryRoot() {
-  const commonGitDir = execFileSync(
-    'git',
-    ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-    { encoding: 'utf8' },
-  ).trim();
-  return commonGitDir.endsWith('/.git') ? dirname(commonGitDir) : process.cwd();
-}
 
 const envRoot = process.env.ERASER_PERMISSION_E2E_ENV_ROOT
   ? resolve(process.env.ERASER_PERMISSION_E2E_ENV_ROOT)
-  : mainRepositoryRoot();
+  : process.cwd();
 const testEnv = loadEnv('test', envRoot, '');
 const required = [
   'SUPABASE_TEST_URL',
@@ -30,8 +20,11 @@ for (const name of required) {
 }
 
 const testHost = new URL(testEnv.SUPABASE_TEST_URL).hostname;
-if (!['localhost', '127.0.0.1', 'zgdkyslxbkusexmkfvgd.supabase.co'].includes(testHost)) {
-  throw new Error(`[ERASER_E2E_INFRA] Refusing non-test Supabase host "${testHost}".`);
+if (testEnv.SUPABASE_TEST_TARGET !== 'main-isolated') {
+  throw new Error('[ERASER_E2E_INFRA] SUPABASE_TEST_TARGET must equal main-isolated.');
+}
+if (!['localhost', '127.0.0.1', 'cvamwtpsuvxvjdnotbeg.supabase.co'].includes(testHost)) {
+  throw new Error(`[ERASER_E2E_INFRA] Refusing non-main Survey host "${testHost}".`);
 }
 
 const baseUrl = process.env.ERASER_E2E_BASE_URL || 'http://127.0.0.1:5178';
@@ -41,6 +34,7 @@ Object.assign(process.env, {
   SUPABASE_TEST_URL: testEnv.SUPABASE_TEST_URL,
   SUPABASE_TEST_ANON_KEY: testEnv.SUPABASE_TEST_ANON_KEY,
   SUPABASE_TEST_SERVICE_KEY: testEnv.SUPABASE_TEST_SERVICE_KEY,
+  SUPABASE_TEST_TARGET: testEnv.SUPABASE_TEST_TARGET,
 });
 
 export default defineConfig({
@@ -67,6 +61,9 @@ export default defineConfig({
       VITE_SUPABASE_URL: testEnv.SUPABASE_TEST_URL,
       VITE_SUPABASE_ANON_KEY: testEnv.SUPABASE_TEST_ANON_KEY,
       SUPABASE_SERVICE_ROLE_KEY: testEnv.SUPABASE_TEST_SERVICE_KEY,
+      SURVEY_DEV_AUTH_DISABLED: '1',
+      VITE_DEV_AUTO_LOGIN_EMAIL: '',
+      VITE_DEV_AUTO_LOGIN_PASSWORD: '',
     },
   },
 });

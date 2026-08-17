@@ -10,10 +10,11 @@ import {
     EMAIL_FINE_STYLE as FINE,
     EMAIL_LIST_STYLE as LIST,
 } from '../_shared/emailLayout.ts';
+import { resolveBrevoApiKey } from './config.ts';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.
-const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
+const BREVO_API_KEY = resolveBrevoApiKey(Deno.env.get('BREVO_API_KEY'));
 const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
 
 // Authorize the caller before sending anything. Two legitimate callers exist:
@@ -70,6 +71,19 @@ Deno.serve(async (req) => {
             JSON.stringify({ error: 'Unauthorized' }),
             {
                 status: 401,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+        );
+    }
+
+    // Fail closed before parsing or attempting delivery. Never coerce a missing
+    // secret into an invalid header and never log the secret value.
+    if (!BREVO_API_KEY) {
+        console.error('[send-email] BREVO_API_KEY is not configured');
+        return new Response(
+            JSON.stringify({ error: 'Email delivery is temporarily unavailable' }),
+            {
+                status: 503,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             }
         );

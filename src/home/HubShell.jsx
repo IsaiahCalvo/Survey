@@ -1,8 +1,14 @@
 /* Survey Hub — shared shell + small presentational components.
    Ported from the Claude Design prototype (survey-hub/shell.jsx). All markup is
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
-import { useState, useRef, useEffect, useContext, createContext } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getContentTypeIconColor } from '../utils/contentTypeColors.js';
+import DismissBarrier from '../components/DismissBarrier';
+
+const HUB_BUILD_STAMP = (
+  typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
+) || 'unknown';
 
 /* Friendly per-tier label used in the bottom-left profile chip. Maps the
    raw plan/tier string from AuthContext to the short capitalised form. The
@@ -25,8 +31,15 @@ const tierLabelFromAuth = (tier) => {
 export const HubChromeContext = createContext({});
 
 /* Inline SVG icon set used across the hub. */
-export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
-  const s = { width: size, height: size, fill: 'none', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
+const HUB_CONTENT_TYPE_BY_ICON = {
+  doc: 'document',
+  folder: 'project',
+  template: 'template',
+};
+
+export const Icon = ({ name, size = 14, color }) => {
+  const resolvedColor = color || getContentTypeIconColor(HUB_CONTENT_TYPE_BY_ICON[name], 'currentColor');
+  const s = { width: size, height: size, fill: 'none', stroke: resolvedColor, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
   switch (name) {
     case 'doc': return <svg viewBox="0 0 24 24" style={s}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 12h8"/><path d="M8 15h8"/><path d="M8 18h5"/></svg>;
     case 'folder': return <svg viewBox="0 0 24 24" style={s}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>;
@@ -98,18 +111,38 @@ export const ProgressBar = ({ pct, color = 'var(--gold)' }) => (
 );
 
 /* Search field — visual only at this layer; callers wire value/onChange. */
-export const Search = ({ placeholder = 'Search…', width = 240, value, onChange }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 6, padding: '5px 9px', width, fontSize: 11.5, height: 28, boxSizing: 'border-box' }}>
-    <Icon name="search" size={13} color="var(--ink-200)" />
-    <input
-      value={value || ''}
-      onChange={(e) => onChange && onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0 }}
-    />
-    <span className="kbd">⌘K</span>
-  </div>
-);
+export const Search = ({ placeholder = 'Search…', width = 240, value, onChange, dismissActionSelector = '' }) => {
+  const rootRef = useRef(null);
+  const inputRef = useRef(null);
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <>
+      <DismissBarrier
+        active={focused}
+        insideRefs={[rootRef]}
+        passthroughSelector={dismissActionSelector}
+        onDismiss={() => {
+          inputRef.current?.blur();
+          setFocused(false);
+        }}
+      />
+      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 6, padding: '5px 9px', width, fontSize: 11.5, height: 28, boxSizing: 'border-box' }}>
+        <Icon name="search" size={13} color="var(--ink-200)" />
+        <input
+          ref={inputRef}
+          value={value || ''}
+          onChange={(e) => onChange && onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0 }}
+        />
+        <span className="kbd">⌘K</span>
+      </div>
+    </>
+  );
+};
 
 /* Shared empty state — icon + headline + one primary action.
    (Design decision 4: every empty tab surface uses this exact shape.)
@@ -131,7 +164,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
 export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
-      <Icon name={icon} size={20} color="var(--ink-200)" />
+      <Icon name={icon} size={20} />
     </div>
     {description ? (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 320 }}>
@@ -155,6 +188,7 @@ const mobileNavModeFromUrl = () => {
   if (typeof window === 'undefined') return 'tabs';
   const explicit = new URLSearchParams(window.location.search).get('mobileNav');
   if (explicit === 'rail' || explicit === 'tabs') return explicit;
+  if (/^\/mobile(?:\/|$)/.test(window.location.pathname)) return 'tabs';
   return window.Capacitor?.isNativePlatform?.() ? 'tabs' : 'rail';
 };
 
@@ -172,7 +206,7 @@ const isExpoNativeShell = () => {
    pinned at the bottom of the left rail, so putting it in the desktop menu too
    would be the same destination offered twice. */
 const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) => {
-  const { user, onSettings, onSignOut } = useContext(HubChromeContext);
+  const { user, onSettings, onSignOut, onSignIn } = useContext(HubChromeContext);
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
   const auth = useAuth();
@@ -182,14 +216,25 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
-    const onDoc = (e) => {
-      if (!ref.current || ref.current.contains(e.target)) return;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
       setOpen(false);
       setConfirmSignOut(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
+
+  if (!user) {
+    return (
+      <div className="who who-guest">
+        <button type="button" className="profile-signin" onClick={() => onSignIn && onSignIn()}>
+          Sign in
+        </button>
+      </div>
+    );
+  }
+
   const name = user?.name || user?.email?.split('@')[0] || userName;
   const email = user?.email || '';
   const initials = initialsOf(name);
@@ -197,6 +242,9 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
   return (
     <div className="who" ref={ref} style={{ position: 'relative' }}>
       <button
+        type="button"
+        aria-label="Open account menu"
+        aria-expanded={open}
         onClick={() => setOpen((o) => {
           const next = !o;
           if (!next) setConfirmSignOut(false);
@@ -212,46 +260,59 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
         </div>
       </button>
       {open && (
-        <div style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 214, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-            <Avatar initials={initials} size={34} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-              {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
+        <>
+          <div
+            className="profile-menu-scrim"
+            aria-hidden="true"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setOpen(false);
+              setConfirmSignOut(false);
+            }}
+          />
+          <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
+              <Avatar initials={initials} size={34} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
+              </div>
+            </div>
+            <div style={{ height: 1, background: 'var(--ink-500)' }} />
+            <div className="profile-menu-actions" style={{ padding: 4 }}>
+              {showArchive && (
+                <button
+                  className={tab === 'archive' ? 'active' : ''}
+                  style={{ ...itemStyle, color: tab === 'archive' ? 'var(--gold)' : itemStyle.color }}
+                  onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
+                >
+                  <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
+                </button>
+              )}
+              <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
+                <Icon name="settings" size={15} color="var(--ink-200)" />Settings
+              </button>
+              {confirmSignOut ? (
+                <div className="profile-signout-confirm">
+                  <div className="profile-signout-copy">Sign out of Survey?</div>
+                  <div className="profile-signout-buttons">
+                    <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
+                    <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign out</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
+                  <Icon name="signout" size={15} color="#d95a56" />Sign out
+                </button>
+              )}
+            </div>
+            <div className="profile-menu-build-footer">
+              <span>Survey App version 1.0</span>
+              <span>Build {HUB_BUILD_STAMP}</span>
             </div>
           </div>
-          <div style={{ height: 1, background: 'var(--ink-500)' }} />
-          <div className="profile-menu-actions" style={{ padding: 4 }}>
-            {showArchive && (
-              /* Same key, icon and label as the desktop rail entry, so it is
-                 recognisably the same destination — only the doorway moves. */
-              <button
-                className={tab === 'archive' ? 'active' : ''}
-                style={{ ...itemStyle, color: tab === 'archive' ? 'var(--gold)' : itemStyle.color }}
-                onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
-              >
-                <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
-              </button>
-            )}
-            <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
-              <Icon name="settings" size={15} color="var(--ink-200)" />Settings
-            </button>
-            {confirmSignOut ? (
-              <div className="profile-signout-confirm">
-                <div className="profile-signout-copy">Sign out of Survey?</div>
-                <div className="profile-signout-buttons">
-                  <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-                  <button type="button" className="danger" onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>Sign out</button>
-                </div>
-              </div>
-            ) : (
-              <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
-                <Icon name="signout" size={15} color="#d95a56" />Sign out
-              </button>
-            )}
-          </div>
-          <div style={{ borderTop: '1px solid var(--ink-500)', padding: '7px 12px', fontSize: 10, color: 'var(--ink-300)' }}>Survey App v1.0</div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -328,12 +389,16 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
   );
 };
 
-/* Sidebar + header frame. The three tabs are always rendered so the chrome
-   feels permanent; only the body content (children) changes per tab. */
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false }) => {
+/* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
+   this component owns the shared viewport and chrome contract for each tab. */
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined }) => {
   const expoNativeShell = isExpoNativeShell();
 
-  useEffect(() => {
+  // These classes define the mobile viewport itself. A passive effect can run
+  // after the browser paints, exposing one unframed page between tab shells.
+  // Layout effects hand the classes from the old shell to the new one before
+  // paint, so navigation has no white/blank frame.
+  useLayoutEffect(() => {
     const root = typeof document !== 'undefined' ? document.getElementById('root') : null;
     const pageClass = expoNativeShell ? 'survey-hub-native-frame' : 'survey-hub-mobile-scroll-page';
     const rootClass = expoNativeShell ? 'survey-hub-native-root' : 'survey-hub-mobile-scroll-root';
@@ -396,7 +461,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
           </nav>
           <ProfileMenu userName={userName} userMeta={userMeta} />
         </aside>
-        <main className="main paper">
+        <main ref={mobileSwipeSurfaceRef} className="main paper">
           <div className="header">
             <div className="header-title-block">
               <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />

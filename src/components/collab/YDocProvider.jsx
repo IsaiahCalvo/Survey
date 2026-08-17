@@ -1458,8 +1458,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // live sync to be offline, so the banner would be noise that wrongly competes with the bottom-left
   // save indicator (the user's work still saves via the cloud-save path). Resolve "is this document
   // shared" from document_collaborators — a DB fact, independent of the Y.Doc
-  // transport. Unknown stays fail-safe (never falsely green) until the query
-  // resolves. Realtime row changes and a bounded poll keep this current when a
+  // transport. Unknown stays in the neutral checking state until the query
+  // resolves; it must not create a false red failure for a private document.
+  // Realtime row changes and a bounded poll keep this current when a
   // private document is shared or unshared while it remains open.
   useEffect(() => {
     if (!docId) { setIsDocShared(false); return undefined; }
@@ -1556,7 +1557,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // EXCEPTION: 'transport_offline' (live realtime/collaboration down) only surfaces when the document
   // is actually shared (isDocShared) — otherwise there is nothing to live-sync and it would be noise.
   const showBanner = storageState && storageState.code !== 'ok' && !bannerDismissed
-    && (storageState.code !== 'transport_offline' || isDocShared !== false);
+    && (storageState.code !== 'transport_offline' || isDocShared === true);
 
   return (
     <YDocContext.Provider value={value}>

@@ -19,6 +19,15 @@ import PasswordRequirements from './PasswordRequirements';
 import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
+import {
+  buildBillingReturnUrl,
+  canUnlinkProvider,
+  openExternalDestination,
+  resolveSubscriptionQuery,
+} from '../utils/accountPlatform';
+
+const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
+const SUBSCRIPTION_TIMEOUT_MS = 10_000;
 
 // Static brand logos — hoisted so they aren't recreated on every render.
 const MICROSOFT_LOGO_SVG = (
@@ -40,7 +49,18 @@ const GOOGLE_LOGO_SVG = (
 );
 
 export const AccountSettings = ({ isOpen, onClose }) => {
-  const { user, updateProfile, updatePassword, signIn, signOut, signInWithGoogle, resetPassword, refreshSubscriptionTier } = useAuth();
+  const {
+    user,
+    updateProfile,
+    updatePassword,
+    signIn,
+    signOut,
+    signInWithGoogle,
+    unlinkProvider,
+    deleteAccount,
+    resetPassword,
+    refreshSubscriptionTier,
+  } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -71,7 +91,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   // Subscription state
   const [subscription, setSubscription] = useState(null);
   const [loadingSubscription, setLoadingSubscription] = useState(true);
+  const [subscriptionError, setSubscriptionError] = useState('');
   const [billingPeriod, setBillingPeriod] = useState('monthly');
+  const subscriptionRequestRef = useRef(0);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -103,28 +125,32 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   // Fetch subscription data
   const fetchSubscription = async () => {
-    if (!user) return;
-
-    setLoadingSubscription(true);
-    try {
-      const { data, error } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching subscription:', error);
-        // User might not have a subscription row yet (shouldn't happen after migration)
-        setSubscription({ tier: 'free', status: 'active' });
-      } else {
-        setSubscription(data);
-      }
-    } catch (err) {
-      console.error('Error:', err);
-      setSubscription({ tier: 'free', status: 'active' });
-    } finally {
+    if (!user) {
       setLoadingSubscription(false);
+      return;
+    }
+
+    const requestId = ++subscriptionRequestRef.current;
+    setLoadingSubscription(true);
+    setSubscriptionError('');
+    try {
+      const request = supabase
+          .from('user_subscriptions')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      const data = await resolveSubscriptionQuery(
+        request,
+        SUBSCRIPTION_TIMEOUT_MS,
+      );
+      if (requestId !== subscriptionRequestRef.current) return;
+      setSubscription(data);
+    } catch (err) {
+      if (requestId !== subscriptionRequestRef.current) return;
+      console.error('Error:', err);
+      setSubscriptionError(err?.message || 'Could not load subscription status.');
+    } finally {
+      if (requestId === subscriptionRequestRef.current) setLoadingSubscription(false);
     }
   };
 
@@ -133,6 +159,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     if (isOpen && user) {
       fetchSubscription();
     }
+    return () => { subscriptionRequestRef.current += 1; };
   }, [isOpen, user]);
 
   // Refetch subscription when window regains focus (user returns from Stripe checkout)
@@ -178,7 +205,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     }
   }, [isMSAuthenticated, msAccount, user, updateProfile]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !user) return null;
 
   const handleSaveChanges = async (e) => {
     e.preventDefault();
@@ -274,7 +301,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         return;
       }
 
-      // Send email notification about changed fields
+      // Send email notification about changed fields. The success copy below
+      // only claims delivery when the function actually accepted the request.
+      let notificationSent = false;
       try {
         const session = await getSupabaseSession('AccountSettings.profileNotification');
 
@@ -293,6 +322,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
           if (!response.ok) {
             console.error('Failed to send notification email');
+          } else {
+            notificationSent = true;
           }
         }
       } catch (emailError) {
@@ -301,7 +332,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       }
 
       const changedText = changedFields.join(' and ');
-      setMessage(`Your ${changedText} has been updated successfully! A confirmation email has been sent.`);
+      setMessage(notificationSent
+        ? `Your ${changedText} has been updated successfully. A confirmation email has been sent.`
+        : `Your ${changedText} has been updated successfully.`);
 
       // Reset form
       setIsEditing(false);
@@ -329,6 +362,19 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     resetCaptcha();
   };
 
+  const handleDeleteAccount = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      await deleteAccount();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to delete account');
+    } finally {
+      setLoading(false);
+    }
+  };
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -659,6 +705,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
                     Loading subscription...
                   </div>
+                ) : subscriptionError ? (
+                  <div role="alert" style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: '13px' }}>
+                    <div>{subscriptionError}</div>
+                    <button type="button" className="account-btn-secondary" onClick={fetchSubscription} style={{ marginTop: 10 }}>
+                      Retry
+                    </button>
+                  </div>
                 ) : (
                   <>
                     {/* Canceled Subscription Banner */}
@@ -725,14 +778,12 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         <button
                           onClick={async () => {
                             try {
-                              const { data, error } = await supabase.functions.invoke('create-portal-session');
+                              const { data, error } = await supabase.functions.invoke('create-portal-session', {
+                                body: { returnUrl: buildBillingReturnUrl() },
+                              });
                               if (error) throw error;
                               if (data?.url) {
-                                if (window.electronAPI?.openExternal) {
-                                  await window.electronAPI.openExternal(data.url);
-                                } else {
-                                  window.open(data.url, '_blank');
-                                }
+                                await openExternalDestination(data.url);
                               }
                             } catch (err) {
                               console.error('Error opening billing portal:', err);
@@ -953,7 +1004,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           ) : (
                             <button
                               className="account-btn-secondary"
-                              onClick={() => window.open('mailto:support@yourcompany.com?subject=Enterprise Plan Inquiry', '_blank')}
+                              onClick={() => window.open(`mailto:${SURVEY_SUPPORT_EMAIL}?subject=Enterprise Plan Inquiry`, '_blank')}
                             >
                               Contact sales
                             </button>
@@ -1057,7 +1108,24 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <div className="account-connected-account-actions">
                     <button
                       className={user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? "account-btn-secondary" : "account-btn-primary"}
-                      onClick={user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? signOut : signInWithGoogle}
+                      onClick={async () => {
+                        const googleConnected = Boolean(user?.app_metadata?.provider === 'google'
+                          || user?.identities?.some((id) => id.provider === 'google'));
+                        try {
+                          if (!googleConnected) {
+                            await signInWithGoogle();
+                            return;
+                          }
+                          const check = canUnlinkProvider(user, 'google');
+                          if (!check.allowed && check.reason === 'last-sign-in-method') {
+                            throw new Error('Add another sign-in method before disconnecting Google.');
+                          }
+                          await unlinkProvider('google');
+                          setMessage('Google has been disconnected.');
+                        } catch (err) {
+                          setError(err?.message || 'Failed to update Google connection.');
+                        }
+                      }}
                     >
                       {user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? 'Disconnect' : 'Connect'}
                     </button>

@@ -41,6 +41,9 @@
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
+import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
+import useModalFocusTrap from './useModalFocusTrap';
 import {
   closestCenter,
   DndContext,
@@ -89,6 +92,22 @@ import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js'
 import { closeButtonStyle, miniButtonStyle, miniSelectButtonStyle, moreButtonStyle } from './hubControls';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
 import './TemplatesEditor.css';
+import DismissBarrier from '../components/DismissBarrier';
+
+/* Desktop/web already use this quiet chevron for category disclosure. Keep
+   one shared glyph so mobile cannot drift to a different arrow treatment. */
+const CategoryDisclosureGlyph = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 18 18"
+    width="18"
+    height="18"
+    fill="none"
+    style={{ display: 'block', flex: 'none' }}
+  >
+    <path d="M6.75 3.75 12 9l-5.25 5.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
 const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
@@ -298,7 +317,7 @@ function SortableModuleTab({
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
+      {...(!isRenaming ? attributes : {})}
       {...(!isRenaming ? listeners : {})}
       data-module-tab-id={mod.id}
       style={{
@@ -476,17 +495,11 @@ function MoreMenu({ anchorRect, items, onClose }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
-  /* Close on outside click / Escape / scroll — same dismiss feel as the
-     prototype's onMouseLeave, but robust now that it floats over the page. */
+  /* Scrolling invalidates the anchor rectangle. Outside press / Escape are
+     handled by the shared first-gesture dismissal barrier below. */
   useEffect(() => {
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
     window.addEventListener('scroll', onClose, { capture: true, passive: true });
     return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onClose, { capture: true });
     };
   }, [onClose]);
@@ -508,26 +521,31 @@ function MoreMenu({ anchorRect, items, onClose }) {
   if (!anchorRect) return null;
 
   return createPortal(
-    <div
-      ref={ref}
-      className="ed-tpl-menu"
-      style={{
-        minWidth: 150,
-        left: pos ? pos.left : -9999,
-        top: pos ? pos.top : -9999,
-        visibility: pos ? 'visible' : 'hidden',
-      }}
-    >
-      {items.map(({ label, danger, onClick }) => (
-        <button
-          key={label}
-          className={danger ? 'danger' : undefined}
-          onClick={() => { onClick(); onClose(); }}
-        >
-          {label}
-        </button>
-      ))}
-    </div>,
+    <>
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <div
+        ref={ref}
+        className="ed-tpl-menu"
+        role="menu"
+        style={{
+          minWidth: 150,
+          left: pos ? pos.left : -9999,
+          top: pos ? pos.top : -9999,
+          visibility: pos ? 'visible' : 'hidden',
+        }}
+      >
+        {items.map(({ label, danger, onClick }) => (
+          <button
+            key={label}
+            role="menuitem"
+            className={danger ? 'danger' : undefined}
+            onClick={() => { onClick(); onClose(); }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </>,
     document.body,
   );
 }
@@ -552,22 +570,12 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
   const popRef = useRef(null);
   const selected = options.find((o) => o.value === value) || null;
 
-  /* Dismiss on outside click / Escape / scroll — same feel as MoreMenu. */
+  /* Scrolling invalidates the measured popup position. */
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (e) => {
-      if (triggerRef.current && triggerRef.current.contains(e.target)) return;
-      if (popRef.current && popRef.current.contains(e.target)) return;
-      setOpen(false);
-    };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
     const onScroll = () => setOpen(false);
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, [open]);
@@ -585,6 +593,11 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
 
   return (
     <>
+      <DismissBarrier
+        active={open}
+        insideRefs={[triggerRef, popRef]}
+        onDismiss={() => setOpen(false)}
+      />
       <button
         ref={triggerRef}
         type="button"
@@ -664,6 +677,7 @@ export default function TemplatesEditor({
   onCreateTemplate,
   onSaveTemplates,
   onArchiveTemplates,
+  onReloadTemplates,
   onShare,
   /* KAL-44 — host-provided usage count for a checklist item. Returns the
      number of survey markers that have a response keyed under itemId. When
@@ -709,6 +723,7 @@ export default function TemplatesEditor({
      a clean editor). Chaining guarantees dispatch order = write order, so the
      newest payload always lands last. Payloads are snapshotted at dispatch. */
   const saveChainRef = useRef(Promise.resolve());
+  const [persistenceError, setPersistenceError] = useState('');
   const dispatchTemplatesSave = useCallback((payload) => {
     const run = () => Promise.resolve(onSaveTemplates(payload));
     const p = saveChainRef.current.then(run, run);
@@ -720,6 +735,8 @@ export default function TemplatesEditor({
   const [selectedId, setSelected] = useState(() => (initialMobileOpen ? (templates[0]?.id ?? null) : null));
   const [mobileTemplateOpen, setMobileTemplateOpen] = useState(initialMobileOpen);
   const [mobileEntitiesOpen, setMobileEntitiesOpen] = useState(false);
+  const mobileEntitiesModalRef = useRef(null);
+  const mobileEntitiesCloseRef = useRef(null);
   const [templateContentSearch, setTemplateContentSearch] = useState('');
   const [openCat, setOpenCat] = useState(-1);
   const [tplEdit, setTplEdit] = useState(false);
@@ -742,8 +759,11 @@ export default function TemplatesEditor({
   const toggleModSel = (id) => setSelMods((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
+  const pendingCategoryFocusRef = useRef(null);
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity' }
+  const moveModalRef = useRef(null);
+  const moveModalCloseRef = useRef(null);
   /* Move/Copy modal destination picks — destTpl is always meaningful;
      destMod only applies when a Category is being moved. */
   const [moveDestTpl, setMoveDestTpl] = useState(null);
@@ -753,6 +773,42 @@ export default function TemplatesEditor({
   const [borderColors, setBorderColors] = useState({});
   const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
 
+  const closeMobileTemplate = useCallback(() => {
+    setMobileTemplateOpen(false);
+    setMobileEntitiesOpen(false);
+    setTemplateContentSearch('');
+    setOpenColor(null);
+    setCatEdit(false);
+    setEntityEdit(false);
+    setSelCats(new Set());
+    setSelEntities(new Set());
+  }, []);
+  const closeMobileEntities = useCallback(() => {
+    setMobileEntitiesOpen(false);
+    setOpenColor(null);
+    setEntityEdit(false);
+    setSelEntities(new Set());
+  }, []);
+  const closeMoveModal = useCallback(() => setMoveModal(null), []);
+  useModalFocusTrap({
+    active: mobileEntitiesOpen,
+    containerRef: mobileEntitiesModalRef,
+    initialFocusRef: mobileEntitiesCloseRef,
+    onClose: closeMobileEntities,
+  });
+  useModalFocusTrap({
+    active: Boolean(moveModal),
+    containerRef: moveModalRef,
+    initialFocusRef: moveModalCloseRef,
+    onClose: closeMoveModal,
+  });
+  const mobileSwipeSurfaceRef = useRef(null);
+  const captureMobileTemplateList = useMobileEdgeSwipeBack({
+    enabled: mobileTemplateOpen && !mobileEntitiesOpen,
+    onBack: closeMobileTemplate,
+    surfaceRef: mobileSwipeSurfaceRef,
+  });
+
   useEffect(() => {
     if (!modEdit) setModSearch('');
   }, [modEdit]);
@@ -760,8 +816,8 @@ export default function TemplatesEditor({
   /* Rebuild the working copy + colour-picker maps from the templates prop.
      Seeds the maps from each entity's persisted refinements so saved colours
      round-trip, and clears the dirty flag since the copy now matches the host. */
-  const reloadFromProps = useCallback(() => {
-    const next = buildRich(applyTemplateOrderPreference(templates, user), mintId);
+  const applyAuthoritativeTemplates = useCallback((sourceTemplates) => {
+    const next = buildRich(applyTemplateOrderPreference(sourceTemplates, user), mintId);
     const seeded = seedColorMaps(next);
     setRich(next);
     setRoleColors(seeded.roleColors);
@@ -775,7 +831,11 @@ export default function TemplatesEditor({
     setSelMods(new Set());
     setModRename(null);
     setDirty(false);
-  }, [templates, user?.id, user?.email, mintId]);
+    setPersistenceError('');
+  }, [user?.id, user?.email, mintId]);
+  const reloadFromProps = useCallback(() => {
+    applyAuthoritativeTemplates(templates);
+  }, [applyAuthoritativeTemplates, templates]);
   /* BL-23 dirty guard — sync the working copy with the host's templates prop.
      `reloadFromProps`'s useCallback identity changes exactly when
      (templates, user) change, so it doubles as the snapshot key; the guard ref
@@ -911,30 +971,92 @@ export default function TemplatesEditor({
     if (!v) return;
     mutateTpl(tid, (t) => (t.name === v ? t : { ...t, name: v }));
   };
-  const duplicateTemplates = (ids) => {
-    setRich((prev) => {
-      const out = [];
-      prev.forEach((t) => {
-        out.push(t);
-        if (ids.has(t.id)) {
-          out.push({
-            ...t,
-            id: newId('t'),
-            name: `${t.name} copy`,
-            modules: t.modules.map((m) => ({
-              ...m, id: newId('m'),
-              categories: m.categories.map((c) => ({
-                ...c, id: newId('c'),
-                items: c.items.map((it) => ({ ...it, id: newId('i') })),
-              })),
-            })),
-            roster: t.roster.map((r) => ({ ...r, id: newId('e') })),
-          });
-        }
+  const liveEntityStyle = (entity) => {
+    const fill = roleColors[entity.id] || {
+      color: entity.color || '#8c8c8a',
+      opacity: entity.opacity ?? 0.35,
+    };
+    const matched = Object.prototype.hasOwnProperty.call(matchFill, entity.id)
+      ? !!matchFill[entity.id]
+      : !!entity.matchFill;
+    const border = matched
+      ? fill
+      : (borderColors[entity.id] || {
+        color: entity.borderColor || fill.color,
+        opacity: entity.borderOpacity ?? fill.opacity,
       });
-      return out;
+    return {
+      color: fill.color,
+      opacity: fill.opacity,
+      borderColor: border.color,
+      borderOpacity: border.opacity,
+      matchFill: matched,
+    };
+  };
+  const seedClonedEntityStyles = (clones) => {
+    if (!clones.length) return;
+    setRoleColors((prev) => ({
+      ...prev,
+      ...Object.fromEntries(clones.map(({ id, style }) => [id, { color: style.color, opacity: style.opacity }])),
+    }));
+    setBorderColors((prev) => ({
+      ...prev,
+      ...Object.fromEntries(clones.map(({ id, style }) => [id, { color: style.borderColor, opacity: style.borderOpacity }])),
+    }));
+    setMatchFill((prev) => ({
+      ...prev,
+      ...Object.fromEntries(clones.map(({ id, style }) => [id, style.matchFill])),
+    }));
+  };
+  const duplicateTemplates = (ids) => {
+    const next = [];
+    const clonedEntities = [];
+    rich.forEach((t) => {
+      next.push(t);
+      if (ids.has(t.id)) {
+        next.push({
+          ...t,
+          id: newId('t'),
+          name: `${t.name} copy`,
+          modules: t.modules.map((m) => ({
+            ...m, id: newId('m'),
+            categories: m.categories.map((c) => ({
+              ...c, id: newId('c'),
+              items: c.items.map((it) => ({ ...it, id: newId('i') })),
+            })),
+          })),
+          roster: t.roster.map((r) => {
+            const id = newId('e');
+            const style = liveEntityStyle(r);
+            clonedEntities.push({ id, style });
+            return { ...r, ...style, id };
+          }),
+        });
+      }
     });
     markEdited();
+    setRich(next);
+    seedClonedEntityStyles(clonedEntities);
+    if (onSaveTemplates) {
+      const rev = editRevisionRef.current;
+      const req = ++saveReqSeqRef.current;
+      dispatchTemplatesSave(next.map(richToTemplate))
+        .then(() => {
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(false);
+            setPersistenceError('');
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to duplicate templates', err);
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(true);
+            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+          }
+        });
+    } else {
+      setDirty(false);
+    }
   };
   /* The five entities every new template starts with. Same set the hub used to
      seed when the old create-template modal existed (GC / Subcontractor / My
@@ -1022,10 +1144,18 @@ export default function TemplatesEditor({
       const rev = editRevisionRef.current;
       const req = ++saveReqSeqRef.current;
       dispatchTemplatesSave(next.map(richToTemplate))
-        .then(() => { if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(false); })
+        .then(() => {
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(false);
+            setPersistenceError('');
+          }
+        })
         .catch((err) => {
           console.error('Failed to delete templates', err);
-          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(true);
+          if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+            setDirty(true);
+            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+          }
         });
     } else {
       setDirty(false);
@@ -1112,17 +1242,45 @@ export default function TemplatesEditor({
   };
   const mutateOpenModule = (fn) => mutateModuleAt(openMod, fn);
   const addCategoryToModule = (moduleIndex) => {
-    if (!tpl || !orderedMods[moduleIndex]) return;
-    const existing = (orderedMods[moduleIndex].categories || []).map((c) => c.name);
+    if (!tpl) return;
+    const targetIndex = orderedMods[moduleIndex] ? moduleIndex : (orderedMods.length ? 0 : -1);
+    const categoryId = newId('c');
+    if (mobileTemplateOpen) {
+      pendingCategoryFocusRef.current = categoryId;
+      setTemplateContentSearch('');
+    }
+
+    /* A brand-new template can have no module yet. New Category must still
+       produce a visible result, so seed its first module and category in the
+       same edit instead of silently returning. */
+    if (targetIndex < 0) {
+      const existingModules = orderedMods.map((m) => m.name);
+      let moduleNumber = 1, moduleName;
+      do { moduleName = `Module ${moduleNumber++}`; } while (existingModules.includes(moduleName));
+      const moduleId = newId('m');
+      mutateTpl(tpl.id, (t) => ({
+        ...t,
+        modules: [...t.modules, {
+          id: moduleId,
+          name: moduleName,
+          categories: [{ id: categoryId, name: 'Category 1', items: [] }],
+        }],
+      }));
+      setOpenMod(orderedMods.length);
+      setOpenCat(0);
+      return;
+    }
+
+    const existing = (orderedMods[targetIndex].categories || []).map((c) => c.name);
     let n = 1, name;
     do { name = `Category ${n++}`; } while (existing.includes(name));
-    mutateModuleAt(moduleIndex, (m) => ({
+    mutateModuleAt(targetIndex, (m) => ({
       ...m,
-      categories: [...m.categories, { id: newId('c'), name, items: [] }],
+      categories: [...(m.categories || []), { id: categoryId, name, items: [] }],
     }));
     /* Open the new category so its (empty) checklist is immediately visible. */
-    setOpenMod(moduleIndex);
-    setTimeout(() => setOpenCat((orderedMods[moduleIndex].categories || []).length), 0);
+    setOpenMod(targetIndex);
+    setTimeout(() => setOpenCat((orderedMods[targetIndex].categories || []).length), 0);
   };
   const addCategory = () => addCategoryToModule(openMod);
   const renameCategoryInModule = (moduleIndex, ci, name) => {
@@ -1317,14 +1475,26 @@ export default function TemplatesEditor({
   };
   const duplicateEntities = (ids) => {
     if (!tpl || !ids.size) return;
+    const clonesBySource = new Map();
+    const clonedEntities = [];
+    tpl.roster.forEach((entity) => {
+      if (!ids.has(entity.id)) return;
+      const id = newId('e');
+      const style = liveEntityStyle(entity);
+      const clone = { ...entity, ...style, id, role: `${entity.role} copy` };
+      clonesBySource.set(entity.id, clone);
+      clonedEntities.push({ id, style });
+    });
     mutateTpl(tpl.id, (t) => {
       const out = [];
       t.roster.forEach((r) => {
         out.push(r);
-        if (ids.has(r.id)) out.push({ ...r, id: newId('e'), role: `${r.role} copy` });
+        const clone = clonesBySource.get(r.id);
+        if (clone) out.push(clone);
       });
       return { ...t, roster: out };
     });
+    seedClonedEntityStyles(clonedEntities);
     setSelEntities(new Set());
   };
   const reorderEntities = (activeId, overId) => {
@@ -1387,11 +1557,16 @@ export default function TemplatesEditor({
       spaces: mods,
       entities: r.roster.map((e) => {
         const fillColor = roleColors[e.id]?.color || e.color || '#8c8c8a';
-        const fillOpacity = roleColors[e.id]?.opacity ?? 0.35;
-        const mf = !!matchFill[e.id];
+        const fillOpacity = roleColors[e.id]?.opacity ?? e.opacity ?? 0.35;
+        const mf = Object.prototype.hasOwnProperty.call(matchFill, e.id)
+          ? !!matchFill[e.id]
+          : !!e.matchFill;
         const bd = mf
           ? { color: fillColor, opacity: fillOpacity }
-          : (borderColors[e.id] || { color: fillColor, opacity: fillOpacity });
+          : (borderColors[e.id] || {
+            color: e.borderColor || fillColor,
+            opacity: e.borderOpacity ?? fillOpacity,
+          });
         return {
           id: e.id,
           name: e.role,
@@ -1417,17 +1592,44 @@ export default function TemplatesEditor({
     const rev = editRevisionRef.current;
     const req = ++saveReqSeqRef.current;
     dispatchTemplatesSave(rich.map(richToTemplate))
-      .then(() => { if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(false); })
+      .then(() => {
+        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+          setDirty(false);
+          setPersistenceError('');
+        }
+      })
       .catch((err) => {
         console.error('Failed to save templates', err);
-        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) setDirty(true);
+        if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
+          setDirty(true);
+          setPersistenceError('Could not save templates. Your edits are still here; try again.');
+        }
       });
   };
-  const handleCancelEdits = () => {
+  const handleCancelEdits = async () => {
     /* BL-23: invalidate any in-flight save/delete so its later settlement
        can't re-dirty (or re-clear) the editor the user just reset. */
     editRevisionRef.current += 1;
-    reloadFromProps();
+    setPersistenceError('');
+    try {
+      // A save already in flight may settle after Cancel is pressed. Wait for
+      // it, then read the authoritative snapshot so Cancel can never restore a
+      // stale pre-save prop over a backend write that just committed.
+      if (onReloadTemplates) {
+        await reloadTemplatesAfterPendingSave({
+          pendingSave: saveChainRef.current,
+          reload: onReloadTemplates,
+          apply: applyAuthoritativeTemplates,
+        });
+      } else {
+        await saveChainRef.current.catch(() => undefined);
+        reloadFromProps();
+      }
+    } catch (error) {
+      console.error('Failed to reload authoritative templates', error);
+      setDirty(true);
+      setPersistenceError('Could not reload templates. Your edits are still here; try Cancel again.');
+    }
   };
 
   const selectLinkStyle = {
@@ -1496,21 +1698,12 @@ export default function TemplatesEditor({
   );
   const actions = (
     <>
-      <div className={`templates-mobile-search-actions ${mobileTemplateOpen ? 'with-back' : 'with-create'}`}>
+      <div className={`templates-mobile-search-actions hub-mobile-search-actions ${mobileTemplateOpen ? 'with-back' : 'with-create'}`}>
         {mobileTemplateOpen ? (
           <button
             type="button"
             className="templates-mobile-back-button"
-            onClick={() => {
-              setMobileTemplateOpen(false);
-              setMobileEntitiesOpen(false);
-              setTemplateContentSearch('');
-              setOpenColor(null);
-              setCatEdit(false);
-              setEntityEdit(false);
-              setSelCats(new Set());
-              setSelEntities(new Set());
-            }}
+            onClick={closeMobileTemplate}
           >
             <span className="templates-mobile-back-icon"><Icon name="arrow-r" size={13} /></span>Templates
           </button>
@@ -1520,9 +1713,10 @@ export default function TemplatesEditor({
           value={mobileTemplateOpen ? templateContentSearch : search}
           onChange={mobileTemplateOpen ? setTemplateContentSearch : setSearch}
           width="100%"
+          dismissActionSelector={mobileTemplateOpen ? '[data-search-dismiss-action]' : ''}
         />
         {!mobileTemplateOpen ? (
-          <button className="btn primary templates-mobile-create-button" onClick={createTemplate}>
+          <button className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={createTemplate}>
             <Icon name="plus" size={12} />New template
           </button>
         ) : null}
@@ -1550,6 +1744,26 @@ export default function TemplatesEditor({
       : tpl.roster)
     : [];
 
+  /* New Category is an explicit action, not an ambiguous background tap.
+     Reveal the new row even when a template filter was active, then focus its
+     title so the result is immediate on a phone and never lands below the
+     visible viewport unnoticed. */
+  useEffect(() => {
+    const categoryId = pendingCategoryFocusRef.current;
+    if (!categoryId || !mobileTemplateOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const input = Array.from(document.querySelectorAll(
+        '.templates-mobile-detail input[data-mobile-category-id]',
+      )).find((candidate) => candidate.dataset.mobileCategoryId === categoryId);
+      if (!input) return;
+      pendingCategoryFocusRef.current = null;
+      input.scrollIntoView({ block: 'nearest' });
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileTemplateOpen, openCat, rich, templateContentSearch]);
+
   return (
     <>
     <HubShell
@@ -1560,9 +1774,15 @@ export default function TemplatesEditor({
       actions={actions}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
+      mobileSwipeSurfaceRef={mobileSwipeSurfaceRef}
     >
       <div className="ed-scope" style={{ width: 'auto', height: 'calc(100% - 65px)', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {persistenceError ? (
+          <div role="alert" style={{ position: 'absolute', zIndex: 20, top: 6, left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', padding: '6px 10px', borderRadius: 6, border: '1px solid #cf6f6f', background: '#281b20', color: '#f3c4c4', fontSize: 11.5, lineHeight: 1.35, textAlign: 'center' }}>
+            {persistenceError}
+          </div>
+        ) : null}
+        <div className="templates-editor-body" style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {/* Three columns */}
         <div className="templates-editor-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr 268px', gap: 8, height: '100%' }}>
 
@@ -1873,7 +2093,7 @@ export default function TemplatesEditor({
                             transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s',
                             width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
                           }}
-                        >›</button>
+                        ><CategoryDisclosureGlyph /></button>
                         <input
                           className="inline-edit cat-title"
                           defaultValue={c.name}
@@ -2191,7 +2411,7 @@ export default function TemplatesEditor({
                           markEdited();
                         };
                         return (
-                          <div style={{
+                          <div data-entity-color-panel style={{
                             margin: '-4px 0 6px', padding: 0,
                             background: 'var(--paper-deep)', border: '1px solid var(--rule)', borderTop: 0, borderRadius: '0 0 4px 4px',
                             display: 'flex', flexDirection: 'column',
@@ -2237,7 +2457,8 @@ export default function TemplatesEditor({
                                   color={activeColor}
                                   opacity={activeOp}
                                   onChange={applyColor}
-                                  onClose={() => {}}
+                                  onClose={() => setOpenColor(null)}
+                                  dismissInsideSelector="[data-entity-color-panel]"
                                 />
                               </div>
                             </div>
@@ -2273,7 +2494,6 @@ export default function TemplatesEditor({
                 />
               ) : (
                 <>
-                  <div className="templates-mobile-label">Template sets</div>
                   <SortableRearrangeList ids={visibleTemplates.map((t) => t.id)} onReorder={reorderTemplates}>
                     {visibleTemplates.map((t) => {
                       const isSel = selTpls.has(t.id);
@@ -2290,6 +2510,7 @@ export default function TemplatesEditor({
                                   toggleTplSel(t.id);
                                   return;
                                 }
+                                captureMobileTemplateList();
                                 setSelected(t.id);
                                 setOpenCat(-1);
                                 setOpenMod(0);
@@ -2309,7 +2530,6 @@ export default function TemplatesEditor({
                                 isDragging={isDragging}
                                 style={{ width: 24, height: 24 }}
                               />
-                              <span className="templates-mobile-glyph"><Icon name="template" size={16} /></span>
                               <span className="templates-mobile-copy">
                                 <strong>{t.name}</strong>
                                 <small>{t.modules.length} modules · {t.modules.reduce((sum, mod) => sum + (mod.categories || []).length, 0)} categories · {t.roster.length} entities</small>
@@ -2404,7 +2624,7 @@ export default function TemplatesEditor({
               <section className="templates-mobile-section templates-mobile-categories-section">
                 <div className="templates-mobile-section-head">
                   <span>Categories</span>
-                  <button type="button" onClick={addCategory}><Icon name="plus" size={11} />New category</button>
+                  <button type="button" data-search-dismiss-action onClick={addCategory}><Icon name="plus" size={11} />New category</button>
                 </div>
                 <div className="templates-mobile-select-inline">
                   <button
@@ -2461,14 +2681,16 @@ export default function TemplatesEditor({
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
                                   type="button"
-                                  className={open ? 'open' : ''}
+                                  className={`templates-mobile-category-toggle ${open ? 'open' : ''}`}
+                                  aria-label={`${open ? 'Collapse' : 'Expand'} ${c.name}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOpenCat(open ? -1 : ci);
                                   }}
-                                >›</button>
+                                ><CategoryDisclosureGlyph /></button>
                                 <input
                                   className="templates-mobile-inline-input"
+                                  data-mobile-category-id={c.id}
                                   defaultValue={c.name}
                                   key={`mobile-cat-${c.id}:${c.name}`}
                                   onClick={(e) => e.stopPropagation()}
@@ -2500,7 +2722,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
                                             />
-                                            <button type="button" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
+                                            <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                         )}
                                       </SortableRearrangeRow>
@@ -2536,27 +2758,26 @@ export default function TemplatesEditor({
               {mobileEntitiesOpen ? (
                 <div
                   className="templates-mobile-modal-scrim"
-                  onClick={() => {
-                    setMobileEntitiesOpen(false);
-                    setOpenColor(null);
-                    setEntityEdit(false);
-                    setSelEntities(new Set());
-                  }}
+                  onClick={closeMobileEntities}
                 >
-                  <div className="templates-mobile-entity-modal" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    ref={mobileEntitiesModalRef}
+                    className="templates-mobile-entity-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Entities"
+                    tabIndex={-1}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="templates-mobile-entity-modal-head">
                       <div>
                         <strong>Entities</strong>
                         <span>{tpl.roster.length} entities in {tpl.name}</span>
                       </div>
                       <button
+                        ref={mobileEntitiesCloseRef}
                         type="button"
-                        onClick={() => {
-                          setMobileEntitiesOpen(false);
-                          setOpenColor(null);
-                          setEntityEdit(false);
-                          setSelEntities(new Set());
-                        }}
+                        onClick={closeMobileEntities}
                       >
                         Close
                       </button>
@@ -2615,8 +2836,8 @@ export default function TemplatesEditor({
                                   type="button"
                                   title="Edit color" aria-label="Edit color"
                                   onClick={() => setOpenColor(isOpen ? null : r.id)}
-                                  style={{ background: c, borderColor: rowBorderColor }}
-                                />
+                                  style={{ '--entity-color': c, '--entity-border-color': rowBorderColor }}
+                                ><span aria-hidden="true" /></button>
                                 <input
                                   className="templates-mobile-inline-input"
                                   defaultValue={r.role}
@@ -2656,7 +2877,7 @@ export default function TemplatesEditor({
                                   markEdited();
                                 };
                                 return (
-                                  <div className="templates-mobile-color-panel">
+                                  <div className="templates-mobile-color-panel" data-entity-color-panel>
                                     <div className="templates-mobile-color-tabs">
                                       {['fill', 'border'].map((k) => (
                                         <button key={k} type="button" className={layer === k ? 'active' : ''} onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}>{k === 'fill' ? 'Fill' : 'Border'}</button>
@@ -2669,7 +2890,7 @@ export default function TemplatesEditor({
                                       </label>
                                     ) : null}
                                     <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => {}} />
+                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" />
                                     </div>
                                   </div>
                                 );
@@ -2902,10 +3123,16 @@ export default function TemplatesEditor({
     {/* Move/Copy modal */}
     {moveModal && tpl && (
       <div
-        onClick={() => setMoveModal(null)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        onClick={closeMoveModal}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400 }}
       >
         <div
+          ref={moveModalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Move or copy items"
+          data-modal-focus-layer="true"
+          tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
           style={{ width: 420, overflow: 'hidden', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
         >
@@ -2914,7 +3141,7 @@ export default function TemplatesEditor({
               <p style={{ margin: 0, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8d96a6', fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>Move/Copy</p>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: '#f4f1ea', letterSpacing: '-0.025em', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
             </div>
-            <button onClick={() => setMoveModal(null)} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}><Icon name="close" size={13} /></button>
+            <button ref={moveModalCloseRef} onClick={closeMoveModal} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: '#2a3140', color: '#8d96a6' })}><Icon name="close" size={13} /></button>
           </div>
           {/* Destination fields depend on WHAT is being moved/copied:
               - Category → pick a Destination Template, then a Destination
@@ -2951,9 +3178,9 @@ export default function TemplatesEditor({
             })()}
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
-            <button onClick={() => setMoveModal(null)} style={{ background: '#d8a84e', color: '#15110a', border: '1px solid #d8a84e', borderRadius: 6, fontSize: 12, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Move</button>
+            <button onClick={closeMoveModal} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={closeMoveModal} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
+            <button onClick={closeMoveModal} style={{ background: '#d8a84e', color: '#15110a', border: '1px solid #d8a84e', borderRadius: 6, fontSize: 12, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Move</button>
           </div>
         </div>
       </div>

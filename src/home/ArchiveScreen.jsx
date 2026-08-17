@@ -14,12 +14,13 @@
    every decision it makes lives in ./archiveScreenModel so it can be tested
    without a DOM.
 */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { HubShell, Icon, EmptyState, PdfThumb, AvatarStack, Search } from './HubShell';
 /* The app-wide icon set. Aliased because HubShell exports its own `Icon` for
    the hub's type glyphs; this one carries the shared chevrons. */
 import AppIcon from '../Icons';
 import { ConfirmModal } from './BulkModals';
+import DismissBarrier from '../components/DismissBarrier';
 import PdfPageThumb from './PdfPageThumb';
 import { useStorage } from '../hooks/useDatabase';
 import { closeButtonStyle, miniButtonStyle } from './hubControls';
@@ -47,6 +48,7 @@ import {
   nextSortState,
   normalizeBulkResult,
   pruneSelection,
+  resolveArchivePreviewItem,
   resolveSelection,
   teamAvatarSlots,
   timeRemainingLabel,
@@ -89,8 +91,12 @@ const ROW_THUMB = 44;
    box so the column stays aligned across every row type. */
 const ROW_ART_W = 34;
 
-/* Shared chevron size — matches PDFViewer's disclosure chevrons in dense lists. */
-const CHEVRON_SIZE = 12;
+/* Desktop Archive disclosure size. It stays smaller than the mobile control,
+   but must remain legible beside the full-size ledger typography. */
+const CHEVRON_SIZE = 16;
+/* Mobile cards use the same disclosure size as the hub's other expandable
+   mobile rows; the denser desktop ledger keeps the 16px glyph above. */
+const MOBILE_CHEVRON_SIZE = 18;
 
 /* The name cell's leading slot, which holds a project's disclosure chevron.
    It is exactly the Documents ledger's name-cell left padding (14px), and it
@@ -127,10 +133,10 @@ const typeIcon = { document: 'doc', project: 'folder', template: 'template' };
    icon in the thumbnail column — no tinted tile behind it (owner call
    2026-08-07: "we don't have that anywhere else in this app"). Nothing on the
    hub's desktop surfaces puts a coloured plate behind an icon, so neither does
-   this. 18px is the largest inline glyph size the hub already uses
-   (ProjectsFolderTree's folder glyphs), and var(--ink-200) is the neutral this
-   very row used before the icon moved into its own column. */
-const TYPE_ICON_SIZE = 18;
+   this. Both layouts use 24px to balance against the 44px document thumbnail
+   without pretending the type glyph is itself a page preview. */
+const TYPE_ICON_SIZE = 24;
+const MOBILE_TYPE_ICON_SIZE = 24;
 
 export default function ArchiveScreen({
   items = [],
@@ -169,20 +175,6 @@ export default function ArchiveScreen({
   const menuRef = useRef(null);
   const desktopMenuRef = useRef(null);
 
-  /* Click-away close, copied from the Documents ledger's sort menu. Both header
-     slots render the control (only one is visible per breakpoint), so a click
-     inside EITHER counts as inside. */
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const onDown = (e) => {
-      const inMobile = menuRef.current && menuRef.current.contains(e.target);
-      const inDesktop = desktopMenuRef.current && desktopMenuRef.current.contains(e.target);
-      if (!inMobile && !inDesktop) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [menuOpen]);
-
   const rows = useMemo(
     () => visibleArchiveItems(items, { filter, sortKey, sortDir, search }),
     [items, filter, sortKey, sortDir, search],
@@ -208,9 +200,11 @@ export default function ArchiveScreen({
   const { downloadDocument } = useStorage();
 
   /* The previewed row, resolved against what is actually on screen: a row that
-     was just restored, or filtered out, must not keep a stale pane open. */
+     was just restored, or filtered out, must not keep a stale pane open. A
+     project's child document may be previewed even though it remains excluded
+     from restore/delete selection. */
   const previewItem = useMemo(
-    () => rows.find((row) => row.id === previewId) || null,
+    () => resolveArchivePreviewItem(rows, previewId),
     [rows, previewId],
   );
   const showPreview = previewOpen && !selectMode && Boolean(previewItem);
@@ -227,6 +221,12 @@ export default function ArchiveScreen({
   const allSelected = isAllSelected(selectedIds, rows);
 
   const toggleRow = (id) => setSelectedIds((prev) => toggleSelection(prev, id));
+
+  const previewDocument = (id) => {
+    if (selectMode) return;
+    setPreviewId(id);
+    setPreviewOpen(true);
+  };
 
   /* Run a bulk action and report per-item truth. A resolved
      { succeeded, failed } produces the split message; a plain resolve counts
@@ -440,17 +440,16 @@ export default function ArchiveScreen({
 
   /* The app's real chevron from src/Icons.jsx — an SVG, not the literal
      down-triangle CHARACTER this used to render (owner call 2026-08-07: "it
-     should be the same chevron used throughout the app, not this"). Size 12 at
-     #8d96a6 is how PDFViewer already draws a disclosure chevron in a dense
-     list. The test forbids any text-glyph chevron in this file, so do not
-     reintroduce one even in a comment.
+     should be the same chevron used throughout the app, not this"). The test
+     forbids any text-glyph chevron in this file, so do not reintroduce one even
+     in a comment.
 
      Still ONE glyph that rotates rather than a swapped down/right pair, so the
      open/close transition survives the swap. */
-  const chevron = (open) => (
+  const chevron = (open, size = CHEVRON_SIZE) => (
     <AppIcon
       name="chevronDown"
-      size={CHEVRON_SIZE}
+      size={size}
       color="#8d96a6"
       style={{
         display: 'block', flex: 'none',
@@ -473,15 +472,15 @@ export default function ArchiveScreen({
       style={{
         background: 'transparent', border: 0, color: 'var(--ink-200)',
         cursor: 'pointer', padding: 0, lineHeight: 1,
-        fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE,
+        fontFamily: 'inherit', flex: 'none', width: CHEVRON_SIZE, marginRight: 4,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       }}
     >{chevron(open)}</button>
   );
 
   /* The name cell's leading slot. Always rendered at the same width so the
-     title's left edge never moves; the chevron is pushed to the RIGHT of the
-     slot so it sits tight against the title rather than out by the icon. */
+     title's left edge never moves. The wider chevron overhangs toward the icon
+     while its right margin leaves 4px of breathing room before the title. */
   const nameLeadSlot = (content) => (
     <span style={{
       width: NAME_LEAD, flex: 'none',
@@ -597,7 +596,7 @@ export default function ArchiveScreen({
      plain type icon for a project or a template. The icon still occupies the
      same ROW_THUMB box so the column stays aligned and the row height cannot
      shift as the list mixes types — but the box is invisible. */
-  const rowTypeArt = (item) => {
+  const rowTypeArt = (item, iconSize = TYPE_ICON_SIZE) => {
     if (item.type === 'document') return rowThumb(item.id, item.filePath);
     return (
       /* Same 23x30 footprint a page thumbnail occupies, so the distance from
@@ -607,7 +606,7 @@ export default function ArchiveScreen({
         width: ROW_ART_W, height: ROW_THUMB, flex: 'none',
         display: 'grid', placeItems: 'center',
       }}>
-        <Icon name={typeIcon[item.type] || 'doc'} size={TYPE_ICON_SIZE} color="var(--ink-200)" />
+        <Icon name={typeIcon[item.type] || 'doc'} size={iconSize} />
       </div>
     );
   };
@@ -655,10 +654,19 @@ export default function ArchiveScreen({
             /* Indented leaf, carrying the same 30px page thumbnail the ledger
                rows use — these files go with the project, so the owner needs
                to see them before restoring or destroying it. */
-            <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px' }}>
+            <button
+              key={child.id}
+              type="button"
+              onClick={() => previewDocument(child.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px',
+                width: '100%', border: 0, background: 'transparent', color: 'inherit',
+                fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer',
+              }}
+            >
               {rowThumb(child.id, child.filePath)}
               <span className="meta" style={{ fontSize: 11.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{child.name}</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -811,17 +819,29 @@ export default function ArchiveScreen({
           <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
-        {/* Child documents of an archived project. Descriptive only: they are
-            never selectable and carry no actions, because a project restores
-            or deletes as one unit — showing them is how the user knows what
-            travels with it. */}
+        {/* Child documents of an archived project. They remain excluded from
+            restore/delete selection because the project acts as one unit, but
+            each document can still be inspected in the same preview pane as a
+            top-level archived document. */}
         {isProject && expanded && item.children.map((child) => (
           <div
             key={child.id}
+            role="button"
+            tabIndex={selectMode ? -1 : 0}
+            aria-label={`Preview ${child.name}`}
+            aria-pressed={!selectMode ? previewId === child.id : undefined}
+            onClick={() => previewDocument(child.id)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              previewDocument(child.id);
+            }}
             style={{
               display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
               borderBottom: '1px solid var(--ink-600)',
-              borderLeft: '2px solid transparent',
+              borderLeft: previewId === child.id ? '2px solid var(--gold)' : '2px solid transparent',
+              background: previewId === child.id ? 'var(--ink-600)' : 'transparent',
+              cursor: selectMode ? 'default' : 'pointer',
               contentVisibility: 'auto',
               // 8px padding + the 30px row thumbnail + 8px padding.
               containIntrinsicSize: '0 46px',
@@ -892,7 +912,7 @@ export default function ArchiveScreen({
                 aria-expanded={expanded}
                 title={expanded ? 'Hide documents' : 'Show documents'}
                 onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
-              >{chevron(expanded)}</button>
+              >{chevron(expanded, MOBILE_CHEVRON_SIZE)}</button>
             ) : null)}
           </div>
           <div style={{ minWidth: 0 }}>
@@ -904,7 +924,7 @@ export default function ArchiveScreen({
           {/* Trailing cell — the same type art the desktop row shows, in the
               slot the Documents card fills with its page thumbnail. */}
           <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
-            {rowTypeArt(item)}
+            {rowTypeArt(item, MOBILE_TYPE_ICON_SIZE)}
           </div>
         </div>
         {isProject && expanded && (
@@ -983,6 +1003,11 @@ export default function ArchiveScreen({
 
   return (
     <>
+      <DismissBarrier
+        active={menuOpen}
+        insideRefs={[menuRef, desktopMenuRef]}
+        onDismiss={() => setMenuOpen(false)}
+      />
       <HubShell
         tab="archive"
         onNav={onNav}
@@ -1028,7 +1053,9 @@ export default function ArchiveScreen({
               <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                   <div className="section-label">Preview</div>
-                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>×</button>
+                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>
+                    <Icon name="close" size={14} />
+                  </button>
                 </div>
                 <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewItem.name}</div>
                 <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>

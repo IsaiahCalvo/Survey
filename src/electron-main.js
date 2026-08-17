@@ -5,8 +5,12 @@ const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
+const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
+const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
+const SURVEY_ANALYTICS_MAX_BYTES = 32 * 1024;
+let surveyMainWindow = null;
 
 // 2026-06-04 — Continuous main-process renderer console capture.
 // The in-page console buffer (window.__consoleLogBuffer in src/main.jsx) lives in
@@ -295,6 +299,10 @@ function createWindow() {
       webSecurity: true, // Keep web security enabled for OAuth
       zoomFactor: 1.0,
     },
+  });
+  surveyMainWindow = win;
+  win.once('closed', () => {
+    if (surveyMainWindow === win) surveyMainWindow = null;
   });
 
   // 2026-06-04 — Continuous renderer console capture (the robust logging floor).
@@ -807,6 +815,48 @@ function assertAllowedPath(p, { forWrite = false } = {}) {
   throw err;
 }
 // ────────────────────────────────────────────────────────────────────────────
+
+ipcMain.handle('analytics:track', async (event, input = {}) => {
+  const senderUrl = String(event.senderFrame?.url || '');
+  const trustedSender = isTrustedElectronAnalyticsSender({
+    senderWebContents: event.sender,
+    mainWebContents: surveyMainWindow?.webContents,
+    senderUrl,
+    development: process.env.NODE_ENV === 'development',
+    devPort: DEV_PORT,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+  });
+  if (!trustedSender) return { ok: false, status: 403, contentType: 'application/json', body: { accepted: false } };
+
+  const accessToken = typeof input?.accessToken === 'string' ? input.accessToken : '';
+  const payload = input?.payload && typeof input.payload === 'object' ? input.payload : null;
+  let body = '';
+  try { body = JSON.stringify(payload); } catch { /* handled below */ }
+  if (!/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(accessToken)
+    || !body || Buffer.byteLength(body) > SURVEY_ANALYTICS_MAX_BYTES) {
+    return { ok: false, status: 400, contentType: 'application/json', body: { accepted: false } };
+  }
+
+  try {
+    const result = await fetch(SURVEY_ANALYTICS_PROXY_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body,
+      signal: AbortSignal.timeout(5_000),
+    });
+    const contentType = result.headers.get('content-type') || '';
+    const responseBody = contentType.includes('application/json')
+      ? await result.json().catch(() => null)
+      : null;
+    return { ok: result.ok, status: result.status, contentType, body: responseBody };
+  } catch {
+    return { ok: false, status: 0, contentType: 'application/json', body: { accepted: false } };
+  }
+});
 
 ipcMain.handle('dialog:openFile', async (event, options = {}) => {
   const { canceled, filePaths } = await dialog.showOpenDialog({

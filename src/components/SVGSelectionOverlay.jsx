@@ -113,7 +113,16 @@ const SVGSelectionOverlay = memo(({
     <g
       className="svg-selection-overlay"
       transform={angle ? `rotate(${angle}, ${cx}, ${cy})` : undefined}
-      style={{ pointerEvents: 'none' }}
+      style={{
+        pointerEvents: 'none',
+        touchAction: 'none',
+        WebkitTouchCallout: 'none',
+        userSelect: 'none',
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
     >
       {/* --- Bounding box rect --- */}
       {!hideBoundingBox && (

@@ -41,17 +41,19 @@ import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
+import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
-import { useTemplates } from './hooks/useDatabase';
+import { useStorage, useTemplates } from './hooks/useDatabase';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened.
-const PDFViewer = lazy(() => import('./PDFViewer').then((m) => ({ default: m.PDFViewer })));
+const loadPDFViewerModule = () => import('./PDFViewer');
+const PDFViewer = lazy(() => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })));
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
@@ -68,6 +70,10 @@ if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STA
 }
 
 export default function App({ devPreviewReturnTab = null }) {
+  useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
+
+  const { replaceDocument } = useStorage();
+
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
 
@@ -868,12 +874,19 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const returnToDevHubPreview = () => {
     if (!import.meta.env.DEV || !devPreviewReturnTab) return false;
+    const source = new URLSearchParams(window.location.search);
+    const workflowE2E = source.get('workflowE2E') === '1';
     const params = new URLSearchParams({
       hubPreview: '1',
-      longDocs: '1',
       tab: devPreviewReturnTab,
-      mobileNav: 'rail',
+      mobileNav: workflowE2E ? 'tabs' : 'rail',
     });
+    if (workflowE2E) {
+      params.set('workflowE2E', '1');
+      params.set('nativeShell', 'expo');
+    } else {
+      params.set('longDocs', '1');
+    }
     window.location.assign(`/?${params.toString()}`);
     return true;
   };
@@ -1001,7 +1014,11 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [tabs, activeTabId]);
 
   // Memoized callback to update PDF file
-  const handleUpdatePDFFile = useCallback((newFile, targetTabId) => {
+  const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
+    const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
+    if (newFile?.id && durablePath) {
+      await replaceDocument(newFile, durablePath);
+    }
     setTabs(prev => {
       if (targetTabId) {
         return prev.map(tab =>
@@ -1019,7 +1036,18 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!targetTabId || targetTabId === activeTabId) {
       setSelectedPDF(newFile);
     }
-  }, [selectedPDF, activeTabId]);
+    setDocuments((prev) => prev.map((document) => (
+      document?.id === newFile?.id
+        ? {
+          ...document,
+          size: newFile.size,
+          file_size: newFile.size,
+          updated_at: new Date().toISOString(),
+        }
+        : document
+    )));
+    return newFile;
+  }, [selectedPDF, activeTabId, replaceDocument]);
 
   const handleTabClose = (tabId) => {
     // Prevent closing the home tab
@@ -2552,7 +2580,8 @@ export default function App({ devPreviewReturnTab = null }) {
             id="chrome-left-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
-              flex: isMobileViewer ? '0 0 44px' : '0 0 48px',
+              flexGrow: 0,
+              flexBasis: isMobileViewer ? '44px' : '48px',
               width: isMobileViewer ? '44px' : '48px',
               flexShrink: 0,
               minWidth: isMobileViewer ? '44px' : '48px',
@@ -2700,7 +2729,8 @@ export default function App({ devPreviewReturnTab = null }) {
             id="chrome-right-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
-              flex: isMobileViewer ? '0 0 0px' : '0 0 48px',
+              flexGrow: 0,
+              flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
               width: isMobileViewer ? '0px' : '48px',
               minWidth: isMobileViewer ? '0px' : '48px',

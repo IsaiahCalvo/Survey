@@ -17,23 +17,42 @@
 
    When a document has no usable source (or rendering fails) the `fallback`
    node is rendered instead — the existing stylised placeholder. */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 
 /* Two tiers of cache.
 
-   In-memory (this Map): keyed by document id, lives for the page. Stops a
-   re-render on every search keystroke or re-selection.
+   In-memory (this bounded LRU): keyed by document id, lives for the page.
+   Stops a re-render on every search keystroke or re-selection without
+   exhausting an iOS WebView on accounts with many documents.
 
    Durable (services/thumbnailStore, IndexedDB): survives reloads, so the
    download + rasterize is paid ONCE per document rather than once per visit.
    Before it existed, every reload re-downloaded the whole PDF for every
    visible row — 6.3s of transfer for a single 25MB drawing. The memory tier
    is checked synchronously first; the durable tier is checked before any
-   network work happens. Value: { url, aspect } or the 'FAILED' sentinel. */
+   network work happens. Value: { url, aspect } or the in-memory 'FAILED'
+   sentinel. */
 const thumbCache = new Map();
+const thumbInflight = new Map();
+const MAX_CACHE_ENTRIES = 24;
+const readCachedThumb = (docId) => {
+  if (!docId || !thumbCache.has(docId)) return null;
+  const value = thumbCache.get(docId);
+  thumbCache.delete(docId);
+  thumbCache.set(docId, value);
+  return value;
+};
+const cacheThumb = (docId, value) => {
+  if (!docId) return;
+  thumbCache.delete(docId);
+  thumbCache.set(docId, value);
+  while (thumbCache.size > MAX_CACHE_ENTRIES) {
+    thumbCache.delete(thumbCache.keys().next().value);
+  }
+};
 
 /* Cap concurrent renders so a long document list does not spawn many pdf.js
    workers at once.
@@ -73,6 +92,7 @@ const resolvePdfBytes = async (doc, downloadDocument) => {
   // 2. An inline data URL.
   if (doc.dataUrl) {
     const res = await fetch(doc.dataUrl);
+    if (!res.ok) throw new Error(`thumbnail fetch failed (${res.status})`);
     return res.arrayBuffer();
   }
 
@@ -95,45 +115,90 @@ const resolvePdfBytes = async (doc, downloadDocument) => {
    rendered at TARGET px so the image stays crisp when CSS scales it down to
    any thumbnail size. Returns { url, aspect } (aspect = width / height).
    Recovery-mode fallback matches App.jsx for slightly corrupt PDFs. */
-const TARGET = 1500;
+const TARGET = 1000;
 const renderFirstPage = async (arrayBuffer) => {
   const pdfjsLib = await loadPdfjs();
+  let loadingTask;
   let pdf;
+  let page;
+  let canvas;
   try {
     // Clone the buffer — pdf.js detaches it when transferring to the worker.
-    pdf = await pdfjsLib.getDocument({ isEvalSupported: false,
+    loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
       data: arrayBuffer.slice(0),
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
-    }).promise;
+    });
+    pdf = await loadingTask.promise;
   } catch {
-    pdf = await pdfjsLib.getDocument({ isEvalSupported: false,
+    await loadingTask?.destroy().catch(() => {});
+    loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
       data: arrayBuffer.slice(0),
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
       stopAtErrors: false,
       disableAutoFetch: true,
       disableStream: true,
-    }).promise;
+    });
+    try {
+      pdf = await loadingTask.promise;
+    } catch (error) {
+      await loadingTask.destroy().catch(() => {});
+      throw error;
+    }
   }
 
-  const page = await pdf.getPage(1);
-  const base = page.getViewport({ scale: 1 });
-  const aspect = base.width / base.height;
-  const scale = TARGET / Math.max(base.width, base.height);
-  const viewport = page.getViewport({ scale });
+  try {
+    page = await pdf.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const aspect = base.width / base.height;
+    const scale = TARGET / Math.max(base.width, base.height);
+    const viewport = page.getViewport({ scale });
 
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  canvas.width = Math.max(1, Math.round(viewport.width));
-  canvas.height = Math.max(1, Math.round(viewport.height));
-  // White paper backdrop so pages with transparent regions are not black.
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
+    canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
+    // White paper backdrop so pages with transparent regions are not black.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
 
-  await page.render({ canvasContext: context, viewport }).promise;
+    await page.render({ canvasContext: context, viewport }).promise;
+    return { url: canvas.toDataURL('image/jpeg', 0.9), aspect };
+  } finally {
+    page?.cleanup();
+    pdf?.cleanup();
+    await loadingTask?.destroy().catch(() => {});
+    if (canvas) { canvas.width = 1; canvas.height = 1; }
+  }
+};
 
-  const url = canvas.toDataURL('image/jpeg', 0.92);
-  pdf.cleanup();
-  return { url, aspect };
+const loadThumb = (docId, doc, downloadDocument, priority = false) => {
+  if (docId && thumbInflight.has(docId)) return thumbInflight.get(docId);
+  const promise = (async () => {
+    const persistKey = thumbCacheKey(doc);
+    if (persistKey) {
+      const stored = await thumbnailStore().get(persistKey);
+      if (stored) return stored;
+    }
+
+    const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
+    if (!arrayBuffer) return 'FAILED';
+    await acquireSlot(priority);
+    try {
+      const result = await renderFirstPage(arrayBuffer);
+      if (persistKey) void thumbnailStore().put(persistKey, result);
+      return result;
+    } finally {
+      releaseSlot();
+    }
+  })();
+  if (docId) {
+    thumbInflight.set(docId, promise);
+    void promise.then(
+      () => thumbInflight.delete(docId),
+      () => thumbInflight.delete(docId),
+    );
+  }
+  return promise;
 };
 
 /* US Letter portrait — the loading-state default aspect before the real
@@ -152,68 +217,55 @@ export default function PdfPageThumb({
   priority = false,
 }) {
   const docId = doc?.id;
-  const cached = docId ? thumbCache.get(docId) : null;
-  const [data, setData] = useState(cached && cached !== 'FAILED' ? cached : null);
-  const [failed, setFailed] = useState(cached === 'FAILED');
+  const hostRef = useRef(null);
+  const [nearViewport, setNearViewport] = useState(() => typeof IntersectionObserver === 'undefined');
+  const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    const node = hostRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setNearViewport(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setNearViewport(entry.isIntersecting),
+      { rootMargin: '320px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [docId]);
+
+  useEffect(() => {
+    if (!nearViewport) {
+      setData(null);
+      setFailed(false);
+      return undefined;
+    }
     let cancelled = false;
 
-    const existing = docId ? thumbCache.get(docId) : null;
+    const existing = readCachedThumb(docId);
     if (existing === 'FAILED') { setData(null); setFailed(true); return undefined; }
     if (existing) { setData(existing); setFailed(false); return undefined; }
 
     setData(null);
     setFailed(false);
 
-    let slotHeld = false;
     (async () => {
       try {
-        /* Durable cache FIRST, ahead of both the download and the render
-           queue. A hit costs one IndexedDB read (single-digit ms) instead of
-           re-fetching the whole PDF — measured at 517ms for a 548KB file and
-           6.3s for a 25MB drawing — and re-rasterizing page 1. It also must not
-           consume a render slot: a cached row that queued behind three live
-           renders would be slow for no reason. */
-        const persistKey = thumbCacheKey(doc);
-        if (persistKey) {
-          const stored = await thumbnailStore().get(persistKey);
-          if (cancelled) return;
-          if (stored) {
-            if (docId) thumbCache.set(docId, stored);
-            setData(stored);
-            return;
-          }
-        }
-
-        const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
+        /* loadThumb checks IndexedDB before downloading or entering the
+           shared render queue, then persists newly rendered thumbnails. */
+        const result = await loadThumb(docId, doc, downloadDocument, priority);
         if (cancelled) return;
-        if (!arrayBuffer) {
-          if (docId) thumbCache.set(docId, 'FAILED');
-          if (!cancelled) setFailed(true);
-          return;
-        }
-
-        await acquireSlot(priority);
-        slotHeld = true;
-        if (cancelled) return;
-
-        const result = await renderFirstPage(arrayBuffer);
-        if (cancelled) return;
-        if (docId) thumbCache.set(docId, result);
+        cacheThumb(docId, result);
+        if (result === 'FAILED') { setFailed(true); return; }
         setData(result);
-        /* Persist for every later visit. Deliberately not awaited: the picture
-           is already on screen, and a slow or full IndexedDB must not hold the
-           render slot open behind it. */
-        if (persistKey) thumbnailStore().put(persistKey, result);
       } catch (error) {
         // Corrupt PDF, missing storage file, etc. — show the placeholder and
         // do not retry this document.
         console.warn('[PdfPageThumb] thumbnail render failed:', error?.message || error);
-        if (docId) thumbCache.set(docId, 'FAILED');
+        cacheThumb(docId, 'FAILED');
         if (!cancelled) setFailed(true);
-      } finally {
-        if (slotHeld) releaseSlot();
       }
     })();
 
@@ -221,7 +273,7 @@ export default function PdfPageThumb({
     // `priority` only steers queue position at the moment a slot is requested,
     // so it deliberately stays out of the deps — changing it must not restart a
     // render that is already under way.
-  }, [docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument]);
+  }, [nearViewport, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument]);
 
   if (failed) return fallback;
 
@@ -237,17 +289,20 @@ export default function PdfPageThumb({
   if (!data) {
     // Loading — same box dimensions as the final state, so no reflow.
     return (
-      <div style={{
+      <div
+        ref={hostRef}
+        style={{
         ...box,
         background: 'rgba(244,241,234,0.05)',
         border: '1px solid var(--ink-500)',
         boxSizing: 'border-box',
-      }} />
+        }}
+      />
     );
   }
 
   return (
-    <div style={{
+    <div ref={hostRef} style={{
       ...box,
       // Dark slate backdrop — the page (white paper) is letterboxed against
       // it; the surrounding margin reads as part of the app's dark aesthetic,

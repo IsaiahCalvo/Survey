@@ -4,6 +4,7 @@
  */
 
 import { LogLevel } from "@azure/msal-browser";
+import { microsoftRedirectUriFor } from './utils/microsoftOAuthRouting';
 
 /**
  * Configuration object to be passed to MSAL instance on creation. 
@@ -16,8 +17,8 @@ export const msalConfig = {
         clientId: "0da81a9e-2b05-46ee-b826-5efc5114c765",
         // TODO: Replace with your actual Tenant ID (or "common" for multi-tenant)
         authority: "https://login.microsoftonline.com/common",
-        redirectUri: "http://localhost:5173", // Must match the one registered in Azure
-        postLogoutRedirectUri: "http://localhost:5173", // Redirect after logout
+        redirectUri: microsoftRedirectUriFor(), // Must be registered in Azure
+        postLogoutRedirectUri: microsoftRedirectUriFor(),
         navigateToLoginRequestUrl: true, // Return to original page after login
     },
     cache: {

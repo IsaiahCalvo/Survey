@@ -1,9 +1,10 @@
 # Agent-Native Analytics: Survey event proposal
 
-Status: the standalone collector runs at `http://127.0.0.1:8095`, uses local
-SQLite (`/Users/isaiahcalvo/Documents/Projects/Active/survey-analytics/data/app.db`),
-and accepted a smoke event. **Survey is not wired to it. Approval is required
-before adding transport code, env keys, or packages to Survey.**
+Status: Survey is wired through its existing Vercel function at
+`/api/analytics/track` to Builder's hosted Agent Native collector. Local,
+Tailscale, Capacitor, and Expo shells use the same production proxy; the write
+key remains server-only. The retired Netlify collector and second Supabase
+project are not used.
 
 ## First event set
 
@@ -30,12 +31,14 @@ events into product analytics; those belong in opt-in debugging captures.
 - Use a stable pseudonymous user ID and random session ID. Hash document IDs
   before transport; do not use a hash of a filename.
 - Prefer enums, booleans, counts, coarse buckets, and normalized error classes.
-- Batch and retry without blocking Survey interactions. Collector failure must
-  never break annotation, save, sync, or export flows.
-- Keep localhost collection off by default in Survey development unless a
-  developer explicitly enables it.
+- Delivery never blocks Survey interactions. Collector failure is exposed as a
+  bounded diagnostic status and never breaks annotation, save, sync, or export.
+- Do not retry analytics automatically: that avoids retry storms and surprise
+  usage. The browser is capped at 30 events/minute and 300/session; the proxy is
+  capped at 60 requests/minute/IP. Session replay remains disabled.
+- Local and Tailscale collection routes through the production proxy so Expo
+  testing is observable without running another collector or exposing a key.
 
-When approved, use the collector's `POST /api/analytics/track` contract and the
-public write key from Analytics **Data Sources → First-party Analytics**. A small
-Survey-owned transport module is preferable to adding the Analytics app as a
-dependency.
+The collector's public write key lives only in Vercel as
+`AGENT_NATIVE_ANALYTICS_PUBLIC_KEY`. Never add it to `VITE_*`, `EXPO_PUBLIC_*`,
+the mobile bundle, logs, tests, or client-side storage.

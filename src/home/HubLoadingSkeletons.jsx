@@ -23,19 +23,19 @@ const LoadingHeader = ({ tab }) => {
   if (tab === 'documents') {
     return (
       <>
-        <div className="documents-mobile-search-row hub-loading-mobile-actions">
-          <Block style={{ width: 92, height: 28 }} />
+        <div className="documents-mobile-search-actions hub-mobile-search-actions hub-loading-mobile-actions">
           <Block style={{ width: '100%', height: 28 }} />
+          <Block style={{ width: 112, height: 28 }} />
         </div>
         {desktopSearch('documents-desktop-search', 'Search documents')}
-        <Block className="hub-loading-primary-action" style={{ width: 76, height: 28 }} />
+        <Block className="hub-loading-primary-action documents-desktop-upload" style={{ width: 76, height: 28 }} />
       </>
     );
   }
 
   const mobileClass = tab === 'projects'
-    ? 'projects-mobile-search-actions with-create'
-    : 'templates-mobile-search-actions with-create';
+    ? 'projects-mobile-search-actions hub-mobile-search-actions with-create'
+    : 'templates-mobile-search-actions hub-mobile-search-actions with-create';
   const desktopClass = tab === 'projects' ? 'projects-desktop-search' : 'templates-desktop-search';
   return (
     <>
@@ -53,10 +53,15 @@ const LoadingSubtitle = ({ tab }) => {
     return (
       <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }} aria-hidden="true">
         <span className="documents-file-count hub-loading-metric-cell"><b>0</b> files<Block style={{ width: 30, height: 9 }} /></span>
-        <span className="documents-select-row mobile-header-select-row">
-          <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
-            Select<Block style={{ width: 34, height: 9 }} />
-          </button>
+        <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
+          <span className="documents-mobile-select-main">
+            <button className="mobile-header-select-button hub-loading-metric-cell hub-loading-metric-button" type="button" disabled tabIndex={-1}>
+              Select<Block style={{ width: 34, height: 9 }} />
+            </button>
+          </span>
+          <span className="documents-mobile-sort-control">
+            <Block style={{ width: 112, height: 28 }} />
+          </span>
         </span>
       </span>
     );
@@ -179,11 +184,9 @@ const ProjectsSkeleton = () => (
     </div>
     <div className="projects-mobile-layout">
       <div className="projects-mobile-browser projects-mobile-drill-view">
-        <div className="projects-mobile-browser-label hub-loading-mobile-label"><Block style={{ width: 92, height: 8 }} /></div>
         {MOBILE_ROWS.map((row) => (
           <div key={row} className="projects-mobile-folder-row drill reorderable hub-loading-mobile-row">
             <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-            <Block style={{ width: 34, height: 34, borderRadius: 8 }} />
             <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '64%' : '80%', height: 11 }} /><Block style={{ width: '48%', height: 8 }} /></span>
             <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
           </div>
@@ -195,7 +198,7 @@ const ProjectsSkeleton = () => (
 
 const TemplatesSkeleton = () => (
   <div className="ed-scope hub-loading-body" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-    <div style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden' }}>
+    <div className="templates-editor-body" style={{ padding: '0 8px 8px 8px', height: '100%', overflow: 'hidden' }}>
       <div className="templates-editor-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr 268px', gap: 8, height: '100%' }}>
         <aside className="hub-loading-template-panel hub-loading-sidebar"><SidebarRows kind="templates" /></aside>
         <section className="hub-loading-template-panel hub-loading-template-editor">
@@ -217,11 +220,9 @@ const TemplatesSkeleton = () => (
       </div>
       <div className="templates-mobile-layout">
         <div className="templates-mobile-browser">
-          <div className="templates-mobile-label hub-loading-mobile-label"><Block style={{ width: 76, height: 8 }} /></div>
           {MOBILE_ROWS.map((row) => (
             <div key={row} className="templates-mobile-row reorderable hub-loading-mobile-row">
               <Block style={{ width: 14, height: 14, justifySelf: 'center' }} />
-              <Block style={{ width: 34, height: 34, borderRadius: 8 }} />
               <span className="hub-loading-copy"><Block style={{ width: row % 2 ? '66%' : '82%', height: 11 }} /><Block style={{ width: '50%', height: 8 }} /></span>
               <Block style={{ width: 18, height: 18, justifySelf: 'center' }} />
             </div>

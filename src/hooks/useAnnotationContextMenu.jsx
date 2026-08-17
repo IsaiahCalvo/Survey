@@ -494,6 +494,48 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         };
       };
 
+      // A group z-order command is one atomic permutation. Calling the
+      // single-object reorder callback repeatedly reads changing indices from
+      // the live ref and can move a neighbor instead of the selected object.
+      // Keep relative order within the selection and commit only once.
+      const reorderAll = (direction) => {
+        const page = annotationsByPageRef.current?.[ctx.pageNumber];
+        if (!page?.objects?.length) return;
+        const selected = new Set(sortedAsc);
+        let entries = page.objects.map((object, index) => ({ object, selected: selected.has(index) }));
+        if (direction === 'front' || direction === 'back') {
+          const picked = entries.filter((entry) => entry.selected);
+          const rest = entries.filter((entry) => !entry.selected);
+          entries = direction === 'front' ? [...rest, ...picked] : [...picked, ...rest];
+        } else if (direction === 'forward') {
+          for (let index = entries.length - 2; index >= 0; index -= 1) {
+            if (entries[index].selected && !entries[index + 1].selected) {
+              [entries[index], entries[index + 1]] = [entries[index + 1], entries[index]];
+            }
+          }
+        } else if (direction === 'backward') {
+          for (let index = 1; index < entries.length; index += 1) {
+            if (entries[index].selected && !entries[index - 1].selected) {
+              [entries[index], entries[index - 1]] = [entries[index - 1], entries[index]];
+            }
+          }
+        }
+        const next = deepClone(page);
+        next.objects = entries.map((entry) => deepClone(entry.object));
+        handleSaveAnnotations(ctx.pageNumber, next, {
+          source: 'object:modified',
+          action: 'reorder-group',
+          checkpointPolicy: 'normal',
+        });
+        setPendingSvgSelection({
+          pageNumber: ctx.pageNumber,
+          annotationIndices: entries.reduce((indices, entry, index) => (
+            entry.selected ? [...indices, index] : indices
+          ), []),
+          tick: Date.now(),
+        });
+      };
+
       items = [
         item('Cut', 'cut', () => {
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
@@ -579,26 +621,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         }),
         sep(),
         item('Bring to front', 'bringToFront', () => {
-          // Top-most selected ends on top; keep relative order by
-          // processing from topmost (largest index) downward.
-          for (const idx of sortedDesc) {
-            handleReorderAnnotation(ctx.pageNumber, idx, 'front');
-          }
+          reorderAll('front');
         }),
         item('Bring forward', 'bringForward', () => {
-          for (const idx of sortedDesc) {
-            handleReorderAnnotation(ctx.pageNumber, idx, 'forward');
-          }
+          reorderAll('forward');
         }),
         item('Send backward', 'sendBackward', () => {
-          for (const idx of sortedAsc) {
-            handleReorderAnnotation(ctx.pageNumber, idx, 'backward');
-          }
+          reorderAll('backward');
         }),
         item('Send to back', 'sendToBack', () => {
-          for (const idx of sortedAsc) {
-            handleReorderAnnotation(ctx.pageNumber, idx, 'back');
-          }
+          reorderAll('back');
         }),
         // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
         // from the multi-selection right-click menu. The feature is

@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   getHomeDir: () => ipcRenderer.invoke('os:getHomeDir'),
   listDir: (path) => ipcRenderer.invoke('fs:listDir', path),
+  trackSurveyAnalytics: (payload) => ipcRenderer.invoke('analytics:track', payload),
 
   // File watcher APIs
   startFileWatcher: (filePath, watchId) => ipcRenderer.invoke('fileWatcher:start', { filePath, watchId }),

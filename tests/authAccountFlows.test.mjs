@@ -109,7 +109,11 @@ test('Turnstile can be disabled locally with an explicit empty env value', () =>
   assert.equal(isTurnstileEnabled(DEFAULT_TURNSTILE_SITE_KEY), true);
 });
 
-test('dev auth bootstrap endpoint mints only a token hash through server-side Supabase admin', () => {
+test('dev auth bootstrap is machine-persistent, exact-owner-only, and server-side', () => {
+  assert.match(VITE_CONFIG_SOURCE, /\.config', 'survey', 'dev-auth\.env'/);
+  assert.match(VITE_CONFIG_SOURCE, /email\.toLowerCase\(\) !== relay\.email\.toLowerCase\(\)/);
+  assert.match(VITE_CONFIG_SOURCE, /__DEV_AUTH_RELAY_ENABLED__/);
+  assert.match(VITE_CONFIG_SOURCE, /__DEV_AUTH_RELAY_EMAIL__/);
   assert.match(VITE_CONFIG_SOURCE, /\/__dev-auth\/session/);
   assert.match(VITE_CONFIG_SOURCE, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(VITE_CONFIG_SOURCE, /admin\.auth\.admin\.generateLink\(\{\s*type: 'magiclink'/);
@@ -119,8 +123,39 @@ test('dev auth bootstrap endpoint mints only a token hash through server-side Su
 
 test('dev auto-login falls back to magic-link bootstrap after captcha failure', () => {
   assert.match(AUTH_CONTEXT_SOURCE, /runDevAuthBootstrapIfCaptchaBlocked\(error, devEmail\)/);
+  assert.match(AUTH_CONTEXT_SOURCE, /devAuthRelayAllows\(email\)/);
   assert.match(AUTH_CONTEXT_SOURCE, /X-Dev-Auth-Bootstrap/);
   assert.match(AUTH_CONTEXT_SOURCE, /supabase\.auth\.verifyOtp\(\{\s*token_hash: payload\.token_hash,\s*type: payload\.type \|\| 'magiclink'/);
+});
+
+test('manual dev sign-out persists and only explicit owner sign-in re-enables auto-login', () => {
+  assert.match(AUTH_CONTEXT_SOURCE, /DEV_AUTH_AUTO_LOGIN_SUPPRESSED_KEY = 'survey:dev-auth:auto-login-suppressed'/);
+  assert.match(AUTH_CONTEXT_SOURCE, /if \(isDevAuthAutoLoginSuppressed\(\)\) \{[\s\S]*return session;/);
+
+  const signOutBlock = AUTH_CONTEXT_SOURCE.slice(
+    AUTH_CONTEXT_SOURCE.indexOf('const signOut = async'),
+    AUTH_CONTEXT_SOURCE.indexOf('// Resend the signup confirmation email'),
+  );
+  assert.match(signOutBlock, /setDevAuthAutoLoginSuppressed\(true\)/);
+  assert.ok(
+    signOutBlock.indexOf('setDevAuthAutoLoginSuppressed(true)') < signOutBlock.indexOf('supabase.auth.signOut()'),
+    'sign-out suppression must persist before the network call and reload',
+  );
+
+  const signInBlock = AUTH_CONTEXT_SOURCE.slice(
+    AUTH_CONTEXT_SOURCE.indexOf('const signIn = async'),
+    AUTH_CONTEXT_SOURCE.indexOf('// Sign in with Google OAuth'),
+  );
+  assert.match(signInBlock, /bootstrapSession[\s\S]*setDevAuthAutoLoginSuppressed\(false\)/);
+  assert.match(signInBlock, /if \(devAuthRelayAllows\(email\)\) setDevAuthAutoLoginSuppressed\(false\)/);
+});
+
+test('Turnstile widget has a development-only, fully configured relay suppression', () => {
+  assert.match(VITE_CONFIG_SOURCE, /mode === 'development'[\s\S]*Boolean\(env\.SUPABASE_SERVICE_ROLE_KEY\)/);
+  assert.match(AUTH_MODAL_SOURCE, /TURNSTILE_ENABLED && captchaMode/);
+  const widgetSource = readFileSync(new URL('../src/components/TurnstileWidget.jsx', import.meta.url), 'utf8');
+  assert.match(widgetSource, /import\.meta\.env\.DEV[\s\S]*__DEV_AUTH_RELAY_ENABLED__/);
+  assert.match(widgetSource, /isTurnstileEnabled\(TURNSTILE_SITE_KEY\)[\s\S]*!DEV_AUTH_RELAY_ENABLED/);
 });
 
 // --- wiring: /reset-password route + page -----------------------------------
@@ -165,6 +200,24 @@ test('AuthModal signup lands on a persistent confirm panel, not a timed close', 
   assert.match(AUTH_MODAL_SOURCE, /disabled=\{loading \|\| resendRemaining > 0\}/);
   // Signed-in-immediately signups (email confirmation disabled) still close.
   assert.match(AUTH_MODAL_SOURCE, /if \(data\?\.session\)/);
+});
+
+test('AuthModal labels credentials for iPhone and Android password autofill', () => {
+  assert.match(AUTH_MODAL_SOURCE, /<form[^>]*autoComplete="on"/);
+  assert.match(
+    AUTH_MODAL_SOURCE,
+    /id="email"[\s\S]{0,420}name="username"[\s\S]{0,220}autoComplete="username"[\s\S]{0,220}inputMode="email"[\s\S]{0,220}autoCapitalize="none"[\s\S]{0,220}spellCheck=\{false\}/,
+  );
+  assert.match(
+    AUTH_MODAL_SOURCE,
+    /id="password"[\s\S]{0,420}name="password"[\s\S]{0,220}autoComplete=\{mode === 'login' \? 'current-password' : 'new-password'\}/,
+  );
+  assert.match(
+    AUTH_MODAL_SOURCE,
+    /id="confirmPassword"[\s\S]{0,420}name="confirm-password"[\s\S]{0,220}autoComplete="new-password"/,
+  );
+  assert.match(AUTH_MODAL_SOURCE, /id="firstName"[\s\S]{0,320}autoComplete="given-name"/);
+  assert.match(AUTH_MODAL_SOURCE, /id="lastName"[\s\S]{0,320}autoComplete="family-name"/);
 });
 
 // --- wiring: change-password verifies the current password -------------------

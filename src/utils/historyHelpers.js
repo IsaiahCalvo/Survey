@@ -118,6 +118,8 @@ export function isLegacyAnnotationHistoryMeta(meta) {
   const reason = typeof meta?.reason === 'string' ? meta.reason : '';
   return reason.startsWith('callouts:')
     || reason.startsWith('highlight:')
+    || reason.startsWith('survey-marker:')
+    || reason.startsWith('space:')
     || reason === 'delete:batch'
     || reason === 'eraser:gesture'
     || reason === 'annotations:save';

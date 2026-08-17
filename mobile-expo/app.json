@@ -2,25 +2,28 @@
   "expo": {
     "name": "Survey",
     "slug": "survey",
+    "scheme": [
+      "com.kalvoe.survey",
+      "com.googleusercontent.apps.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku"
+    ],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
+      "appleTeamId": "T3KR4X5869",
+      "bundleIdentifier": "com.kalvoe.survey",
       "supportsTablet": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true,
-          "NSExceptionDomains": {
-            "isaiahs-macbook-pro.taila0b324.ts.net": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            }
-          }
-        }
-      }
+          "NSAllowsLocalNetworking": true
+        },
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "runtimeVersion": "exposdk:54.0.0"
     },
     "android": {
+      "package": "com.kalvoe.survey",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -31,6 +34,18 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7522d24f-7afd-4d5b-a5c0-58f2ea863c28"
+      }
+    },
+    "owner": "isaiahcalvo",
+    "updates": {
+      "url": "https://u.expo.dev/7522d24f-7afd-4d5b-a5c0-58f2ea863c28"
     }
   }
 }

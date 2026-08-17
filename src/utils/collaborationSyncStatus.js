@@ -3,10 +3,17 @@ export function combineCollaborationSyncStatus({
   transportState,
   isSharedDocument,
 }) {
-  if (!isSharedDocument) return annotationStatus;
   if (annotationStatus?.stage === 'error' || annotationStatus?.healthy === false) {
     return annotationStatus;
   }
+  if (isSharedDocument == null) {
+    return {
+      stage: 'hydrating',
+      healthy: true,
+      error: 'checking whether this document uses live collaboration',
+    };
+  }
+  if (!isSharedDocument) return annotationStatus;
   if (transportState === 'offline') {
     return {
       stage: 'error',

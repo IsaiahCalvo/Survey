@@ -116,7 +116,7 @@ test('PdfPageThumb checks the durable cache before downloading or queueing', () 
   assert.ok(idbAt < downloadAt, 'the durable cache is read BEFORE the PDF is downloaded');
   assert.ok(idbAt < slotAt, 'a cache hit never waits on the render queue');
   // A hit returns immediately — it must not fall through into the render path.
-  assert.match(body, /if \(stored\) \{[\s\S]*?setData\(stored\);\s*\n\s*return;/);
+  assert.match(body, /if \(stored\) return stored;/);
   // Every successful render is persisted for later visits.
-  assert.match(body, /if \(persistKey\) thumbnailStore\(\)\.put\(persistKey, result\)/);
+  assert.match(body, /if \(persistKey\) void thumbnailStore\(\)\.put\(persistKey, result\)/);
 });
