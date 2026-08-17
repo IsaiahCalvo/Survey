@@ -29,12 +29,20 @@ const uniqueAnnotationIds = (page) => page.evaluate(() => [...new Set(
 
 // Serialized geometry of every annotation node — the "nothing was erased or
 // carved" fingerprint (partial erase mutates path data even when it keeps
-// the id).
+// the id). Numbers are normalized to 2dp: float re-serialization jitters
+// the last digits of path data across re-renders (observed: one digit in a
+// ~5000-char path after a survey-mode round trip, all 253 coordinates
+// identical to 2dp), so a byte-strict compare false-positives while a real
+// carve moves coordinates by whole units.
 const layerGeometry = (page) => page.evaluate(() => [
   ...document.querySelectorAll('[data-svg-annotation-layer="1"] [data-anno-id]'),
-].map((node) => `${node.getAttribute('data-anno-id')}:${node.innerHTML.length}:${node.innerHTML}`)
-  .sort()
-  .join('\n'));
+].map((node) => {
+  const normalized = node.innerHTML.replace(
+    /-?\d+\.\d+(?:e-?\d+)?/g,
+    (num) => Number(num).toFixed(2),
+  );
+  return `${node.getAttribute('data-anno-id')}:${normalized}`;
+}).sort().join('\n'));
 
 test('KAL-88/89: text + counter creations stamp survey scope; eraser refuses survey-hidden marks', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
