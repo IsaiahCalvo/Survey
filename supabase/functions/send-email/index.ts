@@ -86,7 +86,12 @@ function policyDeps(authHeader: string) {
             // picker choose: a fresh (pending) row outranks stale ones no
             // matter which table or how old, so a stale revoked document
             // invite can never shadow a live project/template invite.
-            const candidates: object[] = [];
+            const candidates: Array<{
+                revokedAt: string | null;
+                acceptedAt: string | null;
+                expiresAt: string | null;
+                createdAt: string | null;
+            }> = [];
             for (const table of INVITE_TABLES) {
                 const { data, error } = await caller
                     .from(table)
