@@ -31303,6 +31303,10 @@ ${pageBlocks}
                                   selectedSpaceId={annotationSpaceId}
                                   activeSpaceId={activeSpaceId}
                                   spaces={spaces}
+                                  // KAL-89 — survey-mode context for the classify gate:
+                                  // survey-hidden marks must not be erasable.
+                                  showSurveyPanel={showSurveyPanel}
+                                  selectedModuleId={selectedModuleId}
                                   zoomGeneration={zoomGeneration}
                                   interruptionPolicy={eraserInterruptionPolicy}
                                   interruptionPolicyRef={eraserInterruptionPolicyRef}

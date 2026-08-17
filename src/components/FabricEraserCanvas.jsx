@@ -8,6 +8,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { canModify } from '../lib/collab/permissionScope.js';
+import { isAnnotationVisibleInSurveyMode } from '../utils/annotationVisibilityRules.js';
 import {
   beginAnnotationGesture,
   markAnnotationPointerRelease,
@@ -272,6 +273,10 @@ const FabricEraserCanvas = memo(({
   selectedSpaceId,
   activeSpaceId,
   spaces,
+  // KAL-89 — live survey-mode context for the classify gate: what survey mode
+  // hides, the eraser must not touch (see getEraseBlockReason).
+  showSurveyPanel = false,
+  selectedModuleId = null,
   zoomGeneration,
   // Parent-owned lifecycle reason. `cancel` is reserved for authorization
   // loss/read-only transitions; ordinary tool/page unmounts keep `commit`.
@@ -339,6 +344,8 @@ const FabricEraserCanvas = memo(({
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
   const spacesRef = useRef(spaces);
+  const showSurveyPanelRef = useRef(showSurveyPanel);
+  const selectedModuleIdRef = useRef(selectedModuleId);
   const viewerIdRef = useRef(viewerId);
   const documentOwnerIdRef = useRef(documentOwnerId);
   const isLocalOnlyDocumentRef = useRef(isLocalOnlyDocument);
@@ -368,6 +375,8 @@ const FabricEraserCanvas = memo(({
   selectedSpaceIdRef.current = selectedSpaceId;
   activeSpaceIdRef.current = activeSpaceId;
   spacesRef.current = spaces;
+  showSurveyPanelRef.current = showSurveyPanel;
+  selectedModuleIdRef.current = selectedModuleId;
   viewerIdRef.current = viewerId;
   documentOwnerIdRef.current = documentOwnerId;
   isLocalOnlyDocumentRef.current = isLocalOnlyDocument;
@@ -1518,6 +1527,20 @@ const FabricEraserCanvas = memo(({
     // resurrected it (2026-07-19 audit). One shared rule here covers live AND
     // commit (canErase is built from this function).
     if (object?.locked === true) return 'locked';
+
+    // KAL-89 — survey-mode gate, mirroring the space-scope rule below: what
+    // survey mode hides, the eraser must not touch. Reuses the SHARED
+    // visibility decision (isAnnotationVisibleInSurveyMode) so classify can
+    // never disagree with the renderer: canvas-scoped marks are hidden (and
+    // therefore protected) while a survey module is active, and survey-scoped
+    // marks are protected outside their matching module. Region-scoped marks
+    // fall through to the space-scope rules unchanged.
+    if (!isAnnotationVisibleInSurveyMode({
+      moduleId: object?.moduleId ?? null,
+      regionId: object?.regionId ?? null,
+      showSurveyPanel: showSurveyPanelRef.current,
+      selectedModuleId: selectedModuleIdRef.current,
+    })) return 'survey-scope';
 
     const objectSpaceId = object?.spaceId ?? null;
     const objectRegionId = object?.regionId ?? null;
