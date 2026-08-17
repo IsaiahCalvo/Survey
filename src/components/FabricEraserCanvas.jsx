@@ -1008,8 +1008,22 @@ const FabricEraserCanvas = memo(({
     const ownerId = documentOwnerIdRef.current;
     return hitIds.filter((id) => {
       if (excludeIds?.has(id)) return false;
-      if (!viewerId || !ownerId) return isLocalOnlyDocumentRef.current;
       const callout = allCallouts.find((c) => c.id === id);
+      // KAL-89 (review residual): the callout lane must honor the same
+      // survey-visibility rule as getEraseBlockReason — what survey mode
+      // hides, the eraser must not touch. getCalloutHitIds tests raw
+      // geometry, so without this gate a survey-hidden canvas callout was
+      // whole-erasable during a survey-mode sweep (and a survey-scoped
+      // callout erasable in standard mode). Checked BEFORE the local-only
+      // early return so unauthenticated/local documents are gated too;
+      // both preview and commit call this exact helper.
+      if (!isAnnotationVisibleInSurveyMode({
+        moduleId: callout?.moduleId ?? null,
+        regionId: callout?.regionId ?? null,
+        showSurveyPanel: showSurveyPanelRef.current,
+        selectedModuleId: selectedModuleIdRef.current,
+      })) return false;
+      if (!viewerId || !ownerId) return isLocalOnlyDocumentRef.current;
       if (callout?.locked === true) return false;
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
     });

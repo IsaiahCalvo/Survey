@@ -50,6 +50,26 @@ test('survey gate runs inside the ONE shared block-reason choke point (covers li
   assert.ok(spaceScopeIndex > -1, 'space-scope rule still present');
 });
 
+test('callout lane honors the same survey gate (review residual)', () => {
+  // getCalloutHitIds tests raw geometry and calloutBoundsAllow passes
+  // callouts with no DOM bounds, so the permitted-hits filter — the ONE
+  // helper both preview and commit call — must apply the survey rule.
+  const calloutStart = ERASER_SOURCE.indexOf('const getPermittedCalloutHitIds');
+  const calloutEnd = ERASER_SOURCE.indexOf('\n  // Survey markers live outside', calloutStart);
+  const calloutSource = ERASER_SOURCE.slice(calloutStart, calloutEnd);
+
+  assert.match(calloutSource, /isAnnotationVisibleInSurveyMode\(\{/);
+  assert.match(calloutSource, /moduleId: callout\?\.moduleId \?\? null/);
+  assert.match(calloutSource, /regionId: callout\?\.regionId \?\? null/);
+
+  // The gate must run BEFORE the local-only early return, or unauthenticated
+  // and local documents (no viewerId/ownerId) bypass it entirely.
+  const gateIndex = calloutSource.indexOf('isAnnotationVisibleInSurveyMode({');
+  const localOnlyIndex = calloutSource.indexOf('return isLocalOnlyDocumentRef.current');
+  assert.ok(gateIndex > -1, 'survey gate present in getPermittedCalloutHitIds');
+  assert.ok(localOnlyIndex > gateIndex, 'survey gate runs before the local-only early return');
+});
+
 test('eraser receives live survey-mode context from PDFViewer', () => {
   assert.match(ERASER_SOURCE, /showSurveyPanelRef\.current/);
   assert.match(ERASER_SOURCE, /selectedModuleIdRef\.current/);
