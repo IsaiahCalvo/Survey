@@ -11255,13 +11255,13 @@
     "semantic_hash": ""
   },
   "src/components/AnnotationSizeControl.jsx": {
-    "mtime": 1786934876.2657409,
-    "ast_hash": "c238b3131e87d448d0d0b836a6692e59",
+    "mtime": 1786937080.2768955,
+    "ast_hash": "05b4c3a018c2076f597819cd6bc6901b",
     "semantic_hash": ""
   },
   "src/utils/annotationSize.js": {
-    "mtime": 1786906709.173822,
-    "ast_hash": "af4f7c87ec057ac6009c27d83b4e147c",
+    "mtime": 1786937080.2764633,
+    "ast_hash": "080fbae5de934d86995554ebe35d5ee9",
     "semantic_hash": ""
   },
   "tests/annotationSize.test.mjs": {
@@ -11270,8 +11270,8 @@
     "semantic_hash": ""
   },
   "tests/annotationSizeControlList.test.mjs": {
-    "mtime": 1786934876.265948,
-    "ast_hash": "94282620e8ea91f56112d427b3476e76",
+    "mtime": 1786937048.2819858,
+    "ast_hash": "b689e2a0ac10c0e118ec1059420b41c8",
     "semantic_hash": ""
   },
   "tests/selectedAnnotationColorSwatch.test.mjs": {

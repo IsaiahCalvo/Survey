@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from '../utils/annotationSize';
+import {
+  getAnnotationSizePreviewThickness,
+  normalizeAnnotationSize,
+  sanitizeAnnotationSizeDraft,
+} from '../utils/annotationSize';
 import './AnnotationSizeControl.css';
 
 export const ANNOTATION_SIZE_PRESETS = Object.freeze({
@@ -49,6 +53,8 @@ export default function AnnotationSizeControl({
       .filter((preset, index, list) => list.indexOf(preset) === index)
       .sort((a, b) => a - b)
   ), [max, min, presets]);
+  const previewScaleMin = availablePresets[0] ?? min;
+  const previewScaleMax = availablePresets[availablePresets.length - 1] ?? max;
   const selectedPresetIndex = availablePresets.findIndex((preset) => Number(valueText) === preset);
 
   const handleOpenChange = (nextOpen) => {
@@ -157,11 +163,16 @@ export default function AnnotationSizeControl({
                   <span className="annotation-size-control__preset-preview" aria-hidden="true">
                     <span
                       className="annotation-size-control__preset-stroke"
-                      style={{ '--annotation-size-preview': `${Math.max(1, Math.min(preset, 14))}px` }}
+                      style={{
+                        '--annotation-size-preview': `${getAnnotationSizePreviewThickness(
+                          preset,
+                          previewScaleMin,
+                          previewScaleMax,
+                        )}px`,
+                      }}
                     />
                   </span>
                   <span className="annotation-size-control__preset-value">{preset}</span>
-                  <span className="annotation-size-control__preset-check" aria-hidden="true">✓</span>
                 </button>
               );
             })}

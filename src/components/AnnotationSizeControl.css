@@ -52,7 +52,7 @@
 }
 
 .annotation-size-control__popover {
-  width: 164px;
+  width: 126px;
   max-height: min(520px, calc(100vh - 24px));
   padding: 5px;
   display: flex;
@@ -92,7 +92,7 @@
   width: 100%;
   min-height: 34px;
   display: grid;
-  grid-template-columns: 68px 1fr 16px;
+  grid-template-columns: 68px 1fr;
   align-items: center;
   gap: 7px;
   padding: 4px 7px;
@@ -129,7 +129,7 @@
 .annotation-size-control__preset-stroke {
   width: 64px;
   height: var(--annotation-size-preview);
-  max-height: 14px;
+  max-height: 22px;
   display: block;
   border-radius: 999px;
   background: currentColor;
@@ -137,18 +137,6 @@
 
 .annotation-size-control__preset-value {
   color: inherit;
-}
-
-.annotation-size-control__preset-check {
-  color: #d9dee6;
-  font-size: 14px;
-  font-weight: 800;
-  opacity: 0;
-  text-align: center;
-}
-
-.annotation-size-control__presets button.is-active .annotation-size-control__preset-check {
-  opacity: 1;
 }
 
 .annotation-size-control__arrow {
@@ -188,7 +176,7 @@
   }
 
   .annotation-size-control__popover {
-    width: min(164px, calc(100vw - 24px));
+    width: min(126px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);
   }
 
