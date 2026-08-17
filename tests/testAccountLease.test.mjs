@@ -434,7 +434,12 @@ test('all official real-account entry points use the verified lease loader', () 
     if (inactiveScaffolds.has(relativePath) && source.includes('test.fixme')) continue;
     if (relativePath === 'scripts/kal44-verify.mjs' && source.includes('hubPreview=1')) continue;
     if (
-      relativePath === 'debug/playwright.config.mjs'
+      (relativePath === 'debug/playwright.config.mjs'
+        // Same classification, same blanking contract: the container-local
+        // variant only swaps the browser launch for the preinstalled
+        // chromium (executablePath) and must never inherit a real
+        // auto-login either.
+        || relativePath === 'debug/playwright.local-container.config.mjs')
       && /VITE_DEV_AUTO_LOGIN_EMAIL:\s*''/.test(source)
       && /VITE_DEV_AUTO_LOGIN_PASSWORD:\s*''/.test(source)
     ) {
