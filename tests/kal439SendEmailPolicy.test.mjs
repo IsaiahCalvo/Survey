@@ -18,6 +18,7 @@ import {
   escapeLikePattern,
   sanitizeSubject,
   authorizeUserSend,
+  pickBindingInviteRow,
 } from '../supabase/functions/send-email/policy.js';
 
 const repoRoot = path.resolve(new URL('.', import.meta.url).pathname, '..');
@@ -164,6 +165,55 @@ test('rate limit rejects with 429; budget errors fail closed with 503', async ()
   }));
   assert.equal(broken.ok, false);
   assert.equal(broken.status, 503);
+});
+
+test('invite-row picker: a fresh row outranks stale rows from any table, any age', () => {
+  const now = Date.now();
+  const freshOld = {
+    revokedAt: null, acceptedAt: null,
+    expiresAt: new Date(now + 86_400_000).toISOString(),
+    createdAt: new Date(now - 5 * 86_400_000).toISOString(),
+    tag: 'fresh-project-invite',
+  };
+  const staleNew = {
+    revokedAt: new Date(now - 1000).toISOString(), acceptedAt: null,
+    expiresAt: new Date(now + 86_400_000).toISOString(),
+    createdAt: new Date(now).toISOString(),
+    tag: 'revoked-document-invite',
+  };
+  // The regression the review flagged: table priority used to let the newer
+  // revoked document invite shadow the older-but-live project invite.
+  assert.equal(pickBindingInviteRow([staleNew, freshOld], now).tag, 'fresh-project-invite');
+
+  // With no fresh row anywhere, the newest stale row wins (it still binds
+  // document-shared / access-removed).
+  const staleOlder = { ...staleNew, createdAt: new Date(now - 9 * 86_400_000).toISOString(), tag: 'older-stale' };
+  assert.equal(pickBindingInviteRow([staleOlder, staleNew], now).tag, 'revoked-document-invite');
+
+  assert.equal(pickBindingInviteRow([], now), null);
+  assert.equal(pickBindingInviteRow(null, now), null);
+});
+
+test('index.ts gathers candidates across ALL invite tables and uses the picker', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'supabase/functions/send-email/index.ts'),
+    'utf8',
+  );
+  assert.match(src, /pickBindingInviteRow/);
+  assert.match(src, /for \(const table of INVITE_TABLES\)[\s\S]+candidates\.push/);
+  assert.doesNotMatch(
+    src.slice(src.indexOf('findInviteRowForRecipient'), src.indexOf('findActiveCollaboratorForRecipient')),
+    /return \{\s*\n\s*revokedAt/,
+    'no early per-table return — every table contributes candidates before picking',
+  );
+});
+
+test('KAL-284(d) unique violations surface as a friendly duplicate-invite message', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/services/documentInviteService.js'),
+    'utf8',
+  );
+  assert.match(src, /error\.code === '23505'[\s\S]+already pending on this document/);
 });
 
 test('LIKE wildcards in recipients cannot widen binding lookups', () => {

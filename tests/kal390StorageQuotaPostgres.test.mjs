@@ -143,6 +143,12 @@ test('KAL-390 migration enforces the storage quota against live storage.objects 
       LANGUAGE SQL IMMUTABLE
       AS $$ SELECT (string_to_array(name, '/'))[1 : array_length(string_to_array(name, '/'), 1) - 1] $$;
       ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+      -- Production carries documents_owner_select (20260703030000); the UPDATE
+      -- scenarios need it because an UPDATE's WHERE/RETURNING reads rows
+      -- through SELECT policies.
+      CREATE POLICY documents_owner_select ON storage.objects
+        FOR SELECT TO public
+        USING (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text);
       GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
       GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated, service_role;
 
@@ -272,6 +278,69 @@ test('KAL-390 migration enforces the storage quota against live storage.objects 
       )),
       'inserted',
       'freed storage must immediately allow new documents',
+    );
+
+    // --- Review round 2: overwrite growth is delta-gated (the tiny-insert-
+    //     then-grow bypass). USER_A currently holds first.pdf at 40 bytes.
+    const overwrite = (name, sizeSql) => authSql(
+      USER_A,
+      `UPDATE storage.objects SET metadata = ${sizeSql}
+       WHERE bucket_id = 'documents' AND name = '${USER_A}/${name}'
+       RETURNING 'overwritten';`,
+    );
+    assert.equal(
+      await query(port, overwrite('first.pdf', "jsonb_build_object('size', 100)")),
+      'overwritten',
+      'growing an overwrite to exactly the limit must pass (40 − 40 + 100 = 100)',
+    );
+    const growPastLimit = await query(port, overwrite('first.pdf', "jsonb_build_object('size', 101)"), { allowFailure: true });
+    assert.match(growPastLimit, /^ERROR:[\s\S]*row-level security/, 'growing past the limit via overwrite must be rejected');
+    assert.equal(
+      await query(port, overwrite('first.pdf', "jsonb_build_object('size', 100)")),
+      'overwritten',
+      'same-size save at the limit must keep working',
+    );
+    assert.equal(
+      await query(port, overwrite('first.pdf', "jsonb_build_object('size', 10)")),
+      'overwritten',
+      'shrinking overwrites must always pass',
+    );
+
+    // The reported attack shape: mint a tiny object while under quota, then
+    // inflate it through the storage API's upsert/UPDATE path.
+    assert.equal(
+      await query(port, authSql(
+        USER_A,
+        `INSERT INTO storage.objects(bucket_id, name, metadata)
+         VALUES ('documents', '${USER_A}/tiny.pdf', jsonb_build_object('size', 1))
+         RETURNING 'uploaded';`,
+      )),
+      'uploaded',
+    );
+    const inflate = await query(port, overwrite('tiny.pdf', "jsonb_build_object('size', 95)"), { allowFailure: true });
+    assert.match(inflate, /^ERROR:[\s\S]*row-level security/, 'inflating a tiny object past the limit must be rejected (11 − 1 + 95 = 105)');
+    assert.equal(
+      await query(port, overwrite('tiny.pdf', "jsonb_build_object('size', 89)")),
+      'overwritten',
+      'growth that stays within the limit must pass (11 − 1 + 89 = 99)',
+    );
+
+    // Unknown-size intermediate write counts as "unchanged", not as growth.
+    assert.equal(
+      await query(port, overwrite('first.pdf', 'NULL')),
+      'overwritten',
+      'an unknown-size overwrite must be treated as the old size and pass',
+    );
+
+    // Self-scoping usage helper: USER_B asking for USER_A's total gets their
+    // OWN total instead (mine.pdf = 99) — no cross-user storage disclosure.
+    assert.equal(
+      await query(port, authSql(
+        USER_B,
+        `SELECT public.get_actual_storage_usage('${USER_A}');`,
+      )),
+      '99',
+      'authenticated callers must only ever read their own storage total',
     );
   } finally {
     if (started) {

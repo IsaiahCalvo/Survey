@@ -59,6 +59,29 @@ export function escapeLikePattern(value) {
 }
 
 /**
+ * Choose the invite row that should represent this recipient for binding.
+ * Candidate rows come from ALL invite tables — a FRESH (unrevoked, unaccepted,
+ * unexpired) row always outranks stale ones regardless of table or age, so a
+ * stale revoked document invite can never shadow a live project/template
+ * invite and 403 a legitimate email. With no fresh row, the newest stale row
+ * wins (it still binds document-shared / access-removed).
+ *
+ * @param {Array<{ revokedAt: string|null, acceptedAt: string|null, expiresAt: string|null, createdAt?: string|null }>} rows
+ * @param {number} [nowMs]
+ */
+export function pickBindingInviteRow(rows, nowMs = Date.now()) {
+  const candidates = (rows || []).filter(Boolean);
+  if (!candidates.length) return null;
+  const isFresh = (row) => !row.revokedAt
+    && !row.acceptedAt
+    && (!row.expiresAt || new Date(row.expiresAt).getTime() > nowMs);
+  const newestFirst = [...candidates].sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
+  );
+  return newestFirst.find(isFresh) ?? newestFirst[0];
+}
+
+/**
  * Authorize a user-JWT send request. Service-role callers must NOT be routed
  * through this function.
  *

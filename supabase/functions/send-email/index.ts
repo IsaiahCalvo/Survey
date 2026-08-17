@@ -14,6 +14,7 @@ import { resolveBrevoApiKey } from './config.ts';
 import {
     authorizeUserSend,
     escapeLikePattern,
+    pickBindingInviteRow,
     sanitizeSubject,
 } from './policy.js';
 
@@ -81,25 +82,29 @@ function policyDeps(authHeader: string) {
     return {
         findInviteRowForRecipient: async (email: string) => {
             const pattern = escapeLikePattern(email);
-            // Freshest first so a pending invite outranks a stale one from an
-            // earlier share of the same address.
+            // Gather recent rows from ALL invite tables, then let the policy's
+            // picker choose: a fresh (pending) row outranks stale ones no
+            // matter which table or how old, so a stale revoked document
+            // invite can never shadow a live project/template invite.
+            const candidates: object[] = [];
             for (const table of INVITE_TABLES) {
                 const { data, error } = await caller
                     .from(table)
-                    .select('revoked_at, accepted_at, expires_at')
+                    .select('revoked_at, accepted_at, expires_at, created_at')
                     .ilike('target_email', pattern)
                     .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (!error && data) {
-                    return {
-                        revokedAt: data.revoked_at ?? null,
-                        acceptedAt: data.accepted_at ?? null,
-                        expiresAt: data.expires_at ?? null,
-                    };
+                    .limit(5);
+                if (error || !data) continue;
+                for (const row of data) {
+                    candidates.push({
+                        revokedAt: row.revoked_at ?? null,
+                        acceptedAt: row.accepted_at ?? null,
+                        expiresAt: row.expires_at ?? null,
+                        createdAt: row.created_at ?? null,
+                    });
                 }
             }
-            return null;
+            return pickBindingInviteRow(candidates);
         },
         findActiveCollaboratorForRecipient: async (email: string) => {
             const pattern = escapeLikePattern(email);

@@ -17,7 +17,9 @@ test('live usage helper sums storage.objects, not client-reported numbers', () =
   const sql = readMigration();
 
   match(sql, /CREATE OR REPLACE FUNCTION public\.get_actual_storage_usage\(p_user_id UUID\)/);
-  match(sql, /FROM storage\.objects o[\s\S]+WHERE o\.bucket_id = 'documents'[\s\S]+o\.name LIKE p_user_id::text \|\| '\/%'/);
+  // Self-scoping: authenticated callers always read their OWN folder; only
+  // JWT-less service callers can target p_user_id.
+  match(sql, /FROM storage\.objects o[\s\S]+WHERE o\.bucket_id = 'documents'[\s\S]+o\.name LIKE COALESCE\(auth\.uid\(\), p_user_id\)::text \|\| '\/%'/);
   match(sql, /COALESCE\(SUM\(\(o\.metadata->>'size'\)::bigint\), 0\)/);
   // The helper must never read the display-only counter or documents.file_size.
   const helperBody = sql.slice(
@@ -67,11 +69,26 @@ test('documents INSERT policy keeps the count cap but sources storage from live 
   doesNotMatch(policy, /user_subscriptions/);
 });
 
-test('save-flow overwrites stay quota-exempt: the UPDATE policy is not touched', () => {
+test('overwrite growth is delta-gated: tiny-insert-then-grow bypass is closed', () => {
+  const sql = readMigration();
+  const start = sql.indexOf('CREATE POLICY documents_owner_update');
+  const end = sql.indexOf('COMMENT ON POLICY documents_owner_update', start);
+  ok(start >= 0 && end > start, 'migration must recreate documents_owner_update');
+  const policy = sql.slice(start, end);
+
+  // Owner-folder scoping preserved on both USING and WITH CHECK.
+  match(policy, /USING \(bucket_id = 'documents' AND \(storage\.foldername\(name\)\)\[1\] = auth\.uid\(\)::text\)/);
+  // Delta arithmetic: old usage − old size + COALESCE(new size, old size).
+  // Same-size/shrinking saves keep working at the limit; growth past it blocks.
+  match(policy, /public\.get_actual_storage_usage\(auth\.uid\(\)\)[\s\S]+- public\.get_stored_object_size\(bucket_id, name\)[\s\S]+\+ COALESCE\([\s\S]+\(metadata->>'size'\)::bigint,[\s\S]+public\.get_stored_object_size\(bucket_id, name\)[\s\S]+<= public\.get_storage_limit\(auth\.uid\(\)\)/);
+});
+
+test('stored-object-size helper is folder-scoped for authenticated callers', () => {
   const sql = readMigration();
 
-  // replaceDocument/uploadDataFile upsert onto the SAME object path; gating
-  // UPDATE at quota would lock users out of saving existing work.
-  doesNotMatch(sql, /DROP POLICY IF EXISTS documents_owner_update/);
-  doesNotMatch(sql, /CREATE POLICY documents_owner_update/);
+  match(sql, /CREATE OR REPLACE FUNCTION public\.get_stored_object_size\(p_bucket_id TEXT, p_name TEXT\)/);
+  match(sql, /auth\.uid\(\) IS NULL OR o\.name LIKE auth\.uid\(\)::text \|\| '\/%'/);
+  match(sql, /REVOKE ALL ON FUNCTION public\.get_stored_object_size\(TEXT, TEXT\) FROM PUBLIC/);
+  match(sql, /GRANT EXECUTE ON FUNCTION public\.get_stored_object_size\(TEXT, TEXT\) TO authenticated, service_role/);
+  match(sql, /REVOKE EXECUTE ON FUNCTION public\.get_stored_object_size\(TEXT, TEXT\) FROM anon/);
 });
