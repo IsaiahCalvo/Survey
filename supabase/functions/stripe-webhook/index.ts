@@ -325,11 +325,12 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
         const oldTier = currentSubscription.tier;
         const actualUserId = userId || currentSubscription.user_id;
 
-        // Handle downgrade from Pro to Free
-        if (oldTier === 'pro' && tier === 'free') {
+        // Handle downgrade from Pro to Free (KAL-404: archived server-side
+        // below, mirroring handleSubscriptionDeleted — no frontend/login-time
+        // hook exists to do it).
+        const isDowngradeToFree = oldTier === 'pro' && tier === 'free';
+        if (isDowngradeToFree) {
             console.log(`Detected downgrade for user ${actualUserId}`);
-            // Note: Actual archival will be handled by frontend when user logs in
-            // We just update the tier here
         }
 
         // Update subscription with null-safe date handling
@@ -350,6 +351,22 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
             console.error('Error updating subscription:', error);
         } else {
             console.log(`Subscription updated for user ${actualUserId}: ${oldTier} → ${tier}`);
+
+            // KAL-404: a tier change without a full cancellation must archive
+            // overage too, same as the customer.subscription.deleted path.
+            if (isDowngradeToFree && actualUserId) {
+                console.log('Archiving excess projects/documents for downgrade to Free tier...');
+                const { data: archiveResult, error: archiveError } = await supabase.rpc('handle_downgrade_to_free', {
+                    p_user_id: actualUserId
+                });
+
+                if (archiveError) {
+                    console.error('Error archiving excess items:', archiveError);
+                } else {
+                    console.log('Archive result:', archiveResult);
+                    console.log(`Archived ${archiveResult?.projects_archived_count || 0} projects and ${archiveResult?.documents_archived_count || 0} documents`);
+                }
+            }
         }
     }
 }
