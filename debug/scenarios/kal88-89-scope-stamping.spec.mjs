@@ -34,13 +34,15 @@ const uniqueAnnotationIds = (page) => page.evaluate(() => [...new Set(
 // ~5000-char path after a survey-mode round trip, all 253 coordinates
 // identical to 2dp), so a byte-strict compare false-positives while a real
 // carve moves coordinates by whole units.
+// Hit-target elements flip pointer-events ("none" while a draw tool is
+// active, "all"/"stroke" under select) — interaction state, not geometry,
+// so it is excluded from the fingerprint too.
 const layerGeometry = (page) => page.evaluate(() => [
   ...document.querySelectorAll('[data-svg-annotation-layer="1"] [data-anno-id]'),
 ].map((node) => {
-  const normalized = node.innerHTML.replace(
-    /-?\d+\.\d+(?:e-?\d+)?/g,
-    (num) => Number(num).toFixed(2),
-  );
+  const normalized = node.innerHTML
+    .replace(/-?\d+\.\d+(?:e-?\d+)?/g, (num) => Number(num).toFixed(2))
+    .replace(/pointer-events="[^"]*"/g, '');
   return `${node.getAttribute('data-anno-id')}:${normalized}`;
 }).sort().join('\n'));
 
