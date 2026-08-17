@@ -1390,8 +1390,8 @@
     "semantic_hash": ""
   },
   "src/components/collab/ConfirmDeleteModal.jsx": {
-    "mtime": 1786940707.360246,
-    "ast_hash": "be06d0c325435e2cc763f3f04557ada2",
+    "mtime": 1786975456.275595,
+    "ast_hash": "4126001efcee0278da5c011ed258fbcf",
     "semantic_hash": ""
   },
   "src/components/collab/QuarantineMarkerOverlay.jsx": {
@@ -11297,6 +11297,11 @@
   "tests/counterSeriesDeletionPlan.test.mjs": {
     "mtime": 1786941210.9580753,
     "ast_hash": "e3482557616d5e579bec40956d8bf8d7",
+    "semantic_hash": ""
+  },
+  "tests/confirmDeleteModalConvention.test.mjs": {
+    "mtime": 1786975367.676631,
+    "ast_hash": "4e4f26874b9fcbe3c326f3fe89acf527",
     "semantic_hash": ""
   }
 }

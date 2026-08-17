@@ -23,43 +23,17 @@
 // or mode === 'owner-own-only' should NEVER reach this component — App.jsx's
 // onRequestBulkDelete callback short-circuits those upstream.
 
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import Icon from '../../Icons.jsx';
+import { useFocusTrap } from '../../hooks/useFocusTrap.js';
 import './ConfirmDeleteModal.css';
 
 export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
-  const cancelRef = useRef(null);
+  const cardRef = useRef(null);
 
-  // UX: default focus on Cancel per CONTEXT.md "Cancel (default focus) and a
-  // red 'Delete all 12' primary". Destructive action requires intentional
-  // mouse-or-Tab to reach — keyboard Enter on the modal accidentally cannot
-  // delete. Focus runs once when the modal opens (plan transitions from null
-  // to non-null).
-  const previouslyFocusedRef = useRef(null);
-  useEffect(() => {
-    if (plan && cancelRef.current) {
-      previouslyFocusedRef.current = document.activeElement;
-      cancelRef.current.focus();
-    } else if (!plan && previouslyFocusedRef.current) {
-      // Accessibility: return focus to whatever triggered the modal once it closes.
-      previouslyFocusedRef.current.focus?.();
-      previouslyFocusedRef.current = null;
-    }
-  }, [plan]);
-
-  // UX: Escape key closes the modal — matches the universal "Esc cancels"
-  // affordance the user expects. Only attached when the modal is open so we
-  // don't intercept Esc on every render.
-  useEffect(() => {
-    if (!plan) return undefined;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => window.removeEventListener('keydown', handleKey, true);
-  }, [plan, onCancel]);
+  // Match the app's shared modal contract: trap Tab, Escape cancels, restore
+  // focus to the opener, and keep Cancel as the safe default focus target.
+  useFocusTrap(cardRef, Boolean(plan), { onEscape: onCancel });
 
   if (!plan) return null;
   if (plan.mode === 'no-op' || plan.mode === 'owner-own-only') return null;
@@ -134,27 +108,44 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
   return (
     <div
       className="confirm-delete-modal__backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-delete-heading"
       onClick={handleBackdropClick}
     >
-      <div className="confirm-delete-modal__card">
-        <h2
-          className="confirm-delete-modal__heading"
-          id="confirm-delete-heading"
-        >
-          {heading}
-        </h2>
-        <p className="confirm-delete-modal__body">{body}</p>
-        {byAuthorInline && (
-          <p className="confirm-delete-modal__breakdown-inline">
-            {byAuthorInline}
-          </p>
-        )}
+      <div
+        ref={cardRef}
+        className="confirm-delete-modal__card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-delete-heading"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="confirm-delete-modal__content">
+          <div className="confirm-delete-modal__copy">
+            <h2
+              className="confirm-delete-modal__heading"
+              id="confirm-delete-heading"
+            >
+              {heading}
+            </h2>
+            <p className="confirm-delete-modal__body">{body}</p>
+            {byAuthorInline && (
+              <p className="confirm-delete-modal__breakdown-inline">
+                {byAuthorInline}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            className="confirm-delete-modal__close"
+            title="Close"
+            aria-label="Close"
+            onClick={onCancel}
+          >
+            <Icon name="close" size={13} />
+          </button>
+        </div>
         <div className="confirm-delete-modal__actions">
           <button
-            ref={cancelRef}
+            data-autofocus
             type="button"
             className="confirm-delete-modal__btn confirm-delete-modal__btn--cancel"
             onClick={onCancel}
