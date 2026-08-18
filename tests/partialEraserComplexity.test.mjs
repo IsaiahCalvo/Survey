@@ -25,18 +25,54 @@ const INTERACTIVE_BUDGET = Object.freeze({
   // multiple worker threads to process.cpuUsage(), so keep only catastrophic
   // outliers above the user-visible 250 ms wall-time ceiling from passing.
   maxCommitCpuMs: 500,
-  peakHeapBytes: 128 * 1024 * 1024,
-  peakRssBytes: 256 * 1024 * 1024,
+  // Memory is guarded by two readings that depend on what the eraser does
+  // rather than on the host it runs on.
+  //
+  // Removed here on 2026-08-18: `peakHeapBytes` <= 128 MiB and `peakRssBytes`
+  // <= 256 MiB. Both sampled `process.memoryUsage()` after every commit, so
+  // they measured how much garbage V8 had not collected yet and how many pages
+  // the allocator had not returned yet — i.e. the runner, not the eraser. The
+  // same 500 shallow bites, measured 25 times per host:
+  //
+  //            peak heap (ceiling 128)      peak RSS (ceiling 256)
+  //   dev mac  80.1 - 84.9 MiB              178.7 - 197.4 MiB
+  //   CI       117.4 - 127.6 MiB            250.7 - 262.2 MiB   <- p50 257.3
+  //
+  // The eraser's retained set is ~8 MiB in both columns; everything above that
+  // is uncollected garbage. V8 hands the child a 320 MiB heap limit on the
+  // 2-core hosted runner versus 224 MiB on the dev mac, so on CI the RSS
+  // reading straddles its ceiling and which side it lands on is decided by GC
+  // scheduling. That flaked six CI runs in five weeks with no code change,
+  // blocking a production deploy each time. They were not sensitive either: a
+  // 5-page retention leak and a per-commit defensive deep copy both passed.
+  //
+  // peakRetainedHeapBytes: the live set after a forced full GC at each
+  // checkpoint. Measured 7.31-7.55 MiB on the dev mac and 7.47-8.50 MiB on CI
+  // (0.4% spread within a host). The ceiling is ~1.4x the worst reading, tight
+  // enough that a five-deep page-clone leak (13.7 MiB) fails.
+  peakRetainedHeapBytes: 12 * 1024 * 1024,
   finalHeapBytes: 32 * 1024 * 1024,
   shallow500: {
     maxComponents: 2,
     maxVertices: 7_000,
     maxSerializedBytes: 500_000,
+    // Total bytes allocated across the 500 commits, recovered from GC
+    // bookkeeping, so it counts what the code asked for regardless of when V8
+    // chose to collect it. Measured 13,961-13,977 MiB on the dev mac and
+    // 17,631-17,811 MiB on CI (1% spread within a host, but 27% between them,
+    // which is why the ceiling clears the worst host by ~10% rather than
+    // hugging the numbers). Catches an allocation regression of roughly 10% or
+    // more; the peak readings it replaced caught none at all.
+    maxAllocatedBytes: 19 * 1024 * 1024 * 1024,
   },
   crossing500: {
     maxComponents: 501,
     maxVertices: 14_000,
     maxSerializedBytes: 1_000_000,
+    // Measured 5,893-5,911 MiB on the dev mac; on CI this scenario is bimodal
+    // (6,385-6,740 or 7,273-7,338 MiB depending on how V8 sizes the nursery on
+    // that boot), so the ceiling clears the high mode by ~15%.
+    maxAllocatedBytes: 8_448 * 1024 * 1024,
   },
 });
 
@@ -123,6 +159,10 @@ function runBoundedChild({
 }) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [
+      // --expose-gc lets the child read its settled live set instead of a
+      // mid-collection snapshot. --max-old-space-size=128 is the hard backstop
+      // underneath the measured budgets: a runaway eraser hits the V8 heap
+      // limit, the child dies, and this helper rejects with its stderr.
       '--expose-gc',
       '--max-old-space-size=128',
       CHILD_PATH.pathname,
@@ -165,6 +205,37 @@ function runBoundedChild({
       resolve(JSON.parse(line));
     });
   });
+}
+
+const MIB = 1024 * 1024;
+const mib = (bytes) => `${(bytes / MIB).toFixed(2)} MiB`;
+
+// Both readings come from the bounded child and are asserted with the measured
+// value in the message, so a CI failure says how far over budget it went
+// instead of just "the expression evaluated to a falsy value".
+function assertMemoryBudget(result, scenarioBudget) {
+  assert.ok(
+    Number.isFinite(result.peakRetainedHeapBytes) && result.peakRetainedHeapBytes > 0,
+    'the child must report a forced-GC retained-heap reading',
+  );
+  assert.ok(
+    result.peakRetainedHeapBytes <= INTERACTIVE_BUDGET.peakRetainedHeapBytes,
+    `retained heap ${mib(result.peakRetainedHeapBytes)} exceeded `
+    + `${mib(INTERACTIVE_BUDGET.peakRetainedHeapBytes)} — the eraser is holding on to geometry`,
+  );
+  assert.ok(
+    Number.isFinite(result.totalAllocatedBytes) && result.totalAllocatedBytes > 0,
+    'the child must report a GC-derived total-allocation reading',
+  );
+  assert.ok(
+    result.totalAllocatedBytes <= scenarioBudget.maxAllocatedBytes,
+    `total allocation ${mib(result.totalAllocatedBytes)} exceeded `
+    + `${mib(scenarioBudget.maxAllocatedBytes)} — the eraser got allocation-hungrier`,
+  );
+  assert.ok(
+    result.finalHeapBytes <= INTERACTIVE_BUDGET.finalHeapBytes,
+    `final heap ${mib(result.finalHeapBytes)} exceeded ${mib(INTERACTIVE_BUDGET.finalHeapBytes)}`,
+  );
 }
 
 test('page-space erase matrix stays valid across tools, widths, eraser diameters, and 8-64 samples', () => {
@@ -527,9 +598,7 @@ test('500 shallow bites stay inside the interactive complexity and release budge
     result.maxCommitCpuMs <= INTERACTIVE_BUDGET.maxCommitCpuMs,
     `max commit CPU ${result.maxCommitCpuMs}ms exceeded ${INTERACTIVE_BUDGET.maxCommitCpuMs}ms`,
   );
-  assert.ok(result.peakHeapBytes <= INTERACTIVE_BUDGET.peakHeapBytes);
-  assert.ok(result.peakRssBytes <= INTERACTIVE_BUDGET.peakRssBytes);
-  assert.ok(result.finalHeapBytes <= INTERACTIVE_BUDGET.finalHeapBytes);
+  assertMemoryBudget(result, INTERACTIVE_BUDGET.shallow500);
 });
 
 test('500 crossing cuts preserve every component inside bounded memory and release time', {
@@ -561,7 +630,5 @@ test('500 crossing cuts preserve every component inside bounded memory and relea
   assert.ok(result.maxCommitMs <= INTERACTIVE_BUDGET.maxCommitMs);
   assert.ok(result.p95CommitCpuMs <= INTERACTIVE_BUDGET.p95CommitCpuMs);
   assert.ok(result.maxCommitCpuMs <= INTERACTIVE_BUDGET.maxCommitCpuMs);
-  assert.ok(result.peakHeapBytes <= INTERACTIVE_BUDGET.peakHeapBytes);
-  assert.ok(result.peakRssBytes <= INTERACTIVE_BUDGET.peakRssBytes);
-  assert.ok(result.finalHeapBytes <= INTERACTIVE_BUDGET.finalHeapBytes);
+  assertMemoryBudget(result, INTERACTIVE_BUDGET.crossing500);
 });

@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { GCProfiler, getHeapStatistics } from 'node:v8';
 
 import {
   applyAnnotationHistoryAction,
@@ -13,6 +14,40 @@ import { erasePageAnnotations } from '../../src/utils/pageSpaceEraser.js';
 import { createProductionPaperInk } from '../../src/utils/productionPaperInk.js';
 
 const CHECKPOINTS = new Set([1, 10, 50, 100, 200, 500]);
+
+// `process.memoryUsage().heapUsed` and `.rss` are opportunistic readings: they
+// report whatever V8 and the OS happen to be holding at the sample instant, so
+// they answer "how much garbage had V8 not collected yet" and "how many pages
+// had the allocator not returned yet" — questions about the host, not about the
+// eraser. They are still reported for diagnostics, but the budget assertions
+// use the two host-independent readings below instead.
+//
+// retainedHeapBytes(): the settled live set, read only after a forced full GC.
+// Two collections in a row because the first one clears weak refs and frees the
+// bulk, and the second collects whatever that pass made unreachable, so the
+// number is the geometry the eraser is actually holding on to.
+function retainedHeapBytes() {
+  if (typeof global.gc !== 'function') return null;
+  global.gc();
+  global.gc();
+  return process.memoryUsage().heapUsed;
+}
+
+// Total bytes allocated across the run, recovered from a conservation identity:
+// between collections `usedHeapSize` only ever grows by allocation, so
+//   allocated = Σ(bytes each GC reclaimed) + (heap at the end − heap at the start).
+// The result depends on what the code allocates, not on when V8 decided to
+// collect it, which is exactly the property the peak readings lack.
+function totalAllocatedBytesFrom(profile, startHeapBytes, endHeapBytes) {
+  if (!profile) return null;
+  const reclaimed = profile.statistics.reduce((total, entry) => {
+    const before = entry?.beforeGC?.heapStatistics?.usedHeapSize;
+    const after = entry?.afterGC?.heapStatistics?.usedHeapSize;
+    if (!Number.isFinite(before) || !Number.isFinite(after)) return total;
+    return total + Math.max(0, before - after);
+  }, 0);
+  return reclaimed + Math.max(0, endHeapBytes - startHeapBytes);
+}
 
 function percentile(values, fraction) {
   if (!values.length) return 0;
@@ -156,6 +191,7 @@ function snapshotMetrics(page, commitTimes, commitCpuTimes, peak) {
     maxCommitCpuMs: Math.max(0, ...commitCpuTimes),
     peakHeapBytes: peak.heap,
     peakRssBytes: peak.rss,
+    peakRetainedHeapBytes: peak.retained,
   };
 }
 
@@ -166,6 +202,9 @@ export function runComplexityScenario({
   width = 20,
   radius = 4,
   samples = 8,
+  // Off for the in-process callers (they assert geometry, and forced GCs would
+  // just make the 140-case matrix slower). The bounded child turns it on.
+  measureMemory = false,
 } = {}) {
   const spacing = Math.max(radius * 2 + width * 0.75, 9);
   const endpointMargin = radius * 2 + width + 10;
@@ -207,8 +246,11 @@ export function runComplexityScenario({
   const commitTimes = [];
   const commitCpuTimes = [];
   const checkpoints = {};
-  const peak = { heap: 0, rss: 0 };
+  const peak = { heap: 0, rss: 0, retained: 0 };
   let changedCommits = 0;
+  const profiler = measureMemory ? new GCProfiler() : null;
+  const startHeapBytes = measureMemory ? process.memoryUsage().heapUsed : 0;
+  profiler?.start();
 
   for (let index = 0; index < count; index += 1) {
     const x = endpointMargin + index * spacing;
@@ -238,6 +280,12 @@ export function runComplexityScenario({
     peak.heap = Math.max(peak.heap, memory.heapUsed);
     peak.rss = Math.max(peak.rss, memory.rss);
     if (CHECKPOINTS.has(index + 1)) {
+      if (measureMemory) {
+        // Sampled at the checkpoints rather than every commit: a full GC per
+        // commit would add seconds to the run, and retention only has to be
+        // watched on the growth curve, where a leak shows up as a rising floor.
+        peak.retained = Math.max(peak.retained, retainedHeapBytes() ?? 0);
+      }
       checkpoints[index + 1] = snapshotMetrics(
         page,
         commitTimes,
@@ -246,6 +294,13 @@ export function runComplexityScenario({
       );
     }
   }
+
+  // Read the heap before stopping: materialising the profile allocates, and
+  // that allocation belongs to the harness, not to the eraser.
+  const endHeapBytes = measureMemory ? process.memoryUsage().heapUsed : 0;
+  const totalAllocatedBytes = measureMemory
+    ? totalAllocatedBytesFrom(profiler.stop(), startHeapBytes, endHeapBytes)
+    : null;
 
   const redoSnapshot = copyPageWithStorageKeys(page);
   const historyAction = buildAnnotationHistoryAction({
@@ -285,6 +340,7 @@ export function runComplexityScenario({
     scenario: { family, count, tool, width, radius, samples },
     checkpoints,
     ...finalMetrics,
+    totalAllocatedBytes,
     changedCommits,
     coverage: {
       lastBiteRemoved: family === 'tangent'
@@ -332,8 +388,10 @@ if (isDirectRun) {
     width: Number(width),
     radius: Number(radius),
     samples: Number(samples),
+    measureMemory: true,
   });
   if (typeof global.gc === 'function') global.gc();
   result.finalHeapBytes = process.memoryUsage().heapUsed;
+  result.heapLimitBytes = getHeapStatistics().heap_size_limit;
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
