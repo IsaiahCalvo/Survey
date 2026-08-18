@@ -92,11 +92,20 @@ jobs:
           remote_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
           test "$remote_sha" = "$tested_sha"
 
-      - name: Trigger Vercel only after backend success
+      - name: Deploy frontend to Vercel only after backend success
         shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_uLSMMTmD4LhtDBm9qJ8DV59v
+          VERCEL_PROJECT_ID: prj_ix7x9o7mg5Xi5XXVra0kzP3X7o3p
         run: |
-          curl --fail --silent --show-error --request POST "${{ secrets.VERCEL_DEPLOY_HOOK }}" \
-            | jq -e '.job.id // .id' > /dev/null
+          # Token-based CLI deploy replaced the git deploy hook on 2026-08-18:
+          # the repo moved to the Kal-Voe org and Vercel's Hobby plan cannot
+          # git-connect private org-owned repos, so hook/git deploys are gone.
+          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          npm install -g vercel@latest
+          vercel deploy --prod --yes --token "$VERCEL_TOKEN" \
+            --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha"
 
       - name: Verify the exact revision reached production
         shell: bash
