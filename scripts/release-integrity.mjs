@@ -174,7 +174,12 @@ export function assertStaticReleaseContract(root = process.cwd()) {
     'supabase functions deploy --project-ref',
     'node scripts/release-integrity.mjs --remote',
     'git ls-remote',
-    'VERCEL_DEPLOY_HOOK',
+    // 2026-08-18 — the Vercel git deploy hook was replaced by a token-based CLI
+    // deploy (Hobby cannot git-connect the private Kal-Voe repo). The contract
+    // still pins the same ordering: frontend ships only after the backend gate
+    // and before the live release.json revision check.
+    'secrets.VERCEL_TOKEN',
+    'vercel deploy --prod',
     'release.json',
   ], 'Production workflow');
 
