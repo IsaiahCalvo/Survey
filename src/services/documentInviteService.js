@@ -133,6 +133,15 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
     .single();
 
   if (error) {
+    // KAL-284(d): the partial unique index uniq_document_invites_pending_email
+    // rejects a second live pending invite for the same (document, email).
+    // Surface that as guidance, not a raw constraint violation.
+    if (error.code === '23505') {
+      return {
+        success: false,
+        error: 'An invite for this email is already pending on this document. Resend or revoke the existing invite instead.',
+      };
+    }
     console.error('[KAL-31] createDocumentInvite failed:', error);
     return { success: false, error: error.message };
   }

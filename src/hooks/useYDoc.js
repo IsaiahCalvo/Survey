@@ -31,6 +31,8 @@ const NULL_VALUE = Object.freeze({
   // state matches UI-SPEC empty-stack-silent contract).
   undoManager: null,
   undoCtx: null,
+  // KAL-274 — typed awareness accessor (null shape: no provider, no awareness).
+  getAwareness: () => null,
 });
 
 /**
@@ -50,6 +52,7 @@ const NULL_VALUE = Object.freeze({
  *   loginExpired: boolean,
  *   undoManager: import('yjs').UndoManager | null,
  *   undoCtx: { userId: string, deviceId: string, sessionId: string, clientID: number } | null,
+ *   getAwareness: () => import('y-protocols/awareness').Awareness | null,
  * }}
  */
 export function useYDoc() {

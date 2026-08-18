@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { closeButtonStyle } from './hubControls';
+import Spinner from '../components/Spinner';
 
 const COLORS = {
   card: '#181c24',
@@ -116,7 +117,11 @@ export default function CreateProjectModal({
 
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: `1px solid ${COLORS.rule}`, background: COLORS.deep }}>
           <button type="button" disabled={busy} onClick={onCancel} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 14px', background: 'transparent', color: COLORS.muted, font: 'inherit', cursor: 'pointer' }}>Cancel</button>
-          <button type="button" disabled={!canSubmit} onClick={onConfirm} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 16px', background: COLORS.gold, color: '#15110a', opacity: canSubmit ? 1 : 0.45, font: 'inherit', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>{busy ? 'Creating…' : 'Create project'}</button>
+          <button type="button" disabled={!canSubmit} onClick={onConfirm} style={{ minHeight: 44, border: 0, borderRadius: 7, padding: '0 16px', background: COLORS.gold, color: '#15110a', opacity: canSubmit ? 1 : 0.45, font: 'inherit', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {/* KAL-73: ring + participle while the project (and any PDFs) persist. */}
+            {busy && <Spinner size={14} color="currentColor" />}
+            {busy ? 'Creating project…' : 'Create project'}
+          </button>
         </footer>
       </section>
     </div>

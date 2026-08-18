@@ -49,6 +49,7 @@ export default function SurveyHub({
   initialMobileDetailOpen = false,
   onOpenDocument,
   onUpload,
+  uploadBusy = false,
   onCreateProject,
   onRenameProject,
   onCreateTemplate,
@@ -160,6 +161,7 @@ export default function SurveyHub({
           projects={projects}
           onOpenDocument={(document) => onOpenDocument?.(document, 'documents')}
           onUpload={onUpload}
+          uploadBusy={uploadBusy}
           onShare={shareDocuments}
           onDuplicate={onDuplicateDocuments}
           onDelete={onDeleteDocuments}

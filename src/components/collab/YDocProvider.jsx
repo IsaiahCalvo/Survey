@@ -182,6 +182,8 @@ const NULL_CTX_DISABLED = Object.freeze({
   // destructure undoManager / undoCtx from useYDoc() without branching.
   undoManager: null,
   undoCtx: null,
+  // KAL-274 — typed awareness accessor (null when CRDT is off).
+  getAwareness: () => null,
 });
 
 export function YDocProvider({ docId, children, closeDocument, isActive = true }) {
@@ -1437,6 +1439,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // transaction in the Phase 33 activity log without re-deriving identity.
     undoManager: undoState?.undoManager ?? null,
     undoCtx: undoState?.undoCtx ?? null,
+    // KAL-274 — typed awareness accessor, replacing the old untyped
+    // globalThis.__crdtAwareness probe (which had no writer anywhere).
+    // Reads the CURRENT transport handle's y-protocols Awareness instance via
+    // ref, so the accessor stays identity-stable across provider restarts.
+    // Returns null until a transport that carries awareness is mounted
+    // (Phase 33 wires the instance through createTransportProvider's
+    // `awareness` option); consumers degrade to "no remote editors".
+    getAwareness: () => providerRef.current?.awareness ?? null,
   }), [
     ydoc,
     isHydrating,

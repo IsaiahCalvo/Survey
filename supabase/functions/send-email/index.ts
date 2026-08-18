@@ -11,41 +11,133 @@ import {
     EMAIL_LIST_STYLE as LIST,
 } from '../_shared/emailLayout.ts';
 import { resolveBrevoApiKey } from './config.ts';
+import {
+    authorizeUserSend,
+    escapeLikePattern,
+    pickBindingInviteRow,
+    sanitizeSubject,
+} from './policy.js';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.
 const BREVO_API_KEY = resolveBrevoApiKey(Deno.env.get('BREVO_API_KEY'));
 const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
 
-// Authorize the caller before sending anything. Two legitimate callers exist:
-//   1. The stripe-webhook function, which calls us with the service-role key.
-//   2. The app, which calls us with the signed-in user's JWT (via functions.invoke).
+type CallerContext =
+    | { type: 'service' }
+    | { type: 'user'; authHeader: string }
+    | null;
+
+// Classify the caller before sending anything. Two legitimate callers exist:
+//   1. The stripe-webhook function, which calls us with the service-role key
+//      (trusted infrastructure — recipient/template are server-derived there).
+//   2. The app / send-invite-email, calling with the signed-in user's JWT.
+//      These go through the KAL-439 policy (template allowlist + recipient
+//      binding + rate limit + free-tier invite gate) in ./policy.js.
 // Anyone else (e.g. an anonymous request bearing only the public anon key) is
 // rejected, so this function can't be driven as an open phishing/spam relay.
-async function isAuthorizedCaller(req: Request): Promise<boolean> {
+async function classifyCaller(req: Request): Promise<CallerContext> {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return false;
+    if (!authHeader) return null;
 
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-    if (!token) return false;
+    if (!token) return null;
 
     // Trusted server-to-server caller (stripe-webhook).
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (serviceKey && token === serviceKey) return true;
+    if (serviceKey && token === serviceKey) return { type: 'service' };
 
     // Otherwise require a real, signed-in user (not the anonymous public key).
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return false;
-    if (token === anonKey) return false;
+    if (!supabaseUrl || !anonKey) return null;
+    if (token === anonKey) return null;
 
     try {
         const supabase = createClient(supabaseUrl, anonKey);
         const { data: { user }, error } = await supabase.auth.getUser(token);
-        return !error && !!user;
+        return !error && user ? { type: 'user', authHeader } : null;
     } catch {
-        return false;
+        return null;
     }
+}
+
+// Caller-scoped client: every binding lookup runs under the CALLER's own RLS
+// authority (owner-select policies on *_invites, owner-visible rows on
+// *_collaborators) — never the service role.
+function callerScopedClient(authHeader: string) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    return createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+    });
+}
+
+const INVITE_TABLES = ['document_invites', 'project_invites', 'template_invites'];
+const COLLABORATOR_TABLES = ['document_collaborators', 'project_collaborators', 'template_collaborators'];
+
+function policyDeps(authHeader: string) {
+    const caller = callerScopedClient(authHeader);
+    return {
+        findInviteRowForRecipient: async (email: string) => {
+            const pattern = escapeLikePattern(email);
+            // Gather recent rows from ALL invite tables, then let the policy's
+            // picker choose: a fresh (pending) row outranks stale ones no
+            // matter which table or how old, so a stale revoked document
+            // invite can never shadow a live project/template invite.
+            const candidates: Array<{
+                revokedAt: string | null;
+                acceptedAt: string | null;
+                expiresAt: string | null;
+                createdAt: string | null;
+            }> = [];
+            for (const table of INVITE_TABLES) {
+                const { data, error } = await caller
+                    .from(table)
+                    .select('revoked_at, accepted_at, expires_at, created_at')
+                    .ilike('target_email', pattern)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+                if (error || !data) continue;
+                for (const row of data) {
+                    candidates.push({
+                        revokedAt: row.revoked_at ?? null,
+                        acceptedAt: row.accepted_at ?? null,
+                        expiresAt: row.expires_at ?? null,
+                        createdAt: row.created_at ?? null,
+                    });
+                }
+            }
+            return pickBindingInviteRow(candidates);
+        },
+        findActiveCollaboratorForRecipient: async (email: string) => {
+            const pattern = escapeLikePattern(email);
+            for (const table of COLLABORATOR_TABLES) {
+                const { data, error } = await caller
+                    .from(table)
+                    .select('id')
+                    .ilike('email', pattern)
+                    .eq('status', 'active')
+                    .limit(1)
+                    .maybeSingle();
+                if (!error && data) return data;
+            }
+            return null;
+        },
+        claimSendBudget: async (template: string, recipient: string, isInvite: boolean) => {
+            const { data, error } = await caller.rpc('claim_email_send', {
+                p_template: template,
+                p_recipient: recipient,
+                p_is_invite: isInvite,
+            });
+            if (error) {
+                console.error('[send-email] claim_email_send RPC failed:', error.message);
+                return 'error';
+            }
+            return data;
+        },
+    };
 }
 
 const corsHeaders = {
@@ -66,7 +158,8 @@ Deno.serve(async (req) => {
     }
 
     // Reject unauthenticated callers before doing any work.
-    if (!(await isAuthorizedCaller(req))) {
+    const caller = await classifyCaller(req);
+    if (!caller) {
         return new Response(
             JSON.stringify({ error: 'Unauthorized' }),
             {
@@ -101,6 +194,30 @@ Deno.serve(async (req) => {
                 }
             );
         }
+
+        // KAL-439: user-JWT callers go through the full policy — template
+        // allowlist, recipient binding (caller-scoped RLS), free-tier invite
+        // gate, and the per-user rate limit. Service-role callers
+        // (stripe-webhook) are trusted infrastructure and skip this.
+        let recipient = String(to);
+        if (caller.type === 'user') {
+            const verdict = await authorizeUserSend(
+                { template: String(template), to: String(to) },
+                policyDeps(caller.authHeader),
+            );
+            if (!verdict.ok) {
+                console.warn(`[send-email] rejected ${template} send: ${verdict.error}`);
+                return new Response(
+                    JSON.stringify({ error: verdict.error }),
+                    {
+                        status: verdict.status,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    }
+                );
+            }
+            recipient = verdict.recipient;
+        }
+        const safeSubject = sanitizeSubject(subject, 'Notification from Survey');
 
         // Email templates. Every template renders through the shared branded
         // frame (supabase/functions/_shared/emailLayout.ts) — see
@@ -250,7 +367,7 @@ Deno.serve(async (req) => {
         }
         const html = getTemplate(safeData);
 
-        console.log(`Sending ${template} email to ${to}`);
+        console.log(`Sending ${template} email to ${recipient}`);
 
         const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
@@ -261,8 +378,8 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
                 sender: EMAIL_SENDER,
-                to: [{ email: to }],
-                subject,
+                to: [{ email: recipient }],
+                subject: safeSubject,
                 htmlContent: html,
             }),
         });
@@ -276,7 +393,7 @@ Deno.serve(async (req) => {
 
         console.log('Email sent successfully!');
         console.log('Brevo messageId:', result.messageId);
-        console.log('To:', to);
+        console.log('To:', recipient);
         console.log('Subject:', subject);
 
         return new Response(
