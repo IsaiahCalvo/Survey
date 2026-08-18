@@ -106,7 +106,12 @@ const applyBorderStyle = (json, { tool, lineBorderStyle, cloudIntensity }) => {
   return json;
 };
 
-const applyScope = (json, { selectedModuleId, stampRegionId, activeRegionId }) => {
+// Decision 11 companion — the ONE place creation commits stamp survey/region
+// scope. Exported so every creation surface (shape/line/freehand builders
+// below, buildNewTextCommitJSON in textEditCommit.js, and the PDFViewer
+// counter drop) stamps identically; the stampRegionId decision itself comes
+// from shouldStampActiveRegionId in annotationVisibilityRules.js.
+export const applyScope = (json, { selectedModuleId, stampRegionId, activeRegionId }) => {
   if (selectedModuleId) json.moduleId = selectedModuleId;
   if (stampRegionId) json.regionId = activeRegionId;
   return json;

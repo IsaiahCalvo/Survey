@@ -42,6 +42,7 @@ import {
   buildExistingTextCommitJSON,
 } from '../utils/textEditCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
+import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -95,6 +96,15 @@ export default function TextEditOverlay({
   newTextStyle = null,
   strokeColor,
   authorId = null,
+  // KAL-88 — Decision 11 companion: survey/region scope inputs for NEW text.
+  // Same sources of truth as SVGAnnotationLayer's creation commit (survey:
+  // selectedModuleId; region: shouldStampActiveRegionId over the active
+  // space/region), read at commit time so the stamp reflects current mode.
+  selectedModuleId = null,
+  selectedSpaceId = null,
+  activeRegionId = null,
+  spaces = [],
+  isRegionOverlayEnabled = null,
   onLiveTextGrow,
   onRichTextEditorChange,
   onCalloutTextStyleChange,
@@ -340,6 +350,15 @@ export default function TextEditOverlay({
         fill: s.fill,
         stroke: s.stroke || '#000000',
         strokeWidth: s.strokeWidth ?? 1,
+        selectedModuleId,
+        stampRegionId: shouldStampActiveRegionId({
+          regionId: activeRegionId,
+          spaceId: selectedSpaceId,
+          pageNumber,
+          spaces,
+          isRegionOverlayEnabled,
+        }),
+        activeRegionId,
       });
       if (!json) {
         // Blank new text — discard, same as the fabric path.
@@ -371,7 +390,11 @@ export default function TextEditOverlay({
     } else {
       onEditCommit(updated);
     }
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId]);
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId,
+    // KAL-88 scope-stamp inputs — keep the commit closure stamping from
+    // current values (the unmount flush reads via commitRef, which tracks
+    // this callback).
+    pageNumber, selectedModuleId, selectedSpaceId, activeRegionId, spaces, isRegionOverlayEnabled]);
 
   const cancelAndClose = useCallback(() => {
     if (committedRef.current) return;

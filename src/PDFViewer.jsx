@@ -117,7 +117,10 @@ import { createPortal, flushSync } from 'react-dom';
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
-import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
+import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
+// KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
+// counter drop so counters scope exactly like pen/shape/text creations.
+import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
 import { resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
@@ -31300,6 +31303,10 @@ ${pageBlocks}
                                   selectedSpaceId={annotationSpaceId}
                                   activeSpaceId={activeSpaceId}
                                   spaces={spaces}
+                                  // KAL-89 — survey-mode context for the classify gate:
+                                  // survey-hidden marks must not be erasable.
+                                  showSurveyPanel={showSurveyPanel}
+                                  selectedModuleId={selectedModuleId}
                                   zoomGeneration={zoomGeneration}
                                   interruptionPolicy={eraserInterruptionPolicy}
                                   interruptionPolicyRef={eraserInterruptionPolicyRef}
@@ -31574,6 +31581,23 @@ ${pageBlocks}
                                     // handleSaveAnnotations so the saved JSON carries the id. UUID v4
                                     // format matches what serializeFabricObjectToRow used to produce.
                                     counter.data.id = crypto.randomUUID();
+                                    // KAL-88 — Decision 11 companion: stamp the active survey/
+                                    // region scope at creation via the SAME shared helpers the
+                                    // pen/shape builders use (applyScope +
+                                    // shouldStampActiveRegionId). Without this a counter dropped
+                                    // in survey mode is canvas-scoped: it vanishes when survey
+                                    // mode renders and lingers in standard mode.
+                                    applyAnnotationCreationScope(counter, {
+                                      selectedModuleId,
+                                      stampRegionId: shouldStampActiveRegionId({
+                                        regionId: activeRegionId,
+                                        spaceId: annotationSpaceId,
+                                        pageNumber,
+                                        spaces,
+                                        isRegionOverlayEnabled,
+                                      }),
+                                      activeRegionId,
+                                    });
                                     appDebug(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
                                     const pageHeight = rect.height / effectiveScale;
                                     const dragState = {
@@ -31676,6 +31700,13 @@ ${pageBlocks}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   newTextStyle={mobileMode ? textStyleDefaults : null}
                                   authorId={user?.id ?? null}
+                                  // KAL-88 — survey/region scope inputs for NEW text commits;
+                                  // same sources SVGAnnotationLayer's creation commit uses.
+                                  selectedModuleId={selectedModuleId}
+                                  selectedSpaceId={annotationSpaceId}
+                                  activeRegionId={activeRegionId}
+                                  spaces={spaces}
+                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   // UX: Phase 15 UAT-2 — match the edit-mode outline
                                   // to the callout's own border color so view and
                                   // edit look identical. Text edits keep the default
