@@ -40,6 +40,14 @@ async function loadSyncStatusChip() {
     .replace(
       "import DismissBarrier from './DismissBarrier';",
       'const DismissBarrier = () => null;',
+    )
+    // KAL-65: the hover hint now comes from the shared tooltip surface. Stub it
+    // with a faithful stand-in (renders its children when visible, nothing when
+    // hidden) so these assertions still see exactly the DOM the real component
+    // produces, minus the styling this suite does not test.
+    .replace(
+      "import { AnchoredTooltip } from './Tooltip';",
+      'const AnchoredTooltip = ({ visible = true, children }) => (visible && children ? <div data-tooltip="">{children}</div> : null);',
     );
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));

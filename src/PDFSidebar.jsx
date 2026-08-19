@@ -19,14 +19,20 @@ import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useTooltip } from './components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
 // Module scope so it keeps a stable component identity across PDFSidebar renders.
-const HistoryButton = ({ isActive, onClick }) => (
+const HistoryButton = ({ isActive, onClick }) => {
+  // KAL-65: sidebar controls use the app's instant shared tooltip, never a
+  // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
+  return (
   <button
     type="button"
-    title="Version history"
+    {...tip('Version history', 'right')}
     aria-label="Version history"
     onClick={onClick}
     style={{
@@ -49,7 +55,8 @@ const HistoryButton = ({ isActive, onClick }) => (
   >
     <Icon name="history" size={17} color="currentColor" />
   </button>
-);
+  );
+};
 
 const PDFSidebar = React.forwardRef(({
   pdfDoc,
@@ -149,7 +156,7 @@ const PDFSidebar = React.forwardRef(({
     document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : (isCollapsed ? '48px' : '272px'));
   }, [isCollapsed, mobileMode]);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
-  const [hoveredTabId, setHoveredTabId] = useState(null);
+  const tip = useTooltip();
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
   const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
@@ -375,7 +382,7 @@ const PDFSidebar = React.forwardRef(({
                 <button
                   key={tab.id}
                   className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : undefined}
-                  title={tab.label}
+                  {...tip(tab.label, 'below')}
                   onClick={() => {
                     if (tab.id === '__savelog') {
                       // UX 2026-04-22: Mobile-only tile that fires the Save Log
@@ -621,17 +628,23 @@ const PDFSidebar = React.forwardRef(({
             typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
               ? [{ id: '__savelog', label: 'Save log', icon: 'document' }]
               : []
-          ).map(tab => (
+          ).map(tab => {
+            // KAL-65: this rail used to grow its own hover-triggered tooltip
+            // div (positioned via hoveredTabId) alongside the native title=
+            // below — two custom tooltips stacking on the same button. The
+            // shared tip() binder replaces both; placement 'right' matches
+            // the removed div's left:100% / translateY(-50%) anchor exactly.
+            const tabTip = tip(tab.label, 'right');
+            return (
             <div
               key={tab.id}
               style={{
                 position: 'relative'
               }}
-              onMouseEnter={() => setHoveredTabId(tab.id)}
-              onMouseLeave={() => setHoveredTabId(null)}
             >
               <button
-                title={tab.label}
+                {...tabTip}
+                aria-label={tab.label}
                 onClick={() => {
                   if (tab.id === '__savelog') {
                     // UX 2026-04-22: Mobile-only Save Log in collapsed
@@ -664,9 +677,11 @@ const PDFSidebar = React.forwardRef(({
                   width: '100%'
                 }}
                 onMouseEnter={(e) => {
+                  tabTip.onMouseEnter(e);
                   e.currentTarget.style.background = '#181c24';
                 }}
                 onMouseLeave={(e) => {
+                  tabTip.onMouseLeave(e);
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
@@ -677,32 +692,9 @@ const PDFSidebar = React.forwardRef(({
                   style={{ width: '20px', height: '20px', flexShrink: 0 }}
                 />
               </button>
-              {hoveredTabId === tab.id && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: '100%',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    marginLeft: '8px',
-                    background: '#181c24',
-                    color: '#e8e2d4',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontFamily: FONT_FAMILY,
-                    whiteSpace: 'nowrap',
-                    zIndex: 1000,
-                    pointerEvents: 'none',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-                    border: '1px solid #2a3140'
-                  }}
-                >
-                  {tab.label}
-                </div>
-              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -360,6 +360,7 @@ import { renderAnnotationHydrationPageCover } from './components/annotationHydra
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
+import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -4307,6 +4308,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const regionEditReturnToolRef = useRef(null);
   const isPanningRef = useRef(false);
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
+  // KAL-65: one shared tooltip implementation. Spread chromeTip('Label', placement)
+  // onto a control to give it the app's instant hint chip; never pair it with a
+  // native title= (the OS tooltip would stack on top ~1.5s later).
+  const chromeTip = useMemo(() => makeTooltipBinding(setTooltip), [setTooltip]);
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
   const [annotationColorPickerTab, setAnnotationColorPickerTab] = useState('stroke'); // 'stroke' | 'fill'
   const [annotationColorPickerMode, setAnnotationColorPickerMode] = useState('grid'); // 'grid' | 'advanced'
@@ -30033,33 +30038,7 @@ ${pageBlocks}
             host (5400-5600), so an in-tree fixed chip could never paint
             over the toolbars regardless of its own z-index — same escape
             the counter caret popup uses. */}
-        {tooltip.visible && typeof document !== 'undefined' && createPortal(
-          <div style={{
-            position: 'fixed',
-            left: tooltip.x,
-            top: tooltip.y,
-            transform: tooltip.placement === 'below'
-              ? 'translate(-50%, 0)'
-              : tooltip.placement === 'left'
-                ? 'translate(-100%, -50%)'
-                : 'translate(-50%, -100%)',
-            background: '#181c24',
-            color: '#e8e2d4',
-            border: '1px solid #2a3140',
-            padding: '4px 8px',
-            borderRadius: '6px',
-            fontSize: '11.5px',
-            letterSpacing: 0,
-            fontFamily: FONT_FAMILY,
-            pointerEvents: 'none',
-            zIndex: 10000,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 12px 30px rgba(0,0,0,0.5)'
-          }}>
-            {tooltip.text}
-          </div>,
-          document.body
-        )}
+        <FloatingTooltip tooltip={tooltip} />
 
         {/* Region Selection Tool */}
         {showRegionSelection && (
@@ -31944,7 +31923,7 @@ ${pageBlocks}
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
+                        setTooltip({ visible: true, text: isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -31958,7 +31937,10 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: '40px'
                       }}
-                      title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
+                      // KAL-65: the instant chip above IS this control's tooltip.
+                      // A native title= here would fade the OS tooltip in on top
+                      // of it ~1.5s later; aria-label keeps the accessible name.
+                      aria-label={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {hasSplitMenu && (
@@ -32209,7 +32191,9 @@ ${pageBlocks}
                         // `translate(12px, -50%)` lands in the same spot.
                         width: '40px'
                       }}
-                      title={t.label}
+                      // KAL-65: the instant chip above IS this control's tooltip;
+                      // a native title= would stack the OS tooltip on top of it.
+                      aria-label={t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {showCaret && (
@@ -32610,7 +32594,7 @@ ${pageBlocks}
                       onClick={onMainClick}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
+                        setTooltip({ visible: true, text: isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -32624,7 +32608,9 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
                       }}
-                      title={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
+                      // KAL-65: the instant chip above IS this control's tooltip;
+                      // a native title= would stack the OS tooltip on top of it.
+                      aria-label={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {(isUnderlineMenu || isStrikeMenu) && (
@@ -32782,7 +32768,8 @@ ${pageBlocks}
 	                        setActiveTool('survey-marker');
 	                      }}
 	                      disabled={modules.length === 0}
-	                      title="Survey module"
+	                      {...chromeTip('Survey module', 'below')}
+	                      aria-label="Survey module"
 	                      style={{
 	                        height: '26px',
 	                        width: '160px',
@@ -32834,7 +32821,9 @@ ${pageBlocks}
 	                            }}
 	                            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
 	                            className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-	                            title={category.name || 'Untitled category'}
+	                            // KAL-65: instant chip above is the tooltip; a native
+	                            // title= would stack the OS tooltip on top of it.
+	                            aria-label={category.name || 'Untitled category'}
 	                            style={{
 	                              width: '30px',
 	                              height: '30px',
@@ -32869,7 +32858,7 @@ ${pageBlocks}
 
 	                  <div style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingLeft: '12px', whiteSpace: 'nowrap' }}>
 	                    <label
-	                      title="Keep selected category active after placing a region"
+	                      {...chromeTip('Keep selected category active after placing a region', 'below')}
 	                      style={{
 	                        display: 'flex',
 	                        alignItems: 'center',
@@ -32922,7 +32911,8 @@ ${pageBlocks}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn btn-md ${isActive ? 'btn-active' : 'btn-default'}`}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                      title={t.label}
+                      // KAL-65: instant chip above is the tooltip, and the visible
+                      // <span>{t.label}</span> below is already the accessible name.
                       data-form-tool={t.id}
                     >
                       <Icon name={t.iconName} size={16} />

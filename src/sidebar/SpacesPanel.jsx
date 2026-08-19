@@ -19,6 +19,7 @@ import {
   PAGE_VISIBILITY_CONTROL_MODE
 } from '../utils/annotationVisibilityRules';
 import { showToast } from '../utils/toast';
+import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const animateSpaceLayoutChanges = () => false;
@@ -65,6 +66,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   // the demo's blue. Region mini-toggles stay 28x16 (already demo-correct).
   mobileMode = false,
 }) {
+  // KAL-65: sidebar controls use the app's instant shared tooltip, never a
+  // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
   const [editingRegionId, setEditingRegionId] = useState(null);
   const [editingRegionValue, setEditingRegionValue] = useState('');
   const editingRegionInputRef = useRef(null);
@@ -185,7 +190,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
 
             <span
               className="space-region-count"
-              title={`${regionCount} region${regionCount !== 1 ? 's' : ''}`}
+              {...tip(`${regionCount} region${regionCount !== 1 ? 's' : ''}`, 'below')}
               aria-label={`${regionCount} region${regionCount !== 1 ? 's' : ''}`}
               style={{ fontSize: regionCountFontSize }}
             >
@@ -209,9 +214,16 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 justifyContent: 'center',
                 borderRadius: '4px'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#1f2430'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              title={isExpanded ? 'Collapse' : 'Expand'}
+              {...tip(isExpanded ? 'Collapse' : 'Expand', 'below')}
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              onMouseEnter={(e) => {
+                tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseEnter(e);
+                e.currentTarget.style.background = '#1f2430';
+              }}
+              onMouseLeave={(e) => {
+                tip(isExpanded ? 'Collapse' : 'Expand', 'below').onMouseLeave(e);
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
               <Icon
                 name={isExpanded ? 'chevronDown' : 'chevronRight'}
@@ -227,7 +239,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               className="space-name-inline"
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
-              title="Click to rename"
+              {...tip('Click to rename', 'below')}
               aria-label={`Rename ${space.name || 'Space'}`}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
@@ -240,7 +252,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   e.currentTarget.parentElement.dataset.value = e.currentTarget.value || ' ';
                 }
               }}
-              onBlur={(e) => commitSpaceName(e.currentTarget)}
+              onBlur={(e) => {
+                tip('Click to rename', 'below').onBlur(e);
+                commitSpaceName(e.currentTarget);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.currentTarget.blur();
@@ -276,7 +291,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 padding: '2px',
                 flexShrink: 0
               }}
+              {...tip(isActive ? 'Turn off space' : 'Turn on space', 'below')}
+              aria-label={isActive ? 'Turn off space' : 'Turn on space'}
               onMouseEnter={(e) => {
+                tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseEnter(e);
                 if (!isActive) {
                   e.currentTarget.style.background = '#3a4252';
                 } else {
@@ -284,9 +302,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 }
               }}
               onMouseLeave={(e) => {
+                tip(isActive ? 'Turn off space' : 'Turn on space', 'below').onMouseLeave(e);
                 e.currentTarget.style.background = isActive ? '#d8a84e' : '#2a3140';
               }}
-              title={isActive ? 'Turn off space' : 'Turn on space'}
             >
               <div
                 style={{
@@ -321,9 +339,16 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(217, 90, 86, 0.15)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              title="Delete" aria-label="Delete"
+              {...tip('Delete', 'below')}
+              aria-label="Delete"
+              onMouseEnter={(e) => {
+                tip('Delete', 'below').onMouseEnter(e);
+                e.currentTarget.style.background = 'rgba(217, 90, 86, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                tip('Delete', 'below').onMouseLeave(e);
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
               <Icon name="trash" size={12} color="#d95a56" />
             </button>
@@ -384,14 +409,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                     onAssignPages(space.id);
                   }}
                   className="space-add-pages-icon-button"
-                  title="Add pages"
+                  {...tip('Add pages', 'below')}
                   aria-label="Add pages"
                 >
                   <Icon name="plus" size={13} />
                 </button>
               </div>
               {pageError && (
-                <div className="space-page-range-error" title={pageError}>
+                <div className="space-page-range-error" {...tip(pageError, 'below')}>
                   {pageError}
                 </div>
               )}
@@ -439,7 +464,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               type="button"
                               className="region-page-pill region-page-pill-leading"
-                              title={`Go to page ${page.pageId}`}
+                              {...tip(`Go to page ${page.pageId}`, 'below')}
                               aria-label={`Go to page ${page.pageId}`}
                               onClick={(e) => {
                                 e.preventDefault();
@@ -456,6 +481,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
                               const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
                               const isSpaceActive = isActive;
+                              const overlayTooltipText = !hasProps
+                                ? 'Overlay toggle'
+                                : !isSpaceActive
+                                  ? 'Enable space to toggle overlay'
+                                  : !isToggleEnabled
+                                    ? 'Define regions first to enable overlay'
+                                    : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region');
 
                               return (
                                 <div
@@ -481,7 +513,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     flexShrink: 0,
                                     opacity: isToggleEnabled ? 1 : 0.5
                                   }}
+                                  {...tip(overlayTooltipText, 'below')}
+                                  aria-label={overlayTooltipText}
                                   onMouseEnter={(e) => {
+                                    tip(overlayTooltipText, 'below').onMouseEnter(e);
                                     if (!isToggleEnabled) return;
                                     if (!isOverlayEnabled) {
                                       e.currentTarget.style.background = '#3a4252';
@@ -490,18 +525,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     }
                                   }}
                                   onMouseLeave={(e) => {
+                                    tip(overlayTooltipText, 'below').onMouseLeave(e);
                                     if (!isToggleEnabled) return;
                                     e.currentTarget.style.background = isOverlayEnabled ? '#d8a84e' : '#2a3140';
                                   }}
-                                  title={
-                                    !hasProps
-                                      ? 'Overlay toggle'
-                                      : !isSpaceActive
-                                        ? 'Enable space to toggle overlay'
-                                        : !isToggleEnabled
-                                          ? 'Define regions first to enable overlay'
-                                          : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
-                                  }
                                 >
                                   <div
                                     style={{
@@ -569,7 +596,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     e.stopPropagation();
                                     handleRegionEditClick(page.pageId, regionLabel);
                                   }}
-                                  title="Click to rename" aria-label="Click to rename"
+                                  {...tip('Click to rename', 'below')}
+                                  aria-label="Click to rename"
                                 >
                                   {regionLabel}
                                 </button>
@@ -591,7 +619,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 <button
                                   type="button"
                                   className="region-edit-button"
-                                  title={isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page'}
+                                  {...tip(isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page', 'below')}
                                   aria-label={isActiveRegionEdit ? 'Exit region edit' : 'Edit region areas on the page'}
                                   onClick={(e) => {
                                     e.preventDefault();
@@ -669,15 +697,18 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     opacity: isDisabled ? 0.5 : 1,
                                     pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
+                                  {...tip(title, 'below')}
+                                  aria-label={title}
                                   onMouseEnter={(e) => {
+                                    tip(title, 'below').onMouseEnter(e);
                                     if (!isDisabled) {
                                       e.currentTarget.style.color = visibilityState ? '#5ba1f0' : '#c7c7c7';
                                     }
                                   }}
                                   onMouseLeave={(e) => {
+                                    tip(title, 'below').onMouseLeave(e);
                                     e.currentTarget.style.color = visibilityState ? '#d8a84e' : '#8d96a6';
                                   }}
-                                  title={title}
                                 >
                                   {isSurveyContext ? (
                                     <Icon
@@ -713,7 +744,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               );
                             })()}
                             <button
-                              title="Delete" aria-label="Delete"
+                              {...tip('Delete', 'below')}
+                              aria-label="Delete"
                               onClick={() => onRemovePage(space.id, page.pageId)}
                               className="region-delete-button"
                             >
@@ -769,6 +801,7 @@ const SpacesPanel = ({
   mobilePanelVisible = false,
   onMobilePanelMetricsChange = null,
 }) => {
+  const tip = useTooltip();
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
@@ -900,12 +933,15 @@ const SpacesPanel = ({
       const wrapper = node.closest('[data-sortable-rearrange-item]');
       const card = node.querySelector('[data-drag-rearrange-row]');
       const header = card?.firstElementChild || null;
-      const expandButton = node.querySelector('button[title="Expand"], button[title="Collapse"]');
+      // KAL-65: the expand/collapse button no longer carries a native title=
+      // (see the shared tip() binder above), so this debug-capture selector
+      // now keys off aria-label, which still carries 'Expand'/'Collapse'.
+      const expandButton = node.querySelector('button[aria-label="Expand"], button[aria-label="Collapse"]');
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
         text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120),
-        expanded: expandButton?.getAttribute('title') === 'Collapse',
+        expanded: expandButton?.getAttribute('aria-label') === 'Collapse',
         wrapper: sampleStyle(wrapper),
         rowRoot: sampleStyle(node),
         card: sampleStyle(card),
@@ -1029,13 +1065,14 @@ const SpacesPanel = ({
       const item = node.querySelector('[data-sortable-rearrange-item]') || node;
       const rect = item.getBoundingClientRect();
       const outerRect = node.getBoundingClientRect();
-      const expandButton = node.querySelector('button[title="Expand"], button[title="Collapse"]');
+      // KAL-65: aria-label, not title=, now carries 'Expand'/'Collapse'.
+      const expandButton = node.querySelector('button[aria-label="Expand"], button[aria-label="Collapse"]');
       const style = window.getComputedStyle(node);
 
       return {
         id: node.getAttribute('data-space-sortable-row-id'),
         text: (item.innerText || node.innerText || '').replace(/\s+/g, ' ').trim(),
-        expanded: expandButton?.getAttribute('title') === 'Collapse',
+        expanded: expandButton?.getAttribute('aria-label') === 'Collapse',
         y: Number(rect.y.toFixed(1)),
         height: Number(rect.height.toFixed(1)),
         outerY: Number(outerRect.y.toFixed(1)),
@@ -1355,7 +1392,7 @@ const SpacesPanel = ({
             type="button"
             onClick={handleCreateSpace}
             className="survey-marker-category-create-button"
-            title={canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces'}
+            {...tip(canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces', 'below')}
             aria-label={canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces'}
           >
             <Icon name="plus" size={14} />
@@ -1369,7 +1406,7 @@ const SpacesPanel = ({
             <button
               type="button"
               className={`spaces-header-export-button${isSpacesExportActive ? ' is-active' : ''}`}
-              title={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
+              {...tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below')}
               aria-label={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
               aria-expanded={isSpacesExportMenuOpen}
               disabled={!spacesExportTarget}
@@ -1381,8 +1418,14 @@ const SpacesPanel = ({
                 }
                 setIsSpacesExportMenuOpen((open) => !open);
               }}
-              onMouseEnter={() => setIsSpacesExportHovered(true)}
-              onMouseLeave={() => setIsSpacesExportHovered(false)}
+              onMouseEnter={(e) => {
+                tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below').onMouseEnter(e);
+                setIsSpacesExportHovered(true);
+              }}
+              onMouseLeave={(e) => {
+                tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below').onMouseLeave(e);
+                setIsSpacesExportHovered(false);
+              }}
             >
               <Icon name="upload" size={14} />
             </button>
@@ -1401,7 +1444,7 @@ const SpacesPanel = ({
                 <button
                   type="button"
                   className="spaces-header-export-menu-button"
-                  title="Exports base PDF pages only; app annotations are not embedded."
+                  {...tip('Exports base PDF pages only; app annotations are not embedded.', 'below')}
                   onClick={() => {
                     setIsSpacesExportMenuOpen(false);
                     onExportSpacePDF?.(spacesExportTarget.id);

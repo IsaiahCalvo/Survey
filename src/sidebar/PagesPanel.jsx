@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
+import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -46,6 +47,10 @@ const PagesPanel = ({
   tabId,
   mobileMode = false,
 }) => {
+  // KAL-65: sidebar controls use the app's instant shared tooltip, never a
+  // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
   const [thumbnails, setThumbnails] = useState({});
   const [pageAspectRatios, setPageAspectRatios] = useState({});
   const [contextMenu, setContextMenu] = useState(null);
@@ -891,7 +896,7 @@ const PagesPanel = ({
                 <div
                   className="mobile-page-clipboard-badge"
                   aria-label={clipboardType === 'cut' ? `Page ${pageNumber} cut to clipboard` : `Page ${pageNumber} copied to clipboard`}
-                  title={clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste'}
+                  {...tip(clipboardType === 'cut' ? 'Cut — ready to paste' : 'Copied — ready to paste', 'below')}
                 >
                   <Icon name="copy" size={12} color="#58d976" />
                 </div>
@@ -901,7 +906,7 @@ const PagesPanel = ({
                 <button
                   type="button"
                   aria-label={`Page ${pageNumber} actions`}
-                  title={`Page ${pageNumber} actions`}
+                  {...tip(`Page ${pageNumber} actions`, 'below')}
                   onClick={(event) => handleContextMenu(event, pageNumber)}
                   style={{
                     position: 'absolute',

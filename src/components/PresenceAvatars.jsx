@@ -1,4 +1,7 @@
 import { useState } from 'react';
+// KAL-65: the active users hover hints render from the ONE shared tooltip
+// surface so they match the sync status hint and the toolbar/rail tooltips.
+import { AnchoredTooltip } from './Tooltip';
 
 /**
  * Live presence row — Microsoft Excel / Google Docs pattern.
@@ -280,26 +283,9 @@ function CompactViewerCount({ total }) {
     >
       {total}
       {hover && (
-        <div
-          style={{
-            position: 'absolute',
-            left: 'calc(100% + 8px)',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            background: '#1a1a1a',
-            color: '#e8e2d4',
-            border: '1px solid #2a3140',
-            padding: '6px 10px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            whiteSpace: 'nowrap',
-            zIndex: 1000,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            pointerEvents: 'none'
-          }}
-        >
+        <AnchoredTooltip side="right">
           {total} viewing
-        </div>
+        </AnchoredTooltip>
       )}
     </div>
   );
@@ -340,24 +326,9 @@ function Avatar({ initials, background, email, offset = '0', size = 22, fontSize
         {initials}
       </span>
       {hover && email && (
-        <div
-          style={{
-            position: 'absolute',
-            ...tooltipPosition,
-            background: '#1a1a1a',
-            color: '#e8e2d4',
-            border: '1px solid #2a3140',
-            padding: '6px 10px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            whiteSpace: 'nowrap',
-            zIndex: 1000,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            pointerEvents: 'none'
-          }}
-        >
+        <AnchoredTooltip position={tooltipPosition}>
           {email}
-        </div>
+        </AnchoredTooltip>
       )}
     </div>
   );
