@@ -31,6 +31,7 @@ import {
   getBookmarkProjection,
   removeChildrenOf,
 } from './bookmarkReorderUtils.js';
+import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const BOOKMARK_TREE_CONTENT_WIDTH = 252;
@@ -86,6 +87,10 @@ const BookmarkTreeRow = ({
     ),
   });
 
+  // KAL-65: sidebar controls use the app's instant shared tooltip, never a
+  // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
   const [editName, setEditName] = React.useState(item.name || '');
   const [editPage, setEditPage] = React.useState(item.pageIds?.[0]?.toString() ?? '');
 
@@ -219,7 +224,7 @@ const BookmarkTreeRow = ({
       >
         <div
           {...handleProps}
-          title="Drag to reorder"
+          {...tip('Drag to reorder', 'below')}
           style={{
             width: 18,
             height: 22,
@@ -242,7 +247,7 @@ const BookmarkTreeRow = ({
             onToggle?.(item.id);
           }}
           disabled={!isFolder || !item.children?.length || isClone}
-          title={(isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group'}
+          {...tip((isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group', 'below')}
           style={{
             width: 16,
             height: 18,
@@ -350,7 +355,8 @@ const BookmarkTreeRow = ({
               event.stopPropagation();
               onAddChild?.(item.id);
             }}
-            title="Add bookmark to group" aria-label="Add bookmark to group"
+            {...tip('Add bookmark to group', 'below')}
+            aria-label="Add bookmark to group"
             style={{
               width: 24,
               height: 22,
@@ -377,7 +383,8 @@ const BookmarkTreeRow = ({
                 onDelete?.(item.id);
               }
             }}
-            title="Delete" aria-label="Delete"
+            {...tip('Delete', 'below')}
+            aria-label="Delete"
             style={{
               background: 'transparent',
               border: 'none',
@@ -432,6 +439,7 @@ const BookmarksPanel = ({
   // desktop; no new store writes. Desktop rendering is untouched.
   mobileMode = false
 }) => {
+  const tip = useTooltip();
   const [expandedFolders, setExpandedFolders] = useState(() => new Set(initialExpandedFolders));
   const [selectedBookmarkId, setSelectedBookmarkId] = useState(null);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
@@ -2145,9 +2153,16 @@ const BookmarksPanel = ({
                           borderRadius: '4px',
                           flexShrink: 0
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#3a1f1f'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        title="Remove" aria-label="Remove"
+                        {...tip('Remove', 'below')}
+                        aria-label="Remove"
+                        onMouseEnter={(e) => {
+                          tip('Remove', 'below').onMouseEnter(e);
+                          e.currentTarget.style.background = '#3a1f1f';
+                        }}
+                        onMouseLeave={(e) => {
+                          tip('Remove', 'below').onMouseLeave(e);
+                          e.currentTarget.style.background = 'transparent';
+                        }}
                       >
                         <Icon name="trash" size={14} />
                       </button>
@@ -2530,9 +2545,16 @@ const BookmarksPanel = ({
                           borderRadius: '4px',
                           flexShrink: 0
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#3a1f1f'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        title="Remove" aria-label="Remove"
+                        {...tip('Remove', 'below')}
+                        aria-label="Remove"
+                        onMouseEnter={(e) => {
+                          tip('Remove', 'below').onMouseEnter(e);
+                          e.currentTarget.style.background = '#3a1f1f';
+                        }}
+                        onMouseLeave={(e) => {
+                          tip('Remove', 'below').onMouseLeave(e);
+                          e.currentTarget.style.background = 'transparent';
+                        }}
                       >
                         <Icon name="trash" size={14} />
                       </button>

@@ -14,6 +14,7 @@ import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/sy
 import Spinner from './Spinner';
 import Icon from '../Icons';
 import DismissBarrier from './DismissBarrier';
+import { AnchoredTooltip } from './Tooltip';
 
 /**
  * Cloud sync status indicator.
@@ -220,27 +221,12 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, color, detailsOp
           background: 'currentColor'
         }} />
       )}
-      {hover && !detailsOpen && (
-        <div style={{
-          position: 'absolute',
-          left: '100%',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          marginLeft: '8px',
-          background: '#1a1a1a',
-          color: '#e8e2d4',
-          padding: '6px 10px',
-          borderRadius: '4px',
-          fontSize: '12px',
-          whiteSpace: 'nowrap',
-          zIndex: 1000,
-          pointerEvents: 'none',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-          border: '1px solid #2a3140'
-        }}>
-          {label}
-        </div>
-      )}
+      {/* KAL-65: the sync status hover hint is drawn by the ONE shared tooltip
+          surface (components/Tooltip.jsx) instead of its own hardcoded #1a1a1a
+          box, so it matches every other tooltip in the viewer chrome. */}
+      <AnchoredTooltip visible={hover && !detailsOpen} side="right">
+        {label}
+      </AnchoredTooltip>
     </div>
   );
 }

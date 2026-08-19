@@ -15,6 +15,7 @@ import Icon from './Icons';
 import CreateCategoryModal from './components/CreateCategoryModal';
 import EntityIndicator from './components/EntityIndicator';
 import Spinner from './components/Spinner';
+import { useTooltip } from './components/Tooltip';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableRearrangeList';
 import { moveItemById } from './reorder/flatReorderUtils.js';
@@ -75,23 +76,29 @@ const SurveyMarkerLeadingSelect = ({
   title,
   ariaLabel,
   category = false
-}) => (
-  <button
-    type="button"
-    className={`survey-marker-leading-control survey-marker-leading-check${category ? ' survey-marker-leading-control-category' : ''}${selected ? ' is-selected' : ''}`}
-    title={title}
-    aria-label={ariaLabel}
-    aria-pressed={selected}
-    onClick={(event) => {
-      event.stopPropagation();
-      onClick?.(event);
-    }}
-  >
-    <span className="survey-marker-leading-checkbox" aria-hidden="true">
-      {selected && <span className="survey-marker-leading-checkmark">✓</span>}
-    </span>
-  </button>
-);
+}) => {
+  // KAL-65: rail controls use the app's instant shared tooltip, never a native
+  // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
+  return (
+    <button
+      type="button"
+      className={`survey-marker-leading-control survey-marker-leading-check${category ? ' survey-marker-leading-control-category' : ''}${selected ? ' is-selected' : ''}`}
+      {...tip(title, 'below')}
+      aria-label={ariaLabel}
+      aria-pressed={selected}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(event);
+      }}
+    >
+      <span className="survey-marker-leading-checkbox" aria-hidden="true">
+        {selected && <span className="survey-marker-leading-checkmark">✓</span>}
+      </span>
+    </button>
+  );
+};
 
 const formatConflictFieldLabel = (field) => {
   if (!field) return null;
@@ -419,6 +426,10 @@ const SurveySpacesRail = ({
   onCollapseChange = null,
   mobileMode = false,
 }) => {
+  // KAL-65: rail controls use the app's instant shared tooltip, never a native
+  // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
   // KAL-57: themed replacement for the native confirm() that gated the three
   // bulk-delete actions in this rail (categories, copied items, category
   // items). Promise-based so each handler keeps its original
@@ -1278,7 +1289,7 @@ const SurveySpacesRail = ({
                           requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                         }}
                         aria-label="Survey"
-                        title="Survey"
+                        {...tip('Survey', 'left')}
                         style={{
                           background: 'transparent',
                           border: 'none',
@@ -2201,7 +2212,7 @@ const SurveySpacesRail = ({
                                         onClick={deleteSelectedCategories}
                                         disabled={!hasSelectedCategories}
                                         className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
-                                        title="Delete"
+                                        {...tip('Delete', 'below')}
                                         aria-label="Delete selected categories"
                                       >
                                         <Icon name="trash" size={12} />
@@ -2541,7 +2552,7 @@ const SurveySpacesRail = ({
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.background = 'transparent';
                               }}
-                              title={
+                              {...tip(
                                 liveSyncSupported === false
                                   ? 'Live sync requires Microsoft 365 Business account'
                                   : gateRefused || gateChecking
@@ -2552,8 +2563,9 @@ const SurveySpacesRail = ({
                                         ? 'Connecting to Excel...'
                                         : liveSyncStatus === 'error'
                                           ? 'Live sync error - click to retry'
-                                          : 'Enable live sync for real-time Excel updates'
-                              }
+                                          : 'Enable live sync for real-time Excel updates',
+                                'below'
+                              )}
                             >
                               <span style={{ fontSize: '14px' }}>
                                 {liveSyncStatus === 'connecting' || gateChecking
@@ -2594,13 +2606,14 @@ const SurveySpacesRail = ({
                               }}
                               onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              title={
+                              {...tip(
                                 verifying
                                   ? liveSyncVerifyStatus('verifying').label
                                   : verdict
                                     ? verdict.label
-                                    : liveSyncVerifyStatus('idle').label
-                              }
+                                    : liveSyncVerifyStatus('idle').label,
+                                'below'
+                              )}
                             >
                               <span style={{ fontSize: '14px' }}>
                                 {verifying ? '...' : verdict ? (liveSyncVerify.ready ? '✓' : '!') : '○'}
@@ -2972,7 +2985,7 @@ const SurveySpacesRail = ({
                                   type="button"
                                   onClick={openCreateCategoryModal}
                                   className="survey-marker-category-create-button"
-                                  title="Create category"
+                                  {...tip('Create category', 'below')}
                                   aria-label="Create category"
                                 >
                                   <Icon name="plus" size={14} />
@@ -3298,7 +3311,7 @@ const SurveySpacesRail = ({
                                                 }}
                                                 disabled={itemSelectedCount === 0}
                                                 className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
-                                                title="Delete"
+                                                {...tip('Delete', 'below')}
                                                 aria-label="Delete selected items"
                                               >
                                                 <Icon name="trash" size={12} />
@@ -3513,7 +3526,7 @@ const SurveySpacesRail = ({
                                                           e.stopPropagation();
                                                           toggleSurveyMarkerExpanded(annotationId);
                                                         }}
-                                                        title={isSurveyMarkerExpanded ? 'Collapse' : 'Expand'}
+                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
                                                         aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
                                                         style={{
                                                           width: '18px',
@@ -3540,7 +3553,7 @@ const SurveySpacesRail = ({
                                                           className="survey-marker-name-inline"
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          title="Rename Survey Marker"
+                                                          {...tip('Rename Survey Marker', 'below')}
                                                           aria-label={`Rename ${surveyMarkerName}`}
                                                           onClick={(e) => e.stopPropagation()}
                                                           onDoubleClick={(e) => e.currentTarget.select()}
@@ -3572,7 +3585,7 @@ const SurveySpacesRail = ({
                                                       </span>
                                                       <div
                                                         className="survey-marker-expand-spacer"
-                                                        title={isSurveyMarkerExpanded ? 'Collapse' : 'Expand'}
+                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
                                                         aria-hidden="true"
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -3630,7 +3643,7 @@ const SurveySpacesRail = ({
                                                       e.currentTarget.style.opacity = '0.78';
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    title={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                    {...tip(surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes", 'below')}
                                                     aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
                                                   >
                                                     <Icon name="pen" size={13} />
@@ -3663,7 +3676,7 @@ const SurveySpacesRail = ({
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    title={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
+                                                    {...tip(surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF", 'below')}
                                                     aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
                                                   >
                                                     <Icon name="search" size={14} />
@@ -3913,7 +3926,7 @@ const SurveySpacesRail = ({
                                                               }}
                                                             >
                                                               <span
-                                                                title={`Archived${item.archivedAt ? ` ${new Date(item.archivedAt).toLocaleString()}` : ''} — read-only historical response`}
+                                                                {...tip(`Archived${item.archivedAt ? ` ${new Date(item.archivedAt).toLocaleString()}` : ''} — read-only historical response`, 'below')}
                                                                 style={{
                                                                   color: '#8d96a6',
                                                                   fontSize: '12px',

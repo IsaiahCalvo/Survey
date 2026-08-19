@@ -852,14 +852,17 @@ async function performSwipe(page, rect, points, { midAt = [], cancelAtFraction =
 
 async function setSpaceActive(page, on) {
   // Open the Spaces tab in the left sidebar, then flip the space's toggle
-  // (a DIV with title "Turn on space"/"Turn off space", not a button).
+  // (a DIV with aria-label "Turn on space"/"Turn off space", not a button).
+  // KAL-65: both used to carry a native title= attribute; the sidebar now
+  // uses the shared instant tooltip instead, so these locators key off the
+  // accessible name (visible text / aria-label) rather than title=.
   const already = await page.evaluate(() => window.__diagState?.activeSpaceId ?? null);
   if ((on && already === RIG_SPACE_ID) || (!on && already === null)) return;
-  const tab = page.locator('button[title="Spaces"]').first();
+  const tab = page.getByRole('button', { name: 'Spaces' }).first();
   await tab.waitFor({ state: 'visible', timeout: 8000 });
   await tab.click();
   await page.waitForTimeout(600);
-  const toggle = page.locator(`[title="${on ? 'Turn on space' : 'Turn off space'}"]`).first();
+  const toggle = page.locator(`[aria-label="${on ? 'Turn on space' : 'Turn off space'}"]`).first();
   try {
     await toggle.waitFor({ state: 'visible', timeout: 8000 });
   } catch (err) {
