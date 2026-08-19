@@ -23,6 +23,7 @@ import {
   deletePendingSurveyMarkerUi,
 } from './utils/pendingSurveyMarkerHistory.js';
 import { buildSpaceCSVContent } from './utils/spaceCSVExporter.js';
+import { renderPdfPageForExport } from './utils/spacePdfPageRender.js';
 import { eraserDiameterToScreenRadius } from './utils/eraserSizing.js';
 import { requireEraseExcelProjectionReady } from './utils/eraseExcelProjection.js';
 import { buildEraseHistoryBeforeSnapshot } from './utils/annotationEraseTransaction.js';
@@ -19201,17 +19202,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    const csvContent = buildSpaceCSVContent(space, annotationsByPage);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${sanitizeFilename(space.name || 'space', 'space')}_export.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const csvContent = buildSpaceCSVContent(space, annotationsByPage);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${sanitizeFilename(space.name || 'space', 'space')}_export.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      // UX (KAL-445): the export used to finish in total silence, which is
+      // indistinguishable from it having hung. Always tell the user it worked.
+      showToast('Space exported to CSV — check your downloads.', 'success');
+    } catch (error) {
+      console.error('Error exporting space to CSV:', error);
+      showToast('Unable to export this space to CSV. Please try again.', 'error');
+    }
   }, [spaces, annotationsByPage]);
+
+  // KAL-445: one space PDF export at a time. The export is slow enough that a
+  // user who thinks nothing happened will click again; without this guard that
+  // starts a second render pass over the same pages for no benefit.
+  const spacePdfExportInFlightRef = useRef(false);
 
   const handleExportSpaceToPDF = useCallback(async (spaceId) => {
     if (!features?.excelExport) {
@@ -19235,7 +19249,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
+    if (spacePdfExportInFlightRef.current) {
+      showToast('This space is already being exported. Please wait.', 'info');
+      return;
+    }
+    spacePdfExportInFlightRef.current = true;
+
     try {
+      // UX (KAL-445): rendering the pages takes real time on a big space, so say
+      // the export has started. Silence here is what made the old bug read as a
+      // frozen app rather than a slow one.
+      showToast('Preparing the space PDF…', 'info');
+
       // PERF (KAL-384): pdf-lib loads on demand here — exporting a space to PDF
       // is the first moment the user actually needs the PDF writer.
       const { PDFDocument } = await import('pdf-lib');
@@ -19253,10 +19278,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         canvas.width = pageWidth;
         canvas.height = pageHeight;
         const context = canvas.getContext('2d');
-        await sourcePage.render({
+        // KAL-445: goes through the shared off-screen renderer so the export
+        // does not depend on animation frames (which a hidden or covered window
+        // never delivers) and can never stall forever without saying so.
+        await renderPdfPageForExport({
+          page: sourcePage,
           canvasContext: context,
-          viewport
-        }).promise;
+          viewport,
+          pageNumber,
+        });
 
         if (pageEntry.wholePageIncluded === false && Array.isArray(pageEntry.regions) && pageEntry.regions.length > 0) {
           applyRegionMaskToCanvasContext(context, pageEntry.regions, 1);
@@ -19284,9 +19314,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      // UX (KAL-445): confirm the export finished. Previously the only signal
+      // was the download itself, so a blocked or unnoticed download looked
+      // exactly like the freeze this ticket was filed for.
+      showToast('Space exported to PDF — check your downloads.', 'success');
     } catch (error) {
       console.error('Error exporting space to PDF:', error);
       showToast('Unable to export this space to PDF. Please try again.', 'error');
+    } finally {
+      spacePdfExportInFlightRef.current = false;
     }
   }, [spaces, pdfDoc]);
 
