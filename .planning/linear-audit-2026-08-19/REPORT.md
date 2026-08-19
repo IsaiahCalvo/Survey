@@ -149,3 +149,77 @@ to stop the next audit making the same mistake. That was the right call.
   the mailbox is `Kal-Voe/Clip`'s own CI failing on its main branch — a different repo,
   unrelated to this work, but it has failed four times in a day and nobody appears to be
   looking at it.
+
+---
+
+# Second session, same day — owner authorised the rest
+
+The owner decided to switch on live payments ("we're still just testing, and if
+someone chooses to pay us, let them"), and authorised the security fix, the
+password setting, the database clean-ups and the wording decision.
+
+## Shipped
+
+- **Desktop sign-in security fix merged** (pull request #799). The app would hand a
+  login code to any site that asked; a dev-only file server would serve any file on
+  the machine through a symlink. Both closed, legitimate sign-in proven still working.
+- **Space export no longer freezes.** Root cause found and it is worse than the
+  original report suggested: the export painted pages using a rendering mode that
+  browsers stop driving when the window is hidden, minimised or covered. Switching
+  tabs while an export runs — the most likely thing a person does while waiting —
+  hung it permanently, with no file and no error. Now uses the off-screen rendering
+  path, plus a timeout that raises a real error and start/success/failure messages
+  the feature never had. **The reported delete freeze was not a bug** — it was a
+  native confirm dialog the automated probe never answered.
+- **Filled PDF forms now export with their values.** Previously the user filled a
+  form, exported, and the recipient opened a blank one. The same gap existed on the
+  print-with-markup path and is closed too. Fields stay editable rather than
+  flattened, because the export path is otherwise lossless and a flat output already
+  exists via print.
+- **Copy casing settled.** Counted 15 dialogs already in sentence case against 1 in
+  Title Case, so the guide adopted sentence case rather than re-casing 15 screens and
+  overruling the signed-off sign-in modal.
+
+## Database clean-ups — what was done and what was held
+
+Run **sequentially, not in parallel**, with backups before every destructive step,
+because the database plan has no point-in-time recovery.
+
+- **4 dead tables dropped; 3 refused.** `survey_items`, `spaces` and
+  `template_collaborators` were on my "dead" list and are all live — one of them
+  feeds the usage meter that shipped the day before. Dropping them would have broken
+  working features. **That was my error, corrected on the ticket.**
+- **7 residue documents archived**, not deleted, so all are recoverable.
+- **Annotation table deduplicated: 53,239 rows → 11,585**, all 624 hand-drawn marks
+  intact. Validated against a known reference document before writing. Backed up
+  twice — a checksum-verified export committed to this repo, and a table still in the
+  database. **Drop `kal266_backup_deleted_2026_08_19` when satisfied (~90 MB).**
+- **Content fingerprints backfilled, 12 → 99 of 129.** The file rename was **held**:
+  it deletes 87 production PDFs for tidier naming, which does not justify the risk
+  without the owner present. All 87 were re-hashed read-only first and all matched.
+  The 61 orphaned files and 14 dangling records were listed and left alone.
+
+## Blocked, and it matters more than it looks
+
+**Leaked-password protection could not be enabled — it is behind Supabase's paid
+plan, not a toggle.** The same free plan also means **no point-in-time recovery for
+the production database**. That was fine for disposable pre-launch data. It stops
+being fine the moment the app takes real money, because the data then belongs to a
+paying customer. The plan decision should be made on that basis, not on one setting.
+
+## Still needs the owner personally
+
+1. Paste two Stripe live values into the project settings — the secret key and the
+   **live endpoint's** signing secret. The three price identifiers are already looked
+   up and written on KAL-414 ready to paste.
+2. Put a real card through, and check the app shows the account upgraded — that is
+   the step that catches a wrong signing secret.
+3. **Decide the Enterprise price.** It is $20/month against Pro at $9.99, self-serve.
+   That reads as a placeholder, and once live someone can buy it.
+4. Decide on the paid database plan (backups + password protection).
+
+## Note on a CI failure
+
+The merge at `3558b3bb` failed CI on the hosted runner. It was the known
+load-sensitive eraser timing assertion, and it proved itself: the identical test
+passed on the two following runs with the same code. No action taken and none needed.
