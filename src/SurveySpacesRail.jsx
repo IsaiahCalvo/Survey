@@ -104,6 +104,89 @@ const formatConflictFieldLabel = (field) => {
   return String(field);
 };
 
+/* KAL-292 — "Rows we couldn't place".
+   Rows that arrive from the linked Excel workbook but map to NO Survey Marker used to be
+   dropped silently: the user's Excel edits just never appeared and nothing said why. This
+   compact list sits at the top of the Survey panel and names each one (sheet, row number,
+   Item cell) with a plain-English reason.
+   UX rules baked in here:
+     - Renders NOTHING when there are no unplaced rows, so it adds no permanent chrome.
+     - A whole-change-set hold is explained ONCE at the top; the per-row reasons are then
+       suppressed (a hundred identical sentences is worse than useless).
+     - The only actions are Dismiss / Dismiss all. There is deliberately NO "apply anyway":
+       these are exactly the rows the server refused to write, and applying them from the
+       client would route around that server-side gate. */
+const ExcelUnplacedRows = ({
+  rows = [],
+  batchTitle = null,
+  batchNotice = null,
+  onDismiss,
+  onDismissAll
+}) => {
+  if (!rows || rows.length === 0) return null;
+
+  const describeRow = (row) => {
+    const parts = [];
+    if (row.rowNumber) parts.push(`Row ${row.rowNumber}`);
+    if (row.sheetName) parts.push(row.sheetName);
+    return parts.join(' · ');
+  };
+
+  return (
+    <section className="survey-unplaced" aria-label="Rows we couldn’t place">
+      <div className="survey-unplaced-header">
+        <img src={reviewWarningIcon} alt="" width={14} height={14} aria-hidden="true" />
+        <span className="survey-unplaced-title">
+          {batchTitle || `Rows we couldn’t place (${rows.length})`}
+        </span>
+        <button
+          type="button"
+          className="survey-unplaced-dismiss-all"
+          title="Hide this list. Rows come back on the next sync if they still can’t be placed."
+          onClick={() => onDismissAll?.()}
+        >
+          Dismiss all
+        </button>
+      </div>
+      {batchNotice && (
+        <p className="survey-unplaced-notice">{batchNotice}</p>
+      )}
+      {!batchNotice && (
+        <p className="survey-unplaced-notice">
+          These rows came from the linked Excel file but couldn’t be matched to a Survey Marker,
+          so nothing in the app was changed.
+        </p>
+      )}
+      <ul className="survey-unplaced-list">
+        {rows.map((row) => (
+          <li key={row.key} className="survey-unplaced-row">
+            <div className="survey-unplaced-row-main">
+              <span className="survey-unplaced-row-name">
+                {row.itemName || 'Unnamed row'}
+              </span>
+              {describeRow(row) && (
+                <span className="survey-unplaced-row-where">{describeRow(row)}</span>
+              )}
+              {row.message && (
+                <span className="survey-unplaced-row-reason">{row.message}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              className="survey-unplaced-row-dismiss"
+              title="Hide this row. It comes back on the next sync if it still can’t be placed."
+              aria-label={`Dismiss ${row.itemName || 'this row'}`}
+              onClick={() => onDismiss?.(row.key)}
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
 const SurveyMarkerReviewIndicator = ({
   markerId,
   message,
@@ -325,6 +408,10 @@ const SurveySpacesRail = ({
   surveyTemplates = [],
   surveyReviewByMarkerId = {},
   surveyConflictByMarkerId = {},
+  // KAL-292 — { rows, batchNotice, batchTitle } for the "Rows we couldn't place" surface.
+  surveyUnplacedRows = null,
+  onDismissUnplacedRow = null,
+  onDismissAllUnplacedRows = null,
   onResolveExcelConflict = null,
   user,
   expandRequestKey = 0,
@@ -1619,6 +1706,17 @@ const SurveySpacesRail = ({
                       </div>
                     </div>
                   )}
+
+                  {/* KAL-292 — rows the linked Excel sent that couldn't be matched to a
+                      Survey Marker. Sits above the panel content and collapses to nothing
+                      when there are none. */}
+                  <ExcelUnplacedRows
+                    rows={surveyUnplacedRows?.rows}
+                    batchTitle={surveyUnplacedRows?.batchTitle}
+                    batchNotice={surveyUnplacedRows?.batchNotice}
+                    onDismiss={onDismissUnplacedRow}
+                    onDismissAll={onDismissAllUnplacedRows}
+                  />
 
                   {/* Panel Content */}
                   {/* UX (mobile demo parity): when a Survey Marker is selected on

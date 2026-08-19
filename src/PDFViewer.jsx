@@ -139,6 +139,7 @@ import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExp
 import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
+import { selectUnplacedRows, isWholeChangeSetHeld, unplacedRowKey } from './services/excelUnplacedRows';
 import { applyExcelValuesToMarker } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
@@ -4367,6 +4368,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // blank recovery, and review-only candidate-deletes). Surfaced as "Needs your
   // choice" in the Survey panel (Stage 1 review UI). Never written automatically.
   const [pendingImportReview, setPendingImportReview] = useState([]);
+  // KAL-292 — true when the LAST server change-set was rejected wholesale (every row held,
+  // nothing written) rather than judged row by row. Drives the single explanation at the top
+  // of the "Rows we couldn't place" list instead of stamping the same sentence on every row.
+  // UX: a shared survey whose linked workbook isn't a work-cloud file has ALL its Excel edits
+  // held by the server gate; before this the user saw nothing at all and assumed sync worked.
+  const [pendingImportBatchHold, setPendingImportBatchHold] = useState(false);
   const lastExcelSyncFingerprintRef = useRef(null);
 
   // Map of Survey Marker id → plain-English reason it needs review, derived from the last
@@ -4376,11 +4383,86 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const surveyReviewByMarkerId = useMemo(() => {
     const map = {};
     (pendingImportReview || []).forEach((entry) => {
-      if (!entry || !entry.markerId) return; // rows with no app marker yet can't attach to a row
+      // Rows with no app Survey Marker yet can't attach to a row icon — they surface in the
+      // "Rows we couldn't place" list instead (surveyUnplacedRows below). KAL-292.
+      if (!entry || !entry.markerId) return;
       if (!map[entry.markerId]) map[entry.markerId] = reviewReasonMessage(entry.reason);
     });
     return map;
   }, [pendingImportReview]);
+
+  // KAL-292 — the review entries that belong to NO Survey Marker. These used to be dropped
+  // on the floor here, so a row Excel sent that the app couldn't place just vanished. Now
+  // they render as a compact "Rows we couldn't place" list at the top of the Survey panel,
+  // each with a plain-English reason. Memoized so the published rail API stays referentially
+  // stable (the App-shell publish suppresses identity churn — see Gotchas).
+  const surveyUnplacedRows = useMemo(
+    () => selectUnplacedRows(pendingImportReview, { batchHeld: pendingImportBatchHold }),
+    [pendingImportReview, pendingImportBatchHold]
+  );
+
+  // Dismiss one unplaced row. This is VISUAL ONLY — it never applies the Excel change and
+  // never touches the server. UX: the row comes back on the next sync if it still can't be
+  // placed, so dismissing can't hide a real problem forever. Deliberately no "apply anyway":
+  // a null-marker row is precisely the row the server refused to write, and an apply-anyway
+  // button would route around that gate.
+  const handleDismissUnplacedRow = useCallback((key) => {
+    if (!key) return;
+    setPendingImportReview((prev) => {
+      const list = prev || [];
+      const next = list.filter((entry, index) => {
+        if (!entry || entry.markerId) return true;
+        return unplacedRowKey(entry, index) !== key;
+      });
+      return next.length === list.length ? list : next;
+    });
+  }, []);
+
+  // Dismiss the whole "Rows we couldn't place" list (and its batch explanation) at once.
+  // UX: a whole-change-set hold can produce a hundred identical rows; clearing them one by
+  // one is punishing. Same guarantee as the single dismiss — nothing is applied.
+  const handleDismissAllUnplacedRows = useCallback(() => {
+    setPendingImportBatchHold(false);
+    setPendingImportReview((prev) => {
+      const list = prev || [];
+      const next = list.filter((entry) => entry && entry.markerId);
+      return next.length === list.length ? list : next;
+    });
+  }, []);
+
+  /* KAL-292 dev fixture — `?unplacedRows=mixed` seeds a handful of rows Excel sent that the
+     app could not place (each with a different reason), and `?unplacedRows=batch` seeds the
+     whole-change-set hold, so the "Rows we couldn't place" surface can be reviewed with real
+     code without a live shared workbook. DEV-ONLY (import.meta.env.DEV), mirroring the
+     `?empty=1` hub harness — it is stripped from any production build. */
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let mode = null;
+    try { mode = new URLSearchParams(window.location.search).get('unplacedRows'); } catch { /* no search */ }
+    if (mode !== 'mixed' && mode !== 'batch') return;
+    if (mode === 'mixed') {
+      setPendingImportBatchHold(false);
+      setPendingImportReview([
+        { scopeKey: 'm1:c1', sheetName: 'Level 1 — Doors', sheetRowNumber: 14, itemName: 'Door D-114', reason: 'ambiguous-identity', markerId: null },
+        { scopeKey: 'm1:c1', sheetName: 'Level 1 — Doors', sheetRowNumber: 21, itemName: 'Door D-121', reason: 'unknown-rowid', markerId: null },
+        { scopeKey: 'm1:c2', sheetName: 'Level 2 — Windows', sheetRowNumber: 8, itemName: 'Window W-08', reason: 'foreign', markerId: null },
+        { scopeKey: 'm1:c2', sheetName: 'Level 2 — Windows', sheetRowNumber: 9, itemName: null, reason: 'malformed', markerId: null },
+        { scopeKey: 'm1:c2', sheetName: 'Level 2 — Windows', sheetRowNumber: 12, itemName: 'Window W-12', reason: 'stale', markerId: null },
+      ]);
+      return;
+    }
+    setPendingImportBatchHold(true);
+    setPendingImportReview(
+      Array.from({ length: 12 }, (_, i) => ({
+        scopeKey: 'm1:c1',
+        sheetName: 'Level 1 — Doors',
+        sheetRowNumber: i + 3,
+        itemName: `Door D-${101 + i}`,
+        reason: 'review',
+        markerId: null,
+      }))
+    );
+  }, []);
 
   // The subset of review entries that are a both-sides "conflict": marker id → the stashed
   // incoming Excel values. Only these rows offer the "keep mine" / "use Excel's" choice in the
@@ -14832,6 +14914,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
 
+      // KAL-292 — resolve the Excel sheet + row behind a server outcome so a held row that
+      // maps to NO Survey Marker is still recognisable to the user. The Edge mints each
+      // opId as `${scopeId}#${jsonIndex}#${decision}` (deletes as `del#…`), so the sheet row
+      // and its Item cell are recoverable from the worksheets we already parsed — no extra
+      // server round-trip, no server change.
+      const reviewSheetIndex = new Map();
+      for (const ws of (worksheetDataList || [])) {
+        const mId = ws?.matchedModuleId;
+        const cId = ws?.matchedCategory?.id;
+        if (mId == null || cId == null) continue;
+        const header = Array.isArray(ws.headerRow) ? ws.headerRow : [];
+        reviewSheetIndex.set(`${mId}:${cId}`, { ws, itemColumnIndex: header.indexOf('Item') });
+      }
+      const describeOutcomeRow = (opId) => {
+        if (typeof opId !== 'string' || opId.startsWith('del#')) return {};
+        const match = /^(.*)#(\d+)#[^#]*$/.exec(opId);
+        if (!match) return {};
+        const entry = reviewSheetIndex.get(match[1]);
+        if (!entry) return {};
+        const jsonRow = entry.ws.jsonData?.[Number(match[2])];
+        if (!jsonRow) return {};
+        const rawItem = entry.itemColumnIndex >= 0 ? jsonRow[entry.itemColumnIndex] : null;
+        return {
+          sheetName: entry.ws.sheetName || null,
+          sheetRowNumber: Number.isInteger(jsonRow.sheetRowNumber) ? jsonRow.sheetRowNumber : null,
+          itemName: rawItem == null || rawItem === '' ? null : String(rawItem),
+        };
+      };
+
       // Route non-accepted server outcomes (review / stale / conflict) + any
       // client-detected conflict-review ops to the EXISTING review surface.
       const reviewItems = (result.outcomes || [])
@@ -14840,6 +14951,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           scopeKey: o.scopeId || null,
           rowIndex: null,
           itemName: null,
+          ...describeOutcomeRow(o.opId),      // sheetName / sheetRowNumber / itemName (KAL-292)
           reason: o.outcome,                  // 'review' | 'stale' | ...
           markerId: o.markerAnnotationId || null,
           opUuid: o.opUuid || null,           // resolve action keys off this (R2#4)
@@ -14855,6 +14967,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
       setPendingImportReview(reviewItems);
+      // KAL-292 — the server held the WHOLE change-set (every row reviewed, nothing written).
+      // That is the shared-document business-cloud gate; explain it once at the top of the
+      // "Rows we couldn't place" list instead of repeating it on every row.
+      setPendingImportBatchHold(isWholeChangeSetHeld(result));
 
       // Enqueue the verified Row-ID writeback jobs for server-CREATED rows BEFORE
       // declaring the import done (Codex finding #7). Each job is the signed, durably
@@ -14986,7 +15102,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
 
-    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId, sheetName }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
       const colToChecklistId = {};
 
@@ -15073,6 +15189,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
+              // KAL-292: the sheet + TRUE 1-based sheet row so a row that maps to no Survey
+              // Marker is still recognisable in the "Rows we couldn't place" list.
+              sheetName: sheetName || null,
+              sheetRowNumber: Number.isInteger(row?.sheetRowNumber) ? row.sheetRowNumber : null,
               reason: decision.decision, markerId: decision.markerId || null,
               // A both-sides "conflict" carries the incoming Excel values + which fields
               // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
@@ -15544,6 +15664,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Candidate-deletes were already triaged above (received → History-backed delete;
     // not-received → review item), so nothing more to add here.
     setPendingImportReview(importReviewItems);
+    // KAL-292: the local (unregistered-workbook) path judges each row on its own, so it is
+    // never a whole-change-set hold. Clear any hold left over from a previous server sync.
+    setPendingImportBatchHold(false);
     // Persist import memory even when nothing user-visible changed (Codex R1) — the
     // excelSync records must survive so the next sync recognizes these rows by content.
     if (identityPersisted && updatesCount === 0 && deletionsCount === 0) {
@@ -15620,7 +15743,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
 
-    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId, sheetName }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
       const colToChecklistId = {};
 
@@ -15707,6 +15830,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
+              // KAL-292: the sheet + TRUE 1-based sheet row so a row that maps to no Survey
+              // Marker is still recognisable in the "Rows we couldn't place" list.
+              sheetName: sheetName || null,
+              sheetRowNumber: Number.isInteger(row?.sheetRowNumber) ? row.sheetRowNumber : null,
               reason: decision.decision, markerId: decision.markerId || null,
               // A both-sides "conflict" carries the incoming Excel values + which fields
               // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
@@ -16186,6 +16313,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Candidate-deletes were already triaged above (received → History-backed delete;
     // not-received → review item), so nothing more to add here.
     setPendingImportReview(importReviewItems);
+    // KAL-292: the local (unregistered-workbook) path judges each row on its own, so it is
+    // never a whole-change-set hold. Clear any hold left over from a previous server sync.
+    setPendingImportBatchHold(false);
     // Persist import memory even when nothing user-visible changed (Codex R1) — the
     // excelSync records must survive so the next sync recognizes these rows by content.
     if (identityPersisted && updatesCount === 0 && deletionsCount === 0) {
@@ -29558,6 +29688,9 @@ ${pageBlocks}
       surveyMarkers,
       surveyReviewByMarkerId,
       surveyConflictByMarkerId,
+      surveyUnplacedRows,
+      onDismissUnplacedRow: handleDismissUnplacedRow,
+      onDismissAllUnplacedRows: handleDismissAllUnplacedRows,
       onResolveExcelConflict: handleResolveExcelConflict,
       user,
       expandRequestKey: rightRailExpandRequestKey,
@@ -29690,6 +29823,9 @@ ${pageBlocks}
     surveyMarkers,
     surveyReviewByMarkerId,
     surveyConflictByMarkerId,
+    surveyUnplacedRows,
+    handleDismissUnplacedRow,
+    handleDismissAllUnplacedRows,
     handleResolveExcelConflict,
     user,
     rightRailExpandRequestKey,
