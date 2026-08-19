@@ -1165,173 +1165,31 @@ test('importAnnotationsFromPdf imports AutoCAD SHX helper squares as invisible i
 });
 
 // ---------------------------------------------------------------------------
-// PATCH-DELETION SAFETY TESTS — KAL-256 §2.4 (Self-heal re-import patch)
+// PATCH-DELETION SAFETY TESTS — KAL-256 §2.4 (embedded re-import)
 //
-// The self-heal effect in PDFViewer.jsx:20610 runs the embedded PDF importer
-// when a cloud document finishes hydrating with zero annotations. Because the
-// trigger lives inside a React component, we test it in two independently
-// provable halves:
+// The embedded-import effect in PDFViewer.jsx runs the embedded PDF importer
+// the first time a document is opened.
 //
-// (a) DECISION PREDICATE — the exact boolean gate that decides whether to
-//     fire. The predicate is encoded verbatim from PDFViewer.jsx:20612-20617
-//     so any change to that gate will force this test to be updated too.
+// KAL-275 (2026-08-19): a former half (a) of this block mirrored the OLD
+// `hydration.count === 0` decision predicate. Production abandoned that gate —
+// the import is now triggered by the durable per-document marker
+// `documents.embedded_import_completed_at`, precisely because gating on
+// count===0 let a single early stroke suppress the import forever. The
+// mirrored predicate was defined inside THIS test file, so it asserted against
+// its own local fixture and guarded nothing that ships; it was deleted with
+// the patch it mirrored.
 //
-// (b) EFFECT — importAnnotationsFromPdf run against a real fixture PDF that
-//     carries embedded annotations must return a non-empty per-page set with
-//     isPdfImported marks. This is the work the self-heal does; if it were
-//     removed the cloud-empty document would stay blank.
+// What remains is the EFFECT half: importAnnotationsFromPdf run against a real
+// fixture PDF that carries embedded annotations must return a non-empty
+// per-page set with isPdfImported marks. This is the work the import does; if
+// it were removed, a document carrying embedded markups would open blank.
 //
-// HOW TO VERIFY (a) IS LOAD-BEARING:
-//   Comment out any single guard line in the predicate (e.g. remove
-//   `!documentId` or `hydration.count !== 0` check from the mirrored
-//   predicate below). The "should NOT fire" sub-assertions will immediately
-//   fail on the corresponding input, proving the guard is exercised.
-//
-// HOW TO VERIFY (b) IS LOAD-BEARING:
+// HOW TO VERIFY IT IS LOAD-BEARING:
 //   Remove importAnnotationsFromPdf or change it to always return
 //   { annotationsByPage: {}, ... }. The `totalImported > 0` assertion and
 //   `isPdfImported === true` assertion will fail, proving the importer is the
-//   actual mechanism the self-heal relies on.
+//   actual mechanism the embedded import relies on.
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// (a) Self-heal decision predicate
-//
-// Mirrors the exact guard at PDFViewer.jsx:20612-20617. Any refactor of those
-// lines must also update this test.
-// ---------------------------------------------------------------------------
-
-/**
- * Replicates the self-heal fire/no-fire logic from PDFViewer.jsx:20612-20617.
- * Returns true when all conditions to trigger the self-heal are met.
- *
- * Mirrors (verbatim):
- *   if (!documentId || !pdfDoc) return;          // line 20613
- *   if (!hydration || hydration.ready !== true) return;  // line 20614
- *   if (hydration.count !== 0) return;            // line 20615
- *   if (hydration.documentId && hydration.documentId !== documentId) return; // line 20616
- *   if (embeddedImportFallbackDoneRef === documentId) return;  // line 20617
- *
- * NOTE: line 20617 uses a ref value, not a boolean. Here we pass it directly
- * as `alreadyDone` to keep the pure-function form testable without React.
- */
-function selfHealShouldFire({ documentId, pdfDoc, hydration, alreadyDone = null }) {
-  if (!documentId || !pdfDoc) return false;
-  if (!hydration || hydration.ready !== true) return false;
-  if (hydration.count !== 0) return false;
-  if (hydration.documentId && hydration.documentId !== documentId) return false;
-  if (alreadyDone === documentId) return false;
-  return true;
-}
-
-test('[KAL-256] patch-deletion safety: self-heal predicate fires when all conditions are met', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {}; // non-null truthy sentinel
-
-  // All conditions met: ready + count===0 + documentId matches + not done
-  assert.equal(
-    selfHealShouldFire({
-      documentId,
-      pdfDoc,
-      hydration: { ready: true, count: 0, documentId },
-      alreadyDone: null,
-    }),
-    true,
-    'must fire when all conditions are satisfied'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when documentId is absent', () => {
-  const pdfDoc = {};
-  const hydration = { ready: true, count: 0, documentId: null };
-
-  assert.equal(
-    selfHealShouldFire({ documentId: null, pdfDoc, hydration }),
-    false,
-    'must not fire when documentId is null (new-upload race window)'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId: '', pdfDoc, hydration }),
-    false,
-    'must not fire when documentId is empty string'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when pdfDoc is absent', () => {
-  const documentId = 'doc-abc';
-  const hydration = { ready: true, count: 0, documentId };
-
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc: null, hydration }),
-    false,
-    'must not fire when pdfDoc is null (pdf not yet loaded)'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when hydration is not ready', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: null }),
-    false,
-    'must not fire when hydration is null'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: false, count: 0, documentId } }),
-    false,
-    'must not fire when hydration.ready is false'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: undefined, count: 0, documentId } }),
-    false,
-    'must not fire when hydration.ready is undefined'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when cloud already has marks', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-
-  // count !== 0 means cloud came back with data — self-heal must stay dormant.
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: true, count: 5, documentId } }),
-    false,
-    'must not fire when hydration.count > 0 (cloud has marks)'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: true, count: 1, documentId } }),
-    false,
-    'must not fire when count === 1'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when hydration is for a different document', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-
-  assert.equal(
-    selfHealShouldFire({
-      documentId,
-      pdfDoc,
-      hydration: { ready: true, count: 0, documentId: 'doc-OTHER' },
-    }),
-    false,
-    'must not fire when hydration.documentId does not match current documentId'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when already run this mount', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-  const hydration = { ready: true, count: 0, documentId };
-
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration, alreadyDone: documentId }),
-    false,
-    'must not fire when embeddedImportFallbackDoneRef already equals documentId (per-mount one-shot)'
-  );
-});
 
 // ---------------------------------------------------------------------------
 // (b) Self-heal effect: importAnnotationsFromPdf returns embedded marks
