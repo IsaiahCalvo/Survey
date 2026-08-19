@@ -45,7 +45,6 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
-import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -3548,12 +3547,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // (src/utils/contextMenuDiagnostics.js).
   const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu();
   const selectedNativeTextMarkupRef = useRef(null);
-  // UX: right-click → context menu → Properties opens AnnotationPropertiesPanel
-  // at the same (x, y) the context menu was anchored to. Shape mirrors
-  // annotationContextMenu (kind, pageNumber, annotationIndex, calloutId, x, y)
-  // so the panel can read the targeted annotation + commit live edits back
-  // through handleSaveAnnotations without needing a separate resolver.
-  const [annotationPropertiesPanel, setAnnotationPropertiesPanel] = useState(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
   // mousedown/mouseup listeners below when a short click lands on an
   // annotation while activeTool === 'pan'. Each SVGAnnotationLayer instance
@@ -3585,7 +3578,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setLiveCalloutEditBounds(null);
     setLiveTextEditBounds(null);
     closeAnnotationContextMenu();
-    setAnnotationPropertiesPanel(null);
     setPendingSvgHover(null);
     setPendingSvgSelection({
       pageNumber: null,
@@ -29904,59 +29896,6 @@ ${pageBlocks}
         viewerId: user?.id ?? null,
         documentOwnerId,
       })}
-
-      {/* Annotation Properties Panel — live-edit controls for the
-          right-clicked annotation. Replaces the deprecated floating
-          mini-toolbar. Opens in place of the context menu when the user
-          picks Properties. Edits apply through handleSaveAnnotations so
-          undo + cloud sync behave identically to any other in-app edit. */}
-      {annotationPropertiesPanel && (() => {
-        const p = annotationPropertiesPanel;
-        const page = annotationsByPageRef.current?.[p.pageNumber];
-        const annotation = p.annotationIndex != null
-          ? page?.objects?.[p.annotationIndex]
-          : null;
-        const callout = p.kind === 'callout' && p.calloutId
-          ? (calloutsRef.current || []).find((c) => c?.id === p.calloutId) || null
-          : null;
-
-        // UX: onUpdate patches the targeted annotation in place and commits
-        // via handleSaveAnnotations. Deep-clones so React sees a new
-        // reference + undo checkpoints are one-per-action. Merges `data`
-        // shallowly so nested fields (e.g. counter number) don't wipe
-        // sibling keys like pointerAngle.
-        const applyAnnotationPatch = (patch) => {
-          const freshPage = annotationsByPageRef.current?.[p.pageNumber];
-          if (!freshPage?.objects) return;
-          if (p.annotationIndex == null || p.annotationIndex < 0) return;
-          if (p.annotationIndex >= freshPage.objects.length) return;
-          const next = deepClone(freshPage);
-          const target = next.objects[p.annotationIndex];
-          if (!target) return;
-          for (const k of Object.keys(patch)) {
-            if (k === 'data' && patch.data && typeof patch.data === 'object') {
-              target.data = { ...(target.data || {}), ...patch.data };
-            } else {
-              target[k] = patch[k];
-            }
-          }
-          handleSaveAnnotations(p.pageNumber, next, {
-            source: 'properties-panel',
-            action: 'properties-update',
-            checkpointPolicy: 'normal',
-          });
-        };
-
-        return (
-          <AnnotationPropertiesPanel
-            ctx={p}
-            annotation={annotation}
-            callout={callout}
-            onUpdate={applyAnnotationPatch}
-            onClose={() => setAnnotationPropertiesPanel(null)}
-          />
-        );
-      })()}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,

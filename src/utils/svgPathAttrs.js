@@ -2,7 +2,7 @@
  * Pure attribute derivation for path-type Fabric objects rendered as SVG
  * <path> elements. Extracted from src/utils/svgAnnotationRenderers.jsx so
  * node-test (.mjs) suites can import it without pulling JSX through the
- * Node loader. Same pattern as src/components/propertiesPanelShape.js.
+ * Node loader.
  *
  * PDF-imported Ink has two different
  * real-world shapes: normal open pen lines, and closed zero-width outlines
