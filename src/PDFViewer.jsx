@@ -3059,7 +3059,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
-      else if (activeTool === 'text' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
+      // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
+      // if the cursor announces it the instant the user switches, without waiting
+      // for a mouse move to land on a text span.
+      else if (activeTool === 'text' || activeTool === 'text-select' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
       const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
       const clearOverride = () => runPendingCursorRestore();
@@ -4459,9 +4462,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool]);
 
   // Close secondary toolbar when pan or select tools are active
+  // ('text-select' is a Select mode, so it behaves the same — KAL-239.)
   useEffect(() => {
     if (
-      (activeTool === 'pan' || activeTool === 'select') &&
+      (activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select') &&
       !(showSurveyPanel && activeCategoryDropdown === 'survey')
     ) {
       setActiveCategoryDropdown(null);
@@ -23117,6 +23121,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
 
+      // 'Shift+V' switches the Select tool into text-selection mode (KAL-239).
+      // Intended UX: V picks things up off the page (annotations), Shift+V picks
+      // words off the page (the PDF's own text) — same key, "more" modifier, the
+      // way Shift+E pairs with E for the eraser. Stays live on a read-only
+      // document for the same reason plain V does: selecting and copying text is
+      // a read affordance, it mutates nothing.
+      if ((e.key === 'v' || e.key === 'V') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('text-select');
+        return;
+      }
+
       // 'P' key to switch to Pen Tool (only when no modifiers are pressed)
       if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // Don't trigger if user is focused on an input field, textbox, or callout
@@ -31853,8 +31872,17 @@ ${pageBlocks}
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
                   const isEraser = t.id === 'eraser';
-                  // TODO: Revisit native PDF text markup tools later. For now the
-                  // highlighter UI is freehand-only so testing stays focused.
+                  // UX (KAL-240): the Highlighter is FREEHAND-ONLY in the toolbar.
+                  // Intended UX: the user is never offered a control that does
+                  // nothing. The native PDF "Text highlight" mode is NOT implemented
+                  // — PdfjsViewerContainer accepts `textHighlightModeActive` /
+                  // `textMarkupMode` but ignores them, PageAnnotationLayer has no
+                  // 'text-highlight' branch, and selection/deletion route to stubs
+                  // (selectTextMarkupAtPoint → null, deleteSelectedTextMarkupAnnotation
+                  // → false). So the split menu that offers "Text highlight" stays
+                  // hidden, exactly like the Underline / Strike Through / Squiggly
+                  // tools that are commented out of the Review group below. Flip this
+                  // to true only when KAL-240 lands the real implementation.
                   const showTextMarkupHighlightMenu = false;
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
                   const hasSplitMenu = isEraser || isHighlighterSplitMenu;
