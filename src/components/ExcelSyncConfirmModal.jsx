@@ -94,7 +94,7 @@ const ExcelSyncConfirmModal = ({
             fontFamily: TYPOGRAPHY.fontFamily.default,
             marginBottom: '8px',
           }}>
-            Update Excel File?
+            Update Excel file?
           </h3>
           <p style={{
             margin: 0,
