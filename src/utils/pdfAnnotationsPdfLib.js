@@ -44,6 +44,13 @@ import {
   normalizeMultiPolygon,
 } from './paperAnnotationGeometry.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
+// KAL-405 — single-tap ink dots. Same detection rule and circle geometry the
+// PDF importer uses, so a mark that renders on screen also lands in the file.
+import {
+  buildInkDotPathCommands,
+  degenerateInkTapCenters,
+  inkDotCollapseThreshold,
+} from './inkTapDot.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
@@ -1419,6 +1426,60 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
 };
 
 /**
+ * KAL-405 — turn a PDF-imported pen TAP into the filled dot a pen actually
+ * leaves behind, so it survives export. Returns a shallow clone shaped like
+ * native filled paper ink, or null when the object is not a tap.
+ *
+ * Scoped to PDF-IMPORTED ink on purpose (provenance fields, which the
+ * exporter is explicitly allowed to read — renderers and editors are not).
+ * Strokes drawn inside Survey are never rewritten by this path.
+ *
+ * The circle is centred on the tap point in the object's OWN local path
+ * coordinates and left/top are untouched: the path-bounds centre is therefore
+ * unchanged, so the ink affine places the dot exactly where the tap was.
+ */
+const importedInkTapDotObject = (fabricObj, localPathData) => {
+  const isPdfImportedInk = (
+    (fabricObj?.isPdfImported === true || fabricObj?.data?.isPdfImported === true)
+    && (
+      fabricObj?.pdfAnnotationType === 'Ink'
+      || fabricObj?.data?.pdfAnnotationType === 'Ink'
+    )
+  );
+  if (!isPdfImportedInk) return null;
+
+  const strokeWidth = Number(fabricObj?.strokeWidth);
+  // Diameter = the pen width, matching how every reference viewer renders the
+  // round cap of a zero-length stroke. A hairline pen still leaves one unit.
+  const diameter = Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : 1;
+  const centers = degenerateInkTapCenters(
+    localPathData,
+    inkDotCollapseThreshold(diameter),
+  );
+  if (!centers || centers.length === 0) return null;
+
+  const radius = diameter / 2;
+  const path = [];
+  for (const center of centers) {
+    path.push(...buildInkDotPathCommands(center.x, center.y, radius));
+  }
+  // Colour comes straight from the source annotation — no backdrop-dependent
+  // transform, no "boost" that assumes a white page.
+  const paint = fabricObj?.fill && fabricObj.fill !== 'none' && fabricObj.fill !== 'transparent'
+    ? fabricObj.fill
+    : (fabricObj?.stroke && fabricObj.stroke !== 'transparent' ? fabricObj.stroke : '#000000');
+  return {
+    ...fabricObj,
+    path,
+    polygons: null,
+    fill: paint,
+    stroke: 'transparent',
+    strokeWidth: 0,
+    paperInkGeometry: 'v1',
+  };
+};
+
+/**
  * Convert Fabric.js path to PDF Ink annotation
  */
 export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
@@ -1429,6 +1490,24 @@ export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options
     const localPathData = normalizeOperationalInkPath(fabricObj.path);
     if (!localPathData || localPathData.length === 0) {
       return null;
+    }
+    // KAL-405 export mirror — single-tap ink dots.
+    // Import now substitutes a filled circle for an imported pen tap, so the
+    // normal case reaches this function already flagged as filled paper ink
+    // and returns above. This guard covers the leftovers: annotations saved
+    // BEFORE the import fix, and any imported tap whose polygon derivation
+    // failed. Without it a zero-travel /InkList would be written straight
+    // back out — geometry that paints nothing — so the dot would show on
+    // screen and still be missing from the exported PDF.
+    const importedInkDot = importedInkTapDotObject(fabricObj, localPathData);
+    if (importedInkDot) {
+      return createFilledPaperInkAnnotation(
+        pdfDoc,
+        page,
+        importedInkDot,
+        pageHeight,
+        options,
+      );
     }
     const transform = createInkPageTransform(fabricObj, localPathData);
     const pathData = transformInkPath(localPathData, transform);

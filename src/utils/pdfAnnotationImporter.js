@@ -11,6 +11,16 @@
  * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
  */
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
+// KAL-405 — single-tap ink dots. The detection rule and the circle geometry
+// live in one shared module so import and export cannot drift apart.
+// NOTE: these run only on PDF-imported ink; strokes drawn inside Survey never
+// pass through convertInkToFabricPath, so a user-drawn stroke can never be
+// rewritten into a dot here.
+import {
+  buildInkDotPathCommands,
+  degenerateInkTapCenters,
+  inkDotCollapseThreshold,
+} from './inkTapDot.js';
 import {
   hasSubstantiveClosedSubpath,
 } from './svgPathAttrs.js';
@@ -3262,7 +3272,10 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   } else if (hasInkList) {
     pathData = [];
     annotation.inkLists.forEach((inkList) => {
-      if (!inkList || inkList.length < 2) return;
+      // KAL-405: a single-point sub-stroke is a pen TAP, not junk. Keep it —
+      // the degenerate-dot pass below turns it into a visible filled dot.
+      // (Previously `length < 2` dropped [[x, y]] / [{x, y}] taps outright.)
+      if (!inkList || inkList.length < 1) return;
 
       // inkList is an array of {x, y} points or flat [x1, y1, x2, y2...] array
       const points = [];
@@ -3350,10 +3363,12 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
       }
     }
   }
-  const importedLeft = Number.isFinite(minX) ? minX : 0;
-  const importedTop = Number.isFinite(minY) ? minY : 0;
-  const importedWidth = Number.isFinite(maxX) && Number.isFinite(minX) ? maxX - minX : 0;
-  const importedHeight = Number.isFinite(maxY) && Number.isFinite(minY) ? maxY - minY : 0;
+  // `let` (not `const`) only so the KAL-405 single-tap dot pass below can
+  // re-place the object once it substitutes circle geometry for a tap.
+  let importedLeft = Number.isFinite(minX) ? minX : 0;
+  let importedTop = Number.isFinite(minY) ? minY : 0;
+  let importedWidth = Number.isFinite(maxX) && Number.isFinite(minX) ? maxX - minX : 0;
+  let importedHeight = Number.isFinite(maxY) && Number.isFinite(minY) ? maxY - minY : 0;
 
   // An authoritative AP carries the paint that PDF viewers render. /C is
   // only a fallback and is frequently stale after edits in other PDF tools.
@@ -3416,6 +3431,44 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     // Zero-width strokes with no fill fallback need a visible width for editability.
     strokeWidth = 0.9 * scale;
   }
+
+  // KAL-405 — single-tap ink dots.
+  // See the helper block above convertInkToFabricPath for the full rationale
+  // and the threshold justification. In short: geometry with no travel paints
+  // nothing, so an imported pen tap disappeared. We substitute the circle a
+  // real pen leaves behind — diameter = the pen width, centred on the tap.
+  // Colour and opacity are untouched (they come from the source annotation
+  // via inkPaint below); no backdrop-dependent transform is applied.
+  const inkDotDiameter = strokeWidth > 0
+    ? strokeWidth
+    // A hairline (/BS width 0) or fill-only ink still has to leave a mark;
+    // one PDF unit is the device-hairline equivalent at 100% zoom.
+    : Math.max(borderWidth * scale, scale);
+  const inkTapCenters = inkDotDiameter > 0
+    ? degenerateInkTapCenters(pathData, inkDotCollapseThreshold(inkDotDiameter))
+    : null;
+  const isImportedInkDot = Array.isArray(inkTapCenters) && inkTapCenters.length > 0;
+  if (isImportedInkDot) {
+    const radius = inkDotDiameter / 2;
+    // `pathData` is already local (min at 0,0) with the world placement on
+    // importedLeft/importedTop, so build the dots in that same local frame
+    // and then re-normalize — the "path bounds == object bounds" contract
+    // established by the 2026-04-21 bbox-drift fix must keep holding.
+    const dotCommands = [];
+    for (const center of inkTapCenters) {
+      dotCommands.push(...buildInkDotPathCommands(center.x, center.y, radius));
+    }
+    const dotMinX = Math.min(...inkTapCenters.map((c) => c.x)) - radius;
+    const dotMinY = Math.min(...inkTapCenters.map((c) => c.y)) - radius;
+    const dotMaxX = Math.max(...inkTapCenters.map((c) => c.x)) + radius;
+    const dotMaxY = Math.max(...inkTapCenters.map((c) => c.y)) + radius;
+    pathData = translatePathCommands(dotCommands, -dotMinX, -dotMinY);
+    importedLeft += dotMinX;
+    importedTop += dotMinY;
+    importedWidth = dotMaxX - dotMinX;
+    importedHeight = dotMaxY - dotMinY;
+  }
+
   // Filled-outline classification. Two real-world encodings land here:
   // 1. Zero-width /BS + closed outlines (Drawboard pressure ink, marker
   //    dots) — the strict pre-2026-07-17 check.
@@ -3425,6 +3478,10 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   //    predicate runs here so classification is made once without changing
   //    the source width or authored commands.
   const fillsClosedOutline =
+    // KAL-405: a substituted tap dot IS a filled outline — the circle is the
+    // mark, so it must be filled, never stroked (stroking a width-w circle
+    // with a width-w pen would render a blob of twice the intended diameter).
+    isImportedInkDot ||
     useFilledAppearancePath ||
     (
       !useStrokedAppearancePath
@@ -3529,7 +3586,10 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     width: importedWidth,
     height: importedHeight,
     stroke: fillsClosedOutline ? null : inkPaint,
-    strokeWidth,
+    // KAL-405: a tap dot carries its size in the circle geometry itself, so
+    // it must not also carry a pen width — that would double its rendered
+    // diameter and make the exporter treat it as a stroked ink path.
+    strokeWidth: isImportedInkDot ? 0 : strokeWidth,
     fill: fillsClosedOutline ? inkPaint : null,
     strokeLineCap: appearance?.lineCap || (useStrokedAppearancePath ? 'butt' : 'round'),
     strokeLineJoin: appearance?.lineJoin || (useStrokedAppearancePath ? 'miter' : 'round'),
@@ -3562,11 +3622,16 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Ink',
     ...(isPdfStrokeHairline ? { pdfStrokeHairline: true } : {}),
+    // KAL-405 provenance ONLY ("this arrived as a zero-travel pen tap and we
+    // substituted the pen's round cap as a filled circle"). Export + debug
+    // tooling read it; renderers/editors/erasers must never branch on it.
+    ...(isImportedInkDot ? { pdfInkTapDot: true } : {}),
     inkGeometrySpace: 'local',
     data: {
       inkGeometrySpace: 'local',
       pdfInkSourceGeometry: sourceGeometry,
       ...(isPdfStrokeHairline ? { pdfStrokeHairline: true } : {}),
+      ...(isImportedInkDot ? { pdfInkTapDot: true } : {}),
       ...(fillsClosedOutline ? { pdfInkRenderMode: FILLED_PDF_INK_MODE } : {}),
     },
     ...(fillsClosedOutline ? {
