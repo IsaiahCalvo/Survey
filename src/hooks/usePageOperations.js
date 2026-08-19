@@ -6,7 +6,9 @@ import { useCallback, useMemo, useRef } from 'react';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
 import { transformPageState } from '../utils/pageAnnotationReindex.js';
-import { mutatePdfPages } from '../utils/pdfPageMutation.js';
+// PERF (KAL-384): pdfPageMutation pulls in pdf-lib (~429 kB). Page add /
+// delete / rotate / reorder is a deliberate user action, so the module is
+// imported dynamically at the call site below instead of at first viewer paint.
 import { persistThenCommitPageMutation } from '../utils/pageMutationTransaction.js';
 
 export function usePageOperations({
@@ -49,6 +51,7 @@ export function usePageOperations({
             + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
         }
         : operation;
+      const { mutatePdfPages } = await import('../utils/pdfPageMutation.js');
       const pdfBytes = await mutatePdfPages(await currentPdfFile.arrayBuffer(), pdfOperation);
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation

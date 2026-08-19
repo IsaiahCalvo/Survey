@@ -40,6 +40,15 @@ async function loadUsePageOperations() {
       "from '../utils/pdfPageMutation.js';",
       `from ${JSON.stringify(moduleUrl('src/utils/pdfPageMutation.js'))};`,
     )
+    // KAL-384: pdfPageMutation (and therefore pdf-lib) is now imported
+    // dynamically at the call site so it stays out of the first-open bundle.
+    // Rewrite the dynamic specifier too, otherwise the relocated copy of the
+    // hook resolves it against the temp directory and the page op silently
+    // fails.
+    .replace(
+      "await import('../utils/pdfPageMutation.js')",
+      `await import(${JSON.stringify(moduleUrl('src/utils/pdfPageMutation.js'))})`,
+    )
     .replace(
       "from '../utils/pageMutationTransaction.js';",
       `from ${JSON.stringify(moduleUrl('src/utils/pageMutationTransaction.js'))};`,
