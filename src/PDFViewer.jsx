@@ -77,7 +77,15 @@ import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
-import { PDFDocument } from 'pdf-lib';
+// PERF (KAL-384): pdf-lib is the PDF *export/write* library, not the renderer.
+// It is only needed when the user exports an annotated PDF, exports a space to
+// PDF, prints with markup, or mutates pages — never to open and read a
+// document. Importing it statically here dragged ~429 kB into the first
+// viewer paint. It is now loaded through `import('pdf-lib')` / dynamic imports
+// of the pdf-lib-backed helper modules at the point of use, mirroring how
+// ExcelJS is already deferred in this file. Do NOT reintroduce a static
+// `import ... from 'pdf-lib'` (or a static import of ./utils/pdfAnnotationsPdfLib
+// or ./utils/pdfPageMutation) anywhere reachable from first render.
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
@@ -91,7 +99,6 @@ import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
-import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   canDelete,
@@ -19229,6 +19236,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     try {
+      // PERF (KAL-384): pdf-lib loads on demand here — exporting a space to PDF
+      // is the first moment the user actually needs the PDF writer.
+      const { PDFDocument } = await import('pdf-lib');
       const exportDoc = await PDFDocument.create();
 
       for (const pageEntry of assignedPages) {
@@ -20839,6 +20849,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           reason: 'The viewer save blob can contain rendered annotation appearances; exporting from original bytes prevents baked page artifacts plus duplicate editable app annotations.'
         }));
       }
+      // PERF (KAL-384): the pdf-lib-backed writer loads on demand at export time.
+      const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
       const buffer = await savePDFWithAnnotationsPdfLib(
         sourcePdfForExport,
         annotationsByPage,
@@ -28803,6 +28815,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           printInFlight = true;
           (async () => {
             try {
+              // PERF (KAL-384): the pdf-lib-backed print flattener loads on
+              // demand — only a print-with-markup needs the PDF writer.
+              const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
+                await import('./utils/pdfAnnotationsPdfLib');
               const printableRegularPayload = buildPrintableRegularAnnotationPayload({
                 annotationsByPage: annotationsByPageRef.current || {},
                 callouts: calloutsRef.current || [],
