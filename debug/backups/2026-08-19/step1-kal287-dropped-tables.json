@@ -1,0 +1,1560 @@
+{
+ "step": "Step 1 / KAL-287 \u2014 drop confirmed-dead tables",
+ "project_ref": "cvamwtpsuvxvjdnotbeg",
+ "taken_at_utc": "2026-08-19T16:3x:00Z",
+ "row_counts_before": {
+  "survey_sync_log": 0,
+  "activity_log": 0,
+  "user_settings": 0,
+  "annotations": 0,
+  "survey_items": 0,
+  "spaces": 0,
+  "template_collaborators": 0
+ },
+ "note_on_traps": "excel_schema_mapping (4 rows, live Excel surface) and template_invites (0 rows but queried in templateInviteService.js x3 + send-invite-email + send-email) were NOT candidates and were NOT touched, per the brief.",
+ "verdicts": {
+  "survey_sync_log": {
+   "action": "DROP",
+   "reason": "0 rows. No pg_proc/view/policy/trigger reference outside itself. No app-code reference in src/, supabase/functions/, agent-cli/. Only outbound FKs."
+  },
+  "activity_log": {
+   "action": "DROP",
+   "reason": "0 rows. No DB-object reference. App-code hits are agent-cli test MOCKS only (agent-cli/lib/supabaseMock.mjs, lock-document-e2e.mjs, regress-idle-disappearance.mjs) which never touch the real table."
+  },
+  "user_settings": {
+   "action": "DROP",
+   "reason": "0 rows. No DB-object reference. Zero app-code references anywhere."
+  },
+  "annotations": {
+   "action": "DROP",
+   "reason": "0 rows. pg_proc text hits in kal48_create_revision/kal48_restore_revision are the JSONB key \"annotations\" and the DIFFERENT table document_annotations, not this table. Zero app-code references (app uses document_annotations)."
+  },
+  "survey_items": {
+   "action": "REFUSED",
+   "reason": "LIVE DEPENDENCY: public.kal48_create_revision does SELECT ... FROM public.survey_items, and public.kal48_restore_revision does DELETE FROM / INSERT INTO public.survey_items. Dropping it breaks the KAL-48 document-revision create + restore feature. Also the inbound FK survey_sync_log_item_id_fkey."
+  },
+  "spaces": {
+   "action": "REFUSED",
+   "reason": "LIVE DEPENDENCY: public.get_current_usage has a \"spaces_count\" branch doing SELECT COUNT(DISTINCT s.id) FROM spaces s JOIN documents d ON s.document_id = d.id. That is the quota/usage meter shipped in KAL-390 (commit 4a95ed94). Dropping it breaks the usage meter."
+  },
+  "template_collaborators": {
+   "action": "REFUSED",
+   "reason": "LIVE DEPENDENCY: public.user_can_access_template (an RLS helper) reads it; also public.kal31_accept_template_invite and public.purge_archived_template. AND the send-email edge function queries it at runtime via COLLABORATOR_TABLES (supabase/functions/send-email/index.ts:78,116 -> .from(table)). Dropping it breaks template sharing/access."
+  }
+ },
+ "catalog_snapshot": {
+  "activity_log": {
+   "table_name": "activity_log",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "bigint",
+     "column": "id",
+     "default": "nextval('activity_log_id_seq'::regclass)",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "document_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "uuid",
+     "column": "user_id",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 4,
+     "type": "text",
+     "column": "device_id",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 5,
+     "type": "text",
+     "column": "op_type",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 6,
+     "type": "text",
+     "column": "anno_id",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 7,
+     "type": "timestamp with time zone",
+     "column": "client_ts",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 8,
+     "type": "timestamp with time zone",
+     "column": "server_ts",
+     "default": "now()",
+     "notnull": true
+    },
+    {
+     "ord": 9,
+     "type": "jsonb",
+     "column": "summary",
+     "default": null,
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE",
+     "name": "activity_log_document_id_fkey"
+    },
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "activity_log_pkey"
+    }
+   ],
+   "indexes": [
+    "CREATE INDEX activity_log_doc_server_ts_idx ON public.activity_log USING btree (document_id, server_ts DESC)",
+    "CREATE UNIQUE INDEX activity_log_pkey ON public.activity_log USING btree (id)"
+   ],
+   "policies": [
+    {
+     "cmd": "SELECT",
+     "name": "activity_log_select_viewer",
+     "roles": [
+      "public"
+     ],
+     "using": "user_can_access_document(document_id, 'viewer'::text)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    }
+   ],
+   "triggers": null,
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": null,
+   "table_comment": "Server-authoritative audit trail. Phase 33 reads for Activity Log sidebar. server_ts is AUTH-03 source of truth."
+  },
+  "annotations": {
+   "table_name": "annotations",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "uuid",
+     "column": "id",
+     "default": "gen_random_uuid()",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "user_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "text",
+     "column": "document_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 4,
+     "type": "integer",
+     "column": "page_number",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 5,
+     "type": "text",
+     "column": "type",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 6,
+     "type": "jsonb",
+     "column": "content",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 7,
+     "type": "text",
+     "column": "color",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 8,
+     "type": "timestamp with time zone",
+     "column": "created_at",
+     "default": "now()",
+     "notnull": false
+    },
+    {
+     "ord": 9,
+     "type": "timestamp with time zone",
+     "column": "updated_at",
+     "default": "now()",
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "annotations_pkey"
+    },
+    {
+     "def": "CHECK ((type = ANY (ARRAY['highlight'::text, 'comment'::text, 'drawing'::text, 'shape'::text])))",
+     "name": "annotations_type_check"
+    },
+    {
+     "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "name": "annotations_user_id_fkey"
+    }
+   ],
+   "indexes": [
+    "CREATE UNIQUE INDEX annotations_pkey ON public.annotations USING btree (id)",
+    "CREATE INDEX idx_annotations_document_id ON public.annotations USING btree (document_id)",
+    "CREATE INDEX idx_annotations_page_number ON public.annotations USING btree (page_number)",
+    "CREATE INDEX idx_annotations_user_id ON public.annotations USING btree (user_id)"
+   ],
+   "policies": [
+    {
+     "cmd": "DELETE",
+     "name": "Users can delete own annotations",
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(auth.uid() = user_id)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "INSERT",
+     "name": "Users can insert own annotations",
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "(auth.uid() = user_id)"
+    },
+    {
+     "cmd": "UPDATE",
+     "name": "Users can update own annotations",
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(auth.uid() = user_id)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "SELECT",
+     "name": "Users can view own annotations",
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(auth.uid() = user_id)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    }
+   ],
+   "triggers": null,
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": [
+    "supabase_realtime"
+   ],
+   "table_comment": null
+  },
+  "spaces": {
+   "table_name": "spaces",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "uuid",
+     "column": "id",
+     "default": "gen_random_uuid()",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "document_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "character varying(255)",
+     "column": "name",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 4,
+     "type": "text",
+     "column": "description",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 5,
+     "type": "character varying(7)",
+     "column": "color",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 6,
+     "type": "integer",
+     "column": "start_page",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 7,
+     "type": "integer",
+     "column": "end_page",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 8,
+     "type": "integer",
+     "column": "sort_order",
+     "default": "0",
+     "notnull": false
+    },
+    {
+     "ord": 9,
+     "type": "timestamp with time zone",
+     "column": "created_at",
+     "default": "now()",
+     "notnull": false
+    },
+    {
+     "ord": 10,
+     "type": "timestamp with time zone",
+     "column": "updated_at",
+     "default": "now()",
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "CHECK (((start_page > 0) AND (end_page >= start_page)))",
+     "name": "spaces_check"
+    },
+    {
+     "def": "FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE",
+     "name": "spaces_document_id_fkey"
+    },
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "spaces_pkey"
+    }
+   ],
+   "indexes": [
+    "CREATE INDEX idx_spaces_document_id ON public.spaces USING btree (document_id)",
+    "CREATE UNIQUE INDEX spaces_pkey ON public.spaces USING btree (id)"
+   ],
+   "policies": [
+    {
+     "cmd": "INSERT",
+     "name": "Only Pro users can create spaces",
+     "roles": [
+      "public"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "((document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid()))) AND has_feature_access(auth.uid(), 'regions'::text))"
+    },
+    {
+     "cmd": "UPDATE",
+     "name": "Only Pro users can edit spaces",
+     "roles": [
+      "public"
+     ],
+     "using": "((document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid()))) AND has_feature_access(auth.uid(), 'regions'::text))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "DELETE",
+     "name": "Users can delete own spaces",
+     "roles": [
+      "public"
+     ],
+     "using": "(document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid())))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "DELETE",
+     "name": "Users can delete spaces for own documents",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "INSERT",
+     "name": "Users can insert spaces for own documents",
+     "roles": [
+      "public"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "(EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid()))))"
+    },
+    {
+     "cmd": "UPDATE",
+     "name": "Users can update spaces for own documents",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "SELECT",
+     "name": "Users can view own spaces",
+     "roles": [
+      "public"
+     ],
+     "using": "(document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid())))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "SELECT",
+     "name": "Users can view spaces for own documents",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    }
+   ],
+   "triggers": [
+    "CREATE TRIGGER update_spaces_updated_at BEFORE UPDATE ON public.spaces FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+   ],
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": null,
+   "table_comment": null
+  },
+  "survey_items": {
+   "table_name": "survey_items",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "uuid",
+     "column": "id",
+     "default": "gen_random_uuid()",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "session_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "text",
+     "column": "annotation_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 4,
+     "type": "text",
+     "column": "module_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 5,
+     "type": "text",
+     "column": "category_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 6,
+     "type": "text",
+     "column": "name",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 7,
+     "type": "integer",
+     "column": "page_number",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 8,
+     "type": "jsonb",
+     "column": "bounds",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 9,
+     "type": "text",
+     "column": "entity_id",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 10,
+     "type": "text",
+     "column": "entity_name",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 11,
+     "type": "text",
+     "column": "changed_by",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 12,
+     "type": "timestamp with time zone",
+     "column": "changed_date",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 13,
+     "type": "text",
+     "column": "notes",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 14,
+     "type": "jsonb",
+     "column": "checklist_responses",
+     "default": "'{}'::jsonb",
+     "notnull": false
+    },
+    {
+     "ord": 15,
+     "type": "integer",
+     "column": "excel_row_index",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 16,
+     "type": "integer",
+     "column": "version",
+     "default": "1",
+     "notnull": false
+    },
+    {
+     "ord": 17,
+     "type": "timestamp with time zone",
+     "column": "created_at",
+     "default": "now()",
+     "notnull": false
+    },
+    {
+     "ord": 18,
+     "type": "timestamp with time zone",
+     "column": "updated_at",
+     "default": "now()",
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "survey_items_pkey"
+    },
+    {
+     "def": "FOREIGN KEY (session_id) REFERENCES survey_sessions(id) ON DELETE CASCADE",
+     "name": "survey_items_session_id_fkey"
+    },
+    {
+     "def": "UNIQUE (session_id, annotation_id)",
+     "name": "survey_items_session_id_highlight_id_key"
+    }
+   ],
+   "indexes": [
+    "CREATE INDEX idx_survey_items_annotation ON public.survey_items USING btree (annotation_id)",
+    "CREATE INDEX idx_survey_items_module_category ON public.survey_items USING btree (module_id, category_id)",
+    "CREATE INDEX idx_survey_items_session_id ON public.survey_items USING btree (session_id)",
+    "CREATE UNIQUE INDEX survey_items_pkey ON public.survey_items USING btree (id)",
+    "CREATE UNIQUE INDEX survey_items_session_id_highlight_id_key ON public.survey_items USING btree (session_id, annotation_id)"
+   ],
+   "policies": [
+    {
+     "cmd": "DELETE",
+     "name": "Users can delete survey items via session",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "INSERT",
+     "name": "Users can insert survey items via session",
+     "roles": [
+      "public"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "(EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid()))))"
+    },
+    {
+     "cmd": "UPDATE",
+     "name": "Users can update survey items via session",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "SELECT",
+     "name": "Users can view survey items via session",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    }
+   ],
+   "triggers": [
+    "CREATE TRIGGER trigger_update_survey_items_updated_at BEFORE UPDATE ON public.survey_items FOR EACH ROW EXECUTE FUNCTION update_survey_tables_updated_at()"
+   ],
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": [
+    "supabase_realtime"
+   ],
+   "table_comment": null
+  },
+  "survey_sync_log": {
+   "table_name": "survey_sync_log",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "uuid",
+     "column": "id",
+     "default": "gen_random_uuid()",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "session_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "uuid",
+     "column": "item_id",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 4,
+     "type": "text",
+     "column": "change_type",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 5,
+     "type": "text",
+     "column": "source",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 6,
+     "type": "uuid",
+     "column": "user_id",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 7,
+     "type": "jsonb",
+     "column": "old_values",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 8,
+     "type": "jsonb",
+     "column": "new_values",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 9,
+     "type": "timestamp with time zone",
+     "column": "created_at",
+     "default": "now()",
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "CHECK ((change_type = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text])))",
+     "name": "survey_sync_log_change_type_check"
+    },
+    {
+     "def": "FOREIGN KEY (item_id) REFERENCES survey_items(id) ON DELETE SET NULL",
+     "name": "survey_sync_log_item_id_fkey"
+    },
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "survey_sync_log_pkey"
+    },
+    {
+     "def": "FOREIGN KEY (session_id) REFERENCES survey_sessions(id) ON DELETE CASCADE",
+     "name": "survey_sync_log_session_id_fkey"
+    },
+    {
+     "def": "CHECK ((source = ANY (ARRAY['app'::text, 'excel'::text])))",
+     "name": "survey_sync_log_source_check"
+    },
+    {
+     "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL",
+     "name": "survey_sync_log_user_id_fkey"
+    }
+   ],
+   "indexes": [
+    "CREATE INDEX idx_sync_log_created ON public.survey_sync_log USING btree (created_at)",
+    "CREATE INDEX idx_sync_log_session ON public.survey_sync_log USING btree (session_id)",
+    "CREATE UNIQUE INDEX survey_sync_log_pkey ON public.survey_sync_log USING btree (id)"
+   ],
+   "policies": [
+    {
+     "cmd": "INSERT",
+     "name": "Users can insert sync log via session",
+     "roles": [
+      "public"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "(EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_sync_log.session_id) AND (survey_sessions.user_id = auth.uid()))))"
+    },
+    {
+     "cmd": "SELECT",
+     "name": "Users can view sync log via session",
+     "roles": [
+      "public"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_sync_log.session_id) AND (survey_sessions.user_id = auth.uid()))))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    }
+   ],
+   "triggers": null,
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": null,
+   "table_comment": null
+  },
+  "template_collaborators": {
+   "table_name": "template_collaborators",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "uuid",
+     "column": "id",
+     "default": "gen_random_uuid()",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "template_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "uuid",
+     "column": "user_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 4,
+     "type": "uuid",
+     "column": "invited_by",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 5,
+     "type": "text",
+     "column": "role",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 6,
+     "type": "text",
+     "column": "email",
+     "default": null,
+     "notnull": false
+    },
+    {
+     "ord": 7,
+     "type": "text",
+     "column": "status",
+     "default": "'active'::text",
+     "notnull": false
+    },
+    {
+     "ord": 8,
+     "type": "timestamp with time zone",
+     "column": "created_at",
+     "default": "now()",
+     "notnull": false
+    },
+    {
+     "ord": 9,
+     "type": "timestamp with time zone",
+     "column": "updated_at",
+     "default": "now()",
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "FOREIGN KEY (invited_by) REFERENCES auth.users(id) ON DELETE SET NULL",
+     "name": "template_collaborators_invited_by_fkey"
+    },
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "template_collaborators_pkey"
+    },
+    {
+     "def": "CHECK ((role = ANY (ARRAY['viewer'::text, 'editor'::text, 'owner'::text])))",
+     "name": "template_collaborators_role_check"
+    },
+    {
+     "def": "FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE",
+     "name": "template_collaborators_template_id_fkey"
+    },
+    {
+     "def": "UNIQUE (template_id, user_id)",
+     "name": "template_collaborators_template_id_user_id_key"
+    },
+    {
+     "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "name": "template_collaborators_user_id_fkey"
+    }
+   ],
+   "indexes": [
+    "CREATE INDEX idx_template_collaborators_template ON public.template_collaborators USING btree (template_id)",
+    "CREATE INDEX idx_template_collaborators_user ON public.template_collaborators USING btree (user_id)",
+    "CREATE UNIQUE INDEX template_collaborators_pkey ON public.template_collaborators USING btree (id)",
+    "CREATE UNIQUE INDEX template_collaborators_template_id_user_id_key ON public.template_collaborators USING btree (template_id, user_id)"
+   ],
+   "policies": [
+    {
+     "cmd": "DELETE",
+     "name": "template_collaborators_delete",
+     "roles": [
+      "public"
+     ],
+     "using": "(user_can_access_template(template_id, 'owner'::text) OR (user_id = auth.uid()))",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "INSERT",
+     "name": "template_collaborators_insert",
+     "roles": [
+      "public"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "user_can_access_template(template_id, 'owner'::text)"
+    },
+    {
+     "cmd": "SELECT",
+     "name": "template_collaborators_select",
+     "roles": [
+      "public"
+     ],
+     "using": "user_can_access_template(template_id, 'viewer'::text)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "UPDATE",
+     "name": "template_collaborators_update",
+     "roles": [
+      "public"
+     ],
+     "using": "user_can_access_template(template_id, 'owner'::text)",
+     "permissive": "PERMISSIVE",
+     "with_check": "user_can_access_template(template_id, 'owner'::text)"
+    }
+   ],
+   "triggers": null,
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": null,
+   "table_comment": null
+  },
+  "user_settings": {
+   "table_name": "user_settings",
+   "_exists": 1,
+   "columns": [
+    {
+     "ord": 1,
+     "type": "uuid",
+     "column": "id",
+     "default": "gen_random_uuid()",
+     "notnull": true
+    },
+    {
+     "ord": 2,
+     "type": "uuid",
+     "column": "user_id",
+     "default": null,
+     "notnull": true
+    },
+    {
+     "ord": 3,
+     "type": "numeric",
+     "column": "default_zoom",
+     "default": "100",
+     "notnull": false
+    },
+    {
+     "ord": 4,
+     "type": "character varying(20)",
+     "column": "default_view_mode",
+     "default": "'single'::character varying",
+     "notnull": false
+    },
+    {
+     "ord": 5,
+     "type": "character varying(20)",
+     "column": "theme",
+     "default": "'light'::character varying",
+     "notnull": false
+    },
+    {
+     "ord": 6,
+     "type": "boolean",
+     "column": "show_toolbar",
+     "default": "true",
+     "notnull": false
+    },
+    {
+     "ord": 7,
+     "type": "boolean",
+     "column": "show_page_numbers",
+     "default": "true",
+     "notnull": false
+    },
+    {
+     "ord": 8,
+     "type": "boolean",
+     "column": "auto_save",
+     "default": "true",
+     "notnull": false
+    },
+    {
+     "ord": 9,
+     "type": "timestamp with time zone",
+     "column": "created_at",
+     "default": "now()",
+     "notnull": false
+    },
+    {
+     "ord": 10,
+     "type": "timestamp with time zone",
+     "column": "updated_at",
+     "default": "now()",
+     "notnull": false
+    }
+   ],
+   "constraints": [
+    {
+     "def": "PRIMARY KEY (id)",
+     "name": "user_settings_pkey"
+    },
+    {
+     "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "name": "user_settings_user_id_fkey"
+    },
+    {
+     "def": "UNIQUE (user_id)",
+     "name": "user_settings_user_id_key"
+    }
+   ],
+   "indexes": [
+    "CREATE UNIQUE INDEX user_settings_pkey ON public.user_settings USING btree (id)",
+    "CREATE UNIQUE INDEX user_settings_user_id_key ON public.user_settings USING btree (user_id)"
+   ],
+   "policies": [
+    {
+     "cmd": "INSERT",
+     "name": "Users can insert own settings",
+     "roles": [
+      "public"
+     ],
+     "using": null,
+     "permissive": "PERMISSIVE",
+     "with_check": "(auth.uid() = user_id)"
+    },
+    {
+     "cmd": "UPDATE",
+     "name": "Users can update own settings",
+     "roles": [
+      "public"
+     ],
+     "using": "(auth.uid() = user_id)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    },
+    {
+     "cmd": "SELECT",
+     "name": "Users can view own settings",
+     "roles": [
+      "public"
+     ],
+     "using": "(auth.uid() = user_id)",
+     "permissive": "PERMISSIVE",
+     "with_check": null
+    }
+   ],
+   "triggers": [
+    "CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON public.user_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+   ],
+   "rls_enabled": true,
+   "grants": [
+    "anon:DELETE",
+    "anon:INSERT",
+    "anon:REFERENCES",
+    "anon:SELECT",
+    "anon:TRIGGER",
+    "anon:TRUNCATE",
+    "anon:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:INSERT",
+    "authenticated:REFERENCES",
+    "authenticated:SELECT",
+    "authenticated:TRIGGER",
+    "authenticated:TRUNCATE",
+    "authenticated:UPDATE",
+    "postgres:DELETE",
+    "postgres:INSERT",
+    "postgres:REFERENCES",
+    "postgres:SELECT",
+    "postgres:TRIGGER",
+    "postgres:TRUNCATE",
+    "postgres:UPDATE",
+    "service_role:DELETE",
+    "service_role:INSERT",
+    "service_role:REFERENCES",
+    "service_role:SELECT",
+    "service_role:TRIGGER",
+    "service_role:TRUNCATE",
+    "service_role:UPDATE"
+   ],
+   "publications": [
+    "supabase_realtime"
+   ],
+   "table_comment": null
+  }
+ },
+ "restore_sql": {
+  "activity_log": [
+   "CREATE SEQUENCE IF NOT EXISTS public.activity_log_id_seq;",
+   "CREATE TABLE public.activity_log (\n  \"id\" bigint DEFAULT nextval('activity_log_id_seq'::regclass) NOT NULL,\n  \"document_id\" uuid NOT NULL,\n  \"user_id\" uuid,\n  \"device_id\" text,\n  \"op_type\" text NOT NULL,\n  \"anno_id\" text,\n  \"client_ts\" timestamp with time zone,\n  \"server_ts\" timestamp with time zone DEFAULT now() NOT NULL,\n  \"summary\" jsonb,\n  CONSTRAINT activity_log_document_id_fkey FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,\n  CONSTRAINT activity_log_pkey PRIMARY KEY (id)\n);",
+   "ALTER SEQUENCE public.activity_log_id_seq OWNED BY public.activity_log.id;",
+   "CREATE INDEX activity_log_doc_server_ts_idx ON public.activity_log USING btree (document_id, server_ts DESC);",
+   "ALTER TABLE public.activity_log ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"activity_log_select_viewer\" ON public.activity_log AS PERMISSIVE FOR SELECT TO public\n  USING (user_can_access_document(document_id, 'viewer'::text));",
+   "GRANT DELETE ON TABLE public.activity_log TO anon;",
+   "GRANT INSERT ON TABLE public.activity_log TO anon;",
+   "GRANT REFERENCES ON TABLE public.activity_log TO anon;",
+   "GRANT SELECT ON TABLE public.activity_log TO anon;",
+   "GRANT TRIGGER ON TABLE public.activity_log TO anon;",
+   "GRANT TRUNCATE ON TABLE public.activity_log TO anon;",
+   "GRANT UPDATE ON TABLE public.activity_log TO anon;",
+   "GRANT DELETE ON TABLE public.activity_log TO authenticated;",
+   "GRANT INSERT ON TABLE public.activity_log TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.activity_log TO authenticated;",
+   "GRANT SELECT ON TABLE public.activity_log TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.activity_log TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.activity_log TO authenticated;",
+   "GRANT UPDATE ON TABLE public.activity_log TO authenticated;",
+   "GRANT DELETE ON TABLE public.activity_log TO postgres;",
+   "GRANT INSERT ON TABLE public.activity_log TO postgres;",
+   "GRANT REFERENCES ON TABLE public.activity_log TO postgres;",
+   "GRANT SELECT ON TABLE public.activity_log TO postgres;",
+   "GRANT TRIGGER ON TABLE public.activity_log TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.activity_log TO postgres;",
+   "GRANT UPDATE ON TABLE public.activity_log TO postgres;",
+   "GRANT DELETE ON TABLE public.activity_log TO service_role;",
+   "GRANT INSERT ON TABLE public.activity_log TO service_role;",
+   "GRANT REFERENCES ON TABLE public.activity_log TO service_role;",
+   "GRANT SELECT ON TABLE public.activity_log TO service_role;",
+   "GRANT TRIGGER ON TABLE public.activity_log TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.activity_log TO service_role;",
+   "GRANT UPDATE ON TABLE public.activity_log TO service_role;",
+   "COMMENT ON TABLE public.activity_log IS $$Server-authoritative audit trail. Phase 33 reads for Activity Log sidebar. server_ts is AUTH-03 source of truth.$$;"
+  ],
+  "annotations": [
+   "CREATE TABLE public.annotations (\n  \"id\" uuid DEFAULT gen_random_uuid() NOT NULL,\n  \"user_id\" uuid NOT NULL,\n  \"document_id\" text NOT NULL,\n  \"page_number\" integer NOT NULL,\n  \"type\" text NOT NULL,\n  \"content\" jsonb NOT NULL,\n  \"color\" text,\n  \"created_at\" timestamp with time zone DEFAULT now(),\n  \"updated_at\" timestamp with time zone DEFAULT now(),\n  CONSTRAINT annotations_pkey PRIMARY KEY (id),\n  CONSTRAINT annotations_type_check CHECK ((type = ANY (ARRAY['highlight'::text, 'comment'::text, 'drawing'::text, 'shape'::text]))),\n  CONSTRAINT annotations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE\n);",
+   "CREATE INDEX idx_annotations_document_id ON public.annotations USING btree (document_id);",
+   "CREATE INDEX idx_annotations_page_number ON public.annotations USING btree (page_number);",
+   "CREATE INDEX idx_annotations_user_id ON public.annotations USING btree (user_id);",
+   "ALTER TABLE public.annotations ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"Users can delete own annotations\" ON public.annotations AS PERMISSIVE FOR DELETE TO authenticated\n  USING ((auth.uid() = user_id));",
+   "CREATE POLICY \"Users can insert own annotations\" ON public.annotations AS PERMISSIVE FOR INSERT TO authenticated\n  WITH CHECK ((auth.uid() = user_id));",
+   "CREATE POLICY \"Users can update own annotations\" ON public.annotations AS PERMISSIVE FOR UPDATE TO authenticated\n  USING ((auth.uid() = user_id));",
+   "CREATE POLICY \"Users can view own annotations\" ON public.annotations AS PERMISSIVE FOR SELECT TO authenticated\n  USING ((auth.uid() = user_id));",
+   "GRANT DELETE ON TABLE public.annotations TO anon;",
+   "GRANT INSERT ON TABLE public.annotations TO anon;",
+   "GRANT REFERENCES ON TABLE public.annotations TO anon;",
+   "GRANT SELECT ON TABLE public.annotations TO anon;",
+   "GRANT TRIGGER ON TABLE public.annotations TO anon;",
+   "GRANT TRUNCATE ON TABLE public.annotations TO anon;",
+   "GRANT UPDATE ON TABLE public.annotations TO anon;",
+   "GRANT DELETE ON TABLE public.annotations TO authenticated;",
+   "GRANT INSERT ON TABLE public.annotations TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.annotations TO authenticated;",
+   "GRANT SELECT ON TABLE public.annotations TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.annotations TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.annotations TO authenticated;",
+   "GRANT UPDATE ON TABLE public.annotations TO authenticated;",
+   "GRANT DELETE ON TABLE public.annotations TO postgres;",
+   "GRANT INSERT ON TABLE public.annotations TO postgres;",
+   "GRANT REFERENCES ON TABLE public.annotations TO postgres;",
+   "GRANT SELECT ON TABLE public.annotations TO postgres;",
+   "GRANT TRIGGER ON TABLE public.annotations TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.annotations TO postgres;",
+   "GRANT UPDATE ON TABLE public.annotations TO postgres;",
+   "GRANT DELETE ON TABLE public.annotations TO service_role;",
+   "GRANT INSERT ON TABLE public.annotations TO service_role;",
+   "GRANT REFERENCES ON TABLE public.annotations TO service_role;",
+   "GRANT SELECT ON TABLE public.annotations TO service_role;",
+   "GRANT TRIGGER ON TABLE public.annotations TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.annotations TO service_role;",
+   "GRANT UPDATE ON TABLE public.annotations TO service_role;",
+   "ALTER PUBLICATION supabase_realtime ADD TABLE public.annotations;"
+  ],
+  "spaces": [
+   "CREATE TABLE public.spaces (\n  \"id\" uuid DEFAULT gen_random_uuid() NOT NULL,\n  \"document_id\" uuid NOT NULL,\n  \"name\" character varying(255) NOT NULL,\n  \"description\" text,\n  \"color\" character varying(7),\n  \"start_page\" integer NOT NULL,\n  \"end_page\" integer NOT NULL,\n  \"sort_order\" integer DEFAULT 0,\n  \"created_at\" timestamp with time zone DEFAULT now(),\n  \"updated_at\" timestamp with time zone DEFAULT now(),\n  CONSTRAINT spaces_check CHECK (((start_page > 0) AND (end_page >= start_page))),\n  CONSTRAINT spaces_document_id_fkey FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,\n  CONSTRAINT spaces_pkey PRIMARY KEY (id)\n);",
+   "CREATE INDEX idx_spaces_document_id ON public.spaces USING btree (document_id);",
+   "ALTER TABLE public.spaces ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"Only Pro users can create spaces\" ON public.spaces AS PERMISSIVE FOR INSERT TO public\n  WITH CHECK (((document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid()))) AND has_feature_access(auth.uid(), 'regions'::text)));",
+   "CREATE POLICY \"Only Pro users can edit spaces\" ON public.spaces AS PERMISSIVE FOR UPDATE TO public\n  USING (((document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid()))) AND has_feature_access(auth.uid(), 'regions'::text)));",
+   "CREATE POLICY \"Users can delete own spaces\" ON public.spaces AS PERMISSIVE FOR DELETE TO public\n  USING ((document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid()))));",
+   "CREATE POLICY \"Users can delete spaces for own documents\" ON public.spaces AS PERMISSIVE FOR DELETE TO public\n  USING ((EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can insert spaces for own documents\" ON public.spaces AS PERMISSIVE FOR INSERT TO public\n  WITH CHECK ((EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can update spaces for own documents\" ON public.spaces AS PERMISSIVE FOR UPDATE TO public\n  USING ((EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can view own spaces\" ON public.spaces AS PERMISSIVE FOR SELECT TO public\n  USING ((document_id IN ( SELECT documents.id\n   FROM documents\n  WHERE (documents.user_id = auth.uid()))));",
+   "CREATE POLICY \"Users can view spaces for own documents\" ON public.spaces AS PERMISSIVE FOR SELECT TO public\n  USING ((EXISTS ( SELECT 1\n   FROM documents\n  WHERE ((documents.id = spaces.document_id) AND (documents.user_id = auth.uid())))));",
+   "CREATE TRIGGER update_spaces_updated_at BEFORE UPDATE ON public.spaces FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();",
+   "GRANT DELETE ON TABLE public.spaces TO anon;",
+   "GRANT INSERT ON TABLE public.spaces TO anon;",
+   "GRANT REFERENCES ON TABLE public.spaces TO anon;",
+   "GRANT SELECT ON TABLE public.spaces TO anon;",
+   "GRANT TRIGGER ON TABLE public.spaces TO anon;",
+   "GRANT TRUNCATE ON TABLE public.spaces TO anon;",
+   "GRANT UPDATE ON TABLE public.spaces TO anon;",
+   "GRANT DELETE ON TABLE public.spaces TO authenticated;",
+   "GRANT INSERT ON TABLE public.spaces TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.spaces TO authenticated;",
+   "GRANT SELECT ON TABLE public.spaces TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.spaces TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.spaces TO authenticated;",
+   "GRANT UPDATE ON TABLE public.spaces TO authenticated;",
+   "GRANT DELETE ON TABLE public.spaces TO postgres;",
+   "GRANT INSERT ON TABLE public.spaces TO postgres;",
+   "GRANT REFERENCES ON TABLE public.spaces TO postgres;",
+   "GRANT SELECT ON TABLE public.spaces TO postgres;",
+   "GRANT TRIGGER ON TABLE public.spaces TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.spaces TO postgres;",
+   "GRANT UPDATE ON TABLE public.spaces TO postgres;",
+   "GRANT DELETE ON TABLE public.spaces TO service_role;",
+   "GRANT INSERT ON TABLE public.spaces TO service_role;",
+   "GRANT REFERENCES ON TABLE public.spaces TO service_role;",
+   "GRANT SELECT ON TABLE public.spaces TO service_role;",
+   "GRANT TRIGGER ON TABLE public.spaces TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.spaces TO service_role;",
+   "GRANT UPDATE ON TABLE public.spaces TO service_role;"
+  ],
+  "survey_items": [
+   "CREATE TABLE public.survey_items (\n  \"id\" uuid DEFAULT gen_random_uuid() NOT NULL,\n  \"session_id\" uuid NOT NULL,\n  \"annotation_id\" text NOT NULL,\n  \"module_id\" text NOT NULL,\n  \"category_id\" text NOT NULL,\n  \"name\" text,\n  \"page_number\" integer,\n  \"bounds\" jsonb,\n  \"entity_id\" text,\n  \"entity_name\" text,\n  \"changed_by\" text,\n  \"changed_date\" timestamp with time zone,\n  \"notes\" text,\n  \"checklist_responses\" jsonb DEFAULT '{}'::jsonb,\n  \"excel_row_index\" integer,\n  \"version\" integer DEFAULT 1,\n  \"created_at\" timestamp with time zone DEFAULT now(),\n  \"updated_at\" timestamp with time zone DEFAULT now(),\n  CONSTRAINT survey_items_pkey PRIMARY KEY (id),\n  CONSTRAINT survey_items_session_id_fkey FOREIGN KEY (session_id) REFERENCES survey_sessions(id) ON DELETE CASCADE,\n  CONSTRAINT survey_items_session_id_highlight_id_key UNIQUE (session_id, annotation_id)\n);",
+   "CREATE INDEX idx_survey_items_annotation ON public.survey_items USING btree (annotation_id);",
+   "CREATE INDEX idx_survey_items_module_category ON public.survey_items USING btree (module_id, category_id);",
+   "CREATE INDEX idx_survey_items_session_id ON public.survey_items USING btree (session_id);",
+   "ALTER TABLE public.survey_items ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"Users can delete survey items via session\" ON public.survey_items AS PERMISSIVE FOR DELETE TO public\n  USING ((EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can insert survey items via session\" ON public.survey_items AS PERMISSIVE FOR INSERT TO public\n  WITH CHECK ((EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can update survey items via session\" ON public.survey_items AS PERMISSIVE FOR UPDATE TO public\n  USING ((EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can view survey items via session\" ON public.survey_items AS PERMISSIVE FOR SELECT TO public\n  USING ((EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_items.session_id) AND (survey_sessions.user_id = auth.uid())))));",
+   "CREATE TRIGGER trigger_update_survey_items_updated_at BEFORE UPDATE ON public.survey_items FOR EACH ROW EXECUTE FUNCTION update_survey_tables_updated_at();",
+   "GRANT DELETE ON TABLE public.survey_items TO anon;",
+   "GRANT INSERT ON TABLE public.survey_items TO anon;",
+   "GRANT REFERENCES ON TABLE public.survey_items TO anon;",
+   "GRANT SELECT ON TABLE public.survey_items TO anon;",
+   "GRANT TRIGGER ON TABLE public.survey_items TO anon;",
+   "GRANT TRUNCATE ON TABLE public.survey_items TO anon;",
+   "GRANT UPDATE ON TABLE public.survey_items TO anon;",
+   "GRANT DELETE ON TABLE public.survey_items TO authenticated;",
+   "GRANT INSERT ON TABLE public.survey_items TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.survey_items TO authenticated;",
+   "GRANT SELECT ON TABLE public.survey_items TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.survey_items TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.survey_items TO authenticated;",
+   "GRANT UPDATE ON TABLE public.survey_items TO authenticated;",
+   "GRANT DELETE ON TABLE public.survey_items TO postgres;",
+   "GRANT INSERT ON TABLE public.survey_items TO postgres;",
+   "GRANT REFERENCES ON TABLE public.survey_items TO postgres;",
+   "GRANT SELECT ON TABLE public.survey_items TO postgres;",
+   "GRANT TRIGGER ON TABLE public.survey_items TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.survey_items TO postgres;",
+   "GRANT UPDATE ON TABLE public.survey_items TO postgres;",
+   "GRANT DELETE ON TABLE public.survey_items TO service_role;",
+   "GRANT INSERT ON TABLE public.survey_items TO service_role;",
+   "GRANT REFERENCES ON TABLE public.survey_items TO service_role;",
+   "GRANT SELECT ON TABLE public.survey_items TO service_role;",
+   "GRANT TRIGGER ON TABLE public.survey_items TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.survey_items TO service_role;",
+   "GRANT UPDATE ON TABLE public.survey_items TO service_role;",
+   "ALTER PUBLICATION supabase_realtime ADD TABLE public.survey_items;"
+  ],
+  "survey_sync_log": [
+   "CREATE TABLE public.survey_sync_log (\n  \"id\" uuid DEFAULT gen_random_uuid() NOT NULL,\n  \"session_id\" uuid NOT NULL,\n  \"item_id\" uuid,\n  \"change_type\" text NOT NULL,\n  \"source\" text NOT NULL,\n  \"user_id\" uuid,\n  \"old_values\" jsonb,\n  \"new_values\" jsonb,\n  \"created_at\" timestamp with time zone DEFAULT now(),\n  CONSTRAINT survey_sync_log_change_type_check CHECK ((change_type = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text]))),\n  CONSTRAINT survey_sync_log_item_id_fkey FOREIGN KEY (item_id) REFERENCES survey_items(id) ON DELETE SET NULL,\n  CONSTRAINT survey_sync_log_pkey PRIMARY KEY (id),\n  CONSTRAINT survey_sync_log_session_id_fkey FOREIGN KEY (session_id) REFERENCES survey_sessions(id) ON DELETE CASCADE,\n  CONSTRAINT survey_sync_log_source_check CHECK ((source = ANY (ARRAY['app'::text, 'excel'::text]))),\n  CONSTRAINT survey_sync_log_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL\n);",
+   "CREATE INDEX idx_sync_log_created ON public.survey_sync_log USING btree (created_at);",
+   "CREATE INDEX idx_sync_log_session ON public.survey_sync_log USING btree (session_id);",
+   "ALTER TABLE public.survey_sync_log ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"Users can insert sync log via session\" ON public.survey_sync_log AS PERMISSIVE FOR INSERT TO public\n  WITH CHECK ((EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_sync_log.session_id) AND (survey_sessions.user_id = auth.uid())))));",
+   "CREATE POLICY \"Users can view sync log via session\" ON public.survey_sync_log AS PERMISSIVE FOR SELECT TO public\n  USING ((EXISTS ( SELECT 1\n   FROM survey_sessions\n  WHERE ((survey_sessions.id = survey_sync_log.session_id) AND (survey_sessions.user_id = auth.uid())))));",
+   "GRANT DELETE ON TABLE public.survey_sync_log TO anon;",
+   "GRANT INSERT ON TABLE public.survey_sync_log TO anon;",
+   "GRANT REFERENCES ON TABLE public.survey_sync_log TO anon;",
+   "GRANT SELECT ON TABLE public.survey_sync_log TO anon;",
+   "GRANT TRIGGER ON TABLE public.survey_sync_log TO anon;",
+   "GRANT TRUNCATE ON TABLE public.survey_sync_log TO anon;",
+   "GRANT UPDATE ON TABLE public.survey_sync_log TO anon;",
+   "GRANT DELETE ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT INSERT ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT SELECT ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT UPDATE ON TABLE public.survey_sync_log TO authenticated;",
+   "GRANT DELETE ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT INSERT ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT REFERENCES ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT SELECT ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT TRIGGER ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT UPDATE ON TABLE public.survey_sync_log TO postgres;",
+   "GRANT DELETE ON TABLE public.survey_sync_log TO service_role;",
+   "GRANT INSERT ON TABLE public.survey_sync_log TO service_role;",
+   "GRANT REFERENCES ON TABLE public.survey_sync_log TO service_role;",
+   "GRANT SELECT ON TABLE public.survey_sync_log TO service_role;",
+   "GRANT TRIGGER ON TABLE public.survey_sync_log TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.survey_sync_log TO service_role;",
+   "GRANT UPDATE ON TABLE public.survey_sync_log TO service_role;"
+  ],
+  "template_collaborators": [
+   "CREATE TABLE public.template_collaborators (\n  \"id\" uuid DEFAULT gen_random_uuid() NOT NULL,\n  \"template_id\" uuid NOT NULL,\n  \"user_id\" uuid NOT NULL,\n  \"invited_by\" uuid,\n  \"role\" text NOT NULL,\n  \"email\" text,\n  \"status\" text DEFAULT 'active'::text,\n  \"created_at\" timestamp with time zone DEFAULT now(),\n  \"updated_at\" timestamp with time zone DEFAULT now(),\n  CONSTRAINT template_collaborators_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES auth.users(id) ON DELETE SET NULL,\n  CONSTRAINT template_collaborators_pkey PRIMARY KEY (id),\n  CONSTRAINT template_collaborators_role_check CHECK ((role = ANY (ARRAY['viewer'::text, 'editor'::text, 'owner'::text]))),\n  CONSTRAINT template_collaborators_template_id_fkey FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE,\n  CONSTRAINT template_collaborators_template_id_user_id_key UNIQUE (template_id, user_id),\n  CONSTRAINT template_collaborators_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE\n);",
+   "CREATE INDEX idx_template_collaborators_template ON public.template_collaborators USING btree (template_id);",
+   "CREATE INDEX idx_template_collaborators_user ON public.template_collaborators USING btree (user_id);",
+   "ALTER TABLE public.template_collaborators ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"template_collaborators_delete\" ON public.template_collaborators AS PERMISSIVE FOR DELETE TO public\n  USING ((user_can_access_template(template_id, 'owner'::text) OR (user_id = auth.uid())));",
+   "CREATE POLICY \"template_collaborators_insert\" ON public.template_collaborators AS PERMISSIVE FOR INSERT TO public\n  WITH CHECK (user_can_access_template(template_id, 'owner'::text));",
+   "CREATE POLICY \"template_collaborators_select\" ON public.template_collaborators AS PERMISSIVE FOR SELECT TO public\n  USING (user_can_access_template(template_id, 'viewer'::text));",
+   "CREATE POLICY \"template_collaborators_update\" ON public.template_collaborators AS PERMISSIVE FOR UPDATE TO public\n  USING (user_can_access_template(template_id, 'owner'::text))\n  WITH CHECK (user_can_access_template(template_id, 'owner'::text));",
+   "GRANT DELETE ON TABLE public.template_collaborators TO anon;",
+   "GRANT INSERT ON TABLE public.template_collaborators TO anon;",
+   "GRANT REFERENCES ON TABLE public.template_collaborators TO anon;",
+   "GRANT SELECT ON TABLE public.template_collaborators TO anon;",
+   "GRANT TRIGGER ON TABLE public.template_collaborators TO anon;",
+   "GRANT TRUNCATE ON TABLE public.template_collaborators TO anon;",
+   "GRANT UPDATE ON TABLE public.template_collaborators TO anon;",
+   "GRANT DELETE ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT INSERT ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT SELECT ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT UPDATE ON TABLE public.template_collaborators TO authenticated;",
+   "GRANT DELETE ON TABLE public.template_collaborators TO postgres;",
+   "GRANT INSERT ON TABLE public.template_collaborators TO postgres;",
+   "GRANT REFERENCES ON TABLE public.template_collaborators TO postgres;",
+   "GRANT SELECT ON TABLE public.template_collaborators TO postgres;",
+   "GRANT TRIGGER ON TABLE public.template_collaborators TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.template_collaborators TO postgres;",
+   "GRANT UPDATE ON TABLE public.template_collaborators TO postgres;",
+   "GRANT DELETE ON TABLE public.template_collaborators TO service_role;",
+   "GRANT INSERT ON TABLE public.template_collaborators TO service_role;",
+   "GRANT REFERENCES ON TABLE public.template_collaborators TO service_role;",
+   "GRANT SELECT ON TABLE public.template_collaborators TO service_role;",
+   "GRANT TRIGGER ON TABLE public.template_collaborators TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.template_collaborators TO service_role;",
+   "GRANT UPDATE ON TABLE public.template_collaborators TO service_role;"
+  ],
+  "user_settings": [
+   "CREATE TABLE public.user_settings (\n  \"id\" uuid DEFAULT gen_random_uuid() NOT NULL,\n  \"user_id\" uuid NOT NULL,\n  \"default_zoom\" numeric DEFAULT 100,\n  \"default_view_mode\" character varying(20) DEFAULT 'single'::character varying,\n  \"theme\" character varying(20) DEFAULT 'light'::character varying,\n  \"show_toolbar\" boolean DEFAULT true,\n  \"show_page_numbers\" boolean DEFAULT true,\n  \"auto_save\" boolean DEFAULT true,\n  \"created_at\" timestamp with time zone DEFAULT now(),\n  \"updated_at\" timestamp with time zone DEFAULT now(),\n  CONSTRAINT user_settings_pkey PRIMARY KEY (id),\n  CONSTRAINT user_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,\n  CONSTRAINT user_settings_user_id_key UNIQUE (user_id)\n);",
+   "ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;",
+   "CREATE POLICY \"Users can insert own settings\" ON public.user_settings AS PERMISSIVE FOR INSERT TO public\n  WITH CHECK ((auth.uid() = user_id));",
+   "CREATE POLICY \"Users can update own settings\" ON public.user_settings AS PERMISSIVE FOR UPDATE TO public\n  USING ((auth.uid() = user_id));",
+   "CREATE POLICY \"Users can view own settings\" ON public.user_settings AS PERMISSIVE FOR SELECT TO public\n  USING ((auth.uid() = user_id));",
+   "CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON public.user_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();",
+   "GRANT DELETE ON TABLE public.user_settings TO anon;",
+   "GRANT INSERT ON TABLE public.user_settings TO anon;",
+   "GRANT REFERENCES ON TABLE public.user_settings TO anon;",
+   "GRANT SELECT ON TABLE public.user_settings TO anon;",
+   "GRANT TRIGGER ON TABLE public.user_settings TO anon;",
+   "GRANT TRUNCATE ON TABLE public.user_settings TO anon;",
+   "GRANT UPDATE ON TABLE public.user_settings TO anon;",
+   "GRANT DELETE ON TABLE public.user_settings TO authenticated;",
+   "GRANT INSERT ON TABLE public.user_settings TO authenticated;",
+   "GRANT REFERENCES ON TABLE public.user_settings TO authenticated;",
+   "GRANT SELECT ON TABLE public.user_settings TO authenticated;",
+   "GRANT TRIGGER ON TABLE public.user_settings TO authenticated;",
+   "GRANT TRUNCATE ON TABLE public.user_settings TO authenticated;",
+   "GRANT UPDATE ON TABLE public.user_settings TO authenticated;",
+   "GRANT DELETE ON TABLE public.user_settings TO postgres;",
+   "GRANT INSERT ON TABLE public.user_settings TO postgres;",
+   "GRANT REFERENCES ON TABLE public.user_settings TO postgres;",
+   "GRANT SELECT ON TABLE public.user_settings TO postgres;",
+   "GRANT TRIGGER ON TABLE public.user_settings TO postgres;",
+   "GRANT TRUNCATE ON TABLE public.user_settings TO postgres;",
+   "GRANT UPDATE ON TABLE public.user_settings TO postgres;",
+   "GRANT DELETE ON TABLE public.user_settings TO service_role;",
+   "GRANT INSERT ON TABLE public.user_settings TO service_role;",
+   "GRANT REFERENCES ON TABLE public.user_settings TO service_role;",
+   "GRANT SELECT ON TABLE public.user_settings TO service_role;",
+   "GRANT TRIGGER ON TABLE public.user_settings TO service_role;",
+   "GRANT TRUNCATE ON TABLE public.user_settings TO service_role;",
+   "GRANT UPDATE ON TABLE public.user_settings TO service_role;",
+   "ALTER PUBLICATION supabase_realtime ADD TABLE public.user_settings;"
+  ]
+ },
+ "restore_instructions": "Every table below had 0 rows, so restoring the schema restores the table completely \u2014 there is no data to reload. Run restore_sql[<table>] statements in array order against the public schema as the postgres role.",
+ "restore_sql_validated": "Yes. On 2026-08-19 the four DROPped tables were dropped and recreated from this exact restore_sql inside a BEGIN ... ROLLBACK transaction against the live production database; all four came back (tables_back=4) and the transaction was rolled back. The SQL is proven executable."
+}
