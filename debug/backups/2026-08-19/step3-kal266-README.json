@@ -1,0 +1,54 @@
+{
+ "step": "Step 3 / KAL-266 — deduplicate document_annotations",
+ "project_ref": "cvamwtpsuvxvjdnotbeg",
+ "backup_file": "step3-kal266-deleted-annotation-rows.ndjson.gz",
+ "backup_file_sha256": "ec977914acecfd3d7df33f76af8527443f26024f6ab134b2a1f31e8ddd345200",
+ "backup_file_bytes": 18729625,
+ "backup_rows": 41654,
+ "backup_format": "gzipped newline-delimited JSON; one object per deleted row; all 26 columns of public.document_annotations, keys sorted.",
+ "backup_verified": "Decompressed and re-parsed: 41654 lines, 0 unparseable, 41654 distinct ids, all 26 columns on every row, every row has annotation_data.fabricObject.isPdfImported === true. The md5 of the sorted id list is 26d8ebbdd1c865a2f995f0bd40a0d590 in BOTH the file and the database delete set — byte-identical.",
+ "in_database_backup_table": "public.kal266_backup_deleted_2026_08_19 — a full copy of the same 41654 rows, left in place as a second safety net. Drop it once the cleanup is accepted: DROP TABLE public.kal266_backup_deleted_2026_08_19;",
+
+ "split_logic": {
+  "imported_predicate": "(annotation_data->'fabricObject'->>'isPdfImported')::boolean IS TRUE  -- the flag is NESTED under fabricObject; there is no top-level isPdfImported anywhere (verified: 0 rows have one)",
+  "user_drawn_predicate": "NOT the above",
+  "dedupe_key": "(document_id, page_number, annotation_data->'fabricObject'->>'pdfAnnotationId')",
+  "keep_rule": "row_number() OVER (PARTITION BY key ORDER BY created_at DESC, id DESC) = 1  -- latest by created_at. No group had a created_at tie and no imported row had a NULL created_at, so the choice is fully deterministic and the id tiebreaker never fired."
+ },
+
+ "key_validation": {
+  "why_page_number_is_mandatory": "distinct (document_id, page_number, pdfAnnotationId) = 10961; distinct (document_id, pdfAnnotationId) = 10960; distinct (page_number, pdfAnnotationId) with no document = 4386. Dropping page_number loses a real mark; dropping document_id would have destroyed 6575 real marks.",
+  "reference_document": "70dadd86-35f0-432b-925f-c59e919a4e4d 'Package 2 - Rev 4 -- IC.pdf': 24450 rows = 24448 imported + 2 user-drawn; imported dedupes to 3056; 3056 + 2 = 3058 — EXACTLY the figure the ticket predicted. Logic confirmed before any write."
+ },
+
+ "counts": {
+  "before_total": 53239,
+  "before_imported": 52615,
+  "before_user_drawn": 624,
+  "deleted": 41654,
+  "after_total_expected": 11585,
+  "after_imported_expected": 10961,
+  "after_user_drawn_expected": 624
+ },
+
+ "affected_documents": {
+  "70dadd86-35f0-432b-925f-c59e919a4e4d": 21392,
+  "5fa31b86-a0ce-481d-b20c-66be5f2f30fc": 19029,
+  "97f95b32-77b3-4834-a8fc-68f21543eb16": 1233
+ },
+ "note_all_other_documents_untouched": "Every other document had 0 rows deleted.",
+
+ "restore_sql": [
+  "-- Option A (fastest, while the scratch table still exists):",
+  "INSERT INTO public.document_annotations SELECT * FROM public.kal266_backup_deleted_2026_08_19 ON CONFLICT (id) DO NOTHING;",
+  "",
+  "-- Option B (from the file, if the scratch table has been dropped):",
+  "--   gunzip -c step3-kal266-deleted-annotation-rows.ndjson.gz | while read -r line; do ... done",
+  "-- or load the whole file into a staging table and INSERT ... SELECT:",
+  "CREATE TEMP TABLE kal266_restore (doc jsonb);",
+  "-- \\copy kal266_restore(doc) FROM 'step3-kal266-deleted-annotation-rows.ndjson'",
+  "INSERT INTO public.document_annotations SELECT * FROM jsonb_populate_record(NULL::public.document_annotations, doc) FROM kal266_restore ON CONFLICT (id) DO NOTHING;",
+  "",
+  "-- NOTE: public.document_annotations has UNIQUE (document_id, annotation_id); every backed-up row carries its original annotation_id so the restore round-trips cleanly."
+ ]
+}
