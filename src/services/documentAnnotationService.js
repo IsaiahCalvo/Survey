@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../supabaseClient';
+import { collectKeysetRows } from './annotationReadPagination.js';
 import { diffDeletedSurveyMarkerIds } from './surveyMarkerSyncDiff.js';
 import { surveyMarkerSyncDiag } from './surveyMarkerSyncDiag.js';
 import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
@@ -119,23 +120,47 @@ const classifyAnnotationSyncError = (error) => {
 export async function getDocumentAnnotations(documentId) {
   if (!documentId) return { data: [], error: null };
 
-  const rows = [];
-  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('document_annotations')
-      .select('*')
-      .eq('document_id', documentId)
-      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-      .order('page_number', { ascending: true })
-      .range(from, from + SUPABASE_PAGE_SIZE - 1);
+  // KAL-282 — keyset (seek) pagination on the primary key, matching the
+  // non-survey read path (annotationCloudSync.loadPagedAnnotationRows) and
+  // backed by the same KAL-241 (document_id, id) index.
+  //
+  // This loop used to page with OFFSET (`.range(from, from + 999)`) ordered by
+  // `page_number`. That was wrong on TWO counts:
+  //
+  //   1. CORRECTNESS. `page_number` is not unique — a document has thousands of
+  //      markers spread over a few dozen pages, so ties are ordered arbitrarily
+  //      and the order is not stable between the statements that fetch each
+  //      window. A row can therefore land on both sides of a window boundary
+  //      (returned twice) or neither (skipped entirely). Seeking by `id >
+  //      cursor` on the unique, non-null primary key makes skips and duplicates
+  //      impossible.
+  //   2. COST. OFFSET makes Postgres read, RLS-check and then discard every row
+  //      before the window on each deeper page — the quadratic pattern KAL-241
+  //      already removed from the non-survey path.
+  //
+  // agent-cli mirrors this reader (`survey-read` in agent-cli/index.mjs and
+  // agent-cli/survey-roundtrip.mjs). Per the standing rule, those mirrors were
+  // updated to keyset in the same commit so the headless harness keeps
+  // reporting the same row set the app sees.
+  const { rows, error } = await collectKeysetRows({
+    pageSize: SUPABASE_PAGE_SIZE,
+    fetchPage: async (cursorId) => {
+      let query = supabase
+        .from('document_annotations')
+        .select('*')
+        .eq('document_id', documentId)
+        .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
+        .order('id', { ascending: true })
+        .limit(SUPABASE_PAGE_SIZE);
+      if (cursorId !== null) query = query.gt('id', cursorId);
+      const { data, error: pageError } = await query;
+      return { data, error: pageError };
+    },
+  });
 
-    if (error) {
-      console.error('[AnnotationSync] Error fetching annotations:', error);
-      return { data: [], error };
-    }
-
-    rows.push(...(data || []));
-    if (!data || data.length < SUPABASE_PAGE_SIZE) break;
+  if (error) {
+    console.error('[AnnotationSync] Error fetching annotations:', error);
+    return { data: [], error };
   }
 
   const filteredRows = rows.filter((row) => !isLegacyFabricSurveyMarkerRow(row));
@@ -228,6 +253,18 @@ export async function upsertAnnotations(annotations) {
  * `annotation_data->'checklistResponses'` path. We only count rows where
  * the key is actually present — markers that never recorded a response
  * for that item won't show up.
+ *
+ * THE MISSING `document_id` FILTER IS DELIBERATE — do not "fix" it (KAL-282,
+ * re-confirmed 2026-08-19). A checklist item belongs to a TEMPLATE, and a
+ * template is used by many documents. The only caller is the Survey Hub
+ * templates editor (Dashboard.hubGetChecklistItemUsageCount), which runs when
+ * NO document is open, so there is no document id to filter by and none would
+ * be correct: the question being answered is "does ANY Survey Marker anywhere
+ * still reference this item?" Scoping the query to one document would
+ * under-count and let the editor permanently delete an item that Survey
+ * Markers in other documents still point at. Cross-user leakage is not a
+ * concern — RLS already restricts these rows to documents the caller can
+ * access.
  *
  * Returns 0 on error (fail-open to hard-delete confirm path keeps the UI
  * usable when Supabase is unreachable). Non-fatal — callers should treat

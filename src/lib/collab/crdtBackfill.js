@@ -543,6 +543,12 @@ async function runBackfillUnlocked(args) {
   // is the natural index ordering. Backfill creation-order preservation was a
   // soft preference for the Phase 33 activity log; bridge idempotency makes
   // any stable ordering correctness-preserving across re-runs.
+  // KAL-282 — DELIBERATELY STILL ON OFFSET `.range()`. Do not migrate this loop
+  // to keyset; it is not the same case as getDocumentAnnotations. In production
+  // this loop no longer runs at all (YDocProvider threads `existingHydrateRows`
+  // in from the hydrate's keyset read), so it is a test/non-provider fallback,
+  // and Phase 31's pagination assertions (crdtBackfill.test.mjs #6) pin this
+  // exact `.range()` shape.
   crdtBackfillDebug('[Phase31 UAT] backfill:select-loop start ' + JSON.stringify({
     documentId, userId, pageSize: BACKFILL_PAGE_SIZE,
   }));

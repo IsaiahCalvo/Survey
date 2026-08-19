@@ -98,19 +98,28 @@ async function main() {
   console.log('# the real doc_yjs_state row is never touched.\n');
 
   // (1) Read the REAL markers exactly like getDocumentAnnotations.
+  // KAL-282 (2026-08-19): keyset pagination on the primary key, mirroring the
+  // app. The old `.range()` loop ordered by the NON-UNIQUE `page_number`, so
+  // rows could be skipped or double-counted across window boundaries — which
+  // would corrupt the ground-truth count this roundtrip harness exists to
+  // report.
   const rawRows = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
+  let cursorId = null;
+  for (;;) {
+    let query = supabase
       .from('document_annotations')
       .select('*')
       .eq('document_id', documentId)
       .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-      .order('page_number', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`survey read page (from ${from}): ${error.message}`);
+      .order('id', { ascending: true })
+      .limit(PAGE_SIZE);
+    if (cursorId !== null) query = query.gt('id', cursorId);
+    const { data, error } = await query;
+    if (error) throw new Error(`survey read page (after ${cursorId ?? 'start'}): ${error.message}`);
     const batch = data || [];
     rawRows.push(...batch);
     if (batch.length < PAGE_SIZE) break;
+    cursorId = batch[batch.length - 1].id;
   }
   const filtered = rawRows.filter((r) => !isLegacyFabricSurveyMarkerRow(r));
 
