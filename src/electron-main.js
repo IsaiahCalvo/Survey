@@ -1610,24 +1610,33 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
 const { registerMicrosoftAuthIpc } = require('./electron/msalAuthMain.js');
 registerMicrosoftAuthIpc({ ipcMain, app, shell, safeStorage });
 
+// Origin allowlist guarding the legacy embedded OAuth window below (KAL-289).
+const { validateOAuthWindowRequest, isRedirectCallback } = require('./electron/oauthWindowPolicy.cjs');
+
 // OAuth window handler for Microsoft authentication
 // Opens a separate window for OAuth flow, captures the redirect, and returns the result
 ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
   return new Promise((resolve, reject) => {
-    // Validate the auth URL before it's loaded into a BrowserWindow. Only https
-    // is allowed — a compromised renderer must not be able to point this window
-    // at javascript:, file:, or data: URLs.
-    let parsedAuth;
-    try {
-      parsedAuth = new URL(authUrl);
-    } catch (_e) {
-      resolve({ success: false, error: 'invalid-auth-url' });
+    // KAL-289: both URLs are checked against a hard-coded origin allowlist
+    // BEFORE any window is created. Previously only the auth URL's scheme was
+    // validated and the redirect URI was trusted verbatim, so a redirect URI of
+    // "https://" prefix-matched the first navigation and leaked the
+    // authorization code back to the caller. Fails closed: an unrecognised
+    // origin gets no window, no navigation and no code. See
+    // src/electron/oauthWindowPolicy.cjs for the allowlist and the rationale.
+    const policy = validateOAuthWindowRequest({ authUrl, redirectUri });
+    if (!policy.ok) {
+      // Log the refusal reason and the offending ORIGIN only — never the full
+      // URL, which can carry an authorization code or token.
+      console.warn(
+        '[oauth:openWindow] refused',
+        policy.error,
+        policy.origin ? `origin=${policy.origin}` : ''
+      );
+      resolve({ success: false, error: policy.error });
       return;
     }
-    if (parsedAuth.protocol !== 'https:') {
-      resolve({ success: false, error: 'invalid-auth-url-protocol' });
-      return;
-    }
+    const allowedRedirect = policy.redirect;
     const authWindow = new BrowserWindow({
       width: 500,
       height: 700,
@@ -1653,14 +1662,10 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
     const handleNavigation = (url) => {
       if (resolved) return;
 
-      // Check if this is the redirect URL
-      if (url.startsWith(redirectUri)) {
+      // Check if this is the redirect URL. Origin + path equality, never a
+      // string prefix match (KAL-289).
+      if (isRedirectCallback(url, allowedRedirect)) {
         resolved = true;
-
-        // Extract the hash or query parameters
-        const urlObj = new URL(url);
-        const hash = urlObj.hash;
-        const search = urlObj.search;
 
         // Close the auth window
         authWindow.close();
@@ -1708,8 +1713,8 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
       }
     });
 
-    // Load the auth URL
-    authWindow.loadURL(authUrl);
+    // Load the auth URL (the allowlist-validated, re-serialised copy).
+    authWindow.loadURL(policy.authUrl);
   });
 });
 
