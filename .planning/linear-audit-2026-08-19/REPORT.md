@@ -131,3 +131,21 @@ One of the agents also pushed back on a finding of mine — a database query I
 called unbounded turned out to be deliberately cross-document, and "fixing" it
 would have broken template deletion. It refused, explained why, and wrote a test
 to stop the next audit making the same mistake. That was the right call.
+
+---
+
+## Confirmed final state
+
+- **Production**: https://surveytool.app serving `921c9b40`, HTTP 200. CI green, deploy
+  succeeded. CAPTCHA verified still enabled (never touched).
+- **Backlog**: 91 open → **85 open**, and that is *after* filing six new tickets — so
+  twelve items were genuinely resolved or retired. Of the 85, only **48 are the Survey
+  app**; 17 are Walkthru, 14 are the calculators, 3 are the takeoff tool.
+- **Closed this session**: KAL-58, 69, 239, 267, 282, 292, 384, 405, 416, 442.
+- **Cancelled**: KAL-424, KAL-425 (both obsolete reference notes).
+- **Open pull request**: [#799](https://github.com/Kal-Voe/Survey/pull/799), desktop
+  sign-in security. CI green, mergeable, waiting on Isaiah.
+- **Email sweep after the push**: no new service alerts. The only recurring failure in
+  the mailbox is `Kal-Voe/Clip`'s own CI failing on its main branch — a different repo,
+  unrelated to this work, but it has failed four times in a day and nobody appears to be
+  looking at it.
