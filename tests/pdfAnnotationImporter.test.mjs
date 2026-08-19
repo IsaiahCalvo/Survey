@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { PDFDocument } from 'pdf-lib';
+import { inflateSync } from 'node:zlib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 
 import {
   buildPdfImportStatisticsSummary,
@@ -1382,4 +1383,215 @@ test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFro
     totalImported,
     'every imported object must have isPdfImported===true'
   );
+});
+
+// --- KAL-405: single-tap imported ink marks render as dots -----------------
+
+test('KAL-405 a single-point InkList tap imports as a filled dot sized to the pen', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-tap-1',
+    subtype: 'Ink',
+    color: [1, 0, 0],
+    borderStyle: { width: 4 },
+    inkLists: [[50, 50]],
+  }, viewport);
+
+  assert.ok(obj, 'a pen tap must not be dropped at import');
+  assert.equal(obj.type, 'path');
+  // Diameter == pen width, centred on the tapped point (50, 50) in PDF space,
+  // which is (50, 50) in this viewport.
+  assert.equal(obj.width, 4);
+  assert.equal(obj.height, 4);
+  assert.equal(obj.left, 48);
+  assert.equal(obj.top, 48);
+  // Filled, never stroked — a stroked width-4 circle would render 8 wide.
+  assert.equal(obj.fill, 'rgba(255, 0, 0, 1)');
+  assert.equal(obj.stroke, 'transparent');
+  assert.equal(obj.strokeWidth, 0);
+  assert.equal(obj.pdfInkTapDot, true);
+  assert.equal(obj.paperInkGeometry, 'v1');
+  assert.ok(Array.isArray(obj.polygons) && obj.polygons.length > 0);
+  assert.deepEqual(
+    obj.path.map((segment) => segment[0]),
+    ['M', 'C', 'C', 'C', 'C', 'Z'],
+    'the dot is a closed circle built from four cubic segments',
+  );
+});
+
+test('KAL-405 a multi-point ink stroke whose bounds collapse imports as a dot', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-tap-2',
+    subtype: 'Ink',
+    color: [0, 0, 1],
+    borderStyle: { width: 8 },
+    // Eight samples from a tap that never travelled a visible distance.
+    inkLists: [[40, 40, 40.2, 40.1, 40.15, 40.05, 40.05, 39.95, 40, 40]],
+  }, viewport);
+
+  assert.equal(obj.pdfInkTapDot, true);
+  assert.equal(obj.width, 8);
+  assert.equal(obj.height, 8);
+  assert.equal(obj.fill, 'rgba(0, 0, 255, 1)');
+  assert.equal(obj.strokeWidth, 0);
+});
+
+test('KAL-405 a genuinely short but real ink stroke is NOT converted to a dot', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  // 4pt pen, ~5pt of travel. Well above the quarter-pen-width threshold, so
+  // this stays the stroked centreline the author drew.
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-short-1',
+    subtype: 'Ink',
+    color: [1, 0, 0],
+    borderStyle: { width: 4 },
+    inkLists: [[50, 50, 54, 53]],
+  }, viewport);
+
+  assert.equal(obj.pdfInkTapDot, undefined);
+  assert.equal(obj.stroke, 'rgba(255, 0, 0, 1)');
+  assert.equal(obj.fill, null);
+  assert.equal(obj.strokeWidth, 4);
+  assert.deepEqual(obj.path.map((segment) => segment[0]), ['M', 'L']);
+});
+
+test('KAL-405 dot colour, opacity and size come from the source annotation', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  const fat = convertPdfAnnotationToFabric({
+    id: 'ink-tap-fat',
+    subtype: 'Ink',
+    color: [0, 0.6, 0],
+    opacity: 0.5,
+    borderStyle: { width: 12 },
+    inkLists: [[30, 30]],
+  }, viewport);
+
+  const thin = convertPdfAnnotationToFabric({
+    id: 'ink-tap-thin',
+    subtype: 'Ink',
+    color: [0, 0.6, 0],
+    borderStyle: { width: 2 },
+    inkLists: [[30, 30]],
+  }, viewport);
+
+  // Exactly the authored paint — no backdrop-dependent boost.
+  assert.equal(fat.fill, 'rgba(0, 153, 0, 0.5)');
+  assert.equal(thin.fill, 'rgba(0, 153, 0, 1)');
+  // A fat pen leaves a fat dot.
+  assert.equal(fat.width, 12);
+  assert.equal(thin.width, 2);
+});
+
+test('KAL-405 three taps in one Ink annotation import as three dots', () => {
+  const viewport = makeViewport({ pageHeight: 200 });
+
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-tap-triple',
+    subtype: 'Ink',
+    color: [1, 0, 1],
+    borderStyle: { width: 6 },
+    inkLists: [[20, 100], [60, 100], [100, 100]],
+  }, viewport);
+
+  assert.equal(obj.pdfInkTapDot, true);
+  assert.equal(obj.width, 86, 'spans the outer edges of the first and last dot');
+  assert.equal(obj.height, 6);
+  assert.equal(obj.polygons.length, 3, 'one filled ring per tap');
+});
+
+test('KAL-405 an imported ink dot survives export back into the PDF', async () => {
+  const source = await PDFDocument.create();
+  source.addPage([200, 200]);
+  const sourceBytes = await source.save();
+  const pdfFile = {
+    name: 'ink-dot-export.pdf',
+    async arrayBuffer() {
+      return sourceBytes.buffer.slice(
+        sourceBytes.byteOffset,
+        sourceBytes.byteOffset + sourceBytes.byteLength,
+      );
+    },
+  };
+
+  const viewport = makeViewport({ pageHeight: 200 });
+  const dot = {
+    ...convertPdfAnnotationToFabric({
+      id: 'ink-tap-export',
+      subtype: 'Ink',
+      color: [1, 0, 0],
+      borderStyle: { width: 6 },
+      inkLists: [[80, 120]],
+    }, viewport),
+    // An UNEDITED imported annotation is preserved verbatim from the source
+    // file, so the exporter only re-authors it once the user has touched it.
+    // That re-authoring is the path this test exercises.
+    pdfImportedEditState: 'edited',
+  };
+
+  // Legacy shape: an imported tap saved BEFORE this fix — raw degenerate
+  // geometry with no dot substitution. The exporter must still write a dot.
+  const legacyTap = {
+    id: 'ink-tap-legacy',
+    type: 'path',
+    left: 40,
+    top: 40,
+    width: 0,
+    height: 0,
+    path: [['M', 0, 0]],
+    stroke: 'rgba(0, 0, 255, 1)',
+    fill: null,
+    strokeWidth: 6,
+    isPdfImported: true,
+    pdfAnnotationType: 'Ink',
+    pdfImportedEditState: 'edited',
+  };
+
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+  let exportedBytes;
+  try {
+    exportedBytes = await savePDFWithAnnotationsPdfLib(
+      pdfFile,
+      { 1: { objects: [dot, legacyTap] } },
+      { 1: { width: 200, height: 200 } },
+      null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-kal405' },
+    );
+  } finally {
+    globalThis.window = originalWindow;
+  }
+
+  // Assert on the PDF that was actually written, not on Survey's own embedded
+  // state: a tap that still paints nothing would land as a zero-size /Rect
+  // with a one-point /InkList, which is exactly the bug.
+  const written = await PDFDocument.load(exportedBytes);
+  const annots = written.getPages()[0].node.Annots();
+  assert.equal(annots.size(), 2, 'both taps are written back into the PDF');
+
+  const expectedFill = ['1 0 0 rg', '0 0 1 rg'];
+  for (let index = 0; index < annots.size(); index += 1) {
+    const dict = annots.lookup(index);
+    assert.equal(dict.get(PDFName.of('Subtype')).toString(), '/Ink');
+
+    const rect = dict.get(PDFName.of('Rect')).asArray().map((n) => n.asNumber());
+    const rectWidth = rect[2] - rect[0];
+    const rectHeight = rect[3] - rect[1];
+    assert.ok(rectWidth > 5 && rectWidth < 7, `exported dot keeps the 6pt pen width (got ${rectWidth})`);
+    assert.ok(Math.abs(rectWidth - rectHeight) < 0.5, 'exported dot is round');
+
+    // A real ring, not the single point that painted nothing.
+    const inkList = written.context.lookup(dict.get(PDFName.of('InkList')));
+    assert.ok(inkList.lookup(0).size() > 8, 'exported /InkList carries the dot outline');
+
+    // The appearance stream fills — with the source colour, untransformed.
+    const form = written.context.lookup(dict.get(PDFName.of('AP')).get(PDFName.of('N')));
+    const content = inflateSync(Buffer.from(form.getContents())).toString('latin1');
+    assert.ok(content.includes(expectedFill[index]), `dot ${index} keeps its source colour`);
+    assert.ok(/\bf\*?\b/.test(content), 'the dot is filled, not stroked');
+  }
 });
