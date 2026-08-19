@@ -21,12 +21,70 @@ function ensureTextLayerStyles() {
   stylesInjected = true;
   const style = document.createElement('style');
   style.setAttribute('data-pdfjs-text-layer', 'true');
+  // These rules are pdf.js's own `.textLayer` contract (pdfjs-dist 6.x,
+  // web/pdf_viewer.css), re-scoped to our class name. They are NOT decorative:
+  // TextLayer.render() writes inline styles that DEPEND on them —
+  //   width/height: round(down, var(--total-scale-factor) * <pt>px, var(--scale-round-x))
+  //   span font-size: calc(var(--text-scale-factor) * var(--font-height))
+  //   span transform: rotate(--rotate) scaleX(--scale-x) scale(--min-font-size-inv)
+  // pdf.js's viewer defines the custom properties on `.pdfViewer .page`; this
+  // overlay lives in the app's own page host instead, so it has to define them
+  // itself. KAL-239: without them the round() was invalid, the layer collapsed
+  // to 0x0, `overflow` clipped every glyph span out of existence and the spans
+  // stacked at the page origin at the wrong size — nothing was selectable and
+  // nothing was even hit-testable. Keep this block in sync when pdf.js is
+  // upgraded (diff `.textLayer` in node_modules/pdfjs-dist/web/pdf_viewer.css).
   style.textContent = `
-    .pdfjsTextLayer { position: absolute; left: 0; top: 0; overflow: hidden; line-height: 1; color: transparent; }
-    .pdfjsTextLayer > span { position: absolute; white-space: pre; transform-origin: 0% 0%; }
-    .pdfjsTextLayer.is-interactive { user-select: text; -webkit-user-select: text; pointer-events: auto; }
-    .pdfjsTextLayer.is-interactive > span { cursor: text; }
-    .pdfjsTextLayer:not(.is-interactive) { user-select: none; -webkit-user-select: none; pointer-events: none; }
+    .pdfjsTextLayer {
+      color-scheme: only light;
+      position: absolute;
+      text-align: initial;
+      inset: 0;
+      overflow: clip;
+      opacity: 1;
+      line-height: 1;
+      letter-spacing: normal;
+      word-spacing: normal;
+      -webkit-text-size-adjust: none;
+      text-size-adjust: none;
+      forced-color-adjust: none;
+      transform-origin: 0 0;
+      caret-color: CanvasText;
+      z-index: 0;
+      --user-unit: 1;
+      --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+      --scale-round-x: 1px;
+      --scale-round-y: 1px;
+      --min-font-size: 1;
+      --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+      --min-font-size-inv: calc(1 / var(--min-font-size));
+    }
+    .pdfjsTextLayer :is(span, br) {
+      color: transparent;
+      position: absolute;
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .pdfjsTextLayer > :not(.markedContent),
+    .pdfjsTextLayer .markedContent span:not(.markedContent) {
+      z-index: 1;
+      --font-height: 0;
+      font-size: calc(var(--text-scale-factor) * var(--font-height));
+      --scale-x: 1;
+      --rotate: 0deg;
+      transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+    }
+    .pdfjsTextLayer .markedContent { display: contents; }
+    .pdfjsTextLayer span[role="img"] { -webkit-user-select: none; user-select: none; cursor: default; }
+    /* UX: the I-beam covers the WHOLE page in text-selection mode, not just the
+       glyph boxes, so the mode reads as "you are selecting text here" even in
+       the gaps between words. */
+    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; }
+    .pdfjsTextLayer:not(.is-interactive) { pointer-events: none; }
+    .pdfjsTextLayer:not(.is-interactive) :is(span, br) { -webkit-user-select: none; user-select: none; }
     .pdfjsTextLayer ::selection { background: rgba(58, 122, 254, 0.45); }
     .pdfjsTextLayer ::-moz-selection { background: rgba(58, 122, 254, 0.45); }
   `;

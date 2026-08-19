@@ -395,6 +395,35 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
+  // KAL-239: the Select tool's selection-mode menu (annotations vs the PDF's own
+  // text). Intended UX: a caret on the Select button opens a two-item menu, the
+  // same split-button shape the Eraser uses for its erase modes, so the user has
+  // an obvious way to reach text selection without a new kind of control. The
+  // menu is a fixed-position portal anchored under the button (matching the
+  // Draw sub-toolbar popups) and closes on any outside click or Escape.
+  const [selectModeMenuOpen, setSelectModeMenuOpen] = useState(false);
+  const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
+  const selectModeButtonRef = useRef(null);
+  useEffect(() => {
+    if (!selectModeMenuOpen) return undefined;
+    const el = selectModeButtonRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setSelectModeMenuAnchor({ top: r.bottom + 6, left: r.left + r.width / 2 });
+    }
+    const onDown = (e) => {
+      if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-caret]'))) return;
+      setSelectModeMenuOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setSelectModeMenuOpen(false); };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectModeMenuOpen]);
+
   // UX 2026-07-14: every top-bar control gets the app's instant tooltip
   // (the floating chip PDFViewer renders from setTooltip), not just the
   // category buttons. Native title= tooltips take ~1.5s and look
@@ -1452,29 +1481,155 @@ export default function App({ devPreviewReturnTab = null }) {
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
                 { id: 'select', label: 'Select', iconName: 'cursor' }
-              ].map(t => (
-                <button
+              ].map(t => {
+                // KAL-239: the Select tool has TWO modes — annotations (default)
+                // and the PDF's own text. Intended UX: the button keeps working
+                // exactly as before (click = Select, and it never changes the mode
+                // already chosen in the menu, same as the Eraser button), while a
+                // small caret opens a mode menu. This mirrors the Eraser split menu
+                // in the Draw sub-toolbar rather than inventing a new control.
+                const isSelect = t.id === 'select';
+                const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
+                const isActive = isSelect
+                  ? (bottomToolbarApi.activeTool === 'select' || isTextSelect)
+                  : bottomToolbarApi.activeTool === t.id;
+                const label = isSelect && isTextSelect ? 'Select text' : t.label;
+                return (
+                <div
                   key={t.id}
+                  ref={isSelect ? selectModeButtonRef : undefined}
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                >
+                <button
                   onClick={() => {
-                    bottomToolbarApi.setActiveTool(t.id);
+                    // Activate Select without discarding the mode picked in the
+                    // menu (Eraser button does the same with its erase mode).
+                    bottomToolbarApi.setActiveTool(isSelect && isTextSelect ? 'text-select' : t.id);
                     bottomToolbarApi.setActiveCategoryDropdown(null);
+                    setSelectModeMenuOpen(false);
                   }}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
                     bottomToolbarApi.setTooltip({
                       visible: true,
-                      text: t.label,
+                      text: label,
                       x: rect.left + rect.width / 2,
                       y: rect.bottom + 10,
                       placement: 'below'
                     });
                   }}
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                  className={`btn btn-icon ${bottomToolbarApi.activeTool === t.id ? 'btn-active' : ''}`}
+                  className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
+                  style={isSelect ? { position: 'relative', paddingRight: '16px' } : undefined}
                 >
-                  <Icon name={t.iconName} size={16} />
+                  <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />
+                  {isSelect && (
+                    <div
+                      data-select-mode-caret="true"
+                      role="button"
+                      aria-label="Selection mode"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectModeMenuOpen((open) => !open);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: '2px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '2px',
+                        pointerEvents: 'auto',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Icon name="chevronDown" size={10} color="#8d96a6" />
+                    </div>
+                  )}
                 </button>
-              ))}
+                {isSelect && selectModeMenuOpen && createPortal(
+                  <div
+                    data-select-mode-menu="true"
+                    style={{
+                      position: 'fixed',
+                      top: `${selectModeMenuAnchor.top}px`,
+                      left: `${selectModeMenuAnchor.left}px`,
+                      transform: 'translate(-50%, 0)',
+                      backgroundColor: 'rgb(30, 30, 30)',
+                      backgroundImage: 'none',
+                      border: '1px solid #2a3140',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                      zIndex: 999999,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      padding: '4px',
+                      minWidth: '168px',
+                      color: '#e8e2d4',
+                      pointerEvents: 'auto',
+                      cursor: 'default',
+                      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <div style={{
+                      padding: '4px 8px',
+                      fontSize: '10px',
+                      color: '#8d96a6',
+                      textTransform: 'uppercase',
+                      fontWeight: 600,
+                      borderBottom: '1px solid #2a3140',
+                      marginBottom: '4px'
+                    }}>
+                      Selection Mode
+                    </div>
+                    {[
+                      { tool: 'select', text: 'Select annotations', hint: 'V' },
+                      { tool: 'text-select', text: 'Select text', hint: '⇧V' }
+                    ].map((opt) => {
+                      const selected = bottomToolbarApi.activeTool === opt.tool;
+                      const optionStyle = {
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        padding: '6px 10px',
+                        background: selected ? '#1f2430' : 'transparent',
+                        border: 'none',
+                        borderRadius: '4px',
+                        color: '#e8e2d4',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        whiteSpace: 'nowrap'
+                      };
+                      return (
+                        <button
+                          key={opt.tool}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            bottomToolbarApi.setActiveTool(opt.tool);
+                            setSelectModeMenuOpen(false);
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}
+                          style={optionStyle}
+                        >
+                          <span>{opt.text}</span>
+                          <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>,
+                  document.body
+                )}
+                </div>
+                );
+              })}
 
               <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
               </div>

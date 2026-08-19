@@ -3060,7 +3060,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
-      else if (activeTool === 'text' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
+      // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
+      // if the cursor announces it the instant the user switches, without waiting
+      // for a mouse move to land on a text span.
+      else if (activeTool === 'text' || activeTool === 'text-select' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
       const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
       const clearOverride = () => runPendingCursorRestore();
@@ -4467,9 +4470,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool]);
 
   // Close secondary toolbar when pan or select tools are active
+  // ('text-select' is a Select mode, so it behaves the same — KAL-239.)
   useEffect(() => {
     if (
-      (activeTool === 'pan' || activeTool === 'select') &&
+      (activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select') &&
       !(showSurveyPanel && activeCategoryDropdown === 'survey')
     ) {
       setActiveCategoryDropdown(null);
@@ -23122,6 +23126,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Prevent default behavior and switch to select tool
         e.preventDefault();
         setActiveTool('select');
+        return;
+      }
+
+      // 'Shift+V' switches the Select tool into text-selection mode (KAL-239).
+      // Intended UX: V picks things up off the page (annotations), Shift+V picks
+      // words off the page (the PDF's own text) — same key, "more" modifier, the
+      // way Shift+E pairs with E for the eraser. Stays live on a read-only
+      // document for the same reason plain V does: selecting and copying text is
+      // a read affordance, it mutates nothing.
+      if ((e.key === 'v' || e.key === 'V') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('text-select');
         return;
       }
 
