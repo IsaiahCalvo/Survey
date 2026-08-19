@@ -87,7 +87,7 @@ const ExcelLockedModal = ({
             color: COLORS.text.secondary,
             fontFamily: TYPOGRAPHY.fontFamily.default,
           }}>
-            Excel File is Open
+            Excel file is open
           </h3>
         </div>
 
