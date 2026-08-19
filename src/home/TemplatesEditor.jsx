@@ -1366,6 +1366,34 @@ export default function TemplatesEditor({
        - FRESH blank row -> visible refusal (shake + hint), row stays open so
          the user can just type. Escape removes it outright. */
   const CHECKLIST_BLANK_HINT = "Can't be empty — type something or hit Esc to cancel.";
+
+  /* UX 2026-08-19 (KAL-69): checklist items are capped at 100 characters.
+     Why 100: the desktop editor's item input is 624px wide at 13px Helvetica,
+     which holds roughly 110 characters of ordinary sentence text (81 at the
+     worst-case average glyph width) before the text starts scrolling out of
+     view inside the field. A real checklist question — "Verify fire alarm
+     speaker coverage in the east corridor stairwell" is 65 — sits well under
+     that, so 100 never truncates a realistic item, while still stopping
+     someone from pasting a paragraph into a one-line row that then reads as
+     an unreadable sliver in the Survey rail.
+
+     A silently swallowed keystroke reads as a broken field, so hitting the cap
+     REFUSES VISIBLY using the same one-shot shake + self-clearing hint the
+     blank-row rule already uses (components/requiredInput.js). Same treatment,
+     same vocabulary — the user learns one "not that, try again" signal. */
+  const CHECKLIST_ITEM_MAX_LENGTH = 100;
+  const CHECKLIST_LIMIT_HINT = `That's the ${CHECKLIST_ITEM_MAX_LENGTH}-character limit for a checklist item.`;
+
+  // Fires on the keystroke the browser is about to drop because maxLength is
+  // already reached. Only for keys that would actually insert a character —
+  // arrows, Backspace, Tab, Escape and any shortcut chord must stay silent.
+  const flagChecklistLimitIfFull = (e) => {
+    const el = e.currentTarget;
+    if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (el.selectionStart !== el.selectionEnd) return;   // typing over a selection replaces, not grows
+    if (el.value.length < CHECKLIST_ITEM_MAX_LENGTH) return;
+    flagRequiredInput(el, CHECKLIST_LIMIT_HINT);
+  };
   const ENTITY_BLANK_HINT = "Can't be empty — type a name or remove the row.";
 
   const commitRequiredRow = (el, previousValue, hint, commit) => {
@@ -2171,8 +2199,9 @@ export default function TemplatesEditor({
                                   className="inline-edit"
                                   defaultValue={it.text}
                                   placeholder="Add checklist item"
+                                  maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 <button
                                   title="Delete item" aria-label="Delete item"
@@ -2721,8 +2750,9 @@ export default function TemplatesEditor({
                                               className="templates-mobile-inline-input"
                                               defaultValue={it.text}
                                               placeholder="Add checklist item"
+                                              maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
-                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
+                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
                                             <button type="button" title="Delete item" aria-label="Delete item" onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
