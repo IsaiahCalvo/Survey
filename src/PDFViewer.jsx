@@ -45,7 +45,6 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
-import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -78,7 +77,15 @@ import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
-import { PDFDocument } from 'pdf-lib';
+// PERF (KAL-384): pdf-lib is the PDF *export/write* library, not the renderer.
+// It is only needed when the user exports an annotated PDF, exports a space to
+// PDF, prints with markup, or mutates pages — never to open and read a
+// document. Importing it statically here dragged ~429 kB into the first
+// viewer paint. It is now loaded through `import('pdf-lib')` / dynamic imports
+// of the pdf-lib-backed helper modules at the point of use, mirroring how
+// ExcelJS is already deferred in this file. Do NOT reintroduce a static
+// `import ... from 'pdf-lib'` (or a static import of ./utils/pdfAnnotationsPdfLib
+// or ./utils/pdfPageMutation) anywhere reachable from first render.
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
@@ -92,7 +99,6 @@ import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
-import { buildPrintableRegularAnnotationPayload, savePDFWithAnnotationsPdfLib, savePDFWithFlattenedRegularAnnotationsForPrint } from './utils/pdfAnnotationsPdfLib';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   canDelete,
@@ -139,6 +145,7 @@ import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExp
 import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
+import { selectUnplacedRows, isWholeChangeSetHeld, unplacedRowKey } from './services/excelUnplacedRows';
 import { applyExcelValuesToMarker } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
@@ -360,6 +367,7 @@ import { renderAnnotationHydrationPageCover } from './components/annotationHydra
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
+import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -3060,7 +3068,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
-      else if (activeTool === 'text' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
+      // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
+      // if the cursor announces it the instant the user switches, without waiting
+      // for a mouse move to land on a text span.
+      else if (activeTool === 'text' || activeTool === 'text-select' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
       const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
       const clearOverride = () => runPendingCursorRestore();
@@ -3548,12 +3559,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // (src/utils/contextMenuDiagnostics.js).
   const { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu } = useAnnotationContextMenu();
   const selectedNativeTextMarkupRef = useRef(null);
-  // UX: right-click → context menu → Properties opens AnnotationPropertiesPanel
-  // at the same (x, y) the context menu was anchored to. Shape mirrors
-  // annotationContextMenu (kind, pageNumber, annotationIndex, calloutId, x, y)
-  // so the panel can read the targeted annotation + commit live edits back
-  // through handleSaveAnnotations without needing a separate resolver.
-  const [annotationPropertiesPanel, setAnnotationPropertiesPanel] = useState(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
   // mousedown/mouseup listeners below when a short click lands on an
   // annotation while activeTool === 'pan'. Each SVGAnnotationLayer instance
@@ -3585,7 +3590,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setLiveCalloutEditBounds(null);
     setLiveTextEditBounds(null);
     closeAnnotationContextMenu();
-    setAnnotationPropertiesPanel(null);
     setPendingSvgHover(null);
     setPendingSvgSelection({
       pageNumber: null,
@@ -4307,6 +4311,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const regionEditReturnToolRef = useRef(null);
   const isPanningRef = useRef(false);
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
+  // KAL-65: one shared tooltip implementation. Spread chromeTip('Label', placement)
+  // onto a control to give it the app's instant hint chip; never pair it with a
+  // native title= (the OS tooltip would stack on top ~1.5s later).
+  const chromeTip = useMemo(() => makeTooltipBinding(setTooltip), [setTooltip]);
   const [showAnnotationColorPicker, setShowAnnotationColorPicker] = useState(false);
   const [annotationColorPickerTab, setAnnotationColorPickerTab] = useState('stroke'); // 'stroke' | 'fill'
   const [annotationColorPickerMode, setAnnotationColorPickerMode] = useState('grid'); // 'grid' | 'advanced'
@@ -4367,6 +4375,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // blank recovery, and review-only candidate-deletes). Surfaced as "Needs your
   // choice" in the Survey panel (Stage 1 review UI). Never written automatically.
   const [pendingImportReview, setPendingImportReview] = useState([]);
+  // KAL-292 — true when the LAST server change-set was rejected wholesale (every row held,
+  // nothing written) rather than judged row by row. Drives the single explanation at the top
+  // of the "Rows we couldn't place" list instead of stamping the same sentence on every row.
+  // UX: a shared survey whose linked workbook isn't a work-cloud file has ALL its Excel edits
+  // held by the server gate; before this the user saw nothing at all and assumed sync worked.
+  const [pendingImportBatchHold, setPendingImportBatchHold] = useState(false);
   const lastExcelSyncFingerprintRef = useRef(null);
 
   // Map of Survey Marker id → plain-English reason it needs review, derived from the last
@@ -4376,11 +4390,86 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const surveyReviewByMarkerId = useMemo(() => {
     const map = {};
     (pendingImportReview || []).forEach((entry) => {
-      if (!entry || !entry.markerId) return; // rows with no app marker yet can't attach to a row
+      // Rows with no app Survey Marker yet can't attach to a row icon — they surface in the
+      // "Rows we couldn't place" list instead (surveyUnplacedRows below). KAL-292.
+      if (!entry || !entry.markerId) return;
       if (!map[entry.markerId]) map[entry.markerId] = reviewReasonMessage(entry.reason);
     });
     return map;
   }, [pendingImportReview]);
+
+  // KAL-292 — the review entries that belong to NO Survey Marker. These used to be dropped
+  // on the floor here, so a row Excel sent that the app couldn't place just vanished. Now
+  // they render as a compact "Rows we couldn't place" list at the top of the Survey panel,
+  // each with a plain-English reason. Memoized so the published rail API stays referentially
+  // stable (the App-shell publish suppresses identity churn — see Gotchas).
+  const surveyUnplacedRows = useMemo(
+    () => selectUnplacedRows(pendingImportReview, { batchHeld: pendingImportBatchHold }),
+    [pendingImportReview, pendingImportBatchHold]
+  );
+
+  // Dismiss one unplaced row. This is VISUAL ONLY — it never applies the Excel change and
+  // never touches the server. UX: the row comes back on the next sync if it still can't be
+  // placed, so dismissing can't hide a real problem forever. Deliberately no "apply anyway":
+  // a null-marker row is precisely the row the server refused to write, and an apply-anyway
+  // button would route around that gate.
+  const handleDismissUnplacedRow = useCallback((key) => {
+    if (!key) return;
+    setPendingImportReview((prev) => {
+      const list = prev || [];
+      const next = list.filter((entry, index) => {
+        if (!entry || entry.markerId) return true;
+        return unplacedRowKey(entry, index) !== key;
+      });
+      return next.length === list.length ? list : next;
+    });
+  }, []);
+
+  // Dismiss the whole "Rows we couldn't place" list (and its batch explanation) at once.
+  // UX: a whole-change-set hold can produce a hundred identical rows; clearing them one by
+  // one is punishing. Same guarantee as the single dismiss — nothing is applied.
+  const handleDismissAllUnplacedRows = useCallback(() => {
+    setPendingImportBatchHold(false);
+    setPendingImportReview((prev) => {
+      const list = prev || [];
+      const next = list.filter((entry) => entry && entry.markerId);
+      return next.length === list.length ? list : next;
+    });
+  }, []);
+
+  /* KAL-292 dev fixture — `?unplacedRows=mixed` seeds a handful of rows Excel sent that the
+     app could not place (each with a different reason), and `?unplacedRows=batch` seeds the
+     whole-change-set hold, so the "Rows we couldn't place" surface can be reviewed with real
+     code without a live shared workbook. DEV-ONLY (import.meta.env.DEV), mirroring the
+     `?empty=1` hub harness — it is stripped from any production build. */
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let mode = null;
+    try { mode = new URLSearchParams(window.location.search).get('unplacedRows'); } catch { /* no search */ }
+    if (mode !== 'mixed' && mode !== 'batch') return;
+    if (mode === 'mixed') {
+      setPendingImportBatchHold(false);
+      setPendingImportReview([
+        { scopeKey: 'm1:c1', sheetName: 'Level 1 — Doors', sheetRowNumber: 14, itemName: 'Door D-114', reason: 'ambiguous-identity', markerId: null },
+        { scopeKey: 'm1:c1', sheetName: 'Level 1 — Doors', sheetRowNumber: 21, itemName: 'Door D-121', reason: 'unknown-rowid', markerId: null },
+        { scopeKey: 'm1:c2', sheetName: 'Level 2 — Windows', sheetRowNumber: 8, itemName: 'Window W-08', reason: 'foreign', markerId: null },
+        { scopeKey: 'm1:c2', sheetName: 'Level 2 — Windows', sheetRowNumber: 9, itemName: null, reason: 'malformed', markerId: null },
+        { scopeKey: 'm1:c2', sheetName: 'Level 2 — Windows', sheetRowNumber: 12, itemName: 'Window W-12', reason: 'stale', markerId: null },
+      ]);
+      return;
+    }
+    setPendingImportBatchHold(true);
+    setPendingImportReview(
+      Array.from({ length: 12 }, (_, i) => ({
+        scopeKey: 'm1:c1',
+        sheetName: 'Level 1 — Doors',
+        sheetRowNumber: i + 3,
+        itemName: `Door D-${101 + i}`,
+        reason: 'review',
+        markerId: null,
+      }))
+    );
+  }, []);
 
   // The subset of review entries that are a both-sides "conflict": marker id → the stashed
   // incoming Excel values. Only these rows offer the "keep mine" / "use Excel's" choice in the
@@ -4467,9 +4556,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool]);
 
   // Close secondary toolbar when pan or select tools are active
+  // ('text-select' is a Select mode, so it behaves the same — KAL-239.)
   useEffect(() => {
     if (
-      (activeTool === 'pan' || activeTool === 'select') &&
+      (activeTool === 'pan' || activeTool === 'select' || activeTool === 'text-select') &&
       !(showSurveyPanel && activeCategoryDropdown === 'survey')
     ) {
       setActiveCategoryDropdown(null);
@@ -14832,6 +14922,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
 
+      // KAL-292 — resolve the Excel sheet + row behind a server outcome so a held row that
+      // maps to NO Survey Marker is still recognisable to the user. The Edge mints each
+      // opId as `${scopeId}#${jsonIndex}#${decision}` (deletes as `del#…`), so the sheet row
+      // and its Item cell are recoverable from the worksheets we already parsed — no extra
+      // server round-trip, no server change.
+      const reviewSheetIndex = new Map();
+      for (const ws of (worksheetDataList || [])) {
+        const mId = ws?.matchedModuleId;
+        const cId = ws?.matchedCategory?.id;
+        if (mId == null || cId == null) continue;
+        const header = Array.isArray(ws.headerRow) ? ws.headerRow : [];
+        reviewSheetIndex.set(`${mId}:${cId}`, { ws, itemColumnIndex: header.indexOf('Item') });
+      }
+      const describeOutcomeRow = (opId) => {
+        if (typeof opId !== 'string' || opId.startsWith('del#')) return {};
+        const match = /^(.*)#(\d+)#[^#]*$/.exec(opId);
+        if (!match) return {};
+        const entry = reviewSheetIndex.get(match[1]);
+        if (!entry) return {};
+        const jsonRow = entry.ws.jsonData?.[Number(match[2])];
+        if (!jsonRow) return {};
+        const rawItem = entry.itemColumnIndex >= 0 ? jsonRow[entry.itemColumnIndex] : null;
+        return {
+          sheetName: entry.ws.sheetName || null,
+          sheetRowNumber: Number.isInteger(jsonRow.sheetRowNumber) ? jsonRow.sheetRowNumber : null,
+          itemName: rawItem == null || rawItem === '' ? null : String(rawItem),
+        };
+      };
+
       // Route non-accepted server outcomes (review / stale / conflict) + any
       // client-detected conflict-review ops to the EXISTING review surface.
       const reviewItems = (result.outcomes || [])
@@ -14840,6 +14959,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           scopeKey: o.scopeId || null,
           rowIndex: null,
           itemName: null,
+          ...describeOutcomeRow(o.opId),      // sheetName / sheetRowNumber / itemName (KAL-292)
           reason: o.outcome,                  // 'review' | 'stale' | ...
           markerId: o.markerAnnotationId || null,
           opUuid: o.opUuid || null,           // resolve action keys off this (R2#4)
@@ -14855,6 +14975,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
       setPendingImportReview(reviewItems);
+      // KAL-292 — the server held the WHOLE change-set (every row reviewed, nothing written).
+      // That is the shared-document business-cloud gate; explain it once at the top of the
+      // "Rows we couldn't place" list instead of repeating it on every row.
+      setPendingImportBatchHold(isWholeChangeSetHeld(result));
 
       // Enqueue the verified Row-ID writeback jobs for server-CREATED rows BEFORE
       // declaring the import done (Codex finding #7). Each job is the signed, durably
@@ -14986,7 +15110,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
 
-    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId, sheetName }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
       const colToChecklistId = {};
 
@@ -15073,6 +15197,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
+              // KAL-292: the sheet + TRUE 1-based sheet row so a row that maps to no Survey
+              // Marker is still recognisable in the "Rows we couldn't place" list.
+              sheetName: sheetName || null,
+              sheetRowNumber: Number.isInteger(row?.sheetRowNumber) ? row.sheetRowNumber : null,
               reason: decision.decision, markerId: decision.markerId || null,
               // A both-sides "conflict" carries the incoming Excel values + which fields
               // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
@@ -15544,6 +15672,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Candidate-deletes were already triaged above (received → History-backed delete;
     // not-received → review item), so nothing more to add here.
     setPendingImportReview(importReviewItems);
+    // KAL-292: the local (unregistered-workbook) path judges each row on its own, so it is
+    // never a whole-change-set hold. Clear any hold left over from a previous server sync.
+    setPendingImportBatchHold(false);
     // Persist import memory even when nothing user-visible changed (Codex R1) — the
     // excelSync records must survive so the next sync recognizes these rows by content.
     if (identityPersisted && updatesCount === 0 && deletionsCount === 0) {
@@ -15620,7 +15751,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importReviewItems = [];
     let identityPersisted = false; // true once any marker got its excelSync memory stamped
 
-    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
+    worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId, sheetName }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
       const colToChecklistId = {};
 
@@ -15707,6 +15838,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
             importReviewItems.push({
               scopeKey: planScopeKey, rowIndex: i, itemName,
+              // KAL-292: the sheet + TRUE 1-based sheet row so a row that maps to no Survey
+              // Marker is still recognisable in the "Rows we couldn't place" list.
+              sheetName: sheetName || null,
+              sheetRowNumber: Number.isInteger(row?.sheetRowNumber) ? row.sheetRowNumber : null,
               reason: decision.decision, markerId: decision.markerId || null,
               // A both-sides "conflict" carries the incoming Excel values + which fields
               // disagree, so the Survey-panel choice ("keep mine" / "use Excel's") can apply.
@@ -16186,6 +16321,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Candidate-deletes were already triaged above (received → History-backed delete;
     // not-received → review item), so nothing more to add here.
     setPendingImportReview(importReviewItems);
+    // KAL-292: the local (unregistered-workbook) path judges each row on its own, so it is
+    // never a whole-change-set hold. Clear any hold left over from a previous server sync.
+    setPendingImportBatchHold(false);
     // Persist import memory even when nothing user-visible changed (Codex R1) — the
     // excelSync records must survive so the next sync recognizes these rows by content.
     if (identityPersisted && updatesCount === 0 && deletionsCount === 0) {
@@ -19098,6 +19236,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     try {
+      // PERF (KAL-384): pdf-lib loads on demand here — exporting a space to PDF
+      // is the first moment the user actually needs the PDF writer.
+      const { PDFDocument } = await import('pdf-lib');
       const exportDoc = await PDFDocument.create();
 
       for (const pageEntry of assignedPages) {
@@ -20708,6 +20849,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           reason: 'The viewer save blob can contain rendered annotation appearances; exporting from original bytes prevents baked page artifacts plus duplicate editable app annotations.'
         }));
       }
+      // PERF (KAL-384): the pdf-lib-backed writer loads on demand at export time.
+      const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
       const buffer = await savePDFWithAnnotationsPdfLib(
         sourcePdfForExport,
         annotationsByPage,
@@ -23122,6 +23265,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Prevent default behavior and switch to select tool
         e.preventDefault();
         setActiveTool('select');
+        return;
+      }
+
+      // 'Shift+V' switches the Select tool into text-selection mode (KAL-239).
+      // Intended UX: V picks things up off the page (annotations), Shift+V picks
+      // words off the page (the PDF's own text) — same key, "more" modifier, the
+      // way Shift+E pairs with E for the eraser. Stays live on a read-only
+      // document for the same reason plain V does: selecting and copying text is
+      // a read affordance, it mutates nothing.
+      if ((e.key === 'v' || e.key === 'V') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('text-select');
         return;
       }
 
@@ -28657,6 +28815,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           printInFlight = true;
           (async () => {
             try {
+              // PERF (KAL-384): the pdf-lib-backed print flattener loads on
+              // demand — only a print-with-markup needs the PDF writer.
+              const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
+                await import('./utils/pdfAnnotationsPdfLib');
               const printableRegularPayload = buildPrintableRegularAnnotationPayload({
                 annotationsByPage: annotationsByPageRef.current || {},
                 callouts: calloutsRef.current || [],
@@ -29558,6 +29720,9 @@ ${pageBlocks}
       surveyMarkers,
       surveyReviewByMarkerId,
       surveyConflictByMarkerId,
+      surveyUnplacedRows,
+      onDismissUnplacedRow: handleDismissUnplacedRow,
+      onDismissAllUnplacedRows: handleDismissAllUnplacedRows,
       onResolveExcelConflict: handleResolveExcelConflict,
       user,
       expandRequestKey: rightRailExpandRequestKey,
@@ -29690,6 +29855,9 @@ ${pageBlocks}
     surveyMarkers,
     surveyReviewByMarkerId,
     surveyConflictByMarkerId,
+    surveyUnplacedRows,
+    handleDismissUnplacedRow,
+    handleDismissAllUnplacedRows,
     handleResolveExcelConflict,
     user,
     rightRailExpandRequestKey,
@@ -29905,59 +30073,6 @@ ${pageBlocks}
         documentOwnerId,
       })}
 
-      {/* Annotation Properties Panel — live-edit controls for the
-          right-clicked annotation. Replaces the deprecated floating
-          mini-toolbar. Opens in place of the context menu when the user
-          picks Properties. Edits apply through handleSaveAnnotations so
-          undo + cloud sync behave identically to any other in-app edit. */}
-      {annotationPropertiesPanel && (() => {
-        const p = annotationPropertiesPanel;
-        const page = annotationsByPageRef.current?.[p.pageNumber];
-        const annotation = p.annotationIndex != null
-          ? page?.objects?.[p.annotationIndex]
-          : null;
-        const callout = p.kind === 'callout' && p.calloutId
-          ? (calloutsRef.current || []).find((c) => c?.id === p.calloutId) || null
-          : null;
-
-        // UX: onUpdate patches the targeted annotation in place and commits
-        // via handleSaveAnnotations. Deep-clones so React sees a new
-        // reference + undo checkpoints are one-per-action. Merges `data`
-        // shallowly so nested fields (e.g. counter number) don't wipe
-        // sibling keys like pointerAngle.
-        const applyAnnotationPatch = (patch) => {
-          const freshPage = annotationsByPageRef.current?.[p.pageNumber];
-          if (!freshPage?.objects) return;
-          if (p.annotationIndex == null || p.annotationIndex < 0) return;
-          if (p.annotationIndex >= freshPage.objects.length) return;
-          const next = deepClone(freshPage);
-          const target = next.objects[p.annotationIndex];
-          if (!target) return;
-          for (const k of Object.keys(patch)) {
-            if (k === 'data' && patch.data && typeof patch.data === 'object') {
-              target.data = { ...(target.data || {}), ...patch.data };
-            } else {
-              target[k] = patch[k];
-            }
-          }
-          handleSaveAnnotations(p.pageNumber, next, {
-            source: 'properties-panel',
-            action: 'properties-update',
-            checkpointPolicy: 'normal',
-          });
-        };
-
-        return (
-          <AnnotationPropertiesPanel
-            ctx={p}
-            annotation={annotation}
-            callout={callout}
-            onUpdate={applyAnnotationPatch}
-            onClose={() => setAnnotationPropertiesPanel(null)}
-          />
-        );
-      })()}
-
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,
           dismissible, non-blocking). */}
@@ -30033,33 +30148,7 @@ ${pageBlocks}
             host (5400-5600), so an in-tree fixed chip could never paint
             over the toolbars regardless of its own z-index — same escape
             the counter caret popup uses. */}
-        {tooltip.visible && typeof document !== 'undefined' && createPortal(
-          <div style={{
-            position: 'fixed',
-            left: tooltip.x,
-            top: tooltip.y,
-            transform: tooltip.placement === 'below'
-              ? 'translate(-50%, 0)'
-              : tooltip.placement === 'left'
-                ? 'translate(-100%, -50%)'
-                : 'translate(-50%, -100%)',
-            background: '#181c24',
-            color: '#e8e2d4',
-            border: '1px solid #2a3140',
-            padding: '4px 8px',
-            borderRadius: '6px',
-            fontSize: '11.5px',
-            letterSpacing: 0,
-            fontFamily: FONT_FAMILY,
-            pointerEvents: 'none',
-            zIndex: 10000,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 12px 30px rgba(0,0,0,0.5)'
-          }}>
-            {tooltip.text}
-          </div>,
-          document.body
-        )}
+        <FloatingTooltip tooltip={tooltip} />
 
         {/* Region Selection Tool */}
         {showRegionSelection && (
@@ -31914,8 +32003,17 @@ ${pageBlocks}
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
                   const isEraser = t.id === 'eraser';
-                  // TODO: Revisit native PDF text markup tools later. For now the
-                  // highlighter UI is freehand-only so testing stays focused.
+                  // UX (KAL-240): the Highlighter is FREEHAND-ONLY in the toolbar.
+                  // Intended UX: the user is never offered a control that does
+                  // nothing. The native PDF "Text highlight" mode is NOT implemented
+                  // — PdfjsViewerContainer accepts `textHighlightModeActive` /
+                  // `textMarkupMode` but ignores them, PageAnnotationLayer has no
+                  // 'text-highlight' branch, and selection/deletion route to stubs
+                  // (selectTextMarkupAtPoint → null, deleteSelectedTextMarkupAnnotation
+                  // → false). So the split menu that offers "Text highlight" stays
+                  // hidden, exactly like the Underline / Strike Through / Squiggly
+                  // tools that are commented out of the Review group below. Flip this
+                  // to true only when KAL-240 lands the real implementation.
                   const showTextMarkupHighlightMenu = false;
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
                   const hasSplitMenu = isEraser || isHighlighterSplitMenu;
@@ -31944,7 +32042,7 @@ ${pageBlocks}
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
+                        setTooltip({ visible: true, text: isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -31958,7 +32056,10 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: '40px'
                       }}
-                      title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
+                      // KAL-65: the instant chip above IS this control's tooltip.
+                      // A native title= here would fade the OS tooltip in on top
+                      // of it ~1.5s later; aria-label keeps the accessible name.
+                      aria-label={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {hasSplitMenu && (
@@ -32209,7 +32310,9 @@ ${pageBlocks}
                         // `translate(12px, -50%)` lands in the same spot.
                         width: '40px'
                       }}
-                      title={t.label}
+                      // KAL-65: the instant chip above IS this control's tooltip;
+                      // a native title= would stack the OS tooltip on top of it.
+                      aria-label={t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {showCaret && (
@@ -32610,7 +32713,7 @@ ${pageBlocks}
                       onClick={onMainClick}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
+                        setTooltip({ visible: true, text: isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
@@ -32624,7 +32727,9 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
                       }}
-                      title={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
+                      // KAL-65: the instant chip above IS this control's tooltip;
+                      // a native title= would stack the OS tooltip on top of it.
+                      aria-label={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
                       {(isUnderlineMenu || isStrikeMenu) && (
@@ -32782,7 +32887,8 @@ ${pageBlocks}
 	                        setActiveTool('survey-marker');
 	                      }}
 	                      disabled={modules.length === 0}
-	                      title="Survey module"
+	                      {...chromeTip('Survey module', 'below')}
+	                      aria-label="Survey module"
 	                      style={{
 	                        height: '26px',
 	                        width: '160px',
@@ -32834,7 +32940,9 @@ ${pageBlocks}
 	                            }}
 	                            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
 	                            className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
-	                            title={category.name || 'Untitled category'}
+	                            // KAL-65: instant chip above is the tooltip; a native
+	                            // title= would stack the OS tooltip on top of it.
+	                            aria-label={category.name || 'Untitled category'}
 	                            style={{
 	                              width: '30px',
 	                              height: '30px',
@@ -32869,7 +32977,7 @@ ${pageBlocks}
 
 	                  <div style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', paddingLeft: '12px', whiteSpace: 'nowrap' }}>
 	                    <label
-	                      title="Keep selected category active after placing a region"
+	                      {...chromeTip('Keep selected category active after placing a region', 'below')}
 	                      style={{
 	                        display: 'flex',
 	                        alignItems: 'center',
@@ -32922,7 +33030,8 @@ ${pageBlocks}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                       className={`btn btn-md ${isActive ? 'btn-active' : 'btn-default'}`}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                      title={t.label}
+                      // KAL-65: instant chip above is the tooltip, and the visible
+                      // <span>{t.label}</span> below is already the accessible name.
                       data-form-tool={t.id}
                     >
                       <Icon name={t.iconName} size={16} />

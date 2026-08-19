@@ -135,22 +135,6 @@ function diag(line) {
     diag(`[CTXDIAG enter ${CTX_DIAG_BUILD}] type=${e.type} button=${e.button} clientX=${e.clientX} clientY=${e.clientY} target=${shortTag(e.target)}`);
     logEvent('capture', e);
 
-    // UX 2026-04-21: the properties panel is a tool surface — right-click
-    // on it should never fall through to the canvas's paste menu OR the
-    // annotation context menu for whatever happens to be behind it. The
-    // event target is checked here (in the document-level capture phase)
-    // because the pan-mode fallback in resolveAnnotationAt uses pure
-    // bounding-rect tests inside the page wrapper, which would otherwise
-    // find a shape underneath the panel regardless of visual stacking.
-    // Fully swallow the event: no annotation menu, no native menu.
-    if (e.target && typeof e.target.closest === 'function'
-        && e.target.closest('[data-annotation-properties-panel]')) {
-      diag('[CTXDIAG] suppressed — inside annotation properties panel');
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-
     // The counter-series toolbar owns its own compact action menu. Because
     // this dispatcher resolves annotations beneath floating UI, a right-click
     // on a series row can otherwise also open the underlying pin menu.
@@ -174,7 +158,7 @@ function diag(line) {
     // Survey Markers have no right-click menu in this release. A right-click
     // that lands on a Survey Marker's interactive hit area is fully swallowed
     // here — no annotation/page menu and no native browser menu — so nothing
-    // happens, matching the properties-panel suppression above.
+    // happens, matching the counter-series suppression above.
     if (e.target && typeof e.target.closest === 'function'
         && e.target.closest('[data-survey-marker-id]')) {
       diag('[CTXDIAG] suppressed — on survey marker');

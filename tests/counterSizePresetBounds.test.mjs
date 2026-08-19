@@ -7,7 +7,6 @@ const read = (relativePath) => readFileSync(new URL(relativePath, import.meta.ur
 const appShellSource = read('../src/AppShell.jsx');
 const viewerSource = read('../src/PDFViewer.jsx');
 const mobileSource = read('../src/mobile/MobilePdfViewerChrome.jsx');
-const propertiesSource = read('../src/components/AnnotationPropertiesPanel.jsx');
 
 test('every counter size control accepts presets through 76 without widening other tools', () => {
   assert.match(
@@ -22,8 +21,6 @@ test('every counter size control accepts presets through 76 without widening oth
     mobileSource,
     /max=\{tool === 'counter' \? COUNTER_SIZE_MAX : 50\}/,
   );
-  assert.match(propertiesSource, /max: COUNTER_SIZE_MAX,/);
-
   const counterAwareMaxes = viewerSource.match(
     /const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : 50;/g,
   ) || [];

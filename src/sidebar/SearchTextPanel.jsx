@@ -11,6 +11,7 @@ import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
+import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -1101,6 +1102,10 @@ const SearchTextPanel = ({
   pdfDocumentKey = null,
   mobileMode = false
 }) => {
+  // KAL-65: sidebar controls use the app's instant shared tooltip, never a
+  // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
   // Internal state for standalone use
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [internalSearchResults, setInternalSearchResults] = useState([]);
@@ -1782,7 +1787,8 @@ const SearchTextPanel = ({
               <button
                 onClick={goToPrevMatch}
                 disabled={searchResults.length === 0}
-                title="Previous match (Shift+Enter)" aria-label="Previous match (Shift+Enter)"
+                {...tip('Previous match (Shift+Enter)', 'below')}
+                aria-label="Previous match (Shift+Enter)"
                 style={{
                   background: 'transparent',
                   border: '1px solid #2a3140',
@@ -1795,16 +1801,21 @@ const SearchTextPanel = ({
                   opacity: searchResults.length > 0 ? 1 : 0.5
                 }}
                 onMouseEnter={(e) => {
+                  tip('Previous match (Shift+Enter)', 'below').onMouseEnter(e);
                   if (searchResults.length > 0) e.currentTarget.style.background = '#2a3140';
                 }}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                onMouseLeave={(e) => {
+                  tip('Previous match (Shift+Enter)', 'below').onMouseLeave(e);
+                  e.currentTarget.style.background = 'transparent';
+                }}
               >
                 <Icon name="chevronUp" size={14} color="#e8e2d4" />
               </button>
               <button
                 onClick={goToNextMatch}
                 disabled={searchResults.length === 0}
-                title="Next match (Enter)" aria-label="Next match (Enter)"
+                {...tip('Next match (Enter)', 'below')}
+                aria-label="Next match (Enter)"
                 style={{
                   background: 'transparent',
                   border: '1px solid #2a3140',
@@ -1817,9 +1828,13 @@ const SearchTextPanel = ({
                   opacity: searchResults.length > 0 ? 1 : 0.5
                 }}
                 onMouseEnter={(e) => {
+                  tip('Next match (Enter)', 'below').onMouseEnter(e);
                   if (searchResults.length > 0) e.currentTarget.style.background = '#2a3140';
                 }}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                onMouseLeave={(e) => {
+                  tip('Next match (Enter)', 'below').onMouseLeave(e);
+                  e.currentTarget.style.background = 'transparent';
+                }}
               >
                 <Icon name="chevronDown" size={14} color="#e8e2d4" />
               </button>

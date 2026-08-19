@@ -43,12 +43,13 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { useAuth } from './contexts/AuthContext';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
+import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened.
@@ -395,32 +396,55 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
+  // KAL-239: the Select tool's selection-mode menu (annotations vs the PDF's own
+  // text). Intended UX: a caret on the Select button opens a two-item menu, the
+  // same split-button shape the Eraser uses for its erase modes, so the user has
+  // an obvious way to reach text selection without a new kind of control. The
+  // menu is a fixed-position portal anchored under the button (matching the
+  // Draw sub-toolbar popups) and closes on any outside click or Escape.
+  const [selectModeMenuOpen, setSelectModeMenuOpen] = useState(false);
+  const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
+  const selectModeButtonRef = useRef(null);
+  useEffect(() => {
+    if (!selectModeMenuOpen) return undefined;
+    const el = selectModeButtonRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setSelectModeMenuAnchor({ top: r.bottom + 6, left: r.left + r.width / 2 });
+    }
+    const onDown = (e) => {
+      if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-caret]'))) return;
+      setSelectModeMenuOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setSelectModeMenuOpen(false); };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectModeMenuOpen]);
+
   // UX 2026-07-14: every top-bar control gets the app's instant tooltip
   // (the floating chip PDFViewer renders from setTooltip), not just the
   // category buttons. Native title= tooltips take ~1.5s and look
   // OS-styled, so users read the mixed behavior as "most tools have no
   // tooltip". Spread chromeTip('Label') onto a control to opt it in;
   // reference behavior matched: the Draw/Shapes/Text category buttons.
-  const chromeTip = (text, placement = 'below') => ({
-    onMouseEnter: (e) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      bottomToolbarApi?.setTooltip?.({
-        visible: true,
-        text,
-        // 'below' hangs under top-bar controls; 'above' floats over
-        // controls with room overhead; 'left' flies out leftward over the
-        // PDF from the collapsed right rail (same look as the survey-icon
-        // flyout) — an above/below chip on a 48px rail would cross the
-        // viewport edge and clip.
-        x: placement === 'left' ? rect.left - 8 : rect.left + rect.width / 2,
-        y: placement === 'left'
-          ? rect.top + rect.height / 2
-          : placement === 'below' ? rect.bottom + 10 : rect.top - 10,
-        placement
-      });
-    },
-    onMouseLeave: () => bottomToolbarApi?.setTooltip?.({ visible: false, text: '', x: 0, y: 0 }),
-  });
+  //
+  // UX 2026-08-19 (KAL-65): a control gets chromeTip OR a native title=, never
+  // both. Carrying both made the zoom and page-navigation buttons show the
+  // instant chip and then fade the OS tooltip in on top of it ~1.5s later —
+  // two tooltips, same words, two different styles. Controls with no visible
+  // text carry an aria-label so dropping title= costs no accessible name.
+  // Built from the ONE shared implementation in components/Tooltip.jsx
+  // (placement geometry, styling and focus handling all live there), and
+  // published to the whole viewer tree via TooltipContext below so rails and
+  // sidebar panels can opt in without prop-drilling a setter.
+  const chromeTip = useMemo(
+    () => makeTooltipBinding(bottomToolbarApi?.setTooltip),
+    [bottomToolbarApi?.setTooltip],
+  );
 
   // UX 2026-07-14 (rail-footer redesign): page-fit mode glyphs shared by the
   // rail footer's fit trigger and its popup options. Hoisted to component
@@ -1270,7 +1294,11 @@ export default function App({ devPreviewReturnTab = null }) {
   const viewerViewState = pdfTab ? pdfTab.viewState : null;
 
   return (
-    <>
+    // KAL-65: one tooltip surface for the whole viewer. Rails and sidebar
+    // panels call useTooltip() to opt a control in; the chip itself is
+    // rendered once by PDFViewer (<FloatingTooltip>) from the state this
+    // binding writes to.
+    <TooltipContext.Provider value={chromeTip}>
       {/* UX 2026-04-22: Save Log banner mounts at the outermost App level so
           it's visible on the dashboard / templates / auth / any view, not
           only inside the PDF viewer. Listens for a window event the Save
@@ -1355,7 +1383,6 @@ export default function App({ devPreviewReturnTab = null }) {
               <button
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
-                title="Export annotated PDF"
                 aria-label="Export annotated PDF"
                 style={{ height: '30px', width: '30px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#e8e2d4', borderRadius: '4px', cursor: 'pointer' }}
               >
@@ -1390,7 +1417,7 @@ export default function App({ devPreviewReturnTab = null }) {
               disabled={!topToolbarApi.canUndo}
               className="btn btn-default btn-sm"
               {...chromeTip('Undo', 'below')}
-              title="Undo"
+              aria-label="Undo"
               style={{
                 padding: '4px 8px',
                 opacity: topToolbarApi.canUndo ? 1 : 0.4,
@@ -1407,7 +1434,7 @@ export default function App({ devPreviewReturnTab = null }) {
               disabled={!topToolbarApi.canRedo}
               className="btn btn-default btn-sm"
               {...chromeTip('Redo', 'below')}
-              title="Redo"
+              aria-label="Redo"
               style={{
                 padding: '4px 8px',
                 opacity: topToolbarApi.canRedo ? 1 : 0.4,
@@ -1452,29 +1479,155 @@ export default function App({ devPreviewReturnTab = null }) {
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
                 { id: 'select', label: 'Select', iconName: 'cursor' }
-              ].map(t => (
-                <button
+              ].map(t => {
+                // KAL-239: the Select tool has TWO modes — annotations (default)
+                // and the PDF's own text. Intended UX: the button keeps working
+                // exactly as before (click = Select, and it never changes the mode
+                // already chosen in the menu, same as the Eraser button), while a
+                // small caret opens a mode menu. This mirrors the Eraser split menu
+                // in the Draw sub-toolbar rather than inventing a new control.
+                const isSelect = t.id === 'select';
+                const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
+                const isActive = isSelect
+                  ? (bottomToolbarApi.activeTool === 'select' || isTextSelect)
+                  : bottomToolbarApi.activeTool === t.id;
+                const label = isSelect && isTextSelect ? 'Select text' : t.label;
+                return (
+                <div
                   key={t.id}
+                  ref={isSelect ? selectModeButtonRef : undefined}
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                >
+                <button
                   onClick={() => {
-                    bottomToolbarApi.setActiveTool(t.id);
+                    // Activate Select without discarding the mode picked in the
+                    // menu (Eraser button does the same with its erase mode).
+                    bottomToolbarApi.setActiveTool(isSelect && isTextSelect ? 'text-select' : t.id);
                     bottomToolbarApi.setActiveCategoryDropdown(null);
+                    setSelectModeMenuOpen(false);
                   }}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
                     bottomToolbarApi.setTooltip({
                       visible: true,
-                      text: t.label,
+                      text: label,
                       x: rect.left + rect.width / 2,
                       y: rect.bottom + 10,
                       placement: 'below'
                     });
                   }}
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                  className={`btn btn-icon ${bottomToolbarApi.activeTool === t.id ? 'btn-active' : ''}`}
+                  className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
+                  style={isSelect ? { position: 'relative', paddingRight: '16px' } : undefined}
                 >
-                  <Icon name={t.iconName} size={16} />
+                  <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />
+                  {isSelect && (
+                    <div
+                      data-select-mode-caret="true"
+                      role="button"
+                      aria-label="Selection mode"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectModeMenuOpen((open) => !open);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: '2px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '2px',
+                        pointerEvents: 'auto',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Icon name="chevronDown" size={10} color="#8d96a6" />
+                    </div>
+                  )}
                 </button>
-              ))}
+                {isSelect && selectModeMenuOpen && createPortal(
+                  <div
+                    data-select-mode-menu="true"
+                    style={{
+                      position: 'fixed',
+                      top: `${selectModeMenuAnchor.top}px`,
+                      left: `${selectModeMenuAnchor.left}px`,
+                      transform: 'translate(-50%, 0)',
+                      backgroundColor: 'rgb(30, 30, 30)',
+                      backgroundImage: 'none',
+                      border: '1px solid #2a3140',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                      zIndex: 999999,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      padding: '4px',
+                      minWidth: '168px',
+                      color: '#e8e2d4',
+                      pointerEvents: 'auto',
+                      cursor: 'default',
+                      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <div style={{
+                      padding: '4px 8px',
+                      fontSize: '10px',
+                      color: '#8d96a6',
+                      textTransform: 'uppercase',
+                      fontWeight: 600,
+                      borderBottom: '1px solid #2a3140',
+                      marginBottom: '4px'
+                    }}>
+                      Selection Mode
+                    </div>
+                    {[
+                      { tool: 'select', text: 'Select annotations', hint: 'V' },
+                      { tool: 'text-select', text: 'Select text', hint: '⇧V' }
+                    ].map((opt) => {
+                      const selected = bottomToolbarApi.activeTool === opt.tool;
+                      const optionStyle = {
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        padding: '6px 10px',
+                        background: selected ? '#1f2430' : 'transparent',
+                        border: 'none',
+                        borderRadius: '4px',
+                        color: '#e8e2d4',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        whiteSpace: 'nowrap'
+                      };
+                      return (
+                        <button
+                          key={opt.tool}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            bottomToolbarApi.setActiveTool(opt.tool);
+                            setSelectModeMenuOpen(false);
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}
+                          style={optionStyle}
+                        >
+                          <span>{opt.text}</span>
+                          <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>,
+                  document.body
+                )}
+                </div>
+                );
+              })}
 
               <div style={{ width: '1px', height: '20px', background: '#5a6473', margin: '0 4px' }} />
               </div>
@@ -1490,20 +1643,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   }
                 }}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  bottomToolbarApi.setTooltip({
-                    visible: true,
-                    text: 'Draw',
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 10,
-                    placement: 'below'
-                  });
-                }}
-                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                {...chromeTip('Draw', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                title="Draw"
+                aria-label="Draw"
               >
                 <Icon name="pen" size={18} />
               </button>
@@ -1519,20 +1662,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   }
                 }}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  bottomToolbarApi.setTooltip({
-                    visible: true,
-                    text: 'Shapes',
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 10,
-                    placement: 'below'
-                  });
-                }}
-                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                {...chromeTip('Shapes', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                title="Shapes"
+                aria-label="Shapes"
               >
                 <Icon name="rect" size={18} />
               </button>
@@ -1548,20 +1681,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   }
                 }}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  bottomToolbarApi.setTooltip({
-                    visible: true,
-                    text: 'Text',
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 10,
-                    placement: 'below'
-                  });
-                }}
-                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                {...chromeTip('Text', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                title="Text"
+                aria-label="Text"
               >
                 <Icon name="text" size={18} />
               </button>
@@ -1592,20 +1715,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                   }
                 }}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  bottomToolbarApi.setTooltip({
-                    visible: true,
-                    text: 'Forms',
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 10,
-                    placement: 'below'
-                  });
-                }}
-                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                {...chromeTip('Forms', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'forms' || FORM_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                title="Forms"
+                aria-label="Forms"
               >
                 <Icon name="edit" size={18} />
               </button>
@@ -1681,7 +1794,6 @@ export default function App({ devPreviewReturnTab = null }) {
                           cursor: 'pointer',
                         }}
                         {...chromeTip('Font color', 'below')}
-                        title="Font color"
                         aria-label="Font color"
                       >
                         <span
@@ -1800,7 +1912,6 @@ export default function App({ devPreviewReturnTab = null }) {
                             ...fontStyleOverride,
                           }}
                           {...chromeTip(label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough', 'below')}
-                          title={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
                           aria-label={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
                           aria-pressed={isOn}
                         >
@@ -1877,7 +1988,7 @@ export default function App({ devPreviewReturnTab = null }) {
                                         justifyContent: 'center',
                                         padding: 0,
                                       }}
-                                      title={`${v} ${h}`}
+                                      {...chromeTip(`${v} ${h}`, 'below')}
                                       aria-label={`${v} ${h}`}
                                     >
                                       <span style={{
@@ -1924,7 +2035,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       cursor: 'pointer'
                     }}
                     {...chromeTip('Color', 'below')}
-                    title="Color"
                     aria-label="Color"
                   >
                     <span
@@ -1962,7 +2072,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       justifyContent: 'center'
                     }}
                     {...chromeTip('Counter colors', 'below')}
-                    title="Counter colors"
                     aria-label="Counter colors"
                   >
                     <span
@@ -2004,7 +2113,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       cursor: 'pointer'
                     }}
                     {...chromeTip('Color', 'below')}
-                    title="Color"
                     aria-label="Color"
                   >
                     <span
@@ -2417,7 +2525,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           fontSize: '11px',
                           fontFamily: FONT_FAMILY,
                         }}
-                        title={startTitle}
+                        {...chromeTip(startTitle, 'below')}
                       >
                         Start
                         <input
@@ -2509,7 +2617,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         textAlign: 'center'
                       }}
                       {...chromeTip('Cloud bump size', 'below')}
-                      title="Cloud bump size"
+                      aria-label="Cloud bump size"
                     />
                   </label>
                 )}
@@ -2559,9 +2667,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       opacity: bottomToolbarApi.canEnterTextEdit ? 1 : 0.5,
                       lineHeight: 1,
                     }}
-                    title={bottomToolbarApi.canEnterTextEdit
+                    {...chromeTip(bottomToolbarApi.canEnterTextEdit
                       ? 'Edit text'
-                      : 'Select a text box or callout to edit its text'}
+                      : 'Select a text box or callout to edit its text', 'below')}
                     aria-label="Edit text"
                     aria-pressed={!!bottomToolbarApi.richTextEditor}
                   >
@@ -2829,7 +2937,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   onDoubleClick={() => setIsEditingRailZoom(true)}
                   aria-label="Edit zoom percentage"
                   {...chromeTip('Zoom level — click to type a percentage', 'left')}
-                  title="Click to type a zoom percentage"
                   style={{ background: 'transparent', border: 'none', color: '#8d96a6', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
                 >
                   {api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}%
@@ -2865,7 +2972,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   onDoubleClick={() => setIsEditingRailPage(true)}
                   aria-label="Edit page number"
                   {...chromeTip('Page — click to jump', 'left')}
-                  title="Click to jump to a page"
                   style={{ background: 'transparent', border: 'none', color: '#d8a84e', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1 }}
                 >
                   {api.pageNum}
@@ -2906,7 +3012,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
-                      title="Zoom in"
                       aria-label="Zoom in"
                       style={{ ...footerBtn(), width: '28px', height: '28px' }}
                     >
@@ -2916,7 +3021,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     <button
                       onClick={api.zoomOut}
                       {...chromeTip('Zoom out', 'left')}
-                      title="Zoom out"
                       aria-label="Zoom out"
                       style={{ ...footerBtn(), width: '28px', height: '28px' }}
                     >
@@ -2930,7 +3034,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
                       {...chromeTip('Previous page', 'left')}
-                      title="Previous page"
                       aria-label="Previous page"
                       style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px' }}
                     >
@@ -2947,7 +3050,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       onClick={api.goToNextPage}
                       disabled={atLastPage}
                       {...chromeTip('Next page', 'left')}
-                      title="Next page"
                       aria-label="Next page"
                       style={{ ...footerBtn(atLastPage), width: '24px', height: '24px' }}
                     >
@@ -2968,7 +3070,6 @@ export default function App({ devPreviewReturnTab = null }) {
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
                         {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'left')}
-                        title={`Page fit: ${api.zoomDropdownLabel}`}
                         style={{ position: 'relative', width: '36px', height: '28px', padding: 0, background: 'transparent', border: 'none', borderRadius: '2px', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', cursor: 'pointer' }}
                       >
                         <svg viewBox="0 0 12 12" aria-hidden="true" style={{ position: 'absolute', left: '2px', top: '50%', width: '12px', height: '12px', transform: 'translateY(-50%)', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.8 }}>
@@ -2993,7 +3094,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   <button
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
-                    title="Zoom out"
                     aria-label="Zoom out"
                     style={{ ...footerBtn(), width: '24px', height: '24px' }}
                   >
@@ -3003,7 +3103,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   <button
                     onClick={api.zoomIn}
                     {...chromeTip('Zoom in', 'above')}
-                    title="Zoom in"
                     aria-label="Zoom in"
                     style={{ ...footerBtn(), width: '24px', height: '24px' }}
                   >
@@ -3017,7 +3116,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={api.goToPreviousPage}
                     disabled={atFirstPage}
                     {...chromeTip('Previous page', 'above')}
-                    title="Previous page"
                     aria-label="Previous page"
                     style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px' }}
                   >
@@ -3032,7 +3130,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     onClick={api.goToNextPage}
                     disabled={atLastPage}
                     {...chromeTip('Next page', 'above')}
-                    title="Next page"
                     aria-label="Next page"
                     style={{ ...footerBtn(atLastPage), width: '24px', height: '24px' }}
                   >
@@ -3051,7 +3148,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-label="Fit options"
                       data-active={fitMode !== ZOOM_MODES.MANUAL}
                       {...chromeTip(`Page fit: ${api.zoomDropdownLabel}`, 'above')}
-                      title={`Page fit: ${api.zoomDropdownLabel}`}
                       style={{ height: '26px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 8px', border: 'none', background: 'transparent', color: fitMode !== ZOOM_MODES.MANUAL ? '#e8e2d4' : '#8d96a6', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
                     >
                       {renderFitIcon(fitIconMode, 15)}
@@ -3096,6 +3192,6 @@ export default function App({ devPreviewReturnTab = null }) {
           bottom-right after the status bar was removed. The '?' modal still
           works on the home tab; on the viewer the screen stays clean. */}
       {!isViewerVisible && <KeyboardShortcutsOverlay />}
-    </>
+    </TooltipContext.Provider>
   );
 }

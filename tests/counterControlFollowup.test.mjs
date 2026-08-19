@@ -10,7 +10,6 @@ const read = (relativePath) => {
 
 const appShellSource = read('../src/AppShell.jsx');
 const mobileChromeSource = read('../src/mobile/MobilePdfViewerChrome.jsx');
-const propertiesPanelSource = read('../src/components/AnnotationPropertiesPanel.jsx');
 const colorPickerSource = read('../src/components/CompactColorPicker.jsx');
 const sizeControlSource = read('../src/components/AnnotationSizeControl.jsx');
 const packageSource = read('../package.json');
@@ -43,6 +42,4 @@ test('desktop and mobile annotation sizes use one Radix-backed whole-number cont
   assert.match(sizeControlSource, /data-annotation-size-popover/);
   assert.match(appShellSource, /<AnnotationSizeControl/);
   assert.match(mobileChromeSource, /<AnnotationSizeControl/);
-  assert.match(propertiesPanelSource, /<AnnotationSizeControl/);
-  assert.match(propertiesPanelSource, /data-annotation-size-popover/);
 });

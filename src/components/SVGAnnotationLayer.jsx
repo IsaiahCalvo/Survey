@@ -4649,7 +4649,17 @@ const SVGAnnotationLayer = memo(({
         position: 'absolute',
         top: 0,
         left: 0,
-        pointerEvents: isInteractive ? 'auto' : 'none',
+        // UX (KAL-239): in text-selection mode the SVG root must NOT claim the
+        // whole page. An `auto` root is hit-testable across its entire box, so
+        // it sat on top of the selectable text layer and made text selection
+        // impossible — the reason the mode was never usable. Individual
+        // annotation hit targets set their own pointerEvents (isSelectTool is
+        // still true here), and events on them still bubble to the handlers on
+        // this root, so clicking an annotation keeps selecting it; every other
+        // pixel now falls through to the text layer underneath. Marquee
+        // (empty-space drag) select is intentionally off in this mode — that
+        // gesture IS the text selection.
+        pointerEvents: (isInteractive && activeTool !== 'text-select') ? 'auto' : 'none',
         overflow: 'hidden',
         // One-finger creation strokes must not scroll the page on touch
         // devices — the fabric upper canvas used to set this implicitly.

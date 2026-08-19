@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { PDFDocument } from 'pdf-lib';
+import { inflateSync } from 'node:zlib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 
 import {
   buildPdfImportStatisticsSummary,
@@ -1165,173 +1166,31 @@ test('importAnnotationsFromPdf imports AutoCAD SHX helper squares as invisible i
 });
 
 // ---------------------------------------------------------------------------
-// PATCH-DELETION SAFETY TESTS — KAL-256 §2.4 (Self-heal re-import patch)
+// PATCH-DELETION SAFETY TESTS — KAL-256 §2.4 (embedded re-import)
 //
-// The self-heal effect in PDFViewer.jsx:20610 runs the embedded PDF importer
-// when a cloud document finishes hydrating with zero annotations. Because the
-// trigger lives inside a React component, we test it in two independently
-// provable halves:
+// The embedded-import effect in PDFViewer.jsx runs the embedded PDF importer
+// the first time a document is opened.
 //
-// (a) DECISION PREDICATE — the exact boolean gate that decides whether to
-//     fire. The predicate is encoded verbatim from PDFViewer.jsx:20612-20617
-//     so any change to that gate will force this test to be updated too.
+// KAL-275 (2026-08-19): a former half (a) of this block mirrored the OLD
+// `hydration.count === 0` decision predicate. Production abandoned that gate —
+// the import is now triggered by the durable per-document marker
+// `documents.embedded_import_completed_at`, precisely because gating on
+// count===0 let a single early stroke suppress the import forever. The
+// mirrored predicate was defined inside THIS test file, so it asserted against
+// its own local fixture and guarded nothing that ships; it was deleted with
+// the patch it mirrored.
 //
-// (b) EFFECT — importAnnotationsFromPdf run against a real fixture PDF that
-//     carries embedded annotations must return a non-empty per-page set with
-//     isPdfImported marks. This is the work the self-heal does; if it were
-//     removed the cloud-empty document would stay blank.
+// What remains is the EFFECT half: importAnnotationsFromPdf run against a real
+// fixture PDF that carries embedded annotations must return a non-empty
+// per-page set with isPdfImported marks. This is the work the import does; if
+// it were removed, a document carrying embedded markups would open blank.
 //
-// HOW TO VERIFY (a) IS LOAD-BEARING:
-//   Comment out any single guard line in the predicate (e.g. remove
-//   `!documentId` or `hydration.count !== 0` check from the mirrored
-//   predicate below). The "should NOT fire" sub-assertions will immediately
-//   fail on the corresponding input, proving the guard is exercised.
-//
-// HOW TO VERIFY (b) IS LOAD-BEARING:
+// HOW TO VERIFY IT IS LOAD-BEARING:
 //   Remove importAnnotationsFromPdf or change it to always return
 //   { annotationsByPage: {}, ... }. The `totalImported > 0` assertion and
 //   `isPdfImported === true` assertion will fail, proving the importer is the
-//   actual mechanism the self-heal relies on.
+//   actual mechanism the embedded import relies on.
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// (a) Self-heal decision predicate
-//
-// Mirrors the exact guard at PDFViewer.jsx:20612-20617. Any refactor of those
-// lines must also update this test.
-// ---------------------------------------------------------------------------
-
-/**
- * Replicates the self-heal fire/no-fire logic from PDFViewer.jsx:20612-20617.
- * Returns true when all conditions to trigger the self-heal are met.
- *
- * Mirrors (verbatim):
- *   if (!documentId || !pdfDoc) return;          // line 20613
- *   if (!hydration || hydration.ready !== true) return;  // line 20614
- *   if (hydration.count !== 0) return;            // line 20615
- *   if (hydration.documentId && hydration.documentId !== documentId) return; // line 20616
- *   if (embeddedImportFallbackDoneRef === documentId) return;  // line 20617
- *
- * NOTE: line 20617 uses a ref value, not a boolean. Here we pass it directly
- * as `alreadyDone` to keep the pure-function form testable without React.
- */
-function selfHealShouldFire({ documentId, pdfDoc, hydration, alreadyDone = null }) {
-  if (!documentId || !pdfDoc) return false;
-  if (!hydration || hydration.ready !== true) return false;
-  if (hydration.count !== 0) return false;
-  if (hydration.documentId && hydration.documentId !== documentId) return false;
-  if (alreadyDone === documentId) return false;
-  return true;
-}
-
-test('[KAL-256] patch-deletion safety: self-heal predicate fires when all conditions are met', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {}; // non-null truthy sentinel
-
-  // All conditions met: ready + count===0 + documentId matches + not done
-  assert.equal(
-    selfHealShouldFire({
-      documentId,
-      pdfDoc,
-      hydration: { ready: true, count: 0, documentId },
-      alreadyDone: null,
-    }),
-    true,
-    'must fire when all conditions are satisfied'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when documentId is absent', () => {
-  const pdfDoc = {};
-  const hydration = { ready: true, count: 0, documentId: null };
-
-  assert.equal(
-    selfHealShouldFire({ documentId: null, pdfDoc, hydration }),
-    false,
-    'must not fire when documentId is null (new-upload race window)'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId: '', pdfDoc, hydration }),
-    false,
-    'must not fire when documentId is empty string'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when pdfDoc is absent', () => {
-  const documentId = 'doc-abc';
-  const hydration = { ready: true, count: 0, documentId };
-
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc: null, hydration }),
-    false,
-    'must not fire when pdfDoc is null (pdf not yet loaded)'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when hydration is not ready', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: null }),
-    false,
-    'must not fire when hydration is null'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: false, count: 0, documentId } }),
-    false,
-    'must not fire when hydration.ready is false'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: undefined, count: 0, documentId } }),
-    false,
-    'must not fire when hydration.ready is undefined'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when cloud already has marks', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-
-  // count !== 0 means cloud came back with data — self-heal must stay dormant.
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: true, count: 5, documentId } }),
-    false,
-    'must not fire when hydration.count > 0 (cloud has marks)'
-  );
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration: { ready: true, count: 1, documentId } }),
-    false,
-    'must not fire when count === 1'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when hydration is for a different document', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-
-  assert.equal(
-    selfHealShouldFire({
-      documentId,
-      pdfDoc,
-      hydration: { ready: true, count: 0, documentId: 'doc-OTHER' },
-    }),
-    false,
-    'must not fire when hydration.documentId does not match current documentId'
-  );
-});
-
-test('[KAL-256] patch-deletion safety: self-heal predicate does NOT fire when already run this mount', () => {
-  const documentId = 'doc-abc';
-  const pdfDoc = {};
-  const hydration = { ready: true, count: 0, documentId };
-
-  assert.equal(
-    selfHealShouldFire({ documentId, pdfDoc, hydration, alreadyDone: documentId }),
-    false,
-    'must not fire when embeddedImportFallbackDoneRef already equals documentId (per-mount one-shot)'
-  );
-});
 
 // ---------------------------------------------------------------------------
 // (b) Self-heal effect: importAnnotationsFromPdf returns embedded marks
@@ -1382,4 +1241,215 @@ test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFro
     totalImported,
     'every imported object must have isPdfImported===true'
   );
+});
+
+// --- KAL-405: single-tap imported ink marks render as dots -----------------
+
+test('KAL-405 a single-point InkList tap imports as a filled dot sized to the pen', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-tap-1',
+    subtype: 'Ink',
+    color: [1, 0, 0],
+    borderStyle: { width: 4 },
+    inkLists: [[50, 50]],
+  }, viewport);
+
+  assert.ok(obj, 'a pen tap must not be dropped at import');
+  assert.equal(obj.type, 'path');
+  // Diameter == pen width, centred on the tapped point (50, 50) in PDF space,
+  // which is (50, 50) in this viewport.
+  assert.equal(obj.width, 4);
+  assert.equal(obj.height, 4);
+  assert.equal(obj.left, 48);
+  assert.equal(obj.top, 48);
+  // Filled, never stroked — a stroked width-4 circle would render 8 wide.
+  assert.equal(obj.fill, 'rgba(255, 0, 0, 1)');
+  assert.equal(obj.stroke, 'transparent');
+  assert.equal(obj.strokeWidth, 0);
+  assert.equal(obj.pdfInkTapDot, true);
+  assert.equal(obj.paperInkGeometry, 'v1');
+  assert.ok(Array.isArray(obj.polygons) && obj.polygons.length > 0);
+  assert.deepEqual(
+    obj.path.map((segment) => segment[0]),
+    ['M', 'C', 'C', 'C', 'C', 'Z'],
+    'the dot is a closed circle built from four cubic segments',
+  );
+});
+
+test('KAL-405 a multi-point ink stroke whose bounds collapse imports as a dot', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-tap-2',
+    subtype: 'Ink',
+    color: [0, 0, 1],
+    borderStyle: { width: 8 },
+    // Eight samples from a tap that never travelled a visible distance.
+    inkLists: [[40, 40, 40.2, 40.1, 40.15, 40.05, 40.05, 39.95, 40, 40]],
+  }, viewport);
+
+  assert.equal(obj.pdfInkTapDot, true);
+  assert.equal(obj.width, 8);
+  assert.equal(obj.height, 8);
+  assert.equal(obj.fill, 'rgba(0, 0, 255, 1)');
+  assert.equal(obj.strokeWidth, 0);
+});
+
+test('KAL-405 a genuinely short but real ink stroke is NOT converted to a dot', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  // 4pt pen, ~5pt of travel. Well above the quarter-pen-width threshold, so
+  // this stays the stroked centreline the author drew.
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-short-1',
+    subtype: 'Ink',
+    color: [1, 0, 0],
+    borderStyle: { width: 4 },
+    inkLists: [[50, 50, 54, 53]],
+  }, viewport);
+
+  assert.equal(obj.pdfInkTapDot, undefined);
+  assert.equal(obj.stroke, 'rgba(255, 0, 0, 1)');
+  assert.equal(obj.fill, null);
+  assert.equal(obj.strokeWidth, 4);
+  assert.deepEqual(obj.path.map((segment) => segment[0]), ['M', 'L']);
+});
+
+test('KAL-405 dot colour, opacity and size come from the source annotation', () => {
+  const viewport = makeViewport({ pageHeight: 100 });
+
+  const fat = convertPdfAnnotationToFabric({
+    id: 'ink-tap-fat',
+    subtype: 'Ink',
+    color: [0, 0.6, 0],
+    opacity: 0.5,
+    borderStyle: { width: 12 },
+    inkLists: [[30, 30]],
+  }, viewport);
+
+  const thin = convertPdfAnnotationToFabric({
+    id: 'ink-tap-thin',
+    subtype: 'Ink',
+    color: [0, 0.6, 0],
+    borderStyle: { width: 2 },
+    inkLists: [[30, 30]],
+  }, viewport);
+
+  // Exactly the authored paint — no backdrop-dependent boost.
+  assert.equal(fat.fill, 'rgba(0, 153, 0, 0.5)');
+  assert.equal(thin.fill, 'rgba(0, 153, 0, 1)');
+  // A fat pen leaves a fat dot.
+  assert.equal(fat.width, 12);
+  assert.equal(thin.width, 2);
+});
+
+test('KAL-405 three taps in one Ink annotation import as three dots', () => {
+  const viewport = makeViewport({ pageHeight: 200 });
+
+  const obj = convertPdfAnnotationToFabric({
+    id: 'ink-tap-triple',
+    subtype: 'Ink',
+    color: [1, 0, 1],
+    borderStyle: { width: 6 },
+    inkLists: [[20, 100], [60, 100], [100, 100]],
+  }, viewport);
+
+  assert.equal(obj.pdfInkTapDot, true);
+  assert.equal(obj.width, 86, 'spans the outer edges of the first and last dot');
+  assert.equal(obj.height, 6);
+  assert.equal(obj.polygons.length, 3, 'one filled ring per tap');
+});
+
+test('KAL-405 an imported ink dot survives export back into the PDF', async () => {
+  const source = await PDFDocument.create();
+  source.addPage([200, 200]);
+  const sourceBytes = await source.save();
+  const pdfFile = {
+    name: 'ink-dot-export.pdf',
+    async arrayBuffer() {
+      return sourceBytes.buffer.slice(
+        sourceBytes.byteOffset,
+        sourceBytes.byteOffset + sourceBytes.byteLength,
+      );
+    },
+  };
+
+  const viewport = makeViewport({ pageHeight: 200 });
+  const dot = {
+    ...convertPdfAnnotationToFabric({
+      id: 'ink-tap-export',
+      subtype: 'Ink',
+      color: [1, 0, 0],
+      borderStyle: { width: 6 },
+      inkLists: [[80, 120]],
+    }, viewport),
+    // An UNEDITED imported annotation is preserved verbatim from the source
+    // file, so the exporter only re-authors it once the user has touched it.
+    // That re-authoring is the path this test exercises.
+    pdfImportedEditState: 'edited',
+  };
+
+  // Legacy shape: an imported tap saved BEFORE this fix — raw degenerate
+  // geometry with no dot substitution. The exporter must still write a dot.
+  const legacyTap = {
+    id: 'ink-tap-legacy',
+    type: 'path',
+    left: 40,
+    top: 40,
+    width: 0,
+    height: 0,
+    path: [['M', 0, 0]],
+    stroke: 'rgba(0, 0, 255, 1)',
+    fill: null,
+    strokeWidth: 6,
+    isPdfImported: true,
+    pdfAnnotationType: 'Ink',
+    pdfImportedEditState: 'edited',
+  };
+
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+  let exportedBytes;
+  try {
+    exportedBytes = await savePDFWithAnnotationsPdfLib(
+      pdfFile,
+      { 1: { objects: [dot, legacyTap] } },
+      { 1: { width: 200, height: 200 } },
+      null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-kal405' },
+    );
+  } finally {
+    globalThis.window = originalWindow;
+  }
+
+  // Assert on the PDF that was actually written, not on Survey's own embedded
+  // state: a tap that still paints nothing would land as a zero-size /Rect
+  // with a one-point /InkList, which is exactly the bug.
+  const written = await PDFDocument.load(exportedBytes);
+  const annots = written.getPages()[0].node.Annots();
+  assert.equal(annots.size(), 2, 'both taps are written back into the PDF');
+
+  const expectedFill = ['1 0 0 rg', '0 0 1 rg'];
+  for (let index = 0; index < annots.size(); index += 1) {
+    const dict = annots.lookup(index);
+    assert.equal(dict.get(PDFName.of('Subtype')).toString(), '/Ink');
+
+    const rect = dict.get(PDFName.of('Rect')).asArray().map((n) => n.asNumber());
+    const rectWidth = rect[2] - rect[0];
+    const rectHeight = rect[3] - rect[1];
+    assert.ok(rectWidth > 5 && rectWidth < 7, `exported dot keeps the 6pt pen width (got ${rectWidth})`);
+    assert.ok(Math.abs(rectWidth - rectHeight) < 0.5, 'exported dot is round');
+
+    // A real ring, not the single point that painted nothing.
+    const inkList = written.context.lookup(dict.get(PDFName.of('InkList')));
+    assert.ok(inkList.lookup(0).size() > 8, 'exported /InkList carries the dot outline');
+
+    // The appearance stream fills — with the source colour, untransformed.
+    const form = written.context.lookup(dict.get(PDFName.of('AP')).get(PDFName.of('N')));
+    const content = inflateSync(Buffer.from(form.getContents())).toString('latin1');
+    assert.ok(content.includes(expectedFill[index]), `dot ${index} keeps its source colour`);
+    assert.ok(/\bf\*?\b/.test(content), 'the dot is filled, not stroked');
+  }
 });

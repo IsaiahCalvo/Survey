@@ -513,9 +513,15 @@ async function cmdWatermark(documentId, flags) {
 //   .select('*')
 //   .eq('document_id', id)
 //   .in('annotation_type', ['survey-marker','highlight'])   // SURVEY_MARKER_TYPE_VALUES
-//   .order('page_number', { ascending: true })
-//   .range(from, from + 999)                                 // OFFSET pagination
-//   loop, from += 1000, until a short page (< 1000 rows)
+//   .order('id', { ascending: true })
+//   .gt('id', cursorId)                                      // keyset pagination
+//   .limit(1000)
+//   loop, cursor = last row id, until a short page (< 1000 rows)
+//
+// KAL-282 (2026-08-19): both the app and this mirror moved OFF offset
+// pagination. `page_number` is not unique, so `.range()` over that ordering
+// could skip or duplicate rows across window boundaries and this harness
+// would then report a wrong ground-truth count.
 //
 // then DROP legacy fabric-carrying survey-marker rows in memory:
 //   isSurveyMarkerType(annotation_type) && !!annotation_data?.fabricObject
@@ -542,21 +548,25 @@ async function cmdSurveyRead(documentId, flags) {
   const rows = [];
   const reads = [];
   const wallT0 = performance.now();
-  for (let from = 0; ; from += SURVEY_READ_PAGE_SIZE) {
+  let cursorId = null;
+  for (;;) {
     const t0 = performance.now();
-    const { data, error } = await supabase
+    let query = supabase
       .from('document_annotations')
       .select('*')
       .eq('document_id', documentId)
       .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-      .order('page_number', { ascending: true })
-      .range(from, from + SURVEY_READ_PAGE_SIZE - 1);
+      .order('id', { ascending: true })
+      .limit(SURVEY_READ_PAGE_SIZE);
+    if (cursorId !== null) query = query.gt('id', cursorId);
+    const { data, error } = await query;
     const ms = performance.now() - t0;
-    if (error) throw new Error(`survey-read page (from ${from}): ${error.message}`);
+    if (error) throw new Error(`survey-read page (after ${cursorId ?? 'start'}): ${error.message}`);
     const batch = data || [];
     reads.push({ ms: Math.round(ms), count: batch.length });
     rows.push(...batch);
     if (batch.length < SURVEY_READ_PAGE_SIZE) break;
+    cursorId = batch[batch.length - 1].id;
   }
   const wallMs = Math.round(performance.now() - wallT0);
 
@@ -590,7 +600,7 @@ function cmdHelp() {
   node agent-cli/index.mjs survey-read <documentId> [--mode user|service]
       reproduce + time the LEGACY Survey Marker hydrate EXACTLY as the app's
       getDocumentAnnotations does: select('*'), .in('annotation_type',
-      ['survey-marker','highlight']), order by page_number, OFFSET range
+      ['survey-marker','highlight']), order by id, keyset (id > cursor)
       pagination until a short page, then drop fabric-carrying rows in memory.
       Reports the post-drop rowCount (ground truth), wall-clock ms, REST pages.
 

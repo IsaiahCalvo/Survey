@@ -15,6 +15,7 @@ import Icon from './Icons';
 import CreateCategoryModal from './components/CreateCategoryModal';
 import EntityIndicator from './components/EntityIndicator';
 import Spinner from './components/Spinner';
+import { useTooltip } from './components/Tooltip';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableRearrangeList';
 import { moveItemById } from './reorder/flatReorderUtils.js';
@@ -75,23 +76,29 @@ const SurveyMarkerLeadingSelect = ({
   title,
   ariaLabel,
   category = false
-}) => (
-  <button
-    type="button"
-    className={`survey-marker-leading-control survey-marker-leading-check${category ? ' survey-marker-leading-control-category' : ''}${selected ? ' is-selected' : ''}`}
-    title={title}
-    aria-label={ariaLabel}
-    aria-pressed={selected}
-    onClick={(event) => {
-      event.stopPropagation();
-      onClick?.(event);
-    }}
-  >
-    <span className="survey-marker-leading-checkbox" aria-hidden="true">
-      {selected && <span className="survey-marker-leading-checkmark">✓</span>}
-    </span>
-  </button>
-);
+}) => {
+  // KAL-65: rail controls use the app's instant shared tooltip, never a native
+  // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
+  return (
+    <button
+      type="button"
+      className={`survey-marker-leading-control survey-marker-leading-check${category ? ' survey-marker-leading-control-category' : ''}${selected ? ' is-selected' : ''}`}
+      {...tip(title, 'below')}
+      aria-label={ariaLabel}
+      aria-pressed={selected}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(event);
+      }}
+    >
+      <span className="survey-marker-leading-checkbox" aria-hidden="true">
+        {selected && <span className="survey-marker-leading-checkmark">✓</span>}
+      </span>
+    </button>
+  );
+};
 
 const formatConflictFieldLabel = (field) => {
   if (!field) return null;
@@ -102,6 +109,89 @@ const formatConflictFieldLabel = (field) => {
   if (field === 'changedDate') return 'Changed date';
   if (String(field).startsWith('answer:')) return 'Checklist answer';
   return String(field);
+};
+
+/* KAL-292 — "Rows we couldn't place".
+   Rows that arrive from the linked Excel workbook but map to NO Survey Marker used to be
+   dropped silently: the user's Excel edits just never appeared and nothing said why. This
+   compact list sits at the top of the Survey panel and names each one (sheet, row number,
+   Item cell) with a plain-English reason.
+   UX rules baked in here:
+     - Renders NOTHING when there are no unplaced rows, so it adds no permanent chrome.
+     - A whole-change-set hold is explained ONCE at the top; the per-row reasons are then
+       suppressed (a hundred identical sentences is worse than useless).
+     - The only actions are Dismiss / Dismiss all. There is deliberately NO "apply anyway":
+       these are exactly the rows the server refused to write, and applying them from the
+       client would route around that server-side gate. */
+const ExcelUnplacedRows = ({
+  rows = [],
+  batchTitle = null,
+  batchNotice = null,
+  onDismiss,
+  onDismissAll
+}) => {
+  if (!rows || rows.length === 0) return null;
+
+  const describeRow = (row) => {
+    const parts = [];
+    if (row.rowNumber) parts.push(`Row ${row.rowNumber}`);
+    if (row.sheetName) parts.push(row.sheetName);
+    return parts.join(' · ');
+  };
+
+  return (
+    <section className="survey-unplaced" aria-label="Rows we couldn’t place">
+      <div className="survey-unplaced-header">
+        <img src={reviewWarningIcon} alt="" width={14} height={14} aria-hidden="true" />
+        <span className="survey-unplaced-title">
+          {batchTitle || `Rows we couldn’t place (${rows.length})`}
+        </span>
+        <button
+          type="button"
+          className="survey-unplaced-dismiss-all"
+          title="Hide this list. Rows come back on the next sync if they still can’t be placed."
+          onClick={() => onDismissAll?.()}
+        >
+          Dismiss all
+        </button>
+      </div>
+      {batchNotice && (
+        <p className="survey-unplaced-notice">{batchNotice}</p>
+      )}
+      {!batchNotice && (
+        <p className="survey-unplaced-notice">
+          These rows came from the linked Excel file but couldn’t be matched to a Survey Marker,
+          so nothing in the app was changed.
+        </p>
+      )}
+      <ul className="survey-unplaced-list">
+        {rows.map((row) => (
+          <li key={row.key} className="survey-unplaced-row">
+            <div className="survey-unplaced-row-main">
+              <span className="survey-unplaced-row-name">
+                {row.itemName || 'Unnamed row'}
+              </span>
+              {describeRow(row) && (
+                <span className="survey-unplaced-row-where">{describeRow(row)}</span>
+              )}
+              {row.message && (
+                <span className="survey-unplaced-row-reason">{row.message}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              className="survey-unplaced-row-dismiss"
+              title="Hide this row. It comes back on the next sync if it still can’t be placed."
+              aria-label={`Dismiss ${row.itemName || 'this row'}`}
+              onClick={() => onDismiss?.(row.key)}
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 };
 
 const SurveyMarkerReviewIndicator = ({
@@ -325,6 +415,10 @@ const SurveySpacesRail = ({
   surveyTemplates = [],
   surveyReviewByMarkerId = {},
   surveyConflictByMarkerId = {},
+  // KAL-292 — { rows, batchNotice, batchTitle } for the "Rows we couldn't place" surface.
+  surveyUnplacedRows = null,
+  onDismissUnplacedRow = null,
+  onDismissAllUnplacedRows = null,
   onResolveExcelConflict = null,
   user,
   expandRequestKey = 0,
@@ -332,6 +426,10 @@ const SurveySpacesRail = ({
   onCollapseChange = null,
   mobileMode = false,
 }) => {
+  // KAL-65: rail controls use the app's instant shared tooltip, never a native
+  // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
+  // two showed users two different tooltips on the same control).
+  const tip = useTooltip();
   // KAL-57: themed replacement for the native confirm() that gated the three
   // bulk-delete actions in this rail (categories, copied items, category
   // items). Promise-based so each handler keeps its original
@@ -1191,7 +1289,7 @@ const SurveySpacesRail = ({
                           requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                         }}
                         aria-label="Survey"
-                        title="Survey"
+                        {...tip('Survey', 'left')}
                         style={{
                           background: 'transparent',
                           border: 'none',
@@ -1619,6 +1717,17 @@ const SurveySpacesRail = ({
                       </div>
                     </div>
                   )}
+
+                  {/* KAL-292 — rows the linked Excel sent that couldn't be matched to a
+                      Survey Marker. Sits above the panel content and collapses to nothing
+                      when there are none. */}
+                  <ExcelUnplacedRows
+                    rows={surveyUnplacedRows?.rows}
+                    batchTitle={surveyUnplacedRows?.batchTitle}
+                    batchNotice={surveyUnplacedRows?.batchNotice}
+                    onDismiss={onDismissUnplacedRow}
+                    onDismissAll={onDismissAllUnplacedRows}
+                  />
 
                   {/* Panel Content */}
                   {/* UX (mobile demo parity): when a Survey Marker is selected on
@@ -2103,7 +2212,7 @@ const SurveySpacesRail = ({
                                         onClick={deleteSelectedCategories}
                                         disabled={!hasSelectedCategories}
                                         className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
-                                        title="Delete"
+                                        {...tip('Delete', 'below')}
                                         aria-label="Delete selected categories"
                                       >
                                         <Icon name="trash" size={12} />
@@ -2443,7 +2552,7 @@ const SurveySpacesRail = ({
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.background = 'transparent';
                               }}
-                              title={
+                              {...tip(
                                 liveSyncSupported === false
                                   ? 'Live sync requires Microsoft 365 Business account'
                                   : gateRefused || gateChecking
@@ -2454,8 +2563,9 @@ const SurveySpacesRail = ({
                                         ? 'Connecting to Excel...'
                                         : liveSyncStatus === 'error'
                                           ? 'Live sync error - click to retry'
-                                          : 'Enable live sync for real-time Excel updates'
-                              }
+                                          : 'Enable live sync for real-time Excel updates',
+                                'below'
+                              )}
                             >
                               <span style={{ fontSize: '14px' }}>
                                 {liveSyncStatus === 'connecting' || gateChecking
@@ -2496,13 +2606,14 @@ const SurveySpacesRail = ({
                               }}
                               onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              title={
+                              {...tip(
                                 verifying
                                   ? liveSyncVerifyStatus('verifying').label
                                   : verdict
                                     ? verdict.label
-                                    : liveSyncVerifyStatus('idle').label
-                              }
+                                    : liveSyncVerifyStatus('idle').label,
+                                'below'
+                              )}
                             >
                               <span style={{ fontSize: '14px' }}>
                                 {verifying ? '...' : verdict ? (liveSyncVerify.ready ? '✓' : '!') : '○'}
@@ -2874,7 +2985,7 @@ const SurveySpacesRail = ({
                                   type="button"
                                   onClick={openCreateCategoryModal}
                                   className="survey-marker-category-create-button"
-                                  title="Create category"
+                                  {...tip('Create category', 'below')}
                                   aria-label="Create category"
                                 >
                                   <Icon name="plus" size={14} />
@@ -3200,7 +3311,7 @@ const SurveySpacesRail = ({
                                                 }}
                                                 disabled={itemSelectedCount === 0}
                                                 className="survey-marker-select-action survey-marker-select-action-icon survey-marker-select-action-danger"
-                                                title="Delete"
+                                                {...tip('Delete', 'below')}
                                                 aria-label="Delete selected items"
                                               >
                                                 <Icon name="trash" size={12} />
@@ -3415,7 +3526,7 @@ const SurveySpacesRail = ({
                                                           e.stopPropagation();
                                                           toggleSurveyMarkerExpanded(annotationId);
                                                         }}
-                                                        title={isSurveyMarkerExpanded ? 'Collapse' : 'Expand'}
+                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
                                                         aria-label={isSurveyMarkerExpanded ? 'Collapse marker details' : 'Expand marker details'}
                                                         style={{
                                                           width: '18px',
@@ -3442,7 +3553,7 @@ const SurveySpacesRail = ({
                                                           className="survey-marker-name-inline"
                                                           defaultValue={surveyMarkerName}
                                                           key={`${annotationId}:${surveyMarkerName}`}
-                                                          title="Rename Survey Marker"
+                                                          {...tip('Rename Survey Marker', 'below')}
                                                           aria-label={`Rename ${surveyMarkerName}`}
                                                           onClick={(e) => e.stopPropagation()}
                                                           onDoubleClick={(e) => e.currentTarget.select()}
@@ -3474,7 +3585,7 @@ const SurveySpacesRail = ({
                                                       </span>
                                                       <div
                                                         className="survey-marker-expand-spacer"
-                                                        title={isSurveyMarkerExpanded ? 'Collapse' : 'Expand'}
+                                                        {...tip(isSurveyMarkerExpanded ? 'Collapse' : 'Expand', 'below')}
                                                         aria-hidden="true"
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -3532,7 +3643,7 @@ const SurveySpacesRail = ({
                                                       e.currentTarget.style.opacity = '0.78';
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    title={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                    {...tip(surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes", 'below')}
                                                     aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
                                                   >
                                                     <Icon name="pen" size={13} />
@@ -3565,7 +3676,7 @@ const SurveySpacesRail = ({
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    title={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
+                                                    {...tip(surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF", 'below')}
                                                     aria-label={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this Survey Marker" : "Set location on PDF"}
                                                   >
                                                     <Icon name="search" size={14} />
@@ -3815,7 +3926,7 @@ const SurveySpacesRail = ({
                                                               }}
                                                             >
                                                               <span
-                                                                title={`Archived${item.archivedAt ? ` ${new Date(item.archivedAt).toLocaleString()}` : ''} — read-only historical response`}
+                                                                {...tip(`Archived${item.archivedAt ? ` ${new Date(item.archivedAt).toLocaleString()}` : ''} — read-only historical response`, 'below')}
                                                                 style={{
                                                                   color: '#8d96a6',
                                                                   fontSize: '12px',
