@@ -31914,8 +31914,17 @@ ${pageBlocks}
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
                   const isEraser = t.id === 'eraser';
-                  // TODO: Revisit native PDF text markup tools later. For now the
-                  // highlighter UI is freehand-only so testing stays focused.
+                  // UX (KAL-240): the Highlighter is FREEHAND-ONLY in the toolbar.
+                  // Intended UX: the user is never offered a control that does
+                  // nothing. The native PDF "Text highlight" mode is NOT implemented
+                  // — PdfjsViewerContainer accepts `textHighlightModeActive` /
+                  // `textMarkupMode` but ignores them, PageAnnotationLayer has no
+                  // 'text-highlight' branch, and selection/deletion route to stubs
+                  // (selectTextMarkupAtPoint → null, deleteSelectedTextMarkupAnnotation
+                  // → false). So the split menu that offers "Text highlight" stays
+                  // hidden, exactly like the Underline / Strike Through / Squiggly
+                  // tools that are commented out of the Review group below. Flip this
+                  // to true only when KAL-240 lands the real implementation.
                   const showTextMarkupHighlightMenu = false;
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
                   const hasSplitMenu = isEraser || isHighlighterSplitMenu;
