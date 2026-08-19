@@ -6,6 +6,16 @@
  * document/storage usage from Supabase, and returns guard helpers
  * (canCreateProject, canUploadDocument, canCreateTemplate/Region, hasFeatureAccess)
  * plus usage-percentage / remaining-quota / formatBytes utilities.
+ *
+ * Storage usage is GROUND TRUTH (KAL-390). It comes from the
+ * get_actual_storage_usage() RPC, which sums the real object sizes in the
+ * user's folder of the `documents` storage bucket. It deliberately does NOT
+ * come from user_subscriptions.storage_used_bytes: that column is a running
+ * total of client-supplied documents.file_size values maintained by triggers on
+ * the documents table, so it drifts from reality (measured 38.6% low on
+ * production, 2026-08-19) and would show the user a figure with no relation to
+ * the bytes they are actually storing. See
+ * supabase/migrations/20260819010000_kal390_usage_meter_ground_truth.sql.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
@@ -74,8 +84,18 @@ export const useSubscriptionLimits = () => {
   // useSubscriptionLimits consumers (Dashboard + UsageIndicator). The exposed
   // `refetch` calls with the default (bypass) so a deliberate refresh always
   // hits the network. See KAL-251.
+  //
+  // Call frequency matters here because the storage read is now a live scan:
+  // get_actual_storage_usage() is STABLE and does a `LIKE` prefix match over
+  // storage.objects, so it is more expensive than reading a counter column.
+  // It is NOT in a render loop — this runs once per signed-in user (the effect
+  // below keys on the user id, not the user object, so AuthContext re-emitting
+  // an equal user does not refire it), boot calls are coalesced across the
+  // Dashboard and UsageIndicator consumers, and the only other caller is the
+  // explicit refresh in Dashboard. Nothing polls it.
+  const userId = user?.id ?? null;
   const fetchUsage = useCallback(async ({ coalesce = false } = {}) => {
-    if (!user || !isSupabaseAvailable()) {
+    if (!userId || !isSupabaseAvailable()) {
       setLoading(false);
       return;
     }
@@ -87,29 +107,37 @@ export const useSubscriptionLimits = () => {
         // These three reads are independent — run them concurrently instead of
         // as a 3-round-trip waterfall. Supabase resolves (never rejects) with
         // {data,error}, so error checks below preserve the original throw order.
-        const [projectRes, documentRes, subRes] = await Promise.all([
-          supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-          supabase.from('documents').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-          supabase.from('user_subscriptions').select('storage_used_bytes').eq('user_id', user.id).single(),
+        const [projectRes, documentRes, storageRes] = await Promise.all([
+          supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+          supabase.from('documents').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+          // Ground truth: real bytes in the user's storage folder. The RPC is
+          // SECURITY DEFINER and self-scopes to auth.uid(), so p_user_id is
+          // only a readability aid — a caller cannot read anyone else's total.
+          supabase.rpc('get_actual_storage_usage', { p_user_id: userId }),
         ]);
 
         if (projectRes.error) throw projectRes.error;
         if (documentRes.error) throw documentRes.error;
-        if (subRes.error && subRes.error.code !== 'PGRST116') throw subRes.error;
+        // No silent fallback to user_subscriptions.storage_used_bytes if this
+        // fails. That counter is known-wrong; showing it would be worse than
+        // surfacing the error, because the user cannot tell a stale meter from
+        // a broken one.
+        if (storageRes.error) throw storageRes.error;
 
         const projectCount = projectRes.count;
         const documentCount = documentRes.count;
-        const subData = subRes.data;
 
         return {
           projects: projectCount || 0,
           documents: documentCount || 0,
-          storage: subData?.storage_used_bytes || 0,
+          // The RPC returns a bigint, which PostgREST may serialize as a
+          // string once it exceeds 2^53 — coerce before it reaches the meter.
+          storage: Number(storageRes.data) || 0,
         };
       };
 
       const next = coalesce
-        ? await coalesceRead(`usage:${user.id}`, runUsageQuery)
+        ? await coalesceRead(`usage:${userId}`, runUsageQuery)
         : await runUsageQuery();
 
       setUsage(next);
@@ -120,7 +148,7 @@ export const useSubscriptionLimits = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     fetchUsage({ coalesce: true });
