@@ -69,9 +69,32 @@ function debugFixturesPlugin() {
     name: 'serve-debug-fixtures',
     configureServer(server) {
       server.middlewares.use('/debug-fixtures', (req, res, next) => {
+        // KAL-289 hardening. This dev route is reachable from the tailnet, not
+        // just from localhost (see server.allowedHosts: ['.ts.net'] below), so
+        // the containment check has to hold against hostile input:
+        //   * only GET is served;
+        //   * a malformed percent-escape returns 400 instead of throwing;
+        //   * the resolved path is passed through fs.realpathSync so a symlink
+        //     inside debug/fixtures/ cannot point outside the fixtures root.
+        if (req.method !== 'GET') {
+          res.statusCode = 405;
+          res.setHeader('Allow', 'GET');
+          res.end('Method Not Allowed');
+          return;
+        }
         const fixturesRoot = path.resolve(__dirname, 'debug', 'fixtures');
-        const filePath = path.resolve(fixturesRoot, '.' + decodeURIComponent(req.url));
-        if (filePath !== fixturesRoot && !filePath.startsWith(fixturesRoot + path.sep)) {
+        let decodedUrl;
+        try {
+          decodedUrl = decodeURIComponent(req.url);
+        } catch (_e) {
+          res.statusCode = 400;
+          res.end('Bad Request');
+          return;
+        }
+        const contains = (candidate) =>
+          candidate === fixturesRoot || candidate.startsWith(fixturesRoot + path.sep);
+        const filePath = path.resolve(fixturesRoot, '.' + decodedUrl);
+        if (!contains(filePath)) {
           res.statusCode = 403;
           res.end('Forbidden');
           return;
@@ -81,10 +104,25 @@ function debugFixturesPlugin() {
           res.end('Not found');
           return;
         }
-        const stat = fs.statSync(filePath);
+        // Re-check after resolving symlinks: existsSync/statSync follow links,
+        // so a symlink inside the fixtures dir could otherwise serve any file.
+        let realPath;
+        try {
+          realPath = fs.realpathSync(filePath);
+        } catch (_e) {
+          res.statusCode = 404;
+          res.end('Not found');
+          return;
+        }
+        if (!contains(realPath)) {
+          res.statusCode = 403;
+          res.end('Forbidden');
+          return;
+        }
+        const stat = fs.statSync(realPath);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', stat.size);
-        fs.createReadStream(filePath).pipe(res);
+        fs.createReadStream(realPath).pipe(res);
       });
     }
   };
