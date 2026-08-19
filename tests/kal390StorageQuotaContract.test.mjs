@@ -12,6 +12,11 @@ const triggerMigrationPath = path.join(
   repoRoot,
   'supabase/migrations/20260818010000_kal390_storage_quota_trigger.sql',
 );
+const groundTruthMigrationPath = path.join(
+  repoRoot,
+  'supabase/migrations/20260819010000_kal390_usage_meter_ground_truth.sql',
+);
+const usageHookPath = path.join(repoRoot, 'src/hooks/useSubscriptionLimits.js');
 
 function readMigration() {
   return fs.readFileSync(migrationPath, 'utf8');
@@ -19,6 +24,10 @@ function readMigration() {
 
 function readTriggerMigration() {
   return fs.readFileSync(triggerMigrationPath, 'utf8');
+}
+
+function readGroundTruthMigration() {
+  return fs.readFileSync(groundTruthMigrationPath, 'utf8');
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +66,11 @@ test('live usage helper keeps the house function hardening and grants', () => {
   match(sql, /REVOKE EXECUTE ON FUNCTION public\.get_actual_storage_usage\(UUID\) FROM anon/);
 });
 
-test('documents INSERT policy keeps the count cap but sources storage from live usage', () => {
+test('20260817010000 shipped the documents policy with a client-supplied file_size term', () => {
+  // Historical pin only. This file is applied to production and must not be
+  // edited; 20260819010000 supersedes the storage clause asserted here (the
+  // `+ COALESCE(file_size, 0)` term was client-controlled AND double-counted on
+  // the bytes-first upload paths). See the ground-truth tests further down.
   const sql = readMigration();
   const start = sql.indexOf('CREATE POLICY "Users can upload documents within limits"');
   const end = sql.indexOf('COMMENT ON POLICY "Users can upload documents within limits"', start);
@@ -66,7 +79,6 @@ test('documents INSERT policy keeps the count cap but sources storage from live 
 
   // Count cap unchanged (Fix 26 shape) — KAL-390 must not touch COUNT caps.
   match(policy, /SELECT COUNT\(\*\)[\s\S]+FROM public\.documents[\s\S]+archived = FALSE[\s\S]+< public\.get_document_limit\(auth\.uid\(\)\)/);
-  // Storage clause reads live usage, not user_subscriptions.storage_used_bytes.
   match(policy, /public\.get_actual_storage_usage\(auth\.uid\(\)\)[\s\S]+\+ COALESCE\(file_size, 0\)[\s\S]+<= public\.get_storage_limit\(auth\.uid\(\)\)/);
   doesNotMatch(policy, /storage_used_bytes/);
   doesNotMatch(policy, /user_subscriptions/);
@@ -168,4 +180,131 @@ test('the RLS policies are an early advisory gate that cannot lock out saves', (
     // still save and shrink.
     match(policy, /COALESCE\(\(metadata->>'contentLength'\)::bigint, 0\)\s+<= public\.get_stored_object_size\(bucket_id, name\)\s+OR/);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 20260819010000 — the last two surfaces that still trusted client numbers:
+// the documents INSERT policy's file_size term, and the usage meter's read of
+// user_subscriptions.storage_used_bytes.
+// ---------------------------------------------------------------------------
+
+test('the documents INSERT policy storage clause has no client-supplied term', () => {
+  const sql = readGroundTruthMigration();
+  const start = sql.indexOf('CREATE POLICY "Users can upload documents within limits"');
+  const end = sql.indexOf('COMMENT ON POLICY "Users can upload documents within limits"', start);
+  ok(start >= 0 && end > start, 'migration must recreate the documents INSERT policy');
+  const policy = sql.slice(start, end);
+
+  // Count cap copied through verbatim — KAL-390 must never touch COUNT caps.
+  match(policy, /SELECT COUNT\(\*\)[\s\S]+FROM public\.documents[\s\S]+archived = FALSE[\s\S]+< public\.get_document_limit\(auth\.uid\(\)\)/);
+
+  // Ground truth only: live usage against the tier limit, nothing else.
+  match(
+    policy,
+    /AND public\.get_actual_storage_usage\(auth\.uid\(\)\)\s+<= public\.get_storage_limit\(auth\.uid\(\)\)/,
+  );
+  // The three client-influenced inputs must all be gone from the clause.
+  doesNotMatch(policy, /file_size/);
+  doesNotMatch(policy, /storage_used_bytes/);
+  doesNotMatch(policy, /user_subscriptions/);
+
+  // `<=`, never `<`: the bytes-first upload paths land the object BEFORE the
+  // documents row, so an exactly-filling upload leaves usage == limit and `<`
+  // would reject a row for bytes the trigger already accepted.
+  doesNotMatch(policy, /get_actual_storage_usage\(auth\.uid\(\)\)\s+< public\.get_storage_limit/);
+});
+
+test('the reconciliation helpers compute the legacy counter from storage.objects', () => {
+  const sql = readGroundTruthMigration();
+
+  for (const signature of [
+    'CREATE OR REPLACE FUNCTION public.recalculate_user_storage(p_user_id UUID)',
+    'CREATE OR REPLACE FUNCTION public.recalculate_all_user_storage()',
+  ]) {
+    ok(sql.includes(signature), `migration must redefine ${signature}`);
+  }
+
+  const single = sql.slice(
+    sql.indexOf('CREATE OR REPLACE FUNCTION public.recalculate_user_storage'),
+    sql.indexOf('COMMENT ON FUNCTION public.recalculate_user_storage'),
+  );
+  const all = sql.slice(
+    sql.indexOf('CREATE OR REPLACE FUNCTION public.recalculate_all_user_storage'),
+    sql.indexOf('COMMENT ON FUNCTION public.recalculate_all_user_storage'),
+  );
+
+  for (const body of [single, all]) {
+    // Ground truth, not SUM(documents.file_size) as the 20241226000001 originals did.
+    match(body, /FROM storage\.objects o/);
+    match(body, /SUM\(\(o\.metadata->>'size'\)::bigint\)/);
+    match(body, /o\.bucket_id = 'documents'/);
+    doesNotMatch(body, /file_size/);
+    doesNotMatch(body, /FROM public\.documents/);
+    // Pre-existing SECURITY DEFINER hardening gap closed while repointing them.
+    match(body, /SECURITY DEFINER\s+SET search_path = ''/);
+  }
+
+  // Self-scoping, same idiom as get_actual_storage_usage: an authenticated
+  // caller can only ever reconcile their own row.
+  match(single, /COALESCE\(auth\.uid\(\), p_user_id\)/);
+
+  // Whole-table maintenance must not be reachable by an end user. It was
+  // EXECUTE-granted to `authenticated` with no scoping before this migration.
+  match(sql, /GRANT EXECUTE ON FUNCTION public\.recalculate_all_user_storage\(\) TO service_role/);
+  match(sql, /REVOKE EXECUTE ON FUNCTION public\.recalculate_all_user_storage\(\) FROM anon, authenticated/);
+  match(sql, /GRANT EXECUTE ON FUNCTION public\.recalculate_user_storage\(UUID\) TO authenticated, service_role/);
+});
+
+test('the legacy display counter is marked non-authoritative in the schema', () => {
+  const sql = readGroundTruthMigration();
+
+  match(sql, /COMMENT ON COLUMN public\.user_subscriptions\.storage_used_bytes IS/);
+  match(sql, /LEGACY \/ NON-AUTHORITATIVE \(KAL-390\)/);
+  match(sql, /public\.get_actual_storage_usage\(uid\) instead/);
+});
+
+test('this migration does not redefine anything the applied migrations own', () => {
+  const sql = readGroundTruthMigration();
+  // Strip `--` comments AND the bodies of COMMENT ON string literals: both
+  // legitimately name the objects this test is checking are not REDEFINED.
+  const ddl = sql
+    .replace(/--[^\n]*/g, '')
+    .replace(/COMMENT ON [\s\S]*?';/g, '');
+
+  // The byte gate stays where 20260818010000 put it.
+  doesNotMatch(ddl, /CREATE (OR REPLACE )?TRIGGER/);
+  doesNotMatch(ddl, /FUNCTION public\.enforce_documents_storage_quota/);
+  // The storage.objects policies (and the table itself) are untouched.
+  doesNotMatch(ddl, /ON storage\.objects/);
+  doesNotMatch(ddl, /documents_owner_(insert|update)/);
+  // The live-usage helpers from 20260817010000 are consumed, never redefined.
+  doesNotMatch(ddl, /FUNCTION public\.get_actual_storage_usage\s*\(/);
+  doesNotMatch(ddl, /FUNCTION public\.get_stored_object_size\s*\(/);
+  // The documents-table triggers that keep the legacy counter populated stay.
+  doesNotMatch(ddl, /FUNCTION public\.update_user_storage/);
+  doesNotMatch(ddl, /update_storage_on_(insert|delete)/);
+  // No data write: a backfill would be re-drifted by those triggers anyway.
+  doesNotMatch(ddl, /SELECT public\.recalculate_all_user_storage\(\)/);
+});
+
+test('the usage meter reads live storage, never the drifting counter', () => {
+  const source = fs.readFileSync(usageHookPath, 'utf8');
+  // The header comment explains at length why storage_used_bytes is not used,
+  // so the "must not appear" assertions have to run against code only.
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+  // The meter's storage figure comes from the ground-truth RPC.
+  match(code, /supabase\.rpc\('get_actual_storage_usage', \{ p_user_id: userId \}\)/);
+  // and never from the display-only counter.
+  doesNotMatch(code, /storage_used_bytes/);
+  doesNotMatch(code, /user_subscriptions/);
+  // A failed RPC must surface, not silently fall back to a known-wrong number.
+  match(code, /if \(storageRes\.error\) throw storageRes\.error;/);
+  // bigint-over-2^53 arrives as a string from PostgREST.
+  match(code, /storage: Number\(storageRes\.data\) \|\| 0/);
+  // The live scan must not be re-triggered by AuthContext re-emitting an equal
+  // user object — the fetch callback keys on the id.
+  match(code, /\}, \[userId\]\);/);
 });
