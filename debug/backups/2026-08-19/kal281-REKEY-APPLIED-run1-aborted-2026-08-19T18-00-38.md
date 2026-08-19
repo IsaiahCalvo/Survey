@@ -1,0 +1,66 @@
+# Storage re-key (APPLIED) — cvamwtpsuvxvjdnotbeg.supabase.co
+
+> **RUN ABORTED on the first failure.** 72 file(s) were moved and hash-verified before the stop; 14 were not attempted. The failing file's original object was NOT deleted. See errors below.
+
+- rows on non-canonical paths: 87
+- moved (each copy read back and re-hashed against the row fingerprint): 72
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1776863393123.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/593d8c5767b1f9af3ee9ad98d1cb974364745f2ea854f82ca7e3b9547c78c017.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1777501868869.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/72ea93db9d2c723d99ce09b95dc70af79fb2b43e456f7e4b54f2f6c864d5b7c9.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1777997563686.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/aced309312e32602714b0bf4eaeec55448b0a61e6219c1c4f477dc6705343a9e.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1778559571622.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/ef66615c7e010a588297db895db4f980375a1d594d5458b77dd03cc3a500b9a5.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/general/1778593753115.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/ceaff6cf949d7b18dc7ee8f70d5d2139e296e37b3783e71e8b427489eab060cc.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512175410.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/b7249715fa26b177179bcf6df84a4834b560fc259d180356d4b07cc0bd9c3e38.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512180210.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/c39654b5d8f0e699bd3a79bdc97c21ee76f1bb1924ea3d770c1b5a0a059d08dd.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512180438.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/2864a214cd5bec2bd8d3811361fc788c0b950d176e4f964ba4627061f7f51c62.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512182738.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/330365faed7d7b7b897e9fd61c21b9c937fb58268e4c051fd770b7683f03521a.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512182912.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/c3ee12ac75ecdd525e9b7309e49bb01c4909dd0849beef7fc7cb54a2206a60bd.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512184555.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/28d72f3155488f5b0a228876f57327a0c42c89cec8ac3d0e36ec3f27c55f2320.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512184859.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/b7b7d1201c4603aac2679c471c3297ced3954c674bee2fec7f6467e9e4629878.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512185138.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/1060c71c1dd2428f5203cffb5b171e0cead1b6487ea5c818e823980919846cc5.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512185439.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/5d5a6d18e0e6cc7dbed20aa687dc2c16d2dc47c88e36cac7e68dada0ebef7799.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512185712.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/7200194d90e59df46a0c7be9542c8623403ccde9385be1fab7d95720608af196.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512190054.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/1ca96a86db63d31c21c5ab8838103235020c492e9c77499ce0fdaaf98bd20622.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512190503.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/bcf6069cd89243eb924f67d94ad205f4c709e1153976d26fb8e826e4b55e7e16.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512190702.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/34e15b5241137da5f19c6b6529d03ed191198d6a2089621eab08dcc38a04d3f0.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512190850.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/7e2c2396251ba6c33e80698768b6de13fd010fd323a99e8acbfc511e6875d476.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512191126.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/be77cea80892fb063e95a3d4234bd39520ec93df98c71d25275ceb22c99d0490.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512193929.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/5e9eabaed643baadd346b4cd41f593396c6b96798d886893d5a096e10d3ebe9e.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512194236.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/f4aaa5c29346df220a9fa12b683c364b0df2d197827a98ce6c19668784a270fe.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512194545.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/651f3bcd515acfe3cdaa42dc2099e65f377eecd89c14ba3cdf3357fbddc2894c.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512194955.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/8f8d2e6973f793248edcfd1cef8018fea8808a15eaac53c944fe5a75b832fbf9.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512195422.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/02c5c6fcd1d575adc756b49d87fe648c38f1d5ffd5c60dede9164814cb67737b.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512195801.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/5baed4710927a49bbd4360d0854e05bba724628d63f3ac7843efe897e184ee11.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512200154.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/91b3aba4b81b2c351abff9e7f496ff887f5a8155c1219eae51ac013be90d2f71.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512200558.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/a7b2edfd5c5e08e3a59b344af170910a26a31af66b730f570f1d985d1aa70e8d.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512205610.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/e585d0e06a5225fea2df603aed07ee27cbb2d11990b0e17ebc5a718eb9ed6b0b.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512205943.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/373c86792a559c55373a3f039072080de04539ed386d77317598fe5dbde26bf8.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512210319.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/448d24971fe40ecdbecabdbd76b7deb3aa9b2838a71df7b48771dc26e781098c.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512210737.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/c22728a3668b3e88e4f5bfa8b449ba66b936fb58d155b98bb7f0980ba9f3e7d5.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512211110.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/ad16741300c7cb63bd704277b35c6b29b854338836e7653b397f361b80012437.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512211605.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/674666b8c9a0bf8724abb59dafaa3922ba145dd5a401eec1e7af0ed5331ac6b6.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512212005.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/aca8c02fc447e77d52fb4e0eb989198cb384bb1aa9a6f8ba0d20a0fea1e410ff.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512212354.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/eca82bd29a76774ab3f97947e40685a69e319def927aeb8d010fa72300700aaf.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512212735.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/bd7140e8f94a2bc9c6494f3bb92cdd64095e830ff561c15a96819fda86c41215.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512213144.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/db75e6eb2f8ee1f5136f1eb360dc99d65d4c117ebe7b645307d0999ca596cfef.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512213550.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/99f00fee8f4742276fc72b03c0d633803357d287dfbe458102e88d9a1e175dfb.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512214049.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/f2539b69bb7d168f90d2f9be29dd6bb52b4f3d969b89df433f3cd02e6974fcba.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512215025.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/ad7e475fdadb4a675c1a2712236c5ae97827554e8aa06d8457aa41d29f286a50.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512215536.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/40fc1b912f60ecee872e04d13ec4f64dadc3d1c1884248ef7b7ca4ffaf5f7b14.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512220046.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/16296b060913fae8a2b5eb7a608fa1b2322b5caa8c3728afc57f92155735e778.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512220558.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/275edae131db969cd2c2c8559e1ab3b6d861e8cda566c9f62a697a3d2685f6d3.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512221116.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/5b5d0149f4829c758010b99067dd0eee25f20d5ab1e62f04e92e8e6d8711a454.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512230351.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/a33654d2a63dd121a3cc37f3c659264c6e97b5ba08efac3b266d904bff59b8e8.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512230938.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/5a8ff842fce57348d1e04fbaab094836e408a336e08b52e6cb4047774b0ac077.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512231521.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/06bd9c2f8481c450724c3824ed5c9644397c1baf36af4db41213c2ca5690094e.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512232111.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/e4eada59957e9b5668d7b2f490ba43cfe374c0d152bda2795f338ff2799e0a3d.pdf
+  - 170d915c-5741-4e0b-b03f-deaeedae27bd/fix19-live/20260512232657.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/64141a017f27a9a8e884545c0a919d2404dd897ae9c0a0c7830c79cde962114c.pdf
+- old objects deleted: 72
+- old objects KEPT because a non-moving row still references them: 0
+- rows SKIPPED — file_path outside own user folder (doctored/foreign, manual review): 0
+  - none
+- source object missing (skipped; see audit orphans): 0
+- moves not attempted because the run aborted: 14
+- errors: 1
+  - 266fba11-ffe9-4a76-b175-8d08c33b06a8 170d915c-5741-4e0b-b03f-deaeedae27bd/4e07d719-0709-473e-a921-2ea8affb2a82/1778869568556.pdf: storage copy 170d915c-5741-4e0b-b03f-deaeedae27bd/4e07d719-0709-473e-a921-2ea8affb2a82/1778869568556.pdf -> 170d915c-5741-4e0b-b03f-deaeedae27bd/51d55caf07ae711c4b7d8af9815ce14a695325c1ac26b0819a9dc87b927797b4.pdf: 400 {"statusCode":"409","error":"Duplicate","message":"The resource already exists","code":"KeyAlreadyExists"}
+
+Rows still lacking a sha are untouched — run backfill first.

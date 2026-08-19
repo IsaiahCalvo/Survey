@@ -19,9 +19,12 @@
 //
 //   node scripts/content-hash-maintenance.mjs rekey [--apply]
 //     For rows that have a sha but still point at a legacy path: copy the
-//     object to {user_id}/{sha}.pdf, verify the copy exists, repoint the row
-//     (service_role bypasses the file_path-immutable trigger by design), and
-//     delete the old object only after every row referencing it moved.
+//     object to {user_id}/{sha}.pdf, DOWNLOAD THE COPY BACK AND RE-HASH IT to
+//     prove it is byte-identical, repoint the row (service_role bypasses the
+//     file_path-immutable trigger by design), and delete the old object only
+//     after every row referencing it moved. The first failure aborts the whole
+//     run — the failing file's original object is left in place, and the
+//     report lists what moved and what was never attempted.
 //
 // Orphan objects are ONLY ever reported. Deleting them is Trash/GC territory
 // (decision 7, Tier B item 2) and needs Isaiah's go regardless.
@@ -189,10 +192,20 @@ function makeClient() {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ bucketId: BUCKET, sourceKey: from, destinationKey: to }),
       });
-      // 409 = destination already exists — caller must verify its BYTES match
-      // before trusting it (an existing-but-wrong object would swap contents).
-      if (!res.ok && res.status !== 409) throw new Error(`storage copy ${from} -> ${to}: ${res.status} ${await res.text()}`);
-      return res.status;
+      if (res.ok) return res.status;
+      // "Destination already exists" is EXPECTED under content addressing: two
+      // rows holding the same bytes for the same user (e.g. the same PDF added
+      // once loose and once inside a project) share one content path, so the
+      // second row's copy lands on a path the first already created.
+      // Supabase does not report this as HTTP 409 — it answers HTTP 400 with
+      // statusCode "409" / code "KeyAlreadyExists" in the BODY, so the status
+      // code alone cannot be trusted. Detect it from the body and hand control
+      // back to the caller, which then verifies the destination's BYTES before
+      // trusting it (an existing-but-wrong object would swap the contents of a
+      // user's document).
+      const body = await res.text();
+      if (res.status === 409 || /KeyAlreadyExists|"statusCode"\s*:\s*"409"/.test(body)) return 409;
+      throw new Error(`storage copy ${from} -> ${to}: ${res.status} ${body}`);
     },
     async storageRemove(paths) {
       const res = await fetch(`${base}/storage/v1/object/${BUCKET}`, {
@@ -377,30 +390,32 @@ ${results.errors.map((e) => `  - ${e.id}: ${e.error}`).join('\n') || '  - none'}
 async function runRekey(client, apply) {
   const { rows } = await gather(client);
   const { moves, oldPathRefs, foreignPrefix } = planRekey(rows);
-  const results = { moved: [], deletedOld: [], skippedMissing: [], foreignPrefix, errors: [] };
+  const results = { moved: [], deletedOld: [], skippedMissing: [], foreignPrefix, errors: [], aborted: false, notAttempted: [] };
   // Counts references from ALL rows (planRekey) — a path shared with a
   // non-moving row (e.g. null-sha awaiting backfill) never reaches zero here.
   const remainingRefs = new Map(oldPathRefs);
 
-  for (const move of moves) {
+  for (let i = 0; i < moves.length; i += 1) {
+    const move = moves[i];
     try {
       if (!(await client.storageExists(move.from))) {
         results.skippedMissing.push(move);
         continue;
       }
       if (apply) {
-        const copyStatus = await client.storageCopy(move.from, move.to);
-        if (copyStatus === 409) {
-          // Destination already existed — verify its BYTES are the row's sha
-          // before repointing; an existing-but-wrong object would silently
-          // swap the document's contents.
-          const destSha = sha256hex(await client.storageDownload(move.to));
-          if (destSha !== move.sha) {
-            throw new Error(`destination ${move.to} exists with WRONG bytes (sha ${destSha.slice(0, 12)}…) — manual fix required`);
-          }
-        } else if (!(await client.storageExists(move.to))) {
-          throw new Error(`copy verified missing at ${move.to}`);
+        // copy -> READ BACK AND RE-HASH -> repoint row -> delete old.
+        // The read-back hash is the whole safety story: an object that exists
+        // at the destination is not proof the destination holds the SAME
+        // bytes (a 409 means something was already sitting there, and a
+        // truncated copy still "exists"). Comparing the destination's real
+        // sha256 to the row's content_sha256 is what makes deleting the
+        // source safe on a project with no point-in-time recovery.
+        await client.storageCopy(move.from, move.to);
+        const destSha = sha256hex(await client.storageDownload(move.to));
+        if (destSha !== move.sha) {
+          throw new Error(`destination ${move.to} holds WRONG bytes (sha ${destSha.slice(0, 12)}… != expected ${move.sha.slice(0, 12)}…) — source left in place, manual fix required`);
         }
+        move.verifiedSha = destSha;
         // service_role is allowed through the file_path-immutable trigger.
         await client.rest(`documents?id=eq.${move.id}`, {
           method: 'PATCH',
@@ -416,7 +431,15 @@ async function runRekey(client, apply) {
         results.deletedOld.push(move.from);
       }
     } catch (err) {
+      // STOP THE WHOLE RUN on the first failure. A partial re-key whose
+      // already-moved files are individually hash-verified is recoverable
+      // from the path map; grinding on past an unexplained failure is not.
+      // The failing file's OLD path is never deleted — the delete only ever
+      // runs after its own read-back hash check passed.
       results.errors.push({ ...move, error: String(err.message || err) });
+      results.aborted = true;
+      results.notAttempted = moves.slice(i + 1).map((m) => ({ id: m.id, from: m.from, to: m.to }));
+      break;
     }
   }
 
@@ -428,15 +451,18 @@ async function runRekey(client, apply) {
     .filter(([p, n]) => (oldPathRefs.get(p) || 0) === n).length;
 
   const md = `# Storage re-key ${apply ? '(APPLIED)' : '(DRY-RUN — nothing written)'} — ${client.host}
-
+${results.aborted ? `
+> **RUN ABORTED on the first failure.** ${results.moved.length} file(s) were moved and hash-verified before the stop; ${results.notAttempted.length} were not attempted. The failing file's original object was NOT deleted. See errors below.
+` : ''}
 - rows on non-canonical paths: ${moves.length}
-- ${apply ? 'moved' : 'would move'}: ${results.moved.length}
+- ${apply ? 'moved (each copy read back and re-hashed against the row fingerprint)' : 'would move'}: ${results.moved.length}
 ${results.moved.slice(0, 50).map((m) => `  - ${m.from} -> ${m.to}`).join('\n') || '  - none'}
 - old objects ${apply ? 'deleted' : 'deletable once all their rows move'}: ${apply ? results.deletedOld.length : deletablePlanned}
 - old objects KEPT because a non-moving row still references them: ${[...movesPerPath.keys()].filter((p) => (oldPathRefs.get(p) || 0) > (movesPerPath.get(p) || 0)).length}
 - rows SKIPPED — file_path outside own user folder (doctored/foreign, manual review): ${foreignPrefix.length}
 ${foreignPrefix.map((f) => `  - ${f.id} -> ${f.file_path}`).join('\n') || '  - none'}
 - source object missing (skipped; see audit orphans): ${results.skippedMissing.length}
+- moves not attempted because the run aborted: ${results.notAttempted.length}
 - errors: ${results.errors.length}
 ${results.errors.map((e) => `  - ${e.id} ${e.from}: ${e.error}`).join('\n') || '  - none'}
 
