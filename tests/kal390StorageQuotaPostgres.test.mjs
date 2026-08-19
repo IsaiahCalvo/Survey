@@ -354,3 +354,223 @@ test('KAL-390 migration enforces the storage quota against live storage.objects 
     rmSync(clusterDir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// KAL-390 follow-up: the byte gate is a TRIGGER, because RLS never sees the
+// uploaded object's size. The test above hands the policies a metadata blob
+// containing `size`, which the real storage service never does — it checks RLS
+// in a probe transaction carrying only {mimetype, contentLength} and then
+// writes the real size through a privileged connection that bypasses RLS
+// entirely. This test models that split faithfully.
+// ---------------------------------------------------------------------------
+const triggerMigrationPath = join(
+  repoRoot,
+  'supabase/migrations/20260818010000_kal390_storage_quota_trigger.sql',
+);
+
+// What the storage service's RLS permission probe actually looks like: no
+// `size` key, only the declared content length.
+function probeSql(userId, fileName, contentLength) {
+  return authSql(
+    userId,
+    `INSERT INTO storage.objects(bucket_id, name, metadata)
+     VALUES ('documents', '${userId}/${fileName}',
+             jsonb_build_object('mimetype', 'application/pdf', 'contentLength', ${contentLength}))
+     RETURNING 'probed';`,
+  );
+}
+
+// What the storage service's completeUpload actually does: a privileged upsert
+// carrying the backend-reported size. No RLS applies on this path.
+function serviceUpsertSql(userId, fileName, sizeBytes) {
+  return `
+    INSERT INTO storage.objects(bucket_id, name, metadata)
+    VALUES ('documents', '${userId}/${fileName}', jsonb_build_object('size', ${sizeBytes}))
+    ON CONFLICT (bucket_id, name)
+    DO UPDATE SET metadata = jsonb_build_object('size', ${sizeBytes})
+    RETURNING 'stored';
+  `;
+}
+
+test('KAL-390 trigger gates the privileged write that RLS never sees', {
+  skip: !RUN && 'set SURVEY_POSTGRES_INTEGRATION=1 to run disposable PostgreSQL verification',
+  timeout: 90_000,
+}, async () => {
+  const clusterDir = mkdtempSync(join(tmpdir(), 'survey-kal390-postgres-'));
+  const bootstrapPath = join(clusterDir, 'bootstrap.sql');
+  const postgresLogPath = join(clusterDir, 'postgres.log');
+  const port = await freePort();
+  let started = false;
+
+  try {
+    run('initdb', ['-D', clusterDir, '-A', 'trust', '-U', 'postgres', '--no-locale']);
+    run('pg_ctl', [
+      '-D', clusterDir, '-l', postgresLogPath, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start',
+    ]);
+    started = true;
+
+    writeFileSync(bootstrapPath, `
+      CREATE EXTENSION IF NOT EXISTS pgcrypto;
+      CREATE ROLE anon NOLOGIN;
+      CREATE ROLE authenticated NOLOGIN;
+      CREATE ROLE service_role NOLOGIN;
+      CREATE SCHEMA auth;
+      CREATE FUNCTION auth.uid() RETURNS UUID
+      LANGUAGE SQL STABLE
+      AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::UUID $$;
+
+      CREATE SCHEMA storage;
+      CREATE TABLE storage.objects (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        bucket_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        metadata JSONB,
+        UNIQUE (bucket_id, name)
+      );
+      CREATE FUNCTION storage.foldername(name TEXT) RETURNS TEXT[]
+      LANGUAGE SQL IMMUTABLE
+      AS $$ SELECT (string_to_array(name, '/'))[1 : array_length(string_to_array(name, '/'), 1) - 1] $$;
+      ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY documents_owner_select ON storage.objects
+        FOR SELECT TO public
+        USING (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text);
+      GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated, service_role;
+
+      CREATE TABLE public.documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL,
+        name TEXT NOT NULL,
+        file_path TEXT,
+        file_size BIGINT,
+        archived BOOLEAN NOT NULL DEFAULT FALSE
+      );
+      ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+      GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON public.documents TO authenticated, service_role;
+
+      CREATE FUNCTION public.get_storage_limit(p_user_id UUID) RETURNS BIGINT
+      LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = ''
+      AS $$ SELECT 100::bigint $$;
+      CREATE FUNCTION public.get_document_limit(p_user_id UUID) RETURNS INTEGER
+      LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = ''
+      AS $$ SELECT 5 $$;
+    `);
+
+    run('psql', psqlArgs(port, '-v', 'ON_ERROR_STOP=1', '-f', bootstrapPath));
+    run('psql', psqlArgs(port, '-v', 'ON_ERROR_STOP=1', '-f', migrationPath));
+    run('psql', psqlArgs(port, '-v', 'ON_ERROR_STOP=1', '-f', triggerMigrationPath));
+
+    const usage = async (userId) => query(
+      port,
+      `SELECT COALESCE(SUM((metadata->>'size')::bigint), 0) FROM storage.objects
+       WHERE bucket_id = 'documents' AND name LIKE '${userId}/%';`,
+    );
+
+    // --- The RLS permission probe (no `size` key) must never be blocked by the
+    //     trigger: it is a size-neutral write.
+    assert.equal(await query(port, probeSql(USER_A, 'probe.pdf', 40)), 'probed',
+      'the storage service permission probe must pass the trigger');
+    await query(port, `DELETE FROM storage.objects WHERE bucket_id='documents' AND name='${USER_A}/probe.pdf';`);
+
+    // --- Fill to exactly the limit through the privileged service path.
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'a.pdf', 60)), 'stored');
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'b.pdf', 40)), 'stored');
+    assert.equal(await usage(USER_A), '100', 'user must be exactly at the 100-byte limit');
+
+    // --- Case 1: same-size overwrite at exactly the limit must still save.
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'b.pdf', 40)), 'stored',
+      'same-size overwrite at the limit must keep working');
+    assert.equal(await usage(USER_A), '100');
+
+    // --- Case 2: shrinking overwrite must always pass.
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'b.pdf', 10)), 'stored',
+      'shrinking overwrite must pass');
+    assert.equal(await usage(USER_A), '70');
+
+    // --- Case 3: growth that still fits must pass (70 - 10 + 40 = 100).
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'b.pdf', 40)), 'stored',
+      'growth that fits inside the limit must pass');
+    assert.equal(await usage(USER_A), '100');
+
+    // --- Case 4: growth past the limit is REJECTED. This is the reported
+    //     bypass: it passed every RLS policy because RLS cannot see the size.
+    const grewPastLimit = await query(port, serviceUpsertSql(USER_A, 'b.pdf', 41), { allowFailure: true });
+    assert.match(grewPastLimit, /^ERROR:[\s\S]*Storage quota exceeded/,
+      'growing an object past the limit must be rejected by the trigger');
+    assert.equal(await usage(USER_A), '100', 'a rejected growth must not change usage');
+
+    // --- The exact attack shape: a tiny object minted under quota, then
+    //     inflated through the upsert path.
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'b.pdf', 10)), 'stored');
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'tiny.pdf', 1)), 'stored');
+    assert.equal(await usage(USER_A), '71');
+    const inflated = await query(port, serviceUpsertSql(USER_A, 'tiny.pdf', 60), { allowFailure: true });
+    assert.match(inflated, /^ERROR:[\s\S]*Storage quota exceeded/,
+      'inflating a tiny object past the limit must be rejected (70 + 60 = 130)');
+    assert.equal(await usage(USER_A), '71', 'the inflation attempt must leave usage untouched');
+
+    // --- Case 5: a brand-new object once the account is at its limit.
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'tiny.pdf', 30)), 'stored');
+    assert.equal(await usage(USER_A), '100');
+    const brandNew = await query(port, serviceUpsertSql(USER_A, 'new.pdf', 5), { allowFailure: true });
+    assert.match(brandNew, /^ERROR:[\s\S]*Storage quota exceeded/,
+      'a new object at the limit must be rejected');
+
+    // --- An over-quota account must still be able to save and shrink. The
+    //     superseded UPDATE policy blocked EVERY overwrite in this state, which
+    //     locked such accounts out of saving entirely. The realistic way to get
+    //     here is a tier downgrade: the bytes are already stored, then the
+    //     allowance shrinks under them.
+    assert.equal(await usage(USER_A), '100');
+    await query(port, `CREATE OR REPLACE FUNCTION public.get_storage_limit(p_user_id UUID) RETURNS BIGINT
+                       LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = ''
+                       AS $$ SELECT 50::bigint $$;`);
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'b.pdf', 10)), 'stored',
+      'an over-quota account must still be able to re-save at the same size');
+    assert.equal(await query(port, serviceUpsertSql(USER_A, 'a.pdf', 20)), 'stored',
+      'an over-quota account must still be able to shrink');
+    assert.equal(await usage(USER_A), '60', 'shrinking must actually reduce usage');
+    const overQuotaGrowth = await query(port, serviceUpsertSql(USER_A, 'a.pdf', 25), { allowFailure: true });
+    assert.match(overQuotaGrowth, /^ERROR:[\s\S]*Storage quota exceeded/,
+      'an over-quota account still must not grow an object');
+    await query(port, `CREATE OR REPLACE FUNCTION public.get_storage_limit(p_user_id UUID) RETURNS BIGINT
+                       LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = ''
+                       AS $$ SELECT 100::bigint $$;`);
+
+    // --- Cross-user isolation: USER_B has an independent allowance.
+    assert.equal(await query(port, serviceUpsertSql(USER_B, 'mine.pdf', 99)), 'stored',
+      'other users keep their own independent quota');
+
+    // --- Buckets other than `documents` are not metered at all.
+    assert.equal(
+      await query(port, `
+        INSERT INTO storage.objects(bucket_id, name, metadata)
+        VALUES ('brand', '${USER_A}/logo.png', jsonb_build_object('size', 999999))
+        RETURNING 'stored';`),
+      'stored',
+      'the gate must only meter the documents bucket',
+    );
+
+    // --- An object path with no UUID folder cannot be attributed to an owner
+    //     and must pass through rather than error.
+    assert.equal(
+      await query(port, `
+        INSERT INTO storage.objects(bucket_id, name, metadata)
+        VALUES ('documents', 'shared/thing.pdf', jsonb_build_object('size', 999999))
+        RETURNING 'stored';`),
+      'stored',
+      'an unattributable path must not raise',
+    );
+  } finally {
+    if (started) {
+      try {
+        run('pg_ctl', ['-D', clusterDir, '-m', 'fast', '-w', 'stop']);
+      } catch {
+        // Best-effort shutdown; the temporary cluster path is still exact.
+      }
+    }
+    assert.ok(clusterDir.startsWith(`${tmpdir()}/survey-kal390-postgres-`));
+    rmSync(clusterDir, { recursive: true, force: true });
+  }
+});
