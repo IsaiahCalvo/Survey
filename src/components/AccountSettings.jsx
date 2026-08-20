@@ -714,8 +714,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                 ) : (
                   <>
-                    {/* Canceled Subscription Banner */}
-                    {subscription && subscription.tier === 'free' && subscription.status === 'canceled' && (
+                    {/* Canceled Subscription Banner.
+                        UX (owner request 2026-08-20): this is transition news, not a
+                        permanent label. It exists to reassure someone who just
+                        cancelled (or whose paid period just lapsed) that the
+                        downgrade worked — so it shows for 7 days after the paid
+                        period ended (falling back to the record's last update when
+                        no period end is stored) and then never again. Before this
+                        rule, an account cancelled months ago was still greeted by
+                        "Subscription Canceled" forever. */}
+                    {subscription && subscription.tier === 'free' && subscription.status === 'canceled' && (() => {
+                      const endedAt = Date.parse(subscription.current_period_end || subscription.updated_at || '');
+                      if (!Number.isFinite(endedAt)) return false;
+                      return (Date.now() - endedAt) < 7 * 24 * 60 * 60 * 1000;
+                    })() && (
                       <div style={{
                         background: 'rgba(239, 68, 68, 0.08)',
                         border: '1px solid rgba(239, 68, 68, 0.2)',
