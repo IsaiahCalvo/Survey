@@ -34,7 +34,11 @@
   border-radius: 12px;
   width: 95%;
   max-width: 900px;
-  height: auto;
+  /* UX (owner request 2026-08-20): the modal must NOT resize as the user moves
+     between tabs — height:auto made it jump on every tab switch. Fixed height
+     sized to the tallest content (Subscription → Manage, three plan cards);
+     shorter tabs keep the same frame and taller content scrolls inside. */
+  height: min(760px, 90vh);
   max-height: 90vh;
   overflow: hidden;
   display: flex;

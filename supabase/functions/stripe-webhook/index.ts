@@ -466,7 +466,7 @@ async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscripti
             // Note: return_url should be updated to your actual landing page URL
             const portalSession = await stripe.billingPortal.sessions.create({
                 customer: userSubscription.stripe_customer_id || subscription.customer as string,
-                return_url: 'https://www.google.com', // Placeholder - update with your landing page
+                return_url: 'https://surveytool.app',
             });
 
             await sendEmail(
@@ -510,7 +510,7 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
             // Create billing portal session
             const portalSession = await stripe.billingPortal.sessions.create({
                 customer: invoice.customer as string,
-                return_url: 'https://www.google.com', // Placeholder
+                return_url: 'https://surveytool.app',
             });
 
             await sendEmail(
@@ -548,7 +548,7 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
             // Create billing portal session
             const portalSession = await stripe.billingPortal.sessions.create({
                 customer: invoice.customer as string,
-                return_url: 'https://www.google.com', // Placeholder
+                return_url: 'https://surveytool.app',
             });
 
             await sendEmail(

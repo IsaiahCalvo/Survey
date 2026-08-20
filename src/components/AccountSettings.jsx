@@ -714,75 +714,36 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                 ) : (
                   <>
-                    {/* Canceled Subscription Banner.
-                        UX (owner request 2026-08-20): this is transition news, not a
-                        permanent label. It exists to reassure someone who just
-                        cancelled (or whose paid period just lapsed) that the
-                        downgrade worked — so it shows for 7 days after the paid
-                        period ended (falling back to the record's last update when
-                        no period end is stored) and then never again. Before this
-                        rule, an account cancelled months ago was still greeted by
-                        "Subscription Canceled" forever. */}
-                    {subscription && subscription.tier === 'free' && subscription.status === 'canceled' && (() => {
-                      const endedAt = Date.parse(subscription.current_period_end || subscription.updated_at || '');
-                      if (!Number.isFinite(endedAt)) return false;
-                      return (Date.now() - endedAt) < 7 * 24 * 60 * 60 * 1000;
-                    })() && (
-                      <div style={{
-                        background: 'rgba(239, 68, 68, 0.08)',
-                        border: '1px solid rgba(239, 68, 68, 0.2)',
-                        borderRadius: '6px',
-                        padding: '10px 14px',
-                        marginBottom: '16px',
-                        fontSize: '12px',
-                        lineHeight: '1.5'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#ef4444' }}>
-                            ❌ Subscription Canceled
-                          </span>
-                          <span style={{ color: '#888', fontSize: '12px' }}>
-                            Your subscription has been canceled and you've been moved to the Free plan
-                          </span>
+                    {/* Subscription status line.
+                        UX (owner request 2026-08-20): NO banners on this tab — no
+                        colored boxes, no emoji. The plan cards and buttons carry
+                        the state; this single muted line carries only the facts a
+                        card cannot: when a trial converts to a charge, that a
+                        payment failed, or (for 7 days after it lands) that a
+                        cancellation completed. */}
+                    {(() => {
+                      if (!subscription) return null;
+                      const fmt = (d) => new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                      let text = null;
+                      if (subscription.tier === 'free' && subscription.status === 'canceled') {
+                        const endedAt = Date.parse(subscription.current_period_end || subscription.updated_at || '');
+                        if (Number.isFinite(endedAt) && (Date.now() - endedAt) < 7 * 24 * 60 * 60 * 1000) {
+                          text = "Your subscription was canceled and you're on the Free plan.";
+                        }
+                      } else if (subscription.tier === 'developer') {
+                        text = 'Developer account — unlimited access for testing.';
+                      } else if (subscription.status === 'trialing' && subscription.trial_ends_at) {
+                        text = `Pro trial — you won't be charged if you cancel before ${fmt(subscription.trial_ends_at)}.`;
+                      } else if (subscription.status === 'past_due') {
+                        text = 'Your last payment failed — update your card in Manage Billing & Payments.';
+                      }
+                      if (!text) return null;
+                      return (
+                        <div style={{ color: '#8d96a6', fontSize: '12px', marginBottom: '14px' }}>
+                          {text}
                         </div>
-                      </div>
-                    )}
-
-                    {/* Consolidated Subscription Status Banner */}
-                    {subscription && subscription.tier !== 'free' && (
-                      <div style={{
-                        background: subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.08)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(34, 197, 94, 0.08)',
-                        border: `1px solid ${subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.2)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`,
-                        borderRadius: '6px',
-                        padding: '10px 14px',
-                        marginBottom: '16px',
-                        fontSize: '12px',
-                        lineHeight: '1.5'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: subscription.status === 'trialing' && subscription.trial_ends_at ? '4px' : '0' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: subscription.tier === 'developer' ? '#a855f7' : subscription.status === 'trialing' ? '#3b82f6' : '#22c55e' }}>
-                            {subscription.tier === 'developer' ? '🔧 Developer Account' : subscription.status === 'trialing' ? '🎉 Trial Active' : '✅ Active Subscription'}
-                          </span>
-                          <span style={{ color: '#888', fontSize: '12px' }}>
-                            {subscription.tier === 'developer' ? (
-                              'Unlimited access for testing and development'
-                            ) : subscription.status === 'trialing' && subscription.trial_ends_at ? (
-                              `Trial ends ${(() => {
-                                const daysLeft = Math.ceil((new Date(subscription.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24));
-                                return daysLeft > 0 ? `in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}` : 'today';
-                              })()}`
-                            ) : (
-                              `${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)} Plan${subscription.status === 'past_due' ? ' • Payment Failed' : ''}`
-                            )}
-                          </span>
-                        </div>
-                        {subscription.status === 'trialing' && subscription.trial_ends_at && (
-                          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                            No payment required yet. You'll only be charged if you don't cancel before {new Date(subscription.trial_ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Manage Billing Button (for users with active subscriptions) */}
                     {subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
