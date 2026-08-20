@@ -47,7 +47,6 @@ test('function JWT config defaults secure and preserves explicit exceptions', ()
 
 test('Stripe configuration gate checks every required secret by name', () => {
   const names = [
-    'STRIPE_ENTERPRISE_PRICE_ID',
     'STRIPE_PRO_ANNUAL_PRICE_ID',
     'STRIPE_PRO_MONTHLY_PRICE_ID',
     'STRIPE_SECRET_KEY',
@@ -57,6 +56,22 @@ test('Stripe configuration gate checks every required secret by name', () => {
     secrets: names.map((name) => ({ name })),
   }));
   assert.throws(() => assertRequiredSecrets({ secrets: [] }), /Missing Supabase Stripe secrets/);
+});
+
+test('Enterprise price secret is deliberately NOT required (KAL-414 contact-us tier)', () => {
+  // 2026-08-19: STRIPE_ENTERPRISE_PRICE_ID was removed from production so a
+  // hand-crafted tier:'enterprise' checkout fails loudly. A deploy without it
+  // must pass; re-adding it to REQUIRED_STRIPE_SECRETS before an Enterprise
+  // price actually exists would block every deploy against the live config.
+  const withoutEnterprise = [
+    'STRIPE_PRO_ANNUAL_PRICE_ID',
+    'STRIPE_PRO_MONTHLY_PRICE_ID',
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+  ];
+  assert.doesNotThrow(() => assertRequiredSecrets({
+    secrets: withoutEnterprise.map((name) => ({ name })),
+  }));
 });
 
 test('Node test gate isolates files and bounds hangs', () => {

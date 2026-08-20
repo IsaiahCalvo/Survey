@@ -9,7 +9,11 @@ export const STRIPE_API_VERSION = '2026-02-25.clover';
 export const SUPABASE_JS_VERSION = '2.110.8';
 
 const REQUIRED_STRIPE_SECRETS = [
-  'STRIPE_ENTERPRISE_PRICE_ID',
+  // STRIPE_ENTERPRISE_PRICE_ID is DELIBERATELY absent (2026-08-19, owner
+  // decision on KAL-414): Enterprise is a contact-us tier with no self-serve
+  // checkout, and removing the secret makes any hand-crafted
+  // tier:'enterprise' request fail loudly server-side. Re-add it here AND in
+  // the Supabase secrets only when a real Enterprise price is decided.
   'STRIPE_PRO_ANNUAL_PRICE_ID',
   'STRIPE_PRO_MONTHLY_PRICE_ID',
   'STRIPE_SECRET_KEY',
