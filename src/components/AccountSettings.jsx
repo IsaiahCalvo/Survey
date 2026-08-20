@@ -22,7 +22,7 @@ import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import {
   buildBillingReturnUrl,
   canUnlinkProvider,
-  openExternalDestination,
+  openDeferredExternalDestination,
   resolveSubscriptionQuery,
 } from '../utils/accountPlatform';
 
@@ -761,15 +761,18 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             if (portalOpening) return; // ignore repeat clicks while working
                             setPortalOpening(true);
                             setError('');
+                            // Claim the tab NOW, inside the click gesture — see
+                            // openDeferredExternalDestination for why.
+                            const tab = openDeferredExternalDestination();
                             try {
                               const { data, error } = await supabase.functions.invoke('create-portal-session', {
                                 body: { returnUrl: buildBillingReturnUrl() },
                               });
                               if (error) throw error;
-                              if (data?.url) {
-                                await openExternalDestination(data.url);
-                              }
+                              if (!data?.url) throw new Error('No billing portal URL returned');
+                              await tab.navigate(data.url);
                             } catch (err) {
+                              tab.cancel();
                               console.error('Error opening billing portal:', err);
                               setError('Failed to open billing portal. Please try again.');
                             } finally {

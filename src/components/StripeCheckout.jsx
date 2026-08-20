@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { buildBillingReturnUrl, openExternalDestination } from '../utils/accountPlatform';
+import { buildBillingReturnUrl, openDeferredExternalDestination } from '../utils/accountPlatform';
 
 const StripeCheckout = (props) => {
     const [loading, setLoading] = useState(false);
@@ -17,6 +17,9 @@ const StripeCheckout = (props) => {
     const handleSubscribe = async () => {
         setLoading(true);
         setError(null);
+        // Claim the tab inside the click gesture — a tab opened after the
+        // await gets popup-blocked. See openDeferredExternalDestination.
+        const tab = openDeferredExternalDestination();
         try {
             // Pass tier and billing period to checkout session
             const { data, error } = await supabase.functions.invoke('create-checkout-session', {
@@ -36,11 +39,12 @@ const StripeCheckout = (props) => {
             }
 
             if (data?.url) {
-                await openExternalDestination(data.url);
+                await tab.navigate(data.url);
             } else {
                 throw new Error('No checkout URL returned');
             }
         } catch (err) {
+            tab.cancel();
             console.error('Payment Error:', err);
             setError(err.message || 'An unexpected error occurred');
         } finally {

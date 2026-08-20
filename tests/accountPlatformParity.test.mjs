@@ -79,7 +79,13 @@ test('account settings wires real deletion, unlink, truthful email status, retry
   assert.match(settings, /subscriptionError[\s\S]*Retry/);
   assert.match(settings, /buildBillingReturnUrl\(\)/);
   assert.match(checkout, /returnUrl: buildBillingReturnUrl\(\)/);
-  assert.match(checkout, /openExternalDestination\(data\.url\)/);
+  // 2026-08-20: checkout/portal now claim the tab at click time and steer it
+  // when the session URL arrives (popup rules block a late window.open).
+  // The invariant is unchanged: the Stripe URL must reach the deferred tab.
+  assert.match(checkout, /openDeferredExternalDestination\(\)/);
+  assert.match(checkout, /tab\.navigate\(data\.url\)/);
+  assert.match(settings, /openDeferredExternalDestination\(\)/);
+  assert.match(settings, /tab\.navigate\(data\.url\)/);
   assert.doesNotMatch(settings, /support@yourcompany\.com/);
 });
 

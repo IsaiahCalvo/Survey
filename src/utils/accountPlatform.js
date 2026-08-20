@@ -56,6 +56,46 @@ export const openExternalDestination = async (url, windowObject = window) => {
   return 'browser';
 };
 
+// Opens a destination whose URL is only known after an async round trip
+// (Stripe checkout/portal sessions take seconds to mint). Browsers only honor
+// window.open while a user gesture is "fresh"; calling it after the await gets
+// popup-blocked — the user saw "Failed to open billing portal" while an
+// orphaned single-use session expired in Stripe (owner-hit 2026-08-20).
+// The fix is the standard one: claim a tab SYNCHRONOUSLY at click time, steer
+// it when the URL arrives, close it if the fetch fails. Electron and native
+// shells have no popup rules, so they keep the simple path.
+export const openDeferredExternalDestination = (windowObject = window) => {
+  if (windowObject.electronAPI?.openExternal || isNativeShellLocation(windowObject.location)) {
+    return {
+      navigate: (url) => openExternalDestination(url, windowObject),
+      cancel: () => {},
+    };
+  }
+  const pre = windowObject.open('', '_blank');
+  if (pre) {
+    try {
+      pre.opener = null;
+      pre.document.title = 'Opening…';
+      pre.document.body.style.cssText = 'background:#0d0f14;color:#8d96a6;font-family:Helvetica,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0';
+      pre.document.body.textContent = 'Opening secure billing…';
+    } catch { /* placeholder styling is best-effort */ }
+  }
+  return {
+    navigate: async (url) => {
+      if (pre && !pre.closed) {
+        pre.location.replace(url);
+        return 'browser';
+      }
+      // The pre-opened tab was blocked or closed; try the direct path so the
+      // user at least gets the explicit allow-pop-ups message on failure.
+      return openExternalDestination(url, windowObject);
+    },
+    cancel: () => {
+      try { if (pre && !pre.closed) pre.close(); } catch { /* already gone */ }
+    },
+  };
+};
+
 export const withTimeout = (promise, timeoutMs, message) => {
   let timer;
   return Promise.race([
