@@ -604,6 +604,13 @@ export const AuthProvider = ({ children }) => {
         options: {
           redirectTo: redirectTo,
           skipBrowserRedirect: false, // Let the browser/Electron handle the redirect
+          // UX (2026-08-19, owner request): ALWAYS show Google's account chooser.
+          // Without this, Google silently reuses the browser's signed-in account
+          // (or a remembered choice), so a user with several Google accounts
+          // cannot pick which one to sign in with. `select_account` forces the
+          // picker on every click; it does not affect users with one account
+          // beyond a single extra confirmation click.
+          queryParams: { prompt: 'select_account' },
         },
       });
 
