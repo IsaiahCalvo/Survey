@@ -93,6 +93,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [loadingSubscription, setLoadingSubscription] = useState(true);
   const [subscriptionError, setSubscriptionError] = useState('');
   const [billingPeriod, setBillingPeriod] = useState('monthly');
+  // In-flight guard for the billing portal button: opening a portal session
+  // takes a few seconds (function cold start + Stripe round trip). Without
+  // this, users click repeatedly and the racing duplicate requests surface a
+  // spurious failure banner (owner-reported 2026-08-20).
+  const [portalOpening, setPortalOpening] = useState(false);
   const subscriptionRequestRef = useRef(0);
 
   // Reset state when modal opens
@@ -753,6 +758,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
                         <button
                           onClick={async () => {
+                            if (portalOpening) return; // ignore repeat clicks while working
+                            setPortalOpening(true);
+                            setError('');
                             try {
                               const { data, error } = await supabase.functions.invoke('create-portal-session', {
                                 body: { returnUrl: buildBillingReturnUrl() },
@@ -764,8 +772,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             } catch (err) {
                               console.error('Error opening billing portal:', err);
                               setError('Failed to open billing portal. Please try again.');
+                            } finally {
+                              setPortalOpening(false);
                             }
                           }}
+                          disabled={portalOpening}
                           style={{
                             padding: '10px 20px',
                             background: 'transparent',
@@ -784,7 +795,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             e.target.style.background = 'transparent';
                           }}
                         >
-                          Manage Billing & Payments
+                          {portalOpening ? 'Opening billing…' : 'Manage Billing & Payments'}
                         </button>
                       </div>
                     )}
@@ -920,7 +931,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'pro' ? (
-                            <button className="account-btn-outline-green" disabled>
+                            <button className="account-btn-outline-blue" disabled>
                               Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (
@@ -945,6 +956,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       {/* Enterprise Plan */}
                       <div className="account-subscription-card" style={{
+                        border: subscription?.tier === 'enterprise' ? '2px solid #d8a84e' : '1px solid #333',
                         opacity: subscription?.tier === 'enterprise' ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
                       }}>
                         <div className="account-subscription-header">
@@ -970,7 +982,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'enterprise' ? (
-                            <button className="account-btn-outline-green" disabled>
+                            <button className="account-btn-outline-gold" disabled>
                               Current plan
                             </button>
                           ) : subscription?.tier === 'developer' ? (

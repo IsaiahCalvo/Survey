@@ -103,7 +103,10 @@ const UsageIndicator = () => {
         <span style={{
           fontSize: '11px',
           fontWeight: 600,
-          color: tier === 'developer' ? '#10b981' : tier === 'pro' ? '#8b5cf6' : tier === 'enterprise' ? '#3b82f6' : 'rgba(255, 255, 255, 0.5)',
+          // ONE COLOR PER TIER app-wide (owner request 2026-08-20): free green,
+          // pro blue, enterprise gold, developer purple — must match the plan
+          // cards and Current plan buttons in AccountSettings.
+          color: tier === 'developer' ? '#a855f7' : tier === 'pro' ? '#4A90E2' : tier === 'enterprise' ? '#d8a84e' : '#22c55e',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
           backgroundColor: 'rgba(255, 255, 255, 0.1)',

@@ -121,7 +121,11 @@
 }
 
 .account-settings-sidebar {
+  /* UX (owner request 2026-08-20): the rail must NEVER change width, no matter
+     which tab is showing — wide content (the plan cards) was flex-squeezing it. */
+  flex: 0 0 200px;
   width: 200px;
+  min-width: 200px;
   border-right: 1px solid #2a3140;
   background: #0d0f14;
   display: flex;
@@ -648,9 +652,33 @@
 }
 
 .account-btn-outline-green {
-  background: rgba(166, 224, 122, 0.1);
-  border: 1px solid rgba(166, 224, 122, 0.3);
-  color: #a6e07a;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #22c55e;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  text-align: center;
+}
+
+.account-btn-outline-blue {
+  background: rgba(74, 144, 226, 0.1);
+  border: 1px solid rgba(74, 144, 226, 0.35);
+  color: #4A90E2;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  text-align: center;
+}
+
+.account-btn-outline-gold {
+  background: rgba(216, 168, 78, 0.1);
+  border: 1px solid rgba(216, 168, 78, 0.35);
+  color: #d8a84e;
   padding: 8px;
   border-radius: 6px;
   font-size: 12px;
