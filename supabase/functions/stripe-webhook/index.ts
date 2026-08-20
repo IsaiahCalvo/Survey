@@ -462,12 +462,11 @@ async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscripti
             const trialEndDate = new Date(subscription.trial_end * 1000);
             const daysLeft = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
-            // Create billing portal session
-            // Note: return_url should be updated to your actual landing page URL
-            const portalSession = await stripe.billingPortal.sessions.create({
-                customer: userSubscription.stripe_customer_id || subscription.customer as string,
-                return_url: 'https://surveytool.app',
-            });
+            // EMAIL LINK RULE (owner-reported 2026-08-20): never put a billing-portal
+        // session URL in an email. Portal sessions are single-use and expire within
+        // minutes, so every emailed link died before it was clicked ('For security
+        // reasons, this page has expired'). Emails link to the app instead; the app
+        // mints a fresh portal session at click time via create-portal-session.
 
             await sendEmail(
                 'trial-ending',
@@ -477,7 +476,7 @@ async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscripti
                     firstName: user.user.user_metadata?.firstName || user.user.user_metadata?.first_name,
                     daysLeft: daysLeft,
                     trialEndDate: trialEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-                    portalUrl: portalSession.url
+                    portalUrl: 'https://surveytool.app'
                 }
             );
         }
@@ -507,11 +506,11 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
             .single();
 
         if (userSubscription && invoice.customer_email && invoice.customer) {
-            // Create billing portal session
-            const portalSession = await stripe.billingPortal.sessions.create({
-                customer: invoice.customer as string,
-                return_url: 'https://surveytool.app',
-            });
+            // EMAIL LINK RULE (owner-reported 2026-08-20): never put a billing-portal
+        // session URL in an email. Portal sessions are single-use and expire within
+        // minutes, so every emailed link died before it was clicked ('For security
+        // reasons, this page has expired'). Emails link to the app instead; the app
+        // mints a fresh portal session at click time via create-portal-session.
 
             await sendEmail(
                 'payment-succeeded',
@@ -521,7 +520,7 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
                     amount: (invoice.amount_paid / 100).toFixed(2),
                     planName: 'Pro Monthly',
                     nextBillingDate: invoice.period_end ? new Date(invoice.period_end * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '',
-                    portalUrl: portalSession.url
+                    portalUrl: 'https://surveytool.app'
                 }
             );
         }
@@ -545,18 +544,18 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
 
         // Send email notification
         if (invoice.customer_email && invoice.customer) {
-            // Create billing portal session
-            const portalSession = await stripe.billingPortal.sessions.create({
-                customer: invoice.customer as string,
-                return_url: 'https://surveytool.app',
-            });
+            // EMAIL LINK RULE (owner-reported 2026-08-20): never put a billing-portal
+        // session URL in an email. Portal sessions are single-use and expire within
+        // minutes, so every emailed link died before it was clicked ('For security
+        // reasons, this page has expired'). Emails link to the app instead; the app
+        // mints a fresh portal session at click time via create-portal-session.
 
             await sendEmail(
                 'payment-failed',
                 invoice.customer_email,
                 'Payment Failed - Action Required',
                 {
-                    portalUrl: portalSession.url
+                    portalUrl: 'https://surveytool.app'
                 }
             );
         }
