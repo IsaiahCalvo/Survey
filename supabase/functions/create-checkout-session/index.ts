@@ -90,8 +90,36 @@ Deno.serve(async (req) => {
             .maybeSingle();
         if (subscriptionError) throw subscriptionError;
 
+        // A stored customer id can be stale: ids persisted while the account ran
+        // on TEST keys do not exist in live mode (seen 2026-08-20: "No such
+        // customer ... a similar object exists in test mode"), and a customer
+        // deleted in the Stripe dashboard leaves the same dangling reference.
+        // Validate before trusting; on resource_missing, clear the stored id so
+        // a fresh live customer is created instead of failing the checkout.
+        let storedCustomerId = subscription?.stripe_customer_id ?? null;
+        if (storedCustomerId) {
+            try {
+                const existing = await stripe.customers.retrieve(storedCustomerId);
+                if ((existing as { deleted?: boolean }).deleted) storedCustomerId = null;
+            } catch (err) {
+                if ((err as { code?: string })?.code === 'resource_missing') {
+                    storedCustomerId = null;
+                } else {
+                    throw err;
+                }
+            }
+            if (!storedCustomerId) {
+                const { error: clearError } = await supabase
+                    .from('user_subscriptions')
+                    .update({ stripe_customer_id: null })
+                    .eq('user_id', user.id)
+                    .eq('stripe_customer_id', subscription!.stripe_customer_id);
+                if (clearError) throw clearError;
+            }
+        }
+
         const customerId = await ensurePersistedStripeCustomer({
-            existingCustomerId: subscription?.stripe_customer_id,
+            existingCustomerId: storedCustomerId,
             createCustomer: () => stripe.customers.create({
                 email: user.email,
                 metadata: {

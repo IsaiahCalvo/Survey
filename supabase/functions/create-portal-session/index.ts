@@ -81,10 +81,29 @@ Deno.serve(async (req) => {
 
         const body = await req.json().catch(() => ({}));
         const returnUrl = resolveBillingReturnUrl(body?.returnUrl, req.headers.get('origin'));
-        const session = await stripe.billingPortal.sessions.create({
-            customer: subscription.stripe_customer_id,
-            return_url: returnUrl,
-        });
+        let session;
+        try {
+            session = await stripe.billingPortal.sessions.create({
+                customer: subscription.stripe_customer_id,
+                return_url: returnUrl,
+            });
+        } catch (err) {
+            // Same stale-id class as checkout (test-era or dashboard-deleted
+            // customer). Clear it and tell the user to subscribe rather than
+            // surfacing a raw Stripe error.
+            if ((err as { code?: string })?.code === 'resource_missing') {
+                await supabase
+                    .from('user_subscriptions')
+                    .update({ stripe_customer_id: null })
+                    .eq('user_id', user.id)
+                    .eq('stripe_customer_id', subscription.stripe_customer_id);
+                return new Response(
+                    JSON.stringify({ error: 'No Stripe customer found. Please start a subscription first.' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+            throw err;
+        }
 
         console.log('Portal session created:', session.id);
 
