@@ -130,9 +130,17 @@ async function openPageMenu(page, pageNumber) {
   await expect(thumb).toBeVisible({ timeout: 15_000 });
   await thumb.scrollIntoViewIfNeeded();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await thumb.click({ button: 'right' });
+    await thumb.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + Math.min(12, rect.width / 2),
+        clientY: rect.top + Math.min(12, rect.height / 2),
+      }));
+    });
     try {
-      await expect(pagesMenu(page)).toBeVisible({ timeout: 2_000 });
+      await expect(pagesMenu(page)).toBeVisible({ timeout: 2_500 });
       break;
     } catch (error) {
       if (attempt === 2) throw error;

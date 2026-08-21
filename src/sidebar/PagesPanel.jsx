@@ -618,9 +618,14 @@ const PagesPanel = ({
     };
 
     if (contextMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
+      // Defer the outside-click listener one frame so the opening
+      // right-click's leftover mousedown cannot dismiss the menu.
+      const listenId = window.requestAnimationFrame(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      });
       document.addEventListener('keydown', handleEscape);
       return () => {
+        window.cancelAnimationFrame(listenId);
         document.removeEventListener('mousedown', handleClickOutside);
         document.removeEventListener('keydown', handleEscape);
       };
