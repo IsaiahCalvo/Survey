@@ -136,7 +136,8 @@ test('P2-13: Capacitor hides Microsoft Connect/Reconnect', () => {
   assert.match(routing, /capacitor:\/\//);
   assert.match(routing, /ionic:\/\//);
   assert.match(graph, /microsoftConnectAvailable/);
-  assert.match(graph, /isCapacitorMicrosoftConnectHidden\(\)/);
+  assert.match(graph, /isMicrosoftConnectAvailable\(\)/);
+  assert.match(graph, /shouldStartFullPageMicrosoftOAuth\(\)/);
   assert.match(graph, /not available in the iOS\/Android app/);
   assert.match(graph, /@microsoft\/microsoft-graph-client/);
 });
