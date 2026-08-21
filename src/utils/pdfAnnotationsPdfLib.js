@@ -2429,8 +2429,12 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
 
     const left = fabricObj.left || 0;
     const top = fabricObj.top || 0;
-    const width = fabricObj.width || 100;
-    const height = fabricObj.height || 20;
+    // Screen (renderText): box = width*|scaleX| × height*|scaleY|. Individual
+    // SVG resize + text-edit commit bake scale to 1; group-resize (and leftover
+    // fabric objects) leave scale unbaked. fontSize stays unscaled — same as
+    // the renderer. Angle is not invented here (same as polygon).
+    const width = (fabricObj.width || 100) * Math.abs(Number(fabricObj.scaleX) || 1);
+    const height = (fabricObj.height || 20) * Math.abs(Number(fabricObj.scaleY) || 1);
     const text = fabricObj.text || '';
     const fontSize = fabricObj.fontSize || 12;
 
@@ -3182,10 +3186,14 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const fill = parsePdfDrawColor(obj?.fill || obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const left = getObjNumber(obj, 'left');
   const top = getObjNumber(obj, 'top');
-  const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14));
+  const scaleX = Math.abs(Number(obj?.scaleX) || 1);
+  const scaleY = Math.abs(Number(obj?.scaleY) || 1);
+  // Same box contract as createFreeTextAnnotation / renderText. fontSize is
+  // not multiplied — group-resize grows the wrap box, not the glyphs.
+  const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14) * scaleY);
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
-  const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200));
+  const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200) * scaleX);
   const baselineY = getPdfY(pageHeight, top + Math.min(height, fontSize + 2));
   // UX 2026-08-20: wrap + draw each line ourselves so underline/strikethrough
   // track every line (pdf-lib has no text-decoration operator). Line height
