@@ -93,6 +93,7 @@ const PDFSidebar = React.forwardRef(({
   clipboardPage,
   clipboardType,
   onRotatePage,
+  onRotatePageCCW,
   onMirrorPage,
   onResetPage,
   onReorderPages,
@@ -543,6 +544,7 @@ const PDFSidebar = React.forwardRef(({
                 clipboardPage={clipboardPage}
                 clipboardType={clipboardType}
                 onRotatePage={onRotatePage}
+                onRotatePageCCW={onRotatePageCCW}
                 onMirrorPage={onMirrorPage}
                 onResetPage={onResetPage}
                 onReorderPages={onReorderPages}

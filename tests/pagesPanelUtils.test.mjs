@@ -85,6 +85,13 @@ test('PagesPanel wires IndexedDB cache, black-frame reject, and space-filter reo
   assert.match(panel, /application\/pdf-page-internal/);
   assert.match(panel, /Insert blank page/);
   assert.match(panel, /handleInsertBlank/);
+  assert.match(panel, /Rotate counter-clockwise/);
+  assert.match(panel, /handleRotateCCW/);
+  assert.match(panel, /onRotatePageCCW/);
+  assert.match(panel, /Move up/);
+  assert.match(panel, /Move down/);
+  assert.match(panel, /movePageByOffset/);
+  assert.match(panel, /!canReorderPages/);
   assert.match(panel, /event\.key === 'Escape'/);
   assert.match(panel, /data-pages-context-menu="true"/);
 });

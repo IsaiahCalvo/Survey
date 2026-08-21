@@ -4,7 +4,7 @@
  * Default export PagesPanel renders lazy (IntersectionObserver) page thumbnails
  * rendered via pdf.js (fast low-res then crisp upgrade through a LIFO queue), plus
  * click-to-navigate, drag reorder (onReorderPages), and a right-click context menu
- * for cut/copy/paste/duplicate/insert-blank/rotate/mirror/reset/delete. Honors pageTransformations.
+ * for cut/copy/paste/duplicate/insert-blank/move/rotate/rotate-ccw/mirror/reset/delete. Honors pageTransformations.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
@@ -43,6 +43,7 @@ const PagesPanel = ({
   clipboardPage,
   clipboardType,
   onRotatePage,
+  onRotatePageCCW,
   onMirrorPage,
   onResetPage,
   onReorderPages,
@@ -650,17 +651,18 @@ const PagesPanel = ({
     setContextMenu({
       pageNumber,
       x: Math.max(8, Math.min(e.clientX, viewportWidth - 196)),
-      y: Math.max(8, Math.min(e.clientY, viewportHeight - 480))
+      y: Math.max(8, Math.min(e.clientY, viewportHeight - 620))
     });
   }, []);
 
   const movePageByOffset = useCallback((pageNumber, offset) => {
     const index = allowedPages.indexOf(pageNumber);
     const targetPage = allowedPages[index + offset];
-    if (index < 0 || !targetPage || !onReorderPages) return;
+    // Honor P1-43: menu move uses the same full-sequence gate as drag-reorder.
+    if (!canReorderPages || index < 0 || !targetPage || !onReorderPages) return;
     onReorderPages(pageNumber, targetPage);
     setContextMenu(null);
-  }, [allowedPages, onReorderPages]);
+  }, [allowedPages, canReorderPages, onReorderPages]);
 
   const handlePageClick = useCallback((pageNumber) => {
     const action = resolvePageThumbnailClick({
@@ -739,6 +741,13 @@ const PagesPanel = ({
     }
     setContextMenu(null);
   }, [onRotatePage]);
+
+  const handleRotateCCW = useCallback((pageNumber) => {
+    if (onRotatePageCCW) {
+      onRotatePageCCW(pageNumber);
+    }
+    setContextMenu(null);
+  }, [onRotatePageCCW]);
 
   const handleMirrorHorizontal = useCallback((pageNumber) => {
     if (onMirrorPage) {
@@ -1170,27 +1179,71 @@ const PagesPanel = ({
                   (FloatingContextMenu, styles.ts:872-889). */}
               <div style={{ color: '#8d96a6', fontSize: 11, fontWeight: 800, padding: '4px 6px' }}>{`Page ${contextMenu.pageNumber}`}</div>
               <div style={{ height: 1, margin: '3px 0', background: '#343A45' }} />
-              <button
-                type="button"
-                disabled={allowedPages.indexOf(contextMenu.pageNumber) <= 0}
-                onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: '#e8e2d4', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) <= 0 ? 0.4 : 1 }}
-              >
-                <Icon name="chevronUp" size={14} color="currentColor" />
-                Move up
-              </button>
-              <button
-                type="button"
-                disabled={allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
-                onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 0, borderRadius: 4, color: '#e8e2d4', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', opacity: allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1 ? 0.4 : 1 }}
-              >
-                <Icon name="chevronDown" size={14} color="currentColor" />
-                Move down
-              </button>
-              <div style={{ height: 1, margin: '3px 5px', background: '#3a4252' }} />
             </>
           )}
+          <button
+            type="button"
+            disabled={!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) <= 0}
+            onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '13px',
+              textAlign: 'left',
+              cursor: (!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) <= 0) ? 'not-allowed' : 'pointer',
+              color: '#e8e2d4',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              opacity: (!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) <= 0) ? 0.4 : 1
+            }}
+            onMouseEnter={(e) => {
+              if (canReorderPages && allowedPages.indexOf(contextMenu.pageNumber) > 0) {
+                e.currentTarget.style.background = '#2a3140';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Icon name="chevronUp" size={14} color="currentColor" />
+            Move up
+          </button>
+          <button
+            type="button"
+            disabled={!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
+            onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '13px',
+              textAlign: 'left',
+              cursor: (!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1) ? 'not-allowed' : 'pointer',
+              color: '#e8e2d4',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              opacity: (!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1) ? 0.4 : 1
+            }}
+            onMouseEnter={(e) => {
+              if (canReorderPages && allowedPages.indexOf(contextMenu.pageNumber) < allowedPages.length - 1) {
+                e.currentTarget.style.background = '#2a3140';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Icon name="chevronDown" size={14} color="currentColor" />
+            Move down
+          </button>
+          <div style={{ height: 1, margin: '3px 5px', background: '#3a4252' }} />
           <button
             onClick={() => handleCut(contextMenu.pageNumber)}
             style={{
@@ -1341,6 +1394,34 @@ const PagesPanel = ({
           >
             <Icon name="rotate" size={14} color="#8d96a6" />
             Rotate
+          </button>
+          <button
+            onClick={() => handleRotateCCW(contextMenu.pageNumber)}
+            disabled={!onRotatePageCCW}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '13px',
+              textAlign: 'left',
+              cursor: onRotatePageCCW ? 'pointer' : 'not-allowed',
+              color: onRotatePageCCW ? '#e8e2d4' : '#5a6473',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              opacity: onRotatePageCCW ? 1 : 0.5
+            }}
+            onMouseEnter={(e) => {
+              if (onRotatePageCCW) e.currentTarget.style.background = '#2a3140';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Icon name="rotate" size={14} color={onRotatePageCCW ? "#8d96a6" : "#5a6473"} />
+            Rotate counter-clockwise
           </button>
           <button
             onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)}

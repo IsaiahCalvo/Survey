@@ -690,7 +690,7 @@ export default function App({ devPreviewReturnTab = null }) {
    * - searchResults, currentMatchIndex, onSearchResultsChange, onCurrentMatchIndexChange
    * - onDuplicatePage, onDeletePage, onCutPage, onCopyPage, onPastePage
    * - clipboardPage, clipboardType
-   * - onRotatePage, onMirrorPage, onResetPage, onReorderPages, pageTransformations, getThumbnail
+   * - onRotatePage, onRotatePageCCW, onMirrorPage, onResetPage, onReorderPages, pageTransformations, getThumbnail
    * - bookmarks, onBookmarkCreate, onBookmarkUpdate, onBookmarkDelete
    * - spaces, onSpaceCreate, onSpaceUpdate, onSpaceDelete
    * - activeSpaceId, onSetActiveSpace, onExitSpaceMode
