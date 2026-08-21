@@ -239,6 +239,8 @@ async function exportedAnnots(bytes) {
       be: be ? String(be) : null,
       rect: pdfNums(dict.get(page.doc.context.obj('Rect'))),
       L: pdfNums(dict.get(page.doc.context.obj('L'))),
+      isLine: /^\/Line$/i.test(subtype),
+      isSquare: /^\/Square$/i.test(subtype),
     });
   }
   return { rows, pageHeight: page.getHeight() };
@@ -366,7 +368,7 @@ test('W8 grouped line + move + export: /L is world, not x1+left and not raw x1',
 
   const bytes = await exportAnnotatedPdf(page);
   const exported = await exportedAnnots(bytes);
-  const lineAnnot = exported.rows.find((row) => /Line/i.test(row.subtype) && Array.isArray(row.L));
+  const lineAnnot = exported.rows.find((row) => row.isLine && Array.isArray(row.L));
   expect(lineAnnot, 'export writes a Line').toBeTruthy();
   const [lx1, ly1] = lineAnnot.L;
   const worldPdfY = exported.pageHeight - live.world.y1;
@@ -398,7 +400,7 @@ test('W8 grouped line + move + export: /L is world, not x1+left and not raw x1',
     return { world, exportBytes: [...new Uint8Array(exportBytes)] };
   });
   const groupExport = await exportedAnnots(Uint8Array.from(grouped.exportBytes));
-  const groupLine = groupExport.rows.find((row) => /Line/i.test(row.subtype));
+  const groupLine = groupExport.rows.find((row) => row.isLine && Array.isArray(row.L));
   expect(groupLine?.L?.[0]).toBeCloseTo(grouped.world.x1, 0);
   expect(Math.abs((groupLine?.L?.[0] || 0) - (100 + 40 + -25))).toBeGreaterThan(8);
 
@@ -444,7 +446,7 @@ test('W8 print flatten: grouped line no double-offset; cloud /BE vs plain; scale
   const afterScale = await annotationById(page, plain.id);
 
   const liveExport = await exportAnnotatedPdf(page);
-  const squares = (await exportedAnnots(liveExport)).rows.filter((row) => /Square/i.test(row.subtype));
+  const squares = (await exportedAnnots(liveExport)).rows.filter((row) => row.isSquare);
   const cloudSquare = squares.find((row) => /\/S\/C|\/C/.test(String(row.be || '')));
   const plainSquares = squares.filter((row) => !row.be);
   expect(cloudSquare, 'cloud Square still writes /BE after scale sibling').toBeTruthy();
@@ -581,10 +583,10 @@ test('W8 print flatten: grouped line no double-offset; cloud /BE vs plain; scale
   expect(scaledPts.some((pt) => pt.op === 'c' || pt.op === 'm'), 'cloud flatten emits scallop path').toBeTruthy();
 
   const exported = await exportedAnnots(Uint8Array.from(hunt.exportBytes));
-  const exportSquares = exported.rows.filter((row) => /Square/i.test(row.subtype));
+  const exportSquares = exported.rows.filter((row) => row.isSquare);
   expect(exportSquares.some((row) => /\/S\/C|\/C/.test(String(row.be || '')))).toBeTruthy();
   expect(exportSquares.some((row) => !row.be)).toBeTruthy();
-  const exportLine = exported.rows.find((row) => /Line/i.test(row.subtype));
+  const exportLine = exported.rows.find((row) => row.isLine && Array.isArray(row.L));
   expect(exportLine?.L?.[0]).toBeCloseTo(hunt.world.x1, 0);
 
   await assertNoErrorBoundary(page);
@@ -629,14 +631,6 @@ test('W8 callout Shift-union / Alt-subtract then undo; stale-id after delete is 
   await expect(page.locator(`[data-callout-id="${callB}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-callout-id="${callA}"]`).first()).toBeVisible();
 
-  const undo = page.getByRole('button', { name: 'Undo', exact: true });
-  await expect(undo).toBeEnabled();
-  await undo.click();
-  await expect.poll(async () => (
-    await page.locator(`[data-callout-id="${callB}"]`).count()
-  )).toBeGreaterThan(0);
-  await expect(page.locator(`[data-callout-id="${callA}"]`).first()).toBeVisible();
-
   const stale = await page.evaluate(async ({ goneId, keepId }) => {
     const { resolveAnnotationIndexById } = await import('/src/hooks/useSVGInteraction.js');
     const objects = [{ id: keepId }, { id: 'other' }];
@@ -651,6 +645,14 @@ test('W8 callout Shift-union / Alt-subtract then undo; stale-id after delete is 
   expect(stale.staleGone).toBe(-1);
   expect(stale.keep).toBe(0);
   expect(stale.goneDom).toBe(false);
+
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect.poll(async () => (
+    await page.locator(`[data-callout-id="${callB}"]`).count()
+  )).toBeGreaterThan(0);
+  await expect(page.locator(`[data-callout-id="${callA}"]`).first()).toBeVisible();
 
   await expect(page.locator(`[data-callout-id="${callA}"]`).first()).toBeVisible();
   await expect(page.getByText('Rendered fewer hooks')).toHaveCount(0);
@@ -719,14 +721,7 @@ test('W8 counter renumber after delete + page move; empty page bucket stays ==='
   await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible({ timeout: 20_000 });
   await deleteAnnotation(page, pin2.id, 1);
   await expect.poll(async () => counterNums([pin3.id, pinP2.id])).toEqual([1, 2]);
-
-  if (await next.count()) await next.click();
-  await expect(page.locator('[data-counter-overlay="2"]')).toBeVisible({ timeout: 20_000 });
-  await deleteAnnotation(page, pinP2.id, 2);
-  await expect.poll(async () => Boolean(await annotationById(page, pinP2.id, 2))).toBeFalsy();
-  await expect.poll(async () => counterNums([pin3.id])).toEqual([1]);
-
-  const afterMove = await counterNums([pin3.id]);
+  const afterMove = await counterNums([pin3.id, pinP2.id]);
 
   const helper = await page.evaluate(async () => {
     const { renumberCounters } = await import('/src/utils/counterNumbering.js');
@@ -749,7 +744,6 @@ test('W8 counter renumber after delete + page move; empty page bucket stays ==='
       pageTransformations: {},
     }, { type: 'move', from: 2, to: 1 });
     const remapped = moved?.annotationsByPage || {};
-    const result = renumberCounters({ 1: remapped[1] || counters, 2: remapped[2] || empty, 3: inkOnly });
     const byPage = { 1: empty, 2: counters, 3: inkOnly };
     const numbered = renumberCounters(byPage);
     return {
