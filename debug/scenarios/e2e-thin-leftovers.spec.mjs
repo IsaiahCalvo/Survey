@@ -427,10 +427,21 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     x0: 0.48, y0: 0.54, x1: 0.68, y1: 0.68,
   }, 1);
   expect(calloutId).toBeTruthy();
-  await copyCurrentSelection(page);
+  await gotoPage(page, 1);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
+  const calloutEl = page.locator(`[data-callout-id="${calloutId}"]`).first();
+  await expect(calloutEl).toBeVisible({ timeout: 15_000 });
+  const callBox = await calloutEl.boundingBox();
+  await page.mouse.click(callBox.x + Math.min(8, callBox.width / 2), callBox.y + Math.min(8, callBox.height / 2));
+  await page.keyboard.press('ControlOrMeta+c');
   const page2CalloutsBefore = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count();
   await gotoPage(page, 2);
   await rightClickEmptyPage(page, 2, { xf: 0.80, yf: 0.62 });
+  const calloutPasteMenu = page.locator('[data-annotation-context-menu="true"]');
+  await expect(calloutPasteMenu).toBeVisible({ timeout: 8_000 });
+  const calloutPasteColor = await calloutPasteMenu.getByText('Paste', { exact: true }).evaluate((el) => getComputedStyle(el).color);
+  expect(calloutPasteColor, 'callout clipboard must enable Paste').not.toMatch(/rgb\(90,\s*100,\s*115\)/);
   await clickMenuItem(page, 'Paste');
   await expect.poll(async () => page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count()).toBeGreaterThan(page2CalloutsBefore);
   hunts.push({ hunt: 'intended — callout page 1 → page 2', pass: true, source: calloutId });
