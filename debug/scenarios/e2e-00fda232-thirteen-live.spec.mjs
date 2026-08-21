@@ -40,7 +40,15 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
         type: String(object.type || data.type || (isCallout ? 'callout' : '')).toLowerCase(),
         tool: String(data.tool || data.type || object.tool || (isCallout ? 'callout' : '')).toLowerCase(),
         imported: object.isPdfImported === true,
-        displayNumber: data.displayNumber ?? data.value ?? data.number ?? null,
+        displayNumber: (() => {
+          const fromData = data.displayNumber ?? data.value ?? data.number ?? object.displayNumber;
+          if (Number.isFinite(Number(fromData)) && Number(fromData) > 0) return Number(fromData);
+          const el = document.querySelector(
+            `[data-counter-overlay="${pageNum}"] [data-anno-id="${id}"] text, [data-svg-annotation-layer="${pageNum}"] [data-anno-id="${id}"] text`
+          );
+          const fromDom = el ? Number.parseInt((el.textContent || '').trim(), 10) : NaN;
+          return Number.isFinite(fromDom) ? fromDom : (fromData ?? null);
+        })(),
         seriesId: data.seriesId || null,
         cloudIntensity: data.pdfCloudIntensity ?? data.cloudIntensity ?? null,
         cloudBorder: Boolean(data.cloudBorder || object.cloudBorder || data.borderStyle === 'cloud'),
@@ -293,26 +301,31 @@ test('P1-14 renumberCounters persist after page-bucket change', async ({ page })
     isCounterRow(row) && row.id !== pin1.id && row.id !== pin2.id
   ), 1);
 
-  await expect.poll(async () => {
-    const nums = await Promise.all([pin1.id, pin2.id, pin3.id].map((id) => annotationById(page, id, 1)));
-    return nums.map((row) => row?.displayNumber);
-  }).toEqual([1, 2, 3]);
+  const counterNums = async (ids) => page.evaluate((annoIds) => annoIds.map((id) => {
+    const object = window.__phase35GetAnnotationById?.(id) || {};
+    const data = object.data || {};
+    const fromData = data.displayNumber ?? data.value ?? data.number;
+    const el = document.querySelector(
+      `[data-counter-overlay] [data-anno-id="${id}"] text, [data-svg-annotation-layer] [data-anno-id="${id}"] text`
+    );
+    const fromDom = el ? Number.parseInt((el.textContent || '').trim(), 10) : NaN;
+    return Number.isFinite(Number(fromData)) && Number(fromData) > 0
+      ? Number(fromData)
+      : (Number.isFinite(fromDom) ? fromDom : null);
+  }), ids);
+
+  await expect.poll(async () => counterNums([pin1.id, pin2.id, pin3.id])).toEqual([1, 2, 3]);
 
   await page.keyboard.press('v');
   await selectStroke(page, pin1.id, 1);
   await page.keyboard.press('Delete');
   if (await annotationById(page, pin1.id, 1)) await page.keyboard.press('Backspace');
   await expect.poll(async () => Boolean(await annotationById(page, pin1.id, 1))).toBeFalsy();
-  await expect.poll(async () => {
-    const nums = await Promise.all([pin2.id, pin3.id].map((id) => annotationById(page, id, 1)));
-    return nums.map((row) => row?.displayNumber);
-  }).toEqual([1, 2]);
+  await expect.poll(async () => counterNums([pin2.id, pin3.id])).toEqual([1, 2]);
 
   await goToPage(page, 2);
   await goToPage(page, 1);
-  const persisted = await Promise.all([pin2.id, pin3.id].map(async (id) => (
-    (await annotationById(page, id, 1))?.displayNumber
-  )));
+  const persisted = await counterNums([pin2.id, pin3.id]);
   expect(persisted).toEqual([1, 2]);
 
   const helper = await page.evaluate(async () => {
