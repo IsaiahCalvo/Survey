@@ -22931,8 +22931,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsPageInputDirty(true);
   }, []);
 
-  const commitPageInput = useCallback(() => {
-    const value = parseInt(pageInputValue);
+  const commitPageInput = useCallback((liveValue) => {
+    // Prefer the live input value. Playwright fill / last keystroke can commit
+    // in the same tick as onChange, so pageInputValue may still be the old page.
+    const raw = liveValue != null ? liveValue : pageInputValue;
+    const value = parseInt(String(raw).replace(/\D/g, ''), 10);
     if (!isNaN(value) && value >= 1 && value <= numPages) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
       goToPage(value);
@@ -22949,13 +22952,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitPageInput();
+      commitPageInput(e.target?.value);
       e.target.blur();
     }
   }, [commitPageInput]);
 
-  const handlePageInputBlur = useCallback(() => {
-    commitPageInput();
+  const handlePageInputBlur = useCallback((e) => {
+    commitPageInput(e?.target?.value);
   }, [commitPageInput]);
 
   useEffect(() => {

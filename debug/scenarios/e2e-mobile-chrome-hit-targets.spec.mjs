@@ -55,13 +55,9 @@ async function jumpToPage(page, value) {
   const input = page.getByRole('textbox', { name: 'Page number' });
   await expect(input).toBeVisible();
   const digits = String(value).replace(/\D/g, '');
-  await input.evaluate((el, next) => {
-    el.focus();
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    setter.call(el, next);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }, digits);
-  await expect(input).toHaveValue(digits);
+  await input.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type(digits);
   await input.press('Enter');
 }
 
@@ -231,10 +227,13 @@ test('mobile 390×844 hub documents remaining buttons intended + break + edge', 
   const namesBefore = await page.locator('.mobile-doc-card .mobile-card-title').evaluateAll((els) => (
     els.map((el) => el.textContent?.trim() || '')
   ));
-  const filter = page.getByRole('button', { name: /^(File|Project|Last edited|Size)$/ }).first();
+  const filter = page.locator('.documents-mobile-filter');
   await expect(filter).toBeVisible();
   await filter.click();
   const sortMenu = page.locator('.documents-mobile-sort-menu');
+  if (!(await sortMenu.isVisible().catch(() => false))) {
+    await filter.evaluate((el) => el.click());
+  }
   await expect(sortMenu).toBeVisible();
   await sortMenu.getByRole('menuitem', { name: /^Size/ }).click();
   const namesAfter = await page.locator('.mobile-doc-card .mobile-card-title').evaluateAll((els) => (

@@ -28,6 +28,10 @@ test('mobile viewer More / history / sync / dock are distinct 390 hit targets', 
   assert.match(shell, /isMobileViewer \? \(\s*<MobilePdfViewerHeader/);
   assert.match(shell, /KeyboardShortcutsOverlay only renders on the home tab/);
   assert.match(shell, /!isViewerVisible && <KeyboardShortcutsOverlay/);
+
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /commitPageInput\(e\.target\?\.value\)/);
+  assert.match(viewer, /Prefer the live input value/);
 });
 
 test('mobile hub documents list / filter / detail are 720px hit targets, not the desktop extras spec', () => {
