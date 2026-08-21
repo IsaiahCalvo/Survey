@@ -105,7 +105,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | P-01 | Mobile sheets | **pass** (finger-follow) | 390×844 proxy. Handle tracks then spring-back; 90px dismisses. touchcancel stranded — E2E-CHROME-04 |
 | P-02 | Mobile text formatting | **pass** (catalog) |  |
 | P-03 | Electron menus | **pass** (File menu) | File shows Open / Export / Print / Print+annot. Print click: `targetWindow alive: true`. |
-| P-04 | Tool keybindings | **pass** (live arm + C) | P→Pen, H→Highlighter, E/⇧E→Partial erase, T→Text, Q→Callout, L→Line, A→Arrow. V / ⇧V do not set `btn-active` labels (Select is unlabeled `btn-icon`); ⇧V still enabled text-select. **C** arms `[data-counter-overlay]`; C while Zoom % focused is ignored. |
+| P-04 | Tool keybindings | **pass** (live arm + C + matrix) | P→Pen, H→Highlighter, E/⇧E→Partial erase, T→Text, Q→Callout, L→Line, A→Arrow. V / ⇧V do not set `btn-active` labels (Select is unlabeled `btn-icon`); ⇧V still enabled text-select. **C** arms `[data-counter-overlay]`; C while Zoom % focused is ignored. This pass: `e2e-keyboard-shortcut-matrix.spec.mjs` hard-asserts P/H/T/Q/L/A `btn-active`, Delete, Ctrl+]/[, Ctrl+F, Esc overlay; Ctrl+D / Ctrl+G invent nothing. |
 
 ## Live-window checks this wave
 
