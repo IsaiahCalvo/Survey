@@ -1,6 +1,8 @@
 # E2E status — wave 5 remaining + hub leftovers
 
-**This-pass (2026-08-21 thin leftovers):** three leftover clusters live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/thin-leftovers-2026-08-21.md`. Playwright `e2e-thin-leftovers.spec.mjs` **3 / 3 (29.0s)**. Product: imported `/Text` sticky stamps `id`/`data.id` (`convertTextToFabricNote`). No Note create tool invented. Leftover **18** unchanged. Did **not** replay waves 5–12 / flatten / link allowlist. Goal stays open.
+**This-pass (2026-08-21 callout cross-page paste):** the unique leftover after thin leftovers — callout clone via context-menu Paste — is live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/callout-cross-page-paste-2026-08-21.md`. Playwright `e2e-callout-paste.spec.mjs` **1 / 1 (11.5s)** + thin leftovers **3 / 3 (20.1s)** (callout hunt now a hard clone). Product: `pickActiveClipboard` last-writer-wins; Cmd+C reads live `selectedCalloutIds`. Leftover **18** unchanged. Did **not** replay waves 5–13 / flatten / leftover-18. Goal stays open.
+
+**Prior-pass (2026-08-21 thin leftovers):** three leftover clusters live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/thin-leftovers-2026-08-21.md`. Playwright `e2e-thin-leftovers.spec.mjs` **3 / 3**. Product: imported `/Text` sticky stamps `id`/`data.id` (`convertTextToFabricNote`). No Note create tool invented. Leftover **18** unchanged.
 
 **Prior-pass (2026-08-21 later):** unique cluster **native PDF Link / URL / mailto / page-jump** live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/pdf-links-2026-08-21.md` + `fix-logs/e2e-pdf-links.md`. Playwright `e2e-pdf-links.spec.mjs` **1 / 1 (3.7s)**. Product: E2E-LINK-01 allowlist (`http:`/`https:`/`mailto:`) in `PdfjsLinkLayer`. No create/edit Link tool (not invented).
 
@@ -110,7 +112,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | E-05 undo/redo | **pass** |
 | A-07 revisions | **pass** (W4-03 local History + named cloud restore) |
 | A-07 jump + delete-restore | **pass** — W5-01 |
-| Cross-page paste (rect/ellipse/pen/text + break/edge) | **pass** — `e2e-thin-leftovers.spec.mjs`. Callout create present; clone via context-menu Paste still shape-clipboard. Receipt `fix-logs/thin-leftovers-2026-08-21.md` |
+| Cross-page paste (rect/ellipse/pen/text + **callout** + break/edge) | **pass** — `e2e-thin-leftovers.spec.mjs` (callout clone hard-pass) + `e2e-callout-paste.spec.mjs`. Last-copied wins: copy callout then paste on page M mints a new `callout-…` with leader/text intact. Receipt `fix-logs/callout-cross-page-paste-2026-08-21.md` |
 | Pages Duplicate execute (incl. annotations + armed + History Restore + undo wipe) | **pass** — same spec; first/last Duplicate; Undo disabled after page-structure |
 | Imported sticky chrome | **pass** (proxy + click-through) / **compile-hidden** (create-Note + no SVG popup). Fixture `e2e-sticky-note.pdf`. |
 | Remaining tools / zoom / export / print / survey stamp | **pass** — `e2e-wave-remaining.spec.mjs` 8/8 |
