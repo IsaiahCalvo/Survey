@@ -21,10 +21,13 @@ test('overlay catalogs tools/Esc/search and omits Delete/Duplicate/z-order', () 
   assert.doesNotMatch(overlay, /description: 'Delete'/);
 });
 
-test('viewer mounts no overlay; z-order/Delete/tool keys stay live; group/duplicate stay hidden', () => {
+test('AppShell hides overlay on viewer; DevTestRoute remounts it; z-order/Delete/tool keys stay live', () => {
   const shell = read('src/AppShell.jsx');
   assert.match(shell, /KeyboardShortcutsOverlay only renders on the home tab/);
   assert.match(shell, /!isViewerVisible && <KeyboardShortcutsOverlay/);
+
+  const dev = read('src/DevTestRoute.jsx');
+  assert.match(dev, /<KeyboardShortcutsOverlay \/>/);
 
   const svg = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(svg, /e\.key !== 'Delete' && e\.key !== 'Backspace'/);

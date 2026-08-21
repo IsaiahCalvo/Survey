@@ -150,47 +150,41 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   // Intended — tool letters arm the documented tools (not a replay of P-04
   // C-in-input; that input-guard still stands).
   const toolProof = {};
+  await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
   const pen = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Pen', exact: true });
   await expect(pen).toBeVisible({ timeout: 8_000 });
   toolProof.p = (await pen.getAttribute('aria-pressed')) === 'true';
 
-  await blurChrome(page);
   await page.keyboard.press('h');
   const highlighter = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Highlighter', exact: true });
   await expect(highlighter).toBeVisible({ timeout: 8_000 });
   toolProof.h = (await highlighter.getAttribute('aria-pressed')) === 'true';
 
-  await blurChrome(page);
   await page.keyboard.press('t');
   const textBtn = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Text', exact: true });
   await expect(textBtn).toBeVisible({ timeout: 8_000 });
   toolProof.t = (await textBtn.getAttribute('aria-pressed')) === 'true';
 
-  await blurChrome(page);
   await page.keyboard.press('q');
   const callout = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Callout', exact: true });
   await expect(callout).toBeVisible({ timeout: 8_000 });
   toolProof.q = (await callout.getAttribute('aria-pressed')) === 'true';
 
-  await blurChrome(page);
   await page.keyboard.press('l');
   const line = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Line', exact: true });
   await expect(line).toBeVisible({ timeout: 8_000 });
   toolProof.l = (await line.getAttribute('aria-pressed')) === 'true';
 
-  await blurChrome(page);
   await page.keyboard.press('a');
   const arrow = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Arrow', exact: true });
   await expect(arrow).toBeVisible({ timeout: 8_000 });
   toolProof.a = (await arrow.getAttribute('aria-pressed')) === 'true';
 
-  await blurChrome(page);
   await page.keyboard.press('c');
   await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible({ timeout: 8_000 });
   toolProof.c = true;
 
-  await blurChrome(page);
   await page.keyboard.press('v');
   await expect(page.locator('[data-counter-overlay="1"]')).toHaveCount(0);
   toolProof.v = true;
