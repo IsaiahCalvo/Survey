@@ -16,7 +16,20 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
-import { migrateSidebarData } from './utils/sidebarPersistence.js';
+import {
+  applyRemoteSidebarMeta,
+  BOOKMARKS_META_KEY,
+  mergeSidebarWrite,
+  migrateSidebarData,
+  PAGE_NAMES_META_KEY,
+} from './utils/sidebarPersistence.js';
+import {
+  applyBookmarkHistorySlice,
+  historyStateHasBookmarks,
+  planBookmarkDelete,
+  snapshotBookmarksForHistory,
+} from './sidebar/bookmarkEditUtils.js';
+import { getMetaValue, META_MAP, setMetaValue } from './services/annotationDocStore.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
 import {
   capturePendingSurveyMarkerUi,
@@ -94,12 +107,22 @@ import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPrecis
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
+import {
+  buildOriginalIndexById,
+  resolveAnnotationIndexById,
+  stampZOrderAfterMove,
+  stampZOrderOnTop,
+} from './utils/annotationZOrder.js';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
+import { collectEraseDeleteCandidateIds } from './utils/eraseApprovalCandidates.js';
+import { isLegacyGroupArrow } from './utils/legacyGroupArrow.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
-import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { buildHistoryEventRowFromDebugEvent, getHistoryDocumentId, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent } from './services/documentHistoryService.js';
+import { flushLiveAnnotationsForRevision } from './services/documentRevisionService.js';
+import { deserializeRowsToAnnotationsByPage } from './services/annotationTypeSerializers.js';
 import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   canDelete,
@@ -120,11 +143,15 @@ import { drainRowIdWritebackQueue } from './services/rowIdGraphWriteback';
 import { drainRowIdWritebackQueueLocal } from './services/rowIdLocalWriteback';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
+import { excelLiveSyncWriteStatus } from './utils/excelLiveSyncWriteStatus.js';
 import { createPortal, flushSync } from 'react-dom';
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { PRESENCE_HEARTBEAT_MS } from './hooks/presenceRoster.js';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
+import { spaceHasActivatableRegions } from './utils/spaceRegionOrphans.js';
+import { surveyGlobalLogPath, surveyTestLogsDir } from './utils/surveyDiagPaths.js';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
@@ -203,6 +230,7 @@ import { combineCollaborationSyncStatus } from './utils/collaborationSyncStatus'
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { scopeHistoryStateForCalloutRestore } from './utils/calloutHistoryScope';
+import { scopeHistoryStateForCrdtRestore } from './utils/crdtHistoryScope';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
@@ -217,7 +245,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
+import { pageNumberAfterOperation, remapClipboardPage } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -1203,6 +1231,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [debugLogging]);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
     const handleDebugShortcut = (event) => {
       const key = String(event.key || '').toLowerCase();
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || key !== 'd') {
@@ -3834,11 +3863,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const type = String(sel.annotation.type || '').toLowerCase();
     const annot = sel.annotation;
     const isCounter = type === 'circle' && annot?.data?.type === 'counter';
-    if (type !== 'rect' && type !== 'ellipse' && type !== 'path'
+    if (type !== 'rect' && type !== 'ellipse' && type !== 'circle' && type !== 'path'
       && type !== 'line' && type !== 'textbox'
       && type !== 'polygon' && type !== 'polyline'
       && !isCounter) return;
-    const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
+    const isFillable = type === 'rect' || type === 'ellipse' || type === 'circle' || type === 'textbox'
       || type === 'polygon' || isCounter;
     const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
     const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
@@ -4003,8 +4032,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // nominal 612x792 page — visually consistent across zooms).
           const repeat = resolvePasteRepeatCount(cursorPosition.clientX, cursorPosition.clientY);
           if (repeat > 0) {
-            deltaX += (repeat * PASTE_REPEAT_OFFSET_PAGE_UNITS) / 612;
-            deltaY += (repeat * PASTE_REPEAT_OFFSET_PAGE_UNITS) / 792;
+            const pageSize = pageSizesRef.current?.[pageNumber] || { width: 612, height: 792 };
+            deltaX += (repeat * PASTE_REPEAT_OFFSET_PAGE_UNITS) / (pageSize.width || 612);
+            deltaY += (repeat * PASTE_REPEAT_OFFSET_PAGE_UNITS) / (pageSize.height || 792);
           }
         }
       } catch (_) { /* keep 5% fallback */ }
@@ -4965,7 +4995,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           if (window.electronAPI?.capturePage) {
             const pngBytes = await window.electronAPI.capturePage();
             if (pngBytes) {
-              const screenshotPath = `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-${slot}.png`;
+              const homeDir = await window.electronAPI.getHomeDir?.();
+              const logsDir = surveyTestLogsDir(homeDir);
+              if (!logsDir) throw new Error('home directory unavailable');
+              const screenshotPath = `${logsDir}/testlog-screenshot-${slot}.png`;
               await window.electronAPI.writeFile(screenshotPath, pngBytes);
               const sizeBytes = pngBytes.byteLength || pngBytes.length || 0;
               appDebug(`[Diag ${slot}] screenshot saved (${Math.round(sizeBytes / 1024)} KB) -> ${screenshotPath}`);
@@ -7298,9 +7331,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
+  const [pageMutationRevision, setPageMutationRevision] = useState(0);
   const pdfSearchDocumentKey = useMemo(
-    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}`,
-    [pdfFile?.id, pdfFile?.name, pdfId, numPages]
+    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}:${pageMutationRevision}`,
+    [pdfFile?.id, pdfFile?.name, pdfId, numPages, pageMutationRevision]
   );
   const previousPdfSelectionContextRef = useRef(null);
   useLayoutEffect(() => {
@@ -7422,12 +7456,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const isFillableShapeSelected = () => {
     const { type, isCounter } = getSelectedShapeMeta();
-    return type === 'rect' || type === 'ellipse' || type === 'textbox'
+    return type === 'rect' || type === 'ellipse' || type === 'circle' || type === 'textbox'
       || type === 'polygon' || isCounter;
   };
   const isEditableShapeSelected = () => {
     const { type, isCounter } = getSelectedShapeMeta();
-    if (type === 'rect' || type === 'ellipse' || type === 'path'
+    if (type === 'rect' || type === 'ellipse' || type === 'circle' || type === 'path'
       || type === 'line' || type === 'textbox'
       || type === 'polygon' || type === 'polyline') return true;
     return isCounter;
@@ -8122,6 +8156,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Sidebar state: Pages, Bookmarks, Spaces
   const [pageNames, setPageNames] = useState({}); // { [pageNumber]: name }
   const [bookmarks, setBookmarks] = useState([]); // Array of { id, name, type: 'bookmark'|'folder', pageIds: [], parentId: null, children: [] }
+  const bookmarksRef = useRef([]);
+  bookmarksRef.current = bookmarks;
   const [pdfBookmarks, setPdfBookmarks] = useState([]); // Bookmarks extracted from the PDF (Pdfjs primary, PDF.js fallback)
   const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
   const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
@@ -8989,9 +9025,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // into the Survey-BetaSafeS2 directory (no subfolder — sidesteps stale
     // main.js that lacks auto-mkdir). Uses only the original fs:writeFile IPC
     // so it works regardless of whether Electron main has been restarted.
-    const BASE = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog';
-    const DIR = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs';
     const api = window.electronAPI;
+    const homeDir = await api?.getHomeDir?.();
+    const DIR = surveyTestLogsDir(homeDir);
+    const BASE = DIR ? `${DIR}/testlog` : null;
     // UX 2026-04-19: loud status so the user knows the click registered
     // even when Electron's IPC path is missing. Previously a missing
     // electronAPI produced a silent console.warn — in a browser window
@@ -9015,6 +9052,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (dlErr) {
         console.error('[SaveLog] browser download failed', dlErr);
       }
+      return null;
+    }
+    if (!DIR) {
+      console.warn('[SaveLog] home directory unavailable');
       return null;
     }
 
@@ -9064,8 +9105,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try {
       const ts = new Date().toISOString();
       const header = `===== SaveLog @ ${ts} =====\n`;
+      const rootLog = surveyGlobalLogPath(homeDir);
+      if (!rootLog) throw new Error('home directory unavailable');
       await api.writeFile(
-        '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
+        rootLog,
         header + consoleText + '\n'
       );
       const lines = Array.isArray(window.__consoleLogBuffer)
@@ -9891,34 +9934,61 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pageTransformations]);
 
   // Load sidebar data from localStorage
+  const applySidebarData = useCallback((raw) => {
+    const loaded = migrateSidebarData(raw || {});
+    setPageNames(loaded.pageNames);
+    setBookmarks(loaded.bookmarks);
+    setHasImportedPdfBookmarks(loaded.hasImportedPdfBookmarks);
+    setSpaces(loaded.spaces);
+    setPageTransformations(loaded.pageTransformations);
+    return loaded;
+  }, []);
+
   useEffect(() => {
     if (!pdfId) return;
     try {
       const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
-      const loaded = migrateSidebarData(sidebarData);
-      setPageNames(loaded.pageNames);
-      setBookmarks(loaded.bookmarks);
-      setHasImportedPdfBookmarks(loaded.hasImportedPdfBookmarks);
-      setSpaces(loaded.spaces);
+      applySidebarData(sidebarData);
       // Always start in regular mode when opening a PDF; do not restore an active space
       setActiveSpaceId(null);
-      setPageTransformations(loaded.pageTransformations);
     } catch (e) {
       console.error('Error loading sidebar data:', e);
     }
-  }, [pdfId]);
+  }, [pdfId, applySidebarData]);
+
+  // P1-46: another browser tab can write the same key. Reload rather than
+  // last-write-wins clobbering that tab's names/bookmarks/spaces.
+  useEffect(() => {
+    if (!pdfId) return undefined;
+    const key = `pdfSidebar_${pdfId}`;
+    const onStorage = (event) => {
+      if (event.key !== key) return;
+      try {
+        applySidebarData(JSON.parse(event.newValue || '{}'));
+      } catch (error) {
+        console.error('Error merging sidebar data from another tab:', error);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [pdfId, applySidebarData]);
 
   // Save sidebar data to localStorage
   useEffect(() => {
     if (!pdfId) return;
     try {
-      localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
+      let existing = {};
+      try {
+        existing = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
+      } catch (_err) { /* keep empty existing */ }
+      const merged = mergeSidebarWrite(existing, {
         pageNames,
         bookmarks,
         spaces,
         activeSpaceId,
-        pageTransformations
-      }));
+        pageTransformations,
+      });
+      localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify(merged));
     } catch (e) {
       console.error('Error saving sidebar data:', e);
     }
@@ -9945,6 +10015,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
   } = useYDoc();
+
+  // P1-46: names/bookmarks ride Y.Doc meta so they are not browser-local only.
+  // Spaces already hydrate through useAnnotationDoc → spacesById.
+  useEffect(() => {
+    if (!yjsDoc) return undefined;
+    const applyRemote = () => {
+      const remoteNames = getMetaValue(yjsDoc, PAGE_NAMES_META_KEY);
+      const remoteBookmarks = getMetaValue(yjsDoc, BOOKMARKS_META_KEY);
+      setPageNames((prev) => {
+        const applied = applyRemoteSidebarMeta(
+          { pageNames: prev, bookmarks: [] },
+          { pageNames: remoteNames },
+        );
+        return applied.namesChanged ? applied.pageNames : prev;
+      });
+      setBookmarks((prev) => {
+        const applied = applyRemoteSidebarMeta(
+          { pageNames: {}, bookmarks: prev },
+          { bookmarks: remoteBookmarks },
+        );
+        return applied.bookmarksChanged ? applied.bookmarks : prev;
+      });
+    };
+    applyRemote();
+    const map = yjsDoc.getMap(META_MAP);
+    map.observe(applyRemote);
+    return () => map.unobserve(applyRemote);
+  }, [yjsDoc]);
+
+  useEffect(() => {
+    if (!yjsDoc) return;
+    setMetaValue(yjsDoc, PAGE_NAMES_META_KEY, pageNames);
+    setMetaValue(yjsDoc, BOOKMARKS_META_KEY, bookmarks);
+  }, [yjsDoc, pageNames, bookmarks]);
   const [devAccessRevoked, setDevAccessRevoked] = useState(false);
   useEffect(() => {
     if (
@@ -10189,7 +10293,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // `deletedList` is [{ id, marker }]; one event per marker keeps each restore
   // payload tiny. Best-effort — never blocks the delete.
   const recordSurveyMarkerDeleteHistory = useCallback((deletedList, origin = 'app') => {
-    const documentId = pdfFile?.id;
+    const documentId = getHistoryDocumentId(pdfFile);
     if (!documentId || !Array.isArray(deletedList) || deletedList.length === 0) return;
     const actorName = user?.email || user?.user_metadata?.full_name || 'Someone';
     const deletedAt = new Date().toISOString();
@@ -10204,7 +10308,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         console.warn('Failed to record Survey Marker delete history:', histErr);
       }
     });
-  }, [pdfFile?.id, user?.id, user?.email]);
+  }, [pdfFile, user?.id, user?.email]);
 
   useEffect(() => {
     // After a reload the in-memory baseline is null; rehydrate it from durable
@@ -10279,16 +10383,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	      }
 	    }
 
-    if (pdfFile?.id && user?.id) {
+    const historyDocumentId = getHistoryDocumentId(pdfFile);
+    if (historyDocumentId && user?.id) {
       const historyRow = buildHistoryEventRowFromDebugEvent(event, {
-        documentId: pdfFile.id,
+        documentId: historyDocumentId,
         user,
       });
       if (historyRow) {
         try {
           window.dispatchEvent(new CustomEvent('document-history:event-recorded', {
             detail: {
-              documentId: pdfFile.id,
+              documentId: historyDocumentId,
               row: historyRow,
             },
           }));
@@ -10300,7 +10405,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
 	    return event;
-	  }, [pdfFile?.id, user]);
+	  }, [pdfFile, user]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -10493,6 +10598,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const restoredCallouts = Array.isArray(stateToRestore.callouts)
       ? stateToRestore.callouts
       : [];
+    const restoredBookmarks = historyStateHasBookmarks(stateToRestore)
+      ? snapshotBookmarksForHistory(stateToRestore.bookmarks)
+      : null;
     // R2.2 Slice 2: callouts are a derived projection of annotationsByPage, so
     // the snapshot's callout slice is merged into the restored byPage BEFORE
     // the single setAnnotationsByPage call (no separate callout state to set).
@@ -10511,6 +10619,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPageRef.current = restoredAnnotationsByPage;
     surveyMarkersRef.current = restoredSurveyMarkers;
     spacesRef.current = restoredSpaces;
+    if (restoredBookmarks) {
+      bookmarksRef.current = restoredBookmarks;
+    }
     if (restoredPendingSurveyMarkerUi) {
       pendingSurveyMarkerUiRef.current = restoredPendingSurveyMarkerUi;
     }
@@ -10519,6 +10630,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setAnnotationsByPage(restoredAnnotationsByPage);
       setSurveyMarkers(restoredSurveyMarkers);
       setSpaces(restoredSpaces);
+      if (restoredBookmarks) {
+        setBookmarks(restoredBookmarks);
+      }
       if (restoredPendingSurveyMarkerUi) {
         setNewSurveyMarkersByPage(restoredPendingSurveyMarkerUi.newSurveyMarkersByPage || {});
         setPendingSurveyMarker(restoredPendingSurveyMarkerUi.pendingSurveyMarker ?? null);
@@ -10535,6 +10649,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       flushSync(applyRestoredState);
     } catch (_err) {
       applyRestoredState();
+    }
+    const selectedId = typeof window !== 'undefined'
+      ? window.__phase29InteractionState?.selectedId
+      : null;
+    if (selectedId) {
+      for (const [pageKey, page] of Object.entries(restoredAnnotationsByPage || {})) {
+        const remappedIndex = (page?.objects || []).findIndex((obj) => (
+          String((obj?.data && obj.data.id) ?? obj?.id ?? '') === String(selectedId)
+        ));
+        if (remappedIndex >= 0) {
+          setPendingSvgSelection({
+            pageNumber: Number(pageKey) || pageKey,
+            annotationIndex: remappedIndex,
+            tick: Date.now(),
+            reason: 'history-restore',
+          });
+          break;
+        }
+      }
     }
   }, [migrateHistorySpaces]);
 
@@ -11336,7 +11469,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!sel || sel.annotationIndex == null || !annot) return;
     const type = String(annot.type || '').toLowerCase();
     const isCounter = annot?.data?.type === 'counter';
-    if (!isCounter && type !== 'line' && type !== 'polygon' && type !== 'polyline') return;
+    if (!isCounter && type !== 'line' && type !== 'polygon' && type !== 'polyline' && !isLegacyGroupArrow(annot)) return;
     setEditingAnnotation({
       pageNumber: sel.pageNumber,
       index: sel.annotationIndex,
@@ -11399,6 +11532,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       flushSync(() => setAnnotationsByPage(nextAnnotationsByPage));
     } catch (_err) {
       setAnnotationsByPage(nextAnnotationsByPage);
+    }
+    const historyPage = scopedAction.pageNumber;
+    const historyId = scopedAction.annotationId;
+    if (historyPage != null && historyId != null) {
+      const objects = nextAnnotationsByPage?.[historyPage]?.objects
+        || nextAnnotationsByPage?.[String(historyPage)]?.objects
+        || [];
+      const remappedIndex = objects.findIndex((obj) => (
+        String((obj?.data && obj.data.id) ?? obj?.id ?? '') === String(historyId)
+      ));
+      setPendingSvgSelection({
+        pageNumber: historyPage,
+        annotationIndex: remappedIndex >= 0 ? remappedIndex : null,
+        tick: Date.now(),
+        reason: 'history-apply',
+      });
     }
 	    pushHistoryDebugEvent('local_annotation_history_applied', {
 	      ...summarizeHistoryActionForLog(scopedAction),
@@ -11689,6 +11838,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
 
         const currentState = getHistorySnapshot();
+        if (historyStateHasBookmarks(stateToRestore)) {
+          currentState.bookmarks = snapshotBookmarksForHistory(bookmarksRef.current);
+        }
         const eraseTargets = legacyUndoMeta?.context?.eraseTargets;
         const shouldScopeErase = Array.isArray(eraseTargets) && eraseTargets.length > 0;
         const shouldScopeCallouts = shouldScopeCalloutHistoryRestore(legacyUndoMeta);
@@ -11704,6 +11856,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             targetState: stateToRestore,
             meta: legacyUndoMeta,
             userId: yjsUndoCtx?.userId || user?.id || null,
+          })
+          : (yjsDoc || yjsUndoManager)
+          ? scopeHistoryStateForCrdtRestore({
+            currentState,
+            targetState: stateToRestore,
           })
           : stateToRestore;
         isUndoingRef.current = true;
@@ -11954,6 +12111,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const currentState = getHistorySnapshot();
+      if (historyStateHasBookmarks(legacyRedoState)) {
+        currentState.bookmarks = snapshotBookmarksForHistory(bookmarksRef.current);
+      }
       const eraseTargets = legacyRedoMeta?.context?.eraseTargets;
       const shouldScopeErase = Array.isArray(eraseTargets) && eraseTargets.length > 0;
       const shouldScopeCallouts = shouldScopeCalloutHistoryRestore(legacyRedoMeta);
@@ -11969,6 +12129,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           targetState: legacyRedoState,
           meta: legacyRedoMeta,
           userId: yjsUndoCtx?.userId || user?.id || null,
+        })
+        : (yjsDoc || yjsUndoManager)
+        ? scopeHistoryStateForCrdtRestore({
+          currentState,
+          targetState: legacyRedoState,
         })
         : legacyRedoState;
       isUndoingRef.current = true;
@@ -12180,6 +12345,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRegionOverlayDisabled(next.regionOverlayDisabled);
     setUndoHistory([]);
     setRedoHistory([]);
+    setPageMutationRevision((revision) => revision + 1);
+    setClipboardPage((prev) => remapClipboardPage(prev, operation));
     clearAnnotationSelectionForContextChange('page-structure-change');
 
     // Persist synchronously at the commit boundary. React effects retain their
@@ -12578,26 +12745,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleBookmarkDelete = useCallback((id) => {
-    setBookmarks(prev => {
-      // First, collect all IDs to delete (the folder itself and all its descendants)
-      const idsToDelete = new Set([id]);
-      let foundNew = true;
-
-      // Recursively find all bookmarks that belong to this folder or its subfolders
-      while (foundNew) {
-        foundNew = false;
-        prev.forEach(b => {
-          if (b.parentId && idsToDelete.has(b.parentId) && !idsToDelete.has(b.id)) {
-            idsToDelete.add(b.id);
-            foundNew = true;
-          }
-        });
-      }
-
-      // Filter out all bookmarks with IDs in the set
-      return prev.filter(b => !idsToDelete.has(b.id));
-    });
-  }, []);
+    const plan = planBookmarkDelete(bookmarksRef.current, id);
+    if (!plan.ok) return;
+    // P1-45: scoped bookmark slice only — annotation undo snapshots stay
+    // bookmark-free so later Cmd+Z on a shape does not clobber sidebar edits.
+    addHistoryCheckpoint(
+      'bookmark:delete',
+      { bookmarkId: id, removedCount: plan.removed.length },
+      applyBookmarkHistorySlice(getHistorySnapshot(), plan.previous),
+    );
+    bookmarksRef.current = plan.next;
+    setBookmarks(plan.next);
+  }, [addHistoryCheckpoint, getHistorySnapshot]);
 
   const handleSpaceCreate = useCallback((space) => {
     if (!requireSpaceManagement()) return;
@@ -13776,6 +13935,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (targetPath) {
           // Silent save (Sync to Excel) - handled by handleSyncToExcel
           try {
+            let liveSyncWriteStatus = 'ok';
             // Check if this is a OneDrive file
             if (selectedTemplate?.isOneDrive) {
               // Use OneDrive API to upload
@@ -13786,6 +13946,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
               // Check if Live Sync is enabled with active session - use cell-level updates
               if (liveSyncEnabled && excelSessionId && oneDriveFileId && liveSyncStatus === 'connected') {
+                let liveSyncSheetOk = 0;
+                let liveSyncSheetFail = 0;
 
                 // Update each worksheet via session API
                 for (const ws of workbook.worksheets) {
@@ -13821,11 +13983,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
                     try {
                       await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values, selectedTemplate?.sharePointDriveId || undefined);
+                      liveSyncSheetOk += 1;
                     } catch (sheetErr) {
+                      liveSyncSheetFail += 1;
                       console.warn(`Failed to update sheet "${sheetName}":`, sheetErr);
-                      // Continue with other sheets
                     }
                   }
+                }
+                const liveWriteStatus = excelLiveSyncWriteStatus({
+                  okCount: liveSyncSheetOk,
+                  failCount: liveSyncSheetFail,
+                });
+                if (liveWriteStatus === 'all-failed') {
+                  throw new Error('All Excel sheet writes failed');
+                }
+                if (liveWriteStatus === 'partial') {
+                  liveSyncWriteStatus = 'partial';
                 }
               } else {
                 // Fall back to full file upload via Graph API
@@ -13909,7 +14082,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             if (!silent) {
               setIsExporting(false);
-              showToast('Sync to Excel successful!', 'success');
+              if (liveSyncWriteStatus === 'partial') {
+                showToast('Sync to Excel incomplete: some sheets failed to update.', 'warn');
+              } else {
+                showToast('Sync to Excel successful!', 'success');
+              }
             }
           } catch (err) {
             console.error('Failed to write file:', err);
@@ -13918,6 +14095,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               setIsExporting(false);
               if (err.message && err.message.includes('locked')) {
                 showToast('Failed to sync: The Excel file is locked. Please close it in Excel or OneDrive and try again.', 'error');
+              } else if (err.message && err.message.includes('All Excel sheet writes')) {
+                showToast('Sync to Excel failed: no sheets were updated.', 'error');
               } else {
                 showToast('Failed to sync to Excel file. It might be open in another program.', 'error');
               }
@@ -14578,31 +14757,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       if (existingFileInfo?.exists && existingFileInfo?.fileId) {
-        // File exists - check template ID
         const existingMeta = await getTemplateIdFromExcel(graphClient, existingFileInfo.fileId);
         const currentTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || '';
-
-        if (existingMeta?.templateId && existingMeta.templateId !== currentTemplateId) {
-          // Different template detected - show warning modal
-          setTemplateOverwriteData({
-            fileName: fileName,
-            existingTemplateName: existingMeta.templateName || 'Unknown template',
-            currentTemplateName: selectedTemplate?.name || 'Current template',
-            folder: folder,
-            selection: selection
-          });
-          setShowTemplateOverwriteWarning(true);
-          setIsExportingToOneDrive(false);
-          return;
-        }
+        const templateMismatch = Boolean(
+          existingMeta?.templateId && existingMeta.templateId !== currentTemplateId
+        );
+        setTemplateOverwriteData({
+          fileName: fileName,
+          existingTemplateName: existingMeta?.templateName || 'Unknown template',
+          currentTemplateName: selectedTemplate?.name || 'Current template',
+          folder: folder,
+          selection: selection,
+          reason: templateMismatch ? 'template-mismatch' : 'file-exists',
+        });
+        setShowTemplateOverwriteWarning(true);
+        setIsExportingToOneDrive(false);
+        return;
       }
 
-      // No conflict or same template - proceed with export
       await performOneDriveExport(selection);
     } catch (error) {
       console.error('Error checking for duplicate file:', error);
-      // Proceed with export anyway if check fails
-      await performOneDriveExport(selection);
+      showToast('Could not check whether that file already exists. Save cancelled.', 'error');
+      setIsExportingToOneDrive(false);
+      setShowOneDriveSaveModal(true);
     }
   }, [graphClient, selectedTemplate, performOneDriveExport]);
 
@@ -17327,9 +17505,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Only for OneDrive files with live sync enabled
     if (!liveSyncEnabled || !selectedTemplate?.isOneDrive || !selectedTemplate?.linkedExcelPath || !graphClient) {
       // Clean up existing session
-      if (excelSessionRef.current.sessionId && oneDriveFileId && graphClient) {
-        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId, selectedTemplate?.sharePointDriveId || undefined);
-        excelSessionRef.current = { sessionId: null, expiresAt: null };
+      if (excelSessionRef.current.sessionId && graphClient) {
+        closeWorkbookSession(
+          graphClient,
+          excelSessionRef.current.fileId || oneDriveFileId,
+          excelSessionRef.current.sessionId,
+          selectedTemplate?.sharePointDriveId || undefined,
+        );
+        excelSessionRef.current = { sessionId: null, expiresAt: null, fileId: null };
         setExcelSessionId(null);
       }
       setLiveSyncStatus('');
@@ -17370,7 +17553,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               const { sessionId, expiresAt } = await createWorkbookSession(graphClient, fileId, true, sharePointDriveId);
               if (!isMounted) return;
 
-              excelSessionRef.current = { sessionId, expiresAt };
+              excelSessionRef.current = { sessionId, expiresAt, fileId };
               setExcelSessionId(sessionId);
               setUseFallbackSync(false);
               useSession = true;
@@ -17380,12 +17563,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 if (!isMounted || !excelSessionRef.current.sessionId) return;
                 try {
                   const refreshed = await refreshWorkbookSession(graphClient, fileId, excelSessionRef.current.sessionId, sharePointDriveId);
-                  excelSessionRef.current = refreshed;
+                  excelSessionRef.current = { ...refreshed, fileId };
                 } catch (err) {
                   console.error('Session refresh failed, recreating...', err);
                   try {
                     const newSession = await createWorkbookSession(graphClient, fileId, true, sharePointDriveId);
-                    excelSessionRef.current = newSession;
+                    excelSessionRef.current = { ...newSession, fileId };
                     setExcelSessionId(newSession.sessionId);
                   } catch (recreateErr) {
                     console.error('Failed to recreate session:', recreateErr);
@@ -17436,13 +17619,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearInterval(sessionRefreshInterval);
       }
       // Close session on cleanup
-      if (excelSessionRef.current.sessionId && oneDriveFileId) {
-        closeWorkbookSession(graphClient, oneDriveFileId, excelSessionRef.current.sessionId, sharePointDriveId);
-        excelSessionRef.current = { sessionId: null, expiresAt: null };
+      if (excelSessionRef.current.sessionId) {
+        closeWorkbookSession(
+          graphClient,
+          excelSessionRef.current.fileId || oneDriveFileId,
+          excelSessionRef.current.sessionId,
+          sharePointDriveId,
+        );
+        excelSessionRef.current = { sessionId: null, expiresAt: null, fileId: null };
       }
       lastKnownETagRef.current = null;
     };
-  }, [liveSyncEnabled, selectedTemplate?.isOneDrive, selectedTemplate?.linkedExcelPath, selectedTemplate?.id, graphClient, liveSyncSupported, oneDriveFileId]);
+  }, [liveSyncEnabled, selectedTemplate?.isOneDrive, selectedTemplate?.linkedExcelPath, selectedTemplate?.id, graphClient]);
 
   // Row ID writeback drain (Amendment 2026-06-08(b) step 3, Graph side). When —
   // and only when — the SAFE business path is provably available (gate verdict
@@ -18492,7 +18680,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // deleted. snapshotObjects already contains the pre-delete Fabric objects.
       // We need fabric:delete-shaped actions to produce the restoreActions.
       const emitBulkTrashRows = () => {
-        const documentId = pdfFile?.id || null;
+        const documentId = getHistoryDocumentId(pdfFile);
         if (!documentId || !Array.isArray(snapshotObjects) || snapshotObjects.length === 0) return;
         const candidateSet = new Set(Array.isArray(candidateIds) ? candidateIds : []);
         const deletedObjects = snapshotObjects.filter((obj) => {
@@ -18631,10 +18819,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   requestBulkDeleteRef.current = handleRequestBulkDelete;
 
   const requestAtomicEraseApproval = useCallback((intent) => {
-    const calloutTargets = (intent?.targets || []).filter(
-      (target) => target.domain === 'callout' && target.operation === 'delete',
+    const deleteTargets = (intent?.targets || []).filter(
+      (target) => (
+        target.operation === 'delete'
+        && (target.domain === 'callout'
+          || target.domain === 'page-object'
+          || target.domain === 'text-markup')
+      ),
     );
-    if (!pdfFile?.id || calloutTargets.length === 0) {
+    if (!pdfFile?.id || deleteTargets.length === 0) {
       return Promise.resolve({ approved: true, plan: null });
     }
 
@@ -18644,14 +18837,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       || annotationsByPageRef.current?.[String(pageNumber)]?.objects
       || []
     );
-    const candidateIds = calloutTargets
-      .map((target) => (
-        target.before?.data?.id
-        ?? target.before?.id
-        ?? target.before?.annotationId
-        ?? null
-      ))
-      .filter(Boolean);
+    const candidateIds = collectEraseDeleteCandidateIds(intent);
     const presenceRows = Array.isArray(documentPresenceListRef.current)
       ? documentPresenceListRef.current
       : [];
@@ -19177,8 +19363,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       runPresenceUpdate();
     }
 
+    const heartbeat = setInterval(() => {
+      if (cancelled || typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      runPresenceUpdate();
+    }, PRESENCE_HEARTBEAT_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(heartbeat);
       if (deferredTimer) {
         clearTimeout(deferredTimer);
       }
@@ -19367,10 +19561,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
+    const space = spaces.find((candidate) => candidate?.id === spaceId);
+    if (!spaceHasActivatableRegions(space)) {
+      showToast('This space has no regions yet. Add a region before activating it.', 'warn');
+      return;
+    }
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
     clearAnnotationSelectionForContextChange('region-open');
     setActiveSpaceId(spaceId);
-  }, [activeSpaceId, selectedSpaceId, clearAnnotationSelectionForContextChange]);
+  }, [activeSpaceId, selectedSpaceId, clearAnnotationSelectionForContextChange, spaces]);
 
   const handleExitSpaceMode = useCallback(() => {
     debugLog('[SPACE TOGGLE] Deactivating space - regions disabled, all annotations with regionId should be hidden:', { previousActiveSpaceId: activeSpaceId });
@@ -21532,7 +21731,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           try {
             const { nativeLayerPolicyByPage } = await importAnnotationsFromPdf(pdf, {
               rawPdfBytes: arrayBuffer,
-              diagnosticsOnly: true
+              diagnosticsOnly: true,
+              authorId: documentOwnerId || user?.id || null,
             });
             if (isCancelled) return;
             appDebug('[PDFImport] native layer policy ' + JSON.stringify({
@@ -21561,7 +21761,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             unsupportedCounts,
             nativeLayerPolicyByPage
           } = await importAnnotationsFromPdf(pdf, {
-            rawPdfBytes: arrayBuffer
+            rawPdfBytes: arrayBuffer,
+            authorId: documentOwnerId || user?.id || null,
           });
           if (isCancelled) return;
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
@@ -23438,6 +23639,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
 
+      // P2-34 leftover: B toggles the left rail. Collapse lives on the
+      // sidebar handle (same ref Cmd+F already uses for openSearchPanel).
+      if ((e.key === 'b' || e.key === 'B') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return;
+        }
+        e.preventDefault();
+        pdfSidebarRef.current?.toggleCollapse?.();
+        return;
+      }
+
       if (!isFormField && (e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
 
@@ -23455,17 +23667,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
           if (key === '0') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
+            handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_PAGE);
             return;
           }
           if (key === '1') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_WIDTH);
+            handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_WIDTH);
             return;
           }
           if (key === '2') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_HEIGHT);
+            handleZoomModeSelectRef.current?.(ZOOM_MODES.FIT_HEIGHT);
             return;
           }
           if (key === '=' || key === '+') {
@@ -23491,6 +23703,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // (form fields, system paste, etc). Resolves the target page from
           // the cursor via elementFromPoint → closest('.survey-pdfjs-page-div') →
           // data attribute lookup, matching the resolveAnnotationAt pattern.
+          if ((key === 'c' || key === 'x') && !e.shiftKey) {
+            if (document.body.getAttribute('data-readonly') === 'true' && key === 'x') return;
+            if (selectedCalloutId) {
+              e.preventDefault();
+              if (key === 'x') handleCutCallout(selectedCalloutId);
+              else handleCopyCallout(selectedCalloutId);
+              return;
+            }
+          }
           if (key === 'v' && !e.shiftKey && (clipboardAnnotation || clipboardCallout)) {
             // KAL-75 (G1): paste is a mutation — inert on locked/read-only docs.
             if (document.body.getAttribute('data-readonly') === 'true') return;
@@ -23537,18 +23758,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
 
-      if (scrollMode === 'single') {
-        if (e.key === 'ArrowLeft') {
-          goToPreviousPage();
-        } else if (e.key === 'ArrowRight') {
-          goToNextPage();
-        }
+      if (e.key === 'Home' && !isFormField) {
+        e.preventDefault();
+        goToPage(1);
+        return;
+      }
+      if (e.key === 'End' && !isFormField) {
+        e.preventDefault();
+        goToPage(numPages || 1);
+        return;
+      }
+      if (e.key === 'ArrowLeft' && !isFormField) {
+        goToPreviousPage();
+      } else if (e.key === 'ArrowRight' && !isFormField) {
+        goToNextPage();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout]);
+  }, [goToNextPage, goToPreviousPage, goToPage, numPages, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout, selectedCalloutId, handleCopyCallout, handleCutCallout]);
 
   // Electron: listen for pdf-zoom custom events forwarded from main process
   // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)
@@ -23653,6 +23882,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     localAnnotationUndoRef.current = nextUndo;
     const clearedRedoEntries = localAnnotationRedoRef.current.length;
     localAnnotationRedoRef.current = [];
+    // P1-09: a new local-lane action must invalidate the legacy redo stack.
+    // New shapes skip the legacy checkpoint (CRDT path) and only cleared
+    // localAnnotationRedoRef — handleRedo then fell through to a stale
+    // redoHistoryRef snapshot and wiped the new work.
+    if (redoHistoryRef.current.length || redoHistoryMetaRef.current.length) {
+      setRedoHistory([]);
+      redoHistoryRef.current = [];
+      redoHistoryMetaRef.current = [];
+    }
     setLocalAnnotationHistoryVersion((prev) => prev + 1);
 
     // KAL-313 / history F2 (2026-06-11): ONE restorable History row per delete.
@@ -23825,8 +24063,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const historyPreviousAnnotations = previewBaseline || normalizedCurrentAnnotations;
     const lastInteractionIdForPage = objectModifiedInteractionCheckpointRef.current.get(interactionPageKey) || null;
     const shouldSkipCheckpointByPolicy = checkpointPolicy === 'skip';
+    const isCoalescableInteractionSource = source === 'object:modified' || source === 'rotation-input';
     const shouldSkipCheckpointByInteraction = checkpointPolicy !== 'force'
-      && source === 'object:modified'
+      && isCoalescableInteractionSource
       && Boolean(interactionId)
       && lastInteractionIdForPage === interactionId;
     const currentPageFingerprint = getHistoryFingerprint(normalizedCurrentAnnotations);
@@ -23998,7 +24237,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!shouldRenumberCounters) {
       logCounterRenumberSkip();
     }
-    if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
+    // E2E-ADV-04: a normal create writes a legacy checkpoint. Also pushing
+    // the same mutation onto the local lane made Undo pop legacy (shape
+    // gone) then local (no-op). Keep local only when legacy will be skipped
+    // (precise eraser / CRDT).
+    if (
+      !shouldSkipCheckpointByPolicy
+      && !shouldSkipCheckpointByInteraction
+      && (isEraserCommit || yjsDoc || yjsUndoManager)
+    ) {
       pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
     }
     if (!shouldSkipCheckpointByPolicy) {
@@ -24097,7 +24344,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         saveContext: normalizedSaveContext
       });
     } else {
-      if (source === 'object:modified' && interactionId) {
+      if ((source === 'object:modified' || source === 'rotation-input') && interactionId) {
         objectModifiedInteractionCheckpointRef.current.set(interactionPageKey, interactionId);
       }
 
@@ -24611,6 +24858,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { ok: true, pageNumber: Number.isFinite(Number(pageId)) ? Number(pageId) : null };
   }, [handleRestoreSpace, handleSpaceUpdate]);
 
+  // A-07: named revisions snapshot `document_annotations`. Live marks live in
+  // the Y.Doc — flush them first so Save version captures what the user sees.
+  const handlePrepareSaveRevision = useCallback(async () => {
+    const documentId = pdfFile?.id || null;
+    if (!documentId || !user?.id) {
+      throw new Error('Save version needs a signed-in cloud document.');
+    }
+    if (typeof cloudSyncForceFlush === 'function') {
+      try {
+        await cloudSyncForceFlush();
+      } catch {
+        // WAL timeout must not skip the legacy-table flush the RPC reads.
+      }
+    }
+    return flushLiveAnnotationsForRevision(
+      documentId,
+      annotationsByPageRef.current || {},
+      user.id,
+    );
+  }, [cloudSyncForceFlush, pdfFile?.id, user?.id]);
+
+  // After kal48_restore_revision rewrites the table, apply that snapshot to
+  // the live canvas / Y.Doc so the second mark actually disappears.
+  const handleApplyNamedRevision = useCallback((snapshot) => {
+    const rows = Array.isArray(snapshot?.annotations) ? snapshot.annotations : [];
+    const nextByPage = deserializeRowsToAnnotationsByPage(rows);
+    restoreHistoryState({
+      annotationsByPage: nextByPage,
+      surveyMarkers: surveyMarkersRef.current || {},
+      spaces: spacesRef.current || [],
+      callouts: deriveCalloutsFromByPage(nextByPage),
+    });
+  }, [restoreHistoryState]);
+
   // Decision 10 (KAL-90): clicking a history entry restores the EXACT context
   // the mark belongs to — (a) the RevisionsPanel handles the page jump and
   // spotlight; this handler covers (b) the survey/region mode (active space)
@@ -24710,7 +24991,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           ? await pdfFile.arrayBuffer()
           : null;
         const { annotationsByPage: importedAnnotations, nativeLayerPolicyByPage } =
-          await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
+          await importAnnotationsFromPdf(pdfDoc, {
+            rawPdfBytes,
+            authorId: documentOwnerId || user?.id || null,
+          });
         if (cancelled) return;
 
         const totalImported = Object.values(importedAnnotations || {})
@@ -24740,6 +25024,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               action: 'import-pdf-annotations',
               checkpointPolicy: 'skip',
             });
+            // P1-13: skip-policy import plants a dangling preview baseline
+            // (empty/pre-import page). The user's next save would treat that
+            // as undo "previous" and delete every imported mark. Mirror the
+            // counter-series-delete path and drop the baseline now.
+            previewBaselineByPageRef.current.delete(String(pageNumber));
+            previewBaselineByPageRef.current.delete(String(pageKey));
           });
           appDebug('[PDFImport] imported embedded PDF annotations (once) ' + JSON.stringify({
             documentId,
@@ -24791,7 +25081,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationsByPage: importedAnnotations,
         nativeLayerPolicyByPage
       } = await importAnnotationsFromPdf(pdfDoc, {
-        rawPdfBytes
+        rawPdfBytes,
+        authorId: documentOwnerId || user?.id || null,
       });
 
       setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
@@ -25664,7 +25955,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // UX: repeat-paste offset — see lastPasteAnchorRef. First paste at a
     // given cursor point is cursor-exact; repeats without moving the cursor
     // step down-right so clones stay visible.
-    const repeatOffset = resolvePasteRepeatCount(clientX, clientY) * PASTE_REPEAT_OFFSET_PAGE_UNITS;
+    const pageSize = pageSizesRef.current?.[pageNumber] || { width: 612, height: 792 };
+    const repeatCount = resolvePasteRepeatCount(clientX, clientY);
+    const repeatOffsetX = repeatCount * PASTE_REPEAT_OFFSET_PAGE_UNITS * ((pageSize.width || 612) / 612);
+    const repeatOffsetY = repeatCount * PASTE_REPEAT_OFFSET_PAGE_UNITS * ((pageSize.height || 792) / 792);
     // UX: Phase 19 follow-up — multi-object paste. When clipboard holds
     // an array of objects (from group copy/cut), translate every item
     // by the same delta so their relative layout is preserved, then
@@ -25706,8 +26000,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           dy = cursorY - srcBBox.top;
         }
       } catch (_) { /* fallthrough to +20 offset */ }
-      dx += repeatOffset;
-      dy += repeatOffset;
+      dx += repeatOffsetX;
+      dy += repeatOffsetY;
 
       for (const c of clones) {
         // UX: every clone is a brand-new NATIVE object — fresh data.id (same
@@ -25716,6 +26010,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // untouched) and export/dedupe never see two objects claiming one
         // native PDF annotation id. See utils/pasteCloneIdentity.js.
         mintPastedCloneIdentity(c);
+        stampZOrderOnTop(c, next.objects);
         if (typeof c.left === 'number') c.left += dx;
         if (typeof c.top === 'number') c.top += dy;
         next.objects.push(c);
@@ -25742,6 +26037,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // path: rendering detects imported-path geometry structurally, not via
     // the provenance flags. See utils/pasteCloneIdentity.js.
     mintPastedCloneIdentity(pasted);
+    stampZOrderOnTop(pasted, next.objects);
     const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
 
@@ -25776,8 +26072,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.warn('[Paste] coord transform failed, using original+20', err?.message || err);
     }
 
-    pasted.left = pastedLeft + repeatOffset;
-    pasted.top = pastedTop + repeatOffset;
+    pasted.left = pastedLeft + repeatOffsetX;
+    pasted.top = pastedTop + repeatOffsetY;
     next.objects.push(pasted);
 
     console.log(`[PasteDiag] resolvedVia=${resolvedVia} click=(${clientX},${clientY}) pasted=(${pastedLeft.toFixed(2)},${pastedTop.toFixed(2)}) original=(${originalLeft},${originalTop}) type=${pasted.type} page=${pageNumber}`);
@@ -25806,13 +26102,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleCopyAnnotation = useCallback((pageNumber, annotationIndex) => {
     if (pageNumber == null || annotationIndex == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
-    const obj = page?.objects?.[annotationIndex];
-    if (!obj) return;
-    setClipboardAnnotation({
-      object: deepClone(obj),
-      sourcePageNumber: pageNumber,
-      mode: 'copy',
-    });
+    const indexes = (Array.isArray(annotationIndex) ? annotationIndex : [annotationIndex])
+      .filter((index) => Number.isInteger(index));
+    if (!page?.objects || indexes.length === 0) return;
+    if (indexes.length === 1) {
+      const obj = page.objects[indexes[0]];
+      if (!obj) return;
+      setClipboardAnnotation({
+        object: deepClone(obj),
+        sourcePageNumber: pageNumber,
+        mode: 'copy',
+      });
+    } else {
+      const collected = [];
+      let minLeft = Infinity;
+      let minTop = Infinity;
+      for (const index of [...indexes].sort((a, b) => a - b)) {
+        const obj = page.objects[index];
+        if (!obj) continue;
+        collected.push(deepClone(obj));
+        const left = typeof obj.left === 'number' ? obj.left : 0;
+        const top = typeof obj.top === 'number' ? obj.top : 0;
+        if (left < minLeft) minLeft = left;
+        if (top < minTop) minTop = top;
+      }
+      if (collected.length === 0) return;
+      setClipboardAnnotation({
+        objects: collected,
+        bbox: {
+          left: Number.isFinite(minLeft) ? minLeft : 0,
+          top: Number.isFinite(minTop) ? minTop : 0,
+        },
+        sourcePageNumber: pageNumber,
+        mode: 'copy',
+      });
+    }
     // UX: one logical clipboard — most recent Copy/Cut wins. Clear the
     // callout clipboard so Cmd+V pastes THIS shape, not a stale callout.
     setClipboardCallout(null);
@@ -25831,20 +26155,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (pageNumber == null || annotationIndex == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
     if (!page?.objects) return;
-    if (annotationIndex < 0 || annotationIndex >= page.objects.length) return;
-    const obj = page.objects[annotationIndex];
-    if (!obj) return;
-    setClipboardAnnotation({
-      object: deepClone(obj),
-      sourcePageNumber: pageNumber,
-      mode: 'cut',
-    });
+    const indexes = (Array.isArray(annotationIndex) ? annotationIndex : [annotationIndex])
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < page.objects.length)
+      .sort((a, b) => a - b);
+    if (indexes.length === 0) return;
+    if (indexes.length === 1) {
+      const obj = page.objects[indexes[0]];
+      if (!obj) return;
+      setClipboardAnnotation({
+        object: deepClone(obj),
+        sourcePageNumber: pageNumber,
+        mode: 'cut',
+      });
+    } else {
+      const collected = [];
+      let minLeft = Infinity;
+      let minTop = Infinity;
+      for (const index of indexes) {
+        const obj = page.objects[index];
+        if (!obj) continue;
+        collected.push(deepClone(obj));
+        const left = typeof obj.left === 'number' ? obj.left : 0;
+        const top = typeof obj.top === 'number' ? obj.top : 0;
+        if (left < minLeft) minLeft = left;
+        if (top < minTop) minTop = top;
+      }
+      if (collected.length === 0) return;
+      setClipboardAnnotation({
+        objects: collected,
+        bbox: {
+          left: Number.isFinite(minLeft) ? minLeft : 0,
+          top: Number.isFinite(minTop) ? minTop : 0,
+        },
+        sourcePageNumber: pageNumber,
+        mode: 'cut',
+      });
+    }
     // UX: one logical clipboard — most recent Copy/Cut wins (see
     // handleCopyAnnotation).
     setClipboardCallout(null);
     setClipboardCalloutType(null);
     const next = deepClone(page);
-    next.objects.splice(annotationIndex, 1);
+    for (const index of [...indexes].reverse()) {
+      next.objects.splice(index, 1);
+    }
     handleSaveAnnotations(pageNumber, next, {
       source: 'object:modified',
       action: 'cut',
@@ -25872,11 +26226,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the shape instead of sticking to whichever neighbor slid into the
   // original slot (matches Illustrator/Figma/Photoshop). toIndex is clamped
   // to [0, objects.length - 1]; same-index is a no-op.
-  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target) => {
-    if (pageNumber == null || fromIndex == null) return;
+  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target, annotationId) => {
+    if (pageNumber == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
     if (!page?.objects) return;
-    if (fromIndex < 0 || fromIndex >= page.objects.length) return;
+    fromIndex = resolveAnnotationIndexById(page.objects, annotationId, fromIndex);
+    if (fromIndex < 0) return;
     // UX: Figma-style z-order — "Bring Forward" / "Send Backward" skip over
     // any non-overlapping neighbors and land the moved shape immediately
     // above/below the nearest shape that spatially overlaps it. Matches user
@@ -25918,9 +26273,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const resolved = typeof target === 'string' ? resolveOverlapTarget(target) : target;
     const clamped = Math.max(0, Math.min(resolved, objectsLen - 1));
     if (clamped === fromIndex) return;
+    const originalIndexById = buildOriginalIndexById(page.objects);
     const next = deepClone(page);
     const [moved] = next.objects.splice(fromIndex, 1);
     next.objects.splice(clamped, 0, moved);
+    stampZOrderAfterMove(next.objects, clamped, originalIndexById);
     handleSaveAnnotations(pageNumber, next, {
       source: 'object:modified',
       action: 'reorder',
@@ -26547,9 +26904,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const existingSurveyMarker = surveyMarkersRef.current?.[annotationId];
     if (existingSurveyMarker) {
       const viewerId = user?.id ?? null;
+      // P1-24: do not skip the gate when owner metadata is unresolved.
+      // canModifySurveyMarker already fail-closes for a missing author / viewer.
       if (
-        viewerId &&
-        documentOwnerId &&
         !canModifySurveyMarker({ surveyMarker: existingSurveyMarker, viewerId, documentOwnerId })
       ) {
         console.warn('[App] handleSurveyMarkerBoundsChange blocked by ownership gate', {
@@ -27224,7 +27581,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return next.size === previous.size ? previous : next;
       });
     }
-    if (approval.plan && approval.plan.mode !== 'owner-own-only') {
+    if (approval.plan && approval.plan.count > 0) {
       const peopleCount = Object.keys(approval.plan.byAuthor || {}).length;
       const message = approval.plan.mode.includes('cross-author')
         ? `Deleted ${approval.plan.count} annotations from ${peopleCount} people`
@@ -28086,16 +28443,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [annotations, selectedModuleId]);
 
   // Restore surveyMarkers when switching modules
-  // This merges saved surveyMarkers from surveyMarkers with any pending surveyMarkers
+  // This merges saved surveyMarkers from surveyMarkers with any pending surveyMarkers.
+  // P1-16: when no module is selected (reopen / panel closed), paint ALL saved
+  // markers. The previous early-return left the paint slice empty so reopened
+  // documents hid every marker until a module was clicked.
   useEffect(() => {
-    if (!selectedModuleId) {
-      // Don't clear surveyMarkers when no module is selected - preserve pending surveyMarkers
-      return;
-    }
+    const matchesSelectedModule = (moduleId) => (
+      !selectedModuleId || moduleId === selectedModuleId
+    );
 
     // Rebuild newSurveyMarkersByPage by merging:
     // 1. Pending surveyMarkers (not yet in surveyMarkers) for current module
-    // 2. Saved surveyMarkers from surveyMarkers for current module
+    // 2. Saved surveyMarkers from surveyMarkers for current module (or all)
     setNewSurveyMarkersByPage(prev => {
       const surveyMarkersByPage = {};
 
@@ -28103,7 +28462,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       Object.entries(prev).forEach(([pageNum, pageSurveyMarkers]) => {
         pageSurveyMarkers.forEach(surveyMarker => {
           const surveyMarkerModuleId = surveyMarker.moduleId;
-          if (surveyMarkerModuleId === selectedModuleId && surveyMarker.annotationId) {
+          if (matchesSelectedModule(surveyMarkerModuleId) && surveyMarker.annotationId) {
             // Check if this survey marker is already saved in surveyMarkers
             const isSaved = surveyMarkers && surveyMarkers[surveyMarker.annotationId];
             if (!isSaved) {
@@ -28127,8 +28486,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         Object.entries(surveyMarkers).forEach(([annotationId, surveyMarker]) => {
           // Check if this survey marker belongs to the current module
           const surveyMarkerModuleId = surveyMarker.moduleId;
-          if (surveyMarkerModuleId !== selectedModuleId) {
-            return; // Skip survey markers from other modules
+          if (!matchesSelectedModule(surveyMarkerModuleId)) {
+            return; // Skip survey markers from other modules when one is selected
           }
 
           // Skip if survey marker doesn't have required properties
@@ -29448,7 +29807,7 @@ ${pageBlocks}
     }
   }, [applyLayoutDrivenZoom]);
 
-  const currentDocumentId = pdfFile?.id || null;
+  const currentDocumentId = getHistoryDocumentId(pdfFile);
 
   // UX 2026-05-13: Publish left rail state to the App shell when this tab is
   // active. Placed immediately before the loading/full render branches so every
@@ -29534,6 +29893,8 @@ ${pageBlocks}
       documentId: currentDocumentId,
       user,
       onRestoreHistoryActivity: handleRestoreHistoryActivity,
+      onPrepareSaveRevision: handlePrepareSaveRevision,
+      onApplyNamedRevision: handleApplyNamedRevision,
       onCascadeRestoreRegion: handleCascadeRestoreRegion,
       onRestoreHistoryContext: handleRestoreHistoryContext,
     };
@@ -29631,6 +29992,8 @@ ${pageBlocks}
     user,
     handleLeftRailToggleCollapse,
     handleRestoreHistoryActivity,
+    handlePrepareSaveRevision,
+    handleApplyNamedRevision,
     handleCascadeRestoreRegion,
     handleRestoreHistoryContext,
   ]);
@@ -30107,6 +30470,17 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         viewerId: user?.id ?? null,
         documentOwnerId,
+        handleContinuePin: (ctx) => {
+          const page = annotationsByPageRef.current?.[ctx?.pageNumber];
+          const byIndex = ctx?.annotationIndex != null ? page?.objects?.[ctx.annotationIndex] : null;
+          const byId = ctx?.annotationId
+            ? page?.objects?.find((object) => String(object?.id || object?.data?.id || '') === String(ctx.annotationId))
+            : null;
+          const seriesId = byIndex?.data?.seriesId || byId?.data?.seriesId
+            || page?.objects?.find((object) => object?.data?.type === 'counter')?.data?.seriesId;
+          if (seriesId) handleSwitchCounterSeries(seriesId);
+          setActiveTool('counter');
+        },
       })}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
@@ -31282,7 +31656,7 @@ ${pageBlocks}
                                     let editType;
                                     if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                       editType = 'text';
-                                    } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
+                                    } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline' || isLegacyGroupArrow(annotationData)) {
                                       editType = 'bbox';
                                     } else {
                                       // KAL-125 / CD-6: unknown type (e.g. stamp/image) — explicit
@@ -31850,7 +32224,14 @@ ${pageBlocks}
                                     : setLiveTextEditBounds}
                                   onRichTextEditorChange={setRichTextEditor}
                                   onCalloutTextStyleChange={handleCalloutTextStyleChange}
-                                  onEditCommit={(updatedJSON) => {
+                                  onTextStyleChange={(json) => {
+                                    handleSaveAnnotations(pageNumber, json, {
+                                      source: 'text:style',
+                                      action: 'text-style',
+                                      checkpointPolicy: 'normal',
+                                    });
+                                  }}
+                                  onEditCommit={(updatedJSON, commitOpts) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
                                     // updatedJSON.objects[0] is the edited textbox in
@@ -31880,6 +32261,7 @@ ${pageBlocks}
                                         editedText: editedTextboxText,
                                         synthesizedText,
                                         originalText,
+                                        calloutId: editingAnnotation.reactCalloutId,
                                       });
                                       if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
                                         updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
@@ -31921,9 +32303,21 @@ ${pageBlocks}
                                       // R2.2 Slice 3: text-edit commit lands as ONE fabric:update
                                       // delta via the shared pipeline (Cmd+Z reverts just this
                                       // callout's edit instead of a whole-document snapshot).
-                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) =>
-                                        c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
-                                      ), {
+                                      // P1-15: merge only text + text-box bounds onto the LIVE
+                                      // callout. Replacing the whole object would clobber a
+                                      // teammate move/restyle that landed while the editor was open
+                                      // (calloutChildren / originalReactCallout are snapshots).
+                                      commitCalloutMutation(pageNumber, (prev) => prev.map((c) => {
+                                        if (c.id !== editingAnnotation.reactCalloutId) return c;
+                                        if (!updatedReactCallout) return c;
+                                        return {
+                                          ...c,
+                                          text: updatedReactCallout.text,
+                                          textBoxPosition: updatedReactCallout.textBoxPosition ?? c.textBoxPosition,
+                                          textBoxWidth: updatedReactCallout.textBoxWidth ?? c.textBoxWidth,
+                                          textBoxHeight: updatedReactCallout.textBoxHeight ?? c.textBoxHeight,
+                                        };
+                                      }), {
                                         source: 'callout:edit-commit',
                                         action: 'callout-edit-commit',
                                         checkpointPolicy: 'normal',
@@ -31936,7 +32330,7 @@ ${pageBlocks}
                                     handleSaveAnnotations(pageNumber, updatedJSON, {
                                       source: 'edit:commit',
                                       action: editingAnnotation.editType,
-                                      checkpointPolicy: 'normal',
+                                      checkpointPolicy: commitOpts?.checkpointPolicy || 'normal',
                                     });
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
@@ -36162,6 +36556,7 @@ ${pageBlocks}
           setIsExporting(false);
         }}
         graphClient={graphClient}
+        ensureFreshToken={ensureFreshToken}
         defaultFileName={`${exportPendingData?.fileName || 'export'}_export.xlsx`}
         title="Save to OneDrive"
       />
@@ -36174,6 +36569,7 @@ ${pageBlocks}
         fileName={templateOverwriteData?.fileName || ''}
         existingTemplateName={templateOverwriteData?.existingTemplateName || 'Unknown template'}
         currentTemplateName={templateOverwriteData?.currentTemplateName || 'Current template'}
+        reason={templateOverwriteData?.reason || 'template-mismatch'}
       />
 
       {/* Microsoft Login Modal */}

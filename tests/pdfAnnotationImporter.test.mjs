@@ -10,7 +10,8 @@ import { PDFDocument, PDFName } from 'pdf-lib';
 import {
   buildPdfImportStatisticsSummary,
   convertPdfAnnotationToFabric,
-  importAnnotationsFromPdf
+  importAnnotationsFromPdf,
+  stampImportedAnnotationAuthor,
 } from '../src/utils/pdfAnnotationImporter.js';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 
@@ -142,6 +143,21 @@ test('convertPdfAnnotationToFabric ignores fully invisible square annotations', 
 
   const obj = convertPdfAnnotationToFabric(annotation, viewport);
   assert.equal(obj, null);
+});
+
+test('P1-23: stampImportedAnnotationAuthor writes owner id without overwriting', () => {
+  const stamped = stampImportedAnnotationAuthor(
+    { type: 'rect', data: { id: 'imp-1' } },
+    'doc-owner',
+  );
+  assert.equal(stamped.meta.authorId, 'doc-owner');
+  assert.equal(stamped.data.authorId, 'doc-owner');
+  const kept = stampImportedAnnotationAuthor(
+    { type: 'rect', data: { id: 'imp-2', authorId: 'original' }, meta: { authorId: 'original' } },
+    'doc-owner',
+  );
+  assert.equal(kept.meta.authorId, 'original');
+  assert.equal(stampImportedAnnotationAuthor({ type: 'rect' }, '')?.meta?.authorId, undefined);
 });
 
 test('convertPdfAnnotationToFabric maps line endpoints using viewport point conversion', () => {

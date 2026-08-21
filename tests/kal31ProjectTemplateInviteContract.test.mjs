@@ -174,16 +174,17 @@ test('ShareModal routes project/template kinds to the right service (no Phase-A 
 
 test('InviteAcceptPage resolves tokens across document → project → template', () => {
   const src = read('src/home/InviteAcceptPage.jsx');
+  const state = read('src/home/inviteAcceptState.js');
   match(src, /acceptDocumentInvite/);
   match(src, /acceptProjectInvite/);
   match(src, /acceptTemplateInvite/);
   // Fallback order: document first, then project, then template.
-  const iDoc = src.indexOf('await acceptDocumentInvite(token)');
-  const iProj = src.indexOf('await acceptProjectInvite(token)');
-  const iTpl = src.indexOf('await acceptTemplateInvite(token)');
+  const iDoc = state.indexOf('acceptDocumentInvite(token)');
+  const iProj = state.indexOf('acceptProjectInvite(token)');
+  const iTpl = state.indexOf('acceptTemplateInvite(token)');
   ok(iDoc >= 0 && iProj > iDoc && iTpl > iProj, 'accept order must be document, project, template');
   // Success copy names the thing that was shared.
-  match(src, /access to this \$\{kindNoun\}/);
+  match(state, /access to this \$\{kindNoun\}/);
   // Project/template land back on the hub root; documents deep-open.
   match(src, /docId=/);
   match(src, /goHome\(\)/);

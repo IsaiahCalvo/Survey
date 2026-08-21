@@ -36,7 +36,7 @@ test('partially erased pen outlines remain partial-erase eligible', () => {
   })), true);
 });
 
-test('every shape, text, and other atomic annotation requires full erase', () => {
+test('every shape, text, and other atomic annotation is skipped in partial mode', () => {
   const atomicAnnotations = [
     path(),
     path({ tool: 'line' }),
@@ -67,7 +67,7 @@ test('every shape, text, and other atomic annotation requires full erase', () =>
 
   for (const annotation of atomicAnnotations) {
     assert.equal(isPartialEraseEligible(annotation), false, JSON.stringify(annotation));
-    assert.equal(getEraserOperation(annotation, 'partial'), 'entire', JSON.stringify(annotation));
+    assert.equal(getEraserOperation(annotation, 'partial'), 'skip', JSON.stringify(annotation));
   }
 });
 
@@ -81,7 +81,7 @@ test('unlabeled rounded paths without the historical PencilBrush fingerprint are
   });
 
   assert.equal(isPartialEraseEligible(legacyLookingPath), false);
-  assert.equal(getEraserOperation(legacyLookingPath, 'partial'), 'entire');
+  assert.equal(getEraserOperation(legacyLookingPath, 'partial'), 'skip');
 });
 
 test('historical Fabric PencilBrush pen/highlighter saves remain partial-erase eligible', () => {
@@ -164,6 +164,6 @@ test('requested full erase always wins and partial falls back per object', () =>
 
   assert.equal(getEraserOperation(pen, 'entire'), 'entire');
   assert.equal(getEraserOperation(pen, 'partial'), 'partial');
-  assert.equal(getEraserOperation(rectangle, 'partial'), 'entire');
+  assert.equal(getEraserOperation(rectangle, 'partial'), 'skip');
   assert.equal(getEraserOperation(pen, 'unexpected'), 'entire');
 });

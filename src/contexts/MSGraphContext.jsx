@@ -12,6 +12,7 @@ import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { buildConnectionMarkerRow, buildMainAuthAccount } from '../services/microsoftConnectionMarker';
 import {
     cleanMicrosoftReturnUrl,
+    isCapacitorMicrosoftConnectHidden,
     microsoftRedirectUriFor,
     microsoftReturnUrlFor,
 } from '../utils/microsoftOAuthRouting';
@@ -773,10 +774,18 @@ export const MSGraphProvider = ({ children }) => {
         return true;
     }, [storeTokens, initializeGraphClient]);
 
+    const microsoftConnectAvailable = !isCapacitorMicrosoftConnectHidden();
+
     // Login using direct OAuth flow (not Supabase linkIdentity)
     const login = useCallback(async () => {
         try {
             setError(null);
+
+            // P2-13: Capacitor deep-link OAuth is out of scope. UI hides Connect;
+            // refuse here so a stray caller cannot start a dead-end redirect.
+            if (isCapacitorMicrosoftConnectHidden()) {
+                throw new Error('Microsoft sign-in is not available in the iOS/Android app. Connect on web or desktop.');
+            }
 
             // Preferred (Electron): system-browser sign-in with main-process token
             // custody — the only surface where Microsoft offers passkeys, Windows
@@ -956,6 +965,7 @@ export const MSGraphProvider = ({ children }) => {
         handleOAuthCallback,
         ensureFreshToken, // Call this before Graph API operations to ensure valid token
         getAuthSignals, // tenant id + token custody, sampled at call time (capability gating)
+        microsoftConnectAvailable,
     };
 
     return <MSGraphContext.Provider value={value}>{children}</MSGraphContext.Provider>;

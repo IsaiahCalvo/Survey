@@ -34,6 +34,7 @@ import {
   normalizeByPageAnnotationIdentities,
   setAnnotationStorageKey,
 } from '../utils/annotationStorageIdentity.js';
+import { sortObjectsByZOrder } from '../utils/annotationZOrder.js';
 
 export const ANNOTATIONS_MAP = 'annotations';
 export const ERASER_OPS_MAP = 'annotationEraserOps';
@@ -590,6 +591,87 @@ export function setMetaValue(doc, key, value, origin = 'local') {
   return true;
 }
 
+// --- Spaces (keyed per spaceId) ----------------------------------------------
+//
+// Spaces used to live as one whole-array META value (`spaces`). Concurrent
+// edits to different spaces last-write-won the entire array. They now have
+// their own keyed Y.Map (minimal per-space diff). The legacy META array is
+// still written as a compat snapshot so older readers keep seeing spaces.
+
+export const SPACES_MAP = 'spacesById';
+export const SPACES_META_KEY = 'spaces';
+
+export function getSpacesMap(doc) {
+  return doc.getMap(SPACES_MAP);
+}
+
+function spaceRecord(space, index) {
+  if (!space || space.id == null) return null;
+  return {
+    id: String(space.id),
+    value: { ...space, id: String(space.id), order: index },
+  };
+}
+
+/** Materialize spaces as an ordered array. Keyed map wins; META is fallback. */
+export function docToSpaces(doc) {
+  const fromMap = [];
+  getSpacesMap(doc).forEach((value, key) => {
+    if (!value || typeof value !== 'object') return;
+    fromMap.push({ ...value, id: value.id != null ? String(value.id) : String(key) });
+  });
+  if (fromMap.length > 0) {
+    fromMap.sort((left, right) => {
+      const leftOrder = Number(left.order);
+      const rightOrder = Number(right.order);
+      if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder) && leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return String(left.id).localeCompare(String(right.id));
+    });
+    return fromMap.map(({ order, ...space }) => space);
+  }
+  const legacy = getMetaValue(doc, SPACES_META_KEY);
+  return Array.isArray(legacy) ? legacy : [];
+}
+
+export function syncSpacesToDoc(doc, spaces, { origin = 'local' } = {}) {
+  const map = getSpacesMap(doc);
+  const desired = Array.isArray(spaces) ? spaces : [];
+  const records = desired.map((space, index) => spaceRecord(space, index)).filter(Boolean);
+  const desiredIds = new Set(records.map((record) => record.id));
+
+  doc.transact(() => {
+    const toDelete = [];
+    map.forEach((_value, key) => {
+      if (!desiredIds.has(key)) toDelete.push(key);
+    });
+    for (const key of toDelete) map.delete(key);
+    for (const { id, value } of records) {
+      const previous = map.get(id);
+      if (stableStringify(previous) !== stableStringify(value)) {
+        map.set(id, value);
+      }
+    }
+    const meta = doc.getMap(META_MAP);
+    if (stableStringify(meta.get(SPACES_META_KEY)) !== stableStringify(desired)) {
+      meta.set(SPACES_META_KEY, desired);
+    }
+  }, origin);
+
+  return true;
+}
+
+/** Copy a legacy whole-array META blob into the keyed map when the map is empty. */
+export function migrateSpacesMetaToMap(doc, { origin = 'local' } = {}) {
+  const map = getSpacesMap(doc);
+  if (map.size > 0) return false;
+  const legacy = getMetaValue(doc, SPACES_META_KEY);
+  if (!Array.isArray(legacy) || legacy.length === 0) return false;
+  syncSpacesToDoc(doc, legacy, { origin });
+  return true;
+}
+
 // --- Survey markers (highlights) ---------------------------------------------
 //
 // Survey markers are NOT Fabric objects and do NOT live in annotationsByPage —
@@ -677,7 +759,8 @@ export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSi
 /**
  * Materialize the render shape from the Y.Doc. Groups every stored annotation
  * by its page into { [page]: { objects: [...] } }. Object order is the Y.Map's
- * insertion order (stable across reloads of the same update history).
+ * insertion order is the implicit fallback; the final step stable-sorts by
+ * data.zOrder (then id) so bring-to-front/back survives reload and self-echo.
  */
 export function docToByPage(doc, { replayStats = null } = {}) {
   const map = getAnnotationsMap(doc);
@@ -791,7 +874,13 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     replayStats.annotationsWithLanes = annotationsWithLanes;
     replayStats.polygonIntersections = polygonIntersections;
   }
-  return deriveCounterPresentationNumbers(byPage);
+  const numbered = deriveCounterPresentationNumbers(byPage);
+  for (const page of Object.values(numbered || {})) {
+    if (Array.isArray(page?.objects) && page.objects.length > 1) {
+      page.objects = sortObjectsByZOrder(page.objects);
+    }
+  }
+  return numbered;
 }
 
 function collectEraserMutations(byPage, writerId) {

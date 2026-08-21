@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../supabaseClient';
+import { PRESENCE_STALE_MS } from '../hooks/presenceRoster.js';
 import { collectKeysetRows } from './annotationReadPagination.js';
 import { diffDeletedSurveyMarkerIds } from './surveyMarkerSyncDiff.js';
 import { surveyMarkerSyncDiag } from './surveyMarkerSyncDiag.js';
@@ -579,8 +580,7 @@ export async function updateDocumentPresence(documentId, userId, presenceData = 
 export async function getDocumentPresence(documentId) {
   if (!documentId) return { data: [], error: null };
 
-  // Get presence records from last 2 minutes
-  const cutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - PRESENCE_STALE_MS).toISOString();
 
   const { data, error } = await supabase
     .from('document_presence')

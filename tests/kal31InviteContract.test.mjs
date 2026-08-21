@@ -60,6 +60,16 @@ test('KAL-31: invite-tokens migration enforces 3-role set + RPC contract', () =>
   }
 });
 
+test('KAL-31: P2-01/P2-05 migration gates free-tier insert and revoke drops collaborators', () => {
+  const sql = fs.readFileSync(
+    path.join(repoRoot, 'supabase/migrations/20260820010000_invite_tier_gate_and_revoke_access.sql'),
+    'utf8',
+  );
+  match(sql, /kal31_guard_invite_creator_tier/);
+  match(sql, /DELETE FROM public\.document_collaborators/);
+  match(sql, /get_user_tier/);
+});
+
 test('KAL-31: ShareModal defaults to Viewer and exposes only viewer/editor/owner', () => {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/home/ShareModal.jsx'),
@@ -118,12 +128,19 @@ test('KAL-31 Phase D: InviteAcceptPage renders the six acceptance states', () =>
     path.join(repoRoot, 'src/home/InviteAcceptPage.jsx'),
     'utf8',
   );
+  const state = fs.readFileSync(
+    path.join(repoRoot, 'src/home/inviteAcceptState.js'),
+    'utf8',
+  );
   for (const status of ['accepted', 'wrong_account', 'expired', 'revoked', 'already_accepted', 'invalid']) {
-    match(src, new RegExp(`'${status}'`), `InviteAcceptPage must handle '${status}'`);
+    match(state, new RegExp(`'${status}'`), `inviteAcceptState must handle '${status}'`);
   }
+  match(src, /inviteResultHeading/);
+  match(src, /inviteResultDescription/);
   match(src, /acceptDocumentInvite/);
   // Upgrade-required banner for free-user editor/owner invites.
   match(src, /upgradeRequired/);
+  match(state, /upgradeRequired/);
 });
 
 test('KAL-31 Phase D: main.jsx routes /invite/<token> to the accept page', () => {
@@ -148,7 +165,12 @@ test('KAL-31 Phase E: AccessManagementModal wires live backend behavior', () => 
   match(src, /resendDocumentInvite/);
   match(src, /sendPermissionChangedEmail/);
   match(src, /sendAccessRemovedEmail/);
-  match(src, /cannot demote the last owner/);
+  match(src, /lastOwnerBlockReason/);
+  const guard = fs.readFileSync(
+    path.join(repoRoot, 'src/home/lastOwnerGuard.js'),
+    'utf8',
+  );
+  match(guard, /cannot demote the last owner/);
 });
 
 test('KAL-31: collaborator list uses public row fields instead of an unavailable auth.users join', () => {

@@ -6,6 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 // Pure-logic isUserTyping — matches the SVGAnnotationLayer.jsx:194-206
 // existing handler plus the Fabric hidden-textarea check from
@@ -170,4 +171,20 @@ test('dispatchDelete ignores non-Delete/Backspace keys', () => {
   });
   assert.equal(fired, false);
   assert.equal(result, null);
+});
+
+const LAYER = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+
+test('P1-21: tool switch flushes in-flight creation via commitShapeCreationRef', () => {
+  assert.match(LAYER, /commitShapeCreationRef\.current\?\.\(null\)/);
+  const start = LAYER.indexOf('P1-21');
+  assert.ok(start > -1);
+  const body = LAYER.slice(start, start + 700);
+  assert.match(body, /activeTool/);
+  assert.doesNotMatch(body, /setZoom|zoomTo|beginPdfjs/);
+});
+
+test('P1-34: copy\/cut hotkeys accept a multi-index selection', () => {
+  assert.match(LAYER, /selectedIds\.size < 1/);
+  assert.match(LAYER, /selectedIndexes\.length === 1 \? annotationIndex : selectedIndexes/);
 });

@@ -59,6 +59,7 @@ function depsWith(store, inviteUserByEmail) {
     selectActiveDocumentAccess: async () => null,
     inviteUserByEmail,
     sendFallbackEmail: async () => true,
+    claimEmailSend: async () => 'allowed',
     newClaimId: (() => {
       let n = 0;
       return () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;

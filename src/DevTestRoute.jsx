@@ -8,8 +8,13 @@ import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import App from './AppShell';
 
-const noop = () => {};
+// Editor tools on this route are real. Live account / auth mutations
+// fail-closed via previewBlocked so Settings cannot claim a reset email,
+// save, upgrade, or sign-out actually happened.
 const asyncNoop = async () => {};
+const previewBlocked = (action) => async () => {
+  throw new Error(`Test PDF cannot ${action}.`);
+};
 const mockUser = {
   id: 'dev-test-user',
   email: 'dev-test-user@example.invalid',
@@ -24,15 +29,19 @@ const mockAuthValue = {
   user: mockUser,
   session: null,
   loading: false,
-  signUp: asyncNoop,
-  signIn: asyncNoop,
-  signInWithGoogle: asyncNoop,
-  signInWithSSO: asyncNoop,
-  signOut: asyncNoop,
-  resetPassword: asyncNoop,
-  updatePassword: asyncNoop,
-  updateProfile: asyncNoop,
-  refreshSubscriptionTier: asyncNoop,
+  signUp: previewBlocked('create an account'),
+  signIn: previewBlocked('sign in'),
+  signInWithGoogle: previewBlocked('start Google sign-in'),
+  signInWithSSO: previewBlocked('start SSO'),
+  signOut: previewBlocked('sign out'),
+  resetPassword: previewBlocked('send password reset emails'),
+  updatePassword: previewBlocked('update passwords'),
+  updateProfile: previewBlocked('save profile changes'),
+  refreshSubscriptionTier: previewBlocked('refresh subscription status'),
+  resendConfirmation: previewBlocked('resend confirmation emails'),
+  linkGoogleIdentity: previewBlocked('start Google OAuth'),
+  unlinkProvider: previewBlocked('unlink providers'),
+  deleteAccount: previewBlocked('delete accounts'),
   // The route supplies local document identity without impersonating a real
   // Supabase session; cloud-aware consumers must remain offline.
   isAuthenticated: false,
@@ -54,13 +63,13 @@ const mockMSGraphValue = {
   isAuthenticated: false,
   isLoading: false,
   error: null,
-  login: asyncNoop,
-  logout: asyncNoop,
+  login: previewBlocked('start Microsoft login'),
+  logout: previewBlocked('disconnect Microsoft'),
   updateLastUsed: asyncNoop,
   connectionRestored: true,
   needsReconnect: false,
   handleOAuthCallback: asyncNoop,
-  ensureFreshToken: async () => true,
+  ensureFreshToken: async () => false,
 };
 
 const surveyTransitionE2ETemplates = [{
@@ -127,6 +136,10 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
         }
         const blob = await resp.blob();
         const file = new File([blob], displayName || pdfName, { type: 'application/pdf' });
+        // DEV / ?testPdf= only. History keys off this local id so A-07 can
+        // run against in-memory/localStorage events. Do NOT set file.id —
+        // cloud hydration/sync/presence treat that as a real Supabase row.
+        file.__localHistoryDocumentId = `dev-testpdf:${pdfName}`;
 
         if (cancelled) return;
 

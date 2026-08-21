@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DismissBarrier from './DismissBarrier';
+import {
+  applyPageRotation,
+  clampCopies,
+  clampRangeToMax,
+  compactRange,
+  filterRangeChars,
+  parseCustomInches,
+  parseRange,
+  sanitizeRangeInput,
+} from './printRangeUtils.js';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -60,110 +70,9 @@ const DEFAULT_MOCK_PAGES = Array.from({ length: 12 }, (_, i) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Range helpers — parse "1,3,4-8" → Set<number>, and back.
-// ─────────────────────────────────────────────────────────────────────────
-
-function parseRange(str, totalPages) {
-  const out = new Set();
-  if (!str || typeof str !== 'string') return out;
-  const parts = str.split(',').map((s) => s.trim()).filter(Boolean);
-  for (const part of parts) {
-    const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (m) {
-      let a = Math.max(1, parseInt(m[1], 10));
-      let b = Math.min(totalPages, parseInt(m[2], 10));
-      if (a > b) [a, b] = [b, a];
-      for (let i = a; i <= b; i++) out.add(i);
-    } else {
-      const n = parseInt(part, 10);
-      if (Number.isFinite(n) && n >= 1 && n <= totalPages) out.add(n);
-    }
-  }
-  return out;
-}
-
-// UX 2026-04-24: two-stage input hygiene for every range input.
-//  - `filterRangeChars` runs on every keystroke and strips anything that
-//    isn't a digit / comma / dash / whitespace, so the user can never
-//    type letters or punctuation into a page range field.
-//  - `sanitizeRangeInput` runs on blur and normalizes the whole string:
-//    reversed ranges like "12-9" are flipped to "9-12" and whitespace
-//    around commas is tidied up. Applied everywhere the user types a
-//    page range so behavior is consistent across the panel.
-function filterRangeChars(raw) {
-  return (raw || '').replace(/[^0-9,\-\s]/g, '');
-}
-// UX 2026-04-24: clamp every typed number in the field to the document's
-// total page count so the user physically cannot enter a page that
-// doesn't exist. Applied on every keystroke for the top "Pages to print"
-// field — typing "999" on a 36-page PDF resolves to "36" as the digits
-// land. Empty / partial inputs (e.g. "1-") pass through unchanged so
-// mid-typing feels natural.
-function clampRangeToMax(raw, max) {
-  if (!Number.isFinite(max) || max <= 0) return raw;
-  return (raw || '').replace(/\d+/g, (match) => {
-    const n = parseInt(match, 10);
-    if (!Number.isFinite(n)) return match;
-    if (n < 1) return '1';
-    if (n > max) return String(max);
-    return match;
-  });
-}
-function sanitizeRangeInput(raw, max) {
-  const cleaned = filterRangeChars(raw);
-  if (!cleaned.trim()) return '';
-  const segments = cleaned.split(',').map((seg) => {
-    const trimmed = seg.trim();
-    if (!trimmed) return '';
-    const m = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (m) {
-      let a = parseInt(m[1], 10);
-      let b = parseInt(m[2], 10);
-      if (Number.isFinite(max) && max > 0) {
-        a = Math.min(Math.max(1, a), max);
-        b = Math.min(Math.max(1, b), max);
-      }
-      if (a > b) [a, b] = [b, a];
-      return `${a}-${b}`;
-    }
-    if (Number.isFinite(max) && max > 0 && /^\d+$/.test(trimmed)) {
-      const n = Math.min(Math.max(1, parseInt(trimmed, 10)), max);
-      return String(n);
-    }
-    return trimmed;
-  }).filter((s) => s !== '');
-  return segments.join(', ');
-}
-
-function compactRange(set) {
-  const arr = Array.from(set).sort((a, b) => a - b);
-  if (!arr.length) return '';
-  const runs = [];
-  let start = arr[0];
-  let prev = arr[0];
-  for (let i = 1; i <= arr.length; i++) {
-    const cur = arr[i];
-    if (cur === prev + 1) {
-      prev = cur;
-    } else {
-      runs.push(start === prev ? `${start}` : `${start}-${prev}`);
-      start = cur;
-      prev = cur;
-    }
-  }
-  return runs.join(', ');
-}
-
-// G6 fix 2026-06-12: parse one "Custom W × H" dimension input. Returns the
-// typed value clamped to 1–200 inches (index card → plotter roll), or the
-// fallback when the field is empty/garbage. The on-blur handler writes the
-// resolved value back into the field, so the user always SEES the number
-// that will be used — no silent fallback.
-function parseCustomInches(raw, fallback) {
-  const n = parseFloat(String(raw ?? '').replace(/[^0-9.]/g, ''));
-  if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.min(200, Math.max(1, Math.round(n * 100) / 100));
-}
+// Range helpers live in printRangeUtils.js so Node tests can import them
+// without the React/CSS panel. Behavior is unchanged except Clear's "0"
+// sentinel now survives blur / clamp (it used to become page 1).
 
 // ─────────────────────────────────────────────────────────────────────────
 // Small building blocks
@@ -746,7 +655,7 @@ export default function PrintPanel({
       const next = { ...prev };
       for (const n of targetPages) {
         const cur = next[n] || 0;
-        next[n] = (((cur + deltaDegrees) % 360) + 360) % 360;
+        next[n] = applyPageRotation(cur, deltaDegrees);
       }
       printPanelDebug('[PrintPanel][DBG] rotate: pageRotations after =', next);
       return next;
@@ -1184,9 +1093,9 @@ export default function PrintPanel({
         </div>
         <div className="pp-copies-row">
           <div className="pp-stepper">
-            <button type="button" onClick={() => setCopies((c) => Math.max(1, c - 1))} aria-label="Fewer copies">−</button>
-            <input value={copies} onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value, 10) || 1))} />
-            <button type="button" onClick={() => setCopies((c) => Math.min(999, c + 1))} aria-label="More copies">+</button>
+            <button type="button" onClick={() => setCopies((c) => clampCopies(c - 1))} aria-label="Fewer copies">−</button>
+            <input value={copies} onChange={(e) => setCopies(clampCopies(e.target.value))} />
+            <button type="button" onClick={() => setCopies((c) => clampCopies(c + 1))} aria-label="More copies">+</button>
           </div>
           <Toggle on={collate} onChange={setCollate}>Collate</Toggle>
           <Toggle on={duplex} onChange={setDuplex}>Duplex</Toggle>

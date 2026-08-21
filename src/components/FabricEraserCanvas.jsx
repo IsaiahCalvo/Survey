@@ -20,6 +20,7 @@ import {
   getEraserCandidateId,
   sampleEraserStroke,
 } from '../utils/eraserHitTest.js';
+import { isPointOnObject } from '../utils/geometryHitTest.js';
 import { erasePageAnnotations } from '../utils/pageSpaceEraser.js';
 import {
   BOUNDS_PAD,
@@ -180,6 +181,129 @@ const pointInRect = (point, rect, radius) => (
 // a wide imported-ink stroke was fast-rejected and never carved live (the
 // intermittent "doesn't take" the speedup introduced). The prefilter geometry
 // now lives in eraserBoundsPrefilter.js so the superset invariant is unit-tested.
+
+const isEntireEraserMode = (mode) => mode === 'entire' || mode === 'full';
+
+// Shared preview/commit target plan. Partial mode is ink-only (`skip` is never
+// atomic). Entire/full mode keeps one topmost permitted winner per sample:
+// callouts outrank markers (SVG paint order), overlays outrank objects[],
+// objects[] rank by index, and imported appearance composites rank/delete as
+// one unit. Tests extract this exact block so preview and commit cannot drift.
+/* @@planCanvasEraserHits */
+function planCanvasEraserHits({
+  objects = [],
+  eraserPoints = [],
+  eraserRadius,
+  mode,
+  objectAllowed = () => true,
+  overlayCandidates = [],
+} = {}) {
+  const partialIds = [];
+  const atomicIds = [];
+  const calloutIds = [];
+  const surveyMarkerIds = [];
+  const empty = () => ({
+    shouldPreview: false,
+    partialIds,
+    atomicIds,
+    calloutIds,
+    surveyMarkerIds,
+  });
+
+  if (!Array.isArray(eraserPoints) || eraserPoints.length === 0) return empty();
+  const radius = Number(eraserRadius);
+  if (!Number.isFinite(radius) || radius <= 0) return empty();
+
+  const entire = mode === 'entire' || mode === 'full';
+  if (!entire) {
+    (Array.isArray(objects) ? objects : []).forEach((object, index) => {
+      if (!objectAllowed(object, index)) return;
+      if (getEraserOperation(object, 'partial') !== 'partial') return;
+      if (!eraserStrokeTouchesObject({ eraserPoints, eraserRadius: radius, object })) return;
+      partialIds.push(getEraserCandidateId(object, index));
+    });
+    return {
+      shouldPreview: partialIds.length > 0,
+      partialIds,
+      atomicIds,
+      calloutIds,
+      surveyMarkerIds,
+    };
+  }
+
+  const objectHits = [];
+  (Array.isArray(objects) ? objects : []).forEach((object, index) => {
+    if (!objectAllowed(object, index)) return;
+    if (!eraserStrokeTouchesObject({ eraserPoints, eraserRadius: radius, object })) return;
+    objectHits.push({
+      object,
+      index,
+      id: getEraserCandidateId(object, index),
+      compositeId: object?.data?.pdfAppearanceCompositeId || null,
+    });
+  });
+
+  const compositeMaxIndex = new Map();
+  for (const hit of objectHits) {
+    if (!hit.compositeId) continue;
+    const prev = compositeMaxIndex.get(hit.compositeId);
+    if (prev == null || hit.index > prev) compositeMaxIndex.set(hit.compositeId, hit.index);
+  }
+  const rankOf = (hit) => (
+    hit.compositeId ? (compositeMaxIndex.get(hit.compositeId) ?? hit.index) : hit.index
+  );
+
+  const overlays = Array.isArray(overlayCandidates) ? overlayCandidates : [];
+  const samples = sampleEraserStroke(eraserPoints, radius);
+  const objectWinnerIds = new Set();
+  const calloutWinnerIds = new Set();
+  const markerWinnerIds = new Set();
+
+  for (const sample of samples) {
+    let bestOverlay = null;
+    for (const overlay of overlays) {
+      if (typeof overlay?.hitsSample !== 'function' || !overlay.hitsSample(sample)) continue;
+      if (
+        !bestOverlay
+        || overlay.laneRank > bestOverlay.laneRank
+        || (overlay.laneRank === bestOverlay.laneRank && overlay.rank > bestOverlay.rank)
+      ) {
+        bestOverlay = overlay;
+      }
+    }
+    if (bestOverlay) {
+      if (bestOverlay.lane === 'callout') calloutWinnerIds.add(bestOverlay.id);
+      else markerWinnerIds.add(bestOverlay.id);
+      continue;
+    }
+
+    let bestObj = null;
+    for (const hit of objectHits) {
+      if (!isPointOnObject(sample, hit.object, radius)) continue;
+      if (!bestObj || rankOf(hit) > rankOf(bestObj)) bestObj = hit;
+    }
+    if (!bestObj) continue;
+    if (bestObj.compositeId) {
+      for (const hit of objectHits) {
+        if (hit.compositeId === bestObj.compositeId) objectWinnerIds.add(hit.id);
+      }
+    } else {
+      objectWinnerIds.add(bestObj.id);
+    }
+  }
+
+  atomicIds.push(...objectWinnerIds);
+  calloutIds.push(...calloutWinnerIds);
+  surveyMarkerIds.push(...markerWinnerIds);
+  return {
+    shouldPreview: atomicIds.length + calloutIds.length + surveyMarkerIds.length > 0,
+    partialIds,
+    atomicIds,
+    calloutIds,
+    surveyMarkerIds,
+  };
+}
+/* @@planCanvasEraserHits-end */
 
 const getLegacyCalloutPayload = (object, fallbackPageNumber) => {
   const callout = object?.callout || (object?.type === 'callout' ? object : null);
@@ -984,7 +1108,10 @@ const FabricEraserCanvas = memo(({
     eraserPoints,
     excludeIds,
     gestureRadius = getPageRadius(),
+    mode = 'entire',
   ) => {
+    // Partial/pixel eraser is ink-only. Callouts are never partial-eligible.
+    if (mode === 'partial') return [];
     const allCallouts = collectPageCallouts();
     if (!allCallouts.length) return [];
     const radius = gestureRadius;
@@ -1036,7 +1163,9 @@ const FabricEraserCanvas = memo(({
     eraserPoints,
     excludeIds,
     gestureRadius = getPageRadius(),
+    mode = 'entire',
   ) => {
+    if (mode === 'partial') return [];
     if (typeof onEraseSurveyMarkerRef.current !== 'function') return [];
     const visibleBounds = gestureBoundsRef.current?.bySurveyMarker;
     if (!(visibleBounds instanceof Map) || visibleBounds.size === 0) return [];
@@ -1059,8 +1188,47 @@ const FabricEraserCanvas = memo(({
         }
       },
       boundsAllow: (annotationId) => surveyMarkerBoundsAllow(annotationId, queryBounds),
+      mode,
     });
   }, [getPageRadius, surveyMarkerBoundsAllow]);
+
+  const buildOverlayCandidates = useCallback((calloutIds, markerIds, radius) => {
+    const candidates = [];
+    const allCallouts = collectPageCallouts();
+    for (const id of calloutIds || []) {
+      const callout = allCallouts.find((entry) => String(entry.id) === String(id));
+      if (!callout) continue;
+      candidates.push({
+        id,
+        lane: 'callout',
+        laneRank: 2,
+        rank: allCallouts.indexOf(callout),
+        hitsSample: (point) => getCalloutHitIds({
+          callouts: [callout],
+          pageNumber,
+          pageWidth,
+          pageHeight,
+          eraserPoints: [point],
+          eraserRadius: radius,
+        }).length > 0,
+      });
+    }
+    const markers = Array.isArray(surveyMarkersRef.current) ? surveyMarkersRef.current : [];
+    for (const id of markerIds || []) {
+      const marker = markers.find((entry) => String(entry?.annotationId) === String(id));
+      if (!marker) continue;
+      const object = surveyMarkerToEraserObject(marker);
+      if (!object) continue;
+      candidates.push({
+        id,
+        lane: 'marker',
+        laneRank: 1,
+        rank: markers.indexOf(marker),
+        hitsSample: (point) => isPointOnObject(point, object, radius),
+      });
+    }
+    return candidates;
+  }, [collectPageCallouts, pageHeight, pageNumber, pageWidth]);
 
   // Whole-delete pending-erase visual for callouts — the exact treatment
   // non-path shapes get in eraseAtomicObjectsFromPreview, ported to the
@@ -1585,39 +1753,44 @@ const FabricEraserCanvas = memo(({
     return null;
   }, [getSpaceIdForRegion]);
 
-  // Cheap per-segment ghost check for EVERY whole-delete object crossed by the
-  // segment — shapes, text, stamps, AND atomic path-typed objects (clouds,
-  // imported non-ink paths). The filter is the POLICY predicate
-  // (getEraserOperation !== 'partial'), not a type heuristic: the old
-  // type!=='path' skip left atomic paths with zero live feedback once carving
-  // started (classify stops running after previewHasPartial — 2026-07-19
-  // audit), which read as "shapes need multiple hits". Uses the exact touch
-  // test the commit engine uses, so ghosting can never disagree with commit.
+  // Whole-delete ghosts for entire/full mode only. Partial mode is ink-only:
+  // `skip` must never hide a shape the commit will leave. Entire mode ghosts
+  // the same topmost winners classify/commit use, so preview cannot disagree.
   const ghostAtomicHits = useCallback((pointer, segmentPoints) => {
     if (!segmentPoints?.length) return;
-    const objects = annotationsRef.current?.objects || [];
-    const radius = pointer.gestureConfig.radius;
     const mode = pointer.gestureConfig.mode;
+    if (!isEntireEraserMode(mode)) return;
+    const radius = pointer.gestureConfig.radius;
     const queryBounds = segmentQueryBounds(segmentPoints, radius);
-    const hitIds = [];
-    objects.forEach((object, index) => {
-      if (getEraserOperation(object, mode) === 'partial') return; // ink carves, never ghosts
-      const id = getEraserCandidateId(object, index);
-      if (pointer.previewAtomicIds.has(id)) return;
-      if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor
-      if (getEraseBlockReason(object)) return;
-      if (!eraserStrokeTouchesObject({
-        eraserPoints: segmentPoints,
-        eraserRadius: radius,
-        object,
-      })) return;
-      hitIds.push(id);
+    const plan = planCanvasEraserHits({
+      objects: annotationsRef.current?.objects || [],
+      eraserPoints: segmentPoints,
+      eraserRadius: radius,
+      mode,
+      objectAllowed: (object, index) => {
+        if (getEraseBlockReason(object)) return false;
+        if (!indexBoundsAllow(index, queryBounds)) return false;
+        return true;
+      },
+      overlayCandidates: buildOverlayCandidates(
+        getPermittedCalloutHitIds(segmentPoints, undefined, radius, mode),
+        getPermittedSurveyMarkerHitIds(segmentPoints, undefined, radius, mode),
+        radius,
+      ),
     });
+    const hitIds = plan.atomicIds.filter((id) => !pointer.previewAtomicIds.has(id));
     if (hitIds.length) {
       eraseAtomicObjectsFromPreview(hitIds);
       hitIds.forEach((id) => pointer.previewAtomicIds.add(id));
     }
-  }, [eraseAtomicObjectsFromPreview, getEraseBlockReason, indexBoundsAllow]);
+  }, [
+    buildOverlayCandidates,
+    eraseAtomicObjectsFromPreview,
+    getEraseBlockReason,
+    getPermittedCalloutHitIds,
+    getPermittedSurveyMarkerHitIds,
+    indexBoundsAllow,
+  ]);
 
   // Lazily attach the carve mask to path elements the sweep actually
   // touches (partial-erasable only). Elements keep rendering unmasked —
@@ -1632,10 +1805,8 @@ const FabricEraserCanvas = memo(({
     objects.forEach((object, index) => {
       if (String(object?.type || '').toLowerCase() !== 'path') return;
       // Locked eraser policy: only pen/highlighter/imported-Ink strokes are
-      // partial-erasable — every other object whole-deletes even in partial
-      // mode. Atomic path-typed objects must therefore NEVER get the partial
-      // carve mask (they'd look part-carved mid-drag, then vanish whole at
-      // release); they ghost whole via the classify → atomic lane instead.
+      // partial-erasable. Non-ink is `skip` in partial mode and must never
+      // receive the carve mask (or a whole-delete ghost).
       if (getEraserOperation(object, 'partial') !== 'partial') return;
       const id = getEraserCandidateId(object, index);
       if (clone.maskedKeys.has(id)) return;
@@ -1661,32 +1832,36 @@ const FabricEraserCanvas = memo(({
 
   // Cheap replacement for the per-move planPageEraserPreview (full boolean-carve
   // engine). Classifies which objects the NEW segment touches — partial-erasable
-  // ink (start/continue the live carve) vs whole-delete atomics (ghost) — using
-  // the same eraserStrokeTouchesObject the commit path uses, gated by the AABB
-  // fast-reject. The real carve geometry is still computed once at pointer-up by
-  // erasePageAnnotations (the shared, pixel-identical engine — unchanged), so
-  // deferring the boolean work off the hot path costs zero fidelity.
+  // ink (start/continue the live carve) vs entire-mode topmost atomics (ghost)
+  // — using the same planner commit uses. `skip` is never atomic. The real carve
+  // geometry is still computed once at pointer-up by erasePageAnnotations.
   const classifyEraserSegment = useCallback((pointer, segment) => {
-    const objects = annotationsRef.current?.objects || [];
     const radius = pointer.gestureConfig.radius;
-    const queryBounds = segmentQueryBounds(segment, radius);
     const mode = pointer.gestureConfig.mode;
-    const partialIds = [];
-    const atomicIds = [];
-    objects.forEach((object, index) => {
-      if (getEraseBlockReason(object)) return;
-      if (!indexBoundsAllow(index, queryBounds)) return; // fast reject: nowhere near cursor
-      if (!eraserStrokeTouchesObject({ eraserPoints: segment, eraserRadius: radius, object })) return;
-      const id = getEraserCandidateId(object, index);
-      if (getEraserOperation(object, mode) === 'partial') partialIds.push(id);
-      else atomicIds.push(id);
+    const queryBounds = segmentQueryBounds(segment, radius);
+    return planCanvasEraserHits({
+      objects: annotationsRef.current?.objects || [],
+      eraserPoints: segment,
+      eraserRadius: radius,
+      mode,
+      objectAllowed: (object, index) => {
+        if (getEraseBlockReason(object)) return false;
+        if (!indexBoundsAllow(index, queryBounds)) return false;
+        return true;
+      },
+      overlayCandidates: buildOverlayCandidates(
+        getPermittedCalloutHitIds(segment, undefined, radius, mode),
+        getPermittedSurveyMarkerHitIds(segment, undefined, radius, mode),
+        radius,
+      ),
     });
-    return {
-      shouldPreview: partialIds.length > 0 || atomicIds.length > 0,
-      partialIds,
-      atomicIds,
-    };
-  }, [getEraseBlockReason, indexBoundsAllow]);
+  }, [
+    buildOverlayCandidates,
+    getEraseBlockReason,
+    getPermittedCalloutHitIds,
+    getPermittedSurveyMarkerHitIds,
+    indexBoundsAllow,
+  ]);
 
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
@@ -1714,6 +1889,7 @@ const FabricEraserCanvas = memo(({
         segment,
         pointer.previewCalloutIds,
         pointer.gestureConfig.radius,
+        pointer.gestureConfig.mode,
       );
       if (liveCalloutHits.length) {
         ghostCalloutsFromPreview(liveCalloutHits);
@@ -1723,6 +1899,7 @@ const FabricEraserCanvas = memo(({
         segment,
         pointer.previewSurveyMarkerIds,
         pointer.gestureConfig.radius,
+        pointer.gestureConfig.mode,
       );
       if (liveSurveyMarkerHits.length) {
         ghostSurveyMarkersFromPreview(liveSurveyMarkerHits);
@@ -1737,19 +1914,14 @@ const FabricEraserCanvas = memo(({
     // (KAL-366): the heavy carve geometry now runs ONCE at pointer-up, not on
     // every pointermove, which is the whole drag-smoothness win.
     const plan = classifyEraserSegment(pointer, segment?.length ? segment : pointer.points);
-    // Callout hits must also ACTIVATE the preview: a sweep that only crosses
-    // a callout has no shared-store plan hits (callouts are the historical
-    // fork), yet it whole-deletes the callout at release — so it needs the
-    // same pending-erase presentation a shape-only sweep gets.
-    const calloutHitIds = getPermittedCalloutHitIds(
-      segment?.length ? segment : pointer.points,
-      pointer.previewCalloutIds,
-      pointer.gestureConfig.radius,
+    // Overlay ids come from the same planner commit uses (partial → [],
+    // entire → topmost per sample). A sweep that only crosses a callout still
+    // activates preview because plan.calloutIds is part of shouldPreview.
+    const calloutHitIds = (plan.calloutIds || []).filter(
+      (id) => !pointer.previewCalloutIds.has(id),
     );
-    const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(
-      segment?.length ? segment : pointer.points,
-      pointer.previewSurveyMarkerIds,
-      pointer.gestureConfig.radius,
+    const surveyMarkerHitIds = (plan.surveyMarkerIds || []).filter(
+      (id) => !pointer.previewSurveyMarkerIds.has(id),
     );
     if (!plan.shouldPreview && !calloutHitIds.length && !surveyMarkerHitIds.length) return false;
     if (!pointer.previewActive) {
@@ -1830,13 +2002,35 @@ const FabricEraserCanvas = memo(({
       ? gestureConfig.mode
       : (gestureConfig?.mode === 'partial' ? 'partial' : eraserModeRef.current);
     const rejectedById = new Map();
-    const canErase = (object, index) => {
+    const objectAllowed = (object, index) => {
       const reason = getEraseBlockReason(object);
       if (reason) {
         const id = object?.id || object?.annotationId || object?.pdfAnnotationId || `index:${index}`;
         rejectedById.set(id, { id, reason });
       }
       return !reason;
+    };
+    // Same permitted overlay lists as live preview, then the shared planner
+    // so commit cannot delete a shape preview left (or ghost a skip target).
+    const calloutHitIdsRaw = getPermittedCalloutHitIds(eraserPoints, undefined, radius, mode);
+    const surveyMarkerHitIdsRaw = getPermittedSurveyMarkerHitIds(eraserPoints, undefined, radius, mode);
+    const plan = planCanvasEraserHits({
+      objects: Array.isArray(latestPage.objects) ? latestPage.objects : [],
+      eraserPoints,
+      eraserRadius: radius,
+      mode,
+      objectAllowed,
+      overlayCandidates: buildOverlayCandidates(calloutHitIdsRaw, surveyMarkerHitIdsRaw, radius),
+    });
+    const winnerObjectIds = new Set(plan.atomicIds);
+    const canErase = (object, index) => {
+      if (!objectAllowed(object, index)) return false;
+      if (isEntireEraserMode(mode)) {
+        return winnerObjectIds.has(getEraserCandidateId(object, index));
+      }
+      // Partial is ink-only. Non-ink stays out of erasePageAnnotations even
+      // when policy still returns 'entire' instead of 'skip'.
+      return getEraserOperation(object, 'partial') === 'partial';
     };
     const result = erasePageAnnotations({
       pageAnnotations: latestPage,
@@ -1846,11 +2040,9 @@ const FabricEraserCanvas = memo(({
       canErase,
     });
 
-    // Commit recomputes the same permitted hit lists used by the live preview.
-    // Raw geometry-only hits here previously let callout commit bypass preview's
-    // ownership gate; survey markers likewise stay source/visibility-gated.
-    const calloutHitIds = getPermittedCalloutHitIds(eraserPoints, undefined, radius);
-    const surveyMarkerHitIds = getPermittedSurveyMarkerHitIds(eraserPoints, undefined, radius);
+    // Overlay deletes are the planner's per-sample winners (empty in partial).
+    const calloutHitIds = plan.calloutIds;
+    const surveyMarkerHitIds = plan.surveyMarkerIds;
     const commitLocalTextMarkupErase = () => {
       if (
         typeof onEraseIntentRef.current === 'function'
@@ -2037,6 +2229,7 @@ const FabricEraserCanvas = memo(({
       }
     }
   }, [
+    buildOverlayCandidates,
     getEraseBlockReason,
     getPageRadius,
     getPermittedCalloutHitIds,

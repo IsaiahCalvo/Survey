@@ -186,7 +186,7 @@ test('pdf.js survey markers use one visible, permitted whole-delete lane in both
   const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
   assert.match(
     commitSource,
-    /getPermittedSurveyMarkerHitIds\(eraserPoints, undefined, radius\)/,
+    /getPermittedSurveyMarkerHitIds\(eraserPoints, undefined, radius, mode\)/,
   );
   assert.match(commitSource, /await onEraseIntentRef\.current\?\.\(intent\)/);
   assert.match(commitSource, /onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/);
@@ -200,7 +200,7 @@ test('callout preview and commit share the same permitted hit list', () => {
 
   assert.match(
     commitSource,
-    /getPermittedCalloutHitIds\(eraserPoints, undefined, radius\)/,
+    /getPermittedCalloutHitIds\(eraserPoints, undefined, radius, mode\)/,
   );
   assert.doesNotMatch(commitSource, /getCalloutHitIds\(\{/);
 });
@@ -330,6 +330,9 @@ test('dev test route supplies a stable mock user while cloud consumers stay offl
   assert.match(DEV_TEST_ROUTE_SOURCE, /const mockUser = \{\s*id:\s*['"]dev-test-user['"]/);
   assert.match(DEV_TEST_ROUTE_SOURCE, /user:\s*mockUser/);
   assert.match(DEV_TEST_ROUTE_SOURCE, /isAuthenticated:\s*false/);
+  assert.match(DEV_TEST_ROUTE_SOURCE, /tier:\s*['"]developer['"]/);
+  assert.match(DEV_TEST_ROUTE_SOURCE, /__localHistoryDocumentId = `dev-testpdf:\$\{pdfName\}`/);
+  assert.doesNotMatch(DEV_TEST_ROUTE_SOURCE, /file\.id\s*=/);
   assert.match(
     SUPABASE_CLIENT_SOURCE,
     /import\.meta\.env\.DEV[\s\S]*?new URLSearchParams\(window\.location\.search\)\.has\('testPdf'\)/,

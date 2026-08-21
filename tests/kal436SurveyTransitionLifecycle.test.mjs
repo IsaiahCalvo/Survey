@@ -35,8 +35,27 @@ test('KAL-436: mode, template, and category transitions do not reset the open PD
     /\/\/ Set selected category([\s\S]*?)setActiveTool\('survey-marker'\);/,
   )?.[1] || '';
   assert.match(categoryHandler, /setSelectedCategoryId\(category\.id\)/);
-  assert.match(categoryHandler, /setIsSurveyPanelCollapsed\(true\)/);
+  // P2-35(b): category pick dismisses the sheet (animated requestClose on
+  // mobile; instant collapse on desktop). Do not hard-set collapsed here.
+  assert.match(categoryHandler, /dismissSurveySheet\(\)/);
+  assert.doesNotMatch(categoryHandler, /setIsSurveyPanelCollapsed\(true\)/);
   assert.doesNotMatch(categoryHandler, /\bawait\b|setPdfDoc|window\.location/);
+
+  const dismissSurveySheet = SURVEY_RAIL_SOURCE.match(
+    /const dismissSurveySheet = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[/,
+  )?.[1] || '';
+  assert.match(dismissSurveySheet, /if \(!mobileMode\) \{[\s\S]*?setIsSurveyPanelCollapsed\(true\)/);
+  assert.match(dismissSurveySheet, /requestSurveySheetClose\(\)/);
+
+  const collapseSurveySheet = SURVEY_RAIL_SOURCE.match(
+    /const collapseSurveySheet = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[/,
+  )?.[1] || '';
+  assert.match(collapseSurveySheet, /setIsSurveyPanelCollapsed\(true\)/);
+  assert.match(
+    SURVEY_RAIL_SOURCE,
+    /useMobileSheetMotion\(collapseSurveySheet\)/,
+    'mobile requestClose must finish by collapsing the survey panel',
+  );
 
   const excelHintEffect = PDF_VIEWER_SOURCE.match(
     /\/\/ Live: a content-free post-commit hint[\s\S]*?\n  \}, \[(.*?)\]\);/,

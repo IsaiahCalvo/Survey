@@ -100,6 +100,16 @@ BEGIN
     VALUES (v_doc_id, v_owner_id)
     ON CONFLICT (id) DO NOTHING;
 
+  -- P2-01: invite INSERT is now paid-tier gated. Seed the owner as Pro so
+  -- Test 1b (owner INSERT) still exercises the ownership/created_by checks
+  -- rather than the free-tier paywall.
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_subscriptions') THEN
+    INSERT INTO public.user_subscriptions (user_id, tier, status)
+      VALUES (v_owner_id, 'pro', 'active')
+      ON CONFLICT (user_id) DO UPDATE
+        SET tier = 'pro', status = 'active';
+  END IF;
+
   -- Collaborators: editor (0002) + viewer (0003)
   INSERT INTO public.document_collaborators (document_id, user_id, role, status)
     VALUES

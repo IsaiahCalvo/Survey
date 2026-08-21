@@ -526,12 +526,49 @@ const SurveySpacesRail = ({
   // hub/spaces sheets, replacing the old flat 48px touchend delta. Demo
   // SurveySetupSheet.tsx:51-96 / inv-demo §17. The real collapse still re-runs
   // the layout-driven zoom after the sheet finishes sliding down.
+  // P2-35(b): ignore a stale delayed hide if the sheet reopens while the
+  // close timer is in flight. Drag-dismiss still hides — ignore is armed
+  // only when `closing` is already true.
+  const ignoreNextSurveyHideRef = useRef(false);
+  const afterSurveyHideRef = useRef(null);
   const collapseSurveySheet = useCallback(() => {
+    if (ignoreNextSurveyHideRef.current) {
+      ignoreNextSurveyHideRef.current = false;
+      afterSurveyHideRef.current = null;
+      return;
+    }
+    const afterHide = afterSurveyHideRef.current;
+    afterSurveyHideRef.current = null;
     setIsSurveyPanelCollapsed(true);
+    afterHide?.();
     requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
   }, [applyLayoutDrivenZoom]);
-  const { motionStyle: surveySheetMotionStyle, dragHandlers: surveySheetDragHandlers, requestClose: requestSurveySheetClose } =
-    useMobileSheetMotion(collapseSurveySheet);
+  const {
+    motionStyle: surveySheetMotionStyle,
+    dragHandlers: surveySheetDragHandlers,
+    requestClose: requestSurveySheetClose,
+    resetMotion: resetSurveySheetMotion,
+    closing: surveySheetClosing,
+  } = useMobileSheetMotion(collapseSurveySheet);
+
+  const markSurveySheetOpen = useCallback(() => {
+    if (surveySheetClosing) {
+      ignoreNextSurveyHideRef.current = true;
+      afterSurveyHideRef.current = null;
+    }
+    resetSurveySheetMotion?.();
+  }, [resetSurveySheetMotion, surveySheetClosing]);
+
+  const dismissSurveySheet = useCallback(() => {
+    if (isSurveyPanelCollapsed) return;
+    ignoreNextSurveyHideRef.current = false;
+    if (!mobileMode) {
+      setIsSurveyPanelCollapsed(true);
+      requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+      return;
+    }
+    requestSurveySheetClose();
+  }, [applyLayoutDrivenZoom, isSurveyPanelCollapsed, mobileMode, requestSurveySheetClose]);
 
   const selectSurveyModule = (moduleId) => {
     if (!moduleId || moduleId === selectedModuleId) {
@@ -560,38 +597,51 @@ const SurveySpacesRail = ({
   };
 
   const exitSurveyMode = () => {
-    if (typeof onCloseSurveyMode === 'function') {
-      onCloseSurveyMode();
-    } else {
-      setShowSurveyPanel(false);
-      setSelectedSpaceId(null);
-      setSelectedModuleId(null);
-      setSelectedCategoryId(null);
-      setActiveCategoryDropdown(null);
-      setCategorySelectModeActive(false);
-      setCategorySelectModeForCategory(null);
-      setSelectedCategories({});
-      setCopyModeActive(false);
-      setCopiedItemSelection({});
-      setActiveTool('select');
+    const doExit = () => {
+      if (typeof onCloseSurveyMode === 'function') {
+        onCloseSurveyMode();
+      } else {
+        setShowSurveyPanel(false);
+        setSelectedSpaceId(null);
+        setSelectedModuleId(null);
+        setSelectedCategoryId(null);
+        setActiveCategoryDropdown(null);
+        setCategorySelectModeActive(false);
+        setCategorySelectModeForCategory(null);
+        setSelectedCategories({});
+        setCopyModeActive(false);
+        setCopiedItemSelection({});
+        setActiveTool('select');
+      }
+      setIsSurveyPanelCollapsed(true);
+    };
+    if (mobileMode && !isSurveyPanelCollapsed) {
+      afterSurveyHideRef.current = doExit;
+      dismissSurveySheet();
+      return;
     }
-    setIsSurveyPanelCollapsed(true);
+    doExit();
   };
 
   useEffect(() => {
     if (showSurveyPanel) {
+      markSurveySheetOpen();
       setIsSurveyPanelCollapsed(false);
     }
-  }, [showSurveyPanel]);
+  }, [markSurveySheetOpen, showSurveyPanel]);
 
   useEffect(() => {
     if (expandRequestKey > 0) {
+      markSurveySheetOpen();
       setIsSurveyPanelCollapsed(false);
     }
-  }, [expandRequestKey]);
+  }, [expandRequestKey, markSurveySheetOpen]);
 
   useEffect(() => {
-    if (collapseRequestKey > 0) setIsSurveyPanelCollapsed(true);
+    if (collapseRequestKey > 0) dismissSurveySheet();
+    // Only the key should trigger a chrome-driven close. dismissSurveySheet
+    // identity churn (collapsed flag) must not re-fire the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapseRequestKey]);
 
   useEffect(() => {
@@ -1202,10 +1252,7 @@ const SurveySpacesRail = ({
                 type="button"
                 className="mobile-pdf-sheet-backdrop"
                 aria-label="Close Survey panel"
-                onClick={() => {
-                  setIsSurveyPanelCollapsed(true);
-                  requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                }}
+                onClick={dismissSurveySheet}
               />
             )}
             {/* Panel */}
@@ -1256,6 +1303,7 @@ const SurveySpacesRail = ({
                   }}>
                     <button
                       onClick={() => {
+                        markSurveySheetOpen();
                         setIsSurveyPanelCollapsed(false);
                         requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                       }}
@@ -1280,6 +1328,7 @@ const SurveySpacesRail = ({
                       <button
                         onClick={() => {
                           setRailIconHover(null);
+                          markSurveySheetOpen();
                           if (showSurveyPanel) {
                             setIsSurveyPanelCollapsed(false);
                           } else {
@@ -1339,6 +1388,7 @@ const SurveySpacesRail = ({
                     onTouchStart={mobileMode ? surveySheetDragHandlers.onTouchStart : undefined}
                     onTouchMove={mobileMode ? surveySheetDragHandlers.onTouchMove : undefined}
                     onTouchEnd={mobileMode ? surveySheetDragHandlers.onTouchEnd : undefined}
+                    onTouchCancel={mobileMode ? surveySheetDragHandlers.onTouchCancel : undefined}
                     style={{
                       height: '35px',
                       padding: '0 8px',
@@ -1354,14 +1404,7 @@ const SurveySpacesRail = ({
                       onClick={() => {
                         // Phase F: mobile collapse slides the sheet down first;
                         // desktop collapses immediately (no bottom-sheet motion).
-                        if (mobileMode) {
-                          requestSurveySheetClose();
-                          return;
-                        }
-                        setIsSurveyPanelCollapsed(true);
-                        requestAnimationFrame(() => {
-                          applyLayoutDrivenZoom();
-                        });
+                        dismissSurveySheet();
                       }}
                       aria-label="Collapse Survey panel"
                       style={{
@@ -1528,8 +1571,7 @@ const SurveySpacesRail = ({
                       <button
                         onClick={() => {
                           if (mobileMode) {
-                            setIsSurveyPanelCollapsed(true);
-                            requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+                            dismissSurveySheet();
                           } else {
                             exitSurveyMode();
                           }
@@ -2558,12 +2600,12 @@ const SurveySpacesRail = ({
                                   : gateRefused || gateChecking
                                     ? liveSyncGateStatus(liveSyncGate.reasonCode).label
                                     : liveSyncEnabled && liveSyncStatus === 'connected'
-                                      ? 'Live sync is active - changes sync in real-time'
+                                      ? 'Live sync is connected. Automatic writeback is off — use Push to update Excel.'
                                       : liveSyncStatus === 'connecting'
                                         ? 'Connecting to Excel...'
                                         : liveSyncStatus === 'error'
                                           ? 'Live sync error - click to retry'
-                                          : 'Enable live sync for real-time Excel updates',
+                                          : 'Connect a workbook session. Automatic writeback is off — use Push to update Excel.',
                                 'below'
                               )}
                             >
@@ -3105,8 +3147,8 @@ const SurveySpacesRail = ({
 
                                                 // Set selected category
                                                 setSelectedCategoryId(category.id);
-                                                // Minimize survey panel
-                                                setIsSurveyPanelCollapsed(true);
+                                                // Minimize survey panel (animated on mobile)
+                                                dismissSurveySheet();
                                                 // Switch to surveyMarker tool
                                                 setActiveTool('survey-marker');
                                               }}
@@ -4080,10 +4122,7 @@ const SurveySpacesRail = ({
                             type="button"
                             className="mobile-survey-picker-close"
                             aria-label="Close Survey panel"
-                            onClick={() => {
-                              setIsSurveyPanelCollapsed(true);
-                              requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
-                            }}
+                            onClick={dismissSurveySheet}
                           >
                             <Icon name="close" size={18} color="currentColor" />
                           </button>

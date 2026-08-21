@@ -12,6 +12,12 @@
  * Pure JS — Node test runner imports this directly.
  */
 import { applyScope } from './annotationCreationCommit.js';
+import {
+  sanitizeOfferedFontFamily,
+  clampFontSize,
+  sanitizeTextAlign,
+  sanitizeVerticalAlign,
+} from './annotationStyleCatalog.js';
 
 // TEXT_PADDING lives in svgAnnotationRenderers.jsx (a .jsx module the Node
 // test runner can't import); the value is the annotation text-gutter contract
@@ -90,14 +96,14 @@ const deepClone = (value) => JSON.parse(JSON.stringify(value));
  */
 const applyTextStyle = (json, style = {}) => {
   if (!style || typeof style !== 'object') return json;
-  if (style.fontSize != null) json.fontSize = Math.max(6, Math.min(200, Math.round(Number(style.fontSize) || 16)));
-  if (style.fontFamily) json.fontFamily = style.fontFamily;
+  if (style.fontSize != null) json.fontSize = clampFontSize(style.fontSize);
+  if (style.fontFamily) json.fontFamily = sanitizeOfferedFontFamily(style.fontFamily);
   if (style.fontWeight) json.fontWeight = style.fontWeight;
   if (style.fontStyle) json.fontStyle = style.fontStyle;
   if (style.underline != null) json.underline = !!style.underline;
   if (style.linethrough != null) json.linethrough = !!style.linethrough;
-  if (style.textAlign) json.textAlign = style.textAlign;
-  if (style.verticalAlign) json.verticalAlign = style.verticalAlign;
+  if (style.textAlign) json.textAlign = sanitizeTextAlign(style.textAlign);
+  if (style.verticalAlign) json.verticalAlign = sanitizeVerticalAlign(style.verticalAlign);
   if (typeof style.fill === 'string' && style.fill.length > 0) json.fill = style.fill;
   return json;
 };
@@ -188,6 +194,7 @@ export function buildExistingTextCommitJSON({
   style = {},
 }) {
   if (!original || typeof original !== 'object') return null;
+  if (!String(text ?? '').trim()) return null;
   const pad = TEXT_PADDING;
   const padY = isCallout ? 0 : pad;
   const json = deepClone(original);

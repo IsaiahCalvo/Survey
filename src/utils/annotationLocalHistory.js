@@ -27,9 +27,14 @@ function getAnnotationHistoryAuthorId(annotation) {
     || null;
 }
 
-function isOwnAnnotation(annotation, userId) {
+function isOwnAnnotation(annotation, userId, documentOwnerId = null) {
   const authorId = getAnnotationHistoryAuthorId(annotation);
-  return Boolean(userId) && authorId === userId;
+  if (Boolean(userId) && authorId === userId) return true;
+  // P1-36: unstamped imported marks belong to the document owner.
+  return Boolean(userId)
+    && Boolean(documentOwnerId)
+    && userId === documentOwnerId
+    && !authorId;
 }
 
 function cloneJson(value) {
@@ -485,20 +490,26 @@ export function filterAnnotationHistoryActionByOwner(action, userId, documentOwn
   }
 
   if (action.type === 'fabric:create' || action.type === 'fabric:delete') {
-    return isOwnAnnotation(action.annotation, userId) ? action : null;
+    return isOwnAnnotation(action.annotation, userId, documentOwnerId) ? action : null;
   }
 
   if (action.type === 'fabric:update') {
-    return isOwnAnnotation(action.before, userId) && isOwnAnnotation(action.after, userId)
+    return isOwnAnnotation(action.before, userId, documentOwnerId)
+      && isOwnAnnotation(action.after, userId, documentOwnerId)
       ? action
       : null;
   }
 
   if (action.type === 'fabric:batch') {
-    const created = (action.created || []).filter((entry) => isOwnAnnotation(entry.annotation, userId));
-    const deleted = (action.deleted || []).filter((entry) => isOwnAnnotation(entry.annotation, userId));
+    const created = (action.created || []).filter((entry) => (
+      isOwnAnnotation(entry.annotation, userId, documentOwnerId)
+    ));
+    const deleted = (action.deleted || []).filter((entry) => (
+      isOwnAnnotation(entry.annotation, userId, documentOwnerId)
+    ));
     const updated = (action.updated || []).filter((entry) => (
-      isOwnAnnotation(entry.before, userId) && isOwnAnnotation(entry.after, userId)
+      isOwnAnnotation(entry.before, userId, documentOwnerId)
+      && isOwnAnnotation(entry.after, userId, documentOwnerId)
     ));
 
     if (created.length === 0 && deleted.length === 0 && updated.length === 0) return null;
@@ -546,6 +557,62 @@ function replaceAtStorageIndex(objects, index, value, storageKey) {
   ));
 }
 
+function historyValuesEqual(left, right) {
+  if (Object.is(left, right)) return true;
+  if (left == null || right == null) return left === right;
+  if (typeof left !== 'object' || typeof right !== 'object') return false;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Replay an update without clobbering fields a teammate changed after capture.
+ * Keys we did not change (expectedFrom === applyTo) stay at the live value.
+ * Keys we did change apply only when live still matches expectedFrom.
+ */
+export function mergeAnnotationHistoryUpdate(live, expectedFrom, applyTo) {
+  if (!applyTo || typeof applyTo !== 'object') return live;
+  if (!live || typeof live !== 'object') return cloneJson(applyTo);
+  if (historyValuesEqual(live, expectedFrom)) return cloneJson(applyTo);
+
+  const next = Array.isArray(live) ? [...live] : { ...live };
+  const keys = new Set([
+    ...Object.keys(expectedFrom && typeof expectedFrom === 'object' ? expectedFrom : {}),
+    ...Object.keys(applyTo),
+  ]);
+  for (const key of keys) {
+    const fromVal = expectedFrom?.[key];
+    const toVal = applyTo[key];
+    const liveVal = live[key];
+    if (historyValuesEqual(fromVal, toVal)) continue;
+    if (isPlainObject(liveVal) && isPlainObject(fromVal) && isPlainObject(toVal)) {
+      next[key] = mergeAnnotationHistoryUpdate(liveVal, fromVal, toVal);
+      continue;
+    }
+    if (historyValuesEqual(liveVal, fromVal)) {
+      if (Object.prototype.hasOwnProperty.call(applyTo, key)) {
+        next[key] = cloneJson(toVal);
+      } else if (!Array.isArray(next)) {
+        delete next[key];
+      }
+    }
+  }
+  return next;
+}
+
+function replaceUpdateAtStorageIndex(objects, index, expectedFrom, applyTo, storageKey) {
+  if (index < 0) return objects;
+  const merged = mergeAnnotationHistoryUpdate(objects[index], expectedFrom, applyTo);
+  return replaceAtStorageIndex(objects, index, merged, storageKey);
+}
+
 export function applyAnnotationHistoryAction(annotationsByPage, action) {
   if (!action || typeof action !== 'object') return annotationsByPage || {};
   if (action.type === 'fabric:document-batch') {
@@ -583,9 +650,10 @@ export function applyAnnotationHistoryAction(annotationsByPage, action) {
     }
   } else if (action.type === 'fabric:update') {
     const targetIndex = findEntryObjectIndex(objects, action, action.before);
-    nextObjects = replaceAtStorageIndex(
+    nextObjects = replaceUpdateAtStorageIndex(
       objects,
       targetIndex,
+      action.before,
       action.after,
       action.storageKey,
     );
@@ -598,9 +666,10 @@ export function applyAnnotationHistoryAction(annotationsByPage, action) {
     }
     for (const entry of action.updated || []) {
       const targetIndex = findEntryObjectIndex(nextObjects, entry, entry.before);
-      nextObjects = replaceAtStorageIndex(
+      nextObjects = replaceUpdateAtStorageIndex(
         nextObjects,
         targetIndex,
+        entry.before,
         entry.after,
         entry.storageKey,
       );

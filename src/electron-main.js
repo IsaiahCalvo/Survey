@@ -6,11 +6,26 @@ const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
+const { createQuitCoordinator } = require('./electron/quitCoordinator.cjs');
+const {
+  shouldPreventFirstQuit,
+  shouldQuitWhenLastWindowCloses,
+  focusExistingMainWindow,
+} = require('./electron/quitPolicy.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
 const SURVEY_ANALYTICS_MAX_BYTES = 32 * 1024;
 let surveyMainWindow = null;
+
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    focusExistingMainWindow(surveyMainWindow);
+  });
+}
 
 // 2026-06-04 — Continuous main-process renderer console capture.
 // The in-page console buffer (window.__consoleLogBuffer in src/main.jsx) lives in
@@ -537,6 +552,7 @@ function createAppMenu() {
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             const win = getTargetWindow();
+            console.log('[electron-main] Open PDF menu clicked, targetWindow alive:', !!(win && !win.isDestroyed()));
             if (win && !win.isDestroyed()) {
               win.webContents.send('menu:open-pdf');
             }
@@ -766,6 +782,7 @@ function buildAllowedRoots() {
     path.resolve(app.getAppPath()),
     path.resolve(app.getPath('userData')),
     path.resolve(os.tmpdir()),
+    path.resolve(path.join(os.homedir(), 'Desktop')),
     // macOS iCloud Drive / OneDrive via CloudStorage mount point
     path.resolve(path.join(os.homedir(), 'Library', 'CloudStorage')),
     // Windows / cross-platform OneDrive top-level folder
@@ -1721,62 +1738,41 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
 // Track if we're in the process of quitting
 let isQuitting = false;
 
+const quitCoordinator = createQuitCoordinator({
+  onQuit: () => {
+    fileWatchers.forEach((watcher) => {
+      watcher.close();
+    });
+    fileWatchers.clear();
+    isQuitting = true;
+    app.quit();
+  },
+});
+
 app.whenReady().then(() => {
   createWindow();
   createAppMenu();
 });
 
 app.on('before-quit', (event) => {
-  if (!isQuitting) {
+  if (!shouldPreventFirstQuit(isQuitting)) return;
+
+  isQuitting = true;
+  const windows = BrowserWindow.getAllWindows();
+  const live = windows.filter((win) => win && !win.isDestroyed());
+  const decision = quitCoordinator.beginQuit({ windows: live });
+  if (decision.preventDefault) {
     event.preventDefault();
-    isQuitting = true;
-
-    // Notify all windows to save their work
-    const windows = BrowserWindow.getAllWindows();
-
-    if (windows.length === 0) {
-      app.quit();
-      return;
-    }
-
-    // Send save request to all windows
-    let windowsResponded = 0;
-    const checkAndQuit = () => {
-      windowsResponded++;
-      if (windowsResponded >= windows.length) {
-        // All windows have responded, now quit
-        setTimeout(() => {
-          // Clean up file watchers
-          fileWatchers.forEach((watcher) => {
-            watcher.close();
-          });
-          fileWatchers.clear();
-
-          app.quit();
-        }, 100);
-      }
-    };
-
-    windows.forEach((win) => {
-      if (win.isDestroyed()) {
-        checkAndQuit();
-        return;
-      }
-
-      // Send message to renderer to save
+    live.forEach((win) => {
       win.webContents.send('app:beforeQuit');
-
-      // Give each window 5 seconds to save, then continue
-      setTimeout(checkAndQuit, 5000);
     });
   }
 });
 
-// Handle save completion from renderer
 ipcMain.on('app:saveComplete', () => {
-  // This is just for logging, actual quit happens via timeout
+  quitCoordinator.markSaveComplete();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (shouldQuitWhenLastWindowCloses(process.platform)) app.quit();
 });

@@ -103,7 +103,7 @@ const svgAnnotationDebug = (...args) => {
 // Constants
 // ---------------------------------------------------------------------------
 
-const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
+const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly', 'AutoCAD SHX Text']);
 
 // Refcount for the window.__onDeleteSelectedCallouts bridge (see the
 // registration effect near the Delete-key handler). One SVGAnnotationLayer
@@ -168,9 +168,20 @@ const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12
 };
 
 const isSelectDeleteOnlyPdfTextMarkupObject = (obj) => {
+  if (!obj) return false;
+  if (
+    obj.lockMovementX
+    && obj.lockMovementY
+    && obj.lockScalingX
+    && obj.lockScalingY
+    && obj.lockRotation
+  ) {
+    return true;
+  }
   if (!obj?.isPdfImported) return false;
-  const pdfType = obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType;
-  return SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES.has(String(pdfType || ''));
+  const pdfType = String(obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || '');
+  return SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES.has(pdfType)
+    || pdfType.toLowerCase().includes('shx');
 };
 
 // 2026-05-03 — Per-page render caps deleted. Adobe / Drawboard PDF render
@@ -920,7 +931,7 @@ const SVGAnnotationLayer = memo(({
   // shortcuts are layout-independent (Shift+] → "}" via e.key, but
   // e.code stays "BracketRight").
   useEffect(() => {
-    if (selectedIds.size !== 1) return;
+    if (selectedIds.size < 1) return;
     // UX 2026-04-19: bbox edit mode (counter / line / polygon / polyline
     // double-click) is still SVG-owned, so copy / cut / z-order hotkeys
     // should keep working. Only true Fabric-owned edit mode (text /
@@ -948,8 +959,9 @@ const SVGAnnotationLayer = memo(({
         if (typeof el.closest === 'function' && el.closest('.fabric-hidden-textarea')) return;
       }
 
-      const annotationIndex = Array.from(selectedIds)[0];
-      if (typeof annotationIndex !== 'number') return;
+      const selectedIndexes = Array.from(selectedIds).filter((index) => typeof index === 'number');
+      if (selectedIndexes.length === 0) return;
+      const annotationIndex = selectedIndexes[0];
 
       // KAL-75 (G4): locked/read-only documents — Copy stays live (read
       // affordance), but Cut and z-order are mutations and must be inert.
@@ -957,11 +969,11 @@ const SVGAnnotationLayer = memo(({
 
       if (isCopy && typeof onCopyAnnotation === 'function') {
         e.preventDefault();
-        onCopyAnnotation(pageNumber, annotationIndex);
+        onCopyAnnotation(pageNumber, selectedIndexes.length === 1 ? annotationIndex : selectedIndexes);
       } else if (isCut && typeof onCutAnnotation === 'function') {
         e.preventDefault();
-        onCutAnnotation(pageNumber, annotationIndex);
-      } else if (isBracketRight && typeof onReorderAnnotation === 'function') {
+        onCutAnnotation(pageNumber, selectedIndexes.length === 1 ? annotationIndex : selectedIndexes);
+      } else if (isBracketRight && selectedIndexes.length === 1 && typeof onReorderAnnotation === 'function') {
         // UX: direction strings ('front' / 'forward') route through the
         // handler's Figma-style overlap resolver so each press lands the
         // shape above the next spatially-overlapping neighbor, not just
@@ -1171,16 +1183,12 @@ const SVGAnnotationLayer = memo(({
     // when these change so the commit closure stamps from current values.
     selectedModuleId, selectedSpaceId, activeRegionId, spaces, isRegionOverlayEnabled]);
 
-  // UX: Phase 14 CREATE-01 — clear preview state on tool switch mid-drag.
-  // Without this, switching from callout tool to select mid-drag would
-  // leave a stray dashed preview mounted until the next pointerup.
+  // UX: Phase 14 CREATE-01 — tool-switch mid-drag is flushed after
+  // commitShapeCreationRef is declared (P1-21). Callout preview still
+  // clears here so a dashed leader cannot linger on a non-callout tool.
   useEffect(() => {
     if (activeTool !== 'callout') {
       setCalloutCreation(null);
-    }
-    if (!SHAPE_CREATION_TOOLS.includes(activeTool) && !FREEHAND_CREATION_TOOLS.includes(activeTool)) {
-      freehandPointsRef.current = [];
-      setShapeCreation(null);
     }
   }, [activeTool]);
 
@@ -1305,6 +1313,20 @@ const SVGAnnotationLayer = memo(({
   ]);
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);
+
+  // P1-21: leaving a creation tool mid-drag must commit, not drop, the
+  // in-flight shape. Zoom-start / unmount already flush via this ref.
+  useEffect(() => {
+    if (SHAPE_CREATION_TOOLS.includes(activeTool) || FREEHAND_CREATION_TOOLS.includes(activeTool)) {
+      return;
+    }
+    const inFlight = shapeCreationRef.current || freehandPointsRef.current.length > 0;
+    if (inFlight) {
+      commitShapeCreationRef.current?.(null);
+    }
+    freehandPointsRef.current = [];
+    setShapeCreation(null);
+  }, [activeTool]);
 
   // Window-level move/up/cancel while a creation gesture is in flight — the
   // same listener pattern the callout creation uses, so drags survive leaving
@@ -1623,7 +1645,7 @@ const SVGAnnotationLayer = memo(({
   // does not trigger a re-render.
   const pendingOptimisticRotationRef = useRef(null);
 
-  const handleRotationInputCommit = useCallback((annotationIndex, newAngle) => {
+  const handleRotationInputCommit = useCallback((annotationIndex, newAngle, extra = null) => {
     if (annotationIndex === null || annotationIndex === undefined) return;
 
     if (typeof annotationIndex === 'string' && annotationIndex.startsWith('survey:')) {
@@ -1685,10 +1707,16 @@ const SVGAnnotationLayer = memo(({
     } else {
       updatedAnnotations.objects[annotationIndex].angle = newAngle;
     }
+    const rotationInteractionId = (
+      typeof extra?.interactionId === 'string' && extra.interactionId.trim()
+    )
+      ? extra.interactionId.trim()
+      : `rotation-input:${annotationIndex}`;
     onSaveAnnotations(updatedAnnotations, {
       source: 'rotation-input',
       action: 'rotate',
       checkpointPolicy: 'normal',
+      interactionId: rotationInteractionId,
     });
   }, [
     annotations,

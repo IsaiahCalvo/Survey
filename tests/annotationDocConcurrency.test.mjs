@@ -229,6 +229,8 @@ function prepareAtomicErase(byPage, {
   mutationId,
   points,
   radius = 7,
+  // KB-1: partial + non-ink is skip. Tests that need a delete-history effect
+  // on a rect must pass mode: 'entire' (or use eligible ink).
   mode = 'partial',
   userId = 'test-actor',
   includeDeleteHistory = false,
@@ -606,6 +608,7 @@ test('accepted ordinary WAL does not close later erase effects and core acceptan
       mutationId: 'effect-after-ordinary',
       points: [{ x: 30, y: 30 }],
       radius: 12,
+      mode: 'entire',
       includeDeleteHistory: true,
       userId: 'owner',
     });
@@ -707,6 +710,7 @@ test('delayed 42501 rolls back erase core and never executes its unaccepted effe
       mutationId: 'denied-effect-erase',
       points: [{ x: 30, y: 30 }],
       radius: 12,
+      mode: 'entire',
       includeDeleteHistory: true,
       userId: 'owner',
     });
@@ -829,6 +833,7 @@ test('snapshot-covered erase acceptance wakes effects without an unrelated trigg
       mutationId: 'snapshot-effect-erase',
       points: [{ x: 30, y: 30 }],
       radius: 12,
+      mode: 'entire',
       includeDeleteHistory: true,
       userId: 'owner',
     });

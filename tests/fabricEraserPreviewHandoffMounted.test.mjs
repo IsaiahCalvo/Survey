@@ -364,8 +364,8 @@ test('safe SVG preview carves only permitted ink and preserves foreign/locked co
   assert.equal(clone.querySelector('[data-annotation-id="foreign-ink"]').style.display, '');
   assert.equal(clone.querySelector('[data-annotation-id="locked-ink"]').getAttribute('mask'), null);
   assert.equal(clone.querySelector('[data-annotation-id="locked-ink"]').style.display, '');
-  assert.equal(clone.querySelector('[data-annotation-id="shape"]').style.display, 'none');
-  assert.equal(clone.querySelector('[data-annotation-id="text"]').style.display, 'none');
+  assert.equal(clone.querySelector('[data-annotation-id="shape"]').style.display, '');
+  assert.equal(clone.querySelector('[data-annotation-id="text"]').style.display, '');
   await mounted.unmount();
 });
 
@@ -435,15 +435,15 @@ test('one partial-erase drag continues past a counter into later shapes, text, a
   assert.ok(clone, 'the continuous gesture must retain one live preview');
   assert.equal(
     clone.querySelector('[data-annotation-id="counter-mid"]').style.display,
-    'none',
+    '',
   );
   assert.equal(
     clone.querySelector('[data-annotation-id="shape-after-counter"]').style.display,
-    'none',
+    '',
   );
   assert.equal(
     clone.querySelector('[data-annotation-id="text-after-counter"]').style.display,
-    'none',
+    '',
   );
   assert.match(
     clone.querySelector('[data-annotation-id="ink-after-counter"]').getAttribute('mask') || '',
@@ -464,9 +464,9 @@ test('one partial-erase drag continues past a counter into later shapes, text, a
   const committedIds = mounted.commits[0].objects.map((object) => object.id);
   assert.ok(committedIds.includes('ink-before-counter'));
   assert.ok(committedIds.includes('ink-after-counter'));
-  assert.ok(!committedIds.includes('counter-mid'));
-  assert.ok(!committedIds.includes('shape-after-counter'));
-  assert.ok(!committedIds.includes('text-after-counter'));
+  assert.ok(committedIds.includes('counter-mid'));
+  assert.ok(committedIds.includes('shape-after-counter'));
+  assert.ok(committedIds.includes('text-after-counter'));
   await mounted.unmount();
 });
 

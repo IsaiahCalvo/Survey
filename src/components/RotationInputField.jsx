@@ -99,6 +99,13 @@ function RotationInputField({
   const [position, setPosition] = useState({ left: 0, top: 0 });
 
   const inputRef = useRef(null);
+  const rotationInteractionIdRef = useRef(null);
+  const takeRotationInteractionId = () => {
+    if (!rotationInteractionIdRef.current) {
+      rotationInteractionIdRef.current = `rotation-input:${annotationIndex}:${Date.now()}`;
+    }
+    return rotationInteractionIdRef.current;
+  };
   // UX: cache host rect once per visible session to avoid 60fps layout reflow
   // jank during rotation drag (Pitfall 11). Only the handle rect needs to be
   // recomputed on each pointermove; the host div doesn't move during a drag.
@@ -359,7 +366,9 @@ function RotationInputField({
         const next = normalizeTypedDegrees(base + step);
         if (next !== null) {
           if (inputRef.current) inputRef.current.value = String(next);
-          onCommitRef.current?.(annotationIndexRef.current, next);
+          onCommitRef.current?.(annotationIndexRef.current, next, {
+            interactionId: takeRotationInteractionId(),
+          });
         }
         return;
       }
@@ -384,7 +393,10 @@ function RotationInputField({
   const onCommitRef = useRef(onCommit);
   const onCancelRef = useRef(onCancel);
   useEffect(() => { angleRef.current = angle; }, [angle]);
-  useEffect(() => { annotationIndexRef.current = annotationIndex; }, [annotationIndex]);
+  useEffect(() => {
+    annotationIndexRef.current = annotationIndex;
+    rotationInteractionIdRef.current = null;
+  }, [annotationIndex]);
   useEffect(() => { onCommitRef.current = onCommit; }, [onCommit]);
   useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
 
@@ -410,7 +422,9 @@ function RotationInputField({
       onCancel?.();
       return;
     }
-    onCommit?.(annotationIndex, normalized);
+    onCommit?.(annotationIndex, normalized, {
+      interactionId: takeRotationInteractionId(),
+    });
   }, [angle, annotationIndex, onCommit, onCancel]);
 
   // Sync commitTyped into ref for the window-capture guard.
@@ -461,7 +475,9 @@ function RotationInputField({
       const newValue = normalizeTypedDegrees(base + step);
       if (newValue !== null) {
         if (inputRef.current) inputRef.current.value = String(newValue);
-        onCommit?.(annotationIndex, newValue);
+        onCommit?.(annotationIndex, newValue, {
+          interactionId: takeRotationInteractionId(),
+        });
       }
       return;
     }
@@ -473,7 +489,9 @@ function RotationInputField({
       const newValue = normalizeTypedDegrees(base - step);
       if (newValue !== null) {
         if (inputRef.current) inputRef.current.value = String(newValue);
-        onCommit?.(annotationIndex, newValue);
+        onCommit?.(annotationIndex, newValue, {
+          interactionId: takeRotationInteractionId(),
+        });
       }
       return;
     }
@@ -521,6 +539,7 @@ function RotationInputField({
   }, []);
 
   const handleBlur = useCallback(() => {
+    rotationInteractionIdRef.current = null;
     setIsFocused(false);
     // Debug log 5 — focus leave; user should see this on Tab-out, click-away,
     // Enter (which calls inputRef.current?.blur()), or Escape.
@@ -578,7 +597,11 @@ function RotationInputField({
         // input sits visually above the SVG annotation layer inside the same
         // host div. Below Pdfjs's native page controls (>1000) per the
         // v2.0 portal architecture.
+        // The overlay wrapper is pointer-events:none (PDFViewer); the SVG
+        // root opts back in. Without auto here the pill inherits none and
+        // clicks fall through to the SVG (E2E-ADV-03).
         zIndex: 101,
+        pointerEvents: 'auto',
         fontFamily: FONT_FAMILY,
         boxSizing: 'border-box',
       }}

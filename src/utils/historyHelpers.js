@@ -120,6 +120,7 @@ export function isLegacyAnnotationHistoryMeta(meta) {
     || reason.startsWith('highlight:')
     || reason.startsWith('survey-marker:')
     || reason.startsWith('space:')
+    || reason.startsWith('bookmark:')
     || reason === 'delete:batch'
     || reason === 'eraser:gesture'
     || reason === 'annotations:save';

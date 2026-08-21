@@ -24,6 +24,7 @@ import { createDocumentInvite, buildInviteUrl } from '../services/documentInvite
 import { createProjectInvite } from '../services/projectInviteService';
 import { createTemplateInvite } from '../services/templateInviteService';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { parseEmails } from './shareInviteParse.js';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import Spinner from '../components/Spinner';
@@ -44,15 +45,11 @@ const C = {
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
 const ROLE_OPTIONS = ['Viewer', 'Editor', 'Owner'];
 
+// UI gate. Server also enforces: kal31_guard_invite_creator_tier + RLS
+// get_user_tier check on INSERT, and claim_email_send on Branch A sends.
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
-function parseEmails(raw) {
-  return (raw || '')
-    .split(/[\s,;]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-    .filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
-}
+export { parseEmails };
 
 export default function ShareModal({
   open,
@@ -142,6 +139,11 @@ export default function ShareModal({
   const copyLink = async () => {
     setError(''); setSuccess('');
     if (blockedReason) { setError(blockedReason); return; }
+    if (!currentUser?.id) { setError('Must be signed in to create an invite link.'); return; }
+    if (auth.isSupabaseAvailable === false) {
+      setError('Sharing needs a signed-in cloud account.');
+      return;
+    }
     setBusy(true);
     const res = await mintInvite(null); // link-only
     setBusy(false);
@@ -163,6 +165,11 @@ export default function ShareModal({
     if (blockedReason) { setError(blockedReason); return; }
     const list = parseEmails(emails);
     if (!list.length) { setError('Enter at least one valid email.'); return; }
+    if (!currentUser?.id) { setError('Must be signed in to send an invite.'); return; }
+    if (auth.isSupabaseAvailable === false) {
+      setError('Sharing needs a signed-in cloud account.');
+      return;
+    }
     setBusy(true);
     const results = await Promise.all(list.map((addr) => mintInvite(addr)));
     setBusy(false);

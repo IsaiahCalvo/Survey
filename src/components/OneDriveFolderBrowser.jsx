@@ -79,7 +79,8 @@ const OneDriveFolderBrowser = ({
   graphClient,
   onFolderSelect,
   selectedPath = null,
-  initialSource = SOURCE_TYPES.MY_DRIVE
+  initialSource = SOURCE_TYPES.MY_DRIVE,
+  ensureFreshToken,
 }) => {
   const [activeSource, setActiveSource] = useState(initialSource);
   const [loading, setLoading] = useState(false);
@@ -101,6 +102,13 @@ const OneDriveFolderBrowser = ({
   // Current selection info
   const [selectedFolder, setSelectedFolder] = useState(null);
 
+  const refreshTokenOrThrow = useCallback(async () => {
+    if (typeof ensureFreshToken !== 'function') return;
+    let ok = false;
+    try { ok = await ensureFreshToken(); } catch { ok = false; }
+    if (!ok) throw new Error('Microsoft session expired. Reconnect and try again.');
+  }, [ensureFreshToken]);
+
   // Load My Drive folders
   const loadMyDriveFolders = useCallback(async (path = '/') => {
     if (!graphClient) return;
@@ -109,6 +117,7 @@ const OneDriveFolderBrowser = ({
     setError(null);
 
     try {
+      await refreshTokenOrThrow();
       const folderList = await listFolders(graphClient, path);
       setFolders(folderList);
       setCurrentPath(path);
@@ -118,7 +127,7 @@ const OneDriveFolderBrowser = ({
     } finally {
       setLoading(false);
     }
-  }, [graphClient]);
+  }, [graphClient, refreshTokenOrThrow]);
 
   // Load SharePoint sites
   const loadSharePointSites = useCallback(async () => {
@@ -128,6 +137,7 @@ const OneDriveFolderBrowser = ({
     setError(null);
 
     try {
+      await refreshTokenOrThrow();
       const sites = await listSharePointSites(graphClient);
       setSharePointSites(sites);
     } catch (err) {
@@ -143,7 +153,7 @@ const OneDriveFolderBrowser = ({
     } finally {
       setLoading(false);
     }
-  }, [graphClient]);
+  }, [graphClient, refreshTokenOrThrow]);
 
   // Load document libraries for a site
   const loadSiteLibraries = useCallback(async (siteId) => {
@@ -153,6 +163,7 @@ const OneDriveFolderBrowser = ({
     setError(null);
 
     try {
+      await refreshTokenOrThrow();
       const libraries = await listSiteDocumentLibraries(graphClient, siteId);
       setSiteLibraries(libraries);
       setSelectedLibrary(null);
@@ -164,7 +175,7 @@ const OneDriveFolderBrowser = ({
     } finally {
       setLoading(false);
     }
-  }, [graphClient]);
+  }, [graphClient, refreshTokenOrThrow]);
 
   // Load folders within a library
   const loadLibraryFolders = useCallback(async (driveId, folderId = 'root') => {
@@ -174,6 +185,7 @@ const OneDriveFolderBrowser = ({
     setError(null);
 
     try {
+      await refreshTokenOrThrow();
       const items = await listDriveItems(graphClient, driveId, folderId, true);
       setLibraryFolders(items);
     } catch (err) {
@@ -182,7 +194,7 @@ const OneDriveFolderBrowser = ({
     } finally {
       setLoading(false);
     }
-  }, [graphClient]);
+  }, [graphClient, refreshTokenOrThrow]);
 
   // Initial load based on source
   useEffect(() => {

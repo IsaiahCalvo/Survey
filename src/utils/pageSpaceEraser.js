@@ -1092,7 +1092,8 @@ export function erasePageAnnotations({
     const internalId = `page-object:${index}`;
     const operation = requestedMode === 'full'
       ? 'full'
-      : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
+      : getEraserOperation(object, 'partial');
+    if (operation === 'skip') return;
     const annotation = pathToPageAnnotation(object, internalId, {
       // Both modes hit-test the stroke's actual painted outline. Solid round
       // strokes remain their authored centerlines because a radius-expanded
@@ -1139,6 +1140,7 @@ export function erasePageAnnotations({
 
   objects.forEach((object, index) => {
     if (String(object?.type || '').toLowerCase() === 'path' || !canErase(object, index)) return;
+    if (requestedMode !== 'full') return;
     if (!eraserStrokeTouchesObject({ eraserPoints: points, eraserRadius: radius, object })) return;
     const objectId = getEraserCandidateId(object, index);
     touchedIds.push(objectId);

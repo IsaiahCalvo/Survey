@@ -38,6 +38,11 @@ import {
   collectFormFieldValues,
   isFormFieldObject,
 } from './pdfFormFieldExport.js';
+import {
+  pdfDefaultAppearanceFontName,
+  pdfStandardFontGroup,
+  wrapFlattenedTextLines,
+} from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
@@ -2395,13 +2400,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // path (drawFlattenedText); Acrobat renders this annotation without them.
     const isBold = fabricObj.fontWeight === 'bold' || Number(fabricObj.fontWeight) >= 600;
     const isItalic = fabricObj.fontStyle === 'italic' || fabricObj.fontStyle === 'oblique';
-    const daFont = isBold && isItalic
-      ? 'Helvetica-BoldOblique'
-      : isBold
-        ? 'Helvetica-Bold'
-        : isItalic
-          ? 'Helvetica-Oblique'
-          : 'Helv';
+    const daFont = pdfDefaultAppearanceFontName(fabricObj.fontFamily, { bold: isBold, italic: isItalic });
     const da = `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg /${daFont} ${fontSize} Tf`;
 
     // UX 2026-07-17: /C on a FreeText annotation is the BACKGROUND/border
@@ -2542,6 +2541,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     // strikethrough have no /DA representation — see createFreeTextAnnotation.
     fontWeight: style.bold ? 'bold' : 'normal',
     fontStyle: style.italic ? 'italic' : 'normal',
+    fontFamily: style.fontFamily,
     backgroundColor: style.backgroundColor || null,
   }, pageHeight, buildCalloutOptions('text'));
   if (textRef) refs.push(textRef);
@@ -3103,13 +3103,16 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
 // (fontWeight/fontStyle on freetext objects) and the callout booleans
 // (bold/italic) so both shapes print with their chosen weight/slant.
 const pickFlattenedTextFont = (obj, fonts) => {
-  if (!fonts || typeof fonts !== 'object' || !fonts.regular) return fonts;
+  if (!fonts || typeof fonts !== 'object') return fonts;
+  const group = pdfStandardFontGroup(obj?.fontFamily);
+  const familyFonts = fonts.byFamily?.[group] || fonts;
+  if (!familyFonts || typeof familyFonts !== 'object' || !familyFonts.regular) return fonts;
   const isBold = obj?.fontWeight === 'bold' || Number(obj?.fontWeight) >= 600 || obj?.bold === true;
   const isItalic = obj?.fontStyle === 'italic' || obj?.fontStyle === 'oblique' || obj?.italic === true;
-  if (isBold && isItalic) return fonts.boldOblique || fonts.bold || fonts.regular;
-  if (isBold) return fonts.bold || fonts.regular;
-  if (isItalic) return fonts.oblique || fonts.regular;
-  return fonts.regular;
+  if (isBold && isItalic) return familyFonts.boldOblique || familyFonts.bold || familyFonts.regular;
+  if (isBold) return familyFonts.bold || familyFonts.regular;
+  if (isItalic) return familyFonts.oblique || familyFonts.regular;
+  return familyFonts.regular;
 };
 
 const drawFlattenedText = (page, obj, pageHeight, fonts) => {
@@ -3121,44 +3124,53 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const font = pickFlattenedTextFont(obj, fonts);
   const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200));
   const baselineY = getPdfY(pageHeight, top + Math.min(height, fontSize + 2));
-  page.drawText(String(obj?.text || ''), {
-    x: left,
-    y: baselineY,
-    size: fontSize,
-    font,
-    color: fill.color,
-    opacity: fill.opacity,
-    maxWidth,
-  });
-  // UX 2026-07-17 (print text style): PDF has no text-decoration operator, so
-  // underline/strikethrough are drawn as explicit lines in the text color,
-  // matching the on-screen SVG textDecoration. Understands fabric-native
-  // underline/linethrough and the callout strikethrough boolean. Known
-  // limitation: the decoration covers the FIRST rendered line only — wrapped
-  // or multi-line text keeps styled glyphs but only line one is decorated.
+  // UX 2026-08-20: wrap + draw each line ourselves so underline/strikethrough
+  // track every line (pdf-lib has no text-decoration operator). Line height
+  // matches pdf-lib's default (font.heightAtSize).
   const wantsUnderline = obj?.underline === true;
   const wantsLinethrough = obj?.linethrough === true || obj?.strikethrough === true;
-  if (wantsUnderline || wantsLinethrough) {
-    const firstLine = String(obj?.text || '').split('\n')[0] || '';
+  const measure = (s) => {
+    try {
+      return font.widthOfTextAtSize(String(s || ''), fontSize);
+    } catch {
+      return maxWidth;
+    }
+  };
+  const lines = wrapFlattenedTextLines(String(obj?.text || ''), { measure, maxWidth });
+  const lineHeight = typeof font.heightAtSize === 'function'
+    ? font.heightAtSize(fontSize)
+    : fontSize * 1.2;
+  const thickness = Math.max(0.5, fontSize / 14);
+  lines.forEach((line, i) => {
+    const y = baselineY - i * lineHeight;
+    if (line) {
+      page.drawText(line, {
+        x: left,
+        y,
+        size: fontSize,
+        font,
+        color: fill.color,
+        opacity: fill.opacity,
+      });
+    }
+    if (!(wantsUnderline || wantsLinethrough)) return;
     let lineWidth = maxWidth;
     try {
-      lineWidth = Math.min(maxWidth, font.widthOfTextAtSize(firstLine, fontSize));
+      lineWidth = Math.min(maxWidth, measure(line));
     } catch {
       /* unencodable glyphs — fall back to the box width */
     }
-    if (lineWidth > 0) {
-      const thickness = Math.max(0.5, fontSize / 14);
-      const drawDecorationLine = (y) => page.drawLine({
-        start: { x: left, y },
-        end: { x: left + lineWidth, y },
-        color: fill.color,
-        thickness,
-        opacity: fill.opacity,
-      });
-      if (wantsUnderline) drawDecorationLine(baselineY - fontSize * 0.12);
-      if (wantsLinethrough) drawDecorationLine(baselineY + fontSize * 0.28);
-    }
-  }
+    if (!(lineWidth > 0)) return;
+    const drawDecorationLine = (lineY) => page.drawLine({
+      start: { x: left, y: lineY },
+      end: { x: left + lineWidth, y: lineY },
+      color: fill.color,
+      thickness,
+      opacity: fill.opacity,
+    });
+    if (wantsUnderline) drawDecorationLine(y - fontSize * 0.12);
+    if (wantsLinethrough) drawDecorationLine(y + fontSize * 0.28);
+  });
 };
 
 const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
@@ -3428,6 +3440,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     italic: style.italic === true,
     underline: style.underline === true,
     strikethrough: style.strikethrough === true,
+    fontFamily: style.fontFamily,
   }, pageHeight, fonts);
   return 1;
 };
@@ -3442,7 +3455,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const documentId = options?.documentId || null;
   const arrayBuffer = await pdfFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const fonts = {
+  const helvetica = {
     regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
     bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
     // UX 2026-07-17: oblique variants embedded so italic / bold-italic text
@@ -3450,6 +3463,22 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     // regular Helvetica for text, dropping weight and style).
     oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
     boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+  };
+  const times = {
+    regular: await pdfDoc.embedFont(StandardFonts.TimesRoman),
+    bold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+    oblique: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+    boldOblique: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
+  };
+  const courier = {
+    regular: await pdfDoc.embedFont(StandardFonts.Courier),
+    bold: await pdfDoc.embedFont(StandardFonts.CourierBold),
+    oblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
+    boldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
+  };
+  const fonts = {
+    ...helvetica,
+    byFamily: { helvetica, times, courier },
   };
   // UX 2026-07-17: surveyMarkers stays an empty map here ON PURPOSE — Survey
   // Markers are excluded from this "regular annotations only" print flatten by

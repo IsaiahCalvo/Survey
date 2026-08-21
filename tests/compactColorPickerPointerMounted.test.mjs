@@ -16,12 +16,14 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 async function loadPicker() {
   const componentPath = path.join(repoRoot, 'src/components/CompactColorPicker.jsx');
+  const catalogUrl = pathToFileURL(path.join(repoRoot, 'src/utils/annotationStyleCatalog.js')).href;
   const reactUrl = pathToFileURL(require.resolve('react')).href;
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
   source = source
     .replace("import { useState, useEffect, useMemo, useRef } from 'react';", `import { useState, useEffect, useMemo, useRef } from ${JSON.stringify(reactUrl)};`)
-    .replace("import DismissBarrier from './DismissBarrier';", 'const DismissBarrier = () => null;');
+    .replace("import DismissBarrier from './DismissBarrier';", 'const DismissBarrier = () => null;')
+    .replace("from '../utils/annotationStyleCatalog.js'", `from ${JSON.stringify(catalogUrl)}`);
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'compact-picker-test-'));

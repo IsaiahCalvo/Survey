@@ -67,6 +67,32 @@ const pdfImportDebug = (...args) => {
 };
 
 /**
+ * P1-23: native PDF markups have no Survey author. Stamp the importing
+ * document owner (or importer) so permissionScope / local undo can see them.
+ * Never overwrite an existing author from app metadata.
+ */
+export function stampImportedAnnotationAuthor(fabricObject, authorId) {
+  if (!fabricObject || typeof fabricObject !== 'object') return fabricObject;
+  if (typeof authorId !== 'string' || authorId.length === 0) return fabricObject;
+  const existing = fabricObject?.meta?.authorId
+    || fabricObject?.authorId
+    || fabricObject?.data?.authorId;
+  if (typeof existing === 'string' && existing.length > 0) return fabricObject;
+  return {
+    ...fabricObject,
+    authorId,
+    meta: {
+      ...(fabricObject.meta && typeof fabricObject.meta === 'object' ? fabricObject.meta : {}),
+      authorId,
+    },
+    data: {
+      ...(fabricObject.data && typeof fabricObject.data === 'object' ? fabricObject.data : {}),
+      authorId,
+    },
+  };
+}
+
+/**
  * PDF Annotation Importer
  * Parses existing PDF annotations and converts them to Fabric.js objects
  * for editing within the application.
@@ -5102,9 +5128,12 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             ]
           : [];
         const fabricObjectsForAnnotation = convertedObjects.map((fabricObject) => (
-          attachPdfNativeAnnotationIdentity(
-            fabricObject,
-            directNativeIdentities.get(annotation),
+          stampImportedAnnotationAuthor(
+            attachPdfNativeAnnotationIdentity(
+              fabricObject,
+              directNativeIdentities.get(annotation),
+            ),
+            options.authorId || options.documentOwnerId || options.userId || null,
           )
         ));
         const fabricObj = fabricObjectsForAnnotation[0] || null;

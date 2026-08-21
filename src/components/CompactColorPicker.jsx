@@ -9,38 +9,20 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import DismissBarrier from './DismissBarrier';
+import {
+    COLOR_PICKER_PRESETS,
+    hexToHsv,
+    hsvToHex,
+    normalizeHexColor,
+    applySpectrumKey,
+    applyHueKey,
+    applyColorPickerSelection,
+    clampOpacityPercent,
+} from '../utils/annotationStyleCatalog.js';
 
-const PRESET_COLORS = [
-    'transparent', '#FF0000', '#FF0080', '#FF00FF', // Transparent + Reds/Pinks
-    '#8000FF', '#0000FF', '#0080FF', '#00FFFF',     // Purples/Blues
-    '#00FF80', '#00FF00', '#80FF00', '#FFFF00',     // Greens/Yellow
-    '#FF8000', '#FFFFFF', '#808080', '#000000',     // Orange + Greys (light grey removed)
-];
+const PRESET_COLORS = COLOR_PICKER_PRESETS;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-// Convert a #rrggbb hex into HSV so the spectrum view opens already pointed at
-// the current colour. Returns null for non-hex input (named colours, rgba()).
-const hexToHsv = (hex) => {
-    const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim());
-    if (!m) return null;
-    const n = parseInt(m[1], 16);
-    const r = ((n >> 16) & 255) / 255;
-    const g = ((n >> 8) & 255) / 255;
-    const b = (n & 255) / 255;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-    let h = 0;
-    if (d) {
-        if (max === r) h = ((g - b) / d) % 6;
-        else if (max === g) h = (b - r) / d + 2;
-        else h = (r - g) / d + 4;
-        h *= 60;
-        if (h < 0) h += 360;
-    }
-    return { h, s: max === 0 ? 0 : (d / max) * 100, v: max * 100 };
-};
 
 /**
  * CompactColorPicker — the app's one shared colour picker.
@@ -67,6 +49,7 @@ const CompactColorPicker = ({
     outsideBoundaryRef = null,
     // 2026-05-25: First preset cell behaviour.
     //   'transparent' (default) — zero-alpha picker; click sets opacity 0.
+    //   'none' — no transparent cell (opaque targets such as font color).
     //   { kind: 'match', color }  — Match Fill picker; click snapshots the
     //     given color at full opacity. Lets the Border tab on shapes show a
     //     swatch that matches the current fill without ever offering zero
@@ -74,7 +57,16 @@ const CompactColorPicker = ({
     firstPreset = 'transparent',
     minOpacity = 0,
     dismissInsideSelector,
+    // Sibling chrome (Font / Font size / other toolbar triggers) should
+    // dismiss this picker and still receive their own click. Without
+    // passthrough, DismissBarrier consumes the gesture and the user has to
+    // click Font twice after typing a hex value.
+    passthroughSelector = '',
 }) => {
+    const hideTransparentCell = firstPreset === 'none';
+    const gridPresets = hideTransparentCell
+        ? COLOR_PICKER_PRESETS.filter((c) => c !== 'transparent')
+        : PRESET_COLORS;
     const isMatchFirst = firstPreset && typeof firstPreset === 'object' && firstPreset.kind === 'match';
     const matchFillColor = isMatchFirst ? (firstPreset.color || '#ffffff') : null;
     // 2026-05-25: When the parent supplies a fill opacity alongside the fill
@@ -160,15 +152,8 @@ const CompactColorPicker = ({
 
     // Convert HSV to Hex and update
     const updateColorFromHSV = (h, s, v) => {
-        const f = (n, k = (n + h / 60) % 6) => v / 100 - v / 100 * s / 100 * Math.max(Math.min(k, 4 - k, 1), 0);
-        const r = Math.round(f(5) * 255);
-        const g = Math.round(f(3) * 255);
-        const b = Math.round(f(1) * 255);
-
-        const toHex = (c) => ('0' + c.toString(16)).slice(-2);
-        const hex = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-
-        setLocalHex(hex.toUpperCase());
+        const hex = hsvToHex(h, s, v);
+        setLocalHex(hex);
         setTransparentMode(false);
         onChange(hex, localOpacity / 100);
     };
@@ -180,40 +165,30 @@ const CompactColorPicker = ({
         // keep the slider's remembered value. Picking any other swatch
         // afterwards immediately renders that colour at the remembered
         // opacity, no manual slider bump needed.
-        if (hex === 'transparent') {
+        const next = applyColorPickerSelection({
+            input: hex,
+            currentHex: localHex,
+            rememberedOpacityPct: localOpacity,
+            minOpacity,
+            matchFillColor,
+            matchFillOpacity,
+        });
+        if (next.kind === 'invalid') return;
+        if (next.kind === 'transparent') {
             setTransparentMode(true);
-            onChange(localHex, 0);
+            onChange(next.hex, 0);
             return;
         }
-        // Match Fill: snapshot the current fill colour at full opacity. Border
-        // tab on shapes uses this so the user can lock the border to whatever
-        // the fill currently is without picking from the spectrum.
-        if (hex === '__match__' && matchFillColor) {
-            setLocalHex(matchFillColor.toUpperCase());
-            setLocalOpacity(Math.round(matchFillOpacity * 100));
-            setTransparentMode(false);
-            const hsv = hexToHsv(matchFillColor);
-            if (hsv) {
-                setHue(hsv.h);
-                setSaturation(hsv.s);
-                setValue(hsv.v);
-            }
-            onChange(matchFillColor, matchFillOpacity);
-            return;
-        }
-        setLocalHex(hex);
+        setLocalHex(next.hex);
+        setLocalOpacity(next.rememberedOpacityPct);
         setTransparentMode(false);
-        const hsv = hexToHsv(hex);
+        const hsv = hexToHsv(next.hex);
         if (hsv) {
             setHue(hsv.h);
             setSaturation(hsv.s);
             setValue(hsv.v);
         }
-        // Respect a caller-supplied minimum opacity (Border tab on shapes
-        // enforces minOpacity=1 so a border can never go fully invisible).
-        const alpha = Math.max(minOpacity, localOpacity / 100);
-        if (alpha !== localOpacity / 100) setLocalOpacity(alpha * 100);
-        onChange(hex, alpha);
+        onChange(next.hex, next.opacity);
     };
 
     // Pointer capture keeps both mouse and finger drags live when they leave
@@ -249,39 +224,18 @@ const CompactColorPicker = ({
     };
 
     const handleSpectrumKeyDown = (event) => {
-        let nextSaturation = saturation;
-        let nextValue = value;
-        switch (event.key) {
-            case 'ArrowLeft': nextSaturation = clamp(saturation - 1, 0, 100); break;
-            case 'ArrowRight': nextSaturation = clamp(saturation + 1, 0, 100); break;
-            case 'ArrowUp': nextValue = clamp(value + 1, 0, 100); break;
-            case 'ArrowDown': nextValue = clamp(value - 1, 0, 100); break;
-            case 'PageUp': nextValue = clamp(value + 10, 0, 100); break;
-            case 'PageDown': nextValue = clamp(value - 10, 0, 100); break;
-            case 'Home': nextSaturation = 0; break;
-            case 'End': nextSaturation = 100; break;
-            default: return;
-        }
+        const next = applySpectrumKey(event.key, saturation, value);
+        if (!next) return;
         event.preventDefault();
         event.stopPropagation();
-        setSaturation(nextSaturation);
-        setValue(nextValue);
-        updateColorFromHSV(hue, nextSaturation, nextValue);
+        setSaturation(next.saturation);
+        setValue(next.value);
+        updateColorFromHSV(hue, next.saturation, next.value);
     };
 
     const handleHueKeyDown = (event) => {
-        let nextHue = hue;
-        switch (event.key) {
-            case 'ArrowLeft':
-            case 'ArrowDown': nextHue = clamp(hue - 1, 0, 360); break;
-            case 'ArrowRight':
-            case 'ArrowUp': nextHue = clamp(hue + 1, 0, 360); break;
-            case 'PageDown': nextHue = clamp(hue - 10, 0, 360); break;
-            case 'PageUp': nextHue = clamp(hue + 10, 0, 360); break;
-            case 'Home': nextHue = 0; break;
-            case 'End': nextHue = 360; break;
-            default: return;
-        }
+        const nextHue = applyHueKey(event.key, hue);
+        if (nextHue == null) return;
         event.preventDefault();
         event.stopPropagation();
         setHue(nextHue);
@@ -294,12 +248,14 @@ const CompactColorPicker = ({
             active={typeof onClose === 'function'}
             insideRefs={dismissInsideRefs}
             insideSelector={dismissInsideSelector}
+            passthroughSelector={passthroughSelector}
             onDismiss={onClose}
         />
         <div
             ref={containerRef}
             data-modal-focus-layer="true"
             data-testid="compact-color-picker"
+            data-font-color-picker="true"
             style={{
             width: '260px',
             background: '#0d0f14',
@@ -366,7 +322,7 @@ const CompactColorPicker = ({
 
             {mode === 'grid' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '6px' }}>
-                    {PRESET_COLORS.map((c, idx) => {
+                    {gridPresets.map((c, idx) => {
                         // 2026-05-25: Border tab on shapes swaps the first cell
                         // from Transparent to Match Fill — shows the current
                         // fill colour with a small chain glyph so the user can
@@ -544,7 +500,7 @@ const CompactColorPicker = ({
                         disabled={transparentMode}
                         onChange={(e) => {
                             if (transparentMode) return;
-                            const next = Math.max(minOpacity * 100, Number(e.target.value));
+                            const next = clampOpacityPercent(e.target.value, minOpacity);
                             setLocalOpacity(next);
                             onChange(localHex, next / 100);
                         }}
@@ -577,13 +533,13 @@ const CompactColorPicker = ({
                     <span style={{ color: '#5a6473', fontSize: '12px', marginRight: '4px' }}>#</span>
                     <input
                         type="text"
+                        aria-label="Hex color"
                         value={localHex.replace('#', '')}
                         onChange={(e) => {
                             const val = e.target.value;
                             setLocalHex(`#${val}`);
-                            if (val.length === 6) {
-                                applyHex(`#${val}`);
-                            }
+                            const normalized = normalizeHexColor(val);
+                            if (normalized) applyHex(normalized);
                         }}
                         style={{
                             background: 'transparent',
@@ -606,7 +562,7 @@ const CompactColorPicker = ({
                             max="100"
                             value={Math.round(localOpacity)}
                             onChange={(e) => {
-                                const val = Math.min(100, Math.max(0, Number(e.target.value)));
+                                const val = clampOpacityPercent(e.target.value, minOpacity);
                                 setLocalOpacity(val);
                                 onChange(localHex, val / 100);
                             }}

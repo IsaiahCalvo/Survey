@@ -24,7 +24,7 @@
 // useYDoc state.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../../supabaseClient';
+import { supabase, isSupabaseAvailable } from '../../supabaseClient';
 import {
   createRevision,
   listRevisions,
@@ -142,6 +142,8 @@ export default function RevisionsPanel({
   onClose = null,
   onNavigateToPage = null,
   onRestoreHistoryActivity = null,
+  onPrepareSaveRevision = null,
+  onApplyNamedRevision = null,
   onCascadeRestoreRegion = null,
   // Decision 10 (KAL-90): before jumping to the entry's page, restore the full
   // context the mark belongs to (survey/region mode + selected category).
@@ -172,6 +174,9 @@ export default function RevisionsPanel({
     let cancelled = false;
     setIsOwner(false);
     if (!documentId || !user?.id) return;
+    // DEV / ?testPdf= keeps the mock viewer offline. Do not probe a fake id
+    // against live documents — cloud Save/Restore stays owner-gated off.
+    if (!isSupabaseAvailable()) return;
     (async () => {
       const { data, error } = await supabase
         .from('documents')
@@ -272,15 +277,23 @@ export default function RevisionsPanel({
     setBusy(true);
     setStatusMsg(null);
     try {
+      let flushed = null;
+      if (typeof onPrepareSaveRevision === 'function') {
+        flushed = await onPrepareSaveRevision();
+      }
       const row = await createRevision(documentId, { label: label || null });
-      setStatusMsg(`Saved revision v${row.revision_number}.`);
+      setStatusMsg(
+        Number.isFinite(flushed)
+          ? `Saved revision v${row.revision_number} (flushed ${flushed}).`
+          : `Saved revision v${row.revision_number}.`,
+      );
       await refresh();
     } catch (e) {
       setStatusMsg(`Save failed: ${e.message}`);
     } finally {
       setBusy(false);
     }
-  }, [documentId, refresh, busy]);
+  }, [documentId, refresh, busy, onPrepareSaveRevision]);
 
   const handleOpenReadOnly = useCallback(async (rev) => {
     if (busy) return;
@@ -647,6 +660,10 @@ export default function RevisionsPanel({
     setStatusMsg(null);
     try {
       const pre = await restoreRevision(rev.id);
+      if (typeof onApplyNamedRevision === 'function') {
+        const full = await getRevision(rev.id);
+        onApplyNamedRevision(full?.snapshot_json || null);
+      }
       setStatusMsg(
         `Restored v${rev.revisionNumber}. Previous state saved as v${pre.revision_number}.`,
       );
@@ -657,7 +674,7 @@ export default function RevisionsPanel({
     } finally {
       setBusy(false);
     }
-  }, [busy, refresh]);
+  }, [busy, refresh, onApplyNamedRevision]);
 
   const handleActivityClick = useCallback((event) => {
     if (!event) return;
@@ -771,8 +788,6 @@ export default function RevisionsPanel({
     }
   }, [cascadePending, onCascadeRestoreRegion, refresh]);
 
-  if (!documentId) return null;
-
   const timelineItems = useMemo(() => {
     const items = [
       ...revisions.map((rev) => ({
@@ -793,6 +808,8 @@ export default function RevisionsPanel({
     items.sort((a, b) => b._ms - a._ms);
     return items;
   }, [revisions, historyEvents]);
+
+  if (!documentId) return null;
 
   const panel = (
     <div

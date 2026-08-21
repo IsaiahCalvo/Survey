@@ -7,6 +7,7 @@ import CompactColorPicker from '../components/CompactColorPicker';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
+import { FONT_FAMILIES } from '../utils/annotationStyleCatalog.js';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
@@ -613,6 +614,8 @@ export function MobileToolProperties({ api }) {
     dragHandlers: textSheetDragHandlers,
     requestClose: requestTextSheetClose,
   } = useMobileSheetMotion(() => setTextDefaultsOpen(false));
+  const textDefaultsOpenRef = useRef(textDefaultsOpen);
+  textDefaultsOpenRef.current = textDefaultsOpen;
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
   const counterMenuRef = useRef(null);
@@ -624,8 +627,8 @@ export function MobileToolProperties({ api }) {
     // stale colour picker or edit sheet never bleeds across tools.
     setCounterMenuOpen(false);
     setColorPicker(null);
-    setTextDefaultsOpen(false);
-  }, [tool]);
+    if (textDefaultsOpenRef.current) requestTextSheetClose();
+  }, [tool, requestTextSheetClose]);
 
   if (!api) return null;
 
@@ -709,7 +712,7 @@ export function MobileToolProperties({ api }) {
         <MobileStyledSelect
           ariaLabel="Font"
           value={state.fontFamily || 'Arial'}
-          options={['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => ({ value: family, label: family }))}
+          options={FONT_FAMILIES.map((family) => ({ value: family, label: family }))}
           onChange={(family) => editorApi.setFontFamily?.(family)}
           minWidth={96}
         />
@@ -867,7 +870,13 @@ export function MobileToolProperties({ api }) {
           color: toHexColor(api.strokeColor, '#ff0000'),
           opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
           showOpacity: typeof api.handleStrokeOpacityChange === 'function',
-          firstPreset: 'transparent',
+          // Rect/ellipse: Match Fill + opaque stroke (same one-visible rule as AppShell).
+          ...(tool === 'rect' || tool === 'ellipse'
+            ? {
+              firstPreset: { kind: 'match', color: toHexColor(api.fillColor, '#ffffff'), opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)) },
+              minOpacity: 1,
+            }
+            : { firstPreset: 'transparent' }),
           onChange: (hex, alpha) => {
             api.handleStrokeColorChange?.(hex);
             api.handleStrokeOpacityChange?.(Math.round((alpha ?? 1) * 100));
@@ -1057,6 +1066,7 @@ export function MobileToolProperties({ api }) {
             onTouchStart={textSheetDragHandlers.onTouchStart}
             onTouchMove={textSheetDragHandlers.onTouchMove}
             onTouchEnd={textSheetDragHandlers.onTouchEnd}
+            onTouchCancel={textSheetDragHandlers.onTouchCancel}
           />
           <header>
             <div>
@@ -1318,6 +1328,7 @@ export function MobileToolProperties({ api }) {
         opacity={colorPickerConfig.opacity}
         showOpacity={colorPickerConfig.showOpacity}
         firstPreset={colorPickerConfig.firstPreset}
+        minOpacity={colorPickerConfig.minOpacity}
         onChange={colorPickerConfig.onChange}
         onClose={() => setColorPicker(null)}
       />
@@ -1340,6 +1351,10 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     dragHandlers: usersSheetDragHandlers,
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false));
+  const dismissUsersSheet = () => {
+    if (!presenceOpen) return;
+    requestUsersSheetClose();
+  };
   const popoverRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
@@ -1367,7 +1382,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   const activateSyncStatus = () => {
     setMoreOpen(false);
-    setPresenceOpen(false);
+    if (presenceOpen) dismissUsersSheet();
     if (sync.state === 'synced') {
       setSyncDetailsOpen(false);
       void leftRailApi?.cloudSyncOnRetry?.();
@@ -1545,7 +1560,10 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             icon="more"
             label="More document options"
             active={moreOpen}
-            onClick={() => { setMoreOpen((open) => !open); setPresenceOpen(false); }}
+            onClick={() => {
+              setMoreOpen((open) => !open);
+              if (presenceOpen) dismissUsersSheet();
+            }}
           />
           <div className="mobile-pdf-tools__footer-stack">
             <button
@@ -1566,7 +1584,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               label="Version history"
               disabled={!leftRailApi?.documentId}
               onClick={() => {
-                setPresenceOpen(false);
+                if (presenceOpen) dismissUsersSheet();
                 setMoreOpen(false);
                 onOpenPanel?.('history');
               }}
@@ -1574,7 +1592,11 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <RailButton
               label={`${presenceCount} active user${presenceCount === 1 ? '' : 's'}`}
               active={presenceOpen}
-              onClick={() => { setPresenceOpen((open) => !open); setMoreOpen(false); }}
+              onClick={() => {
+                setMoreOpen(false);
+                if (presenceOpen) dismissUsersSheet();
+                else setPresenceOpen(true);
+              }}
             >
               <span className="mobile-pdf-tools__avatar">{userInitial}</span>
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
@@ -1667,6 +1689,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               onTouchStart={usersSheetDragHandlers.onTouchStart}
               onTouchMove={usersSheetDragHandlers.onTouchMove}
               onTouchEnd={usersSheetDragHandlers.onTouchEnd}
+              onTouchCancel={usersSheetDragHandlers.onTouchCancel}
             />
             <header>
               <div>

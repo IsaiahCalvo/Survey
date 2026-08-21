@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { describeReSignInResetOutcome, isSameReSignInUser, planReSignInPasswordReset } from './reSignInAccount.js';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import TurnstileWidget, { TURNSTILE_ENABLED } from '../TurnstileWidget';
 import './ReSignInModal.css';
@@ -35,14 +36,16 @@ import './ReSignInModal.css';
  * @param {() => void} [props.onCloseDocument] Fires when user picks "Sign in with a different account"
  * @param {string|null} [props.prefillEmail]   Pre-fills the email input (current auth.user.email if available)
  */
-export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmail }) {
-  const { signIn } = useAuth();
+export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmail, expectedUserId }) {
+  const { signIn, signOut, resetPassword, user } = useAuth();
+  const expectedUserIdRef = useRef(expectedUserId || user?.id || null);
   const [email, setEmail] = useState(prefillEmail || '');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  // 'bad_password' | 'network' | 'account_locked' | null — error code drives copy below.
+  // 'bad_password' | 'network' | 'account_locked' | 'reset_email' | 'reset_failed' | null
   const [errorCode, setErrorCode] = useState(null);
-  // Informational inline banner (e.g. "Forgot password?" explainer). Rendered
+  const [errorDetail, setErrorDetail] = useState(null);
+  // Informational inline banner (e.g. reset-link sent). Rendered
   // in-modal instead of a native alert() — master plan decision 3: one unified
   // feedback system, no browser system dialogs.
   const [notice, setNotice] = useState(null);
@@ -101,6 +104,7 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
     }
     setSubmitting(true);
     setErrorCode(null);
+    setErrorDetail(null);
     setNotice(null);
     try {
       // useAuth().signIn signature throws on error in this project (see
@@ -108,7 +112,14 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
       // surrounding try/catch is the canonical error gate; we never see
       // a {error: ...} return shape from this hook. Branch on err.message
       // tags to map onto the UI-SPEC error copy.
-      await signIn(email, password, captchaToken);
+      const data = await signIn(email, password, captchaToken);
+      const signedId = data?.user?.id || data?.session?.user?.id;
+      const expectedId = expectedUserId || expectedUserIdRef.current;
+      if (!isSameReSignInUser(expectedId, signedId)) {
+        try { await signOut(); } catch { /* stay on the modal */ }
+        setErrorCode('wrong_account');
+        return;
+      }
       onSignedIn?.();
     } catch (err) {
       // Turnstile tokens are single-use — refresh the widget before a retry.
@@ -138,10 +149,13 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
   // UX: error message is decoupled from raw error so the copy is editable
   // here (not at every catch site). All three strings come from UI-SPEC verbatim.
   const errorMessage = (() => {
+    if (errorCode === 'wrong_account') return 'Sign in with the same account that was viewing this document, or close the document and switch accounts.';
     if (errorCode === 'bad_password') return "That email and password don't match. Try again.";
     if (errorCode === 'network') return "We couldn't reach the server. Check your connection and try again.";
     if (errorCode === 'account_locked') return "This account is locked. Contact your administrator.";
     if (errorCode === 'captcha') return 'Please complete the "I\'m human" check below, then try again.';
+    if (errorCode === 'reset_email') return 'Enter your email first, then try Forgot password again.';
+    if (errorCode === 'reset_failed') return errorDetail || 'Could not send a reset link. Please try again.';
     return null;
   })();
 
@@ -178,7 +192,7 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
           className="re-signin-modal__input"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          disabled={submitting}
+          disabled={submitting || Boolean(prefillEmail)}
           // autoComplete cue: the password manager should treat this as a current
           // sign-in (not a new account / signup). Browser's saved credential
           // suggestions appear under the email field.
@@ -218,18 +232,36 @@ export function ReSignInModal({ isOpen, onSignedIn, onCloseDocument, prefillEmai
         <a
           href="#forgot"
           className="re-signin-modal__link-primary"
-          onClick={(e) => {
+          onClick={async (e) => {
             e.preventDefault();
-            // UX: Phase 33 wires this to the password reset flow. Until then,
-            // tell the user the only path: close the document and use the
-            // dashboard sign-in. Honest-over-silent — don't pretend the link
-            // works when it doesn't. Shown as an inline banner (not a native
-            // alert) per the unified feedback system.
-            // TODO(Phase 33): wire to AuthContext.resetPassword(email) once
-            // the inline reset surface is designed.
-            setNotice(
-              'Password reset is not wired up yet — close the document and use the dashboard sign-in to reset your password.'
-            );
+            if (submitting) return;
+            const plan = planReSignInPasswordReset({
+              email,
+              captchaToken,
+              captchaBroken,
+              turnstileEnabled: TURNSTILE_ENABLED,
+            });
+            setErrorCode(plan.ok ? null : plan.errorCode);
+            setErrorDetail(null);
+            setNotice(null);
+            if (!plan.ok) return;
+            setSubmitting(true);
+            try {
+              await resetPassword(plan.email, plan.captchaToken);
+              setNotice(`A password reset link has been sent to ${plan.email}. Check your inbox, then sign in here.`);
+              setCaptchaToken('');
+              setCaptchaNonce((n) => n + 1);
+            } catch (err) {
+              setCaptchaToken('');
+              setCaptchaNonce((n) => n + 1);
+              const code = describeReSignInResetOutcome(err);
+              setErrorCode(code);
+              if (code === 'reset_failed') {
+                setErrorDetail(err?.message || 'Could not send a reset link. Please try again.');
+              }
+            } finally {
+              setSubmitting(false);
+            }
           }}
         >
           Forgot password?

@@ -29,8 +29,7 @@ import {
   projectCalloutsIntoByPage as projectCalloutsIntoByPageShared,
   deriveCalloutsFromByPage,
 } from '../utils/calloutAnnotationBridge.js';
-
-const SPACES_KEY = 'spaces';
+import { unscopeOrphanedRegionAnnotations } from '../utils/spaceRegionOrphans.js';
 
 function pageCount(byPage) {
   let n = 0;
@@ -337,8 +336,13 @@ export function useAnnotationDoc({
         setAnnotationsByPage((previousByPage) => (
           preserveTransientPagePresentationState(previousByPage, nextByPage)
         ));
-        const s = handle.getMeta(SPACES_KEY);
-        if (Array.isArray(s)) setSpaces(s);
+        const s = handle.getSpaces?.() ?? handle.getMeta?.('spaces');
+        if (Array.isArray(s)) {
+          setSpaces(s);
+          setAnnotationsByPage((previousByPage) => (
+            unscopeOrphanedRegionAnnotations(previousByPage, s)
+          ));
+        }
         const sm = handle.getSurveyMarkers();
         if (sm && typeof sm === 'object') setSurveyMarkers(sm);
         setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
@@ -377,7 +381,11 @@ export function useAnnotationDoc({
 
       const storeByPage = handle.getByPage();
       setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
-      const storeSpaces = handle.getMeta(SPACES_KEY);
+      if (isWritableDocRole(docRoleRef.current) && typeof handle.applySpaces === 'function') {
+        const existingSpaces = handle.getSpaces?.() || [];
+        if (existingSpaces.length > 0) handle.applySpaces(existingSpaces);
+      }
+      const storeSpaces = handle.getSpaces?.() ?? handle.getMeta?.('spaces');
       const storeSurvey = handle.getSurveyMarkers();
       const count = pageCount(storeByPage);
       const hasSpaces = Array.isArray(storeSpaces) && storeSpaces.length > 0;
@@ -421,14 +429,21 @@ export function useAnnotationDoc({
             ));
           }
         }
-        if (hasSpaces) setSpaces(storeSpaces);
+        if (hasSpaces) {
+          setSpaces(storeSpaces);
+          setAnnotationsByPage((previousByPage) => (
+            unscopeOrphanedRegionAnnotations(previousByPage, storeSpaces)
+          ));
+        }
         if (hasSurvey) setSurveyMarkers(storeSurvey);
         // Document-level kinds: if the store has SOME state but not this kind yet
         // (first open after each kind's migration shipped), seed it from the
         // per-device state the viewer already loaded so nothing is dropped.
         if (!hasSpaces) {
           const curSpaces = spacesRef.current;
-          if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
+          if (Array.isArray(curSpaces) && curSpaces.length > 0) {
+            (handle.applySpaces || handle.setMeta.bind(handle, 'spaces'))(curSpaces);
+          }
         }
         if (!hasSurvey) {
           const curSurvey = surveyMarkersRef.current;
@@ -447,7 +462,9 @@ export function useAnnotationDoc({
           }
         }
         const curSpaces = spacesRef.current;
-        if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
+        if (Array.isArray(curSpaces) && curSpaces.length > 0) {
+          (handle.applySpaces || handle.setMeta.bind(handle, 'spaces'))(curSpaces);
+        }
         const curSurvey = surveyMarkersRef.current;
         if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
       }
@@ -545,14 +562,17 @@ export function useAnnotationDoc({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docRole, initialHydration, documentId]);
 
-  // Capture space changes (document-level; coarse whole-array, no-op when
-  // unchanged). Spaces + their region polygons now live durably in the Y.Doc
-  // instead of the localStorage/Storage-sidecar pair.
+  // Capture space changes into the keyed spacesById map (legacy META snapshot
+  // is written alongside for older readers).
   useEffect(() => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
-    h.setMeta(SPACES_KEY, spaces);
-  }, [spaces]);
+    if (typeof h.applySpaces === 'function') h.applySpaces(spaces);
+    else h.setMeta('spaces', spaces);
+    setAnnotationsByPage((previousByPage) => (
+      unscopeOrphanedRegionAnnotations(previousByPage, spaces)
+    ));
+  }, [spaces, setAnnotationsByPage]);
 
   // Capture survey-marker (highlight) changes into their keyed map (minimal
   // per-marker diff; no-op when unchanged). The Y.Doc is now the source of truth
@@ -564,6 +584,8 @@ export function useAnnotationDoc({
   }, [surveyMarkers]);
 
   // Cmd/Ctrl+S → drain pending appends + write a fresh snapshot.
+  // Throw on a failed flush so SyncStatusChip Retry cannot log "succeeded"
+  // while the outbox is still unhealthy (offline / snapshot write failed).
   const forceFlush = useCallback(async () => {
     const h = handleRef.current;
     if (!h) return;
@@ -571,12 +593,16 @@ export function useAnnotationDoc({
     await h.drain();
     const saved = await h.flushSnapshot();
     const next = h.getSyncStatus?.() || {};
+    const ok = Boolean(saved && next.healthy !== false);
     setSyncStatus({
-      stage: saved && next.healthy !== false ? 'idle' : 'error',
-      healthy: saved && next.healthy !== false,
-      error: saved ? null : (next.error || 'sync failed'),
+      stage: ok ? 'idle' : 'error',
+      healthy: ok,
+      error: ok ? null : (next.error || 'sync failed'),
     });
     setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
+    if (!ok) {
+      throw new Error(next.error || 'sync failed');
+    }
   }, []);
 
   const commitEraserMutation = useCallback(({

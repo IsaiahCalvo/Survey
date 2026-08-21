@@ -17,7 +17,9 @@ import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
+  getRotationHandleHitMetrics,
   getSelectionHandleVisualMetrics,
+  shouldShowSelectionTransformHandles,
 } from '../utils/selectionHandleVisibility.js';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 import { HANDLE_FILL, HANDLE_RING } from '../utils/handleStyle';
@@ -71,6 +73,12 @@ const SVGSelectionOverlay = memo(({
     padding,
   });
   const visibleResizeHandles = new Set(handleSpec.resizeHandles);
+  const showTransformHandles = shouldShowSelectionTransformHandles({
+    selectionGlowOnly,
+    moveOnly,
+    isGroupSelection,
+  });
+  const rotationHit = getRotationHandleHitMetrics(visualInverseScale);
   const baseHandles = getHandlePositions(bbox, padding);
   const handles = {
     ...baseHandles,
@@ -148,7 +156,7 @@ const SVGSelectionOverlay = memo(({
       )}
 
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
-      {!isGroupSelection && !moveOnly && !selectionGlowOnly && (
+      {showTransformHandles && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
           {!hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
@@ -232,10 +240,29 @@ const SVGSelectionOverlay = memo(({
             );
           })}
 
-          {/* Rotation handle (mtr) */}
+          {/* Rotation handle (mtr). The stem used to be pointer-events:none,
+              so clicks on the visible connector (the group's bbox center)
+              fell through and rotation looked broken. Stem + knob share one
+              hit path. selectionGlowOnly still hides this entire block. */}
           {!hideRotationHandle && (
-          <g className="rotation-handle" data-rotation-handle="mtr">
-            {/* Connector line from top-center of bbox to rotation handle */}
+          <g
+            className="rotation-handle"
+            data-rotation-handle="mtr"
+            style={{ cursor: 'crosshair' }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onHandleDrag?.(e, 'mtr');
+            }}
+          >
+            <line
+              x1={handles.mt.x}
+              y1={handles.mt.y}
+              x2={handles.mtr.x}
+              y2={handles.mtr.y}
+              stroke="transparent"
+              strokeWidth={rotationHit.stemHitWidth}
+              style={{ pointerEvents: 'stroke', cursor: 'crosshair' }}
+            />
             <line
               x1={handles.mt.x}
               y1={handles.mt.y}
@@ -245,7 +272,14 @@ const SVGSelectionOverlay = memo(({
               strokeWidth={1 * is}
               style={{ pointerEvents: 'none' }}
             />
-            {/* Rotation circle */}
+            <circle
+              cx={handles.mtr.x}
+              cy={handles.mtr.y}
+              r={rotationHit.knobHitR}
+              fill="transparent"
+              data-rotation-handle="mtr"
+              style={{ pointerEvents: 'auto', cursor: 'crosshair' }}
+            />
             <circle
               cx={handles.mtr.x}
               cy={handles.mtr.y}
@@ -256,14 +290,9 @@ const SVGSelectionOverlay = memo(({
               style={{
                 filter: rotationShadow,
                 cursor: 'crosshair',
-                pointerEvents: 'auto',
-              }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                onHandleDrag?.(e, 'mtr');
+                pointerEvents: 'none',
               }}
             />
-            {/* Rotation icon image (70% of circle diameter) */}
             <image
               href={rotateIconSvg}
               x={handles.mtr.x - handleMetrics.rotationIconSize / 2}

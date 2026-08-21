@@ -5,7 +5,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
-import { transformPageState } from '../utils/pageAnnotationReindex.js';
+import { mergeLivePagePresentation, slicePagePresentation, transformPageState } from '../utils/pageAnnotationReindex.js';
 // PERF (KAL-384): pdfPageMutation pulls in pdf-lib (~429 kB). Page add /
 // delete / rotate / reorder is a deliberate user action, so the module is
 // imported dynamically at the call site below instead of at first viewer paint.
@@ -26,10 +26,12 @@ export function usePageOperations({
   const pdfFileRef = useRef(pdfFile);
   const renderedPdfFileRef = useRef(pdfFile);
   const pageStateRef = useRef(null);
+  const queueBaselineRef = useRef(null);
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
     pdfFileRef.current = pdfFile;
     pageStateRef.current = null;
+    queueBaselineRef.current = null;
   }
   const mutationQueueRef = useRef(Promise.resolve());
 
@@ -41,8 +43,12 @@ export function usePageOperations({
     }
 
     try {
-      const sourceState = pageStateRef.current
-        || (typeof getPageState === 'function' ? getPageState() : null);
+      const liveState = typeof getPageState === 'function' ? getPageState() : null;
+      const queuedState = pageStateRef.current;
+      if (!queuedState) {
+        queueBaselineRef.current = slicePagePresentation(liveState);
+      }
+      const sourceState = queuedState || liveState;
       const nextState = sourceState ? transformPageState(sourceState, operation) : null;
       const pdfOperation = operation?.type === 'rotate'
         ? {
@@ -72,13 +78,20 @@ export function usePageOperations({
         state: nextState,
         operation,
         persist: onUpdatePDFFile,
-        commit: commitPageState,
+        commit: (state, op) => {
+          const live = typeof getPageState === 'function' ? getPageState() : liveState;
+          const merged = mergeLivePagePresentation(state, live, op, {
+            sourcePresentation: sourceState,
+            queueBaseline: queueBaselineRef.current,
+          });
+          pageStateRef.current = merged;
+          commitPageState?.(merged, op);
+        },
       });
       // A second page action can arrive before React has rendered the new File
       // prop. Keep the serialized operation queue on the just-persisted bytes
       // so rapid taps cannot branch from a stale page count or overwrite work.
       pdfFileRef.current = newFile;
-      pageStateRef.current = nextState;
       return true;
     } catch (error) {
       console.error(`Error ${errorVerb} page:`, error);

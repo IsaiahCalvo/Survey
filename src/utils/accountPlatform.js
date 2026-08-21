@@ -96,14 +96,204 @@ export const unlinkOAuthProvider = async ({ auth, user, provider }) => {
   return refreshed?.data?.user || user;
 };
 
-export const requestAccountDeletion = async (functionsClient) => {
-  const { data, error } = await functionsClient.invoke('delete-account', {
-    body: { confirmation: 'DELETE' },
+export const isGoogleIdentityConnected = (user) => (
+  user?.app_metadata?.provider === 'google'
+  || Boolean(user?.identities?.some((identity) => identity?.provider === 'google'))
+);
+
+export const hasPasswordIdentity = (user) => {
+  if (user?.identities?.some((identity) => identity?.provider === 'email')) return true;
+  const providers = user?.app_metadata?.providers;
+  return Array.isArray(providers) && providers.includes('email');
+};
+
+export const passwordChangeKind = (user) => (hasPasswordIdentity(user) ? 'change' : 'set');
+
+export const validatePasswordForm = ({
+  kind,
+  currentPassword,
+  newPassword,
+  confirmPassword,
+  email,
+  firstName,
+  lastName,
+  passwordMeetsRequirements,
+} = {}) => {
+  const changing = kind === 'change'
+    ? Boolean(newPassword || confirmPassword || currentPassword)
+    : Boolean(newPassword || confirmPassword);
+  if (!changing) return { changing: false };
+
+  if (kind === 'change' && !currentPassword) {
+    return { changing: true, error: 'Please enter your current password to change your password' };
+  }
+  if (!newPassword) return { changing: true, error: 'Please enter a new password' };
+  if (newPassword !== confirmPassword) return { changing: true, error: 'New passwords do not match' };
+  if (typeof passwordMeetsRequirements === 'function'
+    && !passwordMeetsRequirements(newPassword, { email, firstName, lastName })) {
+    return { changing: true, error: 'Password does not meet requirements' };
+  }
+  if (kind === 'change' && newPassword === currentPassword) {
+    return { changing: true, error: 'Your new password must be different from your current password' };
+  }
+  return { changing: true };
+};
+
+export const describeProfileSaveOutcome = ({
+  nameSaved = false,
+  passwordSaved = false,
+  nameError = null,
+  passwordError = null,
+  attemptedName = false,
+  attemptedPassword = false,
+} = {}) => {
+  if (!attemptedName && !attemptedPassword) {
+    return { kind: 'noop', message: 'No changes detected', changedFields: [] };
+  }
+  const changedFields = [
+    ...(nameSaved ? ['name'] : []),
+    ...(passwordSaved ? ['password'] : []),
+  ];
+  if (nameSaved && passwordError) {
+    return {
+      kind: 'partial',
+      message: `Your name was saved, but the password could not be updated: ${passwordError}`,
+      changedFields,
+    };
+  }
+  if (passwordSaved && nameError) {
+    return {
+      kind: 'partial',
+      message: `Your password was updated, but the name could not be saved: ${nameError}`,
+      changedFields,
+    };
+  }
+  if (nameError && passwordError) {
+    return {
+      kind: 'error',
+      message: `Could not save name (${nameError}) or password (${passwordError}).`,
+      changedFields,
+    };
+  }
+  if (nameError) return { kind: 'error', message: nameError, changedFields };
+  if (passwordError) return { kind: 'error', message: passwordError, changedFields };
+  return { kind: 'success', message: null, changedFields };
+};
+
+export const googleOAuthRedirectTo = (location = currentLocation(), windowObject = typeof window === 'undefined' ? null : window) => {
+  if (!location) return undefined;
+  let redirectTo = location.origin;
+  if (/^\/mobile(?:\/|$)/.test(location.pathname || '')) {
+    redirectTo = `${location.origin}/mobile`;
+  }
+  if (windowObject?.electronAPI) {
+    redirectTo = String(location.href || '').split('#')[0];
+  }
+  return redirectTo;
+};
+
+export const linkOAuthProvider = async ({
+  auth,
+  provider,
+  idToken,
+  location = currentLocation(),
+  windowObject = typeof window === 'undefined' ? null : window,
+} = {}) => {
+  if (!auth?.linkIdentity) {
+    throw new Error('Connecting this sign-in method is temporarily unavailable.');
+  }
+  if (idToken) {
+    const { data, error } = await auth.linkIdentity({ provider, token: idToken });
+    if (error) throw error;
+    return data;
+  }
+  const { data, error } = await auth.linkIdentity({
+    provider,
+    options: {
+      redirectTo: googleOAuthRedirectTo(location, windowObject),
+      skipBrowserRedirect: false,
+      queryParams: { prompt: 'select_account' },
+    },
   });
   if (error) throw error;
-  if (data?.error) throw new Error(data.error);
-  if (data?.deleted !== true) throw new Error('Account deletion did not complete.');
   return data;
+};
+
+export const assertLinkedSameUser = (previousUserId, nextUserId) => {
+  if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+    throw new Error('That Google account belongs to a different Survey account. Sign in with it separately instead of connecting it here.');
+  }
+};
+
+export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE';
+
+export const isAccountDeletionConfirmation = (value) => (
+  String(value || '').trim() === ACCOUNT_DELETION_CONFIRMATION
+);
+
+export const accountDeletionUserMessage = (payload = {}) => {
+  const documents = Array.isArray(payload.documents) ? payload.documents : [];
+  const count = Number.isFinite(payload.documentCount) ? payload.documentCount : documents.length;
+  if (payload.code === 'ACCOUNT_HAS_COLLABORATORS' || count > 0) {
+    const names = documents
+      .slice(0, 5)
+      .map((doc) => doc?.name || 'Untitled')
+      .filter(Boolean)
+      .join(', ');
+    const extra = count > 5 ? ` and ${count - 5} more` : '';
+    const named = names ? ` (${names}${extra})` : '';
+    return `This account still owns ${count} shared document${count === 1 ? '' : 's'}${named}. Transfer ownership or remove collaborators before deleting the account.`;
+  }
+  if (payload.code === 'DATA_REMOVED_RETRY' || payload.dataRemoved) {
+    return payload.message
+      || payload.error
+      || 'Your data was removed, but the account could not finish closing. Retry to finish closing the account.';
+  }
+  return payload.message || payload.error || 'Account deletion could not finish. Please try again or contact support.';
+};
+
+export const resolveAccountDeletionResponse = (data, error) => {
+  if (data?.deleted === true) return { ok: true, data };
+  const body = data && typeof data === 'object' ? data : {};
+  const code = body.code || null;
+  const documents = Array.isArray(body.documents) ? body.documents : null;
+  const stage = body.stage || null;
+  const dataRemoved = Boolean(body.dataRemoved);
+  if (body.error) {
+    return {
+      ok: false,
+      message: body.error,
+      code: code || (documents?.length ? 'ACCOUNT_HAS_COLLABORATORS' : null),
+      documents,
+      stage,
+      dataRemoved,
+    };
+  }
+  if (error) {
+    return {
+      ok: false,
+      message: error.message || String(error),
+      code,
+      documents,
+      stage,
+      dataRemoved,
+    };
+  }
+  return { ok: false, message: 'Account deletion did not complete.', code: 'INCOMPLETE' };
+};
+
+export const requestAccountDeletion = async (functionsClient) => {
+  const { data, error } = await functionsClient.invoke('delete-account', {
+    body: { confirmation: ACCOUNT_DELETION_CONFIRMATION },
+  });
+  const payload = resolveAccountDeletionResponse(data, error);
+  if (payload.ok) return payload.data;
+  const failure = new Error(accountDeletionUserMessage(payload));
+  failure.code = payload.code;
+  failure.documents = payload.documents;
+  failure.stage = payload.stage;
+  failure.dataRemoved = payload.dataRemoved;
+  throw failure;
 };
 
 export const resolveSubscriptionQuery = async (query, timeoutMs = 10_000) => {

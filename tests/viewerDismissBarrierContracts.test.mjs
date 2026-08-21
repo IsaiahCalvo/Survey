@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const mobileChrome = read('../src/mobile/MobilePdfViewerChrome.jsx');
 const syncStatus = read('../src/components/SyncStatusChip.jsx');
 const colorPicker = read('../src/components/CompactColorPicker.jsx');
+const appShell = read('../src/AppShell.jsx');
 const bookmarks = read('../src/sidebar/BookmarksPanel.jsx');
 const printPanel = read('../src/components/PrintPanel.jsx');
 const dashboard = read('../src/Dashboard.jsx');
@@ -42,7 +43,8 @@ test('desktop sync details dismiss without moving or activating the surface unde
 });
 
 test('legacy color, bookmark, and print picker popovers use the same first-tap barrier', () => {
-  assert.match(colorPicker, /active=\{typeof onClose === 'function'\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
+  assert.match(colorPicker, /active=\{typeof onClose === 'function'\}[\s\S]*insideRefs=\{dismissInsideRefs\}[\s\S]*passthroughSelector=\{passthroughSelector\}/);
+  assert.match(appShell, /passthroughSelector="\.annotation-dropdown__trigger, \[data-font-family-menu\], \[data-font-size-menu\]"/);
   assert.match(bookmarks, /active=\{showCreateMenu\}[\s\S]*insideRefs=\{createMenuInsideRefs\}/);
   assert.match(printPanel, /active=\{menuOpen\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
 

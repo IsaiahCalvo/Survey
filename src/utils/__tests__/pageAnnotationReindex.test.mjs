@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { transformPageState } from '../pageAnnotationReindex.js';
+import {
+  mergeLivePagePresentation,
+  remapClipboardPage,
+  transformPageState,
+} from '../pageAnnotationReindex.js';
 
 const make = () => ({
   annotationsByPage: {
@@ -133,4 +137,25 @@ test('serialized hard reopen retains the transformed page identity graph', () =>
   assert.equal(reopened.surveyMarkers.a2.pageNumber, 4);
   assert.deepEqual(reopened.bookmarks[0].pageIds, [1, 4]);
   assert.equal(reopened.spaces[0].assignedPages.find((page) => page.pageId === 4).regions[0].regionId, 'r2');
+});
+
+test('P1-18: remapClipboardPage clears a deleted clipped page and shifts later pages', () => {
+  assert.equal(remapClipboardPage(3, { type: 'delete', page: 3 }), null);
+  assert.equal(remapClipboardPage(3, { type: 'delete', page: 1 }), 2);
+  assert.equal(remapClipboardPage(2, { type: 'move', from: 1, to: 3 }), 1);
+  assert.equal(remapClipboardPage(2, { type: 'rotate', page: 2, delta: 90 }), 2);
+});
+
+test('P1-17: mergeLivePagePresentation keeps a rename that landed during persist', () => {
+  const queued = transformPageState(make(), { type: 'delete', page: 2 });
+  const live = {
+    pageNames: { 1: 'A-renamed', 2: 'B', 3: 'C', 4: 'D' },
+    pageTransformations: {},
+    bookmarks: [],
+    spaces: [],
+  };
+  const merged = mergeLivePagePresentation(queued, live, { type: 'delete', page: 2 });
+  assert.equal(merged.pageNames[1], 'A-renamed');
+  assert.equal(merged.pageNames[2], 'C');
+  assert.equal(merged.annotationsByPage[2].objects[0].data.id, 'a3');
 });

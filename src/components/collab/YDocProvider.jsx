@@ -33,12 +33,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { YDocContext } from './YDocContext.js';
+import {
+  storageStateAfterResignIn,
+  storageStateAfterSignedOut,
+  storageStateWhenAccessRevoked,
+} from './collabBannerState.js';
+import { isLocallyInteractingWith } from './remoteDeleteInteraction.js';
 import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
 import { resolveDocumentMetadata } from '../../services/documentMetadataResolver.js';
 import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
 import { isCRDTEnabled } from '../../lib/collab/crdtFeatureFlag.js';
 import StorageFailureBanner from './StorageFailureBanner.jsx';
 import ReSignInModal from './ReSignInModal.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import ReadOnlyGate from './ReadOnlyGate.jsx';
 
 const ydocProviderDebug = (...args) => {
@@ -84,21 +91,18 @@ import { useRemoteEditors } from '../../hooks/useRemoteEditors.js';
 // + clientID are in scope. Per-(user, document) idempotency is enforced by
 // runBackfill itself via the Y.Map meta marker — Plan 30-02.
 //
-// Surgical Plan 30-06 wiring: 3 additions (backfill mount effect + drainQueue
-// 1Hz tick + useDualWriteQueue subscription) plus 2 render-tree additions
-// (sync_queue_stuck banner gate + QuarantineMarkerOverlay sibling). Existing
-// Phase 27/28/29 code is byte-identical.
+// Surgical Plan 30-06 wiring (P2-02): useDualWriteQueue now reads the live
+// annotation outbox. Banner + QuarantineMarkerOverlay stay; the unused
+// localStorage retry-queue drain tick is gone.
 import { runBackfill } from '../../lib/collab/crdtBackfill.js';
 import { dedupePdfImports } from '../../lib/collab/crdtDedupePdfImports.js';
-import { drainQueue } from '../../lib/collab/crdtDualWriteQueue.js';
 import { useDualWriteQueue } from '../../hooks/useDualWriteQueue.js';
 import { QuarantineMarkerOverlay } from './QuarantineMarkerOverlay.jsx';
 import {
-  upsertFabricAnnotation,
   loadAllNonSurveyMarkerAnnotations,
   deleteAnnotations,
 } from '../../services/annotationCloudSync.js';
-import { applyFabricCommit } from '../../lib/collab/crdtAnnotationBridge.js';
+import { retryActiveOutboxes } from '../../services/annotationDocSync.js';
 
 // Phase 35 Plan 05 — cleanup banner audit + Review surface.
 // auditResidue runs on document open and detects annotations the 2026-04-27
@@ -211,6 +215,11 @@ export function YDocProvider({ docId, children, closeDocument, isActive = true }
 }
 
 function YDocProviderInner({ docId, children, closeDocument, isActive }) {
+  const { user: authUser } = useAuth();
+  const lastKnownAuthRef = useRef({ id: authUser?.id || null, email: authUser?.email || null });
+  if (authUser?.id) {
+    lastKnownAuthRef.current = { id: authUser.id, email: authUser.email || lastKnownAuthRef.current.email };
+  }
   // Borrow the Y.Doc from the module-scoped registry. Stable across re-renders for
   // a given docId; HMR-safe because the registry survives module reloads.
   const ydoc = useMemo(() => getOrCreateYDoc(docId), [docId]);
@@ -263,6 +272,12 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // loginExpired tracks the failed-refresh signal from authSessionBridge;
   // reSignInModalOpen + setter control the inline re-sign-in form mount.
   const [accessRevoked, setAccessRevoked] = useState(false);
+  const accessRevokedRef = useRef(false);
+  useEffect(() => { accessRevokedRef.current = accessRevoked; }, [accessRevoked]);
+  useEffect(() => {
+    if (!accessRevoked) return;
+    setStorageState((current) => storageStateWhenAccessRevoked(current));
+  }, [accessRevoked]);
   const [transportState, setTransportState] = useState(null);
   const [loginExpired, setLoginExpired] = useState(false);
   const [reSignInModalOpen, setReSignInModalOpen] = useState(false);
@@ -535,7 +550,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           // its action opens the inline ReSignInModal. Per CONTEXT.md "don't make
           // them lose their place" — the user stays on this document page.
           setLoginExpired(true);
-          setStorageState({ code: 'login_expiry_failure', role: 'unknown' });
+          setStorageState((current) => storageStateAfterSignedOut({
+            accessRevoked: accessRevokedRef.current,
+            current,
+          }));
         },
       });
       bridgeRef.current = bridge;
@@ -730,7 +748,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       // UX: read the interaction binding lazily inside the handler so it picks
       // up the latest state at the moment of delete. window may be missing in
       // SSR / test environments; guard defensively.
-      const interactionState = (typeof window !== 'undefined' && window.__phase29InteractionState) || {};
+      const windowLike = typeof window !== 'undefined' ? window : null;
 
       // event.changes.keys is a Map<key, { action: 'add' | 'update' | 'delete', oldValue }>.
       // Walk every key change in this transaction; only deletes that the local
@@ -738,17 +756,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       event.changes?.keys?.forEach((change, annoId) => {
         if (change.action !== 'delete') return;
 
-        // CONTEXT.md "Deletion-during-interaction" — the toast surfaces only when
-        // ANY of the five interaction bindings is set to this annoId. Outside
-        // those bindings, the deletion applies silently (user did not have the
-        // shape engaged; no recovery affordance is needed).
-        const interacting = (
-          interactionState.selectedId === annoId
-          || interactionState.draggingId === annoId
-          || interactionState.scalingId === annoId
-          || interactionState.editCanvasId === annoId
-          || interactionState.contextMenuId === annoId
-        );
+        // CONTEXT.md "Deletion-during-interaction" — toast when the local user
+        // is bound to this anno via Phase-29 state, the SVG selection mirror,
+        // or a selected SVG node. Outside those bindings the delete is silent.
+        const interacting = isLocallyInteractingWith(annoId, windowLike);
         if (!interacting) return;
 
         // Recover oldValue snapshot for the Restore handler. Y.Map.observe gives
@@ -1044,71 +1055,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     };
   }, [ydoc, docId, undoState?.undoCtx?.userId, sessionId]);
 
-  // Phase 30 — drainQueue tick (1Hz).
-  //
-  // Retries half-failed dual-write entries silently. CONTEXT.md "Half-failed
-  // save (one of the two writes lands, the other doesn't)" — the queue retries
-  // until success OR quarantine. Pitfall 30-6 (kill-switch flip) is handled
-  // inside drainQueue itself (first-line `if (!isCRDTEnabled()) return`).
-  //
-  // Test seams (window.__crdtForceLegacyFail / window.__crdtForceFailAnnoId)
-  // let e2e specs inject failures without touching production code paths.
-  useEffect(() => {
-    const userId = undoState?.undoCtx?.userId;
-    if (!ydoc || !userId) return undefined;
-    const yMapAnnotations = ydoc.getMap('annotations');
-
-    const retryLegacyWrite = async (payload) => {
-      // Test seam — e2e phase30-stuck-queue-banner.spec.mjs sets this true.
-      if (typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
-        throw new Error('test-seam: __crdtForceLegacyFail');
-      }
-      // Test seam — e2e phase30-quarantine-marker.spec.mjs uses this to fail
-      // a single annoId across many retries.
-      const annoId = payload?.fabricObj?.data?.id;
-      if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
-        throw new Error('test-seam: __crdtForceFailAnnoId');
-      }
-      const result = await upsertFabricAnnotation(payload.fabricObj, payload.opts);
-      if (result && result.error) throw result.error;
-      return result;
-    };
-
-    const retryCrdtWrite = async (payload) => {
-      // Test seam — same per-anno failure injection on the CRDT side.
-      const annoId = payload?.fabricObj?.data?.id;
-      if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
-        throw new Error('test-seam: __crdtForceFailAnnoId');
-      }
-      // Synchronous bridge call — wrap throw inside async function for the
-      // queue contract. applyFabricCommit signature:
-      //   (ydoc, yMapAnnotations, fabricObject, originPayload, ctx)
-      applyFabricCommit(
-        ydoc,
-        yMapAnnotations,
-        payload.fabricObj,
-        payload.opts?.originPayload,
-        payload.opts?.ctx,
-      );
-      return { ok: true };
-    };
-
-    const handle = setInterval(() => {
-      drainQueue({
-        userId,
-        retryLegacyWrite,
-        retryCrdtWrite,
-      }).catch(() => {
-        // drainQueue swallows per-entry errors internally; only a handler
-        // construction failure would reach here. Silent — next tick retries.
-      });
-    }, 1_000);
-
-    return () => clearInterval(handle);
-  }, [ydoc, undoState?.undoCtx?.userId]);
-
   // Phase 30 — UI hook for banner gate + overlay.
-  // Polls localStorage queue state on a 1s tick (Plan 30-05 hook).
+  // Polls the live annotation outbox on a 1s tick (P2-02).
   const dualWriteQueueState = useDualWriteQueue(undoState?.undoCtx?.userId);
 
   // 2026-04-29 — listen for the SyncStatusChip "all retries failed" event so the
@@ -1655,31 +1603,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           code={deletionsPending ? 'sync_deletions_pending' : 'sync_queue_stuck'}
           onDismiss={() => { setBannerDismissed(true); setManualRetryExhausted(false); setDeletionsPending(false); }}
           onAction={() => {
-            // UX: "Retry now" — eager flush. Run drainQueue once outside the
-            // 1Hz interval, then let the regular tick continue. If the flush
-            // succeeds (queue drains), the gate above stops rendering the
-            // banner naturally (stuckCount reads zero on next poll).
+            // UX: "Retry now" — eager flush of the live annotation outbox.
             const userId = undoState?.undoCtx?.userId;
-            if (!userId || !ydoc) return;
-            const yMapAnnotations = ydoc.getMap('annotations');
-            // Inline retry handlers — same shape as the interval handlers.
-            // Don't try to factor these out; the test-seam guards live there
-            // and inline keeps this banner-action self-contained.
-            const retryLegacyWrite = async (payload) => {
-              const result = await upsertFabricAnnotation(payload.fabricObj, payload.opts);
-              if (result && result.error) throw result.error;
-              return result;
-            };
-            const retryCrdtWrite = async (payload) => {
-              applyFabricCommit(
-                ydoc, yMapAnnotations,
-                payload.fabricObj,
-                payload.opts?.originPayload,
-                payload.opts?.ctx,
-              );
-              return { ok: true };
-            };
-            drainQueue({ userId, retryLegacyWrite, retryCrdtWrite }).catch(() => { /* silent */ });
+            if (!userId || !docId) return;
+            retryActiveOutboxes({ documentId: docId, actorUserId: userId }).catch(() => { /* silent */ });
           }}
         />
       )}
@@ -1716,7 +1643,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           isOpen={reSignInModalOpen}
           // Phase 33 will pass auth.user.email here; for Phase 28 we leave it
           // null and the user types their email. Easy upgrade later.
-          prefillEmail={null}
+          prefillEmail={lastKnownAuthRef.current.email || authUser?.email || null}
+          expectedUserId={lastKnownAuthRef.current.id || authUser?.id || null}
           onSignedIn={() => {
             // UX: successful re-sign-in. Close modal, clear loginExpired flag,
             // clear the login_expiry_failure banner so the user lands back on
@@ -1724,9 +1652,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             // automatically via the existing Phase 27 IndexedDB persistence.
             setReSignInModalOpen(false);
             setLoginExpired(false);
-            if (storageStateRef.current?.code === 'login_expiry_failure') {
-              setStorageState({ code: 'ok', role: 'unknown' });
-            }
+            setStorageState(storageStateAfterResignIn({
+              accessRevoked: accessRevokedRef.current,
+              currentCode: storageStateRef.current?.code,
+            }));
           }}
           onCloseDocument={() => value.closeDocument()}
         />

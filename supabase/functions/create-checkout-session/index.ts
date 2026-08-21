@@ -2,6 +2,7 @@
 import Stripe from "npm:stripe@20.4.1";
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 import { resolveBillingReturnUrl, withBillingResult } from '../_shared/billingReturn.ts';
+import { proTrialPeriodDays } from '../_shared/billingTrial.ts';
 import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
 import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
 
@@ -85,7 +86,7 @@ Deno.serve(async (req) => {
         // Check if user already has a Stripe customer ID
         const { data: subscription, error: subscriptionError } = await supabase
             .from('user_subscriptions')
-            .select('stripe_customer_id')
+            .select('stripe_customer_id, trial_used_at')
             .eq('user_id', user.id)
             .maybeSingle();
         if (subscriptionError) throw subscriptionError;
@@ -174,11 +175,26 @@ Deno.serve(async (req) => {
             },
         };
 
-        // Add 7-day trial for Pro tier
-        if (tier === 'pro') {
+        // First Pro checkout gets a 7-day trial. Repeat subscribe after cancel
+        // must not (trial_used_at, or a prior Stripe trial on this customer).
+        let priorStripeSubscriptions: Array<{ trial_end?: number | null }> = [];
+        if (tier === 'pro' && !subscription?.trial_used_at) {
+            try {
+                const listed = await stripe.subscriptions.list({
+                    customer: customerId,
+                    status: 'all',
+                    limit: 20,
+                });
+                priorStripeSubscriptions = listed.data;
+            } catch (listError) {
+                console.error('Could not list prior Stripe subscriptions; using trial_used_at only', listError);
+            }
+        }
+        const trialDays = proTrialPeriodDays(tier, subscription?.trial_used_at, priorStripeSubscriptions);
+        if (trialDays != null) {
             sessionParams.subscription_data = {
                 ...sessionParams.subscription_data,
-                trial_period_days: 7,
+                trial_period_days: trialDays,
             };
         }
 

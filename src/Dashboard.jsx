@@ -2392,7 +2392,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onProjectPreferencesChange={hubProjectPreferencesChange}
         onLockDocument={hubToggleDocumentLock}
         onSettings={() => setShowAccountSettings(true)}
-        onSignOut={signOut}
+        onSignOut={() => {
+          void Promise.resolve(signOut()).catch((err) => {
+            showToast(err?.message || 'Could not sign out.', 'error');
+          });
+        }}
         onSignIn={onShowAuthModal}
       />
       <CreateProjectModal
