@@ -68,6 +68,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
+import { getLineEndpoints } from './svgBoundingBox.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -2327,10 +2328,15 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
 
-    const x1 = fabricObj.x1 || 0;
-    const y1 = fabricObj.y1 || 0;
-    const x2 = fabricObj.x2 || 0;
-    const y2 = fabricObj.y2 || 0;
+    // Fabric lines store center-relative x1..y2. World endpoints come from
+    // getLineEndpoints (left+width/2 + x1). Using raw x1 here exported the
+    // center-relative pair as /L — and after a group left/top offset that
+    // is a double-miss, not a double-offset.
+    const ep = getLineEndpoints(fabricObj);
+    const x1 = Number(ep.x1) || 0;
+    const y1 = Number(ep.y1) || 0;
+    const x2 = Number(ep.x2) || 0;
+    const y2 = Number(ep.y2) || 0;
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = Math.min(x1, x2);
@@ -3100,10 +3106,15 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
 const drawFlattenedLine = (page, obj, pageHeight) => {
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
-  const x1 = getObjNumber(obj, 'x1');
-  const y1 = getObjNumber(obj, 'y1');
-  const x2 = getObjNumber(obj, 'x2');
-  const y2 = getObjNumber(obj, 'y2');
+  // Same contract as createLineAnnotation / group flatten: world from
+  // getLineEndpoints so a parent left/top offset is applied once. Callout
+  // leaders pass world x1..y2 with no left/width — center is 0 and this
+  // is a no-op.
+  const ep = getLineEndpoints(obj);
+  const x1 = Number.isFinite(ep.x1) ? ep.x1 : getObjNumber(obj, 'x1');
+  const y1 = Number.isFinite(ep.y1) ? ep.y1 : getObjNumber(obj, 'y1');
+  const x2 = Number.isFinite(ep.x2) ? ep.x2 : getObjNumber(obj, 'x2');
+  const y2 = Number.isFinite(ep.y2) ? ep.y2 : getObjNumber(obj, 'y2');
   // UX (2026-07-17, line style): honor a stored strokeDashArray so dashed /
   // dotted lines (and callout leader pieces, which pass the shared callout
   // dash) print with their on-screen pattern instead of flattening solid.
