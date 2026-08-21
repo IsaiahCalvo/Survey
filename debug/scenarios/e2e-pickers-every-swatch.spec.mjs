@@ -1,20 +1,35 @@
 import { test, expect } from '@playwright/test';
-import {
-  COLOR_PICKER_PRESETS,
-  FONT_FAMILIES,
-  FONT_SIZE_PRESETS,
-  TEXT_FORMAT_TOGGLES,
-  TEXT_ALIGN_HORIZONTAL,
-  TEXT_ALIGN_VERTICAL,
-  isSingleNameFontFamily,
-} from '../../src/utils/annotationStyleCatalog.js';
 
 // Per-swatch / per-font / per-format live proof. Cluster rows (C-01, T-03…T-07)
 // are not enough: those click catalogs and assert the last value. This file
 // asserts computed / stored style after EVERY discrete value.
 //
+// Lists must stay byte-identical to src/utils/annotationStyleCatalog.js.
+// Playwright cannot named-import that ESM file (it loads as CJS here).
 // Leftover-18 parked. Compile-hidden Note / Link / text-highlight / Forms
 // pickers are not invented. Context menu has no color/font picker.
+
+const COLOR_PICKER_PRESETS = [
+  'transparent',
+  '#FF0000', '#FF0080', '#FF00FF', '#8000FF', '#0000FF', '#0080FF', '#00FFFF',
+  '#00FF80', '#00FF00', '#80FF00', '#FFFF00', '#FF8000', '#FFFFFF', '#808080', '#000000',
+];
+const FONT_FAMILIES = [
+  'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana',
+];
+const FONT_SIZE_PRESETS = [
+  8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72,
+];
+const TEXT_FORMAT_TOGGLES = ['bold', 'italic', 'underline', 'strike'];
+const TEXT_ALIGN_HORIZONTAL = ['left', 'center', 'right'];
+const TEXT_ALIGN_VERTICAL = ['top', 'middle', 'bottom'];
+
+function isSingleNameFontFamily(raw) {
+  return typeof raw === 'string'
+    && raw.length > 0
+    && !raw.includes(',')
+    && !/sans-serif|serif|monospace|system-ui|ui-sans|ui-serif|ui-monospace|-apple-system|BlinkMacSystemFont/i.test(raw);
+}
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const SOLID_SWATCHES = COLOR_PICKER_PRESETS.filter((c) => c !== 'transparent');
