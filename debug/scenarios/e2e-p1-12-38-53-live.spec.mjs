@@ -190,10 +190,18 @@ test('P1-12 excel: history is undoable; unknown reasons no-op; annotation stays 
 
   await pushHistory(page, '');
   const afterEmpty = await historyState(page);
-  expect(afterEmpty.topUndoReason === 'unspecified' || afterEmpty.topUndoReason === '').toBeTruthy();
+  // Empty normalizes to unspecified; same-state push is skipped as duplicate,
+  // so the ineligible zoom:fit row can remain on top. Either way Undo no-ops.
+  expect(
+    afterEmpty.topUndoReason === 'unspecified'
+    || afterEmpty.topUndoReason === ''
+    || afterEmpty.topUndoReason === 'zoom:fit',
+  ).toBeTruthy();
+  expect(['excel:auto-sync', 'excel:manual-sync', 'excel:']).not.toContain(afterEmpty.topUndoReason);
   await clickToolbarUndo(page);
   const afterEmptyUndo = await historyState(page);
   expect(afterEmptyUndo.undoDepth).toBe(afterEmpty.undoDepth);
+  expect(afterEmptyUndo.topUndoReason).toBe(afterEmpty.topUndoReason);
   expect(afterEmptyUndo.undoDepth).toBeGreaterThan(afterAnnotationUndo.undoDepth);
 
   console.log('P1_12_PROOF', JSON.stringify({
