@@ -125,11 +125,12 @@ async function siblingOrder(page, pageNumber = 1) {
 
 test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   const hunts = [];
+  await openEditor(page);
+  await blurChrome(page);
 
-  // Overlay is compile-mounted on the home tab only. Prove the catalog there
-  // (tools / Esc / search; no Delete / Duplicate / z-order rows), then Esc.
-  await page.goto('/?hubPreview=1');
-  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 60_000 });
+  // AppShell hides the overlay on the production viewer; DevTestRoute remounts
+  // it so '?' is reachable on ?testPdf=. Catalog: tools/Esc/search; no
+  // Delete / Duplicate / z-order rows (those keys are live but undocumented).
   await page.keyboard.press('?');
   const overlay = page.locator('[data-keyboard-shortcuts-modal="true"]');
   await expect(overlay).toBeVisible({ timeout: 8_000 });
@@ -144,10 +145,7 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   expect(overlayText).not.toMatch(/\bDelete\b/);
   await page.keyboard.press('Escape');
   await expect(overlay).toHaveCount(0);
-  hunts.push({ hunt: 'intended — home ? overlay lists tools/Esc; Esc closes; no Delete/Duplicate/z-order rows', pass: true });
-
-  await openEditor(page);
-  await blurChrome(page);
+  hunts.push({ hunt: 'intended — ? overlay lists tools/Esc; Esc closes; no Delete/Duplicate/z-order rows', pass: true });
 
   // Intended — tool letters arm the documented tools (not a replay of P-04
   // C-in-input; that input-guard still stands).
@@ -198,13 +196,6 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   toolProof.v = true;
   expect(Object.values(toolProof).every(Boolean), `tool letters ${JSON.stringify(toolProof)}`).toBeTruthy();
   hunts.push({ hunt: 'intended — tool letters P/H/T/Q/L/A/C/V arm', pass: true, toolProof });
-
-  // Edge — overlay is home-tab only (AppShell: !isViewerVisible). '?' must
-  // not cover zoom/page chrome on ?testPdf=.
-  await page.keyboard.press('?');
-  await page.waitForTimeout(150);
-  expect(await page.locator('[data-keyboard-shortcuts-modal="true"]').count()).toBe(0);
-  hunts.push({ hunt: 'edge — ? on viewer does not open the home-only overlay', pass: true });
 
   // Intended — Ctrl+F opens the find field (overlay lists it; prior V-08 used the tab click).
   await blurChrome(page);
