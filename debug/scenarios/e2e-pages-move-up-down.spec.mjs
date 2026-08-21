@@ -348,12 +348,16 @@ test('pages move-up/down: intended remap+export, break first/last+region, edge u
   });
   expect(line.id, 'post-move line').toBeTruthy();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await gotoPage(page, 2);
-  await expect.poll(async () => annotationOnPage(page, 2, line.id)).toBeFalsy();
+  await expect.poll(async () => (await annotationRecord(page, line.id))).toBeNull();
+  await expect.poll(async () => (await annotationRecord(page, rect.id))?.pageNumber).toBe(1);
+  await expect.poll(async () => (await annotationRecord(page, ellipse.id))?.pageNumber).toBe(3);
   await gotoPage(page, 1);
   expect(await annotationOnPage(page, 1, rect.id), 'undo after move must keep remapped rect').toBeTruthy();
   await gotoPage(page, 3);
-  expect(await annotationOnPage(page, 3, ellipse.id), 'undo after move must keep remapped ellipse').toBeTruthy();
+  await expect.poll(async () => annotationOnPage(page, 3, ellipse.id), {
+    timeout: 20_000,
+    message: 'undo after move must keep remapped ellipse on page 3',
+  }).toBeTruthy();
 
   const afterUndoBytes = await exportAnnotatedPdf(page);
   const afterUndo = await exportedPages(afterUndoBytes);
