@@ -1,0 +1,349 @@
+# Completion audit — 2026-08-21 (evidence re-pass)
+
+**Worktree:** `nifty-elion-773074`  
+**Does not mark the audit goal complete.** Uncertain = not achieved.
+
+**Restore (2026-08-21 later):** this file and the sibling audit artifacts were gone from disk (folder held only `fix-logs/eraser-timing-budget.md`). Recovered the last complete snapshot from git `995e07b9` (`cursor/cloud-agent-1787324283091-rl3w7`; not on this branch HEAD). No new findings. Folded in the later eraser timing diagnosis below.
+
+**Sources used:** `RECONCILE.md` (on disk); `COMPLETION-AUDIT.md` (prior pass); restored exact `00fda232` copies of `ISSUE-INVENTORY.md`, `REPORT.md`, `FIX-LOG.md`, `known-bugs-deep-dive.json` (now on disk). Also `E2E-STATUS.md`, `E2E-STATUS-CHROME.md`, `E2E-UNLISTED.md`, `FEATURE-MATRIX.md`, `E2E-NEW-ISSUES.md`, `E2E-NEW-ISSUES-CHROME.md`, on-disk `fix-logs/*.md`.
+
+**This-pass disk recheck (later 2026-08-21):** HubPreview / DevTestRoute / Dashboard fail-closed still on disk. A-01 guest chrome stays proven; live Turnstile still host-blocked. P1-45 / P-01 / UL-46 citations still live. Extra unblocked leftovers closed this pass: mobile `FONT_FAMILIES` contract, P2-35(b) tool/presence `requestClose` restore, ReSignInModal Forgot password wired to `AuthContext.resetPassword`. Official `npm test` main files passed; isolated `partialEraserComplexity` wall-clock leftover is **host noise** (not an audit-ID reopen; budget unchanged). See `fix-logs/completion-audit-current.md` and `fix-logs/eraser-timing-budget.md`.
+
+**Canonical original IDs:** **96** = KB-1 + KB-2 + P1-01…P1-55 + P2-01…P2-39. Headline “103” was pre-fold. `known-bugs-deep-dive.json` adds no extra IDs (KB-1 / KB-2 only).
+
+**This-pass parse (restored `00fda232` bytes):** REPORT.md body = 2 known-bug sections + 55 numbered Pass-1 findings + 39 `P2-01`…`P2-39` labels = **96 unique defect texts**. Headline line still says “103 verified findings (58 pass 1 + 45 pass 2)”. JSON length = 2. See **§7** and `fix-logs/report-103-reconcile.md`. **No new IDs closed this pass.** Goal stays open.
+
+**Legend:** **proven** = live `file:line` and/or spec/receipt covering intended + break + edge. **weak** = symbol present but leftover still matches the original defect. **missing** = symbol gone. **host-blocked** = remaining intended path needs Stripe / MSAL / captcha / SQL apply / lease / Capacitor / native dialog / `file.id` (do not retry).
+
+---
+
+## Counts
+
+### Original 96
+
+| Verdict | Count | IDs |
+|---|---|---|
+| **proven** | **96** | all original IDs |
+| **weak** | **0** | — |
+| **missing** | **0** | — |
+| **host-blocked** | **0** | apply leftovers listed under §5 / host list, not as vanished IDs |
+
+### E2E catalog (59 matrix + 46 UL + 25 new-issue IDs = 130)
+
+| Verdict | Count |
+|---|---|
+| **proven** (no remaining host path) | **112** |
+| **weak** | **0** |
+| **missing** | **0** |
+| **host-blocked** (remaining intended path) | **18** |
+
+Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` (cloud persist), `X-06` (host writeback), `U-04` (cloud usage), `A-01` (Turnstile), `A-02` (live MSAL), `A-03` (email delivery), `A-05` (Stripe click), `A-06` (two-client roster), `UL-03` (native pick/cancel), `UL-13` (profile persist), `UL-15`, `UL-16`, `UL-20`, `UL-21`, `UL-22`, `UL-24` (inbox send), `UL-45`. **Moved this pass:** `UL-46` native styled select → **proven** on iPhone 17 Simulator (`fix-logs/e2e-capacitor-ul46.md`). Prior: `P-01` native Capacitor → **proven** (`fix-logs/e2e-local-hosts.md`); handle-swipe leftover now **proven** (same receipt — test miss, not a sheet-motion bug). `E2E-CHROME-03` → **proven** on Vite 5173. SQL **apply** leftovers `P2-01`/`P2-03`/`P2-05`/`P2-10`/`P2-21`/`P2-23`/`P2-28`/`P2-29`/`E2E-CHROME-01` stay **proven** in-tree.
+
+**This-pass host recheck:** personal auto-login — cloud writes skipped (UL-13 / X-05 persist / X-06 writeback / U-04 cloud usage / A-03 inbox). See `fix-logs/e2e-host-leftovers-recheck.md`.
+
+**This-pass restore:** P1-45 group-delete undo. Confirm/count already existed; delete now checkpoints a scoped `bookmark:` history slice so toolbar Undo/Redo restore the subtree. Proof: `tests/bookmarkAtomicEdit.test.mjs` + `tests/pdfViewerUndoOneLiners.test.mjs` **20 / 20**; live wave4 P1-45 **1 / 1** on Vite 5173. See `fix-logs/p1-45-undo.md`.
+
+**Lease:** transcript + `.planning/` scan (725 files) found **no** complete existing-account `email\|userId\|tier\|status` tuple. Official `assign` also requires the credentials file for passwords (`resolveAccountBundle`) — stopped, did not read `.bot-credentials.json` / `.env*`. A-06 / UL-45 stays host-blocked. See `fix-logs/e2e-local-hosts.md`.
+
+**Suite slice:** main `npm test` files passed (including `tests/reSignInReset.test.mjs` **3 / 3**, `tests/annotationStyleUiContract.test.mjs`, `tests/mobileSheetCloseAnimation.test.mjs`, `tests/pdfViewerStaleIdCommits.test.mjs`). Official `npm test` **exit 1** on isolated `tests/partialEraserComplexity.test.mjs` (`p95CommitMs` / `maxCommitMs` vs 75 / 250). Later diagnose: **host noise**, not an eraser-engine regression — isolated `node --test` passed **3 / 3**; one loaded child run `maxCommitMs` **534** vs 250 with `maxCommitCpuMs` **80**. Budget left as-is. See `fix-logs/eraser-timing-budget.md`. Invariants re-grepped this pass.
+
+---
+
+## 1. Original 96 IDs
+
+### Known bugs
+
+| ID | Title | Verdict | Proof |
+|---|---|---|---|
+| KB-1 | Eraser not ink-only / not topmost | **proven** | `src/utils/eraserPolicy.js:64-66` `getEraserOperation` → `'skip'` when not `isPartialEraseEligible`. Live D-03 entire topmost + D-04 partial. Leftover: engine `erasePageAnnotations({mode:'entire'})` is **intentional all-hits**; live canvas planner is topmost-only. No live `src/` bypass. See `fix-logs/eraser-policy-entire-mode.md`. |
+| KB-2 | Z-order does not persist | **proven** | `src/utils/annotationZOrder.js:124` `resolveAnnotationIndexById`; `annotationDocStore.js` `docToByPage`; `tests/annotationZOrder.test.mjs` |
+
+### P1-01 … P1-55
+
+| ID | Title | Verdict | Proof |
+|---|---|---|---|
+| P1-01 | Line/arrow export+print position | **proven** | `tests/lineArrowPersistence.test.mjs` |
+| P1-02 | Arrowheads dropped on export | **proven** | same + `src/utils/legacyGroupArrow.js` `buildLegacyArrowGroupTransform` |
+| P1-03 | Cloud rect borders lost on export | **proven** | export cluster + live S-01 Cloud |
+| P1-04 | Printed shapes use pre-resize size | **proven** | `tests/lineArrowPersistence.test.mjs` + `tests/printFlattenOnPage.test.mjs` |
+| P1-05 | Multi-select rotate/resize displaces lines | **proven** | `src/hooks/useSVGInteraction.js` shift/marquee; live E-01/E-02 |
+| P1-06 | Transform commit by stale index | **proven** | `annotationZOrder.js:124` `resolveAnnotationIndexById` |
+| P1-07 | Text-edit commit by stale index | **proven** | `TextEditOverlay.jsx` `replaceTextInPageJson` `findIndex` by `targetId`; caller passes `originalRef.current`. `tests/pdfViewerStaleIdCommits.test.mjs` |
+| P1-08 | Undo retargets selection | **proven** | `PDFViewer.jsx` `setPendingSvgSelection` after `restoreHistoryState` |
+| P1-09 | Redo resurrects old snapshot | **proven** | `PDFViewer.jsx` `redoHistoryRef` clear in `pushLocalAnnotationHistoryAction` |
+| P1-10 | Own undo wipes teammate edits | **proven** | `src/utils/crdtHistoryScope.js` `scopeHistoryStateForCrdtRestore` |
+| P1-11 | Own undo reverts teammate same-object | **proven** | `src/utils/annotationLocalHistory.js` `mergeAnnotationHistoryUpdate` |
+| P1-12 | Excel auto-sync jams undo | **proven** | `PDFViewer.jsx` `addHistoryCheckpoint('excel:auto-sync', …)` |
+| P1-13 | First undo after import deletes imports | **proven** | `PDFViewer.jsx` `previewBaselineByPageRef` delete after import skip-save |
+| P1-14 | Cross-page counter renumber never saves | **proven** | `src/utils/counterNumbering.js:25` `renumberCounters`; live S-05 |
+| P1-15 | Callout text clobbers teammate | **proven** | `PDFViewer.jsx` callout `onEditCommit` writes text/box only |
+| P1-16 | Reopen hides all survey markers | **proven** | `PDFViewer.jsx` `matchesSelectedModule` (no early-return on null module) |
+| P1-17 | Page ops revert concurrent edits | **proven** | `src/utils/pageAnnotationReindex.js` `mergeLivePagePresentation` |
+| P1-18 | clipboardPage never remapped | **proven** | `pageAnnotationReindex.js` `remapClipboardPage` |
+| P1-19 | Whole-PDF upsert no version check | **proven** | `documentVersionCheck.js` `DocumentVersionConflictError`; `AppShell.jsx` `expectedUpdatedAt` |
+| P1-20 | Cmd+Shift+D dumps debug files | **proven** | `PDFViewer.jsx` DEV-only; `shapeBleedDiagnostics.js` needs `__shapeSpyOn` |
+| P1-21 | Tool switch drops in-flight SVG | **proven** | `SVGAnnotationLayer.jsx` `commitShapeCreationRef` |
+| P1-22 | Erase approval only planned callouts | **proven** | `eraseApprovalCandidates.js` `buildBulkDeletePlan` |
+| P1-23 | Imported markups have no authorId | **proven** | `pdfAnnotationImporter.js` `stampImportedAnnotationAuthor` |
+| P1-24 | Survey-marker move fail-open | **proven** | `PDFViewer.jsx` `canModifySurveyMarker` |
+| P1-25 | Legacy group-arrow ignore rotate/scale | **proven** | `legacyGroupArrow.js` `isLegacyGroupArrow` / `buildLegacyArrowGroupTransform` |
+| P1-26 | Dblclick no-op on legacy group arrows | **proven** | `PDFViewer.jsx` imports `isLegacyGroupArrow` into dblclick / bbox strip |
+| P1-27 | Circle missing from ellipse toolbar | **proven** | `PDFViewer.jsx` circle fill/stroke gates |
+| P1-28 | Blank text leaves ghost | **proven** | `textEditCommit.js` + `TextEditOverlay` splice |
+| P1-29 | Shift+marquee / Alt-subtract callouts | **proven** | `useSVGInteraction.js` `shiftKey` / `altHeld` |
+| P1-30 | Remote-delete Restore? toast dead | **proven** | `remoteDeleteInteraction.js`; YDocProvider `Restore?` toast |
+| P1-31 | SHX transform-lock shows handles | **proven** | `SVGAnnotationLayer.jsx` + `tests/selectionHandleVisibility.test.mjs` |
+| P1-32 | Rotation nudges lack interactionId | **proven** | `RotationInputField.jsx` `rotation-input:` |
+| P1-33 | Context-menu z-order after collab splice | **proven** | `resolveAnnotationIndexById` |
+| P1-34 | Cmd+C/X single-shape only | **proven** | `SVGAnnotationLayer.jsx` `selectedIds` |
+| P1-35 | Paste offset hardcodes 612/792 | **proven** | `PDFViewer.jsx` `pageSizesRef` |
+| P1-36 | Ownable-import undo after author stamp | **proven** | `annotationLocalHistory.js` `isOwnAnnotation` |
+| P1-37 | Font color opacity slider dead | **proven** | `AppShell.jsx` `showOpacity={false}` + `firstPreset="none"` |
+| P1-38 | Match Fill vs translucent | **proven** | `CompactColorPicker.jsx` `matchFillColor` / `firstPreset.kind === 'match'` |
+| P1-39 | Hex accepts invalid colors | **proven** | `annotationStyleCatalog.js` `normalizeHexColor` / `isValidHexColor` |
+| P1-40 / P1-41 | Cmd+0/1/2 force Manual | **proven** | `PDFViewer.jsx` `handleZoomModeSelectRef` → FIT_PAGE / WIDTH / HEIGHT |
+| P1-42 | Thumbnails never use IndexedDB cache | **proven** | `thumbnailStore.js`; live V-06 |
+| P1-43 | Space-filter drag moves hidden pages | **proven** | `PagesPanel.jsx` `shouldShowPage` filter before drag |
+| P1-44 | New bookmarks jump to top | **proven** | `bookmarkEditUtils.js` `prepareBookmarkCreate` |
+| P1-45 | Delete group nukes nested, no count/undo | **proven** | Count/confirm: `bookmarkEditUtils.js:77-89`. Undo: `planBookmarkDelete` + `PDFViewer.jsx:12747-12759` `bookmark:delete` slice; `restoreHistoryState` `:10601`; `historyHelpers.js:123` `bookmark:` gate. Live wave4 dismiss / accept / undo+redo. No 30-day trash row (session undo is the leftover close). |
+| P1-46 | Names/bookmarks/spaces localStorage-only | **proven** | `sidebarPersistence.js` `mergeSidebarWrite` / `applyRemoteSidebarMeta`. Guest / no-Y.Doc still localStorage-only. |
+| P1-47 | Bookmark reorder O(n²) | **proven** | `BookmarksPanel.jsx` dnd-kit; live V-07 |
+| P1-48 | Rejected rename keeps unsaved name | **proven** | **Restored this pass.** Desktop `commitName` `BookmarksPanel.jsx:122-141` calls `prepareAtomicBookmarkEdit`; clash/empty toast + revert. Mobile path already used the helper (`:1143`). `tests/bookmarkAtomicEdit.test.mjs` intended + break + edge. |
+| P1-49 | Search cache ignores reorder/rotate | **proven** | `PDFViewer.jsx` `pageMutationRevision` in search key |
+| P1-50 | Spaces whole-array LWW | **proven** | `annotationDocStore.js` `spacesById` |
+| P1-51 | Empty-space activation blanks canvas | **proven** | `PDFViewer.jsx` `handleSetActiveSpace` + `spaceRegionOrphans.js` |
+| P1-52 | Remote region delete orphans stamps | **proven** | `spaceRegionOrphans.js` strips orphan `regionId` |
+| P1-53 | Sync pill “Offline” on healthy save | **proven** | `syncStatusViewModel.js` idle+empty queue → `synced` |
+| P1-54 | Black-thumbnail guard dead | **proven** | `PagesPanel.jsx` `opaqueRatio` / `darkOpaqueRatio` |
+| P1-55 | Dual-write comments claim live | **proven** | `useDualWriteQueue.js` / `useTabPendingDualWrite.js` (producers removed) |
+
+### P2-01 … P2-39
+
+| ID | Title | Verdict | Proof |
+|---|---|---|---|
+| P2-01 | Free-tier invite paywall client-only | **proven** | `send-invite-email/handler.js:194` `invite_blocked_free_tier`; SQL `kal31_guard_invite_creator_tier`. **Apply leftover** host-blocked. |
+| P2-02 | Offline retry queue never fed | **proven** | `annotationOutboxRetryView.js` `summarizeOutboxRetry`; live UL-44 |
+| P2-03 | Account deletion destroys collaborator work | **proven** | `delete-account/index.ts:109` `ACCOUNT_HAS_COLLABORATORS`; `20260820020000_…`. **Apply leftover.** |
+| P2-04 | OneDrive save silent overwrite | **proven** | `PDFViewer.jsx` `handleOneDriveSave` + `TemplateOverwriteWarningModal` |
+| P2-05 | Revoke invite does not drop access | **proven** | `20260820010000_…` `kal31_revoke_document_invite` `DELETE FROM document_collaborators`. **Apply leftover.** |
+| P2-06 | Any member can open Manage Team | **proven** | `ManageTeamModal.jsx` owner gates + `src/home/lastOwnerGuard.js:9` |
+| P2-07 | Promoting to Owner never unlocks Manage Access | **proven** | `AccessManagementModal.jsx` + `lastOwnerGuard.js:9` `lastOwnerBlockReason`; `tests/chromeE2EContracts.test.mjs` |
+| P2-08 | Connect Google is sign-in not link | **proven** | `AuthContext.jsx:695` `linkGoogleIdentity` |
+| P2-09 | Manual Sync success on total fail | **proven** | `excelLiveSyncWriteStatus.js` |
+| P2-10 | Duplicate Survey Markers per Excel row | **proven** | `20260820230000_…` `excel_sync_state_identity_fingerprint_uidx`. **Apply leftover.** |
+| P2-11 | Desktop quit 5s hang | **proven** | `quitCoordinator.cjs:7` `createQuitCoordinator`. **Zero** `checkAndQuit` in `src/`. |
+| P2-12 | Access-removed banner lost after re-sign-in | **proven** | `collabBannerState.js` `storageStateAfterResignIn` |
+| P2-13 | Microsoft sign-in on iOS/Android dead end | **proven** | `microsoftOAuthRouting.js` `isCapacitorMicrosoftConnectHidden`. Deep-link OAuth leftover. |
+| P2-14 | Desktop MS connect clobbers web tokens | **proven** | `AuthContext.jsx` `file://` OAuth + `oauthWindowPolicy.cjs` |
+| P2-15 | Delete-account button permanently disabled | **proven** | `accountPlatform.js` `ACCOUNT_DELETION_CONFIRMATION = 'DELETE'` |
+| P2-16 | Restore? toast still dead | **proven** | same as P1-30 |
+| P2-17 | Presence idle timeout 2 min | **proven** | `presenceRoster.js` (10 min + heartbeat) |
+| P2-18 | Re-sign-in accepts different account | **proven** | `reSignInAccount.js` `isSameReSignInUser` |
+| P2-19 | “Live sync real-time” copy | **proven** | `SurveySpacesRail.jsx` + `excelWritebackGate.js` `EXCEL_AUTOMATIC_WRITEBACK_ENABLED` |
+| P2-20 | Live Sync connect double-fire | **proven** | `PDFViewer.jsx` live-sync effect `oneDriveFileId` / session `fileId` |
+| P2-21 | Excel `create` skips apply whitelist | **proven** | same `20260820230000` create-branch whitelist. **Apply leftover.** |
+| P2-22 | OneDrive picker never refreshes token | **proven** | `OneDriveFolderBrowser.jsx` `ensureFreshToken` |
+| P2-23 | Two owners can leave document ownerless | **proven** | `20260820220000_…` `FOR UPDATE`. **Apply leftover.** |
+| P2-24 | Stale-tab MS wipe | **proven** | `MSGraphContext.jsx` `hardBlockedUntil` / `cooldownUntil` |
+| P2-25 | Desktop MS account switch silent refresh | **proven** | same + `msalAuthMain.js` |
+| P2-26 | Network blip treated as broken MS | **proven** | `MSGraphContext.jsx` transient retry |
+| P2-27 | Billing emails return-to google.com | **proven** | `billingReturn.ts` `https://surveytool.app/` |
+| P2-28 | Repeat 7-day Pro trials | **proven** | `billingTrial.ts` `proTrialPeriodDays`. **Apply leftover.** |
+| P2-29 | Stripe webhook emails not idempotent | **proven** | `stripeEventIdempotency.ts` `withStripeEventIdempotency`. **Apply leftover.** Also E2E-CHROME-01. |
+| P2-30 | Half-failed deletion strands empty live account | **proven** | `delete-account` `DATA_REMOVED_RETRY`; `accountDeletion.ts` `isDataRemovedDeletionError` |
+| P2-31 | Profile save reports total failure | **proven** | `accountPlatform.js` `describeProfileSaveOutcome` |
+| P2-32 | Google-only Change Password form | **proven** | `AccountSettings.jsx` “Set a password” / `canUnlinkProvider` |
+| P2-33 | Invite → sign-in abandons invite | **proven** | `pendingInviteResume.js` `resumePendingInviteAfterAuth`; `main.jsx` `PendingInviteResumeGate` |
+| P2-34 | Shortcut overlay lies + nav + `B` | **proven** | `KeyboardShortcutsOverlay.jsx` Home/End; live UL-02 `B` |
+| P2-35 | Mobile sheets race / hard-hide / touchcancel | **proven** | `PDFSidebar.jsx` `onTouchCancel` + hook restore |
+| P2-36 | Second Electron instance races MS cache | **proven** | `electron-main.js` `app.requestSingleInstanceLock()` |
+| P2-37 | Export Infinity/NaN | **proven** | export cluster + `Number.isFinite` guards |
+| P2-38 | `?billing=success` never read | **proven** | `billingReturn.js:4` `readBillingQuery`; `ToastHost.jsx` `consumeBillingQueryOnBoot` |
+| P2-39 | Save Log hardcoded maintainer path | **proven** | `surveyDiagPaths.js` `surveyTestLogsDir` / `surveyGlobalLogPath` |
+
+---
+
+## 2. E2E-STATUS / UNLISTED / new-issue IDs
+
+### Matrix (59)
+
+| ID | Verdict | Proof |
+|---|---|---|
+| V-01…V-09 | **proven** | `E2E-STATUS.md` live window receipts |
+| D-01…D-05 | **proven** | live stroke / tap / entire / partial / presets |
+| S-01…S-05 | **proven** | live drag; S-01 Cloud; S-04 6 heads; S-05 pin |
+| T-01…T-07 | **proven** | live overlay / fonts / 18 sizes / B/I/U/S / 9-cell / opaque font color |
+| C-01…C-06 | **proven** | live swatches / hex / 55%+slider / HSV leave-reenter / fill-stroke / Match Fill |
+| E-01…E-06 | **proven** | live resize / rotate / move / delete / undo / UL-27–31 |
+| X-01 | **host-blocked** | outbox view-model proven; live identity-churn needs a signed-in identity change |
+| X-02…X-04 | **proven** | live export / Cmd+P flatten / `kal412` import |
+| X-05 | **proven** (widgets) / **host-blocked** (cloud persist) | 8 widgets live; persist needs `file.id` |
+| X-06 | **proven** (xlsx export) / **host-blocked** (host writeback) | `e2e-helper-only-live.spec.mjs` |
+| U-01…U-03 | **proven** | live stamp / spaces / hubPreview templates |
+| U-04 | **proven** (hubPreview) / **host-blocked** (cloud usage) | `e2e-u04-archive.spec.mjs` |
+| A-01 | **proven** (guest chrome + fail-closed mocks) / **host-blocked** (Turnstile) | `e2e-helper-only-live.spec.mjs`. `HubPreview.jsx` / `DevTestRoute.jsx` `previewBlocked` — no silent sign-in success. Live Turnstile completion still blocked. |
+| A-02 | **proven** (Connect chrome) / **host-blocked** (MSAL) | hubPreview fail-closed |
+| A-03 | **proven** (mint + invalid Send) / **host-blocked** (inbox) | `e2e-signed-in-leftovers.spec.mjs` |
+| A-04 | **proven** | hubPreview profile / password / DELETE / sign out |
+| A-05 | **proven** (catalog) / **host-blocked** (Stripe click) | cards + Contact sales |
+| A-06 | **proven** (self + same-user two-tab) / **host-blocked** (roster) | `e2e-two-tab-presence.spec.mjs` — still **just you**. Lease path stopped (no in-repo tuples). |
+| A-07 | **proven** | `?testPdf=` jump + `e2e-named-revision-restore.spec.mjs` |
+| P-01 | **proven** (390×844 + native Simulator) | finger-follow + touchcancel on proxy; iPhone 17: Pages open, <82px spring-back, X dismiss, safe-area, **handle-swipe ≥82px dismiss**. Prior swipe miss was `nativePinchE2E` overlay + off-handle start. `fix-logs/e2e-local-hosts.md`, `fix-logs/e2e-capacitor-ul46.md` |
+| P-02 | **proven** | catalog |
+| P-03 | **proven** (IPC) / **host-blocked** (native pick/cancel) | `e2e-electron-file-open.spec.mjs`; `fix-logs/electron-desktop.md` |
+| P-04 | **proven** | live arm including C |
+
+### Unlisted (46)
+
+| ID | Verdict | Proof |
+|---|---|---|
+| UL-01…UL-02 | **proven** | live Close `aria-label` + live `B` width |
+| UL-03 | **proven** (IPC) / **host-blocked** (native drive) | Panel opened on 5175; pick/cancel unproven (AX + loginwindow). `fix-logs/electron-desktop.md` |
+| UL-04…UL-12 | **proven** | live + Node |
+| UL-13 | **proven** (empty-name) / **host-blocked** (cloud persist) | `e2e-helper-only-live.spec.mjs` |
+| UL-14 | **proven** | Node email disabled |
+| UL-15…UL-18 | **proven** (chrome) / **host-blocked** (captcha / wipe / meter) | live mismatch / DELETE / Sign out / Usage |
+| UL-19 | **proven** | Node billing toggle |
+| UL-20…UL-22 | **proven** (chrome) / **host-blocked** (Stripe / MSAL / Google) | Start trial not clicked; Connect fail-closed |
+| UL-23 | **proven** | Node Viewer/Editor/Owner (no Commenter) |
+| UL-24 | **proven** (mint + invalid Send) / **host-blocked** (inbox) | signed-in Copy link |
+| UL-25…UL-39 | **proven** | Node + live catalog |
+| UL-40…UL-43 | **proven** | `e2e-print-panel.spec.mjs` 1/1; flag restored `false` |
+| UL-44 | **proven** | `e2e-outbox-retry.spec.mjs` 1/1 |
+| UL-45 | **proven** (self / same-user) / **host-blocked** (roster) | no in-repo lease tuples |
+| UL-46 | **proven** (390×844 + native Simulator) | Border style + Width selects on iPhone 17: open / pick / commit, dismiss-no-change, all three stroke styles. Prior “did not open” was More-rail + `nativePinchE2E` overlay stealing menu hits. `fix-logs/e2e-capacitor-ul46.md` |
+
+### E2E new-issue IDs (25)
+
+| ID | Verdict | Notes |
+|---|---|---|
+| E2E-W1-01…W1-04, W2-01, W2-04, W2-05, W3-01, W4-01, W5-01 | **proven** | mapped / helpers / live |
+| E2E-W2-02 / W2-03 / W4-02 | **proven** | live spectrum / resize / CDP pinch. Native Capacitor pinch now **proven** on iPhone 17 (`AppNativePinch` intended + rapid-stress). Electron native pinch leftover only. |
+| E2E-W4-03 | **proven** | local History + named restore spec |
+| E2E-HUB-01 / E2E-U04-01 / E2E-UL-01…04 | **proven** | product fixes landed |
+| E2E-CHROME-01 | **proven** (code) | = P2-29. Apply leftover. |
+| E2E-CHROME-02 | **proven** | this window; native Capacitor leftover |
+| E2E-CHROME-03 | **proven** | Vite intended+break+edge (`e2e-chrome-03-vite.spec.mjs`). Host leftovers stay on A-02 / X-06 / A-05. |
+| E2E-CHROME-04 | **proven** | `onTouchCancel` wired |
+| E2E-CATALOG-01 | **proven** | Document More menu trigger inside dismiss barrier |
+
+---
+
+## 3. Objective requirements
+
+| Requirement | Coverage | Kind |
+|---|---|---|
+| All 16 color swatches | `COLOR_PICKER_PRESETS`; `tests/annotationStyleUiContract.test.mjs`; live C-01 / C-05 | proven |
+| All 6 fonts (single name) | `FONT_FAMILIES` `annotationStyleCatalog.js:34`; live T-03 | proven |
+| All 18 font sizes | `FONT_SIZE_PRESETS`; live all 18 | proven. Custom clamp 6–200 helper (no desktop numeric field). |
+| Bold / italic / underline / strike | live T-05 | proven |
+| Alignment 3×3 | live 9 cells | proven |
+| Hex / invalid colors | `normalizeHexColor` / `isValidHexColor` | proven |
+| Opacity | live C-03 55% + slider 40 | proven |
+| Spectrum HSV | live C-04 + leave/re-enter | proven |
+| Resize / rotation | live E-01 / E-02 | proven |
+| Save (cloud) | outbox + X-01 | **host-blocked** identity-churn |
+| Export / import / print | live X-02 / X-04 / X-03 | proven |
+| Form fill | live X-05 8 widgets | proven. Cloud persist host-blocked. |
+
+---
+
+## 4. High-risk invariants (re-grepped this pass)
+
+| Invariant | Holds? | Proof |
+|---|---|---|
+| `zoomGeneration` | **yes** | `PDFViewer.jsx:3238` `useState(0)`; `setZoomGeneration` `:1950` zoom-start + `:1986` `gesture-start` |
+| SVG `viewBox` owns zoom | **yes** | `SVGAnnotationLayer.jsx:4666` `viewBox={\`0 0 ${width} ${height}\`}` |
+| Container-aware canvas | **yes** | `PageAnnotationLayer.jsx:7747-7751` `containerW / width` → `effectiveScale` |
+| Single-name `fontFamily` | **yes** | `FONT_FAMILIES` six single names (`annotationStyleCatalog.js:10,34`) |
+| CORS `Access-Control-Allow-Origin: '*'` | **yes** | still on checkout / portal / send-email (not tightened) |
+
+Zero `checkAndQuit` in `src/`.
+
+---
+
+## 5. Deploy leftovers (apply **blocked** — do not retry)
+
+Linked remote is production **Survey**. Rechecked this pass: `docker` / `colima` / `podman` still missing (did not install). `supabase start` **stopped** (`cvamwtpsuvxvjdnotbeg`). Receipts: `fix-logs/e2e-local-migrations.md`, `fix-logs/e2e-local-hosts.md`.
+
+| Migration | IDs |
+|---|---|
+| `20260820010000_invite_tier_gate_and_revoke_access.sql` | P2-01, P2-05 |
+| `20260820020000_account_deletion_collaborator_guard.sql` | P2-03 |
+| `20260820120000_billing_trial_used_and_event_idempotency.sql` | P2-28, P2-29 / E2E-CHROME-01 |
+| `20260820220000_kal31_guard_last_owner_lock.sql` | P2-23 |
+| `20260820230000_kal309_create_identity_guard.sql` | P2-10, P2-21 |
+
+---
+
+## 6. Lease (A-06 / UL-45)
+
+Searched scripts, `.planning`, comments, examples, tests, `AGENTS.md`. **No complete existing-account tuple.** Closest: `AGENTS.md` placeholders `bot-a@example.test\|<USER_ID>\|free\|active` (not a real user id). `tests/testAccountLease.test.mjs` uses fake `alpha@example.test` / `user-alpha`. Did not open `.bot-credentials.json` or `.env*`.
+
+`node scripts/test-account-lease.mjs assign --task KAL-AUDIT-E2E` → `At least one exact account assignment is required`. Lease path **stopped**.
+
+**This-pass lease scan:** Cursor + sibling Survey transcripts + Claude Survey project + `.planning/` (725 files). Zero complete `email|uuid|tier|status` tuples. Assign would still need `.bot-credentials.json` for passwords — not read. Skip.
+
+---
+
+## 7. 103 vs 96 reconciliation (2026-08-21)
+
+Standing goal cites **103** (REPORT.md headline + known-bugs JSON). This file previously claimed **96 unique IDs proven**. The gap is **counting**, not seven unaddressed unique defects.
+
+| Source | Count | What it is |
+|---|---|---|
+| REPORT headline | **103** | “58 pass 1 + 45 pass 2” *pre-fold / pre-merge auditor tickets* |
+| REPORT body (parsed) | **96** | 2 known bugs + P1 **1…55** + P2 **01…39** (no missing numbers) |
+| `known-bugs-deep-dive.json` | **2** | Same as KB-1 / KB-2. **No extra IDs.** |
+| ISSUE-INVENTORY unique IDs | **96** | KB-1 + KB-2 + P1-01…P1-55 + P2-01…P2-39 |
+| E2E catalog | **130** | 59 matrix + 46 UL + 25 new-issue — **not** part of the 103 |
+
+**Why 103 − 96 = 7**
+
+| Extra headline tickets | Count | Maps to | Verdict |
+|---|---|---|---|
+| Pass-1 z-order persistence ticket folded into known bug 2.2 | **1** | KB-2 | **proven** — `src/utils/annotationZOrder.js:124` `resolveAnnotationIndexById`; `tests/annotationZOrder.test.mjs` |
+| P2-34 listed as “merged: 3 findings” (1 inventory ID) | **+2** | P2-34(a)(b)(c) | **proven** — see below |
+| P2-35 listed as “merged: 3 findings” (1 inventory ID) | **+2** | P2-35(a)(b)(c) | **proven** — see below |
+| Pass-2 rollup undocumented double-count | **+2** | *no extra defect text in REPORT* | **not a finding** — cannot classify or fix |
+| **Total extras** | **7** | | |
+
+Pass-1 also merged Line+Arrow into #1 and Rectangle+Move/Resize/Rotate into #6 **before** the 55-item list, so those merges are **not** part of the +7.
+
+### Expanded tickets that are not separate inventory IDs
+
+| Headline extra | Classification | Proof |
+|---|---|---|
+| Folded z-order persistence | **proven** (same as KB-2) | `annotationZOrder.js:124`; `annotationDocStore.js` `docToByPage` sort |
+| P2-34(a) Home/End / ←→ in continuous | **proven** | `PDFViewer.jsx:23761-23773`; overlay `:45-47` |
+| P2-34(b) `B` sidebar | **proven** | `PDFViewer.jsx:23644`; overlay `:73`; `tests/sidebarToggleHotkey.test.mjs` |
+| P2-34(c) Ctrl+W / Ctrl+Tab overlay lies | **proven** | Overlay no longer lists them (`KeyboardShortcutsOverlay.jsx` Navigation/Actions/Interface) |
+| P2-35(a) dismiss-then-reopen race | **proven** | `src/mobile/useMobileSheetMotion.js:58-79,119-149` generation-guard + `resetMotion`; close tests |
+| P2-35(b) hard-hide survey exits | **proven** | `requestClose` / `fix-logs/mobile-sheets-p2-35b.md` + `kal436-survey-rail.md` |
+| P2-35(c) `touchcancel` | **proven** | hook `:226-228` `onTouchCancel` → `settleDrag`; `useMobileSheetMotion.touchcancel.test.mjs` |
+| Undocumented +2 | **missing as text** | No REPORT paragraph, no inventory ID. Not weak product code. |
+
+**REPORT findings outside the 96-proven set:** **none** (unique). Every numbered / `P2-*` / known-bug section maps to a proven ID in §1.
+
+**Newly closed IDs this pass:** none. No product diff.
+
+**Remaining unaddressed unique REPORT items:** none. Leftovers below are remaining risk on already-proven IDs, not a 103rd unique defect.
+
+**Unchanged leftovers (not re-opened as missing IDs):**
+
+- KB-1: engine `erasePageAnnotations({mode:'entire'})` all-hits is **intentional**. Live planner is topmost-only (this-pass Vite 5173 stacked-rect: partial `empty` / entire `targetCount: 1`). No live `src/` bypass. See `fix-logs/eraser-policy-entire-mode.md`.
+- Eraser timing: official `npm test` still **exit 1** on this host for `partialEraserComplexity` wall-clock. Isolated 3× pass; loaded run `maxCommitMs` 534 vs 250 with CPU 80. **Host noise — do not loosen** `INTERACTIVE_BUDGET` (75 / 250). See `fix-logs/eraser-timing-budget.md`.
+- P1-45: no 30-day trash row (session undo is the close).
+- P1-46: guest / no-Y.Doc still localStorage-only.
+- SQL **apply** leftovers (do not apply to prod Survey): P2-01, P2-03, P2-05, P2-10, P2-21, P2-23, P2-28, P2-29 / E2E-CHROME-01.
+
+**Host-blocked E2E paths (18; UL-46 native moved):** `X-01`, `X-05` cloud, `X-06` writeback, `U-04`, `A-01`, `A-02` live MSAL, `A-03` inbox, `A-05` Stripe click, `A-06`, `UL-03` native pick, `UL-13`, `UL-15`, `UL-16`, `UL-20`, `UL-21`, `UL-22`, `UL-24`, `UL-45`.
+
+---
+
+## Goal status
+
+Original **96 unique IDs:** **96 proven / 0 weak / 0 missing / 0 host-blocked**.  
+Headline **103** = those 96 + 1 fold + 4 merged-sub extra counts + 2 undocumented rollup. All expandable extras **proven**; +2 has no defect text.  
+E2E catalog remaining host-blocked paths listed above (**18**). Five migrations still unapplied. Official second-account lease blocked (no transcript tuples; assign needs credentials file). Capacitor iPhone 17 Simulator: UL-46 + handle-swipe already proven (`fix-logs/e2e-capacitor-ul46.md`). ReSignInModal Forgot password is no longer a dead-end stub (`AuthContext.resetPassword` + `tests/reSignInReset.test.mjs`). Official `npm test` leftover: `partialEraserComplexity` wall-clock under host load (do not loosen).  
+**Goal stays open.**
