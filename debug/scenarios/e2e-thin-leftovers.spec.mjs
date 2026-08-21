@@ -250,6 +250,7 @@ async function copyAnnotation(page, id, pageNumber = 1) {
 }
 
 async function copyCurrentSelection(page) {
+  await page.keyboard.press('v');
   await page.keyboard.press('ControlOrMeta+c');
 }
 
@@ -351,7 +352,7 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     pageNumber: 1,
   });
   expect(rect.id).toBeTruthy();
-  await copyCurrentSelection(page);
+  await copyAnnotation(page, rect.id, 1);
   const page2BeforeRect = new Set((await userAnnotationSnapshot(page, 2)).map((row) => row.id));
   const pastedRect = await pasteOnPage(page, 2, page2BeforeRect, (row) => (
     row.type === 'rect' || row.type === 'rectangle'
@@ -368,7 +369,7 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     pageNumber: 1,
   });
   expect(ellipse.id).toBeTruthy();
-  await copyCurrentSelection(page);
+  await copyAnnotation(page, ellipse.id, 1);
   const page2BeforeEllipse = new Set((await userAnnotationSnapshot(page, 2)).map((row) => row.id));
   const pastedEllipse = await pasteOnPage(page, 2, page2BeforeEllipse, (row) => (
     row.type === 'ellipse' || row.type === 'circle' || row.tool === 'ellipse'
@@ -434,7 +435,7 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     coords: { x0: 0.60, y0: 0.22, x1: 0.76, y1: 0.36 },
     pageNumber: 1,
   });
-  await copyAnnotation(page, undoSource.id, 1);
+  await copyCurrentSelection(page);
   await selectMode(page);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect.poll(async () => {
@@ -469,7 +470,7 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     coords: { x0: 0.22, y0: 0.22, x1: 0.40, y1: 0.38 },
     pageNumber: 3,
   });
-  await copyAnnotation(page, doomed.id, 3);
+  await copyCurrentSelection(page);
   page.once('dialog', (dialog) => dialog.accept());
   const { deleteBtn } = await openPageMenu(page, 3);
   await deleteBtn.click();
