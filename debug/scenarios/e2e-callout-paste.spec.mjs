@@ -389,7 +389,7 @@ test('callout cross-page paste: last-copied wins + break/edge', async ({ page })
     const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
     if (await undoBtn.isDisabled()) break;
     await undoBtn.click();
-    await expect.poll(async () => true, { timeout: 500 }).toBeTruthy();
+    await page.waitForTimeout(300);
   }
   await expect.poll(async () => (await calloutIdsOnPage(page, 1)).includes(undoSource)).toBeFalsy();
   const page2BeforeUndo = new Set(await calloutIdsOnPage(page, 2));
