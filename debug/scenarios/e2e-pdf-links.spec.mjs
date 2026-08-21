@@ -132,7 +132,7 @@ test('native PDF links: click-through + adversarial schemes + page-jump', async 
   const dest = page.locator('[data-pdfjs-link-layer="1"] a[title="Go to page"]');
   await expect(dest).toHaveCount(1);
   await dest.click();
-  await expect(page.getByLabel('Current page')).toHaveText('2', { timeout: 15_000 });
+  await expect(page.getByLabel('Edit page number')).toHaveText('2', { timeout: 15_000 });
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="2"]')).toBeVisible();
   hunts.push({
     hunt: 'intended — dest GoTo jumps to page 2',
@@ -140,10 +140,10 @@ test('native PDF links: click-through + adversarial schemes + page-jump', async 
   });
 
   await page.getByRole('button', { name: 'Previous page', exact: true }).click();
-  await expect(page.getByLabel('Current page')).toHaveText('1', { timeout: 10_000 });
+  await expect(page.getByLabel('Edit page number')).toHaveText('1', { timeout: 10_000 });
   const beforeDestOpen = await openedUrls(page);
   await dest.click();
-  await expect(page.getByLabel('Current page')).toHaveText('2', { timeout: 15_000 });
+  await expect(page.getByLabel('Edit page number')).toHaveText('2', { timeout: 15_000 });
   expect(await openedUrls(page)).toEqual(beforeDestOpen);
   hunts.push({
     hunt: 'edge — dest click does not also window.open',
