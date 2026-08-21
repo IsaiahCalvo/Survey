@@ -33,6 +33,7 @@ import {
   buildOriginalIndexById,
   stampZOrderForSelected,
 } from '../utils/annotationZOrder.js';
+import { pickActiveClipboard } from '../utils/pickActiveClipboard.js';
 
 function readAnnotationIdFromLayer(pageNumber, annotationIndex) {
   if (pageNumber == null || annotationIndex == null) return null;
@@ -177,6 +178,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // whichever clipboard is populated (shape OR callout) at the right-click
     // point — one paste rule everywhere.
     clipboardCallout = null,
+    lastClipboardKind = null,
     // UX: mobile parity (Phase D) — when true, the menu is re-skinned to the
     // demo's touch context-menu chrome (154/176px panel, radius 9, #181B20 /
     // #3C424D, 34px action rows, near-invisible dismiss scrim). Desktop
@@ -250,9 +252,17 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // callouts center their text box there via handlePasteCallout's
     // cursor-anchored mode.
     const doPasteAny = () => {
-      if (clipboardAnnotation) {
+      // Recency wins. Preferring clipboardAnnotation whenever it was set
+      // cloned the last shape after a callout copy that left both lanes
+      // populated (or never cleared the shape lane).
+      const pasteKind = pickActiveClipboard({
+        clipboardAnnotation,
+        clipboardCallout,
+        lastKind: lastClipboardKind,
+      });
+      if (pasteKind === 'annotation') {
         doPasteAnnotation();
-      } else if (clipboardCallout) {
+      } else if (pasteKind === 'callout') {
         handlePasteCallout(ctx.pageNumber, { clientX: ctx.x, clientY: ctx.y });
       }
     };

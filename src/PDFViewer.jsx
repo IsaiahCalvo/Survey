@@ -107,6 +107,7 @@ import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPrecis
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
+import { pickActiveClipboard, resolveSelectedCalloutId } from './utils/pickActiveClipboard.js';
 import {
   buildOriginalIndexById,
   resolveAnnotationIndexById,
@@ -3556,6 +3557,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
+  // UX: one logical clipboard — Paste clones the most recently copied item
+  // (shape vs callout). doPasteAny used to prefer clipboardAnnotation
+  // whenever it was set, so a callout copy that left a leftover shape
+  // clipboard cloned the last rect instead of the callout.
+  const [lastClipboardKind, setLastClipboardKind] = useState(null); // 'annotation' | 'callout' | null
   // UX: right-click Copy/Cut stashes a plain (non-callout) annotation here so
   // Paste can later drop a clone onto any page. Shape is { object, sourcePageNumber, mode }
   // where `object` is the Fabric JSON for that annotation and `mode` is 'copy' | 'cut'.
@@ -3961,6 +3967,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // UX: one logical clipboard — most recent Copy/Cut wins (see
       // handleCopyCallout).
       setClipboardAnnotation(null);
+      setLastClipboardKind('callout');
       // R2.2 Slice 4: cut removes through the shared save pipeline — the
       // removal becomes a per-object fabric:delete undo entry (Cmd+Z restores
       // the cut callout in place), matching the shape cut contract.
@@ -3985,6 +3992,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // UX: one logical clipboard — the most recent Copy/Cut wins. Clear the
       // shape clipboard so Cmd+V pastes THIS callout, not a stale shape.
       setClipboardAnnotation(null);
+      setLastClipboardKind('callout');
     }
   }, [callouts]);
 
@@ -4081,6 +4089,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (clipboardCalloutType === 'cut') {
       setClipboardCallout(null);
       setClipboardCalloutType(null);
+      setLastClipboardKind(null);
     }
   }, [clipboardCallout, clipboardCalloutType, user?.id, commitCalloutMutation, resolvePasteRepeatCount]);
 
@@ -23732,10 +23741,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // data attribute lookup, matching the resolveAnnotationAt pattern.
           if ((key === 'c' || key === 'x') && !e.shiftKey) {
             if (document.body.getAttribute('data-readonly') === 'true' && key === 'x') return;
-            if (selectedCalloutId) {
+            // Live SVG selection is selectedCalloutIds; selectedCalloutId is
+            // the legacy PAL cell and is often still null after a click.
+            const calloutIdForClipboard = resolveSelectedCalloutId(
+              selectedCalloutId,
+              selectedCalloutIds,
+            );
+            if (calloutIdForClipboard) {
               e.preventDefault();
-              if (key === 'x') handleCutCallout(selectedCalloutId);
-              else handleCopyCallout(selectedCalloutId);
+              e.stopImmediatePropagation();
+              if (key === 'x') handleCutCallout(calloutIdForClipboard);
+              else handleCopyCallout(calloutIdForClipboard);
               return;
             }
           }
@@ -23768,14 +23784,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // pasteAnnotationAt (cursor-centered); a copied CALLOUT goes
               // through handlePasteCallout with the same cursor point, so
               // Cmd+V and right-click Paste place callouts identically.
-              // Only one clipboard is populated at a time (Copy/Cut clears
-              // the other — see handleCopyAnnotation / handleCopyCallout).
-              if (clipboardAnnotation && pasteAnnotationAtRef.current) {
+              // Recency wins when both lanes are still populated (a leftover
+              // shape clipboard must not beat a just-copied callout).
+              const pasteKind = pickActiveClipboard({
+                clipboardAnnotation,
+                clipboardCallout,
+                lastKind: lastClipboardKind,
+              });
+              if (pasteKind === 'annotation' && pasteAnnotationAtRef.current) {
                 e.preventDefault();
                 pasteAnnotationAtRef.current(pageNumber, x, y);
                 return;
               }
-              if (clipboardCallout) {
+              if (pasteKind === 'callout') {
                 e.preventDefault();
                 handlePasteCallout(pageNumber, { clientX: x, clientY: y });
                 return;
@@ -23804,7 +23825,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, goToPage, numPages, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout, selectedCalloutId, handleCopyCallout, handleCutCallout]);
+  }, [goToNextPage, goToPreviousPage, goToPage, numPages, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, lastClipboardKind, handlePasteCallout, selectedCalloutId, selectedCalloutIds, handleCopyCallout, handleCutCallout]);
 
   // Electron: listen for pdf-zoom custom events forwarded from main process
   // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)
@@ -26168,6 +26189,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callout clipboard so Cmd+V pastes THIS shape, not a stale callout.
     setClipboardCallout(null);
     setClipboardCalloutType(null);
+    setLastClipboardKind('annotation');
   }, []);
 
   // UX: Shared annotation Cut handler — called by the Cmd+X hotkey. Same
@@ -26222,6 +26244,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // handleCopyAnnotation).
     setClipboardCallout(null);
     setClipboardCalloutType(null);
+    setLastClipboardKind('annotation');
     const next = deepClone(page);
     for (const index of [...indexes].reverse()) {
       next.objects.splice(index, 1);
@@ -30484,10 +30507,12 @@ ${pageBlocks}
         clearCalloutClipboard: () => {
           setClipboardCallout(null);
           setClipboardCalloutType(null);
+          setLastClipboardKind('annotation');
         },
         // UX: lets every menu's Paste item paste a copied CALLOUT at the
         // right-click point too (doPasteAny in the menu builder).
         clipboardCallout,
+        lastClipboardKind,
         // UX: mobile parity (Phase D) — re-skins the menu to the demo's touch
         // context-menu chrome on phones; desktop right-click menu unchanged.
         mobileMode,

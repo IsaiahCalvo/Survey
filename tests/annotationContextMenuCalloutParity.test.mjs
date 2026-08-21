@@ -64,6 +64,10 @@ test('callout Paste shares the one-paste-rule (doPasteAny + hasAnyClipboard gray
   assert.match(branch, /item\('Paste',\s*'paste',\s*doPasteAny,\s*hasAnyClipboard\)/);
 });
 
+test('doPasteAny picks the most recently copied lane (callout can beat a leftover shape)', () => {
+  assert.match(MENU_SOURCE, /pickActiveClipboard\(\{\s*clipboardAnnotation,\s*clipboardCallout,\s*lastKind:\s*lastClipboardKind,/);
+});
+
 test('callout Cut runs the same own-marks-only gate as the shape Cut (canModifyObj on the projected group)', () => {
   const branch = calloutBranch();
   // Resolves the projected callout group object from the page projection…

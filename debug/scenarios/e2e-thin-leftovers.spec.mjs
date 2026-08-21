@@ -425,13 +425,15 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     x0: 0.48, y0: 0.54, x1: 0.68, y1: 0.68,
   }, 1);
   expect(calloutId).toBeTruthy();
-  await page.keyboard.press('v');
+  await selectMode(page);
   const calloutEl = page.locator(`[data-callout-id="${calloutId}"]`).first();
   await expect(calloutEl).toBeVisible({ timeout: 15_000 });
   const callBox = await calloutEl.boundingBox();
-  await page.mouse.click(callBox.x + Math.min(8, callBox.width / 2), callBox.y + Math.min(8, callBox.height / 2));
-  await page.keyboard.press('ControlOrMeta+c');
-  const page2CalloutsBefore = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count();
+  await page.mouse.click(callBox.x + Math.min(8, callBox.width / 2), callBox.y + Math.min(8, callBox.height / 2), { button: 'right' });
+  await clickMenuItem(page, 'Copy');
+  const page2CalloutsBefore = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').evaluateAll((els) => (
+    els.map((el) => el.getAttribute('data-callout-id')).filter(Boolean)
+  ));
   await gotoPage(page, 2);
   await rightClickEmptyPage(page, 2, { xf: 0.80, yf: 0.62 });
   const calloutPasteMenu = page.locator('[data-annotation-context-menu="true"]');
@@ -439,22 +441,20 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   const calloutPasteColor = await calloutPasteMenu.getByText('Paste', { exact: true }).evaluate((el) => getComputedStyle(el).color);
   expect(calloutPasteColor, 'callout clipboard must enable Paste').not.toMatch(/rgb\(90,\s*100,\s*115\)/);
   await clickMenuItem(page, 'Paste');
-  let calloutPasted = false;
-  try {
-    await expect.poll(async () => page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count(), {
-      timeout: 8_000,
-    }).toBeGreaterThan(page2CalloutsBefore);
-    calloutPasted = true;
-  } catch {
-    calloutPasted = false;
-  }
+  let pastedCalloutId = null;
+  await expect.poll(async () => {
+    const ids = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').evaluateAll((els) => (
+      [...new Set(els.map((el) => el.getAttribute('data-callout-id')).filter(Boolean))]
+    ));
+    pastedCalloutId = ids.find((id) => !page2CalloutsBefore.includes(id)) || null;
+    return pastedCalloutId;
+  }, { message: 'callout copy must clone onto page 2, not the last shape' }).not.toBeNull();
+  expect(pastedCalloutId).not.toBe(calloutId);
   hunts.push({
     hunt: 'intended — callout page 1 → page 2',
-    pass: calloutPasted,
+    pass: true,
     source: calloutId,
-    note: calloutPasted
-      ? 'cloned'
-      : 'create present; context-menu Paste kept the last shape clipboard (callout copy is a separate lane)',
+    clone: pastedCalloutId,
   });
 
   // Break: paste while a drawing tool is armed still places the clipboard clone.
