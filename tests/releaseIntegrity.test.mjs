@@ -76,7 +76,7 @@ test('Enterprise price secret is deliberately NOT required (KAL-414 contact-us t
 
 test('Node test gate isolates files and bounds hangs', () => {
   const runner = readFileSync('scripts/run-node-tests.mjs', 'utf8');
-  assert.match(runner, /spawn\(process\.execPath, \['--test', file\]/);
+  assert.match(runner, /spawn\(process\.execPath, \['--experimental-strip-types', '--test', file\]/);
   assert.match(runner, /timeoutMs = 120_000/);
   assert.match(runner, /exceeded its \$\{timeoutMs\}ms file timeout/);
 });
