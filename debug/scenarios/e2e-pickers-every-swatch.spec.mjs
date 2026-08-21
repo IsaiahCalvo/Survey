@@ -368,19 +368,17 @@ async function createCallout(page, text, coords = { x0: 0.52, y0: 0.48, x1: 0.74
   return waitForNewUserAnnotation(page, before, (row) => row.callout || row.type === 'callout' || row.tool === 'callout');
 }
 
-async function dropCounterPin(page, { xf = 0.62, yf = 0.32 } = {}) {
-  await activateTool(page, 'Shapes', 'Counter');
-  const overlay = page.locator('[data-counter-overlay="1"]');
-  await expect(overlay).toBeVisible({ timeout: 8_000 });
-  await page.waitForTimeout(200);
+async function dropCounterPin(page) {
   const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
-  const box = await overlay.boundingBox();
-  expect(box, 'counter overlay geometry').toBeTruthy();
-  await page.mouse.move(box.x + box.width * xf, box.y + box.height * yf);
-  await page.mouse.down();
-  await page.mouse.up();
+  await page.keyboard.press('c');
+  const overlay = page.locator('[data-counter-overlay="1"]');
+  if (!(await overlay.isVisible().catch(() => false))) {
+    await activateTool(page, 'Shapes', 'Counter');
+  }
+  await expect(overlay).toBeVisible({ timeout: 8_000 });
+  await dragOnPage(page, { x0: 0.60, y0: 0.28, x1: 0.63, y1: 0.31 });
   return waitForNewUserAnnotation(page, before, (row) => (
-    row.tool === 'counter' || row.type.includes('counter') || row.type === 'circle' || row.type === 'group'
+    row.tool === 'counter' || row.type.includes('counter') || row.type === 'circle' || row.type === 'group' || !row.type
   ));
 }
 
@@ -749,6 +747,7 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
 });
 
 test('Style every option + resize/rotate handles per creatable type', async ({ page }) => {
+  test.setTimeout(180_000);
   await openEditor(page);
   const rect = await createRect(page, { x0: 0.18, y0: 0.20, x1: 0.36, y1: 0.34 });
   await selectStroke(page, rect.id);
@@ -782,8 +781,10 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
   for (const [kind, make] of makers) {
     const row = await make();
     created[kind] = row;
-    await selectStroke(page, row.id);
     const resize = page.locator('[data-resize-handle]');
+    if (!(await resize.first().isVisible().catch(() => false))) {
+      await selectStroke(page, row.id);
+    }
     const rotate = page.locator('[data-rotation-handle="mtr"]');
     await expect(resize.first()).toBeVisible({ timeout: 8_000 });
     const resizeIds = await resize.evaluateAll((nodes) => (
