@@ -338,7 +338,8 @@ test('pages move-up/down: intended remap+export, break first/last+region, edge u
   expect(exported[2].rows.some((row) => row.isCircle), 'unmoved page 3 export Circle').toBeTruthy();
   expect(exported[0].rows.some((row) => row.isCircle), 'moved page must not steal Circle').toBeFalsy();
 
-  // Edge: page mutations clear history; a post-move draw undoes without un-moving.
+  // Edge: page-structure commit wipes undo; a post-move draw undoes without un-moving.
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
   const line = await createShape(page, {
     category: 'Shapes',
     button: 'Line',

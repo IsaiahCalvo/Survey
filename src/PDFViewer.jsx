@@ -20192,7 +20192,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       for (const pageNum of Object.keys(annotationsByPage || {})) {
         const objs = annotationsByPage[pageNum]?.objects || [];
         for (const obj of objs) {
-          if (obj?.id === id) return obj;
+          if (obj?.id === id) {
+            const pageFromKey = Number(pageNum);
+            if (obj.pageNumber == null && obj.data?.pageNumber == null && pageFromKey > 0) {
+              return { ...obj, pageNumber: pageFromKey };
+            }
+            return obj;
+          }
         }
       }
       return null;
