@@ -20,6 +20,7 @@ test('mobile viewer More / history / sync / dock are distinct 390 hit targets', 
   assert.match(chrome, /aria-label="Open pages, search, and bookmarks"/);
   assert.match(chrome, /aria-label="Open survey"/);
   assert.match(chrome, /aria-label="Jump to page"/);
+  assert.match(chrome, /ref=\{bottomToolbarApi\?\.pageInputRef\}/);
   assert.match(chrome, /ZOOM_MODE_OPTIONS\.filter\(\(option\) => option\.id !== 'manual'\)/);
   assert.doesNotMatch(chrome, /Capacitor\?\.isNativePlatform[\s\S]{0,80}Export annotated PDF/);
 
