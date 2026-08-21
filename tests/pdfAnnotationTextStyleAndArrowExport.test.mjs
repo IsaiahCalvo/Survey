@@ -214,7 +214,12 @@ test('legacy arrow group is planned for export as a line, not skipped as unsuppo
   assert.equal(plan.items.length, 1);
   const exported = plan.items[0].object;
   assert.equal(exported.type, 'line');
-  // group offset folded into absolute endpoints
+  // group offset folded into absolute endpoints; bbox zeroed so
+  // getLineEndpoints does not add left again (Wave 8 sibling).
+  assert.equal(exported.left, 0);
+  assert.equal(exported.top, 0);
+  assert.equal(exported.width, 0);
+  assert.equal(exported.height, 0);
   assert.equal(exported.x1, 20);
   assert.equal(exported.y1, 30);
   assert.equal(exported.x2, 70);

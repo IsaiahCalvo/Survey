@@ -443,6 +443,13 @@ const legacyArrowGroupToLine = (obj) => {
   return {
     ...rest,
     type: 'line',
+    // Fold group left/top into world x1..y2, then zero the fabric bbox.
+    // createLineAnnotation / drawFlattenedLine use getLineEndpoints
+    // (left+width/2 + x1). Leaving the group left here double-offsets /L.
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
     x1: left + Number(lineChild.x1),
     y1: top + Number(lineChild.y1),
     x2: left + Number(lineChild.x2),
