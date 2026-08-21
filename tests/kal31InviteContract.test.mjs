@@ -101,7 +101,8 @@ test('KAL-31: document owners always reach Manage Access from Share', () => {
     path.join(repoRoot, 'src/home/SurveyHub.jsx'),
     'utf8',
   );
-  match(src, /manage:\s*!!single\s*&&\s*!!user\?\.id\s*&&\s*single\.user_id\s*===\s*user\.id/);
+  match(src, /userCanManageDocumentAccess\(single,\s*user/);
+  match(src, /userCanManageDocumentAccess\(single,\s*user,\s*res\?\.data\)/);
 });
 
 test('KAL-31: AccessManagementModal exposes only viewer/editor/owner', () => {
