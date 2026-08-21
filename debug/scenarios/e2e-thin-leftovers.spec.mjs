@@ -240,13 +240,31 @@ async function clickMenuItem(page, label) {
 
 async function copyAnnotation(page, id, pageNumber = 1) {
   await gotoPage(page, pageNumber);
-  await selectMode(page);
+  await page.keyboard.press('v');
+  const menuOpen = page.locator('[data-select-mode-menu="true"]');
+  if (await menuOpen.count()) await page.keyboard.press('Escape');
   const target = page.locator(`[data-svg-annotation-layer="${pageNumber}"] > g[data-anno-id="${id}"]`);
   await expect(target).toBeVisible({ timeout: 15_000 });
   const box = await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + Math.min(4, Math.max(1, box.width / 2)), box.y + box.height / 2);
-  await page.keyboard.press('ControlOrMeta+c');
+  const points = [
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + Math.min(4, Math.max(1, box.width / 2)), y: box.y + box.height / 2 },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    const menu = page.locator('[data-annotation-context-menu="true"]');
+    await expect(menu).toBeVisible({ timeout: 8_000 });
+    const hasCopy = await menu.getByText('Copy', { exact: true }).count();
+    if (hasCopy) {
+      await menu.getByText('Copy', { exact: true }).click();
+      await expect(page.locator('[data-annotation-context-menu="true"]')).toHaveCount(0);
+      return;
+    }
+    await page.keyboard.press('Escape');
+  }
+  throw new Error(`Copy menu missing for ${id} on page ${pageNumber}`);
 }
 
 async function copyCurrentSelection(page) {
@@ -385,10 +403,10 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     pageNumber: 1,
   });
   expect(pen.id).toBeTruthy();
-  await copyCurrentSelection(page);
+  await copyAnnotation(page, pen.id, 1);
   const page3BeforePen = new Set((await userAnnotationSnapshot(page, 3)).map((row) => row.id));
   const pastedPen = await pasteOnPage(page, 3, page3BeforePen, (row) => (
-    row.type === 'path' || row.tool === 'pen'
+    row.type === 'path' || row.tool === 'pen' || !row.type
   ), { xf: 0.30, yf: 0.30 });
   expect(pastedPen.id).not.toBe(pen.id);
   hunts.push({ hunt: 'intended — pen page 1 → page 3', pass: true, source: pen.id, clone: pastedPen.id });
