@@ -68,10 +68,26 @@ function clearX(page) {
     .locator('xpath=following-sibling::button[1]');
 }
 
+async function waitForClearedResults(page) {
+  await expect.poll(async () => {
+    const index = await readIndex(page);
+    return index.total === 0 && (await prevBtn(page).count()) === 0;
+  }, { message: 'prior match set must clear' }).toBeTruthy();
+}
+
+async function waitForSearchIdle(page) {
+  const searching = page.locator('#chrome-left-host, [data-sidebar-panel]').getByText(/Searching\.\.\./);
+  await searching.first().waitFor({ state: 'visible', timeout: 4_000 }).catch(() => {});
+  await expect(searching).toHaveCount(0, { timeout: 20_000 });
+}
+
 async function fillQuery(page, search, query) {
   await search.fill('');
   await expect.poll(async () => (await search.inputValue()).trim()).toBe('');
+  await waitForClearedResults(page);
+  if (!query) return;
   await search.fill(query);
+  await waitForSearchIdle(page);
 }
 
 async function assertNoErrorBoundary(page) {
@@ -192,15 +208,18 @@ test('search Previous remainder: walk, wrap, dismiss, breaks, edges', async ({ p
   });
 
   await fillQuery(page, search, '-');
-  const hyphen = await waitForTotal(page, (row) => row.total >= 1, 'hyphen must exist in glyph-lab');
+  const hyphen = await waitForTotal(page, (row) => row.total >= 2 && row.at === 1, 'hyphen must have ≥2 hits');
   await prevBtn(page).click();
   await expect.poll(async () => (await readIndex(page)).at).toBe(hyphen.total);
   hunts.push({ hunt: 'edge — hyphen query Previous wrap', pass: true, hyphen });
 
   await fillQuery(page, search, 'é');
-  const diacritic = await waitForTotal(page, (row) => row.total >= 1, 'diacritic é must exist in glyph-lab');
+  const diacritic = await waitForTotal(page, (row) => row.total >= 2 && row.at === 1, 'diacritic é must have ≥2 hits');
+  expect(diacritic.total).toBeLessThan(12);
   await prevBtn(page).click();
-  await expect.poll(async () => (await readIndex(page)).at).toBe(diacritic.total);
+  await expect.poll(async () => (await readIndex(page)).at, {
+    message: `Previous from 1 of ${diacritic.total} must wrap to last`,
+  }).toBe(diacritic.total);
   hunts.push({ hunt: 'edge — diacritic é Previous wrap', pass: true, diacritic });
 
   await fillQuery(page, search, 'in');
