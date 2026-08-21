@@ -1469,3 +1469,21 @@ test('KAL-405 an imported ink dot survives export back into the PDF', async () =
     assert.ok(/\bf\*?\b/.test(content), 'the dot is filled, not stroked');
   }
 });
+
+test('imported Text sticky note stamps render identity so SVG data-anno-id is non-empty', () => {
+  const converted = convertPdfAnnotationToFabric({
+    id: '6R',
+    subtype: 'Text',
+    rect: [72, 680, 96, 704],
+    color: [1, 0.92, 0.23],
+    contents: 'e2e-sticky-body',
+    name: 'Note',
+  }, makeViewport({ pageHeight: 792 }));
+
+  assert.equal(converted.pdfAnnotationType, 'Text');
+  assert.equal(converted.data.type, 'note');
+  assert.equal(converted.data.noteText, 'e2e-sticky-body');
+  assert.equal(converted.id, '6R');
+  assert.equal(converted.data.id, '6R');
+  assert.equal(converted.isPdfImported, true);
+});

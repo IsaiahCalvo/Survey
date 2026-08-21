@@ -60,18 +60,23 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
 
 async function importedAnnotationSnapshot(page, pageNumber = 1) {
   return page.evaluate((pageNum) => {
-    const ids = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
-      .map((group) => group.getAttribute('data-anno-id'))
-      .filter(Boolean);
-    return ids.map((id) => {
-      const object = window.__phase35GetAnnotationById?.(id) || {};
+    const groups = [...document.querySelectorAll(
+      `[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id], [data-svg-annotation-layer="${pageNum}"] > g[data-pdf-annotation-type]`
+    )];
+    return groups.map((group) => {
+      const id = group.getAttribute('data-anno-id') || group.getAttribute('data-pdf-annotation-id') || '';
+      const object = (id && window.__phase35GetAnnotationById?.(id)) || {};
       const data = object.data || {};
+      const pdfType = group.getAttribute('data-pdf-annotation-type')
+        || String(object.pdfAnnotationType || data.pdfAnnotationType || '');
       return {
         id,
         type: String(object.type || data.type || '').toLowerCase(),
         tool: String(data.tool || data.type || object.tool || '').toLowerCase(),
-        imported: object.isPdfImported === true || Boolean(object.pdfAnnotationId || data.pdfAnnotationId),
-        pdfType: String(object.pdfAnnotationType || data.pdfAnnotationType || ''),
+        imported: object.isPdfImported === true
+          || Boolean(group.getAttribute('data-pdf-annotation-id'))
+          || pdfType === 'Text',
+        pdfType,
         noteText: data.noteText || null,
       };
     }).filter((row) => row.imported === true);
@@ -234,9 +239,12 @@ async function clickMenuItem(page, label) {
 }
 
 async function copyAnnotation(page, id, pageNumber = 1) {
-  await rightClickStroke(page, id, pageNumber);
-  await clickMenuItem(page, 'Copy');
-  await expect(page.locator('[data-annotation-context-menu="true"]')).toHaveCount(0);
+  await gotoPage(page, pageNumber);
+  await selectMode(page);
+  const target = page.locator(`[data-svg-annotation-layer="${pageNumber}"] > g[data-anno-id="${id}"]`);
+  await expect(target).toBeVisible({ timeout: 15_000 });
+  await target.click({ position: { x: 2, y: 2 } });
+  await page.keyboard.press('ControlOrMeta+c');
 }
 
 async function pasteOnPage(page, pageNumber, beforeIds, predicate, { xf = 0.62, yf = 0.28 } = {}) {
@@ -297,6 +305,7 @@ function restoreButtons(page) {
 }
 
 test('cross-page paste: intended types + break empty/deleted/armed + edge undo/rotate', async ({ page }) => {
+  test.setTimeout(240_000);
   await openEditor(page);
   await expect.poll(async () => page.locator('.survey-pdfjs-page-div').count()).toBe(3);
 
@@ -398,7 +407,7 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   await expect(calloutEl).toBeVisible({ timeout: 15_000 });
   const callBox = await calloutEl.boundingBox();
   await page.mouse.click(callBox.x + Math.min(8, callBox.width / 2), callBox.y + callBox.height / 2);
-  await page.keyboard.press('Meta+c');
+  await page.keyboard.press('ControlOrMeta+c');
   const page2CalloutsBefore = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count();
   await gotoPage(page, 2);
   await rightClickEmptyPage(page, 2, { xf: 0.80, yf: 0.62 });

@@ -4195,9 +4195,11 @@ function convertTextToFabricNote(annotation, viewport, scale = 1) {
   const height = Math.max(viewportRect.height, minSize);
   const noteColor = pdfColorToHex(annotation.color || [1, 0.92, 0.23], annotation);
   const iconName = normalizePdfNameToken(annotation.name || '') || 'Note';
+  const noteId = annotation.id || annotation.name || null;
 
   return {
     type: 'rect',
+    ...(noteId ? { id: noteId } : {}),
     left: viewportRect.left,
     top: viewportRect.top,
     width,
@@ -4215,6 +4217,7 @@ function convertTextToFabricNote(annotation, viewport, scale = 1) {
     hoverCursor: 'pointer',
     data: {
       type: 'note',
+      ...(noteId ? { id: noteId } : {}),
       noteText: getAnnotationContents(annotation),
       pdfNoteIcon: iconName,
       ...(annotation.state ? { pdfState: annotation.state } : {}),
