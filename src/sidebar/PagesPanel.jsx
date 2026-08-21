@@ -606,17 +606,24 @@ const PagesPanel = ({
     });
   }, [allowedPages, generateThumbnail, pageNum]);
 
-  // Close context menu when clicking outside
+  // Close context menu when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
         setContextMenu(null);
       }
     };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
 
     if (contextMenu) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleEscape);
+      };
     }
   }, [contextMenu]);
 
