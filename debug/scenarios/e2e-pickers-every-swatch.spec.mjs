@@ -139,6 +139,8 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
         angle: object.angle ?? data.angle ?? data.rotation ?? 0,
         width: object.width ?? data.width ?? null,
         height: object.height ?? data.height ?? null,
+        scaleX: object.scaleX ?? data.scaleX ?? 1,
+        scaleY: object.scaleY ?? data.scaleY ?? 1,
         visualFill: visual?.getAttribute('fill') || null,
         visualStroke: visual?.getAttribute('stroke') || null,
         visualOpacity: visual?.getAttribute('opacity') ?? null,
@@ -210,6 +212,13 @@ async function dismissMenus(page) {
   await page.waitForTimeout(80);
 }
 
+async function closeColorPicker(page, triggerName = 'Color') {
+  const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
+  if (!(await presets.isVisible().catch(() => false))) return;
+  await page.getByRole('button', { name: triggerName, exact: true }).first().click();
+  await expect(presets).toHaveCount(0);
+}
+
 async function pickDropdownOption(page, triggerName, optionName) {
   const trigger = page.getByRole('button', { name: triggerName, exact: true }).first();
   await expect(trigger).toBeVisible();
@@ -226,11 +235,21 @@ async function pickDropdownOption(page, triggerName, optionName) {
 
 async function selectStroke(page, id) {
   await page.keyboard.press('v');
-  const target = page.locator(`[data-svg-annotation-layer] [data-anno-id="${id}"], [data-svg-annotation-layer] [data-callout-id="${id}"], [data-counter-overlay] [data-anno-id="${id}"]`).first();
+  const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"], [data-svg-annotation-layer] [data-callout-id="${id}"], [data-counter-overlay] [data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + Math.min(8, Math.max(2, box.width / 2)), box.y + Math.max(2, box.height / 2));
+  const points = [
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + Math.min(6, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + box.width - 3, y: box.y + Math.max(2, box.height / 2) },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    const selected = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
+    const chrome = await page.getByRole('button', { name: /^(Color|Counter colors|Edit text)$/ }).count();
+    if (selected > 0 || chrome > 0) return;
+  }
 }
 
 async function enterTextEdit(page, id) {
@@ -362,20 +381,36 @@ async function assertNoErrorBoundary(page) {
   await expect(page.getByText(/Rendered fewer hooks/i)).toHaveCount(0);
 }
 
+function sizeSignature(row, box) {
+  return [
+    Number(row?.width || 0),
+    Number(row?.height || 0),
+    Number(row?.scaleX || 1),
+    Number(row?.scaleY || 1),
+    Number(box?.width || 0),
+    Number(box?.height || 0),
+  ].join('|');
+}
+
+async function visualBox(page, id) {
+  const host = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"], [data-svg-annotation-layer] [data-callout-id="${id}"]`).first();
+  return host.boundingBox();
+}
+
 async function resizeBr(page, id) {
   await selectStroke(page, id);
-  const br = page.locator('[data-resize-handle="br"]').first();
+  const br = page.locator('[data-resize-handle="br"], [data-resize-handle]').last();
   await expect(br).toBeVisible({ timeout: 8_000 });
-  const before = await annotationById(page, id);
+  const beforeRow = await annotationById(page, id);
+  const beforeBox = await visualBox(page, id);
+  const before = sizeSignature(beforeRow, beforeBox);
   const box = await br.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + 36, box.y + 28, { steps: 6 });
+  await page.mouse.move(box.x + 40, box.y + 32, { steps: 6 });
   await page.mouse.up();
-  await expect.poll(async () => {
-    const row = await annotationById(page, id);
-    return (Number(row?.width || 0) + Number(row?.height || 0));
-  }).not.toBe(Number(before?.width || 0) + Number(before?.height || 0));
+  await expect.poll(async () => sizeSignature(await annotationById(page, id), await visualBox(page, id)))
+    .not.toBe(before);
 }
 
 test('catalog: live picker families are single-name and match shared lists', () => {
@@ -509,8 +544,9 @@ test('C-fill every swatch + C-border every swatch + break/edge', async ({ page }
 test('C-stroke every pen swatch + C-counter fill/number every swatch', async ({ page }) => {
   await openEditor(page);
   const ink = await createPen(page);
-  await page.keyboard.press('v');
-  await selectStroke(page, ink.id);
+  if (!(await page.getByRole('button', { name: 'Color', exact: true }).first().isVisible().catch(() => false))) {
+    await selectStroke(page, ink.id);
+  }
   await openColorPicker(page, 'Color');
   expect(await page.getByRole('button', { name: 'Fill', exact: true }).count()).toBe(0);
   const penProof = [];
@@ -598,7 +634,10 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
   await page.waitForTimeout(80);
   expect(colorKey((await annotationById(page, text.id))?.overlayColor
     || (await annotationById(page, text.id))?.fill)).toBe('#ABCDEF');
-  await dismissMenus(page);
+  await closeColorPicker(page, 'Font color');
+  if (!(await page.locator('[data-text-edit-overlay] [contenteditable]').first().isVisible().catch(() => false))) {
+    await enterTextEdit(page, text.id);
+  }
 
   const sizeProof = [];
   for (const size of FONT_SIZE_PRESETS) {
@@ -709,14 +748,14 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
 
 test('Style every option + resize/rotate handles per creatable type', async ({ page }) => {
   await openEditor(page);
-  const rect = await createRect(page, { x0: 0.20, y0: 0.22, x1: 0.38, y1: 0.38 });
+  const rect = await createRect(page, { x0: 0.18, y0: 0.20, x1: 0.36, y1: 0.34 });
   await selectStroke(page, rect.id);
   const styleProof = [];
   for (const option of STYLE_OPTIONS) {
     await pickDropdownOption(page, 'Style', option.label);
     await expect.poll(async () => {
       const row = await annotationById(page, rect.id);
-      if (option.cloud) return row?.cloud === true || row?.type.includes('path') || !!row?.id;
+      if (option.cloud) return row?.cloud === true || String(row?.type || '').includes('path') || !!row?.id;
       const dash = Array.isArray(row?.strokeDashArray)
         ? row.strokeDashArray.join(',')
         : String(row?.strokeDashArray || '');
@@ -727,17 +766,20 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
   }
   expect(styleProof).toEqual(STYLE_OPTIONS.map((option) => option.label));
 
-  const created = {
-    rect,
-    ellipse: await createEllipse(page),
-    line: await createLine(page),
-    arrow: await createArrow(page),
-    text: await createText(page, 'handles', { x0: 0.18, y0: 0.42, x1: 0.40, y1: 0.54 }),
-    callout: await createCallout(page, 'handles'),
-  };
+  const makers = [
+    ['rect', async () => rect],
+    ['ellipse', async () => createEllipse(page, { x0: 0.52, y0: 0.20, x1: 0.70, y1: 0.34 })],
+    ['line', async () => createLine(page, { x0: 0.18, y0: 0.40, x1: 0.40, y1: 0.44 })],
+    ['arrow', async () => createArrow(page, { x0: 0.52, y0: 0.40, x1: 0.74, y1: 0.44 })],
+    ['text', async () => createText(page, 'handles', { x0: 0.18, y0: 0.52, x1: 0.40, y1: 0.64 })],
+    ['callout', async () => createCallout(page, 'handles', { x0: 0.52, y0: 0.52, x1: 0.74, y1: 0.66 })],
+  ];
 
   const handleProof = {};
-  for (const [kind, row] of Object.entries(created)) {
+  const created = {};
+  for (const [kind, make] of makers) {
+    const row = await make();
+    created[kind] = row;
     await selectStroke(page, row.id);
     const resize = page.locator('[data-resize-handle]');
     const rotate = page.locator('[data-rotation-handle="mtr"]');
@@ -750,13 +792,10 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
     if (kind !== 'line' && kind !== 'arrow') {
       await expect(rotate.first()).toBeVisible();
       expect(rotateCount, `${kind} rotation handle`).toBeGreaterThan(0);
-    } else {
-      expect(rotateCount >= 0).toBeTruthy();
     }
     handleProof[kind] = { resizeIds, rotate: rotateCount > 0 };
   }
 
-  await selectStroke(page, created.ellipse.id);
   await resizeBr(page, created.ellipse.id);
   const ellipseAngleBefore = Number((await annotationById(page, created.ellipse.id))?.angle || 0);
   const rot = page.locator('[data-rotation-handle="mtr"]').first();
@@ -769,7 +808,6 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
   await expect.poll(async () => Number((await annotationById(page, created.ellipse.id))?.angle || 0))
     .not.toBe(ellipseAngleBefore);
 
-  await selectStroke(page, created.text.id);
   await resizeBr(page, created.text.id);
   await selectStroke(page, created.callout.id);
   const calloutResize = page.locator('[data-resize-handle]').first();
