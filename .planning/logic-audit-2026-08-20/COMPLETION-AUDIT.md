@@ -1,9 +1,19 @@
-# Completion audit — 2026-08-21 (evidence refresh)
+# Completion audit — 2026-08-21 (leftover-18 legal unblock)
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
-**Does not mark the audit goal complete.** Leftover-18 still blocks `/goal` complete. Uncertain = not achieved.
+**Does not mark the audit goal complete.** Leftover-18 still blocks `/goal` complete. Uncertain = not achieved. Save / export / import / recursive E2E until no issues remain is still the standing objective — not “96 IDs + leftover-18 parked”.
 
-**This-pass (2026-08-21 status refresh):** re-verified every unique 2026-08-20 audit ID against the current tree. Did **not** replay leftover-18, waves 5–13, flatten, survey-marker, pages menu, History restore, PDF-link ftp, thin leftovers, callout last-writer, hub extras, or every-swatch pickers. No product restore. Receipt: `fix-logs/audit-status-refresh-2026-08-21.md`. Inventory: `ISSUE-INVENTORY.md` (was stale wave-1 `open` for most rows — bookkeeping only).
+**This-pass (2026-08-21 leftover-18 unblock):** inspected env / lease / SQL / source for each leftover. `.env.local`, `.env.test`, `.bot-credentials.json`, and Docker are **missing**. Did not invent captcha / Stripe / MSAL / lease emails. Did not apply SQL to prod. Did not stamp `file.id`.
+
+| Leftover-18 verdict | Count |
+|---|---|
+| **unblocked-and-proven** | **0** |
+| **partial** (legal slice; host remains) | **18** |
+| **still-blocked** (no legal slice) | **0** |
+
+Receipt: `fix-logs/leftover18-unblock-2026-08-21.md`. Node **12 / 12**. Live **5 / 5**. Newly proven unblocked save/export slices: space CSV (`Space_1_export.csv`), space PDF Pages (`Space_1_export.pdf`), toolbar Export ×2, Save Log banner, History Save version owner-gated off. No product bug. Extract Pages / annotation JSON / Forms create tools still do not exist (not invented).
+
+**Prior-pass (2026-08-21 status refresh):** re-verified every unique 2026-08-20 audit ID against the current tree. Did **not** replay leftover-18, waves 5–13, flatten, survey-marker, pages menu, History restore, PDF-link ftp, thin leftovers, callout last-writer, hub extras, or every-swatch pickers. No product restore. Receipt: `fix-logs/audit-status-refresh-2026-08-21.md`. Inventory: `ISSUE-INVENTORY.md` (was stale wave-1 `open` for most rows — bookkeeping only).
 
 | This-pass verdict | Count |
 |---|---|

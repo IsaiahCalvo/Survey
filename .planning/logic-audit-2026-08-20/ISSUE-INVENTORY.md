@@ -1,11 +1,13 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-21 (this pass) — statuses re-verified against the current tree. Not a feature replay.
+**Evidence refresh:** 2026-08-21 leftover-18 legal unblock + save/export/import inventory.
 
 Sources: `REPORT.md` + `known-bugs-deep-dive.json` (103 headline / **96 unique IDs**)
 
-**This-pass (2026-08-21 status refresh):** grepped every unique ID’s product symbol + test/fix-log. Prior inventory still listed most rows as wave-1 `open` after later waves had closed them — that was **stale bookkeeping**, not a reopen. No silent stomps of P1-12 / P1-38 / P1-53 or the leftover-18 park list. **0** restores. Leftover **18** stay parked. Goal stays open. Receipt: `fix-logs/audit-status-refresh-2026-08-21.md`.
+**This-pass (2026-08-21 leftover-18 unblock):** maximum legal proof for each leftover-18 item. **0** unblocked-and-proven. **18** partial (fail-closed / local slice). **0** still-blocked with no slice. None moved out of leftover-18. `.env.local` / `.env.test` / `.bot-credentials.json` / Docker missing — no invented tokens, no prod SQL, no lease guess. Receipt: `fix-logs/leftover18-unblock-2026-08-21.md`. Node `tests/leftover18FailClosed.test.mjs` **12 / 12**. Live `e2e-leftover18-save-export.spec.mjs` **5 / 5**. Goal stays open.
+
+**Prior-pass (2026-08-21 status refresh):** grepped every unique ID’s product symbol + test/fix-log. Prior inventory still listed most rows as wave-1 `open` after later waves had closed them — that was **stale bookkeeping**, not a reopen. No silent stomps of P1-12 / P1-38 / P1-53 or the leftover-18 park list. **0** restores. Leftover **18** stay parked. Receipt: `fix-logs/audit-status-refresh-2026-08-21.md`.
 
 Did **not** replay leftover-18, waves 5–13, flatten, survey-marker, pages menu, History restore, PDF-link ftp, thin leftovers, callout last-writer, hub extras, or every-swatch pickers.
 
@@ -73,22 +75,22 @@ This refresh did **not** edit high-risk files.
 
 `X-01`, `X-05` persist, `X-06` writeback, `U-04` cloud usage, `A-01` Turnstile, `A-02` live MSAL, `A-03` inbox, `A-05` Stripe, `A-06` roster, `UL-03`, `UL-13`, `UL-15`, `UL-16`, `UL-20`, `UL-21`, `UL-22`, `UL-24`, `UL-45`.
 
-This-pass leftover-18 greps (still parked, not faked):
+This-pass leftover-18 (still parked; legal slices in `fix-logs/leftover18-unblock-2026-08-21.md`):
 
-| ID | Still-parked evidence |
-|---|---|
-| X-01 | `?testPdf=` has no cloud identity-churn; `DevTestRoute.jsx:167` “Do NOT set file.id” |
-| X-05 persist | same `file.id` gate; widgets already proven |
-| X-06 writeback | `excelWritebackGate.js:14` `EXCEL_AUTOMATIC_WRITEBACK_ENABLED = false` |
-| U-04 cloud | hubPreview seed only; no Dashboard usage meter |
-| A-01 Turnstile | `HubPreview.jsx` `previewBlocked('sign in')`; no captcha token path invented |
-| A-02 MSAL | `HubPreview.jsx:75` `previewBlocked('start Microsoft login')`; `msalInstance: null` |
-| A-03 / UL-24 inbox | mint chrome proven; live email delivery not claimed |
-| A-05 / UL-20 Stripe | catalog proven; checkout click not claimed |
-| A-06 / UL-45 roster | `PresenceAvatars.jsx:37` dedupes by `user_id` — same-user two-tab stays “just you” |
-| UL-03 | native File→Open pick/cancel not claimed |
-| UL-13 / UL-15 / UL-16 | profile persist / captcha / wipe stay host-blocked |
-| UL-21 / UL-22 | live MSAL / Google OAuth stay host-blocked |
+| ID | Verdict | Still-parked host |
+|---|---|---|
+| X-01 | **partial** — no `file.id`; Save version owner-gated | identity-churn (`.env.local` missing) |
+| X-05 persist | **partial** — widgets + local fill | saved `file.id` cloud persist |
+| X-06 writeback | **partial** — flag off + xlsx | live sheet host |
+| U-04 cloud | **partial** — hubPreview `i1: 3` seed | Dashboard + Supabase meter |
+| A-01 Turnstile | **partial** — no-token gate | live captcha completion |
+| A-02 MSAL | **partial** — Connect fail-closed; `msalInstance: null` | live MSAL |
+| A-03 / UL-24 inbox | **partial** — mint/Send fail-closed | live email delivery |
+| A-05 / UL-20 Stripe | **partial** — catalog; trial not clicked | live Checkout |
+| A-06 / UL-45 roster | **partial** — `user_id` dedupe | second-account lease tuple |
+| UL-03 | **partial** — web `/` Auth modal | native Electron pick/cancel |
+| UL-13 / UL-15 / UL-16 | **partial** — previewBlocked save/wipe + no-token | persist / captcha / wipe |
+| UL-21 / UL-22 | **partial** — Connect fail-closed | live MSAL / Google OAuth |
 
 ---
 
@@ -265,4 +267,4 @@ Buckets below are the original wave-1 parallelization map. Statuses in the table
 
 ## Goal
 
-Leftover **18** still blocks `/goal` complete. This inventory refresh does **not** mark the goal complete.
+Leftover **18** still blocks `/goal` complete. This leftover-18 legal-unblock pass does **not** mark the goal complete. Save / export / import / recursive E2E remain first-class.

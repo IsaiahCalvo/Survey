@@ -1,5 +1,7 @@
 # E2E unlisted controls — not in the 59-row matrix
 
+**This-pass (2026-08-21 leftover-18 unblock):** UL-03 web `/` Auth-modal gate live; UL-13/16 previewBlocked save/wipe live; UL-20 trial not clicked; UL-21/22 Connect fail-closed; UL-24 Send fail-closed; UL-45 still needs a second-account tuple. Space CSV / PDF Pages added as save/export inventory (not new UL rows). Receipt `fix-logs/leftover18-unblock-2026-08-21.md`. Goal stays open.
+
 **Date:** 2026-08-21  
 **Worktree:** `nifty-elion-773074`  
 **Matrix:** `FEATURE-MATRIX.md` / `E2E-STATUS.md` (59 rows)  
