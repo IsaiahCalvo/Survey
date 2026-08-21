@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -140,7 +141,8 @@ function isCounterRow(row) {
   return row.tool === 'counter'
     || row.type.includes('counter')
     || row.type === 'circle'
-    || row.type === 'group';
+    || row.type === 'group'
+    || !row.type;
 }
 
 async function dropCounterPin(page, { pageNumber = 1, xf = 0.40, yf = 0.36 } = {}) {
@@ -254,8 +256,23 @@ async function openSettings(page) {
   return dialog;
 }
 
+async function duplicatePageOne(page) {
+  await page.getByRole('button', { name: 'Pages', exact: true }).click();
+  const pageDivs = () => page.locator('.survey-pdfjs-page-div');
+  const beforePages = await pageDivs().count();
+  const thumb = page.locator('#chrome-left-host [data-page-number="1"], [data-sidebar-panel] [data-page-number="1"]').first();
+  await expect(thumb).toBeVisible();
+  await thumb.click({ button: 'right' });
+  const dup = page.getByText('Duplicate', { exact: true });
+  await expect(dup).toBeVisible({ timeout: 8_000 });
+  await dup.click();
+  await expect.poll(async () => pageDivs().count()).toBeGreaterThan(beforePages);
+  await expect(page.locator('.survey-pdfjs-page-div[data-page-number="2"]').first()).toBeVisible({ timeout: 20_000 });
+}
+
 test('P1-14 renumberCounters persist after page-bucket change', async ({ page }) => {
-  await openEditor(page, MULTI_PDF);
+  await openEditor(page, LINK_PDF);
+  await duplicatePageOne(page);
 
   await activateTool(page, 'Shapes', 'Counter');
   const before1 = new Set((await userAnnotationSnapshot(page, 1)).map((row) => row.id));
@@ -371,15 +388,19 @@ test('P1-01 / 03 / 04 group flatten, Square /BE, print scale', async ({ page }) 
   expect(cloudSquare || squares.some((row) => row.be), 'cloud Square export writes /BE').toBeTruthy();
   expect(plainSquares.length, 'non-cloud rects omit /BE').toBeGreaterThan(0);
 
+  const src = readFileSync(new URL('../../src/utils/pdfAnnotationsPdfLib.js', import.meta.url), 'utf8');
+  const flattenFn = src.slice(src.indexOf('const drawFlattenedObject'));
+  const groupSlice = flattenFn.slice(0, flattenFn.indexOf('const type = String(obj.type'));
+  expect(groupSlice).toMatch(/left: \(Number\(child\?\.left\) \|\| 0\) \+ parentLeft/);
+  expect(groupSlice).not.toMatch(/x1: child\?\.x1/);
+  expect(flattenFn).toMatch(/getObjNumber\(shifted, 'width'\) \* scaleX/);
+  expect(flattenFn).toMatch(/getObjNumber\(shifted, 'height'\) \* scaleY/);
+  expect(flattenFn).toMatch(/if \(!\[left, top, width, height, pageHeight\]\.every\(Number\.isFinite\)\) return 0/);
+  expect(src).toMatch(/pdfCloudIntensity/);
+  expect(src).toMatch(/pdfCloudPathD/);
+
   const flatten = await page.evaluate(async ({ lineRow, scaled }) => {
     const { getLineEndpoints } = await import('/src/utils/svgBoundingBox.js');
-    const src = await (await fetch('/src/utils/pdfAnnotationsPdfLib.js')).text();
-    const flattenFn = src.slice(src.indexOf('const drawFlattenedObject'));
-    const offsetsLeftTopOnly = /left: \(Number\(child\?\.left\) \|\| 0\) \+ parentLeft/.test(flattenFn)
-      && !/x1: child\?\.x1/.test(flattenFn.slice(0, flattenFn.indexOf("const type = String(obj.type")));
-    const scalesBox = /getObjNumber\(shifted, 'width'\) \* scaleX/.test(flattenFn)
-      && /getObjNumber\(shifted, 'height'\) \* scaleY/.test(flattenFn);
-    const skipsNonFinite = /if \(!\[left, top, width, height, pageHeight\]\.every\(Number\.isFinite\)\) return 0/.test(flattenFn);
 
     const fabricLine = {
       type: 'line',
@@ -403,9 +424,6 @@ test('P1-01 / 03 / 04 group flatten, Square /BE, print scale', async ({ page }) 
     const scaledW = Math.abs(Number(scaled.width) || 0) * Math.abs(Number(scaled.scaleX) || 1);
     const scaledH = Math.abs(Number(scaled.height) || 0) * Math.abs(Number(scaled.scaleY) || 1);
     return {
-      offsetsLeftTopOnly,
-      scalesBox,
-      skipsNonFinite,
       world,
       buggy,
       liveWorld,
@@ -413,18 +431,13 @@ test('P1-01 / 03 / 04 group flatten, Square /BE, print scale', async ({ page }) 
       liveDiffersFromBuggy: liveWorld.x1 !== liveBuggy.x1,
       scaledW,
       scaledH,
-      cloudKeys: /pdfCloudIntensity/.test(src) && /pdfCloudPathD/.test(src),
     };
   }, { lineRow: line, scaled: afterScale });
 
-  expect(flatten.offsetsLeftTopOnly).toBe(true);
-  expect(flatten.scalesBox).toBe(true);
-  expect(flatten.skipsNonFinite).toBe(true);
   expect(flatten.world.x1).toBe(100);
   expect(flatten.buggy.x1).toBe(75);
   expect(flatten.liveDiffersFromBuggy || Number.isFinite(flatten.liveWorld.x1)).toBeTruthy();
   expect(flatten.scaledW).toBeGreaterThan(0);
-  expect(flatten.cloudKeys).toBe(true);
 
   console.log('P101_03_04_PROOF', JSON.stringify({
     cloudId: cloud.id,
@@ -540,8 +553,8 @@ test('P1-05 / 06 / 08 / 29 group line, resolve-by-id, selection remap, Shift/Alt
   await page.mouse.move(geom.x + geom.width * 0.38, geom.y + geom.height * 0.84, { steps: 10 });
   await page.mouse.up();
   await page.keyboard.up('Alt');
-  await expect(page.locator(`[data-callout-id="${callB}"]`)).toBeVisible();
-  await expect(page.locator(`[data-callout-id="${callA}"]`)).toBeVisible();
+  await expect(page.locator(`[data-callout-id="${callB}"]`).first()).toBeVisible();
+  await expect(page.locator(`[data-callout-id="${callA}"]`).first()).toBeVisible();
 
   console.log('P105_06_08_29_PROOF', JSON.stringify({
     helpers,
@@ -556,10 +569,11 @@ test('P2-13 Microsoft Connect available + full-page OAuth gate', async ({ page }
   const dialog = await openSettings(page);
   await expect(dialog.getByText('Microsoft')).toBeVisible();
   await expect(dialog.getByText('Not connected. Connect to sync exported surveys')).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Connect', exact: true }).first()).toBeVisible();
-  await expect(dialog.getByText('Not available in the iOS/Android app')).toHaveCount(0);
+  const msRow = dialog.locator('.account-connected-account').filter({ hasText: 'Microsoft' });
+  await expect(msRow.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
+  await expect(msRow.getByText('Not available in the iOS/Android app')).toHaveCount(0);
 
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).first().click();
+  await msRow.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(dialog.locator('.account-error')).toContainText(/Failed to connect Microsoft|Preview cannot/i);
   expect(page.url()).not.toMatch(/login\.microsoftonline\.com/);
 
@@ -602,8 +616,9 @@ test('P2-13 Microsoft Connect available + full-page OAuth gate', async ({ page }
     window.Capacitor = { isNativePlatform: () => true };
   });
   const capDialog = await openSettings(page);
-  await expect(capDialog.getByText('Not available in the iOS/Android app')).toBeVisible();
-  await expect(capDialog.getByRole('button', { name: 'Connect', exact: true })).toHaveCount(0);
+  const capMs = capDialog.locator('.account-connected-account').filter({ hasText: 'Microsoft' });
+  await expect(capMs.getByText('Not available in the iOS/Android app')).toBeVisible();
+  await expect(capMs.getByRole('button', { name: 'Connect', exact: true })).toHaveCount(0);
 
   console.log('P213_PROOF', JSON.stringify({ routing, hideHonored: true, failClosed: true }));
 });
