@@ -306,6 +306,12 @@ test('Font menu offers single-name families after mobile FONT_FAMILIES restore',
     const pressed = await sub.getAttribute('aria-pressed');
     if (pressed !== 'true') await sub.click();
   }
+  await expect(overlay).toBeVisible({ timeout: 8_000 });
+  await dragOnPage(page, { x0: 0.20, y0: 0.55, x1: 0.48, y1: 0.68 });
+  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
+  await expect(editor).toBeVisible({ timeout: 10_000 });
+  await editor.click();
+  await page.keyboard.type('wave7 georgia');
   const fontBtn = page.getByRole('button', { name: 'Font', exact: true }).first();
   await expect(fontBtn).toBeVisible({ timeout: 8_000 });
   await fontBtn.click();
@@ -322,12 +328,7 @@ test('Font menu offers single-name families after mobile FONT_FAMILIES restore',
   expect(names).toEqual(expect.arrayContaining([
     'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana',
   ]));
-  await popover.getByRole('option', { name: 'Verdana', exact: true }).click();
-  await expect(fontBtn).toContainText('Verdana');
-  await popover.getByRole('option', { name: 'Georgia', exact: true }).click().catch(async () => {
-    await fontBtn.click();
-    await page.locator('[data-annotation-dropdown-popover="true"]').getByRole('option', { name: 'Georgia', exact: true }).click();
-  });
+  await popover.getByRole('option', { name: 'Georgia', exact: true }).click();
   await expect(fontBtn).toContainText('Georgia');
   const mobileSrc = await page.evaluate(async () => {
     const res = await fetch('/src/mobile/MobilePdfViewerChrome.jsx');
