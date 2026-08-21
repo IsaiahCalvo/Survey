@@ -382,7 +382,15 @@ test('callout cross-page paste: last-copied wins + break/edge', async ({ page })
   }, 1);
   await copyCallout(page, undoSource);
   await selectMode(page);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  // Create + text commit can be two local-history entries. Drain Undo until
+  // the source id is gone so this hunt is "paste after undo of source".
+  for (let step = 0; step < 4; step += 1) {
+    if (!(await calloutIdsOnPage(page, 1)).includes(undoSource)) break;
+    const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
+    if (await undoBtn.isDisabled()) break;
+    await undoBtn.click();
+    await expect.poll(async () => true, { timeout: 500 }).toBeTruthy();
+  }
   await expect.poll(async () => (await calloutIdsOnPage(page, 1)).includes(undoSource)).toBeFalsy();
   const page2BeforeUndo = new Set(await calloutIdsOnPage(page, 2));
   const pastedAfterUndo = await pasteCalloutOnPage(page, 2, page2BeforeUndo, { xf: 0.54, yf: 0.18 });
@@ -405,7 +413,7 @@ test('callout cross-page paste: last-copied wins + break/edge', async ({ page })
   const doomed = await createCallout(page, 'xp-doomed', {
     x0: 0.24, y0: 0.24, x1: 0.46, y1: 0.40,
   }, 3);
-  await copyCallout(page, doomed);
+  await copyCallout(page, doomed, 3);
   page.once('dialog', (dialog) => dialog.accept());
   const { deleteBtn } = await openPageMenu(page, 3);
   await deleteBtn.click();
