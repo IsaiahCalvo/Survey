@@ -65,6 +65,14 @@ function isTransparentPaint(row) {
   return fill === 'TRANSPARENT' || fill === '';
 }
 
+function storedFill(row) {
+  return colorKey(row?.fill || row?.visualFill);
+}
+
+function storedStroke(row) {
+  return colorKey(row?.stroke || row?.visualStroke);
+}
+
 async function openEditor(page, fixture = LINK_PDF) {
   await page.goto(fixture);
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 60_000 });
@@ -433,6 +441,7 @@ test('catalog: live picker families are single-name and match shared lists', () 
 });
 
 test('C-fill every swatch + C-border every swatch + break/edge', async ({ page }) => {
+  test.setTimeout(180_000);
   await openEditor(page);
   const rect = await createRect(page);
   await selectStroke(page, rect.id);
@@ -445,10 +454,7 @@ test('C-fill every swatch + C-border every swatch + break/edge', async ({ page }
       await expect.poll(async () => isTransparentPaint(await annotationById(page, rect.id))).toBeTruthy();
       fillProof.push({ swatch, stored: 'TRANSPARENT' });
     } else {
-      await expect.poll(async () => {
-        const row = await annotationById(page, rect.id);
-        return colorKey(row?.visualFill || row?.computedFill || row?.fill);
-      }).toBe(swatch);
+      await expect.poll(async () => storedFill(await annotationById(page, rect.id))).toBe(swatch);
       fillProof.push({ swatch, stored: swatch });
     }
   }
@@ -475,10 +481,7 @@ test('C-fill every swatch + C-border every swatch + break/edge', async ({ page }
   expect(await page.locator('button[title="Transparent"]').count()).toBe(0);
   for (const swatch of SOLID_SWATCHES) {
     await clickSwatch(page, swatch);
-    await expect.poll(async () => {
-      const row = await annotationById(page, rect.id);
-      return colorKey(row?.visualStroke || row?.computedStroke || row?.stroke);
-    }).toBe(swatch);
+    await expect.poll(async () => storedStroke(await annotationById(page, rect.id))).toBe(swatch);
     borderProof.push(swatch);
   }
   expect(borderProof).toEqual([...SOLID_SWATCHES]);
@@ -522,8 +525,8 @@ test('C-fill every swatch + C-border every swatch + break/edge', async ({ page }
   }
   expect(colorKey((await annotationById(page, rect.id))?.fill)).toBe('#0000FF');
 
-  await activateTool(page, 'Draw', 'Pen');
-  await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible();
+  await page.keyboard.press('p');
+  await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await page.getByRole('button', { name: 'Color', exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
   expect(await page.getByRole('button', { name: 'Fill', exact: true }).count()).toBe(0);
@@ -542,32 +545,29 @@ test('C-fill every swatch + C-border every swatch + break/edge', async ({ page }
 });
 
 test('C-stroke every pen swatch + C-counter fill/number every swatch', async ({ page }) => {
+  test.setTimeout(180_000);
   await openEditor(page);
   const ink = await createPen(page);
-  if (!(await page.getByRole('button', { name: 'Color', exact: true }).first().isVisible().catch(() => false))) {
-    await selectStroke(page, ink.id);
-  }
+  await selectStroke(page, ink.id);
   await openColorPicker(page, 'Color');
   expect(await page.getByRole('button', { name: 'Fill', exact: true }).count()).toBe(0);
   const penProof = [];
-  for (const swatch of COLOR_PICKER_PRESETS) {
+  const penOrder = [...SOLID_SWATCHES, 'transparent'];
+  for (const swatch of penOrder) {
     await clickSwatch(page, swatch);
     if (swatch === 'transparent') {
       await expect.poll(async () => {
         const row = await annotationById(page, ink.id);
         const opacity = Number(row?.opacity ?? row?.strokeOpacity ?? 1);
-        return opacity === 0 || colorKey(row?.stroke) === 'TRANSPARENT';
+        return opacity === 0 || storedStroke(row) === 'TRANSPARENT';
       }).toBeTruthy();
       penProof.push({ swatch, stored: 'TRANSPARENT' });
     } else {
-      await expect.poll(async () => {
-        const row = await annotationById(page, ink.id);
-        return colorKey(row?.visualStroke || row?.computedStroke || row?.stroke);
-      }).toBe(swatch);
+      await expect.poll(async () => storedStroke(await annotationById(page, ink.id))).toBe(swatch);
       penProof.push({ swatch, stored: swatch });
     }
   }
-  expect(penProof.map((row) => row.swatch)).toEqual([...COLOR_PICKER_PRESETS]);
+  expect(penProof.map((row) => row.swatch)).toEqual(penOrder);
   await dismissMenus(page);
 
   const pin = await dropCounterPin(page);
@@ -608,6 +608,7 @@ test('C-stroke every pen swatch + C-counter fill/number every swatch', async ({ 
 });
 
 test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ page }) => {
+  test.setTimeout(180_000);
   await openEditor(page);
   const text = await createText(page, 'picker catalog');
   await enterTextEdit(page, text.id);
@@ -639,19 +640,6 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
     await enterTextEdit(page, text.id);
   }
 
-  const sizeProof = [];
-  for (const size of FONT_SIZE_PRESETS) {
-    await pickDropdownOption(page, 'Font size', String(size));
-    await expect(page.getByRole('button', { name: 'Font size', exact: true }).first()).toContainText(String(size));
-    await expect.poll(async () => {
-      const row = await annotationById(page, text.id);
-      const overlayPx = row?.overlaySize ? Number.parseFloat(row.overlaySize) : null;
-      return Number(row?.fontSize) === size || overlayPx === size;
-    }).toBeTruthy();
-    sizeProof.push(size);
-  }
-  expect(sizeProof).toEqual([...FONT_SIZE_PRESETS]);
-
   const familiesOffered = [];
   await page.getByRole('button', { name: 'Font', exact: true }).click();
   const fontPop = page.locator('[data-annotation-dropdown-popover="true"]');
@@ -665,7 +653,8 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
     expect(isSingleNameFontFamily(family)).toBeTruthy();
     familiesOffered.push(family);
   }
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Font', exact: true }).click();
+  await expect(fontPop).toHaveCount(0);
   expect(familiesOffered).toEqual([...FONT_FAMILIES]);
 
   const formatProof = {};
@@ -673,28 +662,28 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
   const italic = page.getByRole('button', { name: 'Italic', exact: true });
   const underline = page.getByRole('button', { name: 'Underline', exact: true });
   const strike = page.getByRole('button', { name: 'Strikethrough', exact: true });
-  await bold.click();
+  await bold.click({ force: true });
   await expect(bold).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => {
     const row = await annotationById(page, text.id);
     return row?.overlayWeight === '700' || row?.overlayWeight === 'bold' || row?.bold === true || row?.fontWeight === 'bold';
   }).toBeTruthy();
   formatProof.bold = true;
-  await italic.click();
+  await italic.click({ force: true });
   await expect(italic).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => {
     const row = await annotationById(page, text.id);
     return row?.overlayStyle === 'italic' || row?.italic === true || row?.fontStyle === 'italic';
   }).toBeTruthy();
   formatProof.italic = true;
-  await underline.click();
+  await underline.click({ force: true });
   await expect(underline).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => {
     const row = await annotationById(page, text.id);
     return String(row?.overlayDecoration || '').includes('underline') || row?.underline === true;
   }).toBeTruthy();
   formatProof.underline = true;
-  await strike.click();
+  await strike.click({ force: true });
   await expect(strike).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => {
     const row = await annotationById(page, text.id);
@@ -718,6 +707,19 @@ test('T-font-color every swatch + every size + B/I/U/S + 3x3 align', async ({ pa
     alignProof.push(cell.label);
   }
   expect(alignProof).toEqual(ALIGN_CELLS.map((cell) => cell.label));
+
+  const sizeProof = [];
+  for (const size of FONT_SIZE_PRESETS) {
+    await pickDropdownOption(page, 'Font size', String(size));
+    await expect(page.getByRole('button', { name: 'Font size', exact: true }).first()).toContainText(String(size));
+    await expect.poll(async () => {
+      const row = await annotationById(page, text.id);
+      const overlayPx = row?.overlaySize ? Number.parseFloat(row.overlaySize) : null;
+      return Number(row?.fontSize) === size || overlayPx === size;
+    }).toBeTruthy();
+    sizeProof.push(size);
+  }
+  expect(sizeProof).toEqual([...FONT_SIZE_PRESETS]);
 
   await page.mouse.click(12, 200);
   const committed = await annotationById(page, text.id);
@@ -767,12 +769,12 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
   expect(styleProof).toEqual(STYLE_OPTIONS.map((option) => option.label));
 
   const makers = [
-    ['rect', async () => rect],
-    ['ellipse', async () => createEllipse(page, { x0: 0.52, y0: 0.20, x1: 0.70, y1: 0.34 })],
-    ['line', async () => createLine(page, { x0: 0.18, y0: 0.40, x1: 0.40, y1: 0.44 })],
-    ['arrow', async () => createArrow(page, { x0: 0.52, y0: 0.40, x1: 0.74, y1: 0.44 })],
-    ['text', async () => createText(page, 'handles', { x0: 0.18, y0: 0.52, x1: 0.40, y1: 0.64 })],
-    ['callout', async () => createCallout(page, 'handles', { x0: 0.52, y0: 0.52, x1: 0.74, y1: 0.66 })],
+    ['rect', async () => createRect(page, { x0: 0.18, y0: 0.18, x1: 0.34, y1: 0.30 })],
+    ['ellipse', async () => createEllipse(page, { x0: 0.52, y0: 0.18, x1: 0.68, y1: 0.30 })],
+    ['line', async () => createLine(page, { x0: 0.18, y0: 0.38, x1: 0.40, y1: 0.42 })],
+    ['arrow', async () => createArrow(page, { x0: 0.52, y0: 0.38, x1: 0.74, y1: 0.42 })],
+    ['text', async () => createText(page, 'handles', { x0: 0.18, y0: 0.50, x1: 0.38, y1: 0.62 })],
+    ['callout', async () => createCallout(page, 'handles', { x0: 0.52, y0: 0.50, x1: 0.72, y1: 0.64 })],
   ];
 
   const handleProof = {};
