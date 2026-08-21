@@ -396,22 +396,29 @@ async function pageContentText(bytes, pageIndex = 0) {
     .join('\n');
 }
 
+function fixturePageSize(kind = 'link') {
+  const url = kind === 'form'
+    ? new URL('../../debug/fixtures/kal441-form-fields.pdf', import.meta.url)
+    : new URL('../../debug/fixtures/clickable-link-test.pdf', import.meta.url);
+  readFileSync(url);
+  if (kind === 'form') return { width: 480, height: 380 };
+  return { width: 612, height: 792 };
+}
+
 async function flattenLive(page, {
   objects = [],
   callouts = [],
   fixture = LINK_FIXTURE,
+  sizes = fixturePageSize('link'),
 } = {}) {
-  return page.evaluate(async ({ objs, calls, fixtureUrl }) => {
+  return page.evaluate(async ({ objs, calls, fixtureUrl, pageSize }) => {
     const {
       savePDFWithAnnotationsPdfLib,
       savePDFWithFlattenedRegularAnnotationsForPrint,
     } = await import('/src/utils/pdfAnnotationsPdfLib.js');
     const buf = await (await fetch(fixtureUrl)).arrayBuffer();
     const file = { name: 'wave9.pdf', arrayBuffer: async () => buf };
-    const { PDFDocument } = await import('pdf-lib');
-    const src = await PDFDocument.load(buf.slice(0));
-    const size = src.getPage(0).getSize();
-    const pageSizes = { 1: { width: size.width, height: size.height } };
+    const pageSizes = { 1: { width: pageSize.width, height: pageSize.height } };
     const annotations = { 1: { objects: objs } };
     const flattenBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
       file,
@@ -429,10 +436,10 @@ async function flattenLive(page, {
     return {
       flattenBytes: [...new Uint8Array(flattenBytes)],
       exportBytes: [...new Uint8Array(exportBytes)],
-      pageHeight: size.height,
-      pageWidth: size.width,
+      pageHeight: pageSize.height,
+      pageWidth: pageSize.width,
     };
-  }, { objs: objects, calls: callouts, fixtureUrl: fixture });
+  }, { objs: objects, calls: callouts, fixtureUrl: fixture, pageSize: { width: sizes.width, height: sizes.height } });
 }
 
 async function assertNoErrorBoundary(page) {
@@ -656,7 +663,8 @@ test('W9 form widget: intended + break + edge', async ({ page }) => {
   const typed = page.locator('.pdfjsFormLayer input[type="text"], .pdfjsFormLayer textarea').first();
   await expect(typed).toBeAttached({ timeout: 15_000 });
 
-  const emptyHunt = await flattenLive(page, { objects: [], fixture: FORM_FIXTURE });
+  const formSizes = fixturePageSize('form');
+  const emptyHunt = await flattenLive(page, { objects: [], fixture: FORM_FIXTURE, sizes: formSizes });
   const emptyForm = await PDFDocument.load(Uint8Array.from(emptyHunt.exportBytes));
   const emptyName = emptyForm.getForm().getTextField('surveyor.name').getText() || '';
   expect(emptyName, 'unfilled form export stays empty').toBe('');
@@ -696,7 +704,7 @@ test('W9 form widget: intended + break + edge', async ({ page }) => {
       value: 'w9-form',
     }, null, 'wave9')];
   });
-  const flattenHunt = await flattenLive(page, { objects: formObjects, fixture: FORM_FIXTURE });
+  const flattenHunt = await flattenLive(page, { objects: formObjects, fixture: FORM_FIXTURE, sizes: formSizes });
   const flattenPdf = await PDFDocument.load(Uint8Array.from(flattenHunt.flattenBytes));
   expect(flattenPdf.getForm().getTextField('surveyor.name').getText()).toBe('w9-form');
 
