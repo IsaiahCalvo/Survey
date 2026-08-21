@@ -196,27 +196,32 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   await activateTool(page, 'Shapes', 'Rectangle');
   await dragOnPage(page, { x0: 0.30, y0: 0.30, x1: 0.54, y1: 0.52 });
   const rectB = await waitForNewUserAnnotation(page, beforeB, isRect);
-  expect((await siblingOrder(page)).at(-1)).toBe(rectB.id);
+  const userOrder = async () => {
+    const rows = await userAnnotationSnapshot(page);
+    return rows.map((row) => row.id);
+  };
+  expect((await userOrder()).at(-1)).toBe(rectB.id);
 
   await page.keyboard.press('v');
   await selectStroke(page, rectA.id);
   await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
 
-  // Intended — Ctrl+] bring forward past the overlapping neighbor.
+  // Overlap-aware: Ctrl+] / Ctrl+[ pass the nearest overlapping neighbor,
+  // not the first/last imported native (e.g. 39R) on the layer.
   await page.keyboard.press('Control+]');
-  await expect.poll(async () => (await siblingOrder(page)).at(-1), {
-    message: 'Ctrl+] must bring the selected overlapping rect to the top sibling',
-  }).toBe(rectA.id);
-  hunts.push({ hunt: 'intended — Ctrl+] bring forward', pass: true, top: rectA.id });
+  await expect.poll(async () => {
+    const ids = await userOrder();
+    return ids.indexOf(rectA.id) > ids.indexOf(rectB.id);
+  }, { message: 'Ctrl+] must place A above overlapping B' }).toBeTruthy();
+  hunts.push({ hunt: 'intended — Ctrl+] bring forward past overlapping neighbor', pass: true, order: await userOrder() });
 
-  // Intended — Ctrl+[ send backward past the overlapping neighbor.
   await page.keyboard.press('Control+[');
-  await expect.poll(async () => (await siblingOrder(page))[0], {
-    message: 'Ctrl+[ must send the selected overlapping rect behind its neighbor',
-  }).toBe(rectA.id);
-  hunts.push({ hunt: 'intended — Ctrl+[ send backward', pass: true, back: rectA.id });
+  await expect.poll(async () => {
+    const ids = await userOrder();
+    return ids.indexOf(rectA.id) < ids.indexOf(rectB.id);
+  }, { message: 'Ctrl+[ must place A behind overlapping B' }).toBeTruthy();
+  hunts.push({ hunt: 'intended — Ctrl+[ send backward past overlapping neighbor', pass: true, order: await userOrder() });
 
-  // Intended — Ctrl+Shift+] / Ctrl+Shift+[ front / back (same two shapes).
   await page.keyboard.press('Control+Shift+]');
   await expect.poll(async () => (await siblingOrder(page)).at(-1)).toBe(rectA.id);
   await page.keyboard.press('Control+Shift+[');
