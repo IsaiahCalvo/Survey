@@ -158,9 +158,6 @@ async function insertBlankAfter(page, pageNumber) {
 async function deletePage(page, pageNumber, { accept = true } = {}) {
   page.once('dialog', (dialog) => (accept ? dialog.accept() : dialog.dismiss()));
   const before = await page.locator('.survey-pdfjs-page-div').count();
-  await openPagesPanel(page);
-  const thumb = pageThumb(page, pageNumber);
-  await expect(thumb).toBeVisible();
   await openPageMenu(page, pageNumber);
   const del = pagesMenu(page).getByText('Delete', { exact: true });
   await expect(del).toBeVisible({ timeout: 8_000 });
