@@ -15,7 +15,14 @@
 // errors into thrown Error objects so callers can `try / catch` instead of
 // inspecting `{ data, error }`.
 
-import { supabase } from '../supabaseClient';
+import { supabase, isSupabaseAvailable } from '../supabaseClient';
+import { upsertFabricAnnotation } from './annotationCloudSync.js';
+
+function requireCloudRevisions(label) {
+  if (!isSupabaseAvailable()) {
+    throw new Error(`${label}: cloud revisions unavailable`);
+  }
+}
 
 function throwIfError(label, error) {
   if (!error) return;
@@ -27,12 +34,45 @@ function throwIfError(label, error) {
 }
 
 /**
+ * Push the live canvas into `document_annotations` so `kal48_create_revision`
+ * snapshots the marks the user actually sees (Y.Doc / WAL), not an empty
+ * legacy table.
+ *
+ * @param {string} documentId
+ * @param {Record<string|number, { objects?: object[] }>} annotationsByPage
+ * @param {string} userId
+ * @returns {Promise<number>} number of objects flushed
+ */
+export async function flushLiveAnnotationsForRevision(documentId, annotationsByPage, userId) {
+  if (!documentId) throw new Error('flushLiveAnnotationsForRevision: documentId required');
+  requireCloudRevisions('flushLiveAnnotationsForRevision');
+  if (!userId) throw new Error('flushLiveAnnotationsForRevision: userId required');
+  let flushed = 0;
+  for (const [pageKey, page] of Object.entries(annotationsByPage || {})) {
+    const pageNumber = Number.parseInt(pageKey, 10);
+    if (!Number.isFinite(pageNumber) || pageNumber < 1) continue;
+    for (const obj of page?.objects || []) {
+      if (!obj) continue;
+      const { error } = await upsertFabricAnnotation(obj, {
+        documentId,
+        userId,
+        pageNumber,
+      });
+      throwIfError('flushLiveAnnotationsForRevision', error);
+      flushed += 1;
+    }
+  }
+  return flushed;
+}
+
+/**
  * @param {string} documentId
  * @param {{ label?: string|null, origin?: 'manual'|'sign-off' }} [opts]
  * @returns {Promise<object>} the inserted document_revisions row
  */
 export async function createRevision(documentId, opts = {}) {
   if (!documentId) throw new Error('createRevision: documentId required');
+  requireCloudRevisions('createRevision');
   const label = opts.label ?? null;
   const origin = opts.origin || 'manual';
   const { data, error } = await supabase.rpc('kal48_create_revision', {
@@ -59,7 +99,7 @@ export async function createRevision(documentId, opts = {}) {
  * }>>}
  */
 export async function listRevisions(documentId) {
-  if (!documentId) return [];
+  if (!documentId || !isSupabaseAvailable()) return [];
   const { data, error } = await supabase.rpc('kal48_list_revisions', {
     p_document_id: documentId,
   });
@@ -83,6 +123,7 @@ export async function listRevisions(documentId) {
  */
 export async function getRevision(revisionId) {
   if (!revisionId) throw new Error('getRevision: revisionId required');
+  requireCloudRevisions('getRevision');
   const { data, error } = await supabase.rpc('kal48_get_revision', {
     p_revision_id: revisionId,
   });
@@ -101,6 +142,7 @@ export async function getRevision(revisionId) {
  */
 export async function restoreRevision(revisionId) {
   if (!revisionId) throw new Error('restoreRevision: revisionId required');
+  requireCloudRevisions('restoreRevision');
   const { data, error } = await supabase.rpc('kal48_restore_revision', {
     p_revision_id: revisionId,
   });

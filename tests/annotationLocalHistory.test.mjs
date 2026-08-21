@@ -7,6 +7,7 @@ import {
   buildPreciseAnnotationHistoryAction,
   filterAnnotationHistoryActionByOwner,
   invertAnnotationHistoryAction,
+  mergeAnnotationHistoryUpdate,
 } from '../src/utils/annotationLocalHistory.js';
 
 test('buildAnnotationHistoryAction records one created annotation by id', () => {
@@ -816,4 +817,53 @@ test('filtered eraser undo restores only current user deleted annotations', () =
   const undone = applyAnnotationHistoryAction({ 1: nextPage }, scopedInverse);
 
   deepStrictEqual(undone[1].objects.map((obj) => obj.data.id), ['mine', 'survivor']);
+});
+
+test('P1-11: undo of own move keeps a teammate recolor on the same object', () => {
+  const before = { type: 'rect', data: { id: 'r1', authorId: 'user-a' }, left: 10, stroke: 'red' };
+  const after = { type: 'rect', data: { id: 'r1', authorId: 'user-a' }, left: 20, stroke: 'red' };
+  const live = { type: 'rect', data: { id: 'r1', authorId: 'user-a' }, left: 20, stroke: 'blue' };
+  const action = { type: 'fabric:update', pageNumber: 1, before, after, annotationId: 'r1' };
+
+  const undone = applyAnnotationHistoryAction({ 1: { objects: [live] } }, invertAnnotationHistoryAction(action));
+
+  equal(undone[1].objects[0].left, 10);
+  equal(undone[1].objects[0].stroke, 'blue');
+});
+
+test('P1-11: merge skips fields the teammate already overwrote', () => {
+  const merged = mergeAnnotationHistoryUpdate(
+    { left: 30, stroke: 'blue', top: 4 },
+    { left: 20, stroke: 'red', top: 4 },
+    { left: 10, stroke: 'red', top: 4 },
+  );
+  deepStrictEqual(merged, { left: 30, stroke: 'blue', top: 4 });
+});
+
+test('P1-36: owner can undo an unstamped import; contributor cannot', () => {
+  const imported = { type: 'rect', data: { id: 'imp-1' }, left: 1 };
+  const action = {
+    type: 'fabric:update',
+    pageNumber: 1,
+    before: imported,
+    after: { ...imported, left: 8 },
+  };
+  equal(filterAnnotationHistoryActionByOwner(action, 'cloud-contributor', 'document-owner'), null);
+  const ownerUndo = filterAnnotationHistoryActionByOwner(action, 'document-owner', 'document-owner');
+  equal(ownerUndo.type, 'fabric:update');
+});
+
+test('P1-36: stamped import undo is own for the stamped author only', () => {
+  const stamped = { type: 'rect', data: { id: 'imp-2', authorId: 'document-owner' }, meta: { authorId: 'document-owner' }, left: 1 };
+  const action = {
+    type: 'fabric:update',
+    pageNumber: 1,
+    before: stamped,
+    after: { ...stamped, left: 8 },
+  };
+  equal(filterAnnotationHistoryActionByOwner(action, 'cloud-contributor', 'document-owner'), null);
+  equal(
+    filterAnnotationHistoryActionByOwner(action, 'document-owner', 'document-owner')?.type,
+    'fabric:update',
+  );
 });

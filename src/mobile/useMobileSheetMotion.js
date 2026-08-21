@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /*
  * Mobile bottom-sheet motion system — Phase F (motion & feel polish),
@@ -23,6 +23,14 @@ import { useCallback, useRef, useState } from 'react';
  *
  * The hook is GPU-cheap: it only ever writes transform/opacity (never
  * top/height), so it never competes with the pdf.js render.
+ *
+ * Close-timer contract (P2-35):
+ *  - The 170ms close timer is stored and cancelled on unmount, on
+ *    cancelPendingClose/resetMotion, and when a new open is observed.
+ *  - A stale timer never fires onClose against a sheet that reopened.
+ *  - touchcancel settles the same as touchend (no stranded mid-drag).
+ *  - dragY resets on every touchstart so an interrupted gesture cannot
+ *    leak into the next drag.
  */
 
 // demo SurveySetupSheet.tsx:51-96 — drag-dismiss thresholds
@@ -36,12 +44,43 @@ export const SHEET_CLOSE_EASING = 'cubic-bezier(0.32, 0, 0.67, 0)'; // in-cubic
 export const SHEET_SPRING_MS = 260;
 export const SHEET_SPRING_EASING = 'cubic-bezier(0.22, 1.15, 0.36, 1)';
 
-function prefersReducedMotion() {
+export function prefersReducedMotion(matchMedia = typeof window !== 'undefined' ? window.matchMedia : undefined) {
   return (
-    typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    typeof matchMedia === 'function'
+    && matchMedia('(prefers-reduced-motion: reduce)').matches
   );
+}
+
+export function shouldDismissSheet(dy, vy) {
+  return dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY;
+}
+
+export function createSheetCloseController(setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout) {
+  let timerId = null;
+  let generation = 0;
+
+  return {
+    schedule(fn, ms) {
+      if (timerId != null) clearTimeoutFn(timerId);
+      const token = ++generation;
+      timerId = setTimeoutFn(() => {
+        timerId = null;
+        if (token !== generation) return;
+        fn();
+      }, ms);
+      return token;
+    },
+    cancel() {
+      if (timerId != null) {
+        clearTimeoutFn(timerId);
+        timerId = null;
+      }
+      generation += 1;
+    },
+    isPending() {
+      return timerId != null;
+    },
+  };
 }
 
 /**
@@ -51,9 +90,12 @@ function prefersReducedMotion() {
  * @param {object} [options]
  * @param {(event: TouchEvent) => boolean} [options.canStartDrag]  guard so the
  *   drag only engages from the handle / when inner scroll is at top.
+ * @param {boolean} [options.isOpen]  when this flips back to true, pending
+ *   close timers and leftover drag are cancelled so a reopen cannot inherit
+ *   a previous dismiss.
  */
 export function useMobileSheetMotion(onClose, options = {}) {
-  const { canStartDrag } = options;
+  const { canStartDrag, isOpen = true } = options;
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
   const [springing, setSpringing] = useState(false);
@@ -63,28 +105,90 @@ export function useMobileSheetMotion(onClose, options = {}) {
   const lastTRef = useRef(0);
   const vyRef = useRef(0);
   const engagedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const closeControllerRef = useRef(null);
+  const prevOpenRef = useRef(isOpen);
+  if (!closeControllerRef.current) {
+    closeControllerRef.current = createSheetCloseController();
+  }
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  const cancelPendingClose = useCallback(() => {
+    closeControllerRef.current.cancel();
+  }, []);
+
+  const resetMotion = useCallback(() => {
+    closeControllerRef.current.cancel();
+    startYRef.current = null;
+    lastYRef.current = null;
+    lastTRef.current = 0;
+    vyRef.current = 0;
+    engagedRef.current = false;
+    setClosing(false);
+    setSpringing(false);
+    setDragY(0);
+  }, []);
+
+  useEffect(() => () => {
+    closeControllerRef.current.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && !prevOpenRef.current) {
+      resetMotion();
+    }
+    prevOpenRef.current = isOpen;
+  }, [isOpen, resetMotion]);
 
   const requestClose = useCallback(() => {
     if (closing) return;
     if (prefersReducedMotion()) {
-      setDragY(0);
-      setSpringing(false);
-      onClose?.();
+      resetMotion();
+      onCloseRef.current?.();
       return;
     }
-    // keep the sheet mounted + slide it down, then fire the real close
     setSpringing(false);
     setClosing(true);
-    window.setTimeout(() => {
+    closeControllerRef.current.schedule(() => {
       setClosing(false);
       setDragY(0);
-      onClose?.();
+      onCloseRef.current?.();
     }, SHEET_CLOSE_MS);
-  }, [closing, onClose]);
+  }, [closing, resetMotion]);
+
+  const settleDrag = useCallback(() => {
+    const startY = startYRef.current;
+    startYRef.current = null;
+    if (startY == null) return;
+    const engaged = engagedRef.current;
+    engagedRef.current = false;
+    if (!engaged) return;
+    const dy = Math.max(0, (lastYRef.current ?? startY) - startY);
+    const vy = vyRef.current;
+    if (shouldDismissSheet(dy, vy)) {
+      requestClose();
+    } else if (dy > 0) {
+      if (prefersReducedMotion()) {
+        setDragY(0);
+        return;
+      }
+      setSpringing(true);
+      setDragY(0);
+      closeControllerRef.current.schedule(() => setSpringing(false), SHEET_SPRING_MS);
+    }
+  }, [requestClose]);
 
   const onTouchStart = useCallback((event) => {
+    if (closing) {
+      cancelPendingClose();
+      setClosing(false);
+    }
     if (typeof canStartDrag === 'function' && !canStartDrag(event)) {
       startYRef.current = null;
+      setDragY(0);
       return;
     }
     const y = event.touches?.[0]?.clientY ?? null;
@@ -94,7 +198,8 @@ export function useMobileSheetMotion(onClose, options = {}) {
     vyRef.current = 0;
     engagedRef.current = false;
     setSpringing(false);
-  }, [canStartDrag]);
+    setDragY(0);
+  }, [canStartDrag, cancelPendingClose, closing]);
 
   const onTouchMove = useCallback((event) => {
     const startY = startYRef.current;
@@ -115,27 +220,12 @@ export function useMobileSheetMotion(onClose, options = {}) {
   }, [closing]);
 
   const onTouchEnd = useCallback(() => {
-    const startY = startYRef.current;
-    startYRef.current = null;
-    if (startY == null) return;
-    const engaged = engagedRef.current;
-    engagedRef.current = false;
-    if (!engaged) return;
-    const dy = Math.max(0, (lastYRef.current ?? startY) - startY);
-    const vy = vyRef.current;
-    if (dy > SHEET_DISMISS_DY || vy > SHEET_DISMISS_VY) {
-      requestClose();
-    } else if (dy > 0) {
-      // spring back home
-      if (prefersReducedMotion()) {
-        setDragY(0);
-        return;
-      }
-      setSpringing(true);
-      setDragY(0);
-      window.setTimeout(() => setSpringing(false), SHEET_SPRING_MS);
-    }
-  }, [requestClose]);
+    settleDrag();
+  }, [settleDrag]);
+
+  const onTouchCancel = useCallback(() => {
+    settleDrag();
+  }, [settleDrag]);
 
   // Merge into the sheet element's inline style. Empty when idle+open so the
   // CSS slide-in keyframe (mobilePdfSheetIn) governs the entrance untouched.
@@ -160,8 +250,10 @@ export function useMobileSheetMotion(onClose, options = {}) {
 
   return {
     motionStyle: motionStyle || {},
-    dragHandlers: { onTouchStart, onTouchMove, onTouchEnd },
+    dragHandlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel },
     requestClose,
+    cancelPendingClose,
+    resetMotion,
     closing,
   };
 }

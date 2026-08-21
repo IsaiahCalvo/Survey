@@ -33,5 +33,62 @@ export function migrateSidebarData(sidebarData) {
     hasImportedPdfBookmarks,
     spaces,
     pageTransformations: data.pageTransformations || {},
+    activeSpaceId: data.activeSpaceId ?? null,
+  };
+}
+
+export const PAGE_NAMES_META_KEY = 'pageNames';
+export const BOOKMARKS_META_KEY = 'bookmarks';
+
+const asRecord = (value) => (
+  value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+);
+
+export const mergePageNameMaps = (existing, incoming) => ({
+  ...asRecord(existing),
+  ...asRecord(incoming),
+});
+
+/**
+ * P1-46 merge-on-write: keyed maps union (incoming wins per key). Bookmark and
+ * space arrays use this writer's membership so deletes stay deleted; Y.Doc
+ * meta is what shares those lists across browsers.
+ */
+export function mergeSidebarWrite(existingRaw, incomingRaw) {
+  const existing = migrateSidebarData(existingRaw || {});
+  const incoming = migrateSidebarData(incomingRaw || {});
+  return {
+    pageNames: mergePageNameMaps(existing.pageNames, incoming.pageNames),
+    bookmarks: incoming.bookmarks,
+    spaces: incoming.spaces,
+    pageTransformations: mergePageNameMaps(
+      existing.pageTransformations,
+      incoming.pageTransformations,
+    ),
+    activeSpaceId: incomingRaw?.activeSpaceId ?? existing.activeSpaceId ?? null,
+  };
+}
+
+export const listsShallowEqualById = (left, right) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  return left.every((item, index) => item === right[index] || item?.id === right[index]?.id);
+};
+
+export function applyRemoteSidebarMeta(local, remote) {
+  const nextNames = remote.pageNames === undefined
+    ? local.pageNames
+    : mergePageNameMaps(local.pageNames, remote.pageNames);
+  const nextBookmarks = remote.bookmarks === undefined
+    ? local.bookmarks
+    : (Array.isArray(remote.bookmarks) ? remote.bookmarks : local.bookmarks);
+  return {
+    pageNames: nextNames,
+    bookmarks: nextBookmarks,
+    namesChanged: JSON.stringify(asRecord(local.pageNames)) !== JSON.stringify(asRecord(nextNames)),
+    bookmarksChanged: !listsShallowEqualById(local.bookmarks, nextBookmarks)
+      || JSON.stringify(local.bookmarks || []) !== JSON.stringify(nextBookmarks || []),
   };
 }

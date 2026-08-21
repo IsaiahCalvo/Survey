@@ -15,6 +15,7 @@ import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange } from './libraryChangeBus.js';
+import { assertDocumentVersionMatch } from '../utils/documentVersionCheck.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -781,11 +782,28 @@ export const useStorage = () => {
     return filePath;
   }, [user]);
 
-  const replaceDocument = useCallback(async (file, filePath, onProgress) => {
+  const replaceDocument = useCallback(async (file, filePath, onProgress, options = {}) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
     if (!filePath) throw new Error('Document storage path is required');
+    const expectedUpdatedAt = options?.expectedUpdatedAt || options?.ifMatch || null;
+    if (expectedUpdatedAt) {
+      const slash = String(filePath).lastIndexOf('/');
+      const folder = slash >= 0 ? filePath.slice(0, slash) : '';
+      const name = slash >= 0 ? filePath.slice(slash + 1) : filePath;
+      const { data: listed, error: listError } = await supabase.storage
+        .from('documents')
+        .list(folder, { search: name, limit: 20 });
+      if (!listError) {
+        const remote = (listed || []).find((entry) => entry?.name === name);
+        const check = assertDocumentVersionMatch({
+          expectedUpdatedAt,
+          remoteUpdatedAt: remote?.updated_at || remote?.created_at || null,
+        });
+        if (!check.ok) throw check.error;
+      }
+    }
     const { error } = await supabase.storage
       .from('documents')
       .upload(filePath, file, {

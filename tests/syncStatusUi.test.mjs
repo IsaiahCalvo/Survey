@@ -214,6 +214,17 @@ test('sync failures emit privacy-safe analytics categories without raw error tex
 // (stage: idle/hydrating/syncing/error + forceFlush), consumed through the
 // view-model contract tested above and the Save wiring tested below.
 
+test('forceFlush throws when the snapshot write does not save', () => {
+  const hook = readFileSync(resolve('src/hooks/useAnnotationDoc.js'), 'utf8');
+  const start = hook.indexOf('const forceFlush = useCallback');
+  const end = hook.indexOf('const commitEraserMutation');
+  assert.ok(start > 0 && end > start, 'expected forceFlush next to commitEraserMutation');
+  const fn = hook.slice(start, end);
+  assert.match(fn, /const saved = await h\.flushSnapshot\(\)/);
+  assert.match(fn, /const ok = Boolean\(saved && next\.healthy !== false\)/);
+  assert.match(fn, /if \(!ok\) \{\s*throw new Error\(next\.error \|\| 'sync failed'\)/);
+});
+
 test('normal app-state Save invokes cloudSyncForceFlush', () => {
   const src = appSource();
   const saveIndex = src.indexOf("actionType: 'app-state-save'");

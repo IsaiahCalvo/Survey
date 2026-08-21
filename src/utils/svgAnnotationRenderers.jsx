@@ -25,6 +25,7 @@ import {
   ARROWHEAD_STYLES,
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
+import { buildLegacyArrowGroupTransform } from './legacyGroupArrow.js';
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
 // grows/shrinks with the shape instead of staying baked at import size.
@@ -732,8 +733,10 @@ export const renderArrow = (obj, index) => {
     ? obj.strokeDashArray.join(' ')
     : undefined;
 
+  const groupTransform = buildLegacyArrowGroupTransform(obj, x1, y1, x2, y2);
+
   return (
-    <g key={key} opacity={obj.opacity ?? 1}>
+    <g key={key} opacity={obj.opacity ?? 1} transform={groupTransform}>
       <line
         x1={x1}
         y1={y1}

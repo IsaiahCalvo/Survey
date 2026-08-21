@@ -11,26 +11,48 @@ import { useEffect, useRef, useState } from 'react';
 import SurveyHub from './SurveyHub';
 import CreateProjectModal from './CreateProjectModal';
 import ToastHost from '../components/ToastHost';
+import { AuthModal } from '../components/AuthModal';
 import { AuthContext } from '../contexts/AuthContext';
 import { MSGraphContext } from '../contexts/MSGraphContext';
+import { showToast } from '../utils/toast';
 
 /* Mock context values so the Settings page (AccountSettings) can render in the
-   preview without a real backend. Same pattern as src/DevTestRoute.jsx. */
+   preview without a real backend. Same pattern as src/DevTestRoute.jsx.
+   `user` must be non-null — AccountSettings returns null without it.
+   Live account / auth mutations fail-closed via previewBlocked so the UI
+   cannot claim a reset email, save, or sign-out actually happened. */
 const asyncNoop = async () => {};
+const previewBlocked = (action) => async () => {
+  throw new Error(`Preview cannot ${action}.`);
+};
+
+const mockUser = {
+  id: 'dev-hubpreview-user',
+  email: 'dev-hubpreview@example.invalid',
+  user_metadata: {
+    first_name: 'Isaiah',
+    last_name: 'Calvo',
+    full_name: 'Isaiah Calvo',
+  },
+};
 
 const mockAuthValue = {
-  user: null,
+  user: mockUser,
   session: null,
   loading: false,
-  signUp: asyncNoop,
-  signIn: asyncNoop,
-  signInWithGoogle: asyncNoop,
-  signInWithSSO: asyncNoop,
-  signOut: asyncNoop,
-  resetPassword: asyncNoop,
-  updatePassword: asyncNoop,
-  updateProfile: asyncNoop,
-  refreshSubscriptionTier: asyncNoop,
+  signUp: previewBlocked('create an account'),
+  signIn: previewBlocked('sign in'),
+  signInWithGoogle: previewBlocked('start Google sign-in'),
+  signInWithSSO: previewBlocked('start SSO'),
+  signOut: previewBlocked('sign out'),
+  resetPassword: previewBlocked('send password reset emails'),
+  updatePassword: previewBlocked('update passwords'),
+  updateProfile: previewBlocked('save profile changes'),
+  refreshSubscriptionTier: previewBlocked('refresh subscription status'),
+  resendConfirmation: previewBlocked('resend confirmation emails'),
+  linkGoogleIdentity: previewBlocked('start Google OAuth'),
+  unlinkProvider: previewBlocked('unlink providers'),
+  deleteAccount: previewBlocked('delete accounts'),
   isAuthenticated: false,
   isSupabaseAvailable: false,
   plan: 'developer',
@@ -50,13 +72,13 @@ const mockMSGraphValue = {
   isAuthenticated: false,
   isLoading: false,
   error: null,
-  login: asyncNoop,
-  logout: asyncNoop,
+  login: previewBlocked('start Microsoft login'),
+  logout: previewBlocked('disconnect Microsoft'),
   updateLastUsed: asyncNoop,
   connectionRestored: true,
   needsReconnect: false,
   handleOAuthCallback: asyncNoop,
-  ensureFreshToken: async () => true,
+  ensureFreshToken: async () => false,
 };
 
 const iso = (daysAgo, h = 10, m = 0) => {
@@ -140,6 +162,19 @@ const MOCK_TEMPLATES = [
   },
 ];
 
+/* KAL-44 preview seed. MOCK_TEMPLATES already has checklist ids i1–i6; the
+   hub has no open document, so there is no live marker map. SurveyHub already
+   accepts getChecklistItemUsageCount (Dashboard wires it to Supabase). A
+   static count for one existing id lets the archive-confirm modal appear
+   without inventing a backend. Unused ids stay 0 (hard-delete). */
+const MOCK_CHECKLIST_ITEM_USAGE = Object.freeze({
+  i1: 3, // Cameras — "Is the camera cable pulled?"
+});
+
+const previewGetChecklistItemUsageCount = (itemId) => (
+  Number(MOCK_CHECKLIST_ITEM_USAGE[itemId]) || 0
+);
+
 /* Append "-copy" before the file extension. */
 const copyName = (name = '') => {
   const dot = name.lastIndexOf('.');
@@ -185,6 +220,8 @@ export default function HubPreview() {
   const loadingFixture = params.get('hubLoading');
   const errorFixture = params.get('hubError');
   const workflowE2E = params.get('workflowE2E') === '1';
+  const guestFixture = params.get('guest') === '1';
+  const [authModalOpen, setAuthModalOpen] = useState(guestFixture);
   const previewHasNoData = emptyFixture
     || ['documents', 'projects', 'templates'].includes(loadingFixture)
     || ['documents', 'projects', 'templates'].includes(errorFixture);
@@ -433,7 +470,7 @@ export default function HubPreview() {
             templatesLoadError={loadErrors.templates}
             onRetryTemplates={() => retryLoad('templates')}
             members={MOCK_MEMBERS}
-            user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
+            user={guestFixture ? null : { name: 'Isaiah Calvo', email: 'dev-hubpreview@example.invalid' }}
             isPro
             initialTab={initialTab}
             initialMobileDetailOpen={initialMobileDetailOpen}
@@ -445,6 +482,7 @@ export default function HubPreview() {
             onDuplicateProjects={handleDuplicateProjects}
             onCreateTemplate={handleCreateTemplate}
             onSaveTemplates={setTemplates}
+            getChecklistItemUsageCount={previewGetChecklistItemUsageCount}
             onDuplicateDocuments={handleDuplicate}
             onDeleteDocuments={handleDelete}
             onRenameDocument={handleRenameDocument}
@@ -452,8 +490,20 @@ export default function HubPreview() {
             projectPreferences={projectPreferences}
             onProjectPreferencesChange={handleProjectPreferencesChange}
             onSettings={() => console.log('[hub preview] open settings page')}
-            onSignOut={() => console.log('[hub preview] sign out')}
+            onSignOut={() => {
+              void mockAuthValue.signOut().catch((err) => {
+                showToast(err?.message || 'Preview cannot sign out.', 'error');
+              });
+            }}
+            onSignIn={() => setAuthModalOpen(true)}
           />
+          {guestFixture ? (
+            <AuthModal
+              isOpen={authModalOpen}
+              onClose={() => setAuthModalOpen(false)}
+              onDismiss={() => setAuthModalOpen(false)}
+            />
+          ) : null}
           <CreateProjectModal
             open={projectModalOpen}
             name={projectDraftName}

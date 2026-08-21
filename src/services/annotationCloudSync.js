@@ -41,7 +41,6 @@ import {
 // Scanned by scripts/check-no-diff-delete.mjs.  // NO_DIFF_DELETE_OK: docstring references the gate script by name.
 import { applyFabricCommit, applyFabricDelete } from '../lib/collab/crdtAnnotationBridge.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
-import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
 import {
   isSurveyMarkerType,
   SURVEY_MARKER_TYPE_VALUES,
@@ -641,28 +640,8 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
       legacyResult = await upsertFabricAnnotation(fabricObj, opts);
       // upsertFabricAnnotation returns { data, error } — treat error truthy as
       // a failed save and enqueue. Mirrors the existing call pattern.
-      if (legacyResult && legacyResult.error) {
-        const annoId = fabricObj?.data?.id;
-        if (opts.userId && annoId) {
-          enqueueDualWrite({
-            userId: opts.userId,
-            annoId,
-            side: 'legacy',
-            payload: { fabricObj, opts },
-          });
-        }
-      }
     } catch (err) {
       legacyResult = { data: null, error: err };
-      const annoId = fabricObj?.data?.id;
-      if (opts.userId && annoId) {
-        enqueueDualWrite({
-          userId: opts.userId,
-          annoId,
-          side: 'legacy',
-          payload: { fabricObj, opts },
-        });
-      }
     }
   }
 
@@ -685,15 +664,6 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
     applyFabricCommit(opts.ydoc, opts.yMapAnnotations, fabricObj, opts.originPayload, opts.ctx);
     return { legacy: legacyResult, crdt: { ok: true } };
   } catch (err) {
-    const annoId = fabricObj?.data?.id;
-    if (opts.userId && annoId) {
-      enqueueDualWrite({
-        userId: opts.userId,
-        annoId,
-        side: 'crdt',
-        payload: { fabricObj, opts },
-      });
-    }
     return { legacy: legacyResult, crdt: { error: err } };
   }
 }
@@ -733,26 +703,8 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
   } else {
     try {
       legacyResult = await deleteAnnotation(documentId, annoId);
-      if (legacyResult && legacyResult.error) {
-        if (opts.userId && annoId) {
-          enqueueDualWrite({
-            userId: opts.userId,
-            annoId,
-            side: 'legacy',
-            payload: { op: 'delete', documentId, annoId, opts },
-          });
-        }
-      }
     } catch (err) {
       legacyResult = { data: null, error: err };
-      if (opts.userId && annoId) {
-        enqueueDualWrite({
-          userId: opts.userId,
-          annoId,
-          side: 'legacy',
-          payload: { op: 'delete', documentId, annoId, opts },
-        });
-      }
     }
   }
 
@@ -768,14 +720,6 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
     applyFabricDelete(opts.ydoc, opts.yMapAnnotations, annoId, opts.originPayload);
     return { legacy: legacyResult, crdt: { ok: true } };
   } catch (err) {
-    if (opts.userId && annoId) {
-      enqueueDualWrite({
-        userId: opts.userId,
-        annoId,
-        side: 'crdt',
-        payload: { op: 'delete', documentId, annoId, opts },
-      });
-    }
     return { legacy: legacyResult, crdt: { error: err } };
   }
 }

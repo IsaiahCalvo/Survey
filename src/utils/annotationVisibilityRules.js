@@ -256,9 +256,16 @@ export function isAnnotationVisibleInContext({
     moduleId: annotation.moduleId,
     regionId: annotation.regionId
   });
-  const isScopedRegionAnnotation =
-    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
-    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+  const derivedSpaceId = annotation.regionId
+    ? getSpaceIdForRegionFromSpaces(annotation.regionId, spaces)
+    : null;
+  // P1-52: a regionId whose region no longer exists is treated as unscoped
+  // so the mark stays visible until GC clears the stamp.
+  const isScopedRegionAnnotation = (
+    (visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION
+      || visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION)
+    && derivedSpaceId !== null
+  );
 
   let isOverlayEnabledForThisPage = false;
   if (activeRegions !== null && selectedSpaceId && typeof isRegionOverlayEnabled === 'function') {
@@ -275,10 +282,6 @@ export function isAnnotationVisibleInContext({
     Array.isArray(activeRegions) &&
     activeRegions.some((region) => region && typeof region === 'object') &&
     isOverlayEnabledForThisPage;
-
-  const derivedSpaceId = isScopedRegionAnnotation
-    ? getSpaceIdForRegionFromSpaces(annotation.regionId, spaces)
-    : null;
 
   let matchesSpace = true;
   if (hasActiveRegions && !isScopedRegionAnnotation) {

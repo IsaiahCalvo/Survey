@@ -29,6 +29,7 @@ const importedEditedSource = () => ({
   layer: 'pdf-annotations',
   data: {
     id: 'source-uuid-1',
+    zOrder: 'V00zz',
     annotationType: 'square',
     pdfImportedEditState: 'edited',
     pdfNativeAnnotationIdentity: { v: 1, pageNumber: 1, annotsIndex: 0 },
@@ -75,6 +76,7 @@ test('pasted clone of an imported shape gets a fresh id and NO import provenance
   assert.equal(clone.type, 'rect');
   assert.equal(clone.width, 60);
   assert.equal(clone.data.annotationType, 'square');
+  assert.equal('zOrder' in clone.data, false, 'paste must not inherit the source stacking key');
 });
 
 test('imported source with NO data still yields a clone with data.id', () => {

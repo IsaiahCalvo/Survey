@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { consumeBillingQueryOnBoot } from '../utils/billingReturn';
 
 // KAL-57 — single mounted host for the in-app toast bus (see utils/toast.js).
 // Listens for 'app-toast' events, stacks them bottom-center, auto-dismisses
@@ -39,6 +40,7 @@ export default function ToastHost() {
       setTimeout(() => remove(id), AUTO_DISMISS_MS);
     };
     window.addEventListener('app-toast', onToast);
+    consumeBillingQueryOnBoot();
     return () => window.removeEventListener('app-toast', onToast);
   }, [remove]);
 

@@ -13,7 +13,8 @@
 
 import '../../src/lib/collab/__tests__/crdtBackfill.test.mjs';
 import '../../src/lib/collab/__tests__/crdtBackfill.weblocks.test.mjs';
-import '../../src/lib/collab/__tests__/crdtDualWriteQueue.test.mjs';
+// P2-02: crdtDualWriteQueue retired. Do not re-import its colocated scaffold.
+// Live stuck / quarantine coverage lives on the outbox retry view when present.
 import '../../src/services/__tests__/annotationCloudSync.dualWrite.test.mjs';
 import '../../src/components/collab/__tests__/StorageFailureBanner.syncQueueStuck.test.mjs';
 import '../../src/hooks/__tests__/useDualWriteQueue.test.mjs';

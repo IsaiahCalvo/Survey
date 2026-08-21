@@ -19,6 +19,7 @@ import Icon from './Icons';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import PDFSidebar from './PDFSidebar';
 import SaveLogBanner from './components/SaveLogBanner';
+import { surveyGlobalLogPath } from './utils/surveyDiagPaths.js';
 import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
@@ -49,6 +50,7 @@ import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
+import { FONT_FAMILIES, FONT_SIZE_PRESETS } from './utils/annotationStyleCatalog.js';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
@@ -243,8 +245,11 @@ export default function App({ devPreviewReturnTab = null }) {
         try {
           const ts = new Date().toISOString();
           const header = `===== SaveLog (global) @ ${ts} =====\n`;
+          const homeDir = await api.getHomeDir?.();
+          const logPath = surveyGlobalLogPath(homeDir);
+          if (!logPath) throw new Error('home directory unavailable');
           await api.writeFile(
-            '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
+            logPath,
             header + finalConsoleText + '\n'
           );
           console.log(`[SaveLog] wrote ${finalLineCount} lines locally (source: ${consoleSource})`);
@@ -1041,7 +1046,9 @@ export default function App({ devPreviewReturnTab = null }) {
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
     if (newFile?.id && durablePath) {
-      await replaceDocument(newFile, durablePath);
+      await replaceDocument(newFile, durablePath, undefined, {
+        expectedUpdatedAt: selectedPDF?.updated_at || selectedPDF?.updatedAt || null,
+      });
     }
     setTabs(prev => {
       if (targetTabId) {
@@ -1164,6 +1171,15 @@ export default function App({ devPreviewReturnTab = null }) {
     || mobileAuxPanel
   );
 
+  const closeMobileDocumentSheet = useCallback(() => {
+    const rail = leftRailApi?.ref?.current;
+    if (typeof rail?.requestClose === 'function') {
+      rail.requestClose();
+      return;
+    }
+    rail?.closePanel?.();
+  }, [leftRailApi]);
+
   const openMobileDocumentPanel = useCallback((panelId) => {
     setMobileSurveyCollapseRequestKey((key) => key + 1);
     leftRailApi?.ref?.current?.togglePanel?.(panelId);
@@ -1177,7 +1193,7 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
-    leftRailApi?.ref?.current?.closePanel?.();
+    closeMobileDocumentSheet();
     if (mobileSurveyPanelOpen) {
       setMobileSurveyCollapseRequestKey((key) => key + 1);
       return;
@@ -1186,7 +1202,7 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!rightRailApi?.showSurveyPanel) {
       rightRailApi?.handleSurveyToggle?.();
     }
-  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
+  }, [closeMobileDocumentSheet, mobileSurveyPanelOpen, rightRailApi]);
 
   useEffect(() => {
     if (isViewerVisible) return;
@@ -1197,9 +1213,9 @@ export default function App({ devPreviewReturnTab = null }) {
 
   useEffect(() => {
     if (!mobileAuxPanel) return;
-    leftRailApi?.ref?.current?.closePanel?.();
+    closeMobileDocumentSheet();
     setMobileSurveyCollapseRequestKey((key) => key + 1);
-  }, [mobileAuxPanel]);
+  }, [closeMobileDocumentSheet, mobileAuxPanel]);
 
   // UX 2026-07-08 (mobile design pass): the hub stays mounted underneath the
   // viewer overlay. On narrow screens the hub's mobile layout fixes its header
@@ -1814,12 +1830,14 @@ export default function App({ devPreviewReturnTab = null }) {
                             <CompactColorPicker
                               color={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
                               opacity={1}
+                              showOpacity={false}
                               marginRight="0"
                               onChange={(hex) => {
                                 bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex);
                               }}
                               onClose={() => setShowFontColorPicker(false)}
-                              firstPreset="transparent"
+                              firstPreset="none"
+                              passthroughSelector=".annotation-dropdown__trigger, [data-font-family-menu], [data-font-size-menu]"
                             />
                           </Suspense>
                         </div>
@@ -1830,7 +1848,6 @@ export default function App({ devPreviewReturnTab = null }) {
                         Single-name fonts only per the Fabric cursor-drift
                         gotcha (2026-04-08). */}
                     {(() => {
-                      const FONT_FAMILIES = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'];
                       const currentFamily = bottomToolbarApi.richTextEditor?.state?.fontFamily || 'Arial';
                       return (
                         <AnnotationDropdown
@@ -1856,7 +1873,6 @@ export default function App({ devPreviewReturnTab = null }) {
                         size isn't in the preset list, it's prepended so the
                         trigger label still matches the live value. */}
                     {(() => {
-                      const FONT_SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72];
                       const currentSize = bottomToolbarApi.richTextEditor?.state?.fontSize ?? 16;
                       const sizes = FONT_SIZE_PRESETS.includes(currentSize)
                         ? FONT_SIZE_PRESETS
@@ -2437,6 +2453,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           firstPreset={(shapeOneVisibleRule && !onFillTab)
                             ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
                             : 'transparent'}
+                          minOpacity={(shapeOneVisibleRule && !onFillTab) ? 1 : 0}
                         />
                       </Suspense>
                     </div>

@@ -130,7 +130,7 @@ const edgeCases = [
   },
 ];
 
-test('partial mode whole-deletes every non-ink atomic annotation on eraser-disk edge overlap', async (t) => {
+test('partial mode skips every non-ink atomic annotation on eraser-disk edge overlap', async (t) => {
   for (const [index, entry] of edgeCases.entries()) {
     await t.test(entry.name, () => {
       const id = `atomic-edge-${index}`;
@@ -158,11 +158,37 @@ test('partial mode whole-deletes every non-ink atomic annotation on eraser-disk 
         'eraser disk overlaps the visible edge',
       );
 
+      const page = { objects: [object] };
+      const result = erasePageAnnotations({
+        pageAnnotations: page,
+        eraserPoints: [entry.point],
+        eraserRadius: 6,
+        mode: 'partial',
+      });
+
+      assert.equal(result.didChange, false);
+      assert.equal(result.pageAnnotations, page);
+      assert.deepEqual(result.pageAnnotations.objects, [object]);
+      assert.deepEqual(result.changedIds, []);
+      assert.deepEqual(result.deletedIds, []);
+    });
+  }
+});
+
+test('entire mode whole-deletes every non-ink atomic annotation on eraser-disk edge overlap', async (t) => {
+  for (const [index, entry] of edgeCases.entries()) {
+    await t.test(entry.name, () => {
+      const id = `atomic-edge-entire-${index}`;
+      const object = {
+        ...entry.object,
+        data: { ...entry.object.data, id },
+      };
+
       const result = erasePageAnnotations({
         pageAnnotations: { objects: [object] },
         eraserPoints: [entry.point],
         eraserRadius: 6,
-        mode: 'partial',
+        mode: 'entire',
       });
 
       assert.equal(result.didChange, true);
@@ -218,7 +244,7 @@ const filledEdgeCases = [
   },
 ];
 
-test('partial mode whole-deletes filled shapes when only the eraser disk reaches their edge', async (t) => {
+test('partial mode skips filled shapes when only the eraser disk reaches their edge', async (t) => {
   for (const [index, entry] of filledEdgeCases.entries()) {
     await t.test(entry.name, () => {
       const id = `filled-atomic-edge-${index}`;
@@ -241,11 +267,40 @@ test('partial mode whole-deletes filled shapes when only the eraser disk reaches
         'eraser disk overlaps the filled edge',
       );
 
+      const page = { objects: [object] };
+      const result = erasePageAnnotations({
+        pageAnnotations: page,
+        eraserPoints: [entry.point],
+        eraserRadius: 6,
+        mode: 'partial',
+      });
+
+      assert.equal(result.didChange, false);
+      assert.equal(result.pageAnnotations, page);
+      assert.deepEqual(result.pageAnnotations.objects, [object]);
+      assert.deepEqual(result.changedIds, []);
+      assert.deepEqual(result.deletedIds, []);
+    });
+  }
+});
+
+test('entire mode whole-deletes filled shapes when only the eraser disk reaches their edge', async (t) => {
+  for (const [index, entry] of filledEdgeCases.entries()) {
+    await t.test(entry.name, () => {
+      const id = `filled-atomic-edge-entire-${index}`;
+      const object = {
+        ...entry.object,
+        fill: '#2563eb',
+        stroke: 'transparent',
+        strokeWidth: 0,
+        data: { id },
+      };
+
       const result = erasePageAnnotations({
         pageAnnotations: { objects: [object] },
         eraserPoints: [entry.point],
         eraserRadius: 6,
-        mode: 'partial',
+        mode: 'entire',
       });
 
       assert.equal(result.didChange, true);

@@ -136,10 +136,23 @@ function normalizePendingRecord(record) {
   if (!record?.documentId || !record?.actorUserId || !record?.key) {
     throw new Error('outbox record requires documentId, actorUserId, and key');
   }
+  const queuedAt = Number(record.queuedAt);
   return {
     ...cloneRecord(record),
     scopeKey: actorScopeKey(record.documentId, record.actorUserId),
+    queuedAt: Number.isFinite(queuedAt) && queuedAt > 0 ? queuedAt : Date.now(),
   };
+}
+
+function recordsForActor(rows, actorUserId) {
+  if (!actorUserId) return [];
+  return [...rows]
+    .filter((record) => record.actorUserId === actorUserId)
+    .sort((left, right) => (
+      (left.ordinal || 0) - (right.ordinal || 0)
+      || String(left.key).localeCompare(String(right.key))
+    ))
+    .map(cloneRecord);
 }
 
 export function createMemoryAnnotationOutbox() {
@@ -211,6 +224,12 @@ export function createMemoryAnnotationOutbox() {
     },
     async listQuarantined(documentId, actorUserId) {
       return listStore(quarantined, documentId, actorUserId);
+    },
+    async listAllPendingForActor(actorUserId) {
+      return recordsForActor(pending.values(), actorUserId);
+    },
+    async listAllQuarantinedForActor(actorUserId) {
+      return recordsForActor(quarantined.values(), actorUserId);
     },
     async deleteFromOrdinal(
       documentId,
@@ -308,6 +327,13 @@ export function createMemoryAnnotationOutbox() {
 }
 
 let sharedMemoryAnnotationOutbox = null;
+let sharedAnnotationOutboxPromise = null;
+
+export function getSharedAnnotationOutbox(options) {
+  if (options?.indexedDb) return createAnnotationOutbox(options);
+  sharedAnnotationOutboxPromise ??= createAnnotationOutbox();
+  return sharedAnnotationOutboxPromise;
+}
 
 export async function createAnnotationOutbox({
   indexedDb = globalThis.indexedDB,
@@ -469,6 +495,28 @@ export async function createAnnotationOutbox({
     },
     async listQuarantined(documentId, actorUserId) {
       return list(QUARANTINE_STORE, documentId, actorUserId);
+    },
+    async listAllPendingForActor(actorUserId) {
+      if (!actorUserId) return [];
+      return run(PENDING_STORE, 'readonly', async (stores, transaction) => {
+        const rows = await requestResult(
+          stores[PENDING_STORE].getAll(),
+          transaction,
+          timeoutMs,
+        );
+        return recordsForActor(rows, actorUserId);
+      });
+    },
+    async listAllQuarantinedForActor(actorUserId) {
+      if (!actorUserId) return [];
+      return run(QUARANTINE_STORE, 'readonly', async (stores, transaction) => {
+        const rows = await requestResult(
+          stores[QUARANTINE_STORE].getAll(),
+          transaction,
+          timeoutMs,
+        );
+        return recordsForActor(rows, actorUserId);
+      });
     },
     async deleteFromOrdinal(
       documentId,

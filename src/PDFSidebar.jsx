@@ -7,7 +7,7 @@
  * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
  * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
  */
-import React, { useState, useCallback, useImperativeHandle, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useImperativeHandle, useRef, lazy, Suspense } from 'react';
 import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
@@ -22,6 +22,19 @@ import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useTooltip } from './components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+
+// P2-34 leftover: B toggles the left rail. The viewer keyboard handler
+// inlines the same gate (form fields / modifiers stay inert) and calls
+// toggleCollapse on this handle. These helpers are the testable contract.
+export function shouldToggleSidebarOnKey(event, isFormField) {
+  if (isFormField) return false;
+  if (!event || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+  return event.key === 'b' || event.key === 'B';
+}
+
+export function nextSidebarCollapsed(isCollapsed) {
+  return !isCollapsed;
+}
 
 // Module scope so it keeps a stable component identity across PDFSidebar renders.
 const HistoryButton = ({ isActive, onClick }) => {
@@ -141,6 +154,8 @@ const PDFSidebar = React.forwardRef(({
   documentId = null,
   user = null,
   onRestoreHistoryActivity = null,
+  onPrepareSaveRevision = null,
+  onApplyNamedRevision = null,
   onCascadeRestoreRegion = null,
   onRestoreHistoryContext = null,
   mobileMode = false,
@@ -177,28 +192,70 @@ const PDFSidebar = React.forwardRef(({
     }
   }, [isCollapsed]);
 
+  // P2-35(b): user/chrome exits keep the sheet mounted through the 170ms
+  // slide-down. The hook's delayed onClose is the only hide. A reopen
+  // while that timer is in flight marks the pending hide stale so it
+  // cannot collapse the newly opened sheet. Drag-dismiss still hides:
+  // ignore is set only when `closing` is already true.
+  const ignoreNextHideRef = useRef(false);
+  const commitHidePanel = useCallback(() => {
+    if (ignoreNextHideRef.current) {
+      ignoreNextHideRef.current = false;
+      return;
+    }
+    setIsCollapsed(true);
+  }, []);
+
+  // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
+  // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
+  // touchend delta. Demo SurveySetupSheet.tsx:51-96 / inv-demo §17.
+  const {
+    motionStyle: sheetMotionStyle,
+    dragHandlers: sheetDragHandlers,
+    requestClose: requestSheetClose,
+    resetMotion: resetSheetMotion,
+    closing: sheetClosing,
+  } = useMobileSheetMotion(commitHidePanel);
+
+  const markSheetOpen = useCallback(() => {
+    if (sheetClosing) ignoreNextHideRef.current = true;
+    resetSheetMotion?.();
+  }, [resetSheetMotion, sheetClosing]);
+
+  const closePanel = useCallback(() => {
+    if (isCollapsed) return;
+    ignoreNextHideRef.current = false;
+    if (mobileMode) {
+      requestSheetClose();
+      return;
+    }
+    setIsCollapsed(true);
+  }, [isCollapsed, mobileMode, requestSheetClose]);
+
   const toggleCollapse = useCallback(() => {
     if (!isCollapsed && activeTab === 'history') {
       setActiveTab('pages');
     }
-    setIsCollapsed(prev => !prev);
-  }, [activeTab, isCollapsed]);
+    if (mobileMode && !isCollapsed) {
+      closePanel();
+      return;
+    }
+    if (isCollapsed) markSheetOpen();
+    setIsCollapsed((prev) => nextSidebarCollapsed(prev));
+  }, [activeTab, closePanel, isCollapsed, markSheetOpen, mobileMode]);
 
   const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
       ? panelId
       : 'pages';
+    markSheetOpen();
     setIsCollapsed(false);
     setActiveTab(validPanel);
     if (validPanel === 'search' && focus) {
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, []);
-
-  const closePanel = useCallback(() => {
-    setIsCollapsed(true);
-  }, []);
+  }, [markSheetOpen]);
 
   const handleMobileSpacesMetricsChange = useCallback(({ expandedPageRows = 0, contentHeight = null } = {}) => {
     setMobileSpacesPageRows(expandedPageRows);
@@ -218,11 +275,13 @@ const PDFSidebar = React.forwardRef(({
   useImperativeHandle(ref, () => ({
     openPanel,
     closePanel,
+    requestClose: closePanel,
     togglePanel,
+    toggleCollapse,
     openSearchPanel: ({ focus = true, select = true } = {}) => {
       openPanel('search', { focus, select });
     }
-  }), [closePanel, openPanel, togglePanel]);
+  }), [closePanel, openPanel, toggleCollapse, togglePanel]);
 
   React.useEffect(() => {
     if (!mobileMode || typeof onPanelStateChange !== 'function') return;
@@ -240,15 +299,10 @@ const PDFSidebar = React.forwardRef(({
   ];
 
   const openHistoryPanel = useCallback(() => {
+    markSheetOpen();
     setIsCollapsed(false);
     setActiveTab('history');
-  }, []);
-
-  // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
-  // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
-  // touchend delta. Demo SurveySetupSheet.tsx:51-96 / inv-demo §17.
-  const { motionStyle: sheetMotionStyle, dragHandlers: sheetDragHandlers, requestClose: requestSheetClose } =
-    useMobileSheetMotion(closePanel);
+  }, [markSheetOpen]);
 
   const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
     ? { label: 'Spaces', icon: 'layers' }
@@ -293,7 +347,7 @@ const PDFSidebar = React.forwardRef(({
         type="button"
         className="mobile-pdf-sheet-backdrop"
         aria-label="Close document panel"
-        onClick={requestSheetClose}
+        onClick={closePanel}
       />
     )}
     <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
@@ -317,6 +371,7 @@ const PDFSidebar = React.forwardRef(({
         onTouchStart={mobileMode ? sheetDragHandlers.onTouchStart : undefined}
         onTouchMove={mobileMode ? sheetDragHandlers.onTouchMove : undefined}
         onTouchEnd={mobileMode ? sheetDragHandlers.onTouchEnd : undefined}
+        onTouchCancel={mobileMode ? sheetDragHandlers.onTouchCancel : undefined}
         style={{
         height: '35px',
         padding: '0 8px',
@@ -354,7 +409,7 @@ const PDFSidebar = React.forwardRef(({
               type="button"
               className="mobile-history-close"
               aria-label="Close version history"
-              onClick={requestSheetClose}
+              onClick={closePanel}
             >
               <Icon name="close" size={17} color="currentColor" />
             </button>
@@ -454,7 +509,7 @@ const PDFSidebar = React.forwardRef(({
                 type="button"
                 className="mobile-pdf-hub-close"
                 aria-label="Close document hub"
-                onClick={requestSheetClose}
+                onClick={closePanel}
               >
                 <Icon name="close" size={16} color="currentColor" />
               </button>
@@ -602,6 +657,8 @@ const PDFSidebar = React.forwardRef(({
                 isActive={activeTab === 'history' && !isCollapsed}
                 onNavigateToPage={onNavigateToPage}
                 onRestoreHistoryActivity={onRestoreHistoryActivity}
+                onPrepareSaveRevision={onPrepareSaveRevision}
+                onApplyNamedRevision={onApplyNamedRevision}
                 onCascadeRestoreRegion={onCascadeRestoreRegion}
                 onRestoreHistoryContext={onRestoreHistoryContext}
               />

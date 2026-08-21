@@ -45,6 +45,7 @@ import {
   DELETED_PDF_ANNOTATIONS_MAP,
   ERASER_OPS_MAP,
   META_MAP,
+  SPACES_MAP,
   SURVEY_MARKERS_MAP,
   deletedPdfAnnotationStorageKey,
   getAnnotationsMap,
@@ -59,6 +60,9 @@ import {
   getMetaValue,
   setMetaValue,
   docToSurveyMarkers,
+  docToSpaces,
+  migrateSpacesMetaToMap,
+  syncSpacesToDoc,
   syncSurveyMarkersToDoc,
   repairStackedInkDuplicates,
 } from './annotationDocStore.js';
@@ -84,6 +88,7 @@ const DURABLE_MAP_NAMES = [
   ERASER_OPS_MAP,
   META_MAP,
   SURVEY_MARKERS_MAP,
+  SPACES_MAP,
   ERASE_OUTBOX_MAP,
 ];
 const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map());
@@ -2018,6 +2023,36 @@ function scheduleOutboxReplay(state, { delayed = false } = {}) {
   });
 }
 
+/**
+ * Eager flush of every open annotation-doc handle that still has outbox work.
+ * Used by the stuck-banner "Retry now" action. No-ops when no handle is mounted.
+ */
+export async function retryActiveOutboxes({ documentId = null, actorUserId = null } = {}) {
+  const states = [];
+  for (const [id, set] of ACTIVE_STATES) {
+    if (documentId && id !== documentId) continue;
+    for (const state of set) {
+      if (actorUserId && state.actorUserId !== actorUserId) continue;
+      if (state.destroyed || state.deleted) continue;
+      states.push(state);
+    }
+  }
+  for (const state of states) {
+    if (state.outboxReplayTimer) {
+      clearTimeout(state.outboxReplayTimer);
+      state.outboxReplayTimer = null;
+    }
+    state.outboxReplayRetryAttempt = 0;
+    scheduleOutboxReplay(state);
+  }
+  await Promise.all(states.map(async (state) => {
+    await Promise.resolve();
+    await state.outboxReplayChain.catch(() => {});
+    await state.flushQueue.catch(() => {});
+  }));
+  return { retried: states.length };
+}
+
 function publishProjectedState(state, projectedDoc) {
   state.doc.transact(() => {
     for (const mapName of DURABLE_MAP_NAMES) {
@@ -2246,6 +2281,7 @@ function enqueueAppend(
       }
       : null,
     status: 'pending',
+    queuedAt: Date.now(),
   };
   record.dependsOn = causalDependenciesForUpdate(state, record.update, record.key);
   state.appendRecords.set(record.key, record);
@@ -3381,6 +3417,14 @@ function makeHandle(state) {
     setMeta(key, value) {
       assertStateWritable(state);
       return setMetaValue(state.doc, key, value, 'local');
+    },
+
+    getSpaces() { return docToSpaces(state.doc); },
+
+    applySpaces(spaces) {
+      assertStateWritable(state);
+      migrateSpacesMetaToMap(state.doc, { origin: 'local' });
+      return syncSpacesToDoc(state.doc, spaces, { origin: 'local' });
     },
 
     /** Current survey markers as { [annotationId]: marker }. */

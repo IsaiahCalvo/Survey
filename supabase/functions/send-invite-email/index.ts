@@ -82,6 +82,18 @@ Deno.serve(async (req) => {
       }
       return data;
     },
+    claimEmailSend: async (template: string, recipient: string, isInvite: boolean) => {
+      const { data, error } = await callerClient.rpc('claim_email_send', {
+        p_template: template,
+        p_recipient: recipient,
+        p_is_invite: isInvite,
+      });
+      if (error) {
+        console.error('[send-invite-email] claim_email_send RPC failed:', error.message);
+        return 'error';
+      }
+      return data;
+    },
     completeInviteDelivery: async (claimId: string) => {
       const { data, error } = await callerClient.rpc('complete_invite_email_delivery', {
         p_claim_id: claimId,

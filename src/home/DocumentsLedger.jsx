@@ -37,7 +37,7 @@ const MENU_HEX = {
   danger: '#d95a56',
 };
 
-function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
+function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168, trigger = null }) {
   const ref = useRef(null);
 
   if (!anchorRect) return null;
@@ -49,7 +49,7 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <DismissBarrier insideRefs={[ref, trigger]} onDismiss={onClose} />
       <div
         ref={ref}
         role="menu"
@@ -692,6 +692,7 @@ export default function DocumentsLedger({
       return (
         <DocumentActionMenu
           anchorRect={docMenu.rect}
+          trigger={docMenu.trigger}
           onClose={() => setDocMenu(null)}
           items={[
             { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },

@@ -6665,7 +6665,11 @@ const PageAnnotationLayer = memo(({
               continue;
             }
 
-            if (getEraserOperation(obj, currentEraserMode) === 'partial') {
+            const eraserOp = getEraserOperation(obj, currentEraserMode);
+            if (eraserOp === 'skip') {
+              continue;
+            }
+            if (eraserOp === 'partial') {
               if (obj.type === 'path') {
                 const wasErased = erasePathSegment(obj, eraserPath, eraserRadius, canvas);
                 if (wasErased) {

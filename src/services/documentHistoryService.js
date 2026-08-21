@@ -4,11 +4,23 @@
  * Maps debug/checkpoint events into human-readable summaries and persists them
  * to the Supabase `document_history_events` table with a localStorage fallback
  * (LOCAL_HISTORY_STORAGE_KEY) when the table is missing/offline. Exports
- * buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent,
+ * buildHistoryEventRowFromDebugEvent, getHistoryDocumentId, recordDocumentHistoryEvent,
  * recordDocumentHistoryDebugEvent, and listDocumentHistoryEvents; classifies
  * callout/space/survey-marker actions for the activity feed.
  */
-import { supabase } from '../supabaseClient.js';
+import { supabase, isSupabaseAvailable, isDevTestPdfRoute } from '../supabaseClient.js';
+
+/**
+ * Cloud documents use file.id. The DEV ?testPdf= fixture stamps a local-only
+ * history key instead — never treat that as a Supabase document id.
+ */
+export function getHistoryDocumentId(pdfFile) {
+  if (!pdfFile) return null;
+  if (pdfFile.id) return pdfFile.id;
+  if (!isDevTestPdfRoute()) return null;
+  const localId = pdfFile.__localHistoryDocumentId;
+  return typeof localId === 'string' && localId ? localId : null;
+}
 
 const HISTORY_EVENT_LIMIT = 200;
 const MAX_PAYLOAD_CHARS = 12000;
@@ -316,7 +328,7 @@ export function buildHistoryEventRowFromDebugEvent(event, { documentId, user } =
 export async function recordDocumentHistoryEvent(row) {
   if (!row?.document_id || !row?.client_event_id) return { data: null, error: null };
   cacheLocalHistoryRow(row);
-  if (!supabase) return { data: null, error: null };
+  if (!isSupabaseAvailable()) return { data: null, error: null };
   const { id: _localId, __local: _localOnly, ...dbRow } = row;
   const { error } = await supabase
     .from('document_history_events')
@@ -374,7 +386,7 @@ export async function recordAndNotifyDocumentHistoryEvent(row) {
 export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
   const localRows = listLocalHistoryRows(documentId);
-  if (!supabase || !documentId) return mergeHistoryRows([], localRows, safeLimit);
+  if (!isSupabaseAvailable() || !documentId) return mergeHistoryRows([], localRows, safeLimit);
   const { data, error } = await supabase
     .from('document_history_events')
     .select('id, document_id, user_id, client_event_id, event_type, source, page_number, annotation_id, summary, payload, is_undoable, is_checkpoint, occurred_at, created_at')

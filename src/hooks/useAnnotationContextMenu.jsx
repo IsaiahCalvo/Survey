@@ -28,6 +28,22 @@ import { deepClone } from '../utils/deepClone.js';
 // and the Cut items are restricted to marks the viewer authored (or owner
 // mode). Same single source of truth as click hit-test / marquee / planner.
 import { canDelete, canModify } from '../lib/collab/permissionScope.js';
+import {
+  annotationStableId,
+  buildOriginalIndexById,
+  stampZOrderForSelected,
+} from '../utils/annotationZOrder.js';
+
+function readAnnotationIdFromLayer(pageNumber, annotationIndex) {
+  if (pageNumber == null || annotationIndex == null) return null;
+  try {
+    const svg = document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`);
+    const g = svg?.querySelector(`[data-annotation-index="${annotationIndex}"]`);
+    return g?.getAttribute('data-annotation-id') || g?.getAttribute('data-anno-id') || null;
+  } catch {
+    return null;
+  }
+}
 
 export function useAnnotationContextMenu() {
   // UX: annotation right-click menu — anchored to the pointer.
@@ -73,17 +89,26 @@ export function useAnnotationContextMenu() {
           window.__ctxDiagMenuOpenWatcher(snapshot);
         }
       } catch { /* ignore */ }
+      const fromTarget = event?.target?.closest?.('[data-annotation-id], [data-anno-id]');
+      const annotationId = fromTarget?.getAttribute('data-annotation-id')
+        || fromTarget?.getAttribute('data-anno-id')
+        || readAnnotationIdFromLayer(pageNumber, annotationIndex);
+      const groupIds = Array.isArray(groupIndices)
+        ? groupIndices.map((index) => readAnnotationIdFromLayer(pageNumber, index)).filter(Boolean)
+        : null;
       setAnnotationContextMenu({
         x: event.clientX,
         y: event.clientY,
         pageNumber,
         annotationIndex,
+        annotationId,
         calloutId,
         kind, // 'page' | 'callout' | 'counter' | 'annotation' | 'group'
         // UX: Phase 19 follow-up — when kind === 'group', this holds the
         // array of selected annotation indices so batch handlers (cut,
         // copy, delete, z-order) can iterate them in one go.
         groupIndices: Array.isArray(groupIndices) ? groupIndices.slice() : null,
+        groupIds,
       });
     };
     return () => {
@@ -169,6 +194,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // either is missing (boot window) the legacy permissive behavior applies.
     viewerId = null,
     documentOwnerId = null,
+    // UL-31: Continue pin on a placed counter keeps that series active and
+    // re-arms the Counter tool. Optional so catalog-only mounts stay intact.
+    handleContinuePin = null,
   } = actions;
 
   // Own-mark check (author or document owner; boot window is permissive to
@@ -315,7 +343,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       ];
     } else if (ctx.kind === 'counter') {
       items = [
-        item('Continue pin', 'continuePin'),
+        item('Continue pin', 'continuePin', () => {
+          if (typeof handleContinuePin === 'function') handleContinuePin(ctx);
+        }),
       ];
     } else if (ctx.kind === 'annotation') {
       items = [
@@ -439,18 +469,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         //   Cmd+[        → Send Backward
         //   Cmd+Shift+[  → Send to Back
         item('Bring to front', 'bringToFront', () => {
-          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'front');
+          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'front', ctx.annotationId);
         }),
         item('Bring forward', 'bringForward', () => {
-          if (ctx.annotationIndex == null) return;
-          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'forward');
+          if (ctx.annotationIndex == null && ctx.annotationId == null) return;
+          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'forward', ctx.annotationId);
         }),
         item('Send backward', 'sendBackward', () => {
-          if (ctx.annotationIndex == null) return;
-          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'backward');
+          if (ctx.annotationIndex == null && ctx.annotationId == null) return;
+          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'backward', ctx.annotationId);
         }),
         item('Send to back', 'sendToBack', () => {
-          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
+          handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back', ctx.annotationId);
         }),
         // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
         // from the right-click menu. The feature is hidden app-wide
@@ -501,7 +531,20 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       const reorderAll = (direction) => {
         const page = annotationsByPageRef.current?.[ctx.pageNumber];
         if (!page?.objects?.length) return;
-        const selected = new Set(sortedAsc);
+        const frozenIds = Array.isArray(ctx.groupIds) && ctx.groupIds.length
+          ? ctx.groupIds.map(String)
+          : sortedAsc.map((index) => annotationStableId(page.objects[index])).filter(Boolean).map(String);
+        const selected = new Set();
+        if (frozenIds.length) {
+          page.objects.forEach((object, index) => {
+            const id = annotationStableId(object);
+            if (id != null && frozenIds.includes(String(id))) selected.add(index);
+          });
+          if (selected.size === 0) return;
+        } else {
+          sortedAsc.forEach((index) => selected.add(index));
+        }
+        const originalIndexById = buildOriginalIndexById(page.objects);
         let entries = page.objects.map((object, index) => ({ object, selected: selected.has(index) }));
         if (direction === 'front' || direction === 'back') {
           const picked = entries.filter((entry) => entry.selected);
@@ -522,6 +565,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         }
         const next = deepClone(page);
         next.objects = entries.map((entry) => deepClone(entry.object));
+        const selectedIds = new Set(
+          entries.flatMap((entry) => {
+            if (!entry.selected) return [];
+            const id = annotationStableId(entry.object);
+            return id == null ? [] : [String(id)];
+          }),
+        );
+        stampZOrderForSelected(next.objects, selectedIds, originalIndexById);
         handleSaveAnnotations(ctx.pageNumber, next, {
           source: 'object:modified',
           action: 'reorder-group',

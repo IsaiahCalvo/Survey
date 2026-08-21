@@ -3684,6 +3684,13 @@ export function useSVGInteraction({
     // pure transform surface; never arm the gesture. (Whole-shape move is
     // guarded in handlePointerMove, which all drag modes flow through.)
     if (document.body.getAttribute('data-readonly') === 'true') return;
+    if (selectedIds?.size === 1) {
+      const only = [...selectedIds][0];
+      if (isTransformLockedAnnotation(annotations?.objects?.[only])) {
+        e.preventDefault();
+        return;
+      }
+    }
     e.target.setPointerCapture(e.pointerId);
 
     // UX: 2026-04-20 — Group transform branch. When 2+ items are selected

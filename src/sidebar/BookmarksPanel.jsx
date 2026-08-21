@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { showToast } from '../utils/toast';
 import Icon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
-import { prepareAtomicBookmarkEdit } from './bookmarkEditUtils.js';
+import { describeBookmarkDeleteConfirm, prepareAtomicBookmarkEdit, prepareBookmarkCreate } from './bookmarkEditUtils.js';
 import {
   BOOKMARK_INDENTATION_WIDTH,
   GROUP_AUTO_EXPAND_OFFSET_PX,
@@ -62,6 +62,7 @@ const BookmarkTreeRow = ({
   isGroupAnimationActive = false,
   childCount = 0,
   isSelected = false,
+  bookmarks = [],
   numPages,
   onToggle,
   onNavigate,
@@ -120,11 +121,23 @@ const BookmarkTreeRow = ({
 
   const commitName = () => {
     const nextName = editName.trim();
-    if (nextName && nextName !== item.name) {
-      onRename?.(item.id, nextName);
-    } else {
+    if (!nextName || nextName === item.name) {
       setEditName(item.name || '');
+      return;
     }
+    const result = prepareAtomicBookmarkEdit({
+      bookmarks,
+      bookmark: item,
+      name: nextName,
+      page: item.pageIds?.[0] ?? 1,
+      numPages,
+    });
+    if (!result.ok) {
+      showToast(result.error, 'warn');
+      setEditName(item.name || '');
+      return;
+    }
+    onRename?.(item.id, result.updates.name);
   };
 
   const handlePageInputChange = (value) => {
@@ -379,9 +392,7 @@ const BookmarkTreeRow = ({
           <button
             onClick={(event) => {
               event.stopPropagation();
-              if (window.confirm(`Delete ${isFolder ? 'group' : 'bookmark'} "${item.name}"?`)) {
-                onDelete?.(item.id);
-              }
+              onDelete?.(item.id);
             }}
             {...tip('Delete', 'below')}
             aria-label="Delete"
@@ -1068,10 +1079,11 @@ const BookmarksPanel = ({
   }, [bookmarkTree, expandFolderOnly, findItem, numPages, onBookmarkCreate, pageNum]);
 
   const handleDelete = useCallback((id) => {
-    if (onBookmarkDelete) {
-      onBookmarkDelete(id);
-    }
-  }, [onBookmarkDelete]);
+    const message = describeBookmarkDeleteConfirm({ bookmarks, id });
+    if (!message || !onBookmarkDelete) return;
+    if (typeof window !== 'undefined' && !window.confirm(message)) return;
+    onBookmarkDelete(id);
+  }, [bookmarks, onBookmarkDelete]);
 
   // UX 2026-07-12 — Mobile up/down reorder. The demo's BookmarkRow move buttons
   // shift a bookmark one slot among its same-parent siblings (BookmarkRow.tsx:64-70).
@@ -1097,30 +1109,21 @@ const BookmarksPanel = ({
 
   // Existing create/modal handlers remain the same
   const handleCreateBookmark = useCallback(() => {
-    const trimmedName = newBookmarkName.trim();
-    if (!trimmedName) return;
-
-    const trimmedPage = newBookmarkPages.trim();
-    if (!trimmedPage) {
-      showToast('Please enter a page number.', 'warn');
-      return;
-    }
-
-    const pageNumber = parseInt(trimmedPage, 10);
-    if (isNaN(pageNumber) || pageNumber < 1) {
-      showToast('Please enter a valid page number.', 'warn');
-      return;
-    }
-
-    if (numPages && pageNumber > numPages) {
-      showToast(`Please enter a page number between 1 and ${numPages}.`, 'warn');
+    const prepared = prepareBookmarkCreate({
+      bookmarks,
+      name: newBookmarkName,
+      page: newBookmarkPages,
+      numPages,
+    });
+    if (!prepared.ok) {
+      showToast(prepared.error, 'warn');
       return;
     }
 
     if (onBookmarkCreate) {
       onBookmarkCreate({
-        name: trimmedName,
-        pageIds: [pageNumber],
+        name: prepared.updates.name,
+        pageIds: prepared.updates.pageIds,
         type: 'bookmark'
       });
     }
@@ -1128,7 +1131,7 @@ const BookmarksPanel = ({
     setNewBookmarkName('');
     setNewBookmarkPages('');
     setShowCreateMenu(false);
-  }, [newBookmarkName, newBookmarkPages, onBookmarkCreate, numPages]);
+  }, [bookmarks, newBookmarkName, newBookmarkPages, onBookmarkCreate, numPages]);
 
   const beginMobileBookmarkEdit = useCallback((item) => {
     setMobileEditingBookmarkId(item.id);
@@ -1707,6 +1710,7 @@ const BookmarksPanel = ({
                     groupAnimationState={getGroupAnimationState(item)}
                     isGroupAnimationActive={collapseLayoutLock || collapsingFolderIds.length > 0 || expandingFolderIds.length > 0}
                     isSelected={selectedBookmarkId === item.id}
+                    bookmarks={bookmarks}
                     numPages={numPages}
                     onToggle={toggleExpand}
                     onNavigate={handleNavigate}

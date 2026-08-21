@@ -18,7 +18,9 @@ const TemplateOverwriteWarningModal = ({
   fileName = '',
   existingTemplateName = 'Unknown template',
   currentTemplateName = 'Current template',
+  reason = 'template-mismatch',
 }) => {
+  const isSameFile = reason === 'file-exists';
   const dialogRef = useRef(null);
 
   // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
@@ -83,7 +85,7 @@ const TemplateOverwriteWarningModal = ({
             color: COLORS.text.secondary,
             fontFamily: TYPOGRAPHY.fontFamily.default,
           }}>
-            Different template detected
+            {isSameFile ? 'Replace existing file?' : 'Different template detected'}
           </h3>
         </div>
 
@@ -96,11 +98,13 @@ const TemplateOverwriteWarningModal = ({
           lineHeight: TYPOGRAPHY.lineHeight.normal,
           marginBottom: '16px',
         }}>
-          A file named <strong style={{ color: COLORS.text.secondary }}>"{fileName}"</strong> already exists at this location, but it was created from a different template.
+          {isSameFile
+            ? <>A file named <strong style={{ color: COLORS.text.secondary }}>"{fileName}"</strong> already exists at this location.</>
+            : <>A file named <strong style={{ color: COLORS.text.secondary }}>"{fileName}"</strong> already exists at this location, but it was created from a different template.</>}
         </p>
 
-        {/* Template comparison */}
-        <div style={{
+        {/* Template comparison — only when the existing file is a different survey */}
+        {!isSameFile && <div style={{
           background: COLORS.background.tertiary,
           borderRadius: BORDERS.radius.md,
           padding: '16px',
@@ -148,7 +152,7 @@ const TemplateOverwriteWarningModal = ({
               {currentTemplateName}
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Warning message */}
         <div style={{
@@ -170,7 +174,9 @@ const TemplateOverwriteWarningModal = ({
             fontFamily: TYPOGRAPHY.fontFamily.default,
             lineHeight: TYPOGRAPHY.lineHeight.normal,
           }}>
-            Overwriting will replace the existing file's template structure with your current template. This cannot be undone.
+            {isSameFile
+              ? 'Overwriting will replace the existing Excel file. This cannot be undone.'
+              : "Overwriting will replace the existing file's template structure with your current template. This cannot be undone."}
           </span>
         </div>
 

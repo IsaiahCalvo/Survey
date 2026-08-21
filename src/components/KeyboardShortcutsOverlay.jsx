@@ -47,13 +47,10 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['End'], description: 'Last page' },
       { keys: ['Ctrl', '+'], description: 'Zoom in' },
       { keys: ['Ctrl', '-'], description: 'Zoom out' },
-      { keys: ['Ctrl', '0'], description: 'Reset zoom' },
+      { keys: ['Ctrl', '0'], description: 'Fit page' },
     ]},
     { category: 'Actions', items: [
       { keys: ['Ctrl', 'O'], description: 'Open document' },
-      { keys: ['Ctrl', 'W'], description: 'Close tab' },
-      { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
-      { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
       { keys: [findShortcutModifier, 'F'], description: 'Search text' },
     ]},
     // KAL-239: the tool keys were never listed here, so text selection (Shift+V)
@@ -73,9 +70,9 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['C'], description: 'Counter' },
     ]},
     { category: 'Interface', items: [
+      { keys: ['B'], description: 'Toggle sidebar' },
       { keys: ['?'], description: 'Toggle shortcuts' },
       { keys: ['Esc'], description: 'Close dialogs/cancel' },
-      { keys: ['B'], description: 'Toggle sidebar' },
     ]},
   ];
 
@@ -143,7 +140,9 @@ const KeyboardShortcutsOverlay = () => {
             Keyboard shortcuts
           </h2>
           <button
+            type="button"
             onClick={() => setIsOpen(false)}
+            aria-label="Close"
             style={{
               background: 'transparent',
               border: 'none',

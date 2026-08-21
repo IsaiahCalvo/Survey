@@ -3,6 +3,7 @@ import { equal, match, deepEqual } from 'node:assert/strict';
 
 import {
   buildHistoryEventRowFromDebugEvent,
+  getHistoryDocumentId,
   notifyDocumentHistoryEventRecorded,
   recordAndNotifyDocumentHistoryEvent,
 } from '../src/services/documentHistoryService.js';
@@ -256,4 +257,11 @@ test('un-flagged delete events still persist (eraser path keeps its only restora
     restoreAction: { type: 'fabric:batch', pageNumber: 3, created: [] },
   }, { documentId: 'doc-1', user });
   equal(Boolean(row), true, 'pure-delete batch without suppressHistoryRow must persist');
+});
+
+test('getHistoryDocumentId prefers a real cloud id and ignores fixture keys off ?testPdf=', () => {
+  equal(getHistoryDocumentId({ id: 'cloud-1', __localHistoryDocumentId: 'dev-testpdf:x' }), 'cloud-1');
+  equal(getHistoryDocumentId({ __localHistoryDocumentId: 'dev-testpdf:x' }), null);
+  equal(getHistoryDocumentId(null), null);
+  equal(getHistoryDocumentId({}), null);
 });

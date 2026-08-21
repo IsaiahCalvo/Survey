@@ -317,6 +317,65 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
   throw new Error(`transformPageState: unknown op type ${type}`);
 }
 
+/**
+ * P1-18: remap a cut/copy clipboard page number through a mutation.
+ * Deleting the clipped page clears the clipboard.
+ */
+export function remapClipboardPage(clipboardPage, operation) {
+  const page = asPage(clipboardPage);
+  if (page == null) return null;
+  if (operation?.type === 'delete' && asPage(operation.page) === page) return null;
+  if (operation?.type === 'rotate') return page;
+  return pageNumberAfterOperation(page, operation, Number.MAX_SAFE_INTEGER);
+}
+
+export function slicePagePresentation(state) {
+  if (!state) return null;
+  return {
+    pageNames: state.pageNames ?? {},
+    pageTransformations: state.pageTransformations ?? {},
+    bookmarks: state.bookmarks ?? [],
+    spaces: state.spaces ?? [],
+  };
+}
+
+function presentationEquals(left, right) {
+  if (!left || !right) return false;
+  return JSON.stringify(slicePagePresentation(left)) === JSON.stringify(slicePagePresentation(right));
+}
+
+/**
+ * P1-17: graft live presentation (names / transforms / bookmarks / spaces)
+ * onto an already-transformed annotation graph. Live page numbers are
+ * pre-THIS-op only when React has not applied earlier queued remaps —
+ * those stale snapshots must not replace the chained result.
+ */
+export function mergeLivePagePresentation(queuedNextState, liveState, operation, options = {}) {
+  if (!queuedNextState) return queuedNextState;
+  if (!liveState || !operation) return queuedNextState;
+  if (presentationEquals(liveState, options.sourcePresentation)) return queuedNextState;
+  if (presentationEquals(liveState, options.queueBaseline)) return queuedNextState;
+  if (presentationEquals(liveState, queuedNextState)) return queuedNextState;
+  const remappedLive = transformPageState({
+    annotationsByPage: {},
+    surveyMarkers: {},
+    annotations: {},
+    pageNames: liveState.pageNames ?? {},
+    pageTransformations: liveState.pageTransformations ?? {},
+    bookmarks: liveState.bookmarks ?? [],
+    spaces: liveState.spaces ?? [],
+    regionOverlayDisabled: liveState.regionOverlayDisabled ?? new Map(),
+  }, operation);
+  return {
+    ...queuedNextState,
+    pageNames: remappedLive.pageNames,
+    pageTransformations: remappedLive.pageTransformations,
+    bookmarks: remappedLive.bookmarks,
+    spaces: remappedLive.spaces,
+    regionOverlayDisabled: remappedLive.regionOverlayDisabled,
+  };
+}
+
 export function pageNumberAfterOperation(currentPage, operation, resultingPageCount) {
   const page = asPage(currentPage) || 1;
   const type = operation?.type;

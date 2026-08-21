@@ -287,6 +287,7 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+      if (!spyOn) return;
       e.preventDefault();
       captureAllShapes();
     }

@@ -22,12 +22,19 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { acceptDocumentInvite } from '../services/documentInviteService';
+import {
+  clearPendingInviteToken,
+  writePendingInviteToken,
+} from '../services/pendingInviteResume';
 import { acceptProjectInvite } from '../services/projectInviteService';
 import { acceptTemplateInvite } from '../services/templateInviteService';
 import { supabase } from '../supabaseClient';
 import { buildAppDestination } from '../utils/accountPlatform';
-
-const PENDING_KEY = 'kal31_pending_invite_token';
+import {
+  acceptAnyInvite as resolveAnyInvite,
+  inviteResultDescription,
+  inviteResultHeading,
+} from './inviteAcceptState';
 
 const C = {
   bg: '#12151c',
@@ -49,7 +56,7 @@ function getTokenFromPath() {
 
 function goHome() {
   if (typeof window !== 'undefined') {
-    try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
+    clearPendingInviteToken();
     window.location.assign(buildAppDestination());
   }
 }
@@ -60,13 +67,11 @@ function goHome() {
  * project, then template. Any non-invalid status (expired, revoked,
  * wrong_account, …) is a definitive answer for that kind — stop there. */
 async function acceptAnyInvite(token) {
-  const doc = await acceptDocumentInvite(token);
-  if (doc.status !== 'invalid') return { ...doc, kind: 'document' };
-  const proj = await acceptProjectInvite(token);
-  if (proj.status !== 'invalid') return { ...proj, kind: 'project' };
-  const tpl = await acceptTemplateInvite(token);
-  if (tpl.status !== 'invalid') return { ...tpl, kind: 'template' };
-  return { ...doc, status: 'invalid', kind: 'document' };
+  return resolveAnyInvite(token, {
+    acceptDocumentInvite,
+    acceptProjectInvite,
+    acceptTemplateInvite,
+  });
 }
 
 export default function InviteAcceptPage() {
@@ -80,7 +85,7 @@ export default function InviteAcceptPage() {
   // Persist token for round-trip through sign-in/sign-up.
   useEffect(() => {
     if (!token) return;
-    try { window.localStorage.setItem(PENDING_KEY, token); } catch (_e) { /* ignore */ }
+    writePendingInviteToken(token);
   }, [token]);
 
   useEffect(() => {
@@ -101,8 +106,10 @@ export default function InviteAcceptPage() {
         if (cancelled) return;
         setResult(r);
         setPhase('result');
-        if (r.status === 'accepted') {
-          try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
+        // Keep the token on wrong_account so Sign out → other account can
+        // resume. Every other definitive status is done with this invite.
+        if (r.status && r.status !== 'wrong_account') {
+          clearPendingInviteToken();
         }
       } catch (err) {
         if (cancelled) return;
@@ -115,49 +122,13 @@ export default function InviteAcceptPage() {
     return () => { cancelled = true; };
   }, [token, user?.id]); // re-run when user signs in
 
-  const heading = (() => {
-    if (phase === 'loading') return 'Checking invite…';
-    if (phase === 'needs-auth') return 'Sign in to accept this invite';
-    if (!result) return 'Invite';
-    switch (result.status) {
-      case 'accepted': return result.upgradeRequired ? 'Welcome — Viewer access granted' : 'Welcome!';
-      case 'already_accepted': return 'You already accepted this invite';
-      case 'wrong_account': return 'Wrong account';
-      case 'expired': return 'This invite has expired';
-      case 'revoked': return 'This invite was revoked';
-      case 'invalid':
-      default: return 'Invite link looks invalid';
-    }
-  })();
+  const heading = inviteResultHeading({ phase, result });
 
   // Which kind of thing the token resolved to — names the noun in the copy
   // and decides what "Open" does. Defaults to 'document' pre-resolution.
   const kindNoun = result?.kind || 'document';
 
-  const description = (() => {
-    if (phase === 'loading') return 'Validating your invite. One moment…';
-    if (phase === 'needs-auth') return 'Sign in or create a free Survey account to accept this invite.';
-    if (!result) return '';
-    switch (result.status) {
-      case 'accepted':
-        if (result.upgradeRequired) {
-          const intended = (result.intendedRole || 'editor').toLowerCase();
-          return `You have Viewer access for now. Upgrade to Pro or higher to unlock ${intended.charAt(0).toUpperCase() + intended.slice(1)} access.`;
-        }
-        return `You now have ${(result.effectiveRole || 'viewer')} access to this ${kindNoun}.`;
-      case 'already_accepted':
-        return 'This invite was used previously. Your access is still active.';
-      case 'wrong_account':
-        return 'This invite was sent to a different email address. Sign out and sign back in with the invited email to accept.';
-      case 'expired':
-        return 'This invite expired. Ask the owner to send a new one.';
-      case 'revoked':
-        return 'The owner revoked this invite before you accepted it. Ask them for a new one if you need access.';
-      case 'invalid':
-      default:
-        return 'We couldn\'t find that invite. The link may be mistyped or the invite was deleted.';
-    }
-  })();
+  const description = inviteResultDescription({ phase, result });
 
   const accent = (() => {
     if (!result) return C.gold;
@@ -189,8 +160,9 @@ export default function InviteAcceptPage() {
 
   const signIn = () => {
     // Bounce to root with `?signIn=1`; AuthContext will pop the login UI.
-    // If the app doesn't honor that query, simply reload so the AuthProvider
-    // re-evaluates and the standard sign-in surface shows.
+    // The token is already in kal31_pending_invite_token; post-auth resume
+    // (PendingInviteResumeGate in main.jsx) routes back to /invite/<token>.
+    if (token) writePendingInviteToken(token);
     if (typeof window !== 'undefined') {
       window.location.assign(buildAppDestination({ params: { signIn: '1', invite: token || '' } }));
     }

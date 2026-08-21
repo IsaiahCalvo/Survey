@@ -1,4 +1,5 @@
 import { eraserStrokeTouchesObject } from './eraserHitTest.js';
+import { getEraserOperation } from './eraserPolicy.js';
 
 const normalizeAngle = (value) => {
   const angle = Number(value);
@@ -48,6 +49,7 @@ export function getSurveyMarkerEraserHitIds({
   eraserRadius,
   canErase,
   boundsAllow,
+  mode,
 } = {}) {
   if (!(visibleIds instanceof Set) || visibleIds.size === 0) return [];
   if (!Array.isArray(surveyMarkers) || !Array.isArray(eraserPoints) || eraserPoints.length === 0) {
@@ -63,7 +65,8 @@ export function getSurveyMarkerEraserHitIds({
     if (typeof canErase !== 'function' || canErase(id, marker) !== true) continue;
     if (typeof boundsAllow === 'function' && !boundsAllow(id)) continue;
     const object = surveyMarkerToEraserObject(marker);
-    if (!object || !eraserStrokeTouchesObject({ eraserPoints, eraserRadius, object })) continue;
+    if (!object || getEraserOperation(object, mode) === 'skip') continue;
+    if (!eraserStrokeTouchesObject({ eraserPoints, eraserRadius, object })) continue;
     hits.push(id);
   }
   return hits;

@@ -43,6 +43,7 @@ import {
 } from '../utils/textEditCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
+import { setCalloutEditDraft, clearCalloutEditDraft } from '../utils/calloutBlankCommit.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -66,6 +67,38 @@ const measureLineWidth = (text, { fontStyle, fontWeight, fontSize, fontFamily })
     return 0;
   }
 };
+
+/** Survives overlay remount / unmount-flush after the contenteditable is gone. */
+const editDraftByTarget = new Map();
+
+function editDraftKey({ reactCalloutId, annotationData, isNewText }) {
+  if (reactCalloutId) return `callout:${reactCalloutId}`;
+  const id = annotationData?.id || annotationData?.data?.id;
+  if (id) return `anno:${id}`;
+  return isNewText ? 'new-text' : null;
+}
+
+function replaceTextInPageJson(annotations, annotationIndex, json, original, { isCallout = false } = {}) {
+  const updated = deepClone(annotations || { objects: [] });
+  if (!Array.isArray(updated.objects)) updated.objects = [];
+  const targetId = (original?.data && original.data.id)
+    ?? original?.id
+    ?? (json?.data && json.data.id)
+    ?? json?.id
+    ?? null;
+  const lookedUp = targetId != null
+    ? updated.objects.findIndex((obj) => String(
+      (obj?.data && obj.data.id) ?? obj?.id ?? ''
+    ) === String(targetId))
+    : -1;
+  let liveIndex = lookedUp >= 0 ? lookedUp : annotationIndex;
+  if (liveIndex == null || liveIndex < 0 || liveIndex >= updated.objects.length) {
+    if (isCallout && updated.objects.length > 0) liveIndex = 0;
+    else return null;
+  }
+  updated.objects[liveIndex] = json;
+  return updated;
+}
 
 const calloutStylePatch = (key, val) => {
   switch (key) {
@@ -108,12 +141,25 @@ export default function TextEditOverlay({
   onLiveTextGrow,
   onRichTextEditorChange,
   onCalloutTextStyleChange,
+  onTextStyleChange,
   onEditCommit,
   onEditCancel,
 }) {
   const isCallout = !!reactCalloutId;
   const pad = TEXT_PADDING;
   const padY = isCallout ? 0 : pad;
+  const draftKey = editDraftKey({ reactCalloutId, annotationData, isNewText });
+  const draftTextRef = useRef(draftKey ? (editDraftByTarget.get(draftKey) ?? '') : '');
+  const persistDraft = (text) => {
+    draftTextRef.current = text;
+    if (draftKey) editDraftByTarget.set(draftKey, text);
+    if (reactCalloutId) setCalloutEditDraft(reactCalloutId, text);
+  };
+  const clearDraft = () => {
+    draftTextRef.current = '';
+    if (draftKey) editDraftByTarget.delete(draftKey);
+    if (reactCalloutId) clearCalloutEditDraft(reactCalloutId);
+  };
 
   // ---------------------------------------------------------------------
   // Immutable-per-mount edit context (the mount key remounts per target).
@@ -121,6 +167,7 @@ export default function TextEditOverlay({
   const originalRef = useRef(null);
   const styleRef = useRef(null);
   const geomRef = useRef(null);
+  const liveStyleAppliedRef = useRef(false);
   if (styleRef.current === null) {
     const src = annotationData || {};
     originalRef.current = annotationData ? deepClone(annotationData) : null;
@@ -211,13 +258,14 @@ export default function TextEditOverlay({
   // ---------------------------------------------------------------------
   const readText = () => {
     const el = editableRef.current;
-    if (!el) return '';
+    if (!el) return draftTextRef.current || (draftKey ? (editDraftByTarget.get(draftKey) || '') : '');
     // contentEditable=plaintext-only keeps '\n' text nodes under
     // white-space:pre-wrap; innerText also folds any stray <br> to '\n'.
     let t = el.innerText ?? '';
     t = t.replace(/\r\n?/g, '\n');
     // A trailing newline artifact appears when the last child is a <br>.
     if (t.endsWith('\n') && !(el.textContent || '').endsWith('\n')) t = t.slice(0, -1);
+    persistDraft(t);
     return t;
   };
 
@@ -283,6 +331,21 @@ export default function TextEditOverlay({
       if (isCallout && typeof onCalloutTextStyleChange === 'function') {
         const patch = calloutStylePatch(key, val);
         if (patch) onCalloutTextStyleChange(reactCalloutId, patch);
+      } else if (!isNewText && typeof onTextStyleChange === 'function') {
+        const liveJson = buildExistingTextCommitJSON({
+          original: originalRef.current,
+          text: readText(),
+          naturalInnerHeight: measureNaturalInnerHeight(),
+          isCallout: false,
+          style: styleRef.current,
+        });
+        const updated = liveJson
+          ? replaceTextInPageJson(annotations, annotationIndex, liveJson, originalRef.current)
+          : null;
+        if (updated) {
+          liveStyleAppliedRef.current = true;
+          onTextStyleChange(updated);
+        }
       }
       forceRender((n) => n + 1);
       // Style changes reflow the text — re-measure + rebroadcast after paint.
@@ -315,7 +378,7 @@ export default function TextEditOverlay({
         fontColor: s.fill,
       },
     });
-  }, [onRichTextEditorChange, onCalloutTextStyleChange, isCallout, reactCalloutId, broadcastLiveBounds]);
+  }, [onRichTextEditorChange, onCalloutTextStyleChange, onTextStyleChange, isCallout, isNewText, reactCalloutId, broadcastLiveBounds, annotations, annotationIndex]);
 
   // ---------------------------------------------------------------------
   // Commit / cancel
@@ -374,7 +437,35 @@ export default function TextEditOverlay({
         isCallout,
         style: s,
       });
+      if (!json && isCallout && originalRef.current) {
+        // E2E-ADV-01: new-callout chrome commit can flush after the
+        // contenteditable is gone. Keep the textbox envelope and let
+        // PDFViewer resolve typed / draft text instead of cancel-deleting.
+        json = {
+          ...deepClone(originalRef.current),
+          text,
+        };
+      }
       if (!json) {
+        // P1-28: blank existing text deletes the annotation, matching the
+        // fabric discard-on-empty contract.
+        const updated = deepClone(annotations || { objects: [] });
+        if (!Array.isArray(updated.objects)) updated.objects = [];
+        const targetId = (originalRef.current?.data && originalRef.current.data.id)
+          ?? originalRef.current?.id
+          ?? null;
+        const liveIndex = targetId != null
+          ? updated.objects.findIndex((obj) => String(
+            (obj?.data && obj.data.id) ?? obj?.id ?? ''
+          ) === String(targetId))
+          : annotationIndex;
+        const removeAt = liveIndex >= 0 ? liveIndex : annotationIndex;
+        if (removeAt >= 0 && removeAt < updated.objects.length) {
+          updated.objects.splice(removeAt, 1);
+          if (opts.flush) flushSync(() => onEditCommit(updated));
+          else onEditCommit(updated);
+          return;
+        }
         if (typeof onEditCancel === 'function') onEditCancel();
         return;
       }
@@ -383,13 +474,47 @@ export default function TextEditOverlay({
     const updated = deepClone(annotations || { objects: [] });
     if (!Array.isArray(updated.objects)) updated.objects = [];
     if (isNewText) updated.objects.push(json);
-    else updated.objects[annotationIndex] = json;
-
-    if (opts.flush) {
-      flushSync(() => onEditCommit(updated));
-    } else {
-      onEditCommit(updated);
+    else {
+      // P1-07: re-resolve by stable id. A teammate insert/delete while the
+      // editor is open shifts indices; writing the frozen index can replace
+      // an unrelated annotation.
+      const targetId = (originalRef.current?.data && originalRef.current.data.id)
+        ?? originalRef.current?.id
+        ?? (json?.data && json.data.id)
+        ?? json?.id
+        ?? null;
+      const lookedUp = targetId != null
+        ? updated.objects.findIndex((obj) => String(
+          (obj?.data && obj.data.id) ?? obj?.id ?? ''
+        ) === String(targetId))
+        : -1;
+      // Callout textboxes from toFabricGroup only carry data.calloutPart.
+      // ensureTextAnnotationId may mint a fresh id on commit; looking that
+      // up fails and used to onEditCancel — which deletes a brand-new
+      // callout (E2E-ADV-01). Fall back to the frozen index / the single
+      // transient textbox instead of cancel-deleting.
+      let liveIndex = lookedUp >= 0 ? lookedUp : annotationIndex;
+      if (liveIndex == null || liveIndex < 0 || liveIndex >= updated.objects.length) {
+        if (isCallout && updated.objects.length > 0) {
+          liveIndex = 0;
+        } else {
+          if (typeof onEditCancel === 'function') onEditCancel();
+          return;
+        }
+      }
+      updated.objects[liveIndex] = json;
     }
+
+    const skipStyleReplay = !isNewText
+      && liveStyleAppliedRef.current
+      && String(text) === String(originalRef.current?.text ?? '');
+    const commitOpts = skipStyleReplay ? { checkpointPolicy: 'skip' } : undefined;
+    if (opts.flush) {
+      flushSync(() => onEditCommit(updated, commitOpts));
+    } else {
+      onEditCommit(updated, commitOpts);
+    }
+    clearDraft();
   }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId,
     // KAL-88 scope-stamp inputs — keep the commit closure stamping from
     // current values (the unmount flush reads via commitRef, which tracks
@@ -399,9 +524,10 @@ export default function TextEditOverlay({
   const cancelAndClose = useCallback(() => {
     if (committedRef.current) return;
     committedRef.current = true;
+    if (draftKey) editDraftByTarget.delete(draftKey);
     if (typeof onRichTextEditorChange === 'function') onRichTextEditorChange(null);
     if (typeof onEditCancel === 'function') onEditCancel();
-  }, [onEditCancel, onRichTextEditorChange]);
+  }, [onEditCancel, onRichTextEditorChange, draftKey]);
 
   const commitRef = useRef(commitAndClose);
   useEffect(() => { commitRef.current = commitAndClose; }, [commitAndClose]);
@@ -413,7 +539,10 @@ export default function TextEditOverlay({
   useEffect(() => {
     const el = editableRef.current;
     if (el) {
-      el.textContent = isNewText ? '' : String(annotationData?.text ?? '');
+      const seeded = (draftKey && editDraftByTarget.get(draftKey))
+        || (isNewText ? '' : String(annotationData?.text ?? ''));
+      el.textContent = seeded;
+      persistDraft(seeded);
       el.focus();
       if (!isNewText && el.firstChild) {
         const range = document.createRange();
@@ -449,7 +578,12 @@ export default function TextEditOverlay({
       if (t.closest('[data-text-edit-overlay]')) return;
       // Formatting sub-row + mini toolbar buttons must not commit-and-close
       // (same opt-out attribute contract as FabricEditCanvas).
-      if (t.closest('[data-rich-text-toolbar]') || t.closest('[data-mini-toolbar]') || t.closest('[data-font-color-picker]')) return;
+      if (
+        t.closest('[data-rich-text-toolbar]')
+        || t.closest('[data-mini-toolbar]')
+        || t.closest('[data-font-color-picker]')
+        || t.closest('[data-testid="compact-color-picker"]')
+      ) return;
       commitRef.current();
     };
     document.addEventListener('keydown', onKeyDown, true);

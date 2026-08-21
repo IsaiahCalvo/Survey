@@ -34,6 +34,7 @@ import {
 import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
+import { lastOwnerBlockReason } from './lastOwnerGuard';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -140,8 +141,14 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     const next = String(newRole || '').toLowerCase();
     if (oldRole === next) return;
 
-    if (oldRole === 'owner' && next !== 'owner' && ownerCount <= 1) {
-      setError('You cannot demote the last owner. Promote another collaborator first.');
+    const demoteBlock = lastOwnerBlockReason({
+      members,
+      member,
+      action: 'demote',
+      nextRole: next,
+    });
+    if (demoteBlock) {
+      setError(demoteBlock);
       return;
     }
     setBusy(true);
@@ -168,8 +175,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   const handleRemove = async (member) => {
     setError(''); setStatus('');
-    if (String(member.role).toLowerCase() === 'owner' && ownerCount <= 1) {
-      setError('You cannot remove the last owner. Promote another collaborator first.');
+    const removeBlock = lastOwnerBlockReason({ members, member, action: 'remove' });
+    if (removeBlock) {
+      setError(removeBlock);
       return;
     }
     setBusy(true);

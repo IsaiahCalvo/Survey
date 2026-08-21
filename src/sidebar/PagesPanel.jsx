@@ -10,6 +10,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
+import { resolvePageThumbnailClick } from './pagesPanelUtils.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -612,20 +613,27 @@ const PagesPanel = ({
   }, [allowedPages, onReorderPages]);
 
   const handlePageClick = useCallback((pageNumber) => {
-    if (mobileMode && mobileSelectMode) {
+    const action = resolvePageThumbnailClick({
+      pageNumber,
+      numPages,
+      mobileMode,
+      mobileSelectMode,
+    });
+    if (action.kind === 'ignore') return;
+    if (action.kind === 'toggle-select') {
       setMobileSelectedPages((current) => {
         const next = new Set(current);
-        if (next.has(pageNumber)) next.delete(pageNumber);
-        else next.add(pageNumber);
+        if (next.has(action.pageNumber)) next.delete(action.pageNumber);
+        else next.add(action.pageNumber);
         return next;
       });
       return;
     }
-    setSelectedPage(pageNumber);
+    setSelectedPage(action.pageNumber);
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      onNavigateToPage(action.pageNumber);
     }
-  }, [mobileMode, mobileSelectMode, onNavigateToPage]);
+  }, [mobileMode, mobileSelectMode, numPages, onNavigateToPage]);
 
   const handlePageDoubleClick = useCallback((pageNumber) => {
     if (onNavigateToPage) {

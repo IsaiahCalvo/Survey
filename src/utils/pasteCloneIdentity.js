@@ -65,6 +65,7 @@ export function mintPastedCloneIdentity(clone, uuid) {
       if (key in clone.data) delete clone.data[key];
     }
     if ('annoId' in clone.data) delete clone.data.annoId;
+    if ('zOrder' in clone.data) delete clone.data.zOrder;
     clone.data.id = freshId;
   } else {
     // Every native object carries data.id (creation contract). Imported

@@ -16,6 +16,7 @@ const OneDriveFileSaveModal = ({
   onSave,
   onClose,
   graphClient,
+  ensureFreshToken,
   defaultFileName = 'export.xlsx',
   title = 'Save to OneDrive',
 }) => {
@@ -214,6 +215,7 @@ const OneDriveFileSaveModal = ({
         <div style={{ flex: 1, overflow: 'hidden', marginBottom: '16px' }}>
           <OneDriveFolderBrowser
             graphClient={graphClient}
+            ensureFreshToken={ensureFreshToken}
             onFolderSelect={handleFolderSelect}
             selectedPath={selectedFolder?.folderPath}
           />

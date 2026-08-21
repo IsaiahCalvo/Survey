@@ -12,6 +12,7 @@ test('direct page mutation preserves bookmark and annotation storage identity', 
   source.projectId = 'project-id';
   source.supabaseFilePath = 'owner/identity.pdf';
   source.user_id = 'owner-id';
+  source.__localHistoryDocumentId = 'dev-testpdf:identity.pdf';
 
   const sourcePdfId = getPDFId(source);
   const sourceKeys = {
@@ -34,6 +35,7 @@ test('direct page mutation preserves bookmark and annotation storage identity', 
 
   assert.notEqual(mutated.size, source.size, 'page mutation must produce different PDF bytes');
   assert.equal(mutatedPdfId, sourcePdfId);
+  assert.equal(mutated.__localHistoryDocumentId, 'dev-testpdf:identity.pdf');
   assert.deepEqual(mutatedKeys, sourceKeys);
   assert.match(persisted.get(mutatedKeys.bookmarks), /bookmark-1/);
   assert.match(persisted.get(mutatedKeys.annotations), /annotation-1/);

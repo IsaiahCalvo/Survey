@@ -26,7 +26,7 @@ test('shared Home search blurs through the first-tap barrier', () => {
 });
 
 test('document, project, and template More menus use the same barrier', () => {
-  assert.match(documents, /function DocumentActionMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref\]\} onDismiss=\{onClose\}/);
+  assert.match(documents, /function DocumentActionMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref, trigger\]\} onDismiss=\{onClose\}/);
   assert.match(projects, /function PopupMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref\]\} onDismiss=\{onClose\}/);
   assert.match(templates, /function MoreMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref\]\} onDismiss=\{onClose\}/);
   assert.match(templates, /className="ed-tpl-menu"[\s\S]*role="menu"/);

@@ -1977,7 +1977,14 @@ export default function TemplatesEditor({
                   defaultValue={tpl.name}
                   title="Click to rename"
                   onDoubleClick={(e) => e.currentTarget.select()}
-                  onBlur={(e) => renameTemplate(tpl.id, e.currentTarget.value)}
+                  onBlur={(e) => {
+                    const next = e.currentTarget.value;
+                    if (!next.trim()) {
+                      e.currentTarget.value = tpl.name;
+                      return;
+                    }
+                    renameTemplate(tpl.id, next);
+                  }}
                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = tpl.name; e.currentTarget.blur(); } }}
                   style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2, width: '100%' }}
                 />
@@ -2603,7 +2610,14 @@ export default function TemplatesEditor({
                     className="templates-mobile-title-input"
                     defaultValue={tpl.name}
                     title="Tap to rename"
-                    onBlur={(e) => renameTemplate(tpl.id, e.currentTarget.value)}
+                    onBlur={(e) => {
+                      const next = e.currentTarget.value;
+                      if (!next.trim()) {
+                        e.currentTarget.value = tpl.name;
+                        return;
+                      }
+                      renameTemplate(tpl.id, next);
+                    }}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = tpl.name; e.currentTarget.blur(); } }}
                   />
                   <span>{orderedMods.length} modules · {totalCategoryCount} categories · {tpl.roster.length} entities</span>

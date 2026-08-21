@@ -54,6 +54,7 @@ function makeDeps(overrides = {}) {
       return true;
     },
     newClaimId: () => '00000000-0000-4000-8000-000000000001',
+    claimEmailSend: async () => 'allowed',
     claimInviteDelivery: async () => (delivered ? 'completed' : 'claimed'),
     completeInviteDelivery: async () => {
       delivered = true;

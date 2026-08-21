@@ -75,3 +75,26 @@ export function getAdaptiveSelectionHandleSpec({
     rotationOffset,
   };
 }
+
+/**
+ * P1-31 / SHX lock: select-delete-only markup (Underline, StrikeOut,
+ * Squiggly, AutoCAD SHX Text) paints a glow box and must not expose
+ * resize or rotation handles. Same gate as move-only group frames.
+ */
+export function shouldShowSelectionTransformHandles({
+  selectionGlowOnly = false,
+  moveOnly = false,
+  isGroupSelection = false,
+} = {}) {
+  return !selectionGlowOnly && !moveOnly && !isGroupSelection;
+}
+
+/** Hit slop for the rotate stem + knob. Visual sizes stay on getSelectionHandleVisualMetrics. */
+export function getRotationHandleHitMetrics(inverseScale) {
+  const metrics = getSelectionHandleVisualMetrics(inverseScale);
+  return {
+    knobR: metrics.rotationR,
+    knobHitR: metrics.rotationR * 1.75,
+    stemHitWidth: Math.max(16 * metrics.scale, metrics.rotationR * 2),
+  };
+}

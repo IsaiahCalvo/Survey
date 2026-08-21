@@ -1,5 +1,22 @@
 const currentLocation = () => (typeof window === 'undefined' ? null : window.location);
 
+/**
+ * P2-13: Capacitor WebViews cannot complete the web/desktop PKCE redirect
+ * (deep-link OAuth is out of scope). Hide Connect/Reconnect and refuse login.
+ * Do not treat this as permission to remove MSAL — desktop/web still use it.
+ */
+export const isCapacitorMicrosoftConnectHidden = (win = typeof window === 'undefined' ? null : window) => {
+  if (!win) return false;
+  try {
+    if (win.Capacitor?.isNativePlatform?.() === true) return true;
+  } catch {
+    /* ignore missing Capacitor bridge */
+  }
+  const origin = String(win.location?.origin || '');
+  return origin.startsWith('capacitor://') || origin.startsWith('ionic://');
+};
+
+
 const PRODUCTION_ORIGIN = 'https://surveytool.app';
 const REGISTERED_REDIRECT_ORIGINS = new Map([
   [PRODUCTION_ORIGIN, PRODUCTION_ORIGIN],
