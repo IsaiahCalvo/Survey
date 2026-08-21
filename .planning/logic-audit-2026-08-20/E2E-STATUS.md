@@ -1,6 +1,8 @@
 # E2E status — wave 5 remaining + hub leftovers
 
-**This-pass (2026-08-21 callout cross-page paste):** the unique leftover after thin leftovers — callout clone via context-menu Paste — is live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/callout-cross-page-paste-2026-08-21.md`. Playwright `e2e-callout-paste.spec.mjs` **1 / 1 (11.5s)** + thin leftovers **3 / 3 (20.1s)** (callout hunt now a hard clone). Product: `pickActiveClipboard` last-writer-wins; Cmd+C reads live `selectedCalloutIds`. Leftover **18** unchanged. Did **not** replay waves 5–13 / flatten / leftover-18. Goal stays open.
+**This-pass (2026-08-21 catalog reconcile):** independent chrome catalog vs leftover-18. Prior “remaining unblocked-unproven 0” was unproven until this table. Unique unblocked GAP found: hub documents extras (More Copy/Paste, Select Duplicate, Move/Copy, column Sort, Preview). Live `e2e-hub-docs-extras.spec.mjs` **1 / 1 (1.7s)**. No product bug. Receipt `.planning/logic-audit-2026-08-20/fix-logs/catalog-reconcile-2026-08-21.md`. Leftover **18** unchanged. Did **not** replay waves 5–13 / flatten / leftover-18 / thin leftovers / callout last-writer. Goal stays open.
+
+**Prior-pass (2026-08-21 callout cross-page paste):** the unique leftover after thin leftovers — callout clone via context-menu Paste — is live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/callout-cross-page-paste-2026-08-21.md`. Playwright `e2e-callout-paste.spec.mjs` **1 / 1 (11.5s)** + thin leftovers **3 / 3 (20.1s)** (callout hunt now a hard clone). Product: `pickActiveClipboard` last-writer-wins; Cmd+C reads live `selectedCalloutIds`. Leftover **18** unchanged. Did **not** replay waves 5–13 / flatten / leftover-18. Goal stays open.
 
 **Prior-pass (2026-08-21 thin leftovers):** three leftover clusters live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/thin-leftovers-2026-08-21.md`. Playwright `e2e-thin-leftovers.spec.mjs` **3 / 3**. Product: imported `/Text` sticky stamps `id`/`data.id` (`convertTextToFabricNote`). No Note create tool invented. Leftover **18** unchanged.
 
@@ -125,7 +127,8 @@ Matrix source: `FEATURE-MATRIX.md`
 | A-06 same-user two-tab / two-context | **blocked** (roster) — both stayed **just you**; not a second account |
 | Unblocked catalog leftovers (T-04/T-06/C-03/C-04/S-04/P-04/V-01) | **pass** — `e2e-unblocked-followup.spec.mjs` 6/6 |
 | Unblocked leftover edges (T-04 clamp / E-02 Shift+45° / D-02 print / C-05 counter colors / S-04 selected patch) | **pass** — `e2e-unblocked-followup-2.spec.mjs` 5/5 |
-| Catalog completeness (hub docs/projects/archive + spaces extras + UL-33 dash) | **pass** — `e2e-catalog-completeness.spec.mjs` 5/5. Receipt `fix-logs/e2e-catalog-completeness.md`. Remaining unblocked-unproven **0**. |
+| Catalog completeness (hub docs/projects/archive + spaces extras + UL-33 dash) | **pass** — `e2e-catalog-completeness.spec.mjs` 5/5. Receipt `fix-logs/e2e-catalog-completeness.md`. Did **not** cover hub Copy/Paste/Duplicate/Move/Sort/Preview. |
+| Catalog reconcile hub extras (Copy/Paste / Select Duplicate / Move/Copy / Sort / Preview) | **pass** — `e2e-hub-docs-extras.spec.mjs` 1/1 (1.7s). Receipt `fix-logs/catalog-reconcile-2026-08-21.md`. Remaining unique unblocked GAP **0**. |
 
 W3-01 was a harness miss (`contenteditable`, not textarea). W4-02 true two-finger pinch proven via Chrome CDP (see `fix-logs/w4-02-pinch.md`). Toolbar Zoom-in remains the zoomGeneration ink-commit proof; live pinch mid-ink discards. Wave 5: `fix-logs/e2e-wave-remaining.md`. Unblocked follow-up: `fix-logs/e2e-unblocked-followup.md`. Leftover edges: `fix-logs/e2e-unblocked-followup-2.md`.
 
