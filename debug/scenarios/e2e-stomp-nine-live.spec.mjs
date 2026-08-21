@@ -353,7 +353,8 @@ test('P1-43 canReorderVisiblePages space filter intended / break / edge', async 
   await expect(pageInput).toBeVisible();
   await pageInput.fill('2, 5');
   await page.getByRole('button', { name: 'Add pages', exact: true }).click();
-  await expect(page.getByText(/2 pages/i).first()).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('button', { name: 'Go to page 2', exact: true })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('button', { name: 'Go to page 5', exact: true })).toBeVisible();
 
   await page.getByLabel('Turn on space').click();
   await openPages(page);
@@ -509,26 +510,21 @@ test('P1-47 collectBookmarkTreePersistUpdates delta intended / break / edge', as
 
   const helper = await page.evaluate(async () => {
     const { collectBookmarkTreePersistUpdates } = await import('/src/sidebar/bookmarkReorderUtils.js');
+    const bookmark = (id) => ({ id, name: id, type: 'bookmark', pageIds: [1], order: 0, children: [] });
     const current = [
       { id: 'a', parentId: null, order: 0 },
       { id: 'b', parentId: null, order: 1 },
-      { id: 'c', parentId: 'folder', order: 0 },
     ];
-    const noop = collectBookmarkTreePersistUpdates([
-      { id: 'a', parentId: null, index: 0, children: [] },
-      { id: 'b', parentId: null, index: 1, children: [] },
-      { id: 'folder', parentId: null, index: 2, children: [{ id: 'c', parentId: 'folder', index: 0, children: [] }] },
-    ], current);
+    const noop = collectBookmarkTreePersistUpdates([{ ...bookmark('a'), order: 0 }], [{ id: 'a', parentId: null, order: 0 }]);
     const moved = collectBookmarkTreePersistUpdates([
-      { id: 'b', parentId: null, index: 0, children: [] },
-      { id: 'a', parentId: null, index: 1, children: [] },
-      { id: 'folder', parentId: null, index: 2, children: [{ id: 'c', parentId: 'folder', index: 0, children: [] }] },
+      { ...bookmark('a'), children: [bookmark('b')] },
     ], current);
     return { noop, moved };
   });
   expect(helper.noop).toEqual([]);
-  expect(helper.moved.length).toBeGreaterThan(0);
-  expect(helper.moved.length).toBeLessThan(3);
+  expect(helper.moved.length).toBe(1);
+  expect(helper.moved[0].id).toBe('b');
+  expect(helper.moved[0].updates.parentId).toBe('a');
 
   console.log('P147_PROOF', JSON.stringify({ before, after, helper }));
 });
