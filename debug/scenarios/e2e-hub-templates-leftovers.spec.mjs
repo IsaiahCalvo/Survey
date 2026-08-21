@@ -58,7 +58,9 @@ test('U-03 templates editor create / edit / delete on hubPreview', async ({ page
     rows.map((row) => row.querySelector('div[style*="font-weight"]')?.textContent?.trim() || row.textContent.trim())
   ));
 
-  const title = page.getByRole('textbox', { name: 'Click to rename' });
+  // Header title is the first 22px cat-title. Category titles share the
+  // "Click to rename" accessible name and flake under Playwright strict mode.
+  const title = page.locator('input.inline-edit.cat-title[style*="22px"]').first();
 
   // Intended: New template adds an empty template and opens it (no modal).
   await page.getByRole('button', { name: 'New template', exact: true }).first().click();
@@ -99,7 +101,7 @@ test('U-03 templates editor create / edit / delete on hubPreview', async ({ page
   await page.goto(HUB_EMPTY);
   await expect(page.getByText('No templates yet', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'New template', exact: true }).first().click();
-  await expect(page.getByRole('textbox', { name: 'Click to rename' })).toHaveValue(/Template \d+/);
+  await expect(page.locator('input.inline-edit.cat-title[style*="22px"]').first()).toHaveValue(/Template \d+/);
 
   console.log('TEMPLATES_PROOF', JSON.stringify({
     seed: beforeNames.slice(0, 4),

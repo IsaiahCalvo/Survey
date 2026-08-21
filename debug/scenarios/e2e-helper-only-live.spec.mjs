@@ -131,12 +131,12 @@ test('A-04 / UL-13 / UL-15–18 / UL-20–22 AccountSettings live chrome', async
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(wipe).toHaveCount(0);
 
-  // UL-17: Sign out closes settings (preview signOut is a no-op).
+  // UL-17: preview signOut is fail-closed (not a silent no-op). Settings stay.
   await dialog.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCount(0);
+  await expect(dialog.locator('.account-error')).toContainText(/Preview cannot sign out/i);
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
-  await openSettings(page);
-  const again = page.locator('.account-settings-modal');
+  const again = dialog;
 
   // A-05 / UL-18 / UL-20: subscription catalog. Do not click Start trial (live Stripe).
   await again.getByRole('button', { name: 'Subscription', exact: true }).click();
