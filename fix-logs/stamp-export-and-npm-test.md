@@ -62,7 +62,25 @@ Text/ink/polygon/line flatten affine. Survey markers excluded from export + regu
 
 ## 2. Official `npm test`
 
-Pending — receipt committed before the suite; results appended after.
+```
+node scripts/run-node-tests.mjs
+```
+
+(`npm test` is the same script.) ~136s wall. After text-flatten `99478f57`.
+
+| Run | Exit | What failed |
+|---|---|---|
+| Official after `99478f57` | **1** | **cap leftover only** — `tests/partialEraserComplexity.test.mjs` `500 crossing cuts` **11960.66 MiB > 8448.00 MiB** |
+
+### Fail list
+
+| Kind | File / test | Detail | Action |
+|---|---|---|---|
+| **Cap leftover (left)** | `tests/partialEraserComplexity.test.mjs:604` — 500 crossing cuts preserve every component inside bounded memory and release time | `total allocation 11960.66 MiB exceeded 8448.00 MiB` | **Left.** Same leftover as `fix-logs/eraser-memory-cap.md` / `fix-logs/ink-flatten-and-npm-test.md`. Cap **8448** unchanged. |
+
+No other official-suite fails (`not ok` = that one line only). Main files **0 fail** (448 files; `pass 0` rows are `# SKIP`, not fails). Isolated `annotationDocConcurrency` **103 / 103**. Isolated `partialEraseCurveLocality` **15 / 15**. Isolated `partialEraserComplexity` **9 / 10**. Runner stopped before `svgPathTransformFidelity` (first isolated fail).
+
+Timing 75 / 250 **not loosened** (crossing fail is allocation, after wall/CPU asserts).
 
 ## Leftover 18 — unchanged
 
