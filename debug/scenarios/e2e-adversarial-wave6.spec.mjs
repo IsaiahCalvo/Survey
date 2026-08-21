@@ -384,6 +384,22 @@ async function dismissMenus(page) {
   await page.waitForTimeout(80);
 }
 
+async function openFillPicker(page) {
+  await page.getByRole('button', { name: 'Color', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
+  const fillTab = page.getByRole('button', { name: 'Fill', exact: true }).first();
+  if (await fillTab.count()) await fillTab.click();
+}
+
+async function openStrokePicker(page) {
+  await page.getByRole('button', { name: 'Color', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
+  const borderTab = page.getByRole('button', { name: 'Border', exact: true }).first();
+  await expect(borderTab).toBeVisible();
+  await borderTab.click();
+  await expect(page.locator('button[title="Match fill"]')).toBeVisible({ timeout: 8_000 });
+}
+
 async function clickMenuItem(page, label) {
   const menu = page.locator('[data-annotation-context-menu="true"]');
   await expect(menu).toBeVisible({ timeout: 8_000 });
@@ -442,11 +458,13 @@ async function selectAndDeleteHubTemplate(page, name) {
 }
 
 async function createHubTemplate(page, name) {
-  const title = () => page.locator('input.inline-edit.cat-title').first();
+  const title = () => page.locator('input.inline-edit.cat-title[style*="22px"]').first();
   await page.getByRole('button', { name: 'New template', exact: true }).first().click();
   await expect(title()).toBeVisible();
+  await expect(title()).toHaveValue(/Template \d+/);
   await title().fill(name);
   await title().press('Enter');
+  await expect(title()).toHaveValue(name);
   await expect(page.getByText(name).first()).toBeVisible();
   const save = page.getByRole('button', { name: 'Save', exact: true }).first();
   if (await save.count()) await save.click();
@@ -871,15 +889,12 @@ test('Color Match Fill on, draw two rects, change fill on first only', async ({ 
   await openEditor(page);
   const first = await createRect(page, { x0: 0.20, y0: 0.24, x1: 0.40, y1: 0.42 });
   await selectStroke(page, first.id);
-  await page.getByRole('button', { name: 'Color', exact: true }).first().click();
-  const fillTab = page.getByRole('button', { name: 'Fill', exact: true }).first();
-  if (await fillTab.count()) await fillTab.click();
+  await openFillPicker(page);
   await page.locator('button[title="#00FFFF"]').first().click();
+  await expect.poll(async () => colorKey((await annotationById(page, first.id))?.fill).includes('00FFFF')).toBeTruthy();
   await dismissMenus(page);
   await selectStroke(page, first.id);
-  await page.getByRole('button', { name: 'Color', exact: true }).first().click();
-  const borderTab = page.getByRole('button', { name: /Border|Number/i }).first();
-  if (await borderTab.count()) await borderTab.click();
+  await openStrokePicker(page);
   const match = page.locator('button[title="Match fill"]').first();
   await expect(match).toBeVisible({ timeout: 8_000 });
   await match.click();
@@ -891,9 +906,7 @@ test('Color Match Fill on, draw two rects, change fill on first only', async ({ 
   const secondStroke0 = colorKey((await annotationById(page, second.id))?.stroke);
 
   await selectStroke(page, first.id);
-  await page.getByRole('button', { name: 'Color', exact: true }).first().click();
-  const fillTab2 = page.getByRole('button', { name: 'Fill', exact: true }).first();
-  if (await fillTab2.count()) await fillTab2.click();
+  await openFillPicker(page);
   await expect(page.locator('button[title="#FF0000"]').first()).toBeVisible({ timeout: 8_000 });
   await page.locator('button[title="#FF0000"]').first().click();
   await expect.poll(async () => colorKey((await annotationById(page, first.id))?.fill).includes('FF0000')).toBeTruthy();
@@ -904,8 +917,7 @@ test('Color Match Fill on, draw two rects, change fill on first only', async ({ 
   expect(firstStroke.includes('FF0000'), 'Match Fill is a snapshot, not a live bind').toBeFalsy();
 
   await selectStroke(page, first.id);
-  await page.getByRole('button', { name: 'Color', exact: true }).first().click();
-  if (await fillTab.count()) await fillTab.click();
+  await openFillPicker(page);
   const hex = page.getByRole('textbox', { name: 'Hex color', exact: true });
   if (await hex.count()) {
     await hex.fill('zz');
@@ -1001,7 +1013,7 @@ test('hubPreview: two templates, delete first, remaining still selectable', asyn
   await expect(aside.locator('[data-drag-rearrange-row]').filter({ hasText: TEMPLATE_A }).first()).toBeVisible();
   await expect(aside.locator('[data-drag-rearrange-row]').filter({ hasText: TEMPLATE_B }).first()).toBeVisible();
 
-  const title = () => page.locator('input.inline-edit.cat-title').first();
+  const title = () => page.locator('input.inline-edit.cat-title[style*="22px"]').first();
   await title().fill('   ');
   await title().press('Enter');
   await expect(page.getByText(TEMPLATE_B).first()).toBeVisible();
