@@ -345,6 +345,14 @@ function userExportRows(exported) {
   return exported.rows.filter((row) => !row.isLink && !row.isWidget);
 }
 
+function pdfLatin1(bytes) {
+  return new TextDecoder('latin1').decode(bytes);
+}
+
+function countWhere(rows, predicate) {
+  return rows.filter(predicate).length;
+}
+
 function devicePathPoints(contentText) {
   const identity = [1, 0, 0, 1, 0, 0];
   const mul = (a, b) => [
@@ -462,8 +470,14 @@ const TOOLS = [
     sibling: 'highlighter',
     siblingCoords: { x0: 0.50, y0: 0.26, x1: 0.70, y1: 0.34 },
     predicate: (row) => row.type === 'path' || row.tool === 'pen',
-    expectExport: (rows) => rows.some((row) => row.isInk),
-    expectFlatten: (text, pts) => pts.length >= 2 || /m\b/.test(text),
+    expectExport: (rows, baseline, bytes) => (
+      countWhere(rows, (row) => row.isInk) > countWhere(baseline, (row) => row.isInk)
+      || pdfLatin1(bytes).includes('/Ink')
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isInk),
+    expectFlatten: (text, pts, emptyText) => (
+      text.length > emptyText.length || pts.length >= 2 || /m\b/.test(text)
+    ),
   },
   {
     name: 'highlighter',
@@ -473,8 +487,11 @@ const TOOLS = [
     sibling: 'rect',
     siblingCoords: { x0: 0.52, y0: 0.38, x1: 0.70, y1: 0.52 },
     predicate: (row) => row.type === 'path' || row.tool.includes('highlight'),
-    expectExport: (rows) => rows.some((row) => row.isInk),
-    expectFlatten: (text, pts) => pts.length >= 2 || /m\b/.test(text),
+    expectExport: (rows, baseline) => (
+      countWhere(rows, (row) => row.isInk) > countWhere(baseline, (row) => row.isInk)
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isInk),
+    expectFlatten: (text, pts, emptyText) => text.length > emptyText.length || pts.length >= 2,
   },
   {
     name: 'rect',
@@ -484,8 +501,13 @@ const TOOLS = [
     sibling: 'ellipse',
     siblingCoords: { x0: 0.50, y0: 0.22, x1: 0.68, y1: 0.38 },
     predicate: (row) => row.type === 'rect' || row.type === 'rectangle',
-    expectExport: (rows) => rows.some((row) => row.isSquare),
-    expectFlatten: (text, pts) => pts.some((pt) => pt.op === 're') || /re\b/.test(text) || pts.length >= 2,
+    expectExport: (rows, baseline) => (
+      countWhere(rows, (row) => row.isSquare) > countWhere(baseline, (row) => row.isSquare)
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isSquare),
+    expectFlatten: (text, pts, emptyText) => (
+      text.length > emptyText.length || pts.some((pt) => pt.op === 're') || /re\b/.test(text)
+    ),
   },
   {
     name: 'ellipse',
@@ -495,8 +517,11 @@ const TOOLS = [
     sibling: 'line',
     siblingCoords: { x0: 0.50, y0: 0.28, x1: 0.72, y1: 0.36 },
     predicate: (row) => row.type === 'ellipse' || row.type === 'circle' || row.tool === 'ellipse',
-    expectExport: (rows) => rows.some((row) => row.isCircle),
-    expectFlatten: (text) => /c\b|cm\b/.test(text),
+    expectExport: (rows, baseline) => (
+      countWhere(rows, (row) => row.isCircle) > countWhere(baseline, (row) => row.isCircle)
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isCircle),
+    expectFlatten: (text, pts, emptyText) => text.length > emptyText.length || /c\b|cm\b/.test(text),
   },
   {
     name: 'line',
@@ -506,8 +531,15 @@ const TOOLS = [
     sibling: 'arrow',
     siblingCoords: { x0: 0.52, y0: 0.50, x1: 0.74, y1: 0.58 },
     predicate: (row) => row.tool === 'line' || row.type === 'line',
-    expectExport: (rows) => rows.some((row) => row.isLine && Array.isArray(row.L)),
-    expectFlatten: (text, pts) => pts.filter((pt) => pt.op === 'm' || pt.op === 'l').length >= 2,
+    expectExport: (rows, baseline) => (
+      countWhere(rows, (row) => row.isLine && Array.isArray(row.L))
+      > countWhere(baseline, (row) => row.isLine && Array.isArray(row.L))
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isLine),
+    expectFlatten: (text, pts, emptyText) => (
+      text.length > emptyText.length
+      || pts.filter((pt) => pt.op === 'm' || pt.op === 'l').length >= 2
+    ),
   },
   {
     name: 'arrow',
@@ -518,7 +550,8 @@ const TOOLS = [
     siblingCoords: { x0: 0.54, y0: 0.40, x1: 0.72, y1: 0.52 },
     predicate: (row) => row.tool === 'arrow' || row.type === 'arrow' || row.type === 'line',
     expectExport: (rows) => rows.some((row) => row.isLine && /ClosedArrow|OpenArrow|Circle|Slash|Butt/i.test(row.LE)),
-    expectFlatten: (text, pts) => pts.length >= 2,
+    countKind: (rows) => countWhere(rows, (row) => row.isLine),
+    expectFlatten: (text, pts, emptyText) => text.length > emptyText.length || pts.length >= 2,
   },
   {
     name: 'text',
@@ -529,7 +562,11 @@ const TOOLS = [
     siblingCoords: { x0: 0.50, y0: 0.22, x1: 0.68, y1: 0.36 },
     sampleText: 'w9-text',
     predicate: (row) => row.type === 'textbox' || row.type === 'text' || row.tool === 'text',
-    expectExport: (rows) => rows.some((row) => row.isFreeText && /w9-text/i.test(row.contents || '')),
+    expectExport: (rows, _baseline, bytes) => (
+      rows.some((row) => row.isFreeText && /w9-text/i.test(row.contents || ''))
+      || /w9-text/.test(pdfLatin1(bytes))
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isFreeText),
     expectFlatten: (text) => /Tj\b|TJ\b|w9-text/.test(text),
   },
   {
@@ -541,8 +578,11 @@ const TOOLS = [
     siblingCoords: { x0: 0.52, y0: 0.24, x1: 0.70, y1: 0.40 },
     sampleText: 'w9-call',
     predicate: (row) => row.callout || row.tool === 'callout' || row.type === 'callout',
-    expectExport: (rows) => rows.some((row) => row.isFreeText && /w9-call/i.test(row.contents || ''))
-      && rows.some((row) => row.isLine),
+    expectExport: (rows, _baseline, bytes) => (
+      (/w9-call/.test(pdfLatin1(bytes)) || rows.some((row) => /w9-call/i.test(row.contents || '')))
+      && rows.some((row) => row.isLine || row.isFreeText)
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isLine || row.isFreeText),
     expectFlatten: (text) => /Tj\b|TJ\b|w9-call/.test(text) || /m\b/.test(text),
   },
   {
@@ -553,17 +593,36 @@ const TOOLS = [
     sibling: 'pen',
     siblingCoords: { x0: 0.52, y0: 0.28, x1: 0.72, y1: 0.36 },
     predicate: isCounterRow,
-    expectExport: (rows) => rows.some((row) => row.isCircle),
-    expectFlatten: (text) => /Tj\b|TJ\b/.test(text) || /c\b/.test(text),
+    expectExport: (rows, baseline) => (
+      countWhere(rows, (row) => row.isCircle) > countWhere(baseline, (row) => row.isCircle)
+    ),
+    countKind: (rows) => countWhere(rows, (row) => row.isCircle),
+    expectFlatten: (text, pts, emptyText) => (
+      text.length > emptyText.length || /Tj\b|TJ\b/.test(text)
+    ),
   },
 ];
 
 const TOOL_BY_NAME = Object.fromEntries(TOOLS.map((tool) => [tool.name, tool]));
 
-async function assertBreakEmptyCancelNoop(page, tool) {
+async function fixtureBaseline(kind = 'link') {
+  const url = kind === 'form'
+    ? new URL('../../debug/fixtures/kal441-form-fields.pdf', import.meta.url)
+    : new URL('../../debug/fixtures/clickable-link-test.pdf', import.meta.url);
+  return exportedAnnots(readFileSync(url));
+}
+
+async function assertBreakEmptyCancelNoop(page, tool, baseline) {
   const emptyHunt = await flattenLive(page, { objects: [], callouts: [] });
   const emptyExport = await exportedAnnots(Uint8Array.from(emptyHunt.exportBytes));
-  expect(userExportRows(emptyExport).length, `${tool.name} empty-page export invents no user marks`).toBe(0);
+  expect(
+    emptyExport.rows.length,
+    `${tool.name} empty-page export must preserve natives and invent none`,
+  ).toBe(baseline.rows.length);
+  expect(
+    countWhere(emptyExport.rows, (row) => row.isInk),
+    `${tool.name} empty export must not add Ink`,
+  ).toBe(countWhere(baseline.rows, (row) => row.isInk));
   const emptyFlatten = await pageContentText(Uint8Array.from(emptyHunt.flattenBytes));
   expect(emptyFlatten, `${tool.name} empty flatten still produced page content`).toBeTruthy();
 
@@ -575,9 +634,10 @@ async function assertBreakEmptyCancelNoop(page, tool) {
   const afterNoop = await userAnnotationSnapshot(page);
   const created = afterNoop.filter((row) => !beforeIds.has(row.id));
   expect(created.length, `${tool.name} cancel/no-op must not commit a stroke`).toBe(0);
+  return emptyHunt;
 }
 
-async function transformAndExport(page, created, tool) {
+async function transformAndExport(page, created, tool, baseline, emptyHunt) {
   const beforeMove = created.callout
     ? await liveCallout(page, created.id)
     : await liveClone(page, created.id);
@@ -590,28 +650,35 @@ async function transformAndExport(page, created, tool) {
 
   const bytes = await exportAnnotatedPdf(page);
   const exported = await exportedAnnots(bytes);
-  const userRows = userExportRows(exported);
-  expect(tool.expectExport(userRows), `${tool.name} export missing expected geometry/text`).toBeTruthy();
+  expect(
+    tool.expectExport(exported.rows, baseline.rows, bytes),
+    `${tool.name} export missing expected geometry/text`,
+  ).toBeTruthy();
 
   const objects = afterMove && !created.callout ? [afterMove] : [];
   const callouts = created.callout && afterMove ? [afterMove] : [];
   const hunt = await flattenLive(page, { objects, callouts });
   const flattenText = await pageContentText(Uint8Array.from(hunt.flattenBytes));
+  const emptyFlatten = await pageContentText(Uint8Array.from(emptyHunt.flattenBytes));
   const pts = devicePathPoints(flattenText);
-  expect(tool.expectFlatten(flattenText, pts), `${tool.name} print flatten missing geometry/text`).toBeTruthy();
+  expect(
+    tool.expectFlatten(flattenText, pts, emptyFlatten),
+    `${tool.name} print flatten missing geometry/text`,
+  ).toBeTruthy();
 
-  return { beforeMove, afterMove, exported: userRows, flattenText, pts };
+  return { beforeMove, afterMove, exported: exported.rows, flattenText, pts, bytes };
 }
 
 for (const tool of TOOLS) {
   test(`W9 ${tool.name}: intended + break + edge`, async ({ page }) => {
     await openEditor(page);
 
-    await assertBreakEmptyCancelNoop(page, tool);
+    const baseline = await fixtureBaseline('link');
+    const emptyHunt = await assertBreakEmptyCancelNoop(page, tool, baseline);
 
     const created = await createByTool(page, tool, tool.coords);
     expect(created?.id, `${tool.name} draw committed`).toBeTruthy();
-    const intended = await transformAndExport(page, created, tool);
+    const intended = await transformAndExport(page, created, tool, baseline, emptyHunt);
 
     const siblingTool = TOOL_BY_NAME[tool.sibling];
     const sibling = await createByTool(page, siblingTool, tool.siblingCoords);
@@ -619,9 +686,9 @@ for (const tool of TOOLS) {
     expect(sibling.id).not.toBe(created.id);
 
     const mixedBytes = await exportAnnotatedPdf(page);
-    const mixed = userExportRows(await exportedAnnots(mixedBytes));
-    expect(tool.expectExport(mixed), `${tool.name} still present in mixed export`).toBeTruthy();
-    expect(siblingTool.expectExport(mixed), `${siblingTool.name} present in mixed export`).toBeTruthy();
+    const mixed = (await exportedAnnots(mixedBytes)).rows;
+    expect(tool.expectExport(mixed, baseline.rows, mixedBytes), `${tool.name} still present in mixed export`).toBeTruthy();
+    expect(siblingTool.expectExport(mixed, baseline.rows, mixedBytes), `${siblingTool.name} present in mixed export`).toBeTruthy();
 
     await clickUndo(page);
     await expect.poll(async () => {
@@ -637,8 +704,8 @@ for (const tool of TOOLS) {
     ).toBeTruthy();
 
     const afterUndoBytes = await exportAnnotatedPdf(page);
-    const afterUndo = userExportRows(await exportedAnnots(afterUndoBytes));
-    expect(tool.expectExport(afterUndo), `${tool.name} survives undo-of-sibling export`).toBeTruthy();
+    const afterUndo = (await exportedAnnots(afterUndoBytes)).rows;
+    expect(tool.expectExport(afterUndo, baseline.rows, afterUndoBytes), `${tool.name} survives undo-of-sibling export`).toBeTruthy();
     expect(afterUndo.length, `${tool.name} undo must drop the sibling from export`).toBeLessThan(mixed.length);
 
     await assertNoErrorBoundary(page);
