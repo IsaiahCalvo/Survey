@@ -218,7 +218,7 @@ test('web file-control import hunt: intended + break + edge', async ({ page }) =
   const boot = await openGuestHub(page);
   const fileInputs = pdfFileInput(page);
   const fileInputCount = await fileInputs.count();
-  const upload = page.locator('.documents-desktop-upload, button:has-text("Upload")').first();
+  const upload = page.getByRole('button', { name: /^Upload/ }).first();
   await expect(upload).toBeVisible();
 
   const inEditorPdfInput = await page.locator('input[type="file"][accept*="pdf"]').count();
