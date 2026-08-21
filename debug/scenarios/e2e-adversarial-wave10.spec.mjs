@@ -117,15 +117,28 @@ async function openPagesPanel(page) {
 }
 
 function pageThumb(page, pageNumber) {
-  return page.locator(`#chrome-left-host [data-page-number="${pageNumber}"], [data-sidebar-panel] [data-page-number="${pageNumber}"]`).first();
+  return page.locator(`#chrome-left-host [data-page-number="${pageNumber}"]`).first();
+}
+
+function pagesMenu(page) {
+  return page.locator('[data-pages-context-menu="true"]');
 }
 
 async function openPageMenu(page, pageNumber) {
   await openPagesPanel(page);
   const thumb = pageThumb(page, pageNumber);
   await expect(thumb).toBeVisible({ timeout: 15_000 });
-  await thumb.click({ button: 'right' });
-  const insert = page.getByText('Insert blank page', { exact: true });
+  await thumb.scrollIntoViewIfNeeded();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await thumb.click({ button: 'right' });
+    try {
+      await expect(pagesMenu(page)).toBeVisible({ timeout: 2_000 });
+      break;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
+  const insert = pagesMenu(page).getByText('Insert blank page', { exact: true });
   await expect(insert).toBeVisible({ timeout: 8_000 });
   return insert;
 }
@@ -148,8 +161,8 @@ async function deletePage(page, pageNumber, { accept = true } = {}) {
   await openPagesPanel(page);
   const thumb = pageThumb(page, pageNumber);
   await expect(thumb).toBeVisible();
-  await thumb.click({ button: 'right' });
-  const del = page.getByText('Delete', { exact: true });
+  await openPageMenu(page, pageNumber);
+  const del = pagesMenu(page).getByText('Delete', { exact: true });
   await expect(del).toBeVisible({ timeout: 8_000 });
   await del.click();
   if (!accept) {

@@ -645,7 +645,7 @@ const PagesPanel = ({
     setContextMenu({
       pageNumber,
       x: Math.max(8, Math.min(e.clientX, viewportWidth - 196)),
-      y: Math.max(8, Math.min(e.clientY, viewportHeight - 420))
+      y: Math.max(8, Math.min(e.clientY, viewportHeight - 480))
     });
   }, []);
 
@@ -1127,6 +1127,7 @@ const PagesPanel = ({
           )}
         <div
           ref={contextMenuRef}
+          data-pages-context-menu="true"
           style={mobileMode ? {
             // UX: demo page context-menu chrome (188px, radius 9, #181B20 /
             // #3C424D, 6px pad, no shadow) — styles.ts:861-871, App.tsx:817.
