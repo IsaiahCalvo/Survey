@@ -161,8 +161,8 @@ Command: `npm test` → `node scripts/run-node-tests.mjs`. Node v22.14.0. Did no
 
 1. `tests/partialEraserComplexity.test.mjs` — `500 crossing cuts preserve every component inside bounded memory and release time`  
    `total allocation 11966.34 MiB exceeded 8448.00 MiB`  
-   **Not** a 75 / 250 wall-clock miss. Geometry, component count (501), serialized-bytes, p95/max commit ms, and CPU asserts ran first and passed. Shallow500 (same file) passed.  
-   Same class as the file's own note: crossing allocation is already bimodal on CI from V8 nursery sizing (6.4–7.3 GiB). This cloud VM is a higher mode. **Left the allocation ceiling and the 75 / 250 timing budget.** Do not treat as an audit-ID reopen.
+   **Not** a 75 / 250 wall-clock miss. Geometry, component count (501), serialized-bytes, p95/max commit ms, and CPU asserts ran first and passed. Shallow500 (same file) passed on that official run.  
+   Diagnosed this pass: **pre-existing environment, not a restore regression.** See §9 and `fix-logs/eraser-memory-cap.md`. **Left the 8448 allocation ceiling and the 75 / 250 timing budget.** Do not treat as an audit-ID reopen.
 
 **Reached isolated suites:** `annotationDocConcurrency` 103 / 103; `partialEraseCurveLocality` 15 / 15; `partialEraserComplexity` 9 / 10 (above).  
 **Unreached isolated, run the same spawn after stop:** `svgPathTransformFidelity` 12 / 12.
@@ -173,3 +173,22 @@ Command: `npm test` → `node scripts/run-node-tests.mjs`. Node v22.14.0. Did no
 - `tests/releaseIntegrity.test.mjs` — runner-contract regex matches that spawn.
 
 Invariants not touched: container-aware canvas sizing, SVG viewBox zoom, `zoomGeneration`, single-name `fontFamily`, CORS `*`.
+
+## 9. Crossing-500 allocation diagnosis (this pass)
+
+**Verdict: pre-existing environment (cap assumed a different Node/allocator). Not a restore leak. Not run-to-run flake.** Cap **8448** and **75 / 250** unchanged. No product edit. No commit.
+
+Isolated child (`--expose-gc --max-old-space-size=128`, same as the test):
+
+| Tree | crossing allocated MiB (n) | retained | geometry |
+|---|---|---|---|
+| HEAD | **11957.63–11966.34** (stable, <0.1% spread) | ~6.97 MiB | 501 / 2038 verts / 70760 B |
+| `main` `9a5260c3` eraser files | **11958.50–11963.53** | ~6.98 MiB | identical |
+
+HEAD ≡ `main` on this meter. Nursery / `--max-old-space-size` variants stay ~11960 (semi-space=2 → 12057). In-process GC: 838 scavenges reclaim ~11.6 GiB young-gen; not a retained leak.
+
+Restore-only product delta (`skip` vs `entire` for non-ink) is unreachable in this scenario (`canErase` already drops the collaborator rect). Test + child + `paperAnnotationGeometry.js` match `main`.
+
+Shallow500 on this host sits near **19456** (isolated 18963–19115 pass; one paired harness sample **19712** fail). Official run 3 shallow passed. Do not loosen 19 GiB.
+
+Official leftover unchanged: crossing allocation. Isolated complexity not greened. 18 host leftovers not retried. Goal stays **open**.
