@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   BOOKMARK_INDENTATION_WIDTH,
   applyBookmarkTreeProjection,
+  collectBookmarkTreePersistUpdates,
   flattenBookmarkTreeForSort,
   getAutoExpandTargetFolder,
   getBookmarkProjection,
@@ -119,4 +120,36 @@ test('collapsed folders are auto-expand targets when dragged over with rightward
   );
 
   assert.equal(target.id, 'details');
+});
+
+test('persist updates only rewrite bookmarks whose order or parent actually changed', () => {
+  const current = [
+    { id: 'cover', order: 0, parentId: null },
+    { id: 'details', order: 1, parentId: null },
+    { id: 'panel', order: 0, parentId: 'details' },
+    { id: 'riser', order: 2, parentId: null },
+  ];
+  const unchangedTree = [
+    { id: 'cover', children: [] },
+    { id: 'details', children: [{ id: 'panel', children: [] }] },
+    { id: 'riser', children: [] },
+  ];
+  assert.deepEqual(collectBookmarkTreePersistUpdates(unchangedTree, current), []);
+
+  const moved = applyBookmarkTreeProjection(
+    [
+      bookmark('cover'),
+      folder('details', 'Details', [bookmark('panel')]),
+      bookmark('riser'),
+    ],
+    'riser',
+    'panel',
+    { depth: 1, parentId: 'details' },
+  );
+  const updates = collectBookmarkTreePersistUpdates(moved, current);
+  assert.ok(updates.length > 0);
+  assert.ok(updates.length < current.length, 'must not rewrite every bookmark');
+  assert.ok(updates.some((entry) => entry.id === 'riser' && entry.updates.parentId === 'details'));
+  const byId = Object.fromEntries(updates.map((entry) => [entry.id, entry.updates]));
+  assert.equal(byId.riser.parentId, 'details');
 });

@@ -432,7 +432,7 @@ test('a geometric miss is a byte-stable identity no-op', () => {
   assert.equal(JSON.stringify(result.pageAnnotations), before);
 });
 
-test('partial mode still removes a touched non-ink annotation atomically', () => {
+test('partial mode skips a touched non-ink annotation instead of deleting it', () => {
   const rect = {
     type: 'rect',
     id: 'rect',
@@ -447,12 +447,12 @@ test('partial mode still removes a touched non-ink annotation atomically', () =>
   };
   const result = erase({ objects: [rect] }, [{ x: 30, y: 30 }]);
 
-  assert.equal(result.didChange, true);
-  assert.deepEqual(result.deletedIds, ['rect']);
-  assert.deepEqual(result.pageAnnotations.objects, []);
+  assert.equal(result.didChange, false);
+  assert.deepEqual(result.deletedIds, []);
+  assert.deepEqual(result.pageAnnotations.objects, [rect]);
 });
 
-test('partial mode whole-deletes every atomic path instead of carving its geometry', () => {
+test('partial mode skips every atomic path instead of carving or deleting it', () => {
   const squarePath = [['M', 20, 20], ['L', 60, 20], ['L', 60, 60], ['L', 20, 60], ['Z']];
   const specs = [
     ['generic-path', {}],
@@ -481,13 +481,13 @@ test('partial mode whole-deletes every atomic path instead of carving its geomet
 
   const result = erase({ objects }, [{ x: 40, y: 40 }]);
 
-  assert.equal(result.didChange, true);
+  assert.equal(result.didChange, false);
   assert.deepEqual(result.changedIds, []);
-  assert.deepEqual(result.deletedIds, specs.map(([id]) => id));
-  assert.deepEqual(result.pageAnnotations.objects, []);
+  assert.deepEqual(result.deletedIds, []);
+  assert.deepEqual(result.pageAnnotations.objects, objects);
 });
 
-test('partial mode whole-deletes non-path shapes, text, and stamps', () => {
+test('partial mode skips non-path shapes, text, and stamps', () => {
   const objects = [
     { type: 'rect', id: 'rect', left: 20, top: 20, width: 40, height: 40, fill: '#228855' },
     { type: 'ellipse', id: 'ellipse', left: 20, top: 20, rx: 20, ry: 20, fill: '#228855' },
@@ -501,9 +501,28 @@ test('partial mode whole-deletes non-path shapes, text, and stamps', () => {
 
   const result = erase({ objects }, [{ x: 40, y: 40 }]);
 
+  assert.equal(result.didChange, false);
+  assert.deepEqual(result.changedIds, []);
+  assert.deepEqual(result.deletedIds, []);
+  assert.deepEqual(result.pageAnnotations.objects, objects);
+});
+
+test('full mode still whole-deletes atomic paths and non-path shapes', () => {
+  const squarePath = [['M', 20, 20], ['L', 60, 20], ['L', 60, 60], ['L', 20, 60], ['Z']];
+  const objects = [
+    {
+      type: 'path', id: 'shape-path', tool: 'rect', path: squarePath,
+      left: 0, top: 0, fill: '#228855', stroke: 'transparent', strokeWidth: 0,
+    },
+    { type: 'rect', id: 'rect', left: 20, top: 20, width: 40, height: 40, fill: '#228855' },
+    { type: 'textbox', id: 'text', left: 20, top: 20, width: 40, height: 40, text: 'Note' },
+  ];
+
+  const result = erase({ objects }, [{ x: 40, y: 40 }], { mode: 'full' });
+
   assert.equal(result.didChange, true);
   assert.deepEqual(result.changedIds, []);
-  assert.deepEqual(result.deletedIds, ['rect', 'ellipse', 'line', 'text', 'stamp']);
+  assert.deepEqual(result.deletedIds, ['shape-path', 'rect', 'text']);
   assert.deepEqual(result.pageAnnotations.objects, []);
 });
 

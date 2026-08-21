@@ -1820,6 +1820,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               }}
                               onClose={() => setShowFontColorPicker(false)}
                               firstPreset="transparent"
+                              showOpacity={false}
                             />
                           </Suspense>
                         </div>

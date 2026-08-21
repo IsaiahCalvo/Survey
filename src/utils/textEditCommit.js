@@ -82,6 +82,8 @@ export function ensureTextAnnotationId(json, prefix = 'anno') {
 
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
 
+export const isBlankTextEdit = (text) => !text || String(text).trim() === '';
+
 /**
  * Style fields the editor can change mid-edit. Applied onto commit JSON in
  * one place so new-text and existing-text agree on the writable set.
@@ -114,6 +116,8 @@ const applyTextStyle = (json, style = {}) => {
  * left/top are the OUTER border corner in page space.
  *
  * Returns null for blank text — matching the fabric path's discard branch.
+ * Existing-text commits use the same blank rule so a cleared box cannot
+ * persist as an invisible ghost.
  */
 export function buildNewTextCommitJSON({
   text,
@@ -133,7 +137,7 @@ export function buildNewTextCommitJSON({
   stampRegionId = false,
   activeRegionId = null,
 }) {
-  if (!text || String(text).trim() === '') return null;
+  if (isBlankTextEdit(text)) return null;
   const pad = TEXT_PADDING;
   const width = (lineCount <= 1 && maxLineWidth > 0)
     ? Math.ceil(maxLineWidth + 2) + 2 * pad
@@ -178,7 +182,9 @@ export function buildNewTextCommitJSON({
  *  - rotated boxes keep their ROTATED top-left corner fixed when height
  *    changes (same trig compensation the fabric path applied).
  *
- * Returns null if `original` is missing.
+ * Returns null if `original` is missing, or if the editor text is blank
+ * (whitespace-only included). Blank existing text must not persist as a
+ * zero-glyph click target.
  */
 export function buildExistingTextCommitJSON({
   original,
@@ -188,6 +194,7 @@ export function buildExistingTextCommitJSON({
   style = {},
 }) {
   if (!original || typeof original !== 'object') return null;
+  if (isBlankTextEdit(text)) return null;
   const pad = TEXT_PADDING;
   const padY = isCallout ? 0 : pad;
   const json = deepClone(original);

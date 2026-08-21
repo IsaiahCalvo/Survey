@@ -1090,9 +1090,15 @@ export function erasePageAnnotations({
     if (!canErase(object, index)) return;
     if (String(object?.type || '').toLowerCase() !== 'path') return;
     const internalId = `page-object:${index}`;
-    const operation = requestedMode === 'full'
-      ? 'full'
-      : (getEraserOperation(object, 'partial') === 'partial' ? 'partial' : 'full');
+    let operation;
+    if (requestedMode === 'full') {
+      operation = 'full';
+    } else {
+      // Partial mode carves ink only. Non-ink paths (clouds, shape paths,
+      // imported non-Ink) used to be promoted to whole-delete; they skip.
+      if (getEraserOperation(object, 'partial') !== 'partial') return;
+      operation = 'partial';
+    }
     const annotation = pathToPageAnnotation(object, internalId, {
       // Both modes hit-test the stroke's actual painted outline. Solid round
       // strokes remain their authored centerlines because a radius-expanded
@@ -1137,14 +1143,18 @@ export function erasePageAnnotations({
     }
   }
 
-  objects.forEach((object, index) => {
-    if (String(object?.type || '').toLowerCase() === 'path' || !canErase(object, index)) return;
-    if (!eraserStrokeTouchesObject({ eraserPoints: points, eraserRadius: radius, object })) return;
-    const objectId = getEraserCandidateId(object, index);
-    touchedIds.push(objectId);
-    deletedIds.push(objectId);
-    deletedIndexes.add(index);
-  });
+  // Non-path shapes/text/stamps whole-delete only in entire/full mode.
+  // Partial mode is ink-only: a stroke over a rectangle must leave it.
+  if (requestedMode === 'full') {
+    objects.forEach((object, index) => {
+      if (String(object?.type || '').toLowerCase() === 'path' || !canErase(object, index)) return;
+      if (!eraserStrokeTouchesObject({ eraserPoints: points, eraserRadius: radius, object })) return;
+      const objectId = getEraserCandidateId(object, index);
+      touchedIds.push(objectId);
+      deletedIds.push(objectId);
+      deletedIndexes.add(index);
+    });
+  }
 
   // One PDF annotation can paint several disjoint companion layers from its
   // appearance stream. Full erase is annotation-atomic: touching any layer

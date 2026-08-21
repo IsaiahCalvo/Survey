@@ -17,7 +17,12 @@ import {
   getSupabaseSession,
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
-import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
+import {
+  assertLinkedSameUser,
+  linkOAuthProvider,
+  requestAccountDeletion,
+  unlinkOAuthProvider,
+} from '../utils/accountPlatform';
 
 export const AuthContext = createContext({});
 
@@ -198,6 +203,12 @@ export const AuthProvider = ({ children }) => {
     if (prev.email !== next.email) return true;
     try {
       if (JSON.stringify(prev.user_metadata) !== JSON.stringify(next.user_metadata)) {
+        return true;
+      }
+      if (JSON.stringify(prev.identities) !== JSON.stringify(next.identities)) {
+        return true;
+      }
+      if (JSON.stringify(prev.app_metadata) !== JSON.stringify(next.app_metadata)) {
         return true;
       }
     } catch {
@@ -679,10 +690,42 @@ export const AuthProvider = ({ children }) => {
     return nextUser;
   };
 
+  // Settings "Connect Google" must attach Google to the current Survey user.
+  // signInWithOAuth / signInWithIdToken would create or switch accounts.
+  const linkGoogleIdentity = async () => {
+    if (!isSupabaseAvailable()) throw new Error('Supabase is not configured');
+    const previousId = userRef.current?.id;
+    const nativeCredential = requestNativeGoogleIdToken();
+    if (nativeCredential) {
+      const result = await nativeCredential;
+      if (result.cancelled) return result;
+      const data = await linkOAuthProvider({
+        auth: supabase.auth,
+        provider: 'google',
+        idToken: result.idToken,
+      });
+      assertLinkedSameUser(previousId, data?.user?.id);
+      if (data?.user) {
+        userRef.current = data.user;
+        setUser(data.user);
+      }
+      return data;
+    }
+
+    const data = await linkOAuthProvider({
+      auth: supabase.auth,
+      provider: 'google',
+      location: window.location,
+      windowObject: window,
+    });
+    assertLinkedSameUser(previousId, data?.user?.id);
+    return data;
+  };
+
   const deleteAccount = async () => {
     if (!isSupabaseAvailable()) throw new Error('Supabase is not configured');
-    setDevAuthAutoLoginSuppressed(true);
     const data = await requestAccountDeletion(supabase.functions);
+    setDevAuthAutoLoginSuppressed(true);
 
     // The server has removed the Auth user. Clear the local refresh token even
     // when GoTrue can no longer accept a normal sign-out for that deleted user.
@@ -778,6 +821,7 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signIn,
     signInWithGoogle,
+    linkGoogleIdentity,
     signInWithSSO,
     signOut,
     unlinkProvider,

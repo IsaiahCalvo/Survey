@@ -61,7 +61,35 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
+import { getLineEndpoints } from './svgBoundingBox.js';
+import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
+
+// UX (arrow /LE export): map the app's 6 arrowhead styles onto the closest
+// PDF line-ending names so Acrobat/Preview/Bluebeam draw a matching head.
+// Inverse of PageAnnotationLayer's PDF_LINE_ENDING_TO_ARROW_STYLE import map.
+// Documented degradations: OPEN_TRIANGLE → OpenArrow (PDF has no unfilled
+// closed triangle); V_SHAPE → Slash (OpenArrow is already taken).
+const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
+  [ARROWHEAD_STYLES.NONE]: 'None',
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'ClosedArrow',
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'OpenArrow',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'Slash',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
+};
+
+const resolveCalloutArrowheadStyle = (style) => (
+  style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE
+);
+
+const resolveExportedLineEnding2 = (fabricObj) => {
+  if (fabricObj?.lineEnding2) return fabricObj.lineEnding2;
+  const style = fabricObj?.data?.arrowheadStyle
+    ?? (fabricObj?.tool === 'arrow' ? ARROWHEAD_STYLES.SOLID_TRIANGLE : null);
+  if (!style) return null;
+  return ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[style] || null;
+};
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -373,7 +401,7 @@ const calloutToExportObject = (callout, pageSize) => {
   if (width <= 0 || height <= 0) return null;
 
   const textBoxPosition = callout.textBoxPosition || callout.textBox || {};
-  return {
+  const payload = {
     type: 'callout',
     exportType: 'callout',
     id: callout.id || callout.annotationId || null,
@@ -401,6 +429,13 @@ const calloutToExportObject = (callout, pageSize) => {
     text: callout.text || '',
     style: callout.style || {},
   };
+  const finite = [
+    payload.arrowTip.x, payload.arrowTip.y,
+    payload.knee.x, payload.knee.y,
+    payload.textBox.left, payload.textBox.top, payload.textBox.width, payload.textBox.height,
+  ];
+  if (!finite.every(Number.isFinite)) return null;
+  return payload;
 };
 
 // UX 2026-07-17 (legacy arrow export): old saved documents store arrows as
@@ -432,10 +467,13 @@ const legacyArrowGroupToLine = (obj) => {
   ));
   const left = Number(obj.left) || 0;
   const top = Number(obj.top) || 0;
-  const { objects: _children, ...rest } = obj;
+  const { objects: _children, left: _gl, top: _gt, width: _gw, height: _gh, ...rest } = obj;
   return {
     ...rest,
     type: 'line',
+    // Endpoints are already page-absolute (group origin + child x1..y2).
+    // Strip left/top/width/height so getLineEndpoints does not re-add the
+    // bbox center — that would double-offset export/print.
     x1: left + Number(lineChild.x1),
     y1: top + Number(lineChild.y1),
     x2: left + Number(lineChild.x2),
@@ -1750,10 +1788,13 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     const color = hexToRGB(fabricObj.stroke || '#000000');
     const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
 
-    const left = fabricObj.left || 0;
-    const top = fabricObj.top || 0;
-    const width = fabricObj.width || 0;
-    const height = fabricObj.height || 0;
+    const scaleX = Math.abs(Number(fabricObj.scaleX) || 1);
+    const scaleY = Math.abs(Number(fabricObj.scaleY) || 1);
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const width = Math.max(0, (Number(fabricObj.width) || 0) * scaleX);
+    const height = Math.max(0, (Number(fabricObj.height) || 0) * scaleY);
+    if (![left, top, width, height, pageHeight].every(Number.isFinite)) return null;
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = left;
@@ -1774,6 +1815,19 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     // Add fill color if present
     if (fillColor && fabricObj.fill !== 'transparent') {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
+    }
+
+    const cloudIntensity = Number(
+      fabricObj?.data?.pdfCloudIntensity ?? fabricObj?.cloudIntensity
+    );
+    const isCloud = Number.isFinite(cloudIntensity)
+      || fabricObj?.cloudBorder
+      || fabricObj?.borderEffect === 'cloudy';
+    if (isCloud) {
+      annotationDict.BE = pdfDoc.context.obj({
+        S: PDFName.of('C'),
+        I: PDFNumber.of(Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2)),
+      });
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2305,10 +2359,15 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
 
-    const x1 = fabricObj.x1 || 0;
-    const y1 = fabricObj.y1 || 0;
-    const x2 = fabricObj.x2 || 0;
-    const y2 = fabricObj.y2 || 0;
+    // Fabric stores x1..y2 center-relative to the bbox; callout leaders and
+    // legacyArrowGroupToLine already pass page-absolute endpoints with no
+    // left/top/width/height, so getLineEndpoints is a no-op for those.
+    const endpoints = getLineEndpoints(fabricObj);
+    const x1 = endpoints.x1;
+    const y1 = endpoints.y1;
+    const x2 = endpoints.x2;
+    const y2 = endpoints.y2;
+    if (![x1, y1, x2, y2, pageHeight].every(Number.isFinite)) return null;
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = Math.min(x1, x2);
@@ -2335,11 +2394,13 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
 
-    // Add line endings (arrows, etc.)
-    if (fabricObj.lineEnding1 || fabricObj.lineEnding2) {
-      const le1 = fabricObj.lineEnding1 || 'None';
-      const le2 = fabricObj.lineEnding2 || 'None';
-      annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
+    // Add line endings (arrows, etc.). Arrow-tool objects store the style
+    // only in data.arrowheadStyle — map that onto /LE so export is not a
+    // headless line. Callout leaders still pass lineEnding2 explicitly.
+    const le1 = fabricObj.lineEnding1 || 'None';
+    const le2 = resolveExportedLineEnding2(fabricObj);
+    if (fabricObj.lineEnding1 || le2) {
+      annotationDict.LE = [PDFName.of(le1), PDFName.of(le2 || 'None')];
     }
 
     // UX (2026-07-17, callout line style): dashed/dotted strokes export as a
@@ -2438,33 +2499,6 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     return null;
   }
 };
-
-// UX (callout arrowhead export): map the app's 6 arrowhead styles onto the
-// closest PDF /LE line-ending names so external viewers (Acrobat, Preview)
-// draw a matching head on the exported callout leader line. This is the exact
-// inverse of PageAnnotationLayer's PDF_LINE_ENDING_TO_ARROW_STYLE import map,
-// keeping export→re-import stable. Documented degradations (PDF /LE has no
-// richer vocabulary): OPEN_TRIANGLE → OpenArrow (PDF has no unfilled *closed*
-// triangle ending; OpenArrow is what the importer maps back to OPEN_TRIANGLE)
-// and V_SHAPE → Slash (OpenArrow already belongs to OPEN_TRIANGLE in the
-// import map; Slash keeps the mapping bijective). The app's own re-import
-// never reads /LE for callouts — style rides verbatim inside the callout
-// metadata blob — so /LE is purely for third-party viewer fidelity.
-const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
-  [ARROWHEAD_STYLES.NONE]: 'None',
-  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'ClosedArrow',
-  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'OpenArrow',
-  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
-  [ARROWHEAD_STYLES.V_SHAPE]: 'Slash',
-  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
-};
-
-// Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
-// renderers: absent style → solid triangle, so legacy callouts keep their
-// historical ClosedArrow export byte-for-byte.
-const resolveCalloutArrowheadStyle = (style) => (
-  style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE
-);
 
 const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   const refs = [];
@@ -2974,6 +3008,8 @@ const fabricPathToSvgPath = (pathData) => {
       parts.push(`Q ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0} ${Number(cmd[3]) || 0} ${Number(cmd[4]) || 0}`);
     } else if (command === 'C') {
       parts.push(`C ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0} ${Number(cmd[3]) || 0} ${Number(cmd[4]) || 0} ${Number(cmd[5]) || 0} ${Number(cmd[6]) || 0}`);
+    } else if (command === 'Z' || command === 'z') {
+      parts.push('Z');
     }
   });
   return parts.join(' ');
@@ -3075,10 +3111,12 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
 const drawFlattenedLine = (page, obj, pageHeight) => {
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
-  const x1 = getObjNumber(obj, 'x1');
-  const y1 = getObjNumber(obj, 'y1');
-  const x2 = getObjNumber(obj, 'x2');
-  const y2 = getObjNumber(obj, 'y2');
+  const endpoints = getLineEndpoints(obj);
+  const x1 = endpoints.x1;
+  const y1 = endpoints.y1;
+  const x2 = endpoints.x2;
+  const y2 = endpoints.y2;
+  if (![x1, y1, x2, y2, pageHeight].every(Number.isFinite)) return;
   // UX (2026-07-17, line style): honor a stored strokeDashArray so dashed /
   // dotted lines (and callout leader pieces, which pass the shared callout
   // dash) print with their on-screen pattern instead of flattening solid.
@@ -3093,9 +3131,31 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
     opacity: stroke.opacity,
     ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
   });
-  const ending2 = String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase();
-  const isArrow = ending2.includes('arrow') || obj?.data?.annotationType === 'arrow' || obj?.tool === 'arrow';
-  if (isArrow) drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width });
+  const ending2 = resolveExportedLineEnding2(obj);
+  const ending2Lower = String(ending2 || obj?.data?.lineEnding2 || '').toLowerCase();
+  const style = obj?.data?.arrowheadStyle
+    ?? (obj?.tool === 'arrow' ? ARROWHEAD_STYLES.SOLID_TRIANGLE : null);
+  const wantsHead = (style && style !== ARROWHEAD_STYLES.NONE)
+    || ending2Lower.includes('arrow')
+    || ending2Lower === 'circle'
+    || ending2Lower === 'slash'
+    || ending2Lower === 'butt'
+    || obj?.data?.annotationType === 'arrow';
+  if (!wantsHead) return;
+  const angleDeg = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+  const spec = buildArrowheadRenderSpec(
+    style || ARROWHEAD_STYLES.SOLID_TRIANGLE,
+    x2,
+    y2,
+    angleDeg,
+    obj?.stroke || '#000000',
+    width,
+  );
+  if (spec && spec.kind !== 'none') {
+    drawFlattenedArrowheadSpec(page, spec, pageHeight);
+  } else {
+    drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width });
+  }
 };
 
 // UX 2026-07-17 (print text style): pick the embedded Helvetica variant that
@@ -3267,14 +3327,13 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (Array.isArray(obj.objects)) {
     const parentLeft = Number(obj.left) || 0;
     const parentTop = Number(obj.top) || 0;
+    // Offset only the bbox origin. Line x1..y2 stay center-relative so
+    // getLineEndpoints (left+width/2 + x1) yields world coords. Adding
+    // parentLeft to x1 here used to double-offset after the P1-01 fix.
     return obj.objects.reduce((sum, child) => sum + drawFlattenedObject(page, {
       ...child,
       left: (Number(child?.left) || 0) + parentLeft,
       top: (Number(child?.top) || 0) + parentTop,
-      x1: child?.x1 !== undefined ? (Number(child.x1) || 0) + parentLeft : child?.x1,
-      y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
-      x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
-      y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
     }, pageHeight, fonts, offset), 0);
   }
   const type = String(obj.type || '').toLowerCase();
@@ -3285,9 +3344,12 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   const fill = parsePdfDrawColor(shifted?.fill, '#ffffff');
   const left = getObjNumber(shifted, 'left');
   const top = getObjNumber(shifted, 'top');
-  const width = Math.max(0, getObjNumber(shifted, 'width'));
-  const height = Math.max(0, getObjNumber(shifted, 'height'));
+  const scaleX = Math.abs(Number(shifted?.scaleX) || 1);
+  const scaleY = Math.abs(Number(shifted?.scaleY) || 1);
+  const width = Math.max(0, getObjNumber(shifted, 'width') * scaleX);
+  const height = Math.max(0, getObjNumber(shifted, 'height') * scaleY);
   const strokeWidth = Math.max(0.5, Number(shifted?.strokeWidth) || 1);
+  if (![left, top, width, height, pageHeight].every(Number.isFinite)) return 0;
 
   if ((type === 'circle' || type === 'ellipse') && shifted?.data?.type === 'counter') {
     drawFlattenedCounterPin(page, shifted, pageHeight, fonts.bold);
@@ -3310,6 +3372,34 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'rect') {
+    const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity ?? shifted?.cloudIntensity);
+    if (Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
+      const cloudCmds = buildCloudPathCommands(
+        [
+          { x: left, y: top },
+          { x: left + width, y: top },
+          { x: left + width, y: top + height },
+          { x: left, y: top + height },
+        ],
+        cloudIntensity,
+        strokeWidth,
+      );
+      const cloudPath = Array.isArray(cloudCmds) && cloudCmds.length > 0
+        ? fabricPathToSvgPath(cloudCmds)
+        : '';
+      if (cloudPath) {
+        page.drawSvgPath(cloudPath, {
+          x: 0,
+          y: pageHeight,
+          color: fill?.color,
+          opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
+          borderColor: stroke.color,
+          borderWidth: strokeWidth,
+          borderOpacity: stroke.opacity,
+        });
+        return 1;
+      }
+    }
     // UX (2026-07-17, line style): dashed/dotted rect borders (incl. the
     // callout text box, which flattens through this branch) print with their
     // on-screen dash pattern instead of flattening solid.
@@ -3331,9 +3421,13 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'circle' || type === 'ellipse') {
-    const radius = Number(shifted?.radius) || Math.max(width, height) / 2 || 10;
-    const xScale = Number(shifted?.rx) || radius;
-    const yScale = Number(shifted?.ry) || radius;
+    // width/height are already scale-multiplied above. rx/ry are not.
+    const xScale = Number(shifted?.rx) > 0
+      ? Number(shifted.rx) * scaleX
+      : (Number(shifted?.radius) || width / 2 || 10);
+    const yScale = Number(shifted?.ry) > 0
+      ? Number(shifted.ry) * scaleY
+      : (Number(shifted?.radius) || height / 2 || 10);
     page.drawEllipse({
       x: left + xScale,
       y: getPdfY(pageHeight, top + yScale),

@@ -94,6 +94,13 @@ import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPrecis
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
+import {
+  annotationStableId,
+  buildOriginalIndexById,
+  resolveAnnotationIndexById,
+  stampZOrderAfterMove,
+  stampZOrderOnTop,
+} from './utils/annotationZOrder.js';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
@@ -25716,6 +25723,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // untouched) and export/dedupe never see two objects claiming one
         // native PDF annotation id. See utils/pasteCloneIdentity.js.
         mintPastedCloneIdentity(c);
+        stampZOrderOnTop(c, next.objects);
         if (typeof c.left === 'number') c.left += dx;
         if (typeof c.top === 'number') c.top += dy;
         next.objects.push(c);
@@ -25742,6 +25750,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // path: rendering detects imported-path geometry structurally, not via
     // the provenance flags. See utils/pasteCloneIdentity.js.
     mintPastedCloneIdentity(pasted);
+    stampZOrderOnTop(pasted, next.objects);
     const originalLeft = typeof pasted.left === 'number' ? pasted.left : 0;
     const originalTop = typeof pasted.top === 'number' ? pasted.top : 0;
 
@@ -25872,11 +25881,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // the shape instead of sticking to whichever neighbor slid into the
   // original slot (matches Illustrator/Figma/Photoshop). toIndex is clamped
   // to [0, objects.length - 1]; same-index is a no-op.
-  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target) => {
-    if (pageNumber == null || fromIndex == null) return;
+  const handleReorderAnnotation = useCallback((pageNumber, fromIndex, target, annotationId) => {
+    if (pageNumber == null) return;
     const page = annotationsByPageRef.current?.[pageNumber];
     if (!page?.objects) return;
-    if (fromIndex < 0 || fromIndex >= page.objects.length) return;
+    fromIndex = resolveAnnotationIndexById(page.objects, annotationId, fromIndex);
+    if (fromIndex < 0) return;
     // UX: Figma-style z-order — "Bring Forward" / "Send Backward" skip over
     // any non-overlapping neighbors and land the moved shape immediately
     // above/below the nearest shape that spatially overlaps it. Matches user
@@ -25918,9 +25928,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const resolved = typeof target === 'string' ? resolveOverlapTarget(target) : target;
     const clamped = Math.max(0, Math.min(resolved, objectsLen - 1));
     if (clamped === fromIndex) return;
+    const originalIndexById = buildOriginalIndexById(page.objects);
     const next = deepClone(page);
     const [moved] = next.objects.splice(fromIndex, 1);
     next.objects.splice(clamped, 0, moved);
+    stampZOrderAfterMove(next.objects, clamped, originalIndexById);
     handleSaveAnnotations(pageNumber, next, {
       source: 'object:modified',
       action: 'reorder',

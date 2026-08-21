@@ -340,11 +340,31 @@ if (typeof window !== 'undefined') {
 })();
 
 import { createRoot } from 'react-dom/client';
+import { useContext, useEffect } from 'react';
 import App from './AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 // KeyboardShortcutsOverlay moved into App so it only renders on the home tab — UX 2026-05-13.
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthContext, AuthProvider } from './contexts/AuthContext';
 import { MSGraphProvider } from './contexts/MSGraphContext';
+
+// P2-33: after sign-in from /invite/<token> the user lands on the dashboard.
+// Resume from kal31_pending_invite_token only once a user id exists so the
+// ?signIn=1 bounce can still show the login UI.
+function PendingInviteResumeGate() {
+  const auth = useContext(AuthContext) || {};
+  useEffect(() => {
+    if (!auth?.user?.id) return undefined;
+    let cancelled = false;
+    import('./services/pendingInviteResume').then((mod) => {
+      if (cancelled) return;
+      if (typeof mod.resumePendingInviteAfterAuth === 'function') {
+        mod.resumePendingInviteAfterAuth({ user: auth.user });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [auth?.user?.id]);
+  return null;
+}
 // Fill-bleed diagnostic globals: __shapeSpyOn / __shapeSpyOff / __captureAllShapes
 // + Cmd/Ctrl+Shift+D page dump + Cmd/Ctrl+Shift+click shape capture. Inert until
 // toggled on. See src/utils/shapeBleedDiagnostics.js.
@@ -498,6 +518,7 @@ if (!devRouteActive) {
   createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <AuthProvider>
+        <PendingInviteResumeGate />
         <MSGraphProvider>
           <App />
           {/* UX 2026-05-13: KeyboardShortcutsOverlay was previously mounted here at

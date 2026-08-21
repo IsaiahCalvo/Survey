@@ -14,7 +14,7 @@
      onCreateProject()     — start the new-project flow
      onCreateTemplate()    — start the new-template flow
 */
-import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense, startTransition } from 'react';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
@@ -23,6 +23,8 @@ import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoadingSkeletons from './HubLoadingSkeletons';
+import { userCanManageDocumentAccess } from '../services/projectInviteService';
+import { getDocumentCollaborators } from '../services/documentAnnotationService';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
 
@@ -78,6 +80,7 @@ export default function SurveyHub({
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
+  const shareManageRequestRef = useRef(0);
 
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
@@ -94,15 +97,43 @@ export default function SurveyHub({
   const shareDocuments = (docs) => {
     if (!docs || !docs.length) return;
     const single = docs.length === 1 ? docs[0] : null;
-    setShare({
+    const name = single ? single.name : `${docs.length} documents`;
+    const applyShare = (manage) => setShare({
       kind: 'document',
-      name: single ? single.name : `${docs.length} documents`,
+      name,
       item: single,
-      // The documents table has no persisted `shared` flag. Owners always
-      // enter Manage Access, which also contains the invite-new-person flow.
-      // Non-owners keep the ordinary Share dialog and remain RLS-gated.
-      manage: !!single && !!user?.id && single.user_id === user.id,
+      // Creator OR collaborator role=owner. Non-owners keep ShareModal
+      // and remain RLS-gated.
+      manage,
     });
+
+    if (userCanManageDocumentAccess(single, user)) {
+      applyShare(true);
+      return;
+    }
+    if (!single || !user?.id) {
+      applyShare(false);
+      return;
+    }
+    const explicitRole = String(
+      single.role || single.collaborator_role || single.my_role || single.current_user_role || '',
+    ).toLowerCase();
+    if (explicitRole && explicitRole !== 'owner') {
+      applyShare(false);
+      return;
+    }
+    // Collaborator docs often have no role on the list payload. Resolve
+    // from document_collaborators so a promoted owner reaches Manage Access.
+    const requestId = ++shareManageRequestRef.current;
+    void getDocumentCollaborators(single.id)
+      .then((res) => {
+        if (requestId !== shareManageRequestRef.current) return;
+        applyShare(userCanManageDocumentAccess(single, user, res?.data));
+      })
+      .catch(() => {
+        if (requestId !== shareManageRequestRef.current) return;
+        applyShare(false);
+      });
   };
   const shareProject = (project) => {
     if (project) setShare({ kind: 'project', name: project.name, item: project, manage: false });

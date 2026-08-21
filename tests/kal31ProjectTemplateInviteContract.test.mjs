@@ -213,9 +213,11 @@ test('ManageTeamModal is real: live rows, real invites, last-owner protection', 
   match(src, /cannot remove the last owner/);
   // Creator is implicit owner and untouchable here.
   match(src, /The project creator is always an owner/);
-  // Emails fire best-effort on role change / removal.
+  // Emails fire only after a confirmed write (0-row RLS discards are failure).
   match(src, /sendPermissionChangedEmail/);
   match(src, /sendAccessRemovedEmail/);
+  match(src, /shouldNotifyTeamChange/);
+  match(src, /userCanManageProjectTeam/);
   // Tier gate matches ShareModal.
   match(src, /Free plan accounts cannot create invite links/);
 });

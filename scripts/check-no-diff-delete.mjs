@@ -28,7 +28,6 @@ import { resolve } from 'node:path';
 const SCAN_FILES = [
   'src/services/annotationCloudSync.js',
   'src/lib/collab/crdtBackfill.js',
-  'src/lib/collab/crdtDualWriteQueue.js',
 ];
 
 // Banned pattern: "diff" or "reconcile" or "sync" near "delete", any direction.

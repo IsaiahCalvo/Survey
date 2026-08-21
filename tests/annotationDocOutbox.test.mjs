@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
+import { createAnnotationOutbox, createMemoryAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
 
 const OUTBOX_DB_NAME = 'survey-annotation-outbox-v2';
 
@@ -303,4 +303,41 @@ test('purge incarnation rejects a stale late accepted-state compaction', async (
 
   await stale.close();
   await purger.close();
+});
+
+test('put stamps queuedAt and preserves an existing timestamp', async () => {
+  const outbox = createMemoryAnnotationOutbox();
+  const documentId = 'doc-queued-at';
+  const actorUserId = 'actor-a';
+  const key = [documentId, actorUserId, 'writer-a', 1].join('\u0000');
+  const queuedAt = 1_700_000_000_000;
+  await outbox.put({
+    key,
+    documentId,
+    actorUserId,
+    writerId: 'writer-a',
+    clientSeq: 1,
+    ordinal: 1,
+    status: 'pending',
+    queuedAt,
+    update: new Uint8Array([1]),
+  });
+  const [stamped] = await outbox.list(documentId, actorUserId);
+  assert.equal(stamped.queuedAt, queuedAt);
+
+  const freshKey = [documentId, actorUserId, 'writer-a', 2].join('\u0000');
+  const before = Date.now();
+  await outbox.put({
+    key: freshKey,
+    documentId,
+    actorUserId,
+    writerId: 'writer-a',
+    clientSeq: 2,
+    ordinal: 2,
+    status: 'pending',
+    update: new Uint8Array([2]),
+  });
+  const rows = await outbox.listAllPendingForActor(actorUserId);
+  const fresh = rows.find((record) => record.key === freshKey);
+  assert.ok(fresh.queuedAt >= before);
 });

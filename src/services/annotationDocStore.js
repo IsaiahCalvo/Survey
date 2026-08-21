@@ -34,6 +34,7 @@ import {
   normalizeByPageAnnotationIdentities,
   setAnnotationStorageKey,
 } from '../utils/annotationStorageIdentity.js';
+import { sortObjectsByZOrder } from '../utils/annotationZOrder.js';
 
 export const ANNOTATIONS_MAP = 'annotations';
 export const ERASER_OPS_MAP = 'annotationEraserOps';
@@ -676,8 +677,9 @@ export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSi
 
 /**
  * Materialize the render shape from the Y.Doc. Groups every stored annotation
- * by its page into { [page]: { objects: [...] } }. Object order is the Y.Map's
- * insertion order (stable across reloads of the same update history).
+ * by its page into { [page]: { objects: [...] } }. Y.Map insertion order is
+ * the implicit fallback; the final step stable-sorts by data.zOrder (then id)
+ * so bring-to-front/back survives reload and cloud self-echo.
  */
 export function docToByPage(doc, { replayStats = null } = {}) {
   const map = getAnnotationsMap(doc);
@@ -791,7 +793,13 @@ export function docToByPage(doc, { replayStats = null } = {}) {
     replayStats.annotationsWithLanes = annotationsWithLanes;
     replayStats.polygonIntersections = polygonIntersections;
   }
-  return deriveCounterPresentationNumbers(byPage);
+  const numbered = deriveCounterPresentationNumbers(byPage);
+  for (const page of Object.values(numbered || {})) {
+    if (Array.isArray(page?.objects) && page.objects.length > 1) {
+      page.objects = sortObjectsByZOrder(page.objects);
+    }
+  }
+  return numbered;
 }
 
 function collectEraserMutations(byPage, writerId) {

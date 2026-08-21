@@ -26,7 +26,7 @@ import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
 import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
-import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
+import { listProjectCollaboratorsForProjects, userCanManageProjectTeam } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
@@ -424,6 +424,10 @@ export default function ProjectsFolderTree({
     return map;
   }, [members, ownerMember, collabByProject]);
   const lookupMember = (id) => memberById.get(id) || null;
+  const canManageProjectTeam = useCallback(
+    (proj) => userCanManageProjectTeam(proj, user, collabByProject.get(proj?.id) || []),
+    [user, collabByProject],
+  );
 
   // Team member-ids for a project — owner first, then real collaborator rows
   // from `project_collaborators`, then any ids carried on the project row,
@@ -800,7 +804,9 @@ export default function ProjectsFolderTree({
   const mobileFileActions = open ? (
     <div className="projects-mobile-action-row two">
       <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
-      <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+      {canManageProjectTeam(open) && (
+        <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+      )}
     </div>
   ) : null;
   const mobileHeaderSelectRow = mobileDrillProject ? mobileFileSelectRow : mobileProjectActions;
@@ -1044,9 +1050,10 @@ export default function ProjectsFolderTree({
                   {/* Add files — opens the OS file picker; picked PDFs are
                       added to this project's document list. */}
                   <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
-                  {/* Manage Team — opens the Manage Team modal (NOT the share
-                      link modal) for the currently open project. */}
-                  <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
+                  {/* Manage Team — owners only (creator or role=owner). */}
+                  {canManageProjectTeam(open) && (
+                    <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
+                  )}
                 </div>
               </div>
 
@@ -1282,7 +1289,9 @@ export default function ProjectsFolderTree({
                     <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
                   <button className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
-                  <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                  {canManageProjectTeam(mobileDrillProject) && (
+                    <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                  )}
                 </div>
                 <div className="projects-mobile-file-list">
                   {mobileDrillFiles.length === 0 ? (
@@ -1544,7 +1553,9 @@ export default function ProjectsFolderTree({
               <div className="projects-mobile-folder-files raised">
                 <div className="projects-mobile-browser-row-heading">
                   <span>{open.name}</span>
-                  <button type="button" onClick={() => setTeamModalProject(open)}>Team</button>
+                  {canManageProjectTeam(open) && (
+                    <button type="button" onClick={() => setTeamModalProject(open)}>Team</button>
+                  )}
                 </div>
                 {openFiles.map((f) => renderMobileFileRow(f, 'browse-file'))}
                 {openFiles.length === 0 ? <div className="meta" style={{ fontSize: 12, padding: '8px 2px' }}>No files in this project yet.</div> : null}
@@ -1768,7 +1779,9 @@ export default function ProjectsFolderTree({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
               <button className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
-              <button className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+              {canManageProjectTeam(open) && (
+                <button className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+              )}
             </div>
 
             <div className="mobile-section-title" style={{ marginBottom: 8 }}>Files</div>
@@ -1919,7 +1932,7 @@ export default function ProjectsFolderTree({
                 label: projPinned ? 'Unpin project' : 'Pin project',
                 onClick: () => togglePin(proj.id),
               },
-              { icon: 'more', label: 'Manage project', onClick: () => setTeamModalProject(proj) },
+              ...(canManageProjectTeam(proj) ? [{ icon: 'more', label: 'Manage project', onClick: () => setTeamModalProject(proj) }] : []),
             ]}
           />
         );
@@ -1961,6 +1974,7 @@ export default function ProjectsFolderTree({
         onClose={() => setTeamModalProject(null)}
         project={teamModalProject}
         members={teamModalMembers}
+        user={user}
       />
 
       {/* Hidden OS file picker — Add files / Upload files programmatically

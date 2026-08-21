@@ -38,6 +38,18 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  // Healthy in-flight save (stage pending) must win over queue depth.
+  // The producer emits pending WITH a non-zero queue during normal saves;
+  // checking pendingCount first made every healthy save look Offline.
+  if (stage === 'pending') {
+    return {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    };
+  }
+
   if (pendingCount > 0 || stage === 'queued') {
     return {
       state: 'offline',
@@ -46,15 +58,6 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
         : 'Saved locally',
       detail: 'Your changes are safe on this device and are waiting for cloud backup.',
       retryLabel: 'Backup is retrying automatically.',
-    };
-  }
-
-  if (stage === 'pending') {
-    return {
-      state: 'syncing',
-      label: 'Saving...',
-      detail: 'Your changes are saved on this device and are waiting to be backed up.',
-      retryLabel: 'Backup will retry automatically.',
     };
   }
 

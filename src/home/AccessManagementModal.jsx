@@ -31,6 +31,10 @@ import {
   sendPermissionChangedEmail,
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
+import {
+  userCanManageDocumentAccess,
+  shouldNotifyTeamChange,
+} from '../services/projectInviteService';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
@@ -133,9 +137,14 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const ownerCount = members.filter((m) => String(m.role).toLowerCase() === 'owner').length;
   const documentName = item?.name || item?.title || 'Untitled';
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || 'An owner';
+  const canManage = userCanManageDocumentAccess(item, currentUser, members);
 
   const handleRoleChange = async (member, newRole) => {
     setError(''); setStatus('');
+    if (!canManage) {
+      setError('Only an owner can change roles.');
+      return;
+    }
     const oldRole = String(member.role || '').toLowerCase();
     const next = String(newRole || '').toLowerCase();
     if (oldRole === next) return;
@@ -153,8 +162,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     }
     setStatus(`Updated ${member.email || 'collaborator'} to ${roleLabel(next)}.`);
 
-    // Email best-effort.
-    if (member.email) {
+    if (shouldNotifyTeamChange(res) && member.email) {
       sendPermissionChangedEmail({
         email: member.email,
         documentName,
@@ -168,6 +176,10 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   const handleRemove = async (member) => {
     setError(''); setStatus('');
+    if (!canManage) {
+      setError('Only an owner can remove collaborators.');
+      return;
+    }
     if (String(member.role).toLowerCase() === 'owner' && ownerCount <= 1) {
       setError('You cannot remove the last owner. Promote another collaborator first.');
       return;
@@ -180,7 +192,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
       return;
     }
     setStatus(`Removed ${member.email || 'collaborator'}.`);
-    if (member.email) {
+    if (shouldNotifyTeamChange(res) && member.email) {
       sendAccessRemovedEmail({
         email: member.email,
         documentName,
@@ -192,6 +204,10 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   const handleRevoke = async (invite) => {
     setError(''); setStatus('');
+    if (!canManage) {
+      setError('Only an owner can revoke invites.');
+      return;
+    }
     setBusy(true);
     const res = await revokeDocumentInvite(invite.id);
     setBusy(false);
@@ -205,6 +221,10 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   const handleResend = async (invite) => {
     setError(''); setStatus('');
+    if (!canManage) {
+      setError('Only an owner can resend invites.');
+      return;
+    }
     setBusy(true);
     const res = await resendDocumentInvite(invite.id, {
       documentName,
@@ -236,7 +256,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>{labelForKind(kind)}</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
-            <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
+            {canManage && (
+              <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
+            )}
             <button onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
           </div>
 
@@ -267,24 +289,32 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user?.email || m.email || 'Unknown'}</div>
                     <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_id}</div>
                   </div>
-                  <select
-                    value={roleLabel(rl)}
-                    disabled={busy}
-                    onChange={(e) => handleRoleChange(m, e.target.value)}
-                    style={{ background: 'transparent', border: 0, padding: '0 14px 0 0', color: C.inkSoft, font: 'inherit', fontFamily: 'inherit', fontSize: 12, height: 24, lineHeight: '24px', textAlign: 'left', cursor: busy ? 'not-allowed' : 'pointer', width: 'max-content', maxWidth: '100%' }}
-                  >
-                    {ROLES.map((role) => <option key={role}>{role}</option>)}
-                  </select>
+                  {canManage ? (
+                    <select
+                      value={roleLabel(rl)}
+                      disabled={busy}
+                      onChange={(e) => handleRoleChange(m, e.target.value)}
+                      style={{ background: 'transparent', border: 0, padding: '0 14px 0 0', color: C.inkSoft, font: 'inherit', fontFamily: 'inherit', fontSize: 12, height: 24, lineHeight: '24px', textAlign: 'left', cursor: busy ? 'not-allowed' : 'pointer', width: 'max-content', maxWidth: '100%' }}
+                    >
+                      {ROLES.map((role) => <option key={role}>{role}</option>)}
+                    </select>
+                  ) : (
+                    <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(rl)}</div>
+                  )}
                   <div style={{ fontSize: 11.5, color: '#5fbf83', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
-                  <button
-                    disabled={busy || isLastOwner}
-                    onClick={() => handleRemove(m)}
-                    title={isLastOwner ? 'At least one owner must remain' : 'Remove'}
-                    data-kal31-remove="true"
-                    style={{ background: 'transparent', border: 0, color: isLastOwner ? C.muted : C.danger, cursor: busy || isLastOwner ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }}
-                  >
-                    Remove
-                  </button>
+                  {canManage ? (
+                    <button
+                      disabled={busy || isLastOwner}
+                      onClick={() => handleRemove(m)}
+                      title={isLastOwner ? 'At least one owner must remain' : 'Remove'}
+                      data-kal31-remove="true"
+                      style={{ background: 'transparent', border: 0, color: isLastOwner ? C.muted : C.danger, cursor: busy || isLastOwner ? 'not-allowed' : 'pointer', fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span />
+                  )}
                 </div>
               );
             })}

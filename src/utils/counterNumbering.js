@@ -16,8 +16,9 @@
  *       (seriesStart || 1) + i
  *     so the first pin shows seriesStart and subsequent pins increment by 1.
  *
- * Mutates the passed annotationsByPage map in place (each counter's
- * `data.displayNumber` is reassigned). Returns the same reference.
+ * Mutates the passed annotationsByPage map by replacing any page bucket
+ * whose counters changed (fresh object clones). Unchanged pages keep the
+ * same bucket reference. Returns the same map.
  */
 
 const LEGACY_KEY = '__legacy__';
@@ -35,30 +36,56 @@ export function renumberCounters(annotationsByPage) {
       if (obj && obj.data && obj.data.type === 'counter') {
         const key = obj.data.seriesId || LEGACY_KEY;
         if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(obj);
+        groups.get(key).push({ obj, pageKey });
       }
     }
   }
 
+  const nextNumberByObj = new Map();
+  const changedPageKeys = new Set();
+
   for (const [, list] of groups) {
     list.sort((a, b) => {
-      const at = (a.data && a.data.createdAt) || 0;
-      const bt = (b.data && b.data.createdAt) || 0;
+      const at = (a.obj.data && a.obj.data.createdAt) || 0;
+      const bt = (b.obj.data && b.obj.data.createdAt) || 0;
       return at - bt;
     });
 
     // seriesStart of the EARLIEST pin in the group is the source of truth.
     // We mirror it onto every pin so any one is sufficient to reconstruct
     // the series start (defensive against partial deletes).
-    const startBasis = (list[0] && list[0].data && Number(list[0].data.seriesStart)) || 1;
+    const startBasis = (list[0] && list[0].obj.data && Number(list[0].obj.data.seriesStart)) || 1;
 
-    list.forEach((obj, i) => {
-      obj.data = {
-        ...obj.data,
-        displayNumber: startBasis + i,
-        seriesStart: startBasis,
-      };
+    list.forEach((entry, i) => {
+      const displayNumber = startBasis + i;
+      const current = entry.obj.data || {};
+      if (current.displayNumber === displayNumber && current.seriesStart === startBasis) {
+        return;
+      }
+      nextNumberByObj.set(entry.obj, { displayNumber, seriesStart: startBasis });
+      changedPageKeys.add(entry.pageKey);
     });
+  }
+
+  // Replace changed page buckets (and clone changed objects) so React memo
+  // and the sync diff, both of which skip === page refs, pick up the renumber.
+  for (const pageKey of changedPageKeys) {
+    const page = annotationsByPage[pageKey];
+    annotationsByPage[pageKey] = {
+      ...page,
+      objects: page.objects.map((obj) => {
+        const next = nextNumberByObj.get(obj);
+        if (!next) return obj;
+        return {
+          ...obj,
+          data: {
+            ...obj.data,
+            displayNumber: next.displayNumber,
+            seriesStart: next.seriesStart,
+          },
+        };
+      }),
+    };
   }
 
   return annotationsByPage;

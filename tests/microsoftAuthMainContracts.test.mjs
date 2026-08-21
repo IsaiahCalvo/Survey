@@ -34,8 +34,12 @@ test('renderer prefers main-process custody for login, restore, refresh, and log
   assert.match(context, /window\.electronAPI\.microsoftSignOut\(\)/);
 });
 
-test('main-custody path stores a NO-TOKEN marker row, not tokens', () => {
-  assert.match(context, /buildConnectionMarkerRow\(\{ userId: user\.id, account: acct \}\)/);
+test('main-custody path stores a marker row and merges any existing web tokens', () => {
+  assert.match(context, /buildConnectionMarkerRow\(\{/);
+  assert.match(context, /existingMetadata: existing\?\.metadata/);
+  // Desktop still never introduces tokens from the renderer; it only preserves
+  // PKCE material already stored by web/mobile (P2-14).
+  assert.match(context, /refresh_token: null, \/\/ never present in the renderer on this path/);
 });
 
 test('legacy embedded flow is retained as the fallback (web build + unmigrated rows)', () => {

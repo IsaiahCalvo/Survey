@@ -17,8 +17,9 @@
  * RLS owner-select policies decide visibility — exactly the same semantics
  * as the kal31 resend/revoke RPCs (co-owners included). A caller can only
  * make this function email the target of an invite row they legitimately
- * own; it is not an open relay. Tier gating remains UI-level (pre-existing,
- * see PLAN-GOAL1-invite-email.md follow-ups).
+ * own; it is not an open relay. Branch A (auth mailer) claims through
+ * claim_email_send before inviteUserByEmail so free-tier JWTs cannot mint
+ * auth-invite mail; Branch B already inherits that gate via send-email.
  *
  * All plan/security review: PLAN-GOAL1-invite-email.md +
  * PLAN-GOAL1-REVIEW-LOG.md (Codex APPROVED round 4).
@@ -73,6 +74,7 @@ function capitalize(s) {
  *   selectInviteRow: (table: string, token: string) => Promise<object|null>,
  *   selectActiveDocumentAccess: (documentId: string, email: string) => Promise<{role: string}|null>,
  *   claimInviteDelivery: (kind: string, token: string, claimId: string) => Promise<'claimed'|'busy'|'completed'|'error'>,
+ *   claimEmailSend: (template: string, recipient: string, isInvite: boolean) => Promise<'allowed'|'rate_limited'|'invite_blocked_free_tier'|'error'>,
  *   completeInviteDelivery: (claimId: string) => Promise<boolean>,
  *   releaseInviteDelivery: (claimId: string) => Promise<boolean>,
  *   newClaimId?: () => string,
@@ -175,6 +177,31 @@ export async function handleSendInviteEmail(input, deps) {
 
   // Canonical, server-built — the only allowlisted origin; never client input.
   const inviteUrl = `${CANONICAL_ORIGIN}/invite/${encodeURIComponent(row.token)}`;
+
+  // P2-01: Branch A used the service-role auth mailer and skipped the
+  // KAL-439 free-tier / rate-limit claim that Branch B inherits via
+  // send-email. Claim before crossing that transport. A blocked claim
+  // releases the delivery generation so an upgrade can retry.
+  let emailBudget = 'error';
+  try {
+    emailBudget = typeof deps.claimEmailSend === 'function'
+      ? await deps.claimEmailSend('document-invite', row.target_email, true)
+      : 'error';
+  } catch (budgetError) {
+    console.error('[send-invite-email] claim_email_send failed:', budgetError);
+    emailBudget = 'error';
+  }
+  if (emailBudget === 'invite_blocked_free_tier') {
+    await releaseFailedClaim();
+    return json(403, { sent: false, error: 'Sharing invites require a Pro subscription' });
+  }
+  if (emailBudget === 'rate_limited') {
+    await releaseFailedClaim();
+    return json(429, { sent: false, retryable: true, error: 'Too many emails sent — try again later' });
+  }
+  if (emailBudget !== 'allowed') {
+    return releaseFailedClaim();
+  }
 
   // Branch A — no existing account: GoTrue sends the installed Invite
   // template via the auth mailer. Admin calls RETURN {data,error}; they

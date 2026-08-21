@@ -20,10 +20,17 @@ import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import {
+  ACCOUNT_DELETION_CONFIRMATION,
+  accountDeletionUserMessage,
   buildBillingReturnUrl,
   canUnlinkProvider,
+  describeProfileSaveOutcome,
+  isAccountDeletionConfirmation,
+  isGoogleIdentityConnected,
   openExternalDestination,
+  passwordChangeKind,
   resolveSubscriptionQuery,
+  validatePasswordForm,
 } from '../utils/accountPlatform';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
@@ -55,13 +62,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     updatePassword,
     signIn,
     signOut,
-    signInWithGoogle,
+    linkGoogleIdentity,
     unlinkProvider,
     deleteAccount,
     resetPassword,
     refreshSubscriptionTier,
   } = useAuth();
-  const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
+  const {
+    isAuthenticated: isMSAuthenticated,
+    login: msLogin,
+    logout: msLogout,
+    account: msAccount,
+    needsReconnect: msNeedsReconnect,
+    microsoftConnectAvailable = true,
+  } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -86,6 +100,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const resetCaptcha = () => { setCaptchaToken(''); setCaptchaNonce((n) => n + 1); };
 
   // Subscription state
@@ -109,6 +125,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setDeleteConfirmOpen(false);
+      setDeleteConfirmText('');
       setError('');
       setMessage('');
     }
@@ -213,7 +231,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     setMessage('');
     setLoading(true);
 
-    const changedFields = [];
+    const pwKind = passwordChangeKind(user);
+    let nameSaved = false;
+    let passwordSaved = false;
+    let nameError = null;
+    let passwordError = null;
 
     try {
       // Check if name changed
@@ -221,42 +243,26 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         firstName !== user?.user_metadata?.first_name ||
         lastName !== user?.user_metadata?.last_name;
 
-      // Check if password fields are filled
-      const passwordChanging = newPassword || confirmPassword || currentPassword;
+      const passwordCheck = validatePasswordForm({
+        kind: pwKind,
+        currentPassword,
+        newPassword,
+        confirmPassword,
+        email,
+        firstName,
+        lastName,
+        passwordMeetsRequirements,
+      });
+      if (passwordCheck.error) {
+        setError(passwordCheck.error);
+        setLoading(false);
+        return;
+      }
+      const passwordChanging = passwordCheck.changing;
 
-      // Validate password change if attempting
-      if (passwordChanging) {
-        if (!currentPassword) {
-          setError('Please enter your current password to change your password');
-          setLoading(false);
-          return;
-        }
-
-        if (!newPassword) {
-          setError('Please enter a new password');
-          setLoading(false);
-          return;
-        }
-
-        if (newPassword !== confirmPassword) {
-          setError('New passwords do not match');
-          setLoading(false);
-          return;
-        }
-
-        if (!passwordMeetsRequirements(newPassword, { email, firstName, lastName })) {
-          setError('Password does not meet requirements');
-          setLoading(false);
-          return;
-        }
-
-        if (newPassword === currentPassword) {
-          setError('Your new password must be different from your current password');
-          setLoading(false);
-          return;
-        }
-
-        // Bot check gates the re-auth (a captcha-protected endpoint).
+      // Change-password re-auth is captcha-gated. Setting a first password on
+      // a Google-only account uses the already-authenticated session.
+      if (passwordChanging && pwKind === 'change') {
         if (TURNSTILE_ENABLED && !captchaToken && !captchaBroken) {
           setError('Please complete the "I\'m human" check below, then save again.');
           setLoading(false);
@@ -279,26 +285,50 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         }
       }
 
-      // Update name if changed
       if (nameChanged) {
-        await updateProfile({
-          first_name: firstName,
-          last_name: lastName,
-          full_name: `${firstName} ${lastName}`
-        });
-        changedFields.push('name');
+        try {
+          await updateProfile({
+            first_name: firstName,
+            last_name: lastName,
+            full_name: `${firstName} ${lastName}`
+          });
+          nameSaved = true;
+        } catch (err) {
+          nameError = err?.message || 'Failed to save name';
+        }
       }
 
-      // Update password if changing
       if (passwordChanging) {
-        await updatePassword(newPassword);
-        changedFields.push('password');
+        try {
+          await updatePassword(newPassword);
+          passwordSaved = true;
+        } catch (err) {
+          passwordError = err?.message || 'Failed to update password';
+        }
       }
 
-      if (changedFields.length === 0) {
-        setError('No changes detected');
+      const outcome = describeProfileSaveOutcome({
+        nameSaved,
+        passwordSaved,
+        nameError,
+        passwordError,
+        attemptedName: nameChanged,
+        attemptedPassword: passwordChanging,
+      });
+      const changedFields = outcome.changedFields;
+
+      if (outcome.kind === 'noop') {
+        setError(outcome.message);
         setLoading(false);
         return;
+      }
+      if (outcome.kind === 'error') {
+        setError(outcome.message);
+        setLoading(false);
+        return;
+      }
+      if (outcome.kind === 'partial') {
+        setError(outcome.message);
       }
 
       // Send email notification about changed fields. The success copy below
@@ -331,13 +361,14 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         // Don't fail the whole operation if email fails
       }
 
-      const changedText = changedFields.join(' and ');
-      setMessage(notificationSent
-        ? `Your ${changedText} has been updated successfully. A confirmation email has been sent.`
-        : `Your ${changedText} has been updated successfully.`);
+      if (outcome.kind !== 'partial') {
+        const changedText = changedFields.join(' and ');
+        setMessage(notificationSent
+          ? `Your ${changedText} has been updated successfully. A confirmation email has been sent.`
+          : `Your ${changedText} has been updated successfully.`);
+        setIsEditing(false);
+      }
 
-      // Reset form
-      setIsEditing(false);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -363,6 +394,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   };
 
   const handleDeleteAccount = async () => {
+    if (!isAccountDeletionConfirmation(deleteConfirmText)) {
+      setError(`Type ${ACCOUNT_DELETION_CONFIRMATION} to confirm account deletion.`);
+      return;
+    }
     setError('');
     setLoading(true);
 
@@ -370,7 +405,12 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       await deleteAccount();
       onClose();
     } catch (err) {
-      setError(err.message || 'Failed to delete account');
+      setError(accountDeletionUserMessage({
+        message: err?.message,
+        code: err?.code,
+        documents: err?.documents,
+        dataRemoved: err?.dataRemoved,
+      }));
     } finally {
       setLoading(false);
     }
@@ -549,12 +589,17 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       <div className="account-subsection">
                         <div className="account-subsection-header">
-                          <div className="account-subsection-title">Change password (optional)</div>
+                          <div className="account-subsection-title">
+                            {passwordChangeKind(user) === 'set' ? 'Set a password' : 'Change password (optional)'}
+                          </div>
                           <p className="account-subsection-description">
-                            Leave blank if you don't want to change your password
+                            {passwordChangeKind(user) === 'set'
+                              ? 'This account signs in with Google. Add a password if you also want email sign-in.'
+                              : "Leave blank if you don't want to change your password"}
                           </p>
                         </div>
 
+                        {passwordChangeKind(user) === 'change' && (
                         <div className="account-form-group">
                           <label htmlFor="currentPassword">Current password</label>
                           <input
@@ -567,6 +612,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             autoComplete="current-password"
                           />
                         </div>
+                        )}
 
                         <div className="account-form-group">
                           <label htmlFor="newPassword">New password</label>
@@ -603,7 +649,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           disabled={loading}
                           style={{ display: 'inline-block', background: 'none', border: 'none', color: '#d8a84e', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
                         >
-                          Forgot your current password? Email me a reset link
+                          {passwordChangeKind(user) === 'set'
+                            ? 'Email me a link to set a password'
+                            : 'Forgot your current password? Email me a reset link'}
                         </button>
 
                         {TURNSTILE_ENABLED && (
@@ -642,30 +690,68 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <>
                 {/* Danger Zone */}
                 <section className="account-section account-danger-zone">
-                  {/* UX (KAL-68): self-serve account deletion is NOT built — there
-                      is no server-side delete endpoint behind this. The control
-                      stays visible so the user knows deletion exists as a concept,
-                      but it is permanently disabled and says so up front.
-                      It used to be a live two-step confirm whose final button set
-                      a red error reading "Account deletion must be implemented on
-                      the server" — which read as "your deletion just failed", not
-                      "this feature isn't finished". Announcing the limitation
-                      before the click is honest; a red failure after it is not.
-                      When a real delete endpoint ships, re-enable this button and
-                      restore a confirm gate using the shared ConfirmModal. */}
-                  <button
-                    className="account-btn-danger"
-                    type="button"
-                    disabled
-                    title="Account deletion isn't self-serve yet — contact support"
-                    aria-label="Account deletion isn't self-serve yet — contact support"
-                  >
-                    Delete account
-                  </button>
-                  <p className="account-danger-zone-description">
-                    Account deletion isn&apos;t self-serve yet — contact support and
-                    we&apos;ll remove your account and all associated data.
-                  </p>
+                  {!deleteConfirmOpen ? (
+                    <>
+                      <button
+                        className="account-btn-danger"
+                        type="button"
+                        onClick={() => {
+                          setDeleteConfirmOpen(true);
+                          setDeleteConfirmText('');
+                          setError('');
+                        }}
+                        disabled={loading}
+                      >
+                        Delete account
+                      </button>
+                      <p className="account-danger-zone-description">
+                        Permanently delete your account, documents, and billing.
+                        Shared documents you still own will block deletion until
+                        you transfer ownership or remove collaborators.
+                      </p>
+                    </>
+                  ) : (
+                    <div className="account-delete-confirm">
+                      <p className="account-delete-confirm-title">Delete this account?</p>
+                      <p className="account-delete-confirm-description">
+                        Type {ACCOUNT_DELETION_CONFIRMATION} to confirm. This cannot be undone.
+                        If you still own documents other people can access, deletion is blocked.
+                      </p>
+                      <div className="account-form-group">
+                        <label htmlFor="deleteAccountConfirm">Confirmation</label>
+                        <input
+                          id="deleteAccountConfirm"
+                          type="text"
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          placeholder={ACCOUNT_DELETION_CONFIRMATION}
+                          disabled={loading}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="account-delete-confirm-actions">
+                        <button
+                          className="account-btn-danger"
+                          type="button"
+                          onClick={handleDeleteAccount}
+                          disabled={loading || !isAccountDeletionConfirmation(deleteConfirmText)}
+                        >
+                          {loading ? 'Deleting…' : 'Delete account permanently'}
+                        </button>
+                        <button
+                          className="account-btn-secondary"
+                          type="button"
+                          onClick={() => {
+                            setDeleteConfirmOpen(false);
+                            setDeleteConfirmText('');
+                          }}
+                          disabled={loading}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </section>
 
                 {/* Sign Out Section */}
@@ -1053,6 +1139,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         <div className="account-connected-account-status account-connected-account-status-connected">
                           Connected as {msAccount?.username || msAccount?.email || msAccount?.name}
                         </div>
+                      ) : !microsoftConnectAvailable ? (
+                        <div className="account-connected-account-status">
+                          Not available in the iOS/Android app. Connect on web or desktop.
+                        </div>
                       ) : msNeedsReconnect ? (
                         <div className="account-connected-account-status" style={{ color: '#f59e0b' }}>
                           Session expired. Click Reconnect to restore access.
@@ -1079,7 +1169,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       >
                         Disconnect
                       </button>
-                    ) : (
+                    ) : microsoftConnectAvailable ? (
                       <button
                         className={msNeedsReconnect ? "account-btn-primary" : "account-btn-primary"}
                         onClick={async () => {
@@ -1094,7 +1184,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       >
                         {msNeedsReconnect ? 'Reconnect' : 'Connect'}
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -1106,7 +1196,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     </div>
                     <div className="account-connected-account-details">
                       <div className="account-connected-account-name">Google</div>
-                      {user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? (
+                      {isGoogleIdentityConnected(user) ? (
                         <div className="account-connected-account-status account-connected-account-status-connected">
                           Connected as {user.email}
                         </div>
@@ -1119,13 +1209,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                   <div className="account-connected-account-actions">
                     <button
-                      className={user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? "account-btn-secondary" : "account-btn-primary"}
+                      className={isGoogleIdentityConnected(user) ? "account-btn-secondary" : "account-btn-primary"}
                       onClick={async () => {
-                        const googleConnected = Boolean(user?.app_metadata?.provider === 'google'
-                          || user?.identities?.some((id) => id.provider === 'google'));
                         try {
-                          if (!googleConnected) {
-                            await signInWithGoogle();
+                          if (!isGoogleIdentityConnected(user)) {
+                            await linkGoogleIdentity();
                             return;
                           }
                           const check = canUnlinkProvider(user, 'google');
@@ -1139,7 +1227,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         }
                       }}
                     >
-                      {user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? 'Disconnect' : 'Connect'}
+                      {isGoogleIdentityConnected(user) ? 'Disconnect' : 'Connect'}
                     </button>
                   </div>
                 </div>

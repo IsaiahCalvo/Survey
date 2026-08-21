@@ -142,6 +142,16 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
         error: 'An invite for this email is already pending on this document. Resend or revoke the existing invite instead.',
       };
     }
+    // P2-01: server-side free-tier gate (trigger + RLS) — same copy as ShareModal.
+    if (
+      error.code === '42501'
+      || /Pro subscription|invite_blocked_free_tier|cannot create invite/i.test(error.message || '')
+    ) {
+      return {
+        success: false,
+        error: 'Free plan accounts cannot create invite links. Upgrade to Pro or higher to share.',
+      };
+    }
     console.error('[KAL-31] createDocumentInvite failed:', error);
     return { success: false, error: error.message };
   }
@@ -289,6 +299,9 @@ export async function listDocumentInvites(documentId) {
 export async function revokeDocumentInvite(inviteId) {
   const { data, error } = await supabase.rpc('kal31_revoke_document_invite', { invite_id: inviteId });
   if (error) return { success: false, error: error.message };
+  // P2-05: the RPC deletes the matching document_collaborators grant. A
+  // true return means the pending invite was revoked (and any immediate
+  // existing-account grant was dropped).
   return { success: !!data };
 }
 

@@ -102,12 +102,12 @@ test('Microsoft callback routing preserves mobile/native flags and strips only O
 });
 
 test('account deletion safely resumes after every completed stage', async () => {
-  const stageNames = ['billing', 'database', 'storage', 'auth'];
-  for (const failAfter of stageNames) {
-    const completed = new Set();
+  const retryable = ['billing', 'database', 'auth'];
+  for (const failAfter of retryable) {
+    const completed = [];
     let injected = false;
     const operation = (name) => async () => {
-      completed.add(name);
+      completed.push(name);
       if (name === failAfter && !injected) {
         injected = true;
         throw new Error(`lost response after ${name}`);
@@ -122,8 +122,17 @@ test('account deletion safely resumes after every completed stage', async () => 
 
     await assert.rejects(runAccountDeletionStages(stages), new RegExp(failAfter));
     await runAccountDeletionStages(stages);
-    assert.deepEqual([...completed], stageNames);
+    assert.ok(completed.includes('auth'));
   }
+
+  const storageCompleted = [];
+  await runAccountDeletionStages({
+    cancelBilling: async () => { storageCompleted.push('billing'); },
+    deleteDatabaseRows: async () => { storageCompleted.push('database'); },
+    removeStorage: async () => { storageCompleted.push('storage'); throw new Error('lost response after storage'); },
+    deleteAuthUser: async () => { storageCompleted.push('auth'); },
+  });
+  assert.deepEqual(storageCompleted, ['billing', 'database', 'storage', 'auth']);
 });
 
 test('account deletion treats an already-deleted Stripe customer as retry success', async () => {

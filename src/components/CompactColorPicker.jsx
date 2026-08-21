@@ -9,6 +9,9 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import DismissBarrier from './DismissBarrier';
+import { isValidPickerHex } from '../utils/pickerHex.js';
+
+export { isValidPickerHex };
 
 const PRESET_COLORS = [
     'transparent', '#FF0000', '#FF0080', '#FF00FF', // Transparent + Reds/Pinks
@@ -201,6 +204,7 @@ const CompactColorPicker = ({
             onChange(matchFillColor, matchFillOpacity);
             return;
         }
+        if (!isValidPickerHex(hex)) return;
         setLocalHex(hex);
         setTransparentMode(false);
         const hsv = hexToHsv(hex);
@@ -376,7 +380,7 @@ const CompactColorPicker = ({
                         const presetValue = isMatchSlot ? '__match__' : c;
                         const isTransparent = !isMatchSlot && c === 'transparent';
                         const isSelected = isMatchSlot
-                            ? (!transparentMode && matchFillColor && localHex.toLowerCase() === matchFillColor.toLowerCase() && localOpacity >= 99)
+                            ? (!transparentMode && matchFillColor && localHex.toLowerCase() === matchFillColor.toLowerCase() && Math.abs(localOpacity - Math.round(matchFillOpacity * 100)) <= 1)
                             : isTransparent
                                 ? transparentMode
                                 : (!transparentMode && localHex === c);
@@ -579,9 +583,9 @@ const CompactColorPicker = ({
                         type="text"
                         value={localHex.replace('#', '')}
                         onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
                             setLocalHex(`#${val}`);
-                            if (val.length === 6) {
+                            if (isValidPickerHex(val)) {
                                 applyHex(`#${val}`);
                             }
                         }}

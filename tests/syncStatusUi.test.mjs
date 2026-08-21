@@ -31,6 +31,17 @@ test('sync status view model exposes pending debounce as visible saving state', 
       retryLabel: 'Backup will retry automatically.',
     },
   );
+  // Realistic producer input: pending + queue > 0 (P1-53). Must stay Saving,
+  // not the red Offline pill.
+  assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'pending' }, 3),
+    {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    },
+  );
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'syncing' }, 0),
     {

@@ -5,14 +5,76 @@ export type AccountDeletionStages = {
   deleteAuthUser: () => Promise<void>;
 };
 
-// Every operation in this sequence is deliberately idempotent. Database rows
-// are removed transactionally before storage so a failed storage cleanup can
-// leave only orphaned blobs, never live document rows pointing at missing PDFs.
+export class AccountDeletionStageError extends Error {
+  stage: string;
+  completed: string[];
+  dataRemoved: boolean;
+
+  constructor(
+    message: string,
+    opts: { stage: string; completed: string[]; dataRemoved: boolean },
+  ) {
+    super(message);
+    this.name = 'AccountDeletionStageError';
+    this.stage = opts.stage;
+    this.completed = opts.completed;
+    this.dataRemoved = opts.dataRemoved;
+  }
+}
+
+export function isDataRemovedDeletionError(error: unknown) {
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && (error as AccountDeletionStageError).dataRemoved === true,
+  );
+}
+
+const wrapStageError = (error: unknown, stage: string, completed: string[]) => {
+  if (error instanceof AccountDeletionStageError) return error;
+  const message = error instanceof Error ? error.message : String(error);
+  return new AccountDeletionStageError(message, {
+    stage,
+    completed,
+    dataRemoved: completed.includes('database'),
+  });
+};
+
+// Billing first so a billable account cannot disappear. Database rows are
+// removed before storage so a failed blob cleanup cannot leave live rows
+// pointing at missing PDFs. Auth is always attempted after a successful
+// database wipe — even when storage fails — so a half-finished delete cannot
+// leave the user signed into an empty account. Orphaned blobs are acceptable.
 export async function runAccountDeletionStages(stages: AccountDeletionStages) {
-  await stages.cancelBilling();
-  await stages.deleteDatabaseRows();
-  await stages.removeStorage();
-  await stages.deleteAuthUser();
+  const completed: string[] = [];
+
+  try {
+    await stages.cancelBilling();
+    completed.push('billing');
+  } catch (error) {
+    throw wrapStageError(error, 'billing', completed);
+  }
+
+  try {
+    await stages.deleteDatabaseRows();
+    completed.push('database');
+  } catch (error) {
+    throw wrapStageError(error, 'database', completed);
+  }
+
+  try {
+    await stages.removeStorage();
+    completed.push('storage');
+  } catch {
+    // Keep going: the auth user must not survive a completed data wipe.
+  }
+
+  try {
+    await stages.deleteAuthUser();
+    completed.push('auth');
+  } catch (error) {
+    throw wrapStageError(error, 'auth', completed);
+  }
 }
 
 export function isMissingStripeCustomer(error: unknown) {

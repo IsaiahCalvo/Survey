@@ -34,6 +34,8 @@ import {
   updateProjectCollaboratorRole,
   removeProjectCollaborator,
   buildInviteUrl,
+  userCanManageProjectTeam,
+  shouldNotifyTeamChange,
 } from '../services/projectInviteService';
 import {
   sendPermissionChangedEmail,
@@ -299,11 +301,12 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
 };
 
 /* ============ Manage Team modal ============ */
-export default function ManageTeamModal({ open, onClose, project, members }) {
+export default function ManageTeamModal({ open, onClose, project, members, user = null }) {
   // Tolerant of missing provider — direct context read so tests/standalone
-  // renders don't throw the way `useAuth` does.
+  // renders don't throw the way `useAuth` does. Hub `user` is a fallback
+  // so the owner gate still sees the signed-in id.
   const auth = React.useContext(AuthContext) || {};
-  const currentUser = auth?.user || null;
+  const currentUser = auth?.user || user || null;
   const tier = (auth?.tier || auth?.plan || 'free').toLowerCase();
   const canInvite = PAID_TIERS.has(tier);
 
@@ -419,6 +422,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   /* Last-owner protection mirrors AccessManagementModal: the creator counts
      as an owner, so ownerCount is creator + collaborator owners. */
   const ownerCount = memberList.filter((m) => String(m.role).toLowerCase() === 'owner').length;
+  const canManage = userCanManageProjectTeam(project, currentUser, collabRows);
 
   if (!open) return null;
 
@@ -466,6 +470,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const setRole = async (id, role) => {
     setError(""); setStatus("");
+    if (!canManage) { setError('Only a project owner can change roles.'); return; }
     const m = memberList.find((x) => x.id === id);
     if (!m || m.role === role) return;
     const blocked = guardMember(m, role);
@@ -475,7 +480,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     setBusy(false);
     if (!res?.success) { setError(res?.error?.message || res?.error || 'Could not update role.'); return; }
     setStatus(`Updated ${m.email || m.name} to ${role}.`);
-    if (m.email) {
+    if (shouldNotifyTeamChange(res) && m.email) {
       sendPermissionChangedEmail({
         email: m.email,
         documentName: `the project "${projectName}"`,
@@ -489,6 +494,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const removeMember = async (id) => {
     setError(""); setStatus("");
+    if (!canManage) { setError('Only a project owner can remove teammates.'); return; }
     const m = memberList.find((x) => x.id === id);
     if (!m) return;
     const blocked = guardMember(m, null);
@@ -498,7 +504,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     setBusy(false);
     if (!res?.success) { setError(res?.error?.message || res?.error || 'Could not remove collaborator.'); return; }
     setStatus(`Removed ${m.email || m.name}.`);
-    if (m.email) {
+    if (shouldNotifyTeamChange(res) && m.email) {
       sendAccessRemovedEmail({
         email: m.email,
         documentName: `the project "${projectName}"`,
@@ -529,6 +535,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const revokeInvite = async (inv) => {
     setError(""); setStatus("");
+    if (!canManage) { setError('Only a project owner can revoke invites.'); return; }
     setBusy(true);
     const res = await revokeProjectInvite(inv.id);
     setBusy(false);
@@ -539,6 +546,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const resendInvite = async (inv) => {
     setError(""); setStatus("");
+    if (!canManage) { setError('Only a project owner can resend invites.'); return; }
     setBusy(true);
     const res = await resendProjectInvite(inv.id, {
       projectName,
@@ -587,7 +595,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
         }}
       />
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
-        <div role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
+        <div role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" data-can-manage={canManage ? 'true' : 'false'} onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
           {/* Header */}
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
@@ -595,9 +603,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Manage Team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
-            <button onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <Icon name="plus" size={11}/>Invite
-            </button>
+            {canManage && (
+              <button onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name="plus" size={11}/>Invite
+              </button>
+            )}
           </div>
 
           {/* Toolbar */}
@@ -647,7 +657,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 )}
               </div>
             )}
-            <button onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
+            {canManage && (
+              <button onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
+            )}
           </div>
 
           {/* Column headers */}
@@ -707,8 +719,8 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   {!editMode && openMenu === m.id && (
                     <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
                       {[
-                        { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
-                        ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
+                        ...(canManage ? [{ label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } }] : []),
+                        ...((canManage && !m.isCreator) ? [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }] : []),
                         { label: "View activity", onClick: () => { setOpenMenu(null); setActivityFor(m); } },
                         { label: "Copy email", disabled: !m.email, onClick: async () => {
                           setOpenMenu(null);
@@ -716,7 +728,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                           if (result.ok) { setError(''); setStatus('Email copied.'); }
                           else { setStatus(''); setError('Survey could not copy this email.'); }
                         } },
-                        ...(m.isCreator ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
+                        ...((canManage && !m.isCreator) ? [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }] : []),
                       ].map(it => (
                         <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
                       ))}
@@ -753,8 +765,8 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                           if (result.ok) { setError(''); setStatus('Link copied.'); }
                           else { setStatus(''); setError('Survey could not copy this invite link.'); }
                         } },
-                        ...(isLink ? [] : [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }]),
-                        { label: "Revoke invite", danger: true, onClick: () => { setOpenInviteMenu(null); revokeInvite(inv); } },
+                        ...((canManage && !isLink) ? [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }] : []),
+                        ...(canManage ? [{ label: "Revoke invite", danger: true, onClick: () => { setOpenInviteMenu(null); revokeInvite(inv); } }] : []),
                       ].map(it => (
                         <button key={it.label} disabled={busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : BONE_100, padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
                       ))}

@@ -94,6 +94,98 @@ const buildPreviewObjects = (updatedAnnotations, originals) => {
   return previewObjects;
 };
 
+/** Stable id used for drag re-resolve and undo selection remap (P1-06 / P1-08). */
+export function getAnnotationStableId(obj) {
+  if (!obj) return null;
+  if (obj.id != null && obj.id !== '') return obj.id;
+  if (obj.data?.id != null && obj.data.id !== '') return obj.data.id;
+  return null;
+}
+
+/**
+ * Re-resolve a drag target by captured id. If the id is gone (teammate
+ * delete / undo splice), return -1 so the commit no-ops instead of writing
+ * the stale index. Index is used only when no id was captured (legacy).
+ */
+export function resolveAnnotationIndexById(objects, annotationId, fallbackIndex = -1) {
+  if (!Array.isArray(objects)) return -1;
+  if (annotationId != null && annotationId !== '') {
+    return objects.findIndex((obj) => getAnnotationStableId(obj) === annotationId);
+  }
+  if (Number.isInteger(fallbackIndex) && fallbackIndex >= 0 && fallbackIndex < objects.length && objects[fallbackIndex]) {
+    return fallbackIndex;
+  }
+  return -1;
+}
+
+export function captureSelectionStableIds(selectedIndices, objects) {
+  const ids = [];
+  for (const idx of selectedIndices || []) {
+    const id = getAnnotationStableId(objects?.[idx]);
+    if (id != null) ids.push(id);
+  }
+  return ids;
+}
+
+/** Remap a selection of stable ids onto the current objects array. Missing ids drop. */
+export function remapSelectionByStableIds(stableIds, objects) {
+  const next = new Set();
+  if (!Array.isArray(stableIds) || !Array.isArray(objects)) return next;
+  for (const id of stableIds) {
+    const idx = objects.findIndex((obj) => getAnnotationStableId(obj) === id);
+    if (idx >= 0) next.add(idx);
+  }
+  return next;
+}
+
+export function unionIdSet(current, incoming) {
+  const next = new Set(current instanceof Set ? current : (Array.isArray(current) ? current : []));
+  for (const id of incoming || []) next.add(id);
+  return next;
+}
+
+export function subtractIdSet(current, incoming) {
+  const next = new Set(current instanceof Set ? current : (Array.isArray(current) ? current : []));
+  for (const id of incoming || []) next.delete(id);
+  return next;
+}
+
+/** Pack world endpoints back into the fabric center-relative contract. */
+export function packLineFromWorldEndpoints(p1, p2) {
+  const left = Math.min(p1.x, p2.x);
+  const top = Math.min(p1.y, p2.y);
+  const width = Math.max(1, Math.abs(p2.x - p1.x));
+  const height = Math.max(1, Math.abs(p2.y - p1.y));
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  return {
+    left,
+    top,
+    width,
+    height,
+    x1: p1.x - cx,
+    y1: p1.y - cy,
+    x2: p2.x - cx,
+    y2: p2.y - cy,
+  };
+}
+
+/**
+ * Group rotate/resize for lines must use getLineEndpoints (center + left/top),
+ * not `x1 + left`. After the world transform, pack back so the renderer and
+ * a later getLineEndpoints call agree.
+ */
+export function applyGroupLineWorldTransform(orig, transformPoint) {
+  const ep = getLineEndpoints(orig);
+  const p1 = transformPoint(ep.x1, ep.y1);
+  const p2 = transformPoint(ep.x2, ep.y2);
+  const packed = packLineFromWorldEndpoints(p1, p2);
+  const midpoint = orig?.midpoint
+    ? transformPoint(orig.midpoint.x, orig.midpoint.y)
+    : null;
+  return { ...packed, midpoint };
+}
+
 /**
  * @param {object} options
  * @param {React.RefObject<SVGSVGElement>} options.svgRef - Ref to root <svg> element
@@ -192,6 +284,7 @@ export function useSVGInteraction({
     startSVGPoint: null,  // { x, y } in viewBox coords at drag start
     originalProps: null,  // { left, top, scaleX, scaleY, angle, width, height } snapshot
     annotationIndex: null,
+    annotationId: null,   // P1-06: stable id captured at drag start; commit re-resolves or no-ops
     ctmInverse: null,     // cached CTM inverse for the entire drag
     anchorX: null,        // resize: opposite corner X
     anchorY: null,        // resize: opposite corner Y
@@ -369,23 +462,44 @@ export function useSVGInteraction({
     return undefined;
   }, [selectedIds, annotations]);
 
+  // P1-08: selectedIds is a Set of raw indices. Undo/collab splice shifts
+  // those indices, so the next drag would hit a different shape. Capture
+  // stable ids whenever the user changes selection; remap (or clear) when
+  // the annotations array identity changes.
+  const selectedStableIdsRef = useRef([]);
+
+  useEffect(() => {
+    if (dragStateRef.current?.active) return;
+    selectedStableIdsRef.current = captureSelectionStableIds(selectedIds, annotations?.objects);
+  }, [selectedIds]);
+
   // ---------------------------------------------------------------------------
-  // Clear selection when annotations prop identity changes
-  // (new page loaded or external edit) — but NOT during active drag
-  // (endpoint drag does live commits which change annotations on every move).
-  // Also preserve selection on post-commit updates: if every selected index
-  // still points to a valid annotation, keep the selection. Drop it only when
-  // the array shrinks past a selected index (deletion) or the page swaps.
+  // Remap / clear selection by id when annotations change (undo, collab
+  // splice, page swap). Skip during an active drag so live commits do not
+  // drop the handle. Id-less selections fall back to a bounds check.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (dragStateRef.current?.active) return;
-    const maxIdx = (annotations?.objects?.length ?? 0) - 1;
+    const objects = annotations?.objects || [];
+    const stored = selectedStableIdsRef.current;
     setSelectedIds((prev) => {
       if (prev.size === 0) return prev;
-      for (const i of prev) {
-        if (i > maxIdx || i < 0) return new Set();
+      if (stored.length === 0) {
+        const maxIdx = objects.length - 1;
+        for (const i of prev) {
+          if (i > maxIdx || i < 0) return new Set();
+        }
+        return prev;
       }
-      return prev;
+      const next = remapSelectionByStableIds(stored, objects);
+      if (next.size === prev.size) {
+        let same = true;
+        for (const i of next) {
+          if (!prev.has(i)) { same = false; break; }
+        }
+        if (same) return prev;
+      }
+      return next;
     });
     setHoveredId(null);
   }, [annotations]);
@@ -518,6 +632,7 @@ export function useSVGInteraction({
         startSVGPoint: svgPoint,
         originalProps: null,
         annotationIndex: index,
+        annotationId: getAnnotationStableId(_obj_precheck),
         ctmInverse,
         anchorX: tipX,
         anchorY: tipY,
@@ -646,9 +761,9 @@ export function useSVGInteraction({
             // Imported paths: use bbox position (from path data), not obj.left/top
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
-              originals[selIdx] = { left: selBBox.left, top: selBBox.top };
+              originals[selIdx] = { left: selBBox.left, top: selBBox.top, id: getAnnotationStableId(selObj) };
             } else {
-              originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+              originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0, id: getAnnotationStableId(selObj) };
             }
           }
         }
@@ -678,6 +793,7 @@ export function useSVGInteraction({
           startSVGPoint: svgPoint,
           originalProps: null,
           annotationIndex: index,
+          annotationId: getAnnotationStableId(obj),
           ctmInverse,
           anchorX: null,
           anchorY: null,
@@ -709,6 +825,7 @@ export function useSVGInteraction({
             height: imported ? bbox.height : (obj.height ?? 0),
           },
           annotationIndex: index,
+          annotationId: getAnnotationStableId(obj),
           ctmInverse,
           anchorX: null,
           anchorY: null,
@@ -883,9 +1000,9 @@ export function useSVGInteraction({
           if (!selObj) continue;
           if (isImportedPath(selObj)) {
             const selBBox = getAnnotationBBox(selObj);
-            annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top };
+            annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top, id: getAnnotationStableId(selObj) };
           } else {
-            annotationOriginalsCO[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+            annotationOriginalsCO[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0, id: getAnnotationStableId(selObj) };
           }
         }
         const calloutOriginalsCO = {};
@@ -1072,9 +1189,9 @@ export function useSVGInteraction({
             if (!selObj) continue;
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
-              originals[selIdx] = { left: selBBox.left, top: selBBox.top };
+              originals[selIdx] = { left: selBBox.left, top: selBBox.top, id: getAnnotationStableId(selObj) };
             } else {
-              originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+              originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0, id: getAnnotationStableId(selObj) };
             }
           }
           dragStateRef.current = {
@@ -1164,6 +1281,15 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+
+    // P1-06: a teammate delete mid-drag must not preview-transform the
+    // object that now occupies the frozen index. Re-resolve by captured
+    // id; if gone, skip live mutations (pointerup no-ops + resets).
+    if (ds.annotationId != null && ds.annotationId !== '') {
+      const liveIdx = resolveAnnotationIndexById(annotations?.objects, ds.annotationId, -1);
+      if (liveIdx < 0) return;
+      ds.annotationIndex = liveIdx;
+    }
 
     // KAL-75 (G4): locked/read-only documents — a drag gesture must never
     // mutate geometry. Disarm in place: pointer-up then takes its non-drag
@@ -1354,9 +1480,13 @@ export function useSVGInteraction({
 
       const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
-        const idx = Number(idxStr);
         const orig = ds.groupMemberOriginals[idxStr];
-        const target = updatedAnnotations.objects?.[idx];
+        const idx = resolveAnnotationIndexById(
+          updatedAnnotations.objects,
+          orig?.id,
+          Number(idxStr),
+        );
+        const target = idx >= 0 ? updatedAnnotations.objects?.[idx] : null;
         if (!target || !orig) continue;
         const objType = orig.objType;
 
@@ -1368,31 +1498,23 @@ export function useSVGInteraction({
         };
 
         if (objType === 'line') {
-          // UX: 2026-04-21 — Line rotation needs WORLD endpoints, not the
-          // raw stored values. The line renderer paints at
-          // (obj.x1 + obj.left, obj.y1 + obj.top), so after a prior group-
-          // move bumps obj.left/top, the raw x1/y1 numbers no longer match
-          // the visible world position. Rotating the raw values around the
-          // group pivot would land the line in a wrong spot (visible bug:
-          // after rotate-then-move, the second rotate flings the line out
-          // of alignment with the rest of the group).
-          // Fix: convert to world before rotating, then bake the rotated
-          // world endpoints back as raw values with obj.left/top reset to
-          // zero. The line's curvature midpoint is already absolute world
-          // coords, so it rotates directly.
+          // P1-05: world endpoints come from getLineEndpoints (center +
+          // left/top), not `x1 + left`. Pack back into the fabric contract
+          // so the renderer and a later group transform stay aligned.
           if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = rotPt(wx1, wy1);
-            const p2 = rotPt(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
-          }
-          if (orig.midpoint) {
+            const next = applyGroupLineWorldTransform(orig, (x, y) => rotPt(x, y));
+            target.left = next.left;
+            target.top = next.top;
+            target.width = next.width;
+            target.height = next.height;
+            target.x1 = next.x1;
+            target.y1 = next.y1;
+            target.x2 = next.x2;
+            target.y2 = next.y2;
+            if (next.midpoint) {
+              target.data = { ...(target.data || {}), midpoint: { x: next.midpoint.x, y: next.midpoint.y } };
+            }
+          } else if (orig.midpoint) {
             const m = rotPt(orig.midpoint.x, orig.midpoint.y);
             target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
           }
@@ -1624,9 +1746,13 @@ export function useSVGInteraction({
 
       const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
-        const idx = Number(idxStr);
         const orig = ds.groupMemberOriginals[idxStr];
-        const target = updatedAnnotations.objects?.[idx];
+        const idx = resolveAnnotationIndexById(
+          updatedAnnotations.objects,
+          orig?.id,
+          Number(idxStr),
+        );
+        const target = idx >= 0 ? updatedAnnotations.objects?.[idx] : null;
         if (!target || !orig) continue;
         const objType = orig.objType;
 
@@ -1639,25 +1765,21 @@ export function useSVGInteraction({
             ),
           );
         } else if (objType === 'line') {
-          // UX: 2026-04-21 — Same world-vs-local-endpoint fix as group-
-          // rotate. Lines render at (x1 + left, y1 + top); rescaling the
-          // raw values around the anchor breaks if obj.left/top is non-
-          // zero. Convert to world, scale (in local rotated frame when a
-          // persisted rotation exists), then write back with left/top
-          // reset to zero.
+          // P1-05: same getLineEndpoints + fabric pack as group-rotate.
           if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = scalePoint(wx1, wy1);
-            const p2 = scalePoint(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
-          }
-          if (orig.midpoint) {
+            const next = applyGroupLineWorldTransform(orig, (x, y) => scalePoint(x, y));
+            target.left = next.left;
+            target.top = next.top;
+            target.width = next.width;
+            target.height = next.height;
+            target.x1 = next.x1;
+            target.y1 = next.y1;
+            target.x2 = next.x2;
+            target.y2 = next.y2;
+            if (next.midpoint) {
+              target.data = { ...(target.data || {}), midpoint: { x: next.midpoint.x, y: next.midpoint.y } };
+            }
+          } else if (orig.midpoint) {
             const mp = scalePoint(orig.midpoint.x, orig.midpoint.y);
             target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
           }
@@ -2798,9 +2920,11 @@ export function useSVGInteraction({
             return nextSet;
           });
         }
-        // Callout subtract: no-op for now — callouts live in App.jsx
-        // state and the hook doesn't hold the current Set to mutate.
-        // Revisit when callout subtract becomes a user-visible need.
+        // P1-29: Alt-subtract callouts against the current selection set
+        // the parent already threads in as selectedCalloutIds.
+        if (calloutIds.length > 0 && onSelectedCalloutIdsChange) {
+          onSelectedCalloutIdsChange(subtractIdSet(selectedCalloutIds, calloutIds));
+        }
       } else if (mq.shiftHeld) {
         // Union: add marquee hits to the existing selection. Empty result
         // + Shift held is a no-op per 19-CONTEXT.md acceptance criteria.
@@ -2812,12 +2936,8 @@ export function useSVGInteraction({
           });
         }
         if (calloutIds.length > 0 && onSelectedCalloutIdsChange) {
-          // NOTE: callouts live in App.jsx state; the hook doesn't hold
-          // the current selected-callout Set. Union against the latest
-          // hits only — App.jsx's setSelectedCalloutIds callback receives
-          // the full next Set. If App.jsx needs true union semantics
-          // across calls, it can do the merge itself in the callback.
-          onSelectedCalloutIdsChange(new Set(calloutIds));
+          // P1-29: Shift+marquee unions callouts with the current set.
+          onSelectedCalloutIdsChange(unionIdSet(selectedCalloutIds, calloutIds));
         }
       } else {
         // Replace: marquee hits become the entire selection, including
@@ -2832,6 +2952,14 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    try {
+    // P1-06: re-resolve by captured id. If the annotation is gone, no-op
+    // (finally still resets drag state so the tool cannot stick).
+    if (ds.annotationId != null && ds.annotationId !== '') {
+      const liveIdx = resolveAnnotationIndexById(annotations?.objects, ds.annotationId, -1);
+      if (liveIdx < 0) return;
+      ds.annotationIndex = liveIdx;
+    }
     markAnnotationPointerRelease(ds.diagGestureId, {
       action: ds.mode,
       handleId: ds.handleId || null,
@@ -2989,7 +3117,10 @@ export function useSVGInteraction({
       // Pointermove is preview-only for lines/arrows; commit the real
       // annotation once here so sync + undo see one change per drag.
       const updatedAnnotations = deepClone(annotations);
-      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
+      if (!targetObj) {
+        // P1-06: stale/missing target — no-op.
+      } else {
       const { midpoint, ...endpointData } = ds.currentEndpoint;
       Object.assign(targetObj, endpointData);
       const newEpC = getLineEndpoints(targetObj);
@@ -3007,6 +3138,7 @@ export function useSVGInteraction({
         action: 'endpoint-move',
         checkpointPolicy: 'normal',
       });
+      }
     } else if (ds.mode === 'midpoint' && ds.currentMidpoint) {
       // Phase 15 LINE-02 / ARROW-02 — silent snap-to-straight at pointerup.
       // If the user released the midpoint within 10px of the baseline, clear
@@ -3014,7 +3146,10 @@ export function useSVGInteraction({
       // No visual indicator during drag (combined-tools behavior, 15-UI-SPEC §E).
       // Checkpoint policy 'normal' so this drag produces one undo entry.
       const updatedAnnotations = deepClone(annotations);
-      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
+      if (!targetObj) {
+        // P1-06: stale/missing target — no-op.
+      } else {
       const { midpoint, ...midpointData } = ds.currentMidpoint;
       Object.assign(targetObj, midpointData);
       if (!midpoint) {
@@ -3027,6 +3162,7 @@ export function useSVGInteraction({
         action: 'midpoint-move',
         checkpointPolicy: 'normal',
       });
+      }
     } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
                && ds.groupMemberOriginals) {
       const finalAnnotations = ds.currentAnnotations || annotations;
@@ -3091,8 +3227,12 @@ export function useSVGInteraction({
         const updatedAnnotations = deepClone(annotations);
 
         for (const [idxStr, orig] of Object.entries(ds.groupOriginals)) {
-          const idx = Number(idxStr);
-          const obj = updatedAnnotations.objects[idx];
+          const idx = resolveAnnotationIndexById(
+            updatedAnnotations.objects,
+            orig?.id,
+            Number(idxStr),
+          );
+          const obj = idx >= 0 ? updatedAnnotations.objects[idx] : null;
           if (!obj) continue;
           const bbox = getAnnotationBBox(obj);
           // Constrain against the ABSOLUTE bbox per-annotation (same reasoning
@@ -3205,9 +3345,10 @@ export function useSVGInteraction({
       } = ds.currentResize;
 
       const updatedAnnotations = deepClone(annotations);
-      const obj = updatedAnnotations.objects[ds.annotationIndex];
-
-      if (
+      const obj = updatedAnnotations.objects?.[ds.annotationIndex];
+      if (!obj) {
+        // P1-06: stale/missing target — no-op (finally resets drag).
+      } else if (
         String(obj?.type || '').toLowerCase() === 'path'
         && Array.isArray(pathResizePageMatrix)
       ) {
@@ -3351,6 +3492,7 @@ export function useSVGInteraction({
         }
       }
 
+      if (obj) {
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'scale',
@@ -3383,9 +3525,13 @@ export function useSVGInteraction({
         };
         diagLog('[BboxScaleDiag] commit resize ' + JSON.stringify(commitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] commit log failed', err); }
+      }
     } else if (ds.mode === 'rotate' && ds.currentAngle !== undefined) {
       const updatedAnnotations = deepClone(annotations);
-      const rotObj = updatedAnnotations.objects[ds.annotationIndex];
+      const rotObj = updatedAnnotations.objects?.[ds.annotationIndex];
+      if (!rotObj) {
+        // P1-06: stale/missing target — no-op (finally resets drag).
+      } else {
       const rotObjType = String(rotObj?.type || '').toLowerCase();
       // Counter handle rotation previews through visualTransform during
       // pointermove; commit the final pointerAngle once on release.
@@ -3445,6 +3591,7 @@ export function useSVGInteraction({
         };
         diagLog('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] rotate commit log failed', err); }
+      }
     } else if (ds.mode === 'callout-part' && ds.calloutId) {
       // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
       // branch in handlePointerMove already wrote the final state to the
@@ -3640,10 +3787,11 @@ export function useSVGInteraction({
       setActiveCalloutDrag(null);
     }
 
-    // Reset drag state
+    } finally {
+    // Reset drag state — always, even if commit throws or the target vanished.
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
-      originalProps: null, annotationIndex: null, ctmInverse: null,
+      originalProps: null, annotationIndex: null, annotationId: null, ctmInverse: null,
       anchorX: null, anchorY: null, centerX: null, centerY: null,
       currentResize: null, currentAngle: undefined, groupOriginals: null,
       originalEndpoints: null, currentEndpoint: null,
@@ -3672,7 +3820,8 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+    }
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
@@ -3779,6 +3928,7 @@ export function useSVGInteraction({
           rotPivotY = (obj.top || 0) + cr;
         }
         memberOriginals[idx] = {
+          id: getAnnotationStableId(obj),
           objType: String(obj.type || '').toLowerCase(),
           dataType: obj?.data?.type || null,
           left: typeof obj.left === 'number' ? obj.left : 0,
@@ -3993,6 +4143,7 @@ export function useSVGInteraction({
         originalMidpoint,
         currentMidpoint: null,
         annotationIndex: selectedIndex,
+        annotationId: getAnnotationStableId(obj),
         ctmInverse,
         // UX 2026-04-20: capture rotation so pointermove can un-rotate the
         // world drag delta into local frame before adding it to the local-
@@ -4023,6 +4174,7 @@ export function useSVGInteraction({
           handleId,
           startSVGPoint: svgPoint,
           annotationIndex: selectedIndex,
+          annotationId: getAnnotationStableId(obj),
           ctmInverse,
           vertexIndex,
           // Snapshot the full transform chain so the move handler can invert
@@ -4085,6 +4237,7 @@ export function useSVGInteraction({
           ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y }
           : null,
         annotationIndex: selectedIndex,
+        annotationId: getAnnotationStableId(obj),
         ctmInverse,
         currentEndpoint: null,
         currentMidpoint: null,
@@ -4248,6 +4401,7 @@ export function useSVGInteraction({
         pointsPathOffsetY,
       },
       annotationIndex: selectedIndex,
+      annotationId: getAnnotationStableId(obj),
       ctmInverse,
       anchorX: anchor.x,
       anchorY: anchor.y,

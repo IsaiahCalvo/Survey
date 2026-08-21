@@ -17,9 +17,9 @@
 //
 // Per-test existsSync skip-guard pattern (Phase 27/28/29 precedent).
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -42,6 +42,37 @@ function skipReason() {
   if (!dualWriteSymbolPresent()) return 'dualWriteFabricCommit not yet exported (Plan 30-04)';
   return false;
 }
+
+function walkSrcFiles(dir, out = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+      walkSrcFiles(full, out);
+      continue;
+    }
+    if (/\.(js|jsx|mjs|ts|tsx)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+test('legacy document_annotations dual-write is not a live path', () => {
+  const src = readFileSync(TARGET, 'utf8');
+  assert.match(src, /export const DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE = false/);
+  assert.match(src, /RETIRED/);
+  assert.doesNotMatch(
+    src,
+    /ALWAYS fires the legacy upsertFabricAnnotation\. v2\.3 clients still in the\s+wild read from this column; the dual-write era keeps them whole\./,
+  );
+
+  const srcRoot = resolve(__dirname, '../..');
+  const offenders = walkSrcFiles(srcRoot).filter((file) => {
+    if (file === TARGET) return false;
+    const text = readFileSync(file, 'utf8');
+    return /\bdualWriteFabricCommit\b|\bdualWriteFabricDelete\b/.test(text);
+  });
+  assert.deepEqual(offenders, [], 'no production file should import the retired dual-write helpers');
+});
 
 test(
   'dualWriteFabricCommit #1: fires both legacy upsertFabricAnnotation + bridge applyFabricCommit when CRDT enabled + non-surveyMarker',

@@ -1,4 +1,5 @@
 import { eraserStrokeTouchesObject } from './eraserHitTest.js';
+import { getEraserOperation } from './eraserPolicy.js';
 
 const normalizeAngle = (value) => {
   const angle = Number(value);
@@ -48,11 +49,16 @@ export function getSurveyMarkerEraserHitIds({
   eraserRadius,
   canErase,
   boundsAllow,
+  mode = 'entire',
 } = {}) {
   if (!(visibleIds instanceof Set) || visibleIds.size === 0) return [];
   if (!Array.isArray(surveyMarkers) || !Array.isArray(eraserPoints) || eraserPoints.length === 0) {
     return [];
   }
+  // Partial/pixel eraser is ink-only. Markers project to rects, so
+  // getEraserOperation(..., 'partial') is 'skip'. Default mode stays
+  // 'entire' so callers that omit it keep current entire-mode hits until
+  // the preview lane passes the live gesture mode (KB-1 Part 2).
 
   const hits = [];
   const seen = new Set();
@@ -63,7 +69,8 @@ export function getSurveyMarkerEraserHitIds({
     if (typeof canErase !== 'function' || canErase(id, marker) !== true) continue;
     if (typeof boundsAllow === 'function' && !boundsAllow(id)) continue;
     const object = surveyMarkerToEraserObject(marker);
-    if (!object || !eraserStrokeTouchesObject({ eraserPoints, eraserRadius, object })) continue;
+    if (!object || getEraserOperation(object, mode) === 'skip') continue;
+    if (!eraserStrokeTouchesObject({ eraserPoints, eraserRadius, object })) continue;
     hits.push(id);
   }
   return hits;

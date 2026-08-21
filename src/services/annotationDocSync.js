@@ -2018,6 +2018,36 @@ function scheduleOutboxReplay(state, { delayed = false } = {}) {
   });
 }
 
+/**
+ * Eager flush of every open annotation-doc handle that still has outbox work.
+ * Used by the stuck-banner "Retry now" action. No-ops when no handle is mounted.
+ */
+export async function retryActiveOutboxes({ documentId = null, actorUserId = null } = {}) {
+  const states = [];
+  for (const [id, set] of ACTIVE_STATES) {
+    if (documentId && id !== documentId) continue;
+    for (const state of set) {
+      if (actorUserId && state.actorUserId !== actorUserId) continue;
+      if (state.destroyed || state.deleted) continue;
+      states.push(state);
+    }
+  }
+  for (const state of states) {
+    if (state.outboxReplayTimer) {
+      clearTimeout(state.outboxReplayTimer);
+      state.outboxReplayTimer = null;
+    }
+    state.outboxReplayRetryAttempt = 0;
+    scheduleOutboxReplay(state);
+  }
+  await Promise.all(states.map(async (state) => {
+    await Promise.resolve();
+    await state.outboxReplayChain.catch(() => {});
+    await state.flushQueue.catch(() => {});
+  }));
+  return { retried: states.length };
+}
+
 function publishProjectedState(state, projectedDoc) {
   state.doc.transact(() => {
     for (const mapName of DURABLE_MAP_NAMES) {
@@ -2246,6 +2276,7 @@ function enqueueAppend(
       }
       : null,
     status: 'pending',
+    queuedAt: Date.now(),
   };
   record.dependsOn = causalDependenciesForUpdate(state, record.update, record.key);
   state.appendRecords.set(record.key, record);

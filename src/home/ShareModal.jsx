@@ -44,6 +44,8 @@ const C = {
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
 const ROLE_OPTIONS = ['Viewer', 'Editor', 'Owner'];
 
+// UI gate. Server also enforces: kal31_guard_invite_creator_tier + RLS
+// get_user_tier check on INSERT, and claim_email_send on Branch A sends.
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
 function parseEmails(raw) {

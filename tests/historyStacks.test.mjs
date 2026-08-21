@@ -44,3 +44,13 @@ test('survey marker move checkpoints stay eligible for the legacy undo/redo lane
 test('space checkpoints stay eligible for the legacy undo/redo lane', () => {
   equal(isLegacyAnnotationHistoryMeta({ reason: 'space:delete' }), true);
 });
+
+test('excel auto-sync checkpoints stay eligible for the legacy undo/redo lane (P1-12)', () => {
+  equal(isLegacyAnnotationHistoryMeta({ reason: 'excel:auto-sync' }), true);
+  equal(isLegacyAnnotationHistoryMeta({ reason: 'excel:manual-sync' }), true);
+});
+
+test('unrelated reasons stay out of the legacy undo whitelist', () => {
+  equal(isLegacyAnnotationHistoryMeta({ reason: 'zoom:fit' }), false);
+  equal(isLegacyAnnotationHistoryMeta({ reason: '' }), false);
+});

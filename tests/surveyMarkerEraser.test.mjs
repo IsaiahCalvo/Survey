@@ -79,6 +79,23 @@ test('survey marker geometry matches filled, dashed, and rotated presentation re
   }), ['marker-rotated']);
 });
 
+test('partial mode skips survey markers; entire mode still hits', () => {
+  const common = {
+    surveyMarkers: [filledMarker],
+    visibleIds: new Set(['marker-filled']),
+    eraserPoints: [{ x: 25, y: 30 }],
+    eraserRadius: 4,
+    canErase: () => true,
+  };
+  assert.deepEqual(getSurveyMarkerEraserHitIds({ ...common, mode: 'partial' }), []);
+  assert.deepEqual(getSurveyMarkerEraserHitIds({ ...common, mode: 'entire' }), ['marker-filled']);
+  assert.deepEqual(
+    getSurveyMarkerEraserHitIds(common),
+    ['marker-filled'],
+    'omitted mode stays entire so existing callers keep object-eraser hits',
+  );
+});
+
 test('excluded preview ids and geometry misses do not produce duplicate work', () => {
   assert.deepEqual(getSurveyMarkerEraserHitIds({
     surveyMarkers: [filledMarker],

@@ -101,6 +101,8 @@
       "src/electron/msalAuthMain.js",
       "src/electron/msalCacheStore.cjs",
       "src/electron/oauthWindowPolicy.cjs",
+      "src/electron/quitCoordinator.cjs",
+      "src/electron/singleInstance.cjs",
       "src/preload.js",
       "package.json",
       "build/icon.icns",

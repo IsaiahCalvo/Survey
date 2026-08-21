@@ -60,6 +60,16 @@ test('KAL-31: invite-tokens migration enforces 3-role set + RPC contract', () =>
   }
 });
 
+test('KAL-31: P2-01/P2-05 migration gates free-tier insert and revoke drops collaborators', () => {
+  const sql = fs.readFileSync(
+    path.join(repoRoot, 'supabase/migrations/20260820010000_invite_tier_gate_and_revoke_access.sql'),
+    'utf8',
+  );
+  match(sql, /kal31_guard_invite_creator_tier/);
+  match(sql, /DELETE FROM public\.document_collaborators/);
+  match(sql, /get_user_tier/);
+});
+
 test('KAL-31: ShareModal defaults to Viewer and exposes only viewer/editor/owner', () => {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/home/ShareModal.jsx'),
@@ -91,7 +101,8 @@ test('KAL-31: document owners always reach Manage Access from Share', () => {
     path.join(repoRoot, 'src/home/SurveyHub.jsx'),
     'utf8',
   );
-  match(src, /manage:\s*!!single\s*&&\s*!!user\?\.id\s*&&\s*single\.user_id\s*===\s*user\.id/);
+  match(src, /userCanManageDocumentAccess\(single,\s*user/);
+  match(src, /userCanManageDocumentAccess\(single,\s*user,\s*res\?\.data\)/);
 });
 
 test('KAL-31: AccessManagementModal exposes only viewer/editor/owner', () => {

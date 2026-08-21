@@ -1,5 +1,8 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { billingPortalSessionParams } from '../_shared/billingReturn.ts';
+import { trialUsedAtPatch } from '../_shared/billingTrial.ts';
+import { withStripeEventIdempotency } from '../_shared/stripeEventIdempotency.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -105,50 +108,56 @@ Deno.serve(async (req) => {
             }
         });
 
-        // Handle different event types
-        switch (event.type) {
-            case 'checkout.session.completed': {
-                const session = event.data.object as Stripe.Checkout.Session;
-                await handleCheckoutCompleted(supabase, session);
-                break;
-            }
+        const outcome = await withStripeEventIdempotency(supabase, event.id, async () => {
+            // Handle different event types
+            switch (event.type) {
+                case 'checkout.session.completed': {
+                    const session = event.data.object as Stripe.Checkout.Session;
+                    await handleCheckoutCompleted(supabase, session);
+                    break;
+                }
 
-            case 'customer.subscription.created':
-            case 'customer.subscription.updated': {
-                const subscription = event.data.object as Stripe.Subscription;
-                await handleSubscriptionUpdate(supabase, subscription);
-                break;
-            }
+                case 'customer.subscription.created':
+                case 'customer.subscription.updated': {
+                    const subscription = event.data.object as Stripe.Subscription;
+                    await handleSubscriptionUpdate(supabase, subscription);
+                    break;
+                }
 
-            case 'customer.subscription.deleted': {
-                const subscription = event.data.object as Stripe.Subscription;
-                await handleSubscriptionDeleted(supabase, subscription);
-                break;
-            }
+                case 'customer.subscription.deleted': {
+                    const subscription = event.data.object as Stripe.Subscription;
+                    await handleSubscriptionDeleted(supabase, subscription);
+                    break;
+                }
 
-            case 'customer.subscription.trial_will_end': {
-                const subscription = event.data.object as Stripe.Subscription;
-                await handleTrialWillEnd(supabase, subscription);
-                break;
-            }
+                case 'customer.subscription.trial_will_end': {
+                    const subscription = event.data.object as Stripe.Subscription;
+                    await handleTrialWillEnd(supabase, subscription);
+                    break;
+                }
 
-            case 'invoice.payment_succeeded': {
-                const invoice = event.data.object as Stripe.Invoice;
-                await handlePaymentSucceeded(supabase, invoice);
-                break;
-            }
+                case 'invoice.payment_succeeded': {
+                    const invoice = event.data.object as Stripe.Invoice;
+                    await handlePaymentSucceeded(supabase, invoice);
+                    break;
+                }
 
-            case 'invoice.payment_failed': {
-                const invoice = event.data.object as Stripe.Invoice;
-                await handlePaymentFailed(supabase, invoice);
-                break;
-            }
+                case 'invoice.payment_failed': {
+                    const invoice = event.data.object as Stripe.Invoice;
+                    await handlePaymentFailed(supabase, invoice);
+                    break;
+                }
 
-            default:
-                console.log(`Unhandled event type: ${event.type}`);
+                default:
+                    console.log(`Unhandled event type: ${event.type}`);
+            }
+        });
+
+        if (outcome.status === 'duplicate') {
+            console.log(`Skipping already-processed Stripe event ${event.id}`);
         }
 
-        return new Response(JSON.stringify({ received: true }), {
+        return new Response(JSON.stringify({ received: true, duplicate: outcome.status === 'duplicate' }), {
             headers: { 'Content-Type': 'application/json' },
             status: 200,
         });
@@ -214,6 +223,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
         trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
         current_period_start: period.start ? new Date(period.start * 1000).toISOString() : null,
         current_period_end: period.end ? new Date(period.end * 1000).toISOString() : null,
+        ...trialUsedAtPatch(subscription),
     };
 
     console.log('Update data prepared:', updateData);
@@ -344,6 +354,7 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
                 trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
                 current_period_start: period.start ? new Date(period.start * 1000).toISOString() : null,
                 current_period_end: period.end ? new Date(period.end * 1000).toISOString() : null,
+                ...trialUsedAtPatch(subscription),
             })
             .eq('stripe_subscription_id', subscription.id);
 
@@ -462,12 +473,9 @@ async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscripti
             const trialEndDate = new Date(subscription.trial_end * 1000);
             const daysLeft = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
-            // Create billing portal session
-            // Note: return_url should be updated to your actual landing page URL
-            const portalSession = await stripe.billingPortal.sessions.create({
-                customer: userSubscription.stripe_customer_id || subscription.customer as string,
-                return_url: 'https://www.google.com', // Placeholder - update with your landing page
-            });
+            const portalSession = await stripe.billingPortal.sessions.create(
+                billingPortalSessionParams(userSubscription.stripe_customer_id || subscription.customer as string),
+            );
 
             await sendEmail(
                 'trial-ending',
@@ -508,10 +516,9 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
 
         if (userSubscription && invoice.customer_email && invoice.customer) {
             // Create billing portal session
-            const portalSession = await stripe.billingPortal.sessions.create({
-                customer: invoice.customer as string,
-                return_url: 'https://www.google.com', // Placeholder
-            });
+            const portalSession = await stripe.billingPortal.sessions.create(
+                billingPortalSessionParams(invoice.customer as string),
+            );
 
             await sendEmail(
                 'payment-succeeded',
@@ -546,10 +553,9 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
         // Send email notification
         if (invoice.customer_email && invoice.customer) {
             // Create billing portal session
-            const portalSession = await stripe.billingPortal.sessions.create({
-                customer: invoice.customer as string,
-                return_url: 'https://www.google.com', // Placeholder
-            });
+            const portalSession = await stripe.billingPortal.sessions.create(
+                billingPortalSessionParams(invoice.customer as string),
+            );
 
             await sendEmail(
                 'payment-failed',

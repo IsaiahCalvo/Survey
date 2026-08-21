@@ -6,6 +6,8 @@ const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
+const { createQuitCoordinator } = require('./electron/quitCoordinator.cjs');
+const { claimSingleInstance, focusExistingWindow } = require('./electron/singleInstance.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
@@ -1718,63 +1720,46 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
   });
 });
 
-// Track if we're in the process of quitting
-let isQuitting = false;
+const gotSingleInstanceLock = claimSingleInstance({
+  requestLock: () => app.requestSingleInstanceLock(),
+  quit: () => app.quit(),
+}).gotLock;
+
+app.on('second-instance', () => {
+  const win = surveyMainWindow || BrowserWindow.getAllWindows()[0];
+  focusExistingWindow(win);
+});
+
+const quitCoordinator = createQuitCoordinator({
+  onQuit: () => {
+    fileWatchers.forEach((watcher) => {
+      watcher.close();
+    });
+    fileWatchers.clear();
+    app.quit();
+  },
+});
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   createWindow();
   createAppMenu();
 });
 
 app.on('before-quit', (event) => {
-  if (!isQuitting) {
+  const windows = BrowserWindow.getAllWindows();
+  const live = windows.filter((win) => win && !win.isDestroyed());
+  const decision = quitCoordinator.beginQuit({ windows: live });
+  if (decision.preventDefault) {
     event.preventDefault();
-    isQuitting = true;
-
-    // Notify all windows to save their work
-    const windows = BrowserWindow.getAllWindows();
-
-    if (windows.length === 0) {
-      app.quit();
-      return;
-    }
-
-    // Send save request to all windows
-    let windowsResponded = 0;
-    const checkAndQuit = () => {
-      windowsResponded++;
-      if (windowsResponded >= windows.length) {
-        // All windows have responded, now quit
-        setTimeout(() => {
-          // Clean up file watchers
-          fileWatchers.forEach((watcher) => {
-            watcher.close();
-          });
-          fileWatchers.clear();
-
-          app.quit();
-        }, 100);
-      }
-    };
-
-    windows.forEach((win) => {
-      if (win.isDestroyed()) {
-        checkAndQuit();
-        return;
-      }
-
-      // Send message to renderer to save
+    live.forEach((win) => {
       win.webContents.send('app:beforeQuit');
-
-      // Give each window 5 seconds to save, then continue
-      setTimeout(checkAndQuit, 5000);
     });
   }
 });
 
-// Handle save completion from renderer
 ipcMain.on('app:saveComplete', () => {
-  // This is just for logging, actual quit happens via timeout
+  quitCoordinator.markSaveComplete();
 });
 
 app.on('window-all-closed', () => {

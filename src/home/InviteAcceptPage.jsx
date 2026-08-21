@@ -22,12 +22,14 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { acceptDocumentInvite } from '../services/documentInviteService';
+import {
+  clearPendingInviteToken,
+  writePendingInviteToken,
+} from '../services/pendingInviteResume';
 import { acceptProjectInvite } from '../services/projectInviteService';
 import { acceptTemplateInvite } from '../services/templateInviteService';
 import { supabase } from '../supabaseClient';
 import { buildAppDestination } from '../utils/accountPlatform';
-
-const PENDING_KEY = 'kal31_pending_invite_token';
 
 const C = {
   bg: '#12151c',
@@ -49,7 +51,7 @@ function getTokenFromPath() {
 
 function goHome() {
   if (typeof window !== 'undefined') {
-    try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
+    clearPendingInviteToken();
     window.location.assign(buildAppDestination());
   }
 }
@@ -80,7 +82,7 @@ export default function InviteAcceptPage() {
   // Persist token for round-trip through sign-in/sign-up.
   useEffect(() => {
     if (!token) return;
-    try { window.localStorage.setItem(PENDING_KEY, token); } catch (_e) { /* ignore */ }
+    writePendingInviteToken(token);
   }, [token]);
 
   useEffect(() => {
@@ -101,8 +103,10 @@ export default function InviteAcceptPage() {
         if (cancelled) return;
         setResult(r);
         setPhase('result');
-        if (r.status === 'accepted') {
-          try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
+        // Keep the token on wrong_account so Sign out → other account can
+        // resume. Every other definitive status is done with this invite.
+        if (r.status && r.status !== 'wrong_account') {
+          clearPendingInviteToken();
         }
       } catch (err) {
         if (cancelled) return;
@@ -189,8 +193,9 @@ export default function InviteAcceptPage() {
 
   const signIn = () => {
     // Bounce to root with `?signIn=1`; AuthContext will pop the login UI.
-    // If the app doesn't honor that query, simply reload so the AuthProvider
-    // re-evaluates and the standard sign-in surface shows.
+    // The token is already in kal31_pending_invite_token; post-auth resume
+    // (PendingInviteResumeGate in main.jsx) routes back to /invite/<token>.
+    if (token) writePendingInviteToken(token);
     if (typeof window !== 'undefined') {
       window.location.assign(buildAppDestination({ params: { signIn: '1', invite: token || '' } }));
     }

@@ -186,7 +186,7 @@ test('pdf.js survey markers use one visible, permitted whole-delete lane in both
   const commitSource = ERASER_SOURCE.slice(commitStart, commitEnd);
   assert.match(
     commitSource,
-    /getPermittedSurveyMarkerHitIds\(eraserPoints, undefined, radius\)/,
+    /getPermittedSurveyMarkerHitIds\(eraserPoints, undefined, radius, mode\)/,
   );
   assert.match(commitSource, /await onEraseIntentRef\.current\?\.\(intent\)/);
   assert.match(commitSource, /onEraseSurveyMarkerRef\.current\?\.\(annotationId\)/);
@@ -200,7 +200,7 @@ test('callout preview and commit share the same permitted hit list', () => {
 
   assert.match(
     commitSource,
-    /getPermittedCalloutHitIds\(eraserPoints, undefined, radius\)/,
+    /getPermittedCalloutHitIds\(eraserPoints, undefined, radius, mode\)/,
   );
   assert.doesNotMatch(commitSource, /getCalloutHitIds\(\{/);
 });

@@ -33,7 +33,8 @@ const isLegacyPencilBrushInk = (annotation) => {
 
 /**
  * Only true free-hand ink may be changed geometrically by the partial eraser.
- * Everything else remains an atomic annotation and is deleted as a whole.
+ * In partial mode every other annotation is skipped (not whole-deleted).
+ * Whole-object delete is entire/full mode only.
  */
 export function isPartialEraseEligible(annotation) {
   if (!annotation || normalize(annotation.type) !== 'path') return false;
@@ -63,5 +64,5 @@ export function isPartialEraseEligible(annotation) {
 
 export function getEraserOperation(annotation, requestedMode) {
   if (requestedMode !== 'partial') return 'entire';
-  return isPartialEraseEligible(annotation) ? 'partial' : 'entire';
+  return isPartialEraseEligible(annotation) ? 'partial' : 'skip';
 }

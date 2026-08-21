@@ -66,6 +66,9 @@ test('edge wrapper wires atomic RPCs and preserves uncertain transport outcomes'
   );
 
   match(wrapper, /callerClient\.rpc\('claim_invite_email_delivery'/);
+  match(wrapper, /callerClient\.rpc\('claim_email_send'/);
+  match(handler, /claimEmailSend/);
+  match(handler, /invite_blocked_free_tier/);
   match(wrapper, /callerClient\.rpc\('complete_invite_email_delivery'/);
   match(wrapper, /callerClient\.rpc\('release_invite_email_delivery'/);
   match(wrapper, /res\.ok && responseBody\?\.success === true/);

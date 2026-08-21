@@ -74,7 +74,9 @@ test('account settings wires real deletion, unlink, truthful email status, retry
   assert.match(auth, /requestAccountDeletion\(supabase\.functions\)/);
   assert.match(settings, /await deleteAccount\(\)/);
   assert.match(settings, /await unlinkProvider\('google'\)/);
+  assert.match(settings, /await linkGoogleIdentity\(\)/);
   assert.doesNotMatch(settings, /\? signOut : signInWithGoogle/);
+  assert.doesNotMatch(settings, /signInWithGoogle/);
   assert.match(settings, /notificationSent[\s\S]*A confirmation email has been sent/);
   assert.match(settings, /subscriptionError[\s\S]*Retry/);
   assert.match(settings, /buildBillingReturnUrl\(\)/);
@@ -91,6 +93,7 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(source, /listOwnedStorage\(admin, userId\)/);
   assert.match(source, /storage\.from\('documents'\)\.remove\(paths\.slice/);
   assert.match(source, /admin\.rpc\('delete_account_owned_rows'/);
+  assert.match(source, /account_deletion_owned_document_blockers/);
   assert.match(source, /deleteDatabaseRows:[\s\S]*removeStorage:[\s\S]*deleteAuthUser:/);
   assert.match(source, /admin\.auth\.admin\.deleteUser\(user\.id\)/);
   assert.match(source, /'Access-Control-Allow-Origin': '\*'/);

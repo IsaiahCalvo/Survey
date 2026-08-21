@@ -11,6 +11,7 @@ import {
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
   ensureTextAnnotationId,
+  isBlankTextEdit,
 } from '../src/utils/textEditCommit.js';
 
 test('new text: blank input is discarded (returns null)', () => {
@@ -121,6 +122,24 @@ test('existing text: rotated box keeps its rotated top-left anchored on height g
   assert.ok(Math.abs(json.left - (100 - dh / 2)) < 1e-9);
   assert.ok(Math.abs(json.top - (200 - dh / 2)) < 1e-9);
   assert.equal(json.angle, 90);
+});
+
+test('existing text: blank or whitespace commit is discarded so no ghost remains', () => {
+  assert.equal(isBlankTextEdit(''), true);
+  assert.equal(isBlankTextEdit('   \n\t'), true);
+  assert.equal(isBlankTextEdit(null), true);
+  assert.equal(isBlankTextEdit('keep'), false);
+
+  assert.equal(buildExistingTextCommitJSON({ original: ORIGINAL, text: '', naturalInnerHeight: 21 }), null);
+  assert.equal(buildExistingTextCommitJSON({ original: ORIGINAL, text: '   ', naturalInnerHeight: 21 }), null);
+  assert.equal(buildExistingTextCommitJSON({
+    original: { ...ORIGINAL, height: 30 },
+    text: '\n',
+    naturalInnerHeight: 50,
+    isCallout: true,
+  }), null);
+  const kept = buildExistingTextCommitJSON({ original: ORIGINAL, text: 'still here', naturalInnerHeight: 21 });
+  assert.equal(kept.text, 'still here');
 });
 
 test('ensureTextAnnotationId: reuses any existing id, never overwrites', () => {

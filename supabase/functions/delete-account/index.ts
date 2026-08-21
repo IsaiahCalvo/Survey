@@ -1,6 +1,10 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
-import { deleteStripeCustomer, runAccountDeletionStages } from '../_shared/accountDeletion.ts';
+import {
+  deleteStripeCustomer,
+  isDataRemovedDeletionError,
+  runAccountDeletionStages,
+} from '../_shared/accountDeletion.ts';
 
 type AdminClient = ReturnType<typeof createClient<any>>;
 
@@ -94,6 +98,23 @@ Deno.serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     }) : null;
 
+    const { data: blockers, error: blockerError } = await admin.rpc(
+      'account_deletion_owned_document_blockers',
+      { target_user_id: user.id },
+    );
+    if (blockerError) throw blockerError;
+    if (Array.isArray(blockers) && blockers.length > 0) {
+      return json(409, {
+        error: 'This account still owns shared documents. Transfer ownership or remove collaborators before deleting the account.',
+        code: 'ACCOUNT_HAS_COLLABORATORS',
+        documents: blockers.map((row) => ({
+          id: row.document_id,
+          name: row.document_name,
+          collaboratorCount: row.collaborator_count,
+        })),
+      });
+    }
+
     await runAccountDeletionStages({
       // Billing remains first so no account can be removed while still billable.
       // Missing Stripe customers are accepted for safe retries.
@@ -111,6 +132,27 @@ Deno.serve(async (req) => {
     return json(200, { deleted: true });
   } catch (error) {
     console.error('delete-account failed', error instanceof Error ? error.message : String(error));
-    return json(500, { error: 'Account deletion could not finish. Please try again or contact support.' });
+    const dataRemoved = isDataRemovedDeletionError(error);
+    const stage = error && typeof error === 'object' && 'stage' in error
+      ? (error as { stage?: string }).stage
+      : null;
+    const completed = error && typeof error === 'object' && 'completed' in error
+      ? (error as { completed?: string[] }).completed
+      : [];
+    if (error instanceof Error && error.message.includes('ACCOUNT_HAS_COLLABORATORS')) {
+      return json(409, {
+        error: 'This account still owns shared documents. Transfer ownership or remove collaborators before deleting the account.',
+        code: 'ACCOUNT_HAS_COLLABORATORS',
+      });
+    }
+    return json(dataRemoved ? 409 : 500, {
+      error: dataRemoved
+        ? 'Your data was removed, but the account could not finish closing. Retry to finish closing the account.'
+        : 'Account deletion could not finish. Please try again or contact support.',
+      code: dataRemoved ? 'DATA_REMOVED_RETRY' : 'DELETION_FAILED',
+      stage,
+      completed,
+      dataRemoved,
+    });
   }
 });

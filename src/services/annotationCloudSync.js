@@ -23,16 +23,16 @@ import {
   deserializeRowsToCallouts
 } from './annotationTypeSerializers.js';
 
-// Phase 30 — Migration Phase A — Dual-Write Era (narrow waiver per
-// 30-CONTEXT.md DO NOT CHANGE list). The two functions added below
-// (dualWriteFabricCommit + dualWriteFabricDelete) fan out new-annotation
-// saves to BOTH the legacy document_annotations row (existing behavior,
-// byte-identical) AND the CRDT path via the Phase 29 bridge.
+// Phase 30 dual-write helpers below are RETIRED leftovers. Live saves go
+// through annotationDocSync / the Y.Doc outbox — nothing in production
+// imports dualWriteFabricCommit or dualWriteFabricDelete. The functions
+// remain so historical tests can detect the symbols; they are not a live
+// write path to document_annotations. See DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE.
 //
 // CONTEXT.md "No 'diff = delete' logic anywhere" architectural lock — these  // NO_DIFF_DELETE_OK: docstring describes the lock the file honors.
 // fan-out functions NEVER read both stores and delete the difference. If    // NO_DIFF_DELETE_OK: docstring describes what the lock forbids.
-// one side fails, the failed side enqueues for retry; the other side stays
-// as-is. Defends Pitfall 5 (the simple-sync killer in CRDT clothing).
+// one side fails, the other side stays as-is. Live retries belong to
+// annotationDocOutbox. Defends Pitfall 5 (the simple-sync killer in CRDT clothing).
 //
 // NO_DIFF_DELETE_OK: the only `delete` calls in this file are user-initiated
 // (deleteAnnotation / deleteAnnotations / dualWriteFabricDelete) and target
@@ -41,11 +41,13 @@ import {
 // Scanned by scripts/check-no-diff-delete.mjs.  // NO_DIFF_DELETE_OK: docstring references the gate script by name.
 import { applyFabricCommit, applyFabricDelete } from '../lib/collab/crdtAnnotationBridge.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
-import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
 import {
   isSurveyMarkerType,
   SURVEY_MARKER_TYPE_VALUES,
 } from '../utils/surveyMarkerType.js';
+
+/** Live annotation persistence does not dual-write document_annotations. */
+export const DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE = false;
 
 export const NON_HIGHLIGHT_TYPES = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
@@ -590,18 +592,21 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
 }
 
 /**
- * Phase 30 — Dual-write fan-out for a single Fabric annotation save (create/edit).
+ * RETIRED — Phase 30 dual-write fan-out for a single Fabric annotation save.
+ * Not called by the live save path (annotationDocSync). Comments that once
+ * said this "ALWAYS" wrote document_annotations described planned wiring
+ * that never shipped; DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE is false.
  *
- * Behavior:
- *   - ALWAYS fires the legacy upsertFabricAnnotation. v2.3 clients still in the
- *     wild read from this column; the dual-write era keeps them whole.
+ * Historical behavior if invoked:
+ *   - Fires the legacy upsertFabricAnnotation. v2.3 clients still in the
+ *     wild read from this column; the dual-write era was meant to keep them whole.
  *   - If isCRDTEnabled() is false → legacy only (kill switch override; current
  *     behavior unchanged for kill-switch-off deployments).
  *   - If annotation_type === 'surveyMarker' → legacy only (Excel-sync carve-out
  *     locked by CONTEXT.md "SurveyMarkers skipped"; v2.5 owns surveyMarker migration).
  *   - Otherwise fires applyFabricCommit through the Phase 29 bridge.
- *   - Each side has its own try/catch. On failure, enqueues to the retry queue
- *     (latest-version-wins per annoId). NEVER deletes from either side to
+ *   - Each side has its own try/catch. Live CRDT retries go through
+ *     annotationDocOutbox (P2-02). NEVER deletes from either side to
  *     "match" the other.
  *
  * @param {object} fabricObj - the Fabric annotation to save
@@ -639,30 +644,8 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
   } else {
     try {
       legacyResult = await upsertFabricAnnotation(fabricObj, opts);
-      // upsertFabricAnnotation returns { data, error } — treat error truthy as
-      // a failed save and enqueue. Mirrors the existing call pattern.
-      if (legacyResult && legacyResult.error) {
-        const annoId = fabricObj?.data?.id;
-        if (opts.userId && annoId) {
-          enqueueDualWrite({
-            userId: opts.userId,
-            annoId,
-            side: 'legacy',
-            payload: { fabricObj, opts },
-          });
-        }
-      }
     } catch (err) {
       legacyResult = { data: null, error: err };
-      const annoId = fabricObj?.data?.id;
-      if (opts.userId && annoId) {
-        enqueueDualWrite({
-          userId: opts.userId,
-          annoId,
-          side: 'legacy',
-          payload: { fabricObj, opts },
-        });
-      }
     }
   }
 
@@ -685,24 +668,14 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
     applyFabricCommit(opts.ydoc, opts.yMapAnnotations, fabricObj, opts.originPayload, opts.ctx);
     return { legacy: legacyResult, crdt: { ok: true } };
   } catch (err) {
-    const annoId = fabricObj?.data?.id;
-    if (opts.userId && annoId) {
-      enqueueDualWrite({
-        userId: opts.userId,
-        annoId,
-        side: 'crdt',
-        payload: { fabricObj, opts },
-      });
-    }
     return { legacy: legacyResult, crdt: { error: err } };
   }
 }
 
 /**
- * Phase 30 — Dual-write fan-out for a single Fabric annotation delete.
- *
- * Same shape as dualWriteFabricCommit: ALWAYS fires legacy delete; conditionally
- * fires CRDT-side delete via the bridge. SurveyMarker carve-out preserved.
+ * RETIRED — Phase 30 dual-write fan-out for a single Fabric annotation delete.
+ * Not called by the live delete path. Same unused shape as dualWriteFabricCommit.
+ * SurveyMarker carve-out preserved if something invokes it in tests.
  *
  * @param {string} documentId
  * @param {string} annoId - the stable per-annotation UUID (== annotation_id)
@@ -733,26 +706,8 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
   } else {
     try {
       legacyResult = await deleteAnnotation(documentId, annoId);
-      if (legacyResult && legacyResult.error) {
-        if (opts.userId && annoId) {
-          enqueueDualWrite({
-            userId: opts.userId,
-            annoId,
-            side: 'legacy',
-            payload: { op: 'delete', documentId, annoId, opts },
-          });
-        }
-      }
     } catch (err) {
       legacyResult = { data: null, error: err };
-      if (opts.userId && annoId) {
-        enqueueDualWrite({
-          userId: opts.userId,
-          annoId,
-          side: 'legacy',
-          payload: { op: 'delete', documentId, annoId, opts },
-        });
-      }
     }
   }
 
@@ -768,14 +723,6 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
     applyFabricDelete(opts.ydoc, opts.yMapAnnotations, annoId, opts.originPayload);
     return { legacy: legacyResult, crdt: { ok: true } };
   } catch (err) {
-    if (opts.userId && annoId) {
-      enqueueDualWrite({
-        userId: opts.userId,
-        annoId,
-        side: 'crdt',
-        payload: { op: 'delete', documentId, annoId, opts },
-      });
-    }
     return { legacy: legacyResult, crdt: { error: err } };
   }
 }
