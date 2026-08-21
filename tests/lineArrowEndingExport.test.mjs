@@ -23,3 +23,34 @@ test('P1-02 edge: style none / unknown still have a ClosedArrow default for tool
   assert.match(src, /tool === 'arrow' \? ARROWHEAD_STYLES\.SOLID_TRIANGLE : null/);
   assert.match(src, /\[ARROWHEAD_STYLES\.NONE\]: 'None'/);
 });
+
+test('P1-01 intended: group flatten offsets only left/top, not center-relative x1..y2', () => {
+  const flatten = src.slice(src.indexOf('const drawFlattenedObject'));
+  const group = flatten.slice(0, flatten.indexOf("const type = String(obj.type"));
+  assert.match(group, /left: \(Number\(child\?\.left\) \|\| 0\) \+ parentLeft/);
+  assert.match(group, /top: \(Number\(child\?\.top\) \|\| 0\) \+ parentTop/);
+  assert.doesNotMatch(group, /x1: child\?\.x1/);
+});
+
+test('P1-03 intended: Square export writes cloudy /BE when intensity or cloudBorder is set', () => {
+  const square = src.slice(src.indexOf('const createSquareAnnotation'), src.indexOf('const createCircleAnnotation'));
+  assert.match(square, /pdfCloudIntensity/);
+  assert.match(square, /annotationDict\.BE/);
+  assert.match(square, /PDFName\.of\('C'\)/);
+});
+
+test('P1-03 break: non-cloud rects do not get /BE', () => {
+  const square = src.slice(src.indexOf('const createSquareAnnotation'), src.indexOf('const createCircleAnnotation'));
+  assert.match(square, /if \(isCloud\)/);
+});
+
+test('P1-04 intended: print flatten multiplies width/height by |scaleX|/|scaleY|', () => {
+  const flatten = src.slice(src.indexOf('const drawFlattenedObject'));
+  assert.match(flatten, /getObjNumber\(shifted, 'width'\) \* scaleX/);
+  assert.match(flatten, /getObjNumber\(shifted, 'height'\) \* scaleY/);
+});
+
+test('P1-04 edge: non-finite flattened box is skipped', () => {
+  const flatten = src.slice(src.indexOf('const drawFlattenedObject'));
+  assert.match(flatten, /if \(!\[left, top, width, height, pageHeight\]\.every\(Number\.isFinite\)\) return 0/);
+});

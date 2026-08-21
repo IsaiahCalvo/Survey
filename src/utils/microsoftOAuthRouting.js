@@ -1,19 +1,33 @@
 const currentLocation = () => (typeof window === 'undefined' ? null : window.location);
+const currentGlobal = () => (typeof window === 'undefined' ? undefined : window);
 
 /**
  * P2-13: Capacitor WebViews cannot complete the web/desktop PKCE redirect
  * (deep-link OAuth is out of scope). Hide Connect/Reconnect and refuse login.
  * Do not treat this as permission to remove MSAL — desktop/web still use it.
  */
-export const isCapacitorMicrosoftConnectHidden = (win = typeof window === 'undefined' ? null : window) => {
-  if (!win) return false;
+export const isCapacitorNativeRuntime = (globalObj = currentGlobal()) => {
+  if (!globalObj) return false;
   try {
-    if (win.Capacitor?.isNativePlatform?.() === true) return true;
+    if (globalObj.Capacitor?.isNativePlatform?.() === true) return true;
   } catch {
     /* ignore missing Capacitor bridge */
   }
-  const origin = String(win.location?.origin || '');
+  const origin = String(globalObj.location?.origin || '');
   return origin.startsWith('capacitor://') || origin.startsWith('ionic://');
+};
+
+export const isCapacitorMicrosoftConnectHidden = (win = currentGlobal()) =>
+  isCapacitorNativeRuntime(win);
+
+export const isMicrosoftConnectAvailable = (globalObj = currentGlobal()) =>
+  !isCapacitorNativeRuntime(globalObj);
+
+export const shouldStartFullPageMicrosoftOAuth = (globalObj = currentGlobal()) => {
+  if (!isMicrosoftConnectAvailable(globalObj)) return false;
+  if (globalObj?.electronAPI?.microsoftSignIn) return false;
+  if (globalObj?.electronAPI?.openOAuthWindow) return false;
+  return true;
 };
 
 

@@ -8,7 +8,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createMicrosoftAuthMain, toRendererAuthResult } from '../src/electron/msalAuthMain.js';
+import {
+  accountsToEvict,
+  classifySilentTokenError,
+  createMicrosoftAuthMain,
+  selectPreferredAccount,
+  toRendererAuthResult,
+} from '../src/electron/msalAuthMain.js';
 import { createMsalCacheStore } from '../src/electron/msalCacheStore.cjs';
 import fs from 'node:fs';
 
@@ -102,4 +108,95 @@ test('a corrupt/undecryptable cache file reads as empty (fresh sign-in), never t
   assert.equal(store.readPersistedCache(), null);
   assert.equal(store.removePersistedCache(), true);
   assert.equal(fs.existsSync(filePath), false);
+});
+
+test('silent token errors classify interaction vs transient network blips', () => {
+  assert.deepEqual(
+    classifySilentTokenError({ name: 'InteractionRequiredAuthError', message: 'login_required' }),
+    { needsInteraction: true, transient: false },
+  );
+  assert.deepEqual(
+    classifySilentTokenError({ errorCode: 'invalid_grant', message: 'AADSTS70000' }),
+    { needsInteraction: true, transient: false },
+  );
+  assert.deepEqual(
+    classifySilentTokenError({ errorCode: 'network_error', message: 'fetch failed' }),
+    { needsInteraction: false, transient: true },
+  );
+  assert.deepEqual(
+    classifySilentTokenError({ message: 'getaddrinfo ENOTFOUND login.microsoftonline.com' }),
+    { needsInteraction: false, transient: true },
+  );
+  assert.deepEqual(
+    classifySilentTokenError({ message: 'unexpected cache read' }),
+    { needsInteraction: false, transient: true },
+  );
+});
+
+test('preferred-account helpers evict every cached account except the selected one', () => {
+  const accounts = [
+    { homeAccountId: 'old-id', username: 'old@x.com' },
+    { homeAccountId: 'new-id', username: 'new@x.com' },
+  ];
+  assert.equal(selectPreferredAccount(accounts, 'new-id').homeAccountId, 'new-id');
+  assert.equal(selectPreferredAccount(accounts, 'missing-id').homeAccountId, 'old-id');
+  assert.deepEqual(accountsToEvict(accounts, 'new-id').map((a) => a.homeAccountId), ['old-id']);
+  assert.deepEqual(accountsToEvict(accounts, null).map((a) => a.homeAccountId), ['old-id', 'new-id']);
+  assert.equal(selectPreferredAccount([], 'new-id'), null);
+});
+
+test('interactive sign-in evicts the previous account so silent refresh uses the new one', async () => {
+  const accounts = [
+    { homeAccountId: 'old-id', username: 'old@x.com' },
+    { homeAccountId: 'new-id', username: 'new@x.com' },
+  ];
+  const removed = [];
+  const pca = {
+    acquireTokenInteractive: async () => ({
+      accessToken: 'at-new',
+      expiresOn: new Date('2026-06-09T12:00:00Z'),
+      account: accounts[1],
+    }),
+    acquireTokenSilent: async ({ account }) => ({
+      accessToken: 'at-silent',
+      expiresOn: new Date('2026-06-09T13:00:00Z'),
+      account,
+    }),
+    getTokenCache: () => ({
+      getAllAccounts: async () => accounts.filter((account) => !removed.includes(account.homeAccountId)),
+      removeAccount: async (account) => { removed.push(account.homeAccountId); },
+    }),
+  };
+  const svc = createMicrosoftAuthMain({
+    ...stubElectron(),
+    createPublicClientApplication: () => pca,
+  });
+  const signed = await svc.signIn();
+  assert.equal(signed.success, true);
+  assert.equal(signed.account.homeAccountId, 'new-id');
+  assert.deepEqual(removed, ['old-id']);
+  const token = await svc.getAccessToken();
+  assert.equal(token.success, true);
+  assert.equal(token.account.homeAccountId, 'new-id');
+});
+
+test('network blip on silent refresh is transient, not needsInteraction', async () => {
+  const pca = {
+    acquireTokenSilent: async () => {
+      const err = new Error('fetch failed');
+      err.errorCode = 'network_error';
+      throw err;
+    },
+    getTokenCache: () => ({
+      getAllAccounts: async () => [{ homeAccountId: 'oid.tid', username: 'u@x.com' }],
+    }),
+  };
+  const svc = createMicrosoftAuthMain({
+    ...stubElectron(),
+    createPublicClientApplication: () => pca,
+  });
+  const res = await svc.getAccessToken();
+  assert.equal(res.success, false);
+  assert.equal(res.needsInteraction, false);
+  assert.equal(res.transient, true);
 });

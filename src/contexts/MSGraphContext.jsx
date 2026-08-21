@@ -9,12 +9,21 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
-import { buildConnectionMarkerRow, buildMainAuthAccount } from '../services/microsoftConnectionMarker';
+import {
+    buildConnectionMarkerRow,
+    buildMainAuthAccount,
+    hasLegacyRendererTokens,
+    interpretMainProcessRestore,
+    isMainCustodyRow,
+    shouldAdoptRemoteRefreshToken,
+    shouldWipeSharedConnectionRow,
+} from '../services/microsoftConnectionMarker';
 import {
     cleanMicrosoftReturnUrl,
-    isCapacitorMicrosoftConnectHidden,
+    isMicrosoftConnectAvailable,
     microsoftRedirectUriFor,
     microsoftReturnUrlFor,
+    shouldStartFullPageMicrosoftOAuth,
 } from '../utils/microsoftOAuthRouting';
 
 export { microsoftRedirectUriFor, microsoftReturnUrlFor } from '../utils/microsoftOAuthRouting';
@@ -149,42 +158,6 @@ export const MSGraphProvider = ({ children }) => {
         };
     }, []);
 
-    // Adopt a main-process auth result (sign-in or silent restore): the MSAL cache
-    // in the Electron main process is now the source of truth; the renderer keeps
-    // only the access token, and connected_services is reduced to a NO-TOKEN marker.
-    const adoptMainAuthResult = useCallback(async (authResult) => {
-        const acct = buildMainAuthAccount(authResult.account || {});
-        custodyRef.current = 'main';
-        tokenMetadataRef.current = {
-            custody: 'main',
-            refresh_token: null, // never present in the renderer on this path
-            access_token: authResult.accessToken,
-            expires_at: authResult.expiresAt,
-            tenant_id: acct.tenantId,
-            account_id: acct.homeAccountId,
-            account_email: acct.username,
-            account_name: acct.name,
-        };
-        setAccount({ username: acct.username, name: acct.name, homeAccountId: acct.homeAccountId });
-        setIsAuthenticated(true);
-        setNeedsReconnect(false);
-        await initializeGraphClient(authResult.accessToken);
-        refreshStateRef.current.cooldownUntil = 0;
-        refreshStateRef.current.hardBlockedUntil = 0;
-        refreshStateRef.current.lastErrorCode = null;
-        writeRefreshBlockUntil(0);
-        if (user && isSupabaseAvailable()) {
-            try {
-                await supabase
-                    .from('connected_services')
-                    .upsert(buildConnectionMarkerRow({ userId: user.id, account: acct }), { onConflict: 'user_id,service_name' });
-            } catch {
-                // Marker is best-effort; token custody lives in the main process.
-            }
-        }
-        return true;
-    }, [user, initializeGraphClient]);
-
     // Store tokens in Supabase database
     const storeTokens = useCallback(async (tokens, accountInfo) => {
         if (!user || !isSupabaseAvailable()) return false;
@@ -244,6 +217,52 @@ export const MSGraphProvider = ({ children }) => {
             return null;
         }
     }, [user]);
+
+    // Adopt a main-process auth result (sign-in or silent restore): the MSAL cache
+    // in the Electron main process is now the source of truth; the renderer keeps
+    // only the access token. The shared marker merges any web PKCE tokens already
+    // stored so desktop restore cannot wipe the other surfaces (P2-14).
+    const adoptMainAuthResult = useCallback(async (authResult) => {
+        const acct = buildMainAuthAccount(authResult.account || {});
+        custodyRef.current = 'main';
+        tokenMetadataRef.current = {
+            custody: 'main',
+            refresh_token: null, // never present in the renderer on this path
+            access_token: authResult.accessToken,
+            expires_at: authResult.expiresAt,
+            tenant_id: acct.tenantId,
+            account_id: acct.homeAccountId,
+            account_email: acct.username,
+            account_name: acct.name,
+        };
+        setAccount({ username: acct.username, name: acct.name, homeAccountId: acct.homeAccountId });
+        setIsAuthenticated(true);
+        setNeedsReconnect(false);
+        setError(null);
+        await initializeGraphClient(authResult.accessToken);
+        refreshStateRef.current.cooldownUntil = 0;
+        refreshStateRef.current.hardBlockedUntil = 0;
+        refreshStateRef.current.lastErrorCode = null;
+        writeRefreshBlockUntil(0);
+        if (user && isSupabaseAvailable()) {
+            try {
+                const existing = await fetchStoredTokens();
+                await supabase
+                    .from('connected_services')
+                    .upsert(
+                        buildConnectionMarkerRow({
+                            userId: user.id,
+                            account: acct,
+                            existingMetadata: existing?.metadata,
+                        }),
+                        { onConflict: 'user_id,service_name' },
+                    );
+            } catch {
+                // Marker is best-effort; token custody lives in the main process.
+            }
+        }
+        return true;
+    }, [user, initializeGraphClient, fetchStoredTokens]);
 
     // Refresh access token using refresh token
     const refreshAccessToken = useCallback(async (refreshToken, options = {}) => {
@@ -306,25 +325,62 @@ export const MSGraphProvider = ({ children }) => {
                         state.hardBlockedUntil = blockUntil;
                         state.cooldownUntil = blockUntil;
                         writeRefreshBlockUntil(blockUntil);
-                        setNeedsReconnect(true);
-                        setIsAuthenticated(false);
-                        setGraphClient(null);
-                        tokenRef.current = null;
-                        tokenMetadataRef.current = null;
 
+                        let adoptedRemote = false;
                         if (user && isSupabaseAvailable()) {
                             try {
-                                await supabase
-                                    .from('connected_services')
-                                    .update({
-                                        is_connected: false,
-                                        metadata: {}
-                                    })
-                                    .eq('user_id', user.id)
-                                    .eq('service_name', 'microsoft');
+                                const current = await fetchStoredTokens();
+                                const storedRefreshToken = current?.metadata?.refresh_token;
+                                if (shouldAdoptRemoteRefreshToken({
+                                    storedRefreshToken,
+                                    failedRefreshToken: refreshToken,
+                                })) {
+                                    adoptedRemote = true;
+                                    setTokenMetadataCache(current.metadata, {
+                                        tenant_id: current.metadata?.tenant_id,
+                                        account_id: current.account_id,
+                                        account_email: current.account_email,
+                                        account_name: current.account_name,
+                                    });
+                                    state.hardBlockedUntil = 0;
+                                    state.cooldownUntil = 0;
+                                    state.lastErrorCode = null;
+                                    writeRefreshBlockUntil(0);
+                                    const expiresAt = Number(current.metadata?.expires_at) || 0;
+                                    const nowSec = Math.floor(Date.now() / 1000);
+                                    if (current.metadata?.access_token && expiresAt > nowSec + 60) {
+                                        return {
+                                            access_token: current.metadata.access_token,
+                                            refresh_token: storedRefreshToken,
+                                            id_token: current.metadata.id_token,
+                                            expires_at: expiresAt,
+                                            refresh_reason: 'adopted_remote',
+                                        };
+                                    }
+                                } else if (shouldWipeSharedConnectionRow({
+                                    storedRefreshToken,
+                                    failedRefreshToken: refreshToken,
+                                })) {
+                                    await supabase
+                                        .from('connected_services')
+                                        .update({
+                                            is_connected: false,
+                                            metadata: {}
+                                        })
+                                        .eq('user_id', user.id)
+                                        .eq('service_name', 'microsoft');
+                                }
                             } catch {
-                                // Best-effort cleanup; reconnect UI state is still enforced above.
+                                // Best-effort compare-before-wipe; local reconnect still applies below.
                             }
+                        }
+
+                        if (!adoptedRemote) {
+                            setNeedsReconnect(true);
+                            setIsAuthenticated(false);
+                            setGraphClient(null);
+                            tokenRef.current = null;
+                            tokenMetadataRef.current = null;
                         }
                     } else {
                         state.cooldownUntil = Date.now() + MS_REFRESH_COOLDOWN_MS;
@@ -355,7 +411,7 @@ export const MSGraphProvider = ({ children }) => {
 
         state.inFlight = runRefresh();
         return state.inFlight;
-    }, [setGraphClient, setIsAuthenticated, setNeedsReconnect, user]);
+    }, [setGraphClient, setIsAuthenticated, setNeedsReconnect, user, fetchStoredTokens, setTokenMetadataCache]);
 
     // Remove connection
     const removeConnection = useCallback(async () => {
@@ -412,26 +468,33 @@ export const MSGraphProvider = ({ children }) => {
                             let res = await window.electronAPI.microsoftGetAccessToken();
                             if (!res?.success && !res?.needsInteraction) {
                                 // One retry for transient failures (network blip) before
-                                // surfacing reconnect — never lock out on a single miss.
+                                // classifying — InteractionRequired is the only reconnect.
                                 res = await window.electronAPI.microsoftGetAccessToken();
                             }
-                            if (res?.success && res.accessToken) {
+                            const decision = interpretMainProcessRestore({
+                                signedIn: true,
+                                tokenResult: res,
+                            });
+                            if (decision.action === 'adopt') {
                                 if (isMounted) await adoptMainAuthResult(res);
                                 setIsLoading(false);
                                 setConnectionRestored(true);
                                 return;
                             }
-                            // The MSAL cache HAS this account but no token could be
-                            // acquired. Surface reconnect against the cached account
-                            // here — do NOT fall through, where the no-token marker
-                            // row would be misread as a missing legacy connection.
+                            // Keep the cached account. Only InteractionRequired is a
+                            // broken connection; a network blip stays retryable (P2-26).
                             if (isMounted) {
                                 custodyRef.current = 'main';
                                 const acct = buildMainAuthAccount(status.account || {});
                                 setAccount({ username: acct.username, name: acct.name, homeAccountId: acct.homeAccountId });
-                                setNeedsReconnect(true);
                                 setIsAuthenticated(false);
                                 setGraphClient(null);
+                                if (decision.action === 'reconnect') {
+                                    setNeedsReconnect(true);
+                                } else {
+                                    setNeedsReconnect(false);
+                                    setError('Microsoft temporarily unreachable');
+                                }
                             }
                             setIsLoading(false);
                             setConnectionRestored(true);
@@ -444,7 +507,23 @@ export const MSGraphProvider = ({ children }) => {
 
                 const storedData = await fetchStoredTokens();
 
-                if (!storedData?.is_connected || !storedData?.metadata?.refresh_token) {
+                if (hasLegacyRendererTokens(storedData)) {
+                    // Continue into the token restore path below.
+                } else if (isMainCustodyRow(storedData)) {
+                    if (isMounted) {
+                        setIsAuthenticated(false);
+                        setGraphClient(null);
+                        setAccount({
+                            username: storedData.account_email,
+                            name: storedData.account_name,
+                            homeAccountId: storedData.account_id,
+                        });
+                        setNeedsReconnect(false);
+                    }
+                    setIsLoading(false);
+                    setConnectionRestored(true);
+                    return;
+                } else if (!storedData?.is_connected || !storedData?.metadata?.refresh_token) {
                     if (isMounted) {
                         setIsAuthenticated(false);
                         setGraphClient(null);
@@ -533,6 +612,26 @@ export const MSGraphProvider = ({ children }) => {
         restoreConnection();
         return () => { isMounted = false; };
     }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient, setTokenMetadataCache, adoptMainAuthResult]);
+
+    // P2-26: a launch-time network blip keeps the cached account and retries
+    // when connectivity returns instead of demanding a full re-auth.
+    useEffect(() => {
+        if (typeof window === 'undefined' || !window.electronAPI?.microsoftGetAccessToken) return undefined;
+        const onOnline = async () => {
+            if (custodyRef.current !== 'main') return;
+            if (needsReconnect || isAuthenticated) return;
+            try {
+                const res = await window.electronAPI.microsoftGetAccessToken();
+                if (res?.success && res.accessToken) {
+                    await adoptMainAuthResult(res);
+                }
+            } catch {
+                // Stay in the transient unreachable state.
+            }
+        };
+        window.addEventListener('online', onOnline);
+        return () => window.removeEventListener('online', onOnline);
+    }, [isAuthenticated, needsReconnect, adoptMainAuthResult]);
 
     // Periodic token refresh - refresh every 10 minutes to stay ahead of expiry
     // Microsoft access tokens typically last 60-90 minutes, but can be revoked anytime
@@ -774,7 +873,7 @@ export const MSGraphProvider = ({ children }) => {
         return true;
     }, [storeTokens, initializeGraphClient]);
 
-    const microsoftConnectAvailable = !isCapacitorMicrosoftConnectHidden();
+    const microsoftConnectAvailable = isMicrosoftConnectAvailable();
 
     // Login using direct OAuth flow (not Supabase linkIdentity)
     const login = useCallback(async () => {
@@ -783,7 +882,7 @@ export const MSGraphProvider = ({ children }) => {
 
             // P2-13: Capacitor deep-link OAuth is out of scope. UI hides Connect;
             // refuse here so a stray caller cannot start a dead-end redirect.
-            if (isCapacitorMicrosoftConnectHidden()) {
+            if (!isMicrosoftConnectAvailable()) {
                 throw new Error('Microsoft sign-in is not available in the iOS/Android app. Connect on web or desktop.');
             }
 
@@ -859,6 +958,9 @@ export const MSGraphProvider = ({ children }) => {
             }
 
             // Browser fallback: full-page redirect flow.
+            if (!shouldStartFullPageMicrosoftOAuth()) {
+                throw new Error('Microsoft sign-in is not available in this runtime.');
+            }
             window.location.href = authUrl.toString();
             return true;
         } catch (err) {

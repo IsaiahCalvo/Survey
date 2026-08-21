@@ -35,7 +35,8 @@ test('renderer prefers main-process custody for login, restore, refresh, and log
 });
 
 test('main-custody path stores a NO-TOKEN marker row, not tokens', () => {
-  assert.match(context, /buildConnectionMarkerRow\(\{ userId: user\.id, account: acct \}\)/);
+  assert.match(context, /buildConnectionMarkerRow\(\{[\s\S]*userId: user\.id,[\s\S]*account: acct/);
+  assert.match(context, /existingMetadata: existing\?\.metadata/);
 });
 
 test('legacy embedded flow is retained as the fallback (web build + unmigrated rows)', () => {

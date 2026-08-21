@@ -66,6 +66,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
+import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 
 const pdfExportDebug = (...args) => {
@@ -1755,10 +1756,13 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     const color = hexToRGB(fabricObj.stroke || '#000000');
     const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
 
-    const left = fabricObj.left || 0;
-    const top = fabricObj.top || 0;
-    const width = fabricObj.width || 0;
-    const height = fabricObj.height || 0;
+    const scaleX = Math.abs(Number(fabricObj.scaleX) || 1);
+    const scaleY = Math.abs(Number(fabricObj.scaleY) || 1);
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const width = Math.max(0, (Number(fabricObj.width) || 0) * scaleX);
+    const height = Math.max(0, (Number(fabricObj.height) || 0) * scaleY);
+    if (![left, top, width, height, pageHeight].every(Number.isFinite)) return null;
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = left;
@@ -1779,6 +1783,19 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     // Add fill color if present
     if (fillColor && fabricObj.fill !== 'transparent') {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
+    }
+
+    const cloudIntensity = Number(
+      fabricObj?.data?.pdfCloudIntensity ?? fabricObj?.cloudIntensity
+    );
+    const isCloud = Number.isFinite(cloudIntensity)
+      || fabricObj?.cloudBorder
+      || fabricObj?.borderEffect === 'cloudy';
+    if (isCloud) {
+      annotationDict.BE = pdfDoc.context.obj({
+        S: PDFName.of('C'),
+        I: PDFNumber.of(Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2)),
+      });
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -3287,14 +3304,13 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (Array.isArray(obj.objects)) {
     const parentLeft = Number(obj.left) || 0;
     const parentTop = Number(obj.top) || 0;
+    // Offset only the bbox origin. Line x1..y2 stay center-relative so
+    // getLineEndpoints (left+width/2 + x1) yields world coords. Adding
+    // parentLeft to x1 here used to double-offset after the P1-01 fix.
     return obj.objects.reduce((sum, child) => sum + drawFlattenedObject(page, {
       ...child,
       left: (Number(child?.left) || 0) + parentLeft,
       top: (Number(child?.top) || 0) + parentTop,
-      x1: child?.x1 !== undefined ? (Number(child.x1) || 0) + parentLeft : child?.x1,
-      y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
-      x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
-      y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
     }, pageHeight, fonts, offset), 0);
   }
   const type = String(obj.type || '').toLowerCase();
@@ -3305,9 +3321,12 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   const fill = parsePdfDrawColor(shifted?.fill, '#ffffff');
   const left = getObjNumber(shifted, 'left');
   const top = getObjNumber(shifted, 'top');
-  const width = Math.max(0, getObjNumber(shifted, 'width'));
-  const height = Math.max(0, getObjNumber(shifted, 'height'));
+  const scaleX = Math.abs(Number(shifted?.scaleX) || 1);
+  const scaleY = Math.abs(Number(shifted?.scaleY) || 1);
+  const width = Math.max(0, getObjNumber(shifted, 'width') * scaleX);
+  const height = Math.max(0, getObjNumber(shifted, 'height') * scaleY);
   const strokeWidth = Math.max(0.5, Number(shifted?.strokeWidth) || 1);
+  if (![left, top, width, height, pageHeight].every(Number.isFinite)) return 0;
 
   if ((type === 'circle' || type === 'ellipse') && shifted?.data?.type === 'counter') {
     drawFlattenedCounterPin(page, shifted, pageHeight, fonts.bold);
@@ -3330,6 +3349,34 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'rect') {
+    const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity ?? shifted?.cloudIntensity);
+    if (Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
+      const cloudCmds = buildCloudPathCommands(
+        [
+          { x: left, y: top },
+          { x: left + width, y: top },
+          { x: left + width, y: top + height },
+          { x: left, y: top + height },
+        ],
+        cloudIntensity,
+        strokeWidth,
+      );
+      const cloudPath = Array.isArray(cloudCmds) && cloudCmds.length > 0
+        ? fabricPathToSvgPath(cloudCmds)
+        : '';
+      if (cloudPath) {
+        page.drawSvgPath(cloudPath, {
+          x: 0,
+          y: pageHeight,
+          color: fill?.color,
+          opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
+          borderColor: stroke.color,
+          borderWidth: strokeWidth,
+          borderOpacity: stroke.opacity,
+        });
+        return 1;
+      }
+    }
     // UX (2026-07-17, line style): dashed/dotted rect borders (incl. the
     // callout text box, which flattens through this branch) print with their
     // on-screen dash pattern instead of flattening solid.

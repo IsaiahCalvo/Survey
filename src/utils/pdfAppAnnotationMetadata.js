@@ -50,6 +50,8 @@ const DATA_ALLOWLIST = [
   'arrowheadStyle',
   'lineEnding1',
   'lineEnding2',
+  'pdfCloudIntensity',
+  'pdfCloudPathD',
 ];
 
 const STYLE_KEYS = [

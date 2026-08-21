@@ -94,6 +94,98 @@ const buildPreviewObjects = (updatedAnnotations, originals) => {
   return previewObjects;
 };
 
+/** Stable id used for drag re-resolve and undo selection remap (P1-06 / P1-08). */
+export function getAnnotationStableId(obj) {
+  if (!obj) return null;
+  if (obj.id != null && obj.id !== '') return obj.id;
+  if (obj.data?.id != null && obj.data.id !== '') return obj.data.id;
+  return null;
+}
+
+/**
+ * Re-resolve a drag target by captured id. If the id is gone (teammate
+ * delete / undo splice), return -1 so the commit no-ops instead of writing
+ * the stale index. Index is used only when no id was captured (legacy).
+ */
+export function resolveAnnotationIndexById(objects, annotationId, fallbackIndex = -1) {
+  if (!Array.isArray(objects)) return -1;
+  if (annotationId != null && annotationId !== '') {
+    return objects.findIndex((obj) => getAnnotationStableId(obj) === annotationId);
+  }
+  if (Number.isInteger(fallbackIndex) && fallbackIndex >= 0 && fallbackIndex < objects.length && objects[fallbackIndex]) {
+    return fallbackIndex;
+  }
+  return -1;
+}
+
+export function captureSelectionStableIds(selectedIndices, objects) {
+  const ids = [];
+  for (const idx of selectedIndices || []) {
+    const id = getAnnotationStableId(objects?.[idx]);
+    if (id != null) ids.push(id);
+  }
+  return ids;
+}
+
+/** Remap a selection of stable ids onto the current objects array. Missing ids drop. */
+export function remapSelectionByStableIds(stableIds, objects) {
+  const next = new Set();
+  if (!Array.isArray(stableIds) || !Array.isArray(objects)) return next;
+  for (const id of stableIds) {
+    const idx = objects.findIndex((obj) => getAnnotationStableId(obj) === id);
+    if (idx >= 0) next.add(idx);
+  }
+  return next;
+}
+
+export function unionIdSet(current, incoming) {
+  const next = new Set(current instanceof Set ? current : (Array.isArray(current) ? current : []));
+  for (const id of incoming || []) next.add(id);
+  return next;
+}
+
+export function subtractIdSet(current, incoming) {
+  const next = new Set(current instanceof Set ? current : (Array.isArray(current) ? current : []));
+  for (const id of incoming || []) next.delete(id);
+  return next;
+}
+
+/** Pack world endpoints back into the fabric center-relative contract. */
+export function packLineFromWorldEndpoints(p1, p2) {
+  const left = Math.min(p1.x, p2.x);
+  const top = Math.min(p1.y, p2.y);
+  const width = Math.max(1, Math.abs(p2.x - p1.x));
+  const height = Math.max(1, Math.abs(p2.y - p1.y));
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  return {
+    left,
+    top,
+    width,
+    height,
+    x1: p1.x - cx,
+    y1: p1.y - cy,
+    x2: p2.x - cx,
+    y2: p2.y - cy,
+  };
+}
+
+/**
+ * Group rotate/resize for lines must use getLineEndpoints (center + left/top),
+ * not `x1 + left`. After the world transform, pack back so the renderer and
+ * a later getLineEndpoints call agree.
+ */
+export function applyGroupLineWorldTransform(orig, transformPoint) {
+  const ep = getLineEndpoints(orig);
+  const p1 = transformPoint(ep.x1, ep.y1);
+  const p2 = transformPoint(ep.x2, ep.y2);
+  const packed = packLineFromWorldEndpoints(p1, p2);
+  const midpoint = orig?.midpoint
+    ? transformPoint(orig.midpoint.x, orig.midpoint.y)
+    : null;
+  return { ...packed, midpoint };
+}
+
 /**
  * @param {object} options
  * @param {React.RefObject<SVGSVGElement>} options.svgRef - Ref to root <svg> element
@@ -192,6 +284,7 @@ export function useSVGInteraction({
     startSVGPoint: null,  // { x, y } in viewBox coords at drag start
     originalProps: null,  // { left, top, scaleX, scaleY, angle, width, height } snapshot
     annotationIndex: null,
+    annotationId: null,   // P1-06: stable id captured at drag start; commit re-resolves or no-ops
     ctmInverse: null,     // cached CTM inverse for the entire drag
     anchorX: null,        // resize: opposite corner X
     anchorY: null,        // resize: opposite corner Y
@@ -368,6 +461,33 @@ export function useSVGInteraction({
     window.__selectedAnnotationIds = ids;
     return undefined;
   }, [selectedIds, annotations]);
+
+  // P1-08: selectedIds is a Set of raw indices. Undo/collab splice shifts
+  // those indices, so the next drag would hit a different shape. Capture
+  // stable ids whenever the user changes selection; remap (or clear) when
+  // the annotations array identity changes.
+  const selectedStableIdsRef = useRef([]);
+
+  useEffect(() => {
+    if (dragStateRef.current?.active) return;
+    selectedStableIdsRef.current = captureSelectionStableIds(selectedIds, annotations?.objects);
+  }, [selectedIds]);
+
+  useEffect(() => {
+    if (dragStateRef.current?.active) return;
+    const objects = annotations?.objects;
+    const captured = selectedStableIdsRef.current;
+    if (!Array.isArray(captured) || captured.length === 0) {
+      if (selectedIds?.size && (!Array.isArray(objects) || [...selectedIds].some((idx) => idx < 0 || idx >= (objects?.length || 0)))) {
+        setSelectedIds(new Set());
+      }
+      return;
+    }
+    const remapped = remapSelectionByStableIds(captured, objects);
+    const current = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
+    if (remapped.size === current.size && [...remapped].every((idx) => current.has(idx))) return;
+    setSelectedIds(remapped);
+  }, [annotations]);
 
   // ---------------------------------------------------------------------------
   // Clear selection when annotations prop identity changes
@@ -709,6 +829,7 @@ export function useSVGInteraction({
             height: imported ? bbox.height : (obj.height ?? 0),
           },
           annotationIndex: index,
+          annotationId: getAnnotationStableId(obj),
           ctmInverse,
           anchorX: null,
           anchorY: null,
@@ -1165,6 +1286,15 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds.active) return;
 
+    // P1-06: a teammate delete mid-drag must not preview-transform the
+    // object that now occupies the frozen index. Re-resolve by captured
+    // id; if gone, skip live mutations (pointerup no-ops + resets).
+    if (ds.annotationId != null && ds.annotationId !== '') {
+      const liveIdx = resolveAnnotationIndexById(annotations?.objects, ds.annotationId, -1);
+      if (liveIdx < 0) return;
+      ds.annotationIndex = liveIdx;
+    }
+
     // KAL-75 (G4): locked/read-only documents — a drag gesture must never
     // mutate geometry. Disarm in place: pointer-up then takes its non-drag
     // (click-style) path and commits nothing. Selection itself stays live
@@ -1381,18 +1511,21 @@ export function useSVGInteraction({
           // zero. The line's curvature midpoint is already absolute world
           // coords, so it rotates directly.
           if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = rotPt(wx1, wy1);
-            const p2 = rotPt(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
-          }
-          if (orig.midpoint) {
+            // P1-05: world endpoints come from getLineEndpoints (center +
+            // left/top), not `x1 + left`. Pack back to the fabric contract.
+            const next = applyGroupLineWorldTransform(orig, (x, y) => rotPt(x, y));
+            target.left = next.left;
+            target.top = next.top;
+            target.width = next.width;
+            target.height = next.height;
+            target.x1 = next.x1;
+            target.y1 = next.y1;
+            target.x2 = next.x2;
+            target.y2 = next.y2;
+            if (next.midpoint) {
+              target.data = { ...(target.data || {}), midpoint: { x: next.midpoint.x, y: next.midpoint.y } };
+            }
+          } else if (orig.midpoint) {
             const m = rotPt(orig.midpoint.x, orig.midpoint.y);
             target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
           }
@@ -1646,18 +1779,20 @@ export function useSVGInteraction({
           // persisted rotation exists), then write back with left/top
           // reset to zero.
           if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = scalePoint(wx1, wy1);
-            const p2 = scalePoint(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
-          }
-          if (orig.midpoint) {
+            // P1-05: same getLineEndpoints + fabric pack as group-rotate.
+            const next = applyGroupLineWorldTransform(orig, (x, y) => scalePoint(x, y));
+            target.left = next.left;
+            target.top = next.top;
+            target.width = next.width;
+            target.height = next.height;
+            target.x1 = next.x1;
+            target.y1 = next.y1;
+            target.x2 = next.x2;
+            target.y2 = next.y2;
+            if (next.midpoint) {
+              target.data = { ...(target.data || {}), midpoint: { x: next.midpoint.x, y: next.midpoint.y } };
+            }
+          } else if (orig.midpoint) {
             const mp = scalePoint(orig.midpoint.x, orig.midpoint.y);
             target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
           }
@@ -2798,9 +2933,11 @@ export function useSVGInteraction({
             return nextSet;
           });
         }
-        // Callout subtract: no-op for now — callouts live in App.jsx
-        // state and the hook doesn't hold the current Set to mutate.
-        // Revisit when callout subtract becomes a user-visible need.
+        // P1-29: Alt-subtract callouts against the current selection set
+        // the parent already threads in as selectedCalloutIds.
+        if (calloutIds.length > 0 && onSelectedCalloutIdsChange) {
+          onSelectedCalloutIdsChange(subtractIdSet(selectedCalloutIds, calloutIds));
+        }
       } else if (mq.shiftHeld) {
         // Union: add marquee hits to the existing selection. Empty result
         // + Shift held is a no-op per 19-CONTEXT.md acceptance criteria.
@@ -2812,12 +2949,8 @@ export function useSVGInteraction({
           });
         }
         if (calloutIds.length > 0 && onSelectedCalloutIdsChange) {
-          // NOTE: callouts live in App.jsx state; the hook doesn't hold
-          // the current selected-callout Set. Union against the latest
-          // hits only — App.jsx's setSelectedCalloutIds callback receives
-          // the full next Set. If App.jsx needs true union semantics
-          // across calls, it can do the merge itself in the callback.
-          onSelectedCalloutIdsChange(new Set(calloutIds));
+          // P1-29: Shift+marquee unions callouts with the current set.
+          onSelectedCalloutIdsChange(unionIdSet(selectedCalloutIds, calloutIds));
         }
       } else {
         // Replace: marquee hits become the entire selection, including
@@ -2832,6 +2965,16 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    // P1-06: re-resolve by captured id. If the annotation is gone, no-op
+    // (reset below still clears drag so the tool cannot stick).
+    if (ds.annotationId != null && ds.annotationId !== '') {
+      const liveIdx = resolveAnnotationIndexById(annotations?.objects, ds.annotationId, -1);
+      if (liveIdx < 0) {
+        dragStateRef.current = { ...dragStateRef.current, active: false, annotationIndex: null, annotationId: null };
+        return;
+      }
+      ds.annotationIndex = liveIdx;
+    }
     markAnnotationPointerRelease(ds.diagGestureId, {
       action: ds.mode,
       handleId: ds.handleId || null,
@@ -3643,7 +3786,7 @@ export function useSVGInteraction({
     // Reset drag state
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
-      originalProps: null, annotationIndex: null, ctmInverse: null,
+      originalProps: null, annotationIndex: null, annotationId: null, ctmInverse: null,
       anchorX: null, anchorY: null, centerX: null, centerY: null,
       currentResize: null, currentAngle: undefined, groupOriginals: null,
       originalEndpoints: null, currentEndpoint: null,
@@ -4000,6 +4143,7 @@ export function useSVGInteraction({
         originalMidpoint,
         currentMidpoint: null,
         annotationIndex: selectedIndex,
+        annotationId: getAnnotationStableId(obj),
         ctmInverse,
         // UX 2026-04-20: capture rotation so pointermove can un-rotate the
         // world drag delta into local frame before adding it to the local-
@@ -4092,6 +4236,7 @@ export function useSVGInteraction({
           ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y }
           : null,
         annotationIndex: selectedIndex,
+        annotationId: getAnnotationStableId(obj),
         ctmInverse,
         currentEndpoint: null,
         currentMidpoint: null,
@@ -4255,6 +4400,7 @@ export function useSVGInteraction({
         pointsPathOffsetY,
       },
       annotationIndex: selectedIndex,
+      annotationId: getAnnotationStableId(obj),
       ctmInverse,
       anchorX: anchor.x,
       anchorY: anchor.y,

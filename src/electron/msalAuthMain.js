@@ -47,10 +47,58 @@ const toRendererAuthResult = (result) => ({
   }
 });
 
-const createMicrosoftAuthMain = ({ app, shell, safeStorage, logger = console }) => {
+const TRANSIENT_ERROR_CODES = new Set([
+  'network_error',
+  'temporarily_unavailable',
+  'service_unavailable',
+  'request_timeout',
+]);
+const TRANSIENT_ERROR_TEXT = /network|econnreset|enotfound|etimedout|econnrefused|fetch failed|temporarily_unavailable|service_unavailable|throttl|timeout|offline|dns|socket/i;
+const INTERACTION_ERROR_TEXT = /interaction_required|consent_required|login_required|invalid_grant/;
+
+const classifySilentTokenError = (err) => {
+  if (!err) return { needsInteraction: false, transient: true };
+  const name = String(err.name || '');
+  const code = String(err.errorCode || err.code || '').toLowerCase();
+  const message = String(err.errorMessage || err.message || '').toLowerCase();
+  const haystack = `${code} ${message}`;
+  if (
+    name === 'InteractionRequiredAuthError' ||
+    INTERACTION_ERROR_TEXT.test(haystack)
+  ) {
+    return { needsInteraction: true, transient: false };
+  }
+  if (TRANSIENT_ERROR_CODES.has(code) || TRANSIENT_ERROR_TEXT.test(haystack)) {
+    return { needsInteraction: false, transient: true };
+  }
+  // Unknown silent failures stay transient so a launch blip cannot lock out (P2-26).
+  return { needsInteraction: false, transient: true };
+};
+
+const selectPreferredAccount = (accounts = [], preferredHomeAccountId = null) => {
+  if (!accounts.length) return null;
+  if (preferredHomeAccountId) {
+    return accounts.find((account) => account?.homeAccountId === preferredHomeAccountId) || accounts[0];
+  }
+  return accounts[0];
+};
+
+const accountsToEvict = (accounts = [], keepHomeAccountId = null) => {
+  if (!keepHomeAccountId) return [...accounts];
+  return accounts.filter((account) => account?.homeAccountId !== keepHomeAccountId);
+};
+
+const createMicrosoftAuthMain = ({
+  app,
+  shell,
+  safeStorage,
+  logger = console,
+  createPublicClientApplication,
+} = {}) => {
   let pcaPromise = null;
   let cacheStore = null;
   let interactiveInFlight = null;
+  let preferredHomeAccountId = null;
 
   const getCacheStore = () => {
     if (!cacheStore) {
@@ -74,23 +122,33 @@ const createMicrosoftAuthMain = ({ app, shell, safeStorage, logger = console }) 
   const getPca = () => {
     if (!pcaPromise) {
       pcaPromise = (async () => {
-        const { PublicClientApplication } = require('@azure/msal-node');
-        return new PublicClientApplication({
+        const config = {
           auth: { clientId: AZURE_CLIENT_ID, authority: AUTHORITY },
           cache: { cachePlugin: getCacheStore().cachePlugin }
-        });
+        };
+        if (typeof createPublicClientApplication === 'function') {
+          return createPublicClientApplication(config);
+        }
+        const { PublicClientApplication } = require('@azure/msal-node');
+        return new PublicClientApplication(config);
       })();
     }
     return pcaPromise;
   };
 
+  const evictOtherAccounts = async (pca, keepAccount) => {
+    const keepId = keepAccount?.homeAccountId || null;
+    const cache = pca.getTokenCache();
+    const accounts = await cache.getAllAccounts();
+    for (const account of accountsToEvict(accounts, keepId)) {
+      await cache.removeAccount(account);
+    }
+  };
+
   const getFirstAccount = async () => {
     const pca = await getPca();
     const accounts = await pca.getTokenCache().getAllAccounts();
-    // Known limitation: a single-account app. If two Microsoft accounts ever land
-    // in the cache, the first wins; sign-out clears all. Revisit if multi-account
-    // becomes a real scenario (would need a persisted preferred-account id).
-    return accounts[0] || null;
+    return selectPreferredAccount(accounts, preferredHomeAccountId);
   };
 
   const signIn = async () => {
@@ -107,6 +165,8 @@ const createMicrosoftAuthMain = ({ app, shell, safeStorage, logger = console }) 
           errorTemplate: ERROR_TEMPLATE,
           prompt: 'select_account'
         });
+        preferredHomeAccountId = result.account?.homeAccountId || null;
+        await evictOtherAccounts(pca, result.account);
         return toRendererAuthResult(result);
       } catch (err) {
         const message = err?.errorMessage || err?.message || 'Microsoft sign-in failed';
@@ -132,10 +192,22 @@ const createMicrosoftAuthMain = ({ app, shell, safeStorage, logger = console }) 
       });
       return toRendererAuthResult(result);
     } catch (err) {
-      const { InteractionRequiredAuthError } = require('@azure/msal-node');
-      const needsInteraction = err instanceof InteractionRequiredAuthError;
+      let needsInteraction = false;
+      try {
+        const { InteractionRequiredAuthError } = require('@azure/msal-node');
+        needsInteraction = err instanceof InteractionRequiredAuthError;
+      } catch {
+        needsInteraction = false;
+      }
+      const classified = classifySilentTokenError(err);
+      if (classified.needsInteraction) needsInteraction = true;
       if (!needsInteraction) logger.warn?.(`[msauth] silent token acquisition failed: ${err?.errorCode || ''} ${err?.message || err}`);
-      return { success: false, needsInteraction, error: err?.errorMessage || err?.message || 'Token acquisition failed' };
+      return {
+        success: false,
+        needsInteraction,
+        transient: !needsInteraction,
+        error: err?.errorMessage || err?.message || 'Token acquisition failed',
+      };
     }
   };
 
@@ -160,6 +232,7 @@ const createMicrosoftAuthMain = ({ app, shell, safeStorage, logger = console }) 
 
   const signOut = async () => {
     try {
+      preferredHomeAccountId = null;
       const pca = await getPca();
       const cache = pca.getTokenCache();
       const accounts = await cache.getAllAccounts();
@@ -186,4 +259,12 @@ const registerMicrosoftAuthIpc = ({ ipcMain, app, shell, safeStorage, logger = c
   return service;
 };
 
-module.exports = { createMicrosoftAuthMain, registerMicrosoftAuthIpc, toRendererAuthResult, GRAPH_SCOPES };
+module.exports = {
+  createMicrosoftAuthMain,
+  registerMicrosoftAuthIpc,
+  toRendererAuthResult,
+  GRAPH_SCOPES,
+  classifySilentTokenError,
+  selectPreferredAccount,
+  accountsToEvict,
+};
