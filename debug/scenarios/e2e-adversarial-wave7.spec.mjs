@@ -302,6 +302,9 @@ async function createText(page, text, coords = { x0: 0.20, y0: 0.52, x1: 0.48, y
 test('Font menu offers single-name families after mobile FONT_FAMILIES restore', async ({ page }) => {
   await openEditor(page);
   const created = await createText(page, 'wave7 georgia');
+  const host = page.locator(`[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"]`).first();
+  const hostBox = await host.boundingBox();
+  if (hostBox) await page.mouse.click(hostBox.x + 6, hostBox.y + 6);
   const edit = page.getByRole('button', { name: 'Edit text', exact: true });
   if (await edit.count()) await edit.click();
   const fontBtn = page.getByRole('button', { name: 'Font', exact: true }).first();
