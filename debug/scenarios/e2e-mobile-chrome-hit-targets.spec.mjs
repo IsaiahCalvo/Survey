@@ -46,6 +46,20 @@ async function readPageWidth(page, pageNumber = 1) {
   return page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).evaluate((el) => el.offsetWidth);
 }
 
+async function headerPageLabel(page) {
+  return (await page.getByRole('button', { name: 'Jump to page' }).innerText()).replace(/\s+/g, '');
+}
+
+async function jumpToPage(page, value) {
+  await page.getByRole('button', { name: 'Jump to page' }).click();
+  const input = page.getByRole('textbox', { name: 'Page number' });
+  await expect(input).toBeVisible();
+  await input.fill('');
+  await input.pressSequentially(String(value), { delay: 30 });
+  await expect(input).toHaveValue(String(value).replace(/\D/g, ''));
+  await page.getByRole('button', { name: 'Document title' }).click();
+}
+
 test('mobile 390×844 viewer chrome header / More / dock intended + break + edge', async ({ page }) => {
   await openMobileEditor(page, LINK_PDF);
 
@@ -59,9 +73,13 @@ test('mobile 390×844 viewer chrome header / More / dock intended + break + edge
   const next = page.getByRole('button', { name: 'Next page' });
   await expect(prev).toBeDisabled();
   await expect(next).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Version history' })).toBeDisabled();
-  const sync = page.locator('.mobile-pdf-tools__sync');
-  await expect(sync).toBeDisabled();
+  // History uses getHistoryDocumentId (local ?testPdf= key), not file.id.
+  // Opening it must stay fail-closed for named cloud save (leftover-18 X-01).
+  await page.getByRole('button', { name: 'Version history' }).click();
+  await expect(page.getByText('Version history').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('kal48-save-revision')).toHaveCount(0);
+  await expect(page.getByText(/Only the document owner can save or restore versions|No versions yet|Local history/i).first()).toBeVisible();
+  await page.keyboard.press('Escape');
 
   const beforeIds = new Set(await userAnnotationIds(page));
   await page.getByRole('button', { name: 'Shapes', exact: true }).click();
@@ -110,16 +128,10 @@ test('mobile 390×844 viewer chrome header / More / dock intended + break + edge
   await zoomList.getByRole('option', { name: /Fit width/i }).click();
   await expect(zoomList).toHaveAttribute('aria-hidden', 'true');
 
-  await page.getByRole('button', { name: 'Jump to page' }).click();
-  const pageInput = page.getByRole('textbox', { name: 'Page number' });
-  await expect(pageInput).toBeVisible();
-  await pageInput.fill('0');
-  await pageInput.blur();
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText('1');
-  await page.getByRole('button', { name: 'Jump to page' }).click();
-  await page.getByRole('textbox', { name: 'Page number' }).fill('99');
-  await page.getByRole('textbox', { name: 'Page number' }).blur();
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText('1');
+  await jumpToPage(page, '0');
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^1\//);
+  await jumpToPage(page, '99');
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^1\//);
 
   await page.getByRole('button', { name: /1 active user/ }).click();
   const users = page.getByRole('region', { name: 'Active users' });
@@ -144,8 +156,7 @@ test('mobile 390×844 viewer chrome header / More / dock intended + break + edge
     undoRedo: true,
     moreExport: download.suggestedFilename(),
     pageJumpClamp: true,
-    historyDisabled: true,
-    syncDisabled: true,
+    historySaveVersionHidden: true,
     presenceYou: true,
     fileId: leftoverFileId,
   }));
@@ -153,26 +164,24 @@ test('mobile 390×844 viewer chrome header / More / dock intended + break + edge
 
 test('mobile 390×844 page jump on spike-120 + dock survey (edge)', async ({ page }) => {
   await openMobileEditor(page, MULTI_PDF);
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText(/1\s*\/\s*120/);
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^1\/120$/);
   await expect(page.getByRole('button', { name: 'Previous page' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 
-  await page.getByRole('button', { name: 'Jump to page' }).click();
-  const input = page.getByRole('textbox', { name: 'Page number' });
-  await input.fill('3');
-  await input.press('Enter');
-  await expect.poll(async () => page.locator('.survey-pdfjs-page-div[data-page-number="3"]').count()).toBeGreaterThan(0);
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText(/3\s*\/\s*120/);
-
   await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText(/4\s*\/\s*120/);
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^2\/120$/);
   await page.getByRole('button', { name: 'Previous page' }).click();
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText(/3\s*\/\s*120/);
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^1\/120$/);
 
-  await page.getByRole('button', { name: 'Jump to page' }).click();
-  await page.getByRole('textbox', { name: 'Page number' }).fill('0');
-  await page.getByRole('textbox', { name: 'Page number' }).blur();
-  await expect(page.getByRole('button', { name: 'Jump to page' })).toContainText(/3\s*\/\s*120/);
+  await jumpToPage(page, '3');
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^3\/120$/);
+  await page.getByRole('button', { name: 'Next page' }).click();
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^4\/120$/);
+  await page.getByRole('button', { name: 'Previous page' }).click();
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^3\/120$/);
+
+  await jumpToPage(page, '0');
+  await expect.poll(async () => headerPageLabel(page)).toMatch(/^3\/120$/);
 
   await page.goto(`${LINK_PDF}&surveyTransitionE2E=1`);
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 60_000 });
@@ -204,7 +213,7 @@ test('mobile 390×844 hub documents remaining buttons intended + break + edge', 
   const search = page.locator('.documents-mobile-search-actions input[placeholder="Search documents..."]');
   await expect(search).toBeVisible();
   await search.fill('zzzz-no-such-document');
-  await expect(page.getByText('No documents match your search.').first()).toBeVisible();
+  await expect(page.locator('.documents-mobile-list').getByText('No documents match your search.')).toBeVisible();
   await search.fill('Package 2');
   await expect(page.locator('.mobile-doc-card').filter({ hasText: 'Package 2 — Rev 4 — IC.pdf' })).toBeVisible();
   await expect(page.locator('.mobile-doc-card').filter({ hasText: 'test.pdf' })).toHaveCount(0);
