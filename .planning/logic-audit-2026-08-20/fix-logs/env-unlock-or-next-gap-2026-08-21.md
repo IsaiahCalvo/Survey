@@ -49,6 +49,8 @@ Playwright `debug/scenarios/e2e-mobile-chrome-hit-targets.spec.mjs` **3 / 3 (9.2
 
 Invariants unchanged: container-aware canvas sizing, SVG `viewBox` zoom, `zoomGeneration`, single-name `fontFamily`, CORS `*`. Cap **8448 MiB / 75/250** not loosened.
 
+Official `node scripts/run-node-tests.mjs` after the PDFViewer min-diff: main files + isolated suites reach the standing leftover `partialEraserComplexity` 500-crossing **11970.51 MiB > 8448.00 MiB**. Not loosened. Lease classifier now treats leftover-18 `.bot-credentials.json` **absence** asserts as fail-closed (not leased entry points).
+
 ### Still thinner / parked
 
 - Leftover-18 hosts (auto-login, captcha, Stripe, MSAL, second account, native Electron pick, cloud persist).
@@ -63,6 +65,7 @@ Invariants unchanged: container-aware canvas sizing, SVG `viewBox` zoom, `zoomGe
 - `src/mobile/MobilePdfViewerChrome.jsx`
 - `debug/scenarios/e2e-mobile-chrome-hit-targets.spec.mjs`
 - `tests/mobileChromeHitTargets.test.mjs`
+- `tests/testAccountLease.test.mjs`
 - `.planning/logic-audit-2026-08-20/E2E-STATUS.md`
 - this receipt
 
