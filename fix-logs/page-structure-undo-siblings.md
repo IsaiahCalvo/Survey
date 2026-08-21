@@ -45,7 +45,7 @@ High-risk files **not** edited: `PDFViewer.jsx`, `PageAnnotationLayer.jsx`, `Fab
 Because every remapping caller already uses the wipe, a **new** adversarial wave 12 ran on a different unused surface: History delete-restore + jump-to-page on `?testPdf=` (W4-03 remaining risk; not pages menu, not flatten, not survey-marker; not a replay of W4-03 button/empty/activity-list).
 
 Spec: `debug/scenarios/e2e-adversarial-wave12.spec.mjs`  
-Receipt: `fix-logs/e2e-adversarial-wave12.md`
+Receipt: `fix-logs/e2e-adversarial-wave12.md` — live **1 / 1** (6.3s).
 
 ## Leftover 18 — unchanged
 
