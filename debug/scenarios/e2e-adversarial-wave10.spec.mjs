@@ -89,12 +89,10 @@ async function dragOnPage(page, {
 }
 
 async function gotoPage(page, pageNumber) {
-  const pageBtn = page.getByRole('button', { name: 'Edit page number', exact: true });
-  if (await pageBtn.count()) {
-    await pageBtn.click();
-    const input = page.getByRole('textbox', { name: 'Current page', exact: true });
-    await input.fill(String(pageNumber));
-    await input.press('Enter');
+  await openPagesPanel(page);
+  const thumb = pageThumb(page, pageNumber);
+  if (await thumb.count()) {
+    await thumb.click();
   }
   const target = page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).first();
   await target.scrollIntoViewIfNeeded();
@@ -290,11 +288,12 @@ test('W10 insert-blank: intended remap+export, break dismiss, edge undo+delete',
   expect(exported[3].rows.length, 'untouched page 4 stays empty').toBe(0);
 
   printLogs.length = 0;
-  await page.keyboard.press('Control+p');
+  await page.keyboard.press('Control+Shift+p');
   if (!printLogs.some((line) => /OPEN requested/i.test(line))) {
-    await page.keyboard.press('Meta+p');
+    await page.keyboard.press('Meta+Shift+p');
   }
   await expect.poll(() => printLogs.some((line) => /OPEN requested|withMarkup|diagnostics=/i.test(line))).toBeTruthy();
+  await page.keyboard.press('Escape');
 
   // Edge: undo the line on the inserted page; remapped ellipse stays.
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
