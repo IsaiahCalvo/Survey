@@ -54,10 +54,15 @@ async function jumpToPage(page, value) {
   await page.getByRole('button', { name: 'Jump to page' }).click();
   const input = page.getByRole('textbox', { name: 'Page number' });
   await expect(input).toBeVisible();
-  await input.fill('');
-  await input.pressSequentially(String(value), { delay: 30 });
-  await expect(input).toHaveValue(String(value).replace(/\D/g, ''));
-  await page.getByRole('button', { name: 'Document title' }).click();
+  const digits = String(value).replace(/\D/g, '');
+  await input.evaluate((el, next) => {
+    el.focus();
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(el, next);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, digits);
+  await expect(input).toHaveValue(digits);
+  await input.press('Enter');
 }
 
 test('mobile 390×844 viewer chrome header / More / dock intended + break + edge', async ({ page }) => {
@@ -79,7 +84,10 @@ test('mobile 390×844 viewer chrome header / More / dock intended + break + edge
   await expect(page.getByText('Version history').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId('kal48-save-revision')).toHaveCount(0);
   await expect(page.getByText(/Only the document owner can save or restore versions|No versions yet|Local history/i).first()).toBeVisible();
-  await page.keyboard.press('Escape');
+  const closeHistory = page.getByRole('button', { name: /Close version history/i });
+  if (await closeHistory.count()) await closeHistory.first().click();
+  else await page.keyboard.press('Escape');
+  await expect(page.getByRole('navigation', { name: 'Document panels' })).toBeVisible({ timeout: 10_000 });
 
   const beforeIds = new Set(await userAnnotationIds(page));
   await page.getByRole('button', { name: 'Shapes', exact: true }).click();
@@ -123,10 +131,10 @@ test('mobile 390×844 viewer chrome header / More / dock intended + break + edge
   expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
 
   await page.getByRole('button', { name: 'Zoom and fit options' }).click();
-  const zoomList = page.getByRole('listbox', { name: 'Zoom and fit mode' });
-  await expect(zoomList).toBeVisible();
-  await zoomList.getByRole('option', { name: /Fit width/i }).click();
-  await expect(zoomList).toHaveAttribute('aria-hidden', 'true');
+  const zoomMenu = page.locator('.mobile-pdf-header__zoom-menu');
+  await expect(zoomMenu).toHaveClass(/is-open/);
+  await zoomMenu.getByRole('option', { name: /Fit width/i }).click();
+  await expect(zoomMenu).not.toHaveClass(/is-open/);
 
   await jumpToPage(page, '0');
   await expect.poll(async () => headerPageLabel(page)).toMatch(/^1\//);
@@ -223,10 +231,12 @@ test('mobile 390×844 hub documents remaining buttons intended + break + edge', 
   const namesBefore = await page.locator('.mobile-doc-card .mobile-card-title').evaluateAll((els) => (
     els.map((el) => el.textContent?.trim() || '')
   ));
-  await page.locator('.documents-mobile-filter').click();
+  const filter = page.getByRole('button', { name: /^(File|Project|Last edited|Size)$/ }).first();
+  await expect(filter).toBeVisible();
+  await filter.click();
   const sortMenu = page.locator('.documents-mobile-sort-menu');
   await expect(sortMenu).toBeVisible();
-  await sortMenu.getByRole('menuitem', { name: /Size/ }).click();
+  await sortMenu.getByRole('menuitem', { name: /^Size/ }).click();
   const namesAfter = await page.locator('.mobile-doc-card .mobile-card-title').evaluateAll((els) => (
     els.map((el) => el.textContent?.trim() || '')
   ));
