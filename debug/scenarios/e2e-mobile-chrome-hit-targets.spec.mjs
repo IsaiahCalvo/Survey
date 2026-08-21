@@ -55,9 +55,8 @@ async function jumpToPage(page, value) {
   const input = page.getByRole('textbox', { name: 'Page number' });
   await expect(input).toBeVisible();
   const digits = String(value).replace(/\D/g, '');
-  await input.click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.type(digits);
+  await input.fill(digits);
+  await expect(input).toHaveValue(digits);
   await input.press('Enter');
 }
 
@@ -255,8 +254,20 @@ test('mobile 390×844 hub documents remaining buttons intended + break + edge', 
   const detail = page.getByRole('dialog', { name: /SE-011 Security Shop Drawings\.pdf details/ });
   await expect(detail).toBeVisible();
   await detail.getByRole('button', { name: 'Share' }).click();
-  await expect(page.getByText(/Sharing needs a signed-in cloud account|Must be signed in|Could not create invite link|Preview cannot/i).first()).toBeVisible({ timeout: 8_000 });
-  await page.getByRole('button', { name: 'Close details' }).click();
+  // Preview owner opens Manage Access (not leftover-18 inbox Send).
+  const access = page.getByText('Document Access').first();
+  const shareFail = page.getByText(/Sharing needs a signed-in cloud account|Must be signed in|Could not create invite link|Preview cannot/i);
+  await expect.poll(async () => (
+    (await access.isVisible().catch(() => false)) || (await shareFail.count()) > 0
+  ), { timeout: 8_000 }).toBeTruthy();
+  if (await access.isVisible().catch(() => false)) {
+    await expect(page.getByRole('button', { name: 'Invite' })).toBeVisible();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(access).toHaveCount(0);
+  }
+  if (await page.getByRole('button', { name: 'Close details' }).count()) {
+    await page.getByRole('button', { name: 'Close details' }).click();
+  }
   await expect(detail).toHaveCount(0);
 
   await page.locator('.mobile-doc-card').filter({ hasText: 'RFI-014 Lobby Camera Coverage.pdf' }).click();
