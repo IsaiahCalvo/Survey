@@ -488,6 +488,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               <input
                 className="mobile-pdf-header__page-input"
                 aria-label="Page number"
+                ref={bottomToolbarApi?.pageInputRef}
                 inputMode="numeric"
                 maxLength={3}
                 autoFocus
