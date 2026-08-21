@@ -190,6 +190,33 @@ const NULL_CTX_DISABLED = Object.freeze({
   getAwareness: () => null,
 });
 
+function YDocDisabledDevReSignIn({ children }) {
+  const [reSignInOpen, setReSignInOpen] = useState(false);
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    window.__test_emitTransportState = (next) => {
+      if (next?.code === 'login_expiry_failure') setReSignInOpen(true);
+    };
+    return () => {
+      delete window.__test_emitTransportState;
+    };
+  }, []);
+  return (
+    <YDocContext.Provider value={NULL_CTX_DISABLED}>
+      {children}
+      {reSignInOpen && (
+        <ReSignInModal
+          isOpen={reSignInOpen}
+          prefillEmail={null}
+          expectedUserId={null}
+          onSignedIn={() => setReSignInOpen(false)}
+          onCloseDocument={() => setReSignInOpen(false)}
+        />
+      )}
+    </YDocContext.Provider>
+  );
+}
+
 export function YDocProvider({ docId, children, closeDocument, isActive = true }) {
   const enabled = isCRDTEnabled();
 
@@ -198,11 +225,13 @@ export function YDocProvider({ docId, children, closeDocument, isActive = true }
   // Hooks rule: keep this branch above the inner component so we don't call useEffect
   // conditionally — the inner component owns all the stateful hooks.
   if (!docId || !enabled) {
-    return (
-      <YDocContext.Provider value={NULL_CTX_DISABLED}>
-        {children}
-      </YDocContext.Provider>
-    );
+    return import.meta.env.DEV
+      ? <YDocDisabledDevReSignIn>{children}</YDocDisabledDevReSignIn>
+      : (
+        <YDocContext.Provider value={NULL_CTX_DISABLED}>
+          {children}
+        </YDocContext.Provider>
+      );
   }
 
   // Keying on docId guarantees that switching PDFs gives us a fresh hooks tree

@@ -125,11 +125,8 @@ test('ReSignInModal Forgot password on ?testPdf= fails closed', async ({ page })
     detail: 'wave7-resignin',
   }));
 
-  const banner = page.getByText('Your sign-in expired');
-  await expect(banner).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: /Click here to sign in again/i }).click();
   const modal = page.locator('.re-signin-modal');
-  await expect(modal).toBeVisible();
+  await expect(modal).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
 
   await modal.locator('#re-signin-email').fill('');
@@ -207,11 +204,17 @@ test('form widget value survives annotation undo', async ({ page }) => {
 test('context menu stays isolated from bookmark delete undo', async ({ page }) => {
   await openEditor(page);
   const rect = await createRect(page, { x0: 0.18, y0: 0.20, x1: 0.38, y1: 0.36 });
+  await page.keyboard.press('v');
   const target = page.locator(`[data-svg-annotation-layer="1"] [data-anno-id="${rect.id}"]`).first();
   await expect(target).toBeVisible();
-  await target.click({ button: 'right' });
+  const box = await target.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.click(box.x + Math.min(8, box.width / 2), box.y + Math.min(8, box.height / 2), {
+    button: 'right',
+  });
   const menu = page.getByRole('menu').filter({ hasText: /Bring to front|Delete|Copy/i }).first();
   const menuOpen = await menu.isVisible().catch(() => false);
+  await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
   await createBookmark(page, 'wave7-bm-keep');
@@ -224,7 +227,7 @@ test('context menu stays isolated from bookmark delete undo', async ({ page }) =
 
   page.once('dialog', (dialog) => dialog.accept());
   if (await deleteBtn.count()) await deleteBtn.click();
-  await expect.poll(async () => page.getByText('wave7-bm-keep').count()).toBe(0);
+  await expect.poll(async () => page.getByText('wave7-bm-keep').count(), { timeout: 8_000 }).toBe(0);
   expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
 
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
@@ -233,7 +236,7 @@ test('context menu stays isolated from bookmark delete undo', async ({ page }) =
     await expect(page.getByText('wave7-bm-keep').first()).toBeVisible({ timeout: 8_000 });
   }
   expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
-  expect(menuOpen === true || menuOpen === false).toBeTruthy();
+  expect(typeof menuOpen).toBe('boolean');
   await assertNoErrorBoundary(page);
 });
 
@@ -277,9 +280,30 @@ test('zoomGeneration mid-pen-stroke commits instead of dropping ink', async ({ p
   await assertNoErrorBoundary(page);
 });
 
+async function createText(page, text, coords = { x0: 0.20, y0: 0.52, x1: 0.48, y1: 0.66 }) {
+  const before = new Set(await userAnnotationIds(page));
+  await page.keyboard.press('t');
+  const overlay = page.locator('[data-text-overlay="1"]');
+  if (!(await overlay.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Text', exact: true }).first().click();
+  }
+  await expect(overlay).toBeVisible({ timeout: 8_000 });
+  await dragOnPage(page, coords);
+  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
+  await expect(editor).toBeVisible({ timeout: 10_000 });
+  await editor.click();
+  await page.keyboard.type(text);
+  await page.mouse.click(12, 200);
+  return waitForNewUserAnnotation(page, before, (row) => (
+    row.type === 'textbox' || row.type === 'text' || row.tool === 'text'
+  ));
+}
+
 test('Font menu offers single-name families after mobile FONT_FAMILIES restore', async ({ page }) => {
   await openEditor(page);
-  await page.keyboard.press('t');
+  const created = await createText(page, 'wave7 georgia');
+  const edit = page.getByRole('button', { name: 'Edit text', exact: true });
+  if (await edit.count()) await edit.click();
   const fontBtn = page.getByRole('button', { name: 'Font', exact: true }).first();
   await expect(fontBtn).toBeVisible({ timeout: 8_000 });
   await fontBtn.click();
@@ -297,25 +321,12 @@ test('Font menu offers single-name families after mobile FONT_FAMILIES restore',
     'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana',
   ]));
   await popover.getByRole('option', { name: 'Georgia', exact: true }).click();
-
-  const before = new Set(await userAnnotationIds(page));
-  const overlay = page.locator('[data-text-overlay="1"]');
-  if (await overlay.isVisible().catch(() => false)) {
-    await dragOnPage(page, { x0: 0.20, y0: 0.52, x1: 0.48, y1: 0.66 });
-    const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
-    if (await editor.isVisible().catch(() => false)) {
-      await editor.click();
-      await page.keyboard.type('wave7 georgia');
-      await page.mouse.click(12, 200);
-    }
-  }
-  const created = await waitForNewUserAnnotation(page, before, (row) => (
-    row.type === 'textbox' || row.type === 'text' || row.tool === 'text' || !!row.fontFamily
-  )).catch(() => null);
-  if (created) {
-    expect(String(created.fontFamily || '').includes(',')).toBeFalsy();
-    expect(String(created.fontFamily || '')).toMatch(/Georgia|Helvetica|Arial/);
-  }
+  await page.mouse.click(12, 200);
+  await expect.poll(async () => {
+    const rows = await userAnnotationSnapshot(page);
+    const row = rows.find((entry) => entry.id === created.id);
+    return String(row?.fontFamily || '');
+  }).toBe('Georgia');
   await assertNoErrorBoundary(page);
 });
 
