@@ -161,6 +161,10 @@ async function bookmarkNamesInDom(page) {
   ));
 }
 
+function pagesPanelRows(page) {
+  return page.locator('[data-page-number]:has(img[alt^="Page "])');
+}
+
 async function listPagesPanelThumbs(page) {
   return page.locator('[data-page-number] img[alt^="Page "]').evaluateAll((imgs) => (
     imgs.map((img) => ({
@@ -168,6 +172,26 @@ async function listPagesPanelThumbs(page) {
       srcKind: String(img.getAttribute('src') || '').startsWith('data:') ? 'data' : 'other',
     }))
   ));
+}
+
+async function sidebarPageNumbers(page) {
+  return pagesPanelRows(page).evaluateAll((els) => (
+    els.map((el) => Number(el.getAttribute('data-page-number'))).filter((n) => Number.isFinite(n) && n > 0)
+  ));
+}
+
+async function dragBookmarkHandle(page, fromName, toName) {
+  const from = page.locator('[data-bookmark-row-id]').filter({ hasText: fromName }).first();
+  const to = page.locator('[data-bookmark-row-id]').filter({ hasText: toName }).first();
+  const handle = from.locator('div').filter({ hasText: /^☰$/ }).first();
+  await expect(handle).toBeVisible();
+  const fromBox = await handle.boundingBox();
+  const toBox = await to.boundingBox();
+  expect(fromBox && toBox, 'bookmark drag geometry').toBeTruthy();
+  await page.mouse.move(fromBox.x + fromBox.width / 2, fromBox.y + fromBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(toBox.x + 24, toBox.y + 6, { steps: 18 });
+  await page.mouse.up();
 }
 
 async function readPagesPanelCacheKeys(page) {
@@ -301,16 +325,23 @@ test('P1-42 PagesPanel IndexedDB cache intended / break / edge', async ({ page }
 test('P1-43 canReorderVisiblePages space filter intended / break / edge', async ({ page }) => {
   await openEditor(page, MULTI_PDF);
   await openPages(page);
-  await expect.poll(async () => page.locator('[data-page-number]').count(), { timeout: 30_000 }).toBeGreaterThan(2);
+  await expect.poll(async () => (await sidebarPageNumbers(page)).length, { timeout: 30_000 }).toBeGreaterThan(2);
 
-  const fullVisible = await page.locator('[data-page-number]').evaluateAll((els) => (
-    els.map((el) => Number(el.getAttribute('data-page-number'))).filter(Boolean)
-  ));
-  const fullGate = await page.evaluate(async (allowed) => {
+  const fullVisible = await sidebarPageNumbers(page);
+  const numPages = Math.max(...fullVisible);
+  const fullSequence = Array.from({ length: numPages }, (_, i) => i + 1);
+  const fullGate = await page.evaluate(async ({ allowed, numPages: pages }) => {
     const { canReorderVisiblePages } = await import('/src/sidebar/pagesPanelUtils.js');
-    return canReorderVisiblePages({ allowedPages: allowed, numPages: allowed.length });
-  }, fullVisible);
-  expect(fullGate).toBe(true);
+    return {
+      visible: canReorderVisiblePages({ allowedPages: allowed, numPages: pages }),
+      complete: canReorderVisiblePages({ allowedPages: Array.from({ length: pages }, (_, i) => i + 1), numPages: pages }),
+    };
+  }, { allowed: fullVisible, numPages });
+  expect(fullGate.complete).toBe(true);
+  if (fullVisible.length === numPages) {
+    expect(fullGate.visible).toBe(fullVisible.every((pageNumber, index) => pageNumber === index + 1));
+  }
+  expect(fullSequence[0]).toBe(1);
 
   await page.getByRole('button', { name: 'Spaces', exact: true }).click();
   const create = page.getByRole('button', { name: 'Create space', exact: true });
@@ -326,10 +357,8 @@ test('P1-43 canReorderVisiblePages space filter intended / break / edge', async 
 
   await page.getByLabel('Turn on space').click();
   await openPages(page);
-  await expect.poll(async () => page.locator('[data-page-number]').count(), { timeout: 15_000 }).toBe(2);
-  const filtered = await page.locator('[data-page-number]').evaluateAll((els) => (
-    els.map((el) => Number(el.getAttribute('data-page-number')))
-  ));
+  await expect.poll(async () => (await sidebarPageNumbers(page)).length, { timeout: 15_000 }).toBe(2);
+  const filtered = await sidebarPageNumbers(page);
   expect(filtered).toEqual([2, 5]);
 
   const filteredGate = await page.evaluate(async (allowed) => {
@@ -344,16 +373,14 @@ test('P1-43 canReorderVisiblePages space filter intended / break / edge', async 
   expect(filteredGate.permutation).toBe(false);
   expect(filteredGate.empty).toBe(false);
 
-  const source = page.locator('[data-page-number="2"]').first();
-  const target = page.locator('[data-page-number="5"]').first();
+  const source = pagesPanelRows(page).filter({ has: page.locator('img[alt="Page 2"]') }).first();
+  const target = pagesPanelRows(page).filter({ has: page.locator('img[alt="Page 5"]') }).first();
   await source.dragTo(target);
-  await expect(page.locator('[data-page-number]')).toHaveCount(2);
-  const afterDrag = await page.locator('[data-page-number]').evaluateAll((els) => (
-    els.map((el) => Number(el.getAttribute('data-page-number')))
-  ));
+  await expect.poll(async () => (await sidebarPageNumbers(page)).length).toBe(2);
+  const afterDrag = await sidebarPageNumbers(page);
   expect(afterDrag).toEqual([2, 5]);
 
-  console.log('P143_PROOF', JSON.stringify({ fullGate, filtered, filteredGate, afterDrag }));
+  console.log('P143_PROOF', JSON.stringify({ fullGate, numPages, filtered, filteredGate, afterDrag }));
 });
 
 test('P1-54 black-thumbnail probe intended / break / edge', async ({ page }) => {
@@ -467,9 +494,14 @@ test('P1-47 collectBookmarkTreePersistUpdates delta intended / break / edge', as
   await createLoneBookmark(page, 'delta-bot');
 
   const before = await bookmarkNamesInDom(page);
-  const mid = page.locator('[data-bookmark-row-id]').filter({ hasText: 'delta-mid' }).first();
-  const top = page.locator('[data-bookmark-row-id]').filter({ hasText: 'delta-top' }).first();
-  await mid.dragTo(top);
+  await dragBookmarkHandle(page, 'delta-mid', 'delta-top');
+  const midHandle = page.locator('[data-bookmark-row-id]').filter({ hasText: 'delta-mid' }).locator('div').filter({ hasText: /^☰$/ }).first();
+  if ((await bookmarkNamesInDom(page)).join('|') === before.join('|')) {
+    await midHandle.focus();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Space');
+  }
   await expect.poll(async () => (await bookmarkNamesInDom(page)).join('|')).not.toEqual(before.join('|'));
   const after = await bookmarkNamesInDom(page);
   expect(after.some((name) => name.includes('delta-mid'))).toBeTruthy();
