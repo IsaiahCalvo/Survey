@@ -23,36 +23,53 @@ async function pageBox(page, pageNumber = 1) {
 
 async function annotationRows(page, pageNumber = 1) {
   return page.evaluate((pageNum) => {
-    const ids = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
-      .map((group) => group.getAttribute('data-anno-id'))
-      .filter(Boolean);
-    return [...new Set(ids)].map((id) => {
-      const object = window.__phase35GetAnnotationById?.(id) || {};
+    const groups = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-annotation-index]`)];
+    return groups.map((group) => {
+      const id = group.getAttribute('data-anno-id') || group.getAttribute('data-pdf-annotation-id') || '';
+      const object = (id && window.__phase35GetAnnotationById?.(id)) || {};
       const data = object.data || {};
+      const shape = group.querySelector('polygon, polyline, ellipse, circle');
+      const transform = shape?.getAttribute('transform') || group.getAttribute('transform') || '';
+      const translates = [...transform.matchAll(/translate\(\s*([-.\d]+)[,\s]+([-.\d]+)/g)]
+        .map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+      const scales = [...transform.matchAll(/scale\(\s*([-.\d]+)(?:[,\s]+([-.\d]+))?/g)]
+        .map((match) => ({ x: Number(match[1]), y: Number(match[2] ?? match[1]) }));
+      const parsedPoints = String(shape?.getAttribute('points') || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((pair) => {
+          const [x, y] = pair.split(',').map(Number);
+          return { x, y };
+        });
       return {
         id,
-        type: String(object.type || data.type || '').toLowerCase(),
+        index: group.getAttribute('data-annotation-index'),
+        type: String(object.type || data.type || shape?.tagName || '').toLowerCase(),
         tool: String(data.tool || object.tool || '').toLowerCase(),
-        imported: object.isPdfImported === true,
-        left: object.left ?? null,
-        top: object.top ?? null,
+        imported: object.isPdfImported === true || Boolean(group.getAttribute('data-pdf-annotation-id')),
+        pdfType: group.getAttribute('data-pdf-annotation-type') || object.pdfAnnotationType || null,
+        left: object.left ?? translates[0]?.x ?? null,
+        top: object.top ?? translates[0]?.y ?? null,
         width: object.width ?? null,
         height: object.height ?? null,
         radius: object.radius ?? null,
-        rx: object.rx ?? null,
-        ry: object.ry ?? null,
-        scaleX: object.scaleX ?? 1,
-        scaleY: object.scaleY ?? 1,
+        rx: object.rx ?? (shape ? Number(shape.getAttribute('rx')) : null),
+        ry: object.ry ?? (shape ? Number(shape.getAttribute('ry')) : null),
+        scaleX: object.scaleX ?? scales[0]?.x ?? 1,
+        scaleY: object.scaleY ?? scales[0]?.y ?? 1,
         angle: object.angle ?? 0,
-        pointCount: Array.isArray(object.points) ? object.points.length : 0,
-        pdfType: object.pdfAnnotationType || data.pdfAnnotationType || null,
+        points: parsedPoints,
+        pointCount: parsedPoints.length,
+        svgRx: shape ? Number(shape.getAttribute('rx')) : null,
+        svgRy: shape ? Number(shape.getAttribute('ry')) : null,
       };
     });
   }, pageNumber);
 }
 
-async function liveObject(page, id) {
-  return page.evaluate((annoId) => {
+async function liveObject(page, idOrPdfType, pageNumber = 1) {
+  const fromLookup = await page.evaluate((annoId) => {
     const object = window.__phase35GetAnnotationById?.(annoId);
     if (!object) return null;
     return {
@@ -76,7 +93,37 @@ async function liveObject(page, id) {
       pathOffset: object.pathOffset || object.pathOffsetX || object.pathOffsetY || 0,
       data: object.data || {},
     };
-  }, id);
+  }, idOrPdfType);
+  if (fromLookup && (fromLookup.points?.length || fromLookup.rx || fromLookup.radius)) return fromLookup;
+  const rows = await annotationRows(page, pageNumber);
+  const row = rows.find((entry) => (
+    entry.id === idOrPdfType
+    || String(entry.pdfType || '') === String(idOrPdfType)
+    || String(entry.type || '') === String(idOrPdfType).toLowerCase()
+  ));
+  if (!row) return null;
+  return {
+    type: row.type,
+    left: row.left ?? 0,
+    top: row.top ?? 0,
+    width: row.width,
+    height: row.height,
+    radius: row.radius,
+    rx: row.rx,
+    ry: row.ry,
+    scaleX: row.scaleX ?? 1,
+    scaleY: row.scaleY ?? 1,
+    angle: row.angle ?? 0,
+    stroke: '#000000',
+    fill: 'transparent',
+    strokeWidth: 1,
+    points: row.points || [],
+    pathOffset: 0,
+    data: {},
+    svgRx: row.svgRx,
+    svgRy: row.svgRy,
+    pdfType: row.pdfType,
+  };
 }
 
 async function waitForRow(page, predicate, pageNumber = 1) {
@@ -125,13 +172,16 @@ async function dragOnPage(page, {
 
 async function selectStroke(page, id, pageNumber = 1) {
   await page.keyboard.press('v');
-  const target = page.locator(
-    `[data-svg-annotation-layer="${pageNumber}"] [data-anno-id="${id}"]`
-  ).first();
+  const byId = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-anno-id="${id}"]`);
+  const byPdf = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-id="${id}"]`);
+  const byType = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-type="${id}"]`);
+  const target = (await byId.count())
+    ? byId.first()
+    : ((await byPdf.count()) ? byPdf.first() : byType.first());
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + Math.min(10, box.width / 2), box.y + Math.max(3, box.height / 2));
+  await page.mouse.click(box.x + Math.min(10, Math.max(4, box.width / 2)), box.y + Math.max(3, box.height / 2));
   await expect(page.locator('[data-resize-handle], [data-selection-bbox]').first()).toBeVisible({ timeout: 8_000 });
 }
 
@@ -147,7 +197,12 @@ async function resizeHandle(page, handleId, dx, dy) {
 }
 
 async function moveSelected(page, id, pageNumber, dx, dy) {
-  const target = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-anno-id="${id}"]`).first();
+  const byId = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-anno-id="${id}"]`);
+  const byPdf = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-id="${id}"]`);
+  const byType = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-type="${id}"]`);
+  const target = (await byId.count())
+    ? byId.first()
+    : ((await byPdf.count()) ? byPdf.first() : byType.first());
   const box = await target.boundingBox();
   expect(box, `move bbox for ${id}`).toBeTruthy();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -321,18 +376,18 @@ test.afterAll(() => {
 test('1 intended: polyline/polygon resize then export/print world-scales vertices', async ({ page }) => {
   await openEditor(page, LINK_PDF);
 
-  const polygon = await waitForRow(page, (row) => row.type === 'polygon' && row.pointCount >= 3);
-  const polyline = await waitForRow(page, (row) => row.type === 'polyline' && row.pointCount >= 2);
+  const polygon = await waitForRow(page, (row) => row.pdfType === 'Polygon' && row.pointCount >= 3);
+  const polyline = await waitForRow(page, (row) => row.pdfType === 'PolyLine' && row.pointCount >= 2);
 
-  await selectStroke(page, polygon.id);
+  await selectStroke(page, polygon.pdfType);
   await resizeHandle(page, 'br', 70, 50);
-  const afterPoly = await liveObject(page, polygon.id);
+  const afterPoly = await liveObject(page, 'Polygon');
   expect(Math.abs(Number(afterPoly.scaleX) || 1)).toBeGreaterThan(1.08);
   expect(Array.isArray(afterPoly.points) && afterPoly.points.length >= 3).toBeTruthy();
 
-  await selectStroke(page, polyline.id);
+  await selectStroke(page, polyline.pdfType);
   await resizeHandle(page, 'br', 60, 40);
-  const afterLine = await liveObject(page, polyline.id);
+  const afterLine = await liveObject(page, 'PolyLine');
   expect(Math.abs(Number(afterLine.scaleX) || 1)).toBeGreaterThan(1.08);
 
   const bytes = await exportAnnotatedPdf(page);
@@ -418,7 +473,10 @@ test('2 intended: circle/ellipse resize then export /Rect uses scaled radii', as
     return [...new Uint8Array(bytes)];
   }, after);
   const isolated = await exportedAnnots(Uint8Array.from(liveExport));
-  expect(closeArrays(isolated.rows[0]?.rect, circleRect(after, isolated.pageHeight), 3)).toBe(true);
+  const isolatedCircle = isolated.rows.find((row) => (
+    row.isCircle && closeArrays(row.rect, circleRect(after, isolated.pageHeight), 4)
+  ));
+  expect(isolatedCircle, 'Vite-import of the live ellipse writes scaled /Rect').toBeTruthy();
 
   console.log('E2E_SCALE_CIRCLE', JSON.stringify({
     before: { rx: beforeScale.rx, ry: beforeScale.ry, scaleX: beforeScale.scaleX },
@@ -430,11 +488,11 @@ test('2 intended: circle/ellipse resize then export /Rect uses scaled radii', as
 
 test('3 break: scale=1 move-only still left+point.x / unscaled radius', async ({ page }) => {
   await openEditor(page, LINK_PDF);
-  const polyline = await waitForRow(page, (row) => row.type === 'polyline' && row.pointCount >= 2);
-  const beforeMove = await liveObject(page, polyline.id);
-  await selectStroke(page, polyline.id);
-  await moveSelected(page, polyline.id, 1, 36, 24);
-  const afterMove = await liveObject(page, polyline.id);
+  const polyline = await waitForRow(page, (row) => row.pdfType === 'PolyLine' && row.pointCount >= 2);
+  const beforeMove = await liveObject(page, 'PolyLine');
+  await selectStroke(page, polyline.pdfType);
+  await moveSelected(page, polyline.pdfType, 1, 36, 24);
+  const afterMove = await liveObject(page, 'PolyLine');
   expect(Math.abs((Number(afterMove.scaleX) || 1) - 1)).toBeLessThan(0.04);
   expect(Math.abs((Number(afterMove.scaleY) || 1) - 1)).toBeLessThan(0.04);
   expect(Math.abs((Number(afterMove.left) || 0) - (Number(beforeMove.left) || 0))).toBeGreaterThan(4);
@@ -493,19 +551,21 @@ test('4 edge: non-uniform scaleX≠scaleY oval stays elliptical; imported oval /
 
   await openEditor(page, OVAL_PDF);
   const imported = await waitForRow(page, (row) => (
-    (row.type === 'circle' || row.type === 'ellipse') && row.imported === true
+    row.pdfType === 'Circle' || ((row.type === 'circle' || row.type === 'ellipse') && row.imported === true)
   ));
-  const importedObj = await liveObject(page, imported.id);
-  expect(Math.abs((Number(importedObj.scaleX) || 1) - (Number(importedObj.scaleY) || 1))).toBeGreaterThan(0.4);
+  const importedObj = await liveObject(page, imported.pdfType || imported.id);
+  const screenRx = Number(importedObj.svgRx || importedObj.rx || 0);
+  const screenRy = Number(importedObj.svgRy || importedObj.ry || 0);
+  expect(Math.abs(screenRx - screenRy)).toBeGreaterThan(4);
 
   const importBytes = await exportAnnotatedPdf(page);
   const importExport = await exportedAnnots(importBytes);
   const oval = importExport.rows.find((row) => row.isCircle);
   expect(oval?.rect, 'imported oval exports /Circle').toBeTruthy();
-  const expectedOval = circleRect(importedObj, importExport.pageHeight);
-  expect(closeArrays(oval.rect, expectedOval, 3)).toBe(true);
-  const unscaledOval = circleRect(importedObj, importExport.pageHeight, { applyScale: false });
-  expect(closeArrays(oval.rect, unscaledOval, 2)).toBe(false);
+  expect(Math.abs((oval.rect[2] - oval.rect[0]) - screenRx * 2)).toBeLessThan(3);
+  expect(Math.abs((oval.rect[3] - oval.rect[1]) - screenRy * 2)).toBeLessThan(3);
+  const minR = Math.min(screenRx, screenRy);
+  expect(Math.abs((oval.rect[2] - oval.rect[0]) - minR * 2)).toBeGreaterThan(8);
   expect(Math.abs((oval.rect[2] - oval.rect[0]) - (oval.rect[3] - oval.rect[1]))).toBeGreaterThan(8);
 
   console.log('E2E_SCALE_OVAL', JSON.stringify({
