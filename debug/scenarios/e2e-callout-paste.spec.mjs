@@ -186,18 +186,37 @@ async function createCallout(page, text, coords, pageNumber = 1) {
   return calloutId;
 }
 
-async function copyCallout(page, calloutId) {
+async function copyCallout(page, calloutId, pageNumber = 1) {
+  await gotoPage(page, pageNumber);
   await selectMode(page);
-  const target = page.locator(`[data-callout-id="${calloutId}"]`).first();
+  const scoped = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-callout-id="${calloutId}"]`);
+  const textBox = scoped.locator('[data-callout-part="textBox"]').first();
+  const target = (await textBox.count()) ? textBox : scoped.first();
   await expect(target).toBeVisible({ timeout: 15_000 });
   const box = await target.boundingBox();
   expect(box, `bbox for callout ${calloutId}`).toBeTruthy();
-  await page.mouse.click(box.x + Math.min(10, box.width / 2), box.y + Math.min(10, box.height / 2), { button: 'right' });
-  const menu = page.locator('[data-annotation-context-menu="true"]');
-  await expect(menu).toBeVisible({ timeout: 8_000 });
-  await expect(menu.getByText('Copy', { exact: true })).toBeVisible();
-  await menu.getByText('Copy', { exact: true }).click();
-  await expect(page.locator('[data-annotation-context-menu="true"]')).toHaveCount(0);
+  const points = [
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + Math.min(8, Math.max(2, box.width / 2)), y: box.y + Math.min(8, Math.max(2, box.height / 2)) },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    const menu = page.locator('[data-annotation-context-menu="true"]');
+    try {
+      await expect(menu).toBeVisible({ timeout: 3_000 });
+    } catch {
+      await page.keyboard.press('Escape');
+      continue;
+    }
+    const hasCopy = await menu.getByText('Copy', { exact: true }).count();
+    if (hasCopy) {
+      await menu.getByText('Copy', { exact: true }).click();
+      await expect(page.locator('[data-annotation-context-menu="true"]')).toHaveCount(0);
+      return;
+    }
+    await page.keyboard.press('Escape');
+  }
+  throw new Error(`Copy menu missing for callout ${calloutId} on page ${pageNumber}`);
 }
 
 async function copyAnnotation(page, id, pageNumber = 1) {
