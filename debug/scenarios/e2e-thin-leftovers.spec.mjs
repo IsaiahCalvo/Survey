@@ -208,12 +208,12 @@ async function createCallout(page, text, coords, pageNumber = 1) {
 }
 
 async function selectMode(page) {
-  const select = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
-  if (await select.count()) {
-    await select.click();
-    return;
-  }
+  await page.keyboard.press('Escape');
   await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) {
+    await page.keyboard.press('Escape');
+  }
 }
 
 async function rightClickEmptyPage(page, pageNumber, { xf = 0.78, yf = 0.78 } = {}) {
@@ -243,7 +243,9 @@ async function copyAnnotation(page, id, pageNumber = 1) {
   await selectMode(page);
   const target = page.locator(`[data-svg-annotation-layer="${pageNumber}"] > g[data-anno-id="${id}"]`);
   await expect(target).toBeVisible({ timeout: 15_000 });
-  await target.click({ position: { x: 2, y: 2 } });
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  await page.mouse.click(box.x + Math.min(4, Math.max(1, box.width / 2)), box.y + box.height / 2);
   await page.keyboard.press('ControlOrMeta+c');
 }
 
