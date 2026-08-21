@@ -1,9 +1,13 @@
 # Logic-audit issue inventory
 
-Written: 2026-08-20 · Wave 1 foundation
-Sources: `REPORT.md` + `known-bugs-deep-dive.json`
+Written: 2026-08-20 · Wave 1 foundation  
+**Evidence refresh:** 2026-08-21 (this pass) — statuses re-verified against the current tree. Not a feature replay.
 
-**This-pass (2026-08-21):** new E2E finding **E2E-LINK-01** (not one of the original 96) — `PdfjsLinkLayer` opened pdf.js `url` without an http/https/mailto allowlist (`ftp://` still promoted). Fixed + live-proven. See `E2E-NEW-ISSUES.md` + `fix-logs/pdf-links-2026-08-21.md`. Original 96 IDs unchanged. Leftover 18 unchanged.
+Sources: `REPORT.md` + `known-bugs-deep-dive.json` (103 headline / **96 unique IDs**)
+
+**This-pass (2026-08-21 status refresh):** grepped every unique ID’s product symbol + test/fix-log. Prior inventory still listed most rows as wave-1 `open` after later waves had closed them — that was **stale bookkeeping**, not a reopen. No silent stomps of P1-12 / P1-38 / P1-53 or the leftover-18 park list. **0** restores. Leftover **18** stay parked. Goal stays open. Receipt: `fix-logs/audit-status-refresh-2026-08-21.md`.
+
+Did **not** replay leftover-18, waves 5–13, flatten, survey-marker, pages menu, History restore, PDF-link ftp, thin leftovers, callout last-writer, hub extras, or every-swatch pickers.
 
 ## Count reconciliation
 
@@ -18,19 +22,30 @@ Sources: `REPORT.md` + `known-bugs-deep-dive.json`
 - Pass 1 “58” includes the z-order finding both as known-bug 2.2 **and** as a later “z-order persistence” ticket that REPORT.md then folded into KB-2. Unique after fold: 57.
 - Pass 2 “45” expands two merged composites: P2-34 (3 shortcut tickets) and P2-35 (3 mobile-sheet tickets). Unique IDs: 39. Expanded sub-defects: 39 − 2 + 6 = 43. Remaining +2 vs 45 is undocumented double-count in the pass-2 rollup (no additional unique defect text exists).
 
-**This inventory is the source of truth: 96 unique issues.** Workers must close every ID below. P2-34 and P2-35 each list their sub-defects so E2E coverage is not lost.
+**This inventory is the source of truth: 96 unique issues.** Known-bugs JSON contributes **no extra IDs** — it is the deep-dive for KB-1 and KB-2 only.
 
-**Wave 1 closed (10):** P1-01, P1-02, P1-03, P1-04, P1-12, P1-37, P1-38, P1-39, P1-53, P2-37. Remaining open: **86**.
+### This-pass status counts (96 unique + leftover-18 E2E)
 
-Known-bugs JSON contributes **no extra IDs** — it is the deep-dive for KB-1 and KB-2 only.
+| Status | Count | What it means |
+|---|---|---|
+| **proven** | **96** | All unique REPORT IDs: product symbol + test or fix-log still on disk |
+| **stomped** | **0** | No previously-landed one-liner missing |
+| **stomped-restored** | **0** | No restore this pass |
+| **weak** | **0** | No symbol-only / leftover-matches-original-defect rows |
+| **missing** | **0** | No vanished symbols |
+| **leftover-18** | **18** | Parked E2E host paths (not original 96 IDs). Keep parked. |
+
+SQL **apply** leftovers on already-proven IDs (do not apply to prod Survey): P2-01, P2-03, P2-05, P2-10, P2-21, P2-23, P2-28, P2-29. Those stay **proven** in-tree.
 
 ---
 
 ## Status legend
 
-- `open` — not fixed this wave
-- `fixed` — landed + evidenced in `FIX-LOG.md`
-- `wontfix` — rejected with reason (none yet)
+- `proven` — product symbol still present; cited file:line + test or fix-log
+- `stomped` — previously landed fix missing from the product tree (restore required)
+- `weak` — symbol present but leftover still matches the original defect
+- `missing` — symbol gone; no restore yet
+- `leftover-18` — parked host path (captcha / Stripe / MSAL / inbox / roster / persist / writeback / native pick). Do not fake.
 
 **User-visible** = a person can hit it in the running product without opening DevTools/tests.
 **Test-only** = dead code, comment drift, or a path only a test/harness can reach.
@@ -50,227 +65,204 @@ These files are load-bearing. Any two workers that both write them **must be ser
 | `src/viewerShared.js` | Imported by both big files |
 | `package.json` / `vite.config.js` | Infra |
 
-**Buckets that share a high-risk file are marked `SERIALIZE`.** Parallel-safe buckets have non-overlapping primary-file ownership.
+This refresh did **not** edit high-risk files.
 
 ---
 
-## Feature-bucket roster (spawn one worker per bucket)
+## Leftover-18 (parked — not original 96 IDs)
 
-| Bucket | IDs | Count | Primary ownership (non-overlapping) | Parallel? |
-|---|---|---|---|---|
-| `export-print` | P1-01, P1-02, P1-03, P1-04, P2-37 | 5 · **all fixed wave 1** | `src/utils/pdfAnnotationsPdfLib.js`, `src/utils/pdfAppAnnotationMetadata.js`, `src/utils/lineRenderHelpers.js` | YES (internally serial — one file) |
-| `eraser-policy` | KB-1 | 1 | `src/utils/eraserPolicy.js`, `src/utils/pageSpaceEraser.js`, `src/utils/eraserHitTest.js`, `src/utils/surveyMarkerEraser.js` | YES for utils; **SERIALIZE** if touching `FabricEraserCanvas.jsx` |
-| `color-picker` | P1-37, P1-38, P1-39 | 3 · **all fixed wave 1** | `src/components/CompactColorPicker.jsx`, `src/AppShell.jsx` (font-color opacity only) | YES |
-| `sharing-invites` | P2-01, P2-05, P2-33 | 3 | `src/home/ShareModal.jsx`, `src/services/documentInviteService.js`, `src/home/InviteAcceptPage.jsx`, `supabase/functions/send-invite-email/`, invite RLS migrations | YES |
-| `roles-team` | P2-06, P2-07 | 2 | `src/home/ProjectsFolderTree.jsx`, `src/home/ManageTeamModal.jsx`, `src/home/SurveyHub.jsx`, `src/home/AccessManagementModal.jsx` | YES |
-| `account-settings` | P2-03, P2-08, P2-15, P2-30, P2-31, P2-32 | 6 | `src/components/AccountSettings.jsx`, `src/contexts/AuthContext.jsx`, `src/utils/accountPlatform.js`, `supabase/functions/delete-account/` | YES · P2-03 **before** P2-15 |
-| `billing` | P2-27, P2-28, P2-29, P2-38 | 4 | `supabase/functions/stripe-webhook/`, `supabase/functions/create-checkout-session/`, `supabase/functions/_shared/billingReturn.ts` | YES |
-| `bookmarks-panel` | P1-44, P1-45, P1-47, P1-48 | 4 | `src/sidebar/BookmarksPanel.jsx` | YES |
-| `pages-panel` | P1-42, P1-43, P1-54 | 3 | `src/sidebar/PagesPanel.jsx` | YES |
-| `sync-status-history` | P1-12, P1-53, P1-55 | 3 · **P1-12 + P1-53 fixed**; P1-55 open | `src/utils/historyHelpers.js`, `src/utils/syncStatusViewModel.js`, `src/services/annotationCloudSync.js` | YES |
-| `excel-identity-sql` | P2-10, P2-21 | 2 | `supabase/migrations/20260625120000_kal309_excel_sync.sql` | YES |
-| `mobile-sheets` | P2-35 | 1 (3 sub) | `src/hooks/useMobileSheetMotion.js` | YES |
-| `electron-desktop` | P2-11, P2-36 | 2 | `src/electron-main.js` | YES |
-| `microsoft-auth` | P2-13, P2-14, P2-24, P2-25, P2-26 | 5 | `src/contexts/MSGraphContext.jsx`, `src/utils/microsoftOAuthRouting.js`, `src/msalAuthMain.js`, `src/utils/microsoftConnectionMarker.js` | YES |
-| `text-commit` | P1-28 | 1 | `src/utils/textEditCommit.js` | YES |
-| `counter-numbering` | P1-14 | 1 | `src/utils/counterNumbering.js` | YES |
-| `collab-ux` | P1-30, P2-12, P2-16 | 3 | `src/components/collab/YDocProvider.jsx` | YES · P2-16 needs a publisher from SVG path later |
-| `last-owner-race` | P2-23 | 1 | last-owner SQL migration (`20260802010000`) | YES |
-| `svg-interaction` | P1-05, P1-06, P1-08, P1-29 | 4 | `src/hooks/useSVGInteraction.js` | YES unless also editing SVG layer |
-| `z-order` | KB-2, P1-33 | 2 | `src/services/annotationDocStore.js` (read sort) + write sites in PDFViewer / context menu | **SERIALIZE** (PDFViewer write) |
-| `pdfviewer-undo` | P1-09, P1-10, P1-11, P1-13, P1-32, P1-36 | 6 | `src/PDFViewer.jsx`, `src/utils/annotationLocalHistory.js` | **SERIALIZE** |
-| `pdfviewer-stale-index` | P1-07, P1-15 | 2 | `src/PDFViewer.jsx`, `src/components/TextEditOverlay.jsx` | **SERIALIZE** |
-| `pdfviewer-pages` | P1-17, P1-18, P1-19, P1-46, P1-49 | 5 | `src/PDFViewer.jsx`, `src/hooks/usePageOperations.js` | **SERIALIZE** |
-| `pdfviewer-survey` | P1-16, P1-24 | 2 | `src/PDFViewer.jsx` | **SERIALIZE** |
-| `pdfviewer-shortcuts` | P1-20, P1-21, P1-34, P1-35, P1-40, P1-41, P2-34, P2-39 | 8 | `src/PDFViewer.jsx`, `src/utils/shapeBleedDiagnostics.js`, `src/components/SVGAnnotationLayer.jsx`, `src/components/KeyboardShortcutsOverlay.jsx` | **SERIALIZE** |
-| `pdfviewer-legacy-tools` | P1-25, P1-26, P1-27 | 3 | `src/PDFViewer.jsx`, `src/utils/svgAnnotationRenderers.jsx` | **SERIALIZE** |
-| `pdfviewer-erase-perms` | P1-22, P1-23 | 2 | `src/PDFViewer.jsx`, `src/utils/pdfAnnotationImporter.js`, `src/utils/permissionScope.js` | **SERIALIZE** |
-| `pdfviewer-excel-onedrive` | P2-04, P2-09, P2-19, P2-20, P2-22 | 5 | `src/PDFViewer.jsx`, `src/services/excelGraphService.js` | **SERIALIZE** |
-| `pdfviewer-spaces` | P1-50, P1-51, P1-52 | 3 | `src/PDFViewer.jsx`, `src/services/annotationDocStore.js` | **SERIALIZE** |
-| `pdfviewer-presence` | P2-17, P2-18 | 2 | `src/PDFViewer.jsx`, `src/components/collab/YDocProvider.jsx` | **SERIALIZE** |
-| `eraser-preview` | KB-1 preview/Part 2 | (same ID) | `src/components/FabricEraserCanvas.jsx` | **SERIALIZE** after `eraser-policy` |
-| `svg-locks` | P1-31 | 1 | `src/components/SVGAnnotationLayer.jsx` | **SERIALIZE** |
+`X-01`, `X-05` persist, `X-06` writeback, `U-04` cloud usage, `A-01` Turnstile, `A-02` live MSAL, `A-03` inbox, `A-05` Stripe, `A-06` roster, `UL-03`, `UL-13`, `UL-15`, `UL-16`, `UL-20`, `UL-21`, `UL-22`, `UL-24`, `UL-45`.
 
-**Spawn order for this wave’s remaining work:** all YES buckets in parallel; then one SERIALIZE worker at a time on `src/PDFViewer.jsx` (merge `pdfviewer-*` + `z-order` write sites into a single sequential queue).
+This-pass leftover-18 greps (still parked, not faked):
+
+| ID | Still-parked evidence |
+|---|---|
+| X-01 | `?testPdf=` has no cloud identity-churn; `DevTestRoute.jsx:167` “Do NOT set file.id” |
+| X-05 persist | same `file.id` gate; widgets already proven |
+| X-06 writeback | `excelWritebackGate.js:14` `EXCEL_AUTOMATIC_WRITEBACK_ENABLED = false` |
+| U-04 cloud | hubPreview seed only; no Dashboard usage meter |
+| A-01 Turnstile | `HubPreview.jsx` `previewBlocked('sign in')`; no captcha token path invented |
+| A-02 MSAL | `HubPreview.jsx:75` `previewBlocked('start Microsoft login')`; `msalInstance: null` |
+| A-03 / UL-24 inbox | mint chrome proven; live email delivery not claimed |
+| A-05 / UL-20 Stripe | catalog proven; checkout click not claimed |
+| A-06 / UL-45 roster | `PresenceAvatars.jsx:37` dedupes by `user_id` — same-user two-tab stays “just you” |
+| UL-03 | native File→Open pick/cancel not claimed |
+| UL-13 / UL-15 / UL-16 | profile persist / captcha / wipe stay host-blocked |
+| UL-21 / UL-22 | live MSAL / Google OAuth stay host-blocked |
 
 ---
 
-## All issues
+## All unique IDs (96)
 
-Columns: id · title · sev · area · primary files · user-visible · bucket · status
+Columns: id · title · status · evidence (current `file:line` + test / fix-log)
 
 ### Known bugs
 
-| ID | Title | Sev | Area | Primary files | Visible? | Bucket | Status |
-|---|---|---|---|---|---|---|---|
-| KB-1 | Eraser deletes everything it touches (no ink-only / no topmost) | HIGH (user-reported) | Eraser | `src/utils/eraserPolicy.js`, `src/utils/pageSpaceEraser.js`, `src/utils/eraserHitTest.js`, `src/components/FabricEraserCanvas.jsx`, `src/utils/surveyMarkerEraser.js` | user-visible | `eraser-policy` then `eraser-preview` | open |
-| KB-2 | Bring-to-front/back does not persist; snaps back on next edit / reload | HIGH (user-reported) | Z-order | `src/PDFViewer.jsx`, `src/hooks/useAnnotationContextMenu.jsx`, `src/services/annotationDocStore.js`, `src/services/annotationDocSync.js` | user-visible | `z-order` | open |
+| ID | Title | Status | Evidence |
+|---|---|---|---|
+| KB-1 | Eraser deletes everything it touches (no ink-only / no topmost) | **proven** | `src/utils/eraserPolicy.js:64-66` `getEraserOperation` → `'skip'` when not `isPartialEraseEligible`; `pageSpaceEraser.js:1096` honors skip; `surveyMarkerEraser.js:68`. Engine `erasePageAnnotations({mode:'entire'})` all-hits is **intentional**; live planner is topmost-only. `tests/eraserPolicy.test.mjs`; `fix-logs/eraser-policy-entire-mode.md` |
+| KB-2 | Bring-to-front/back does not persist | **proven** | `src/utils/annotationZOrder.js:5-9,124,147` `data.zOrder` + `resolveAnnotationIndexById`; `annotationDocStore.js:601` read sort. `tests/annotationZOrder.test.mjs` |
 
 ### Pass 1 — CRITICAL / HIGH
 
-| ID | Title | Sev | Area | Primary files | Visible? | Bucket | Status |
-|---|---|---|---|---|---|---|---|
-| P1-01 | Drawn/edited line/arrow exports and prints at wrong page position | CRITICAL | Export/print | `src/utils/pdfAnnotationsPdfLib.js` (`createLineAnnotation`, `drawFlattenedLine`), `src/utils/lineRenderHelpers.js`, `src/utils/annotationCreationCommit.js` | user-visible | `export-print` | **fixed** |
-| P1-02 | Arrowheads silently dropped on export (and re-import) | HIGH | Export | `src/utils/pdfAnnotationsPdfLib.js` | user-visible | `export-print` | **fixed** |
-| P1-03 | Cloud rectangle borders permanently lost on export | HIGH | Export | `src/utils/pdfAnnotationsPdfLib.js`, `src/utils/pdfAppAnnotationMetadata.js` | user-visible | `export-print` | **fixed** |
-| P1-04 | Printed circles/ovals/rects use pre-resize size | HIGH | Print | `src/utils/pdfAnnotationsPdfLib.js` (`drawFlattenedObject`) | user-visible | `export-print` | **fixed** |
-| P1-05 | Multi-select rotate/resize displaces lines; wrong position saved | HIGH | Select/transform | `src/hooks/useSVGInteraction.js` | user-visible | `svg-interaction` | open |
-| P1-06 | Resize/rotate/move commits by stale index (collab delete corrupts/crashes) | HIGH | Collab + transform | `src/hooks/useSVGInteraction.js` | user-visible | `svg-interaction` | open |
-| P1-07 | Text-edit commit by stale index can replace a teammate’s annotation | HIGH | Text + collab | `src/PDFViewer.jsx`, `src/components/TextEditOverlay.jsx` | user-visible | `pdfviewer-stale-index` | open |
-| P1-08 | Undo retargets selection to a different shape | HIGH | Undo + select | `src/hooks/useSVGInteraction.js`, `src/PDFViewer.jsx` | user-visible | `svg-interaction` | open |
-| P1-09 | Redo resurrects old page snapshot and deletes newest work | HIGH | Undo | `src/PDFViewer.jsx` | user-visible | `pdfviewer-undo` | open |
-| P1-10 | Own undo wipes teammate edits document-wide | HIGH | Undo + collab | `src/PDFViewer.jsx`, `src/hooks/useAnnotationDoc.js` | user-visible | `pdfviewer-undo` | open |
-| P1-11 | Own undo reverts teammate’s concurrent edit to same annotation | HIGH | Undo + collab | `src/utils/annotationLocalHistory.js`, `src/services/annotationDocStore.js` | user-visible | `pdfviewer-undo` | open |
-| P1-12 | Excel auto-sync permanently jams undo | HIGH | Undo + Excel | `src/utils/historyHelpers.js`, `src/PDFViewer.jsx` (call site only) | user-visible | `sync-status-history` | **fixed** |
-| P1-13 | First edit-and-undo after import permanently deletes imported markups | HIGH | Import + undo | `src/PDFViewer.jsx` | user-visible | `pdfviewer-undo` | open |
-| P1-14 | Cross-page counter renumber never saves or syncs | HIGH | Counters | `src/utils/counterNumbering.js` | user-visible | `counter-numbering` | open |
-| P1-15 | Callout text edit clobbers teammate move/restyle | HIGH | Callouts + collab | `src/PDFViewer.jsx` | user-visible | `pdfviewer-stale-index` | open |
-| P1-16 | Reopened documents hide all survey markers until a module is selected | HIGH | Survey markers | `src/PDFViewer.jsx`, `src/components/SVGAnnotationLayer.jsx` | user-visible | `pdfviewer-survey` | open |
-| P1-17 | Page ops revert other edits made during a prior upload | HIGH | Pages | `src/hooks/usePageOperations.js`, `src/PDFViewer.jsx` | user-visible | `pdfviewer-pages` | open |
-| P1-18 | Cut/copy page clipboard goes stale — paste hits the wrong page | HIGH | Pages | `src/PDFViewer.jsx`, `src/hooks/usePageOperations.js` | user-visible | `pdfviewer-pages` | open |
-| P1-19 | Two people doing page ops silently overwrite each other | HIGH | Pages + collab | `src/hooks/useDatabase.js`, `src/AppShell.jsx` | user-visible | `pdfviewer-pages` | open |
-| P1-20 | Cmd/Ctrl+Shift+D downloads two debug files instead of duplicating | HIGH | Shortcuts | `src/PDFViewer.jsx`, `src/utils/shapeBleedDiagnostics.js`, `src/main.jsx` | user-visible | `pdfviewer-shortcuts` | open |
+| ID | Title | Status | Evidence |
+|---|---|---|---|
+| P1-01 | Drawn/edited line/arrow exports and prints at wrong page position | **proven** | `pdfAnnotationsPdfLib.js:2362` `createLineAnnotation` + `:3144` `drawFlattenedLine` use `getLineEndpoints`; flatten `:3351` does not re-add `left`. `tests/lineArrowEndingExport.test.mjs`; `tests/legacyArrowGroupExportPosition.test.mjs`; `fix-logs/e2e-adversarial-wave8.md` |
+| P1-02 | Arrowheads silently dropped on export | **proven** | `pdfAnnotationsPdfLib.js:2515` `resolveExportedLineEnding2` maps `arrowheadStyle` / `tool:'arrow'` → `/LE`. `tests/lineArrowEndingExport.test.mjs`; `fix-logs/e2e-stomp-nine-live.md` |
+| P1-03 | Cloud rectangle borders permanently lost on export | **proven** | `pdfAnnotationsPdfLib.js:1797` `/BE` intensity + `:3408` `buildCloudPathCommands`; `pdfAppAnnotationMetadata.js:53-54` `pdfCloudIntensity` / `pdfCloudPathD`. `fix-logs/e2e-00fda232-thirteen-live.md` |
+| P1-04 | Printed circles/ovals/rects use pre-resize size | **proven** | `pdfAnnotationsPdfLib.js:3367-3372` `width * \|scaleX\|` / skip non-finite. Family: polyline/polygon, circle radii, ink affine, FreeText wrap. `tests/printFlattenOnPage.test.mjs`; `tests/exportScaleLeftovers.test.mjs`; `tests/inkPrintFlattenAffine.test.mjs`; `tests/textFlattenAffineScale.test.mjs` |
+| P1-05 | Multi-select rotate/resize displaces lines | **proven** | `useSVGInteraction.js:178` `applyGroupLineWorldTransform` via `getLineEndpoints`; used `:1516` / `:1783`. `tests/svgInteractionFixes.test.mjs` |
+| P1-06 | Resize/rotate/move commits by stale index | **proven** | `useSVGInteraction.js:110` `resolveAnnotationIndexById` at pointermove `:1293` / pointerup `:2971`. `tests/svgInteractionFixes.test.mjs` |
+| P1-07 | Text-edit commit by stale index | **proven** | `TextEditOverlay.jsx:81` `replaceTextInPageJson`; `:343` uses `originalRef.current`. `tests/pdfViewerStaleIdCommits.test.mjs` |
+| P1-08 | Undo retargets selection to a different shape | **proven** | `useSVGInteraction.js:121` `captureSelectionStableIds` / `:131` `remapSelectionByStableIds`. `tests/svgInteractionFixes.test.mjs` |
+| P1-09 | Redo resurrects old page snapshot | **proven** | `PDFViewer.jsx:23904` `pushLocalAnnotationHistoryAction`; `:23939` `redoHistoryRef.current = []` |
+| P1-10 | Own undo wipes teammate edits | **proven** | `src/utils/crdtHistoryScope.js:7` `scopeHistoryStateForCrdtRestore`; wired `PDFViewer.jsx:11880` / `:12153` |
+| P1-11 | Own undo reverts teammate’s concurrent edit | **proven** | `annotationLocalHistory.js:580` `mergeAnnotationHistoryUpdate` |
+| P1-12 | Excel auto-sync permanently jams undo | **proven** | **Stomp one-liner still live:** `historyHelpers.js:124` `reason.startsWith('excel:')`. Producer `PDFViewer.jsx` `addHistoryCheckpoint('excel:auto-sync')`. `tests/historyStacks.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
+| P1-13 | First edit-and-undo after import deletes imports | **proven** | `PDFViewer.jsx:10139` `previewBaselineByPageRef`; import skip-save deletes baseline `:25079`. `fix-logs/e2e-testpdf-import.md` |
+| P1-14 | Cross-page counter renumber never saves | **proven** | `counterNumbering.js` `renumberCounters` replaces changed page buckets. `tests/counterNumberingPageRefs.test.mjs`; `tests/counterRenumberSavePolicy.test.mjs` |
+| P1-15 | Callout text edit clobbers teammate move/restyle | **proven** | `PDFViewer.jsx:32360-32373` `onEditCommit` merges only `text` + text-box bounds onto the live callout |
+| P1-16 | Reopened documents hide all survey markers | **proven** | `PDFViewer.jsx:28501` `matchesSelectedModule` (no early-return on null module) |
+| P1-17 | Page ops revert other edits during upload | **proven** | `pageAnnotationReindex.js:353` `mergeLivePagePresentation`; `usePageOperations.js:83`. `src/utils/__tests__/pageAnnotationReindex.test.mjs` |
+| P1-18 | Cut/copy page clipboard goes stale | **proven** | `pageAnnotationReindex.js:324` `remapClipboardPage`; `PDFViewer.jsx:12379`. Same test file |
+| P1-19 | Two people doing page ops silently overwrite | **proven** | `documentVersionCheck.js:1` `DocumentVersionConflictError`; `AppShell.jsx` `expectedUpdatedAt` |
+| P1-20 | Cmd/Ctrl+Shift+D downloads two debug files | **proven** | `shapeBleedDiagnostics.js:275` `window.__shapeSpyOn`; DEV-only |
 
 ### Pass 1 — MEDIUM / LOW
 
-| ID | Title | Sev | Area | Primary files | Visible? | Bucket | Status |
-|---|---|---|---|---|---|---|---|
-| P1-21 | Switching tools mid-stroke discards in-progress ink/shape | MED | Draw | `src/components/SVGAnnotationLayer.jsx` | user-visible | `pdfviewer-shortcuts` | open |
-| P1-22 | Eraser skips cross-author delete confirmation | MED | Eraser + perms | `src/PDFViewer.jsx` | user-visible | `pdfviewer-erase-perms` | open |
-| P1-23 | Non-owners cannot erase/edit imported (unstamped) PDF markups | MED | Perms + import | `src/utils/pdfAnnotationImporter.js`, `src/utils/permissionScope.js` | user-visible | `pdfviewer-erase-perms` | open |
-| P1-24 | Survey-marker move/resize fails open when owner metadata unresolved | MED | Survey + perms | `src/PDFViewer.jsx` | user-visible | `pdfviewer-survey` | open |
-| P1-25 | Legacy group arrows ignore rotation/scale; frame lies | MED | Legacy arrows | `src/utils/svgAnnotationRenderers.jsx`, `src/PDFViewer.jsx` | user-visible | `pdfviewer-legacy-tools` | open |
-| P1-26 | Double-click edit is a no-op on legacy group arrows | MED | Legacy arrows | `src/PDFViewer.jsx` | user-visible | `pdfviewer-legacy-tools` | open |
-| P1-27 | Legacy `circle`-typed ellipses ignore toolbar restyle | MED | Shapes | `src/PDFViewer.jsx` | user-visible | `pdfviewer-legacy-tools` | open |
-| P1-28 | Clearing all text leaves an invisible ghost annotation | MED | Text | `src/utils/textEditCommit.js` | user-visible | `text-commit` | open |
-| P1-29 | Shift+marquee replaces callout selection (Alt-subtract no-op) | MED | Select | `src/hooks/useSVGInteraction.js` | user-visible | `svg-interaction` | open |
-| P1-30 | Remote-delete “Removed by X — Restore?” toast is dead | MED | Collab UX | `src/components/collab/YDocProvider.jsx` | user-visible | `collab-ux` | open |
-| P1-31 | AutoCAD SHX Text shows working resize/rotate handles despite lock | MED | Import + transform | `src/components/SVGAnnotationLayer.jsx`, `src/utils/pdfAnnotationImporter.js` | user-visible | `svg-locks` | open |
-| P1-32 | Holding rotation-field arrow key creates one undo per keypress | MED | Undo | `src/components/RotationInputField.jsx`, `src/PDFViewer.jsx` | user-visible | `pdfviewer-undo` | open |
-| P1-33 | Open context menu can apply z-order to the wrong shape after collab splice | MED | Z-order + collab | `src/hooks/useAnnotationContextMenu.jsx`, `src/PDFViewer.jsx` | user-visible | `z-order` | open |
-| P1-34 | Cmd+C/X only work for exactly one shape; callouts have no kb clipboard | MED | Clipboard | `src/components/SVGAnnotationLayer.jsx` | user-visible | `pdfviewer-shortcuts` | open |
-| P1-35 | Repeat-paste offset hardcodes US-Letter / ignores page size | MED | Clipboard | `src/PDFViewer.jsx` | user-visible | `pdfviewer-shortcuts` | open |
-| P1-36 | Owner-scoping silently drops undo for contributor edits of unstamped imports | MED | Undo + perms | `src/utils/annotationLocalHistory.js`, `src/PDFViewer.jsx` | user-visible | `pdfviewer-undo` | open |
-| P1-37 | Font color opacity slider is dead on desktop | MED | Color / text | `src/AppShell.jsx` | user-visible | `color-picker` | **fixed** (hidden; alpha not implemented) |
-| P1-38 | “Match Fill” swatch never shows selected when fill is translucent | MED | Color | `src/components/CompactColorPicker.jsx` | user-visible | `color-picker` | **fixed** |
-| P1-39 | Hex field accepts invalid colors like `zzzzzz` | MED | Color | `src/components/CompactColorPicker.jsx` | user-visible | `color-picker` | **fixed** |
-| P1-40 | Cmd/Ctrl+0/1/2 silently degrade fit mode to Manual | MED | Zoom | `src/PDFViewer.jsx` | user-visible | `pdfviewer-shortcuts` | open |
-| P1-41 | Keyboard fit % disagrees with dropdown fit | MED | Zoom | `src/utils/zoomController.js`, `src/components/PdfjsViewerContainer.jsx` | user-visible | `pdfviewer-shortcuts` | open |
-| P1-42 | Sidebar thumbnails never use the existing IndexedDB cache | MED | Pages | `src/sidebar/PagesPanel.jsx` | user-visible | `pages-panel` | open |
-| P1-43 | Drag-reorder in a filtered Space also moves hidden pages | MED | Pages + spaces | `src/sidebar/PagesPanel.jsx` | user-visible | `pages-panel` | open |
-| P1-44 | New bookmarks jump to top of an already-ordered list | MED | Bookmarks | `src/sidebar/BookmarksPanel.jsx` | user-visible | `bookmarks-panel` | open |
-| P1-45 | Deleting a bookmark group nukes nested bookmarks with no count/undo | MED | Bookmarks | `src/sidebar/BookmarksPanel.jsx`, `src/PDFViewer.jsx` | user-visible | `bookmarks-panel` | open |
-| P1-46 | Bookmarks/page names/spaces metadata live only in per-browser localStorage | MED | Bookmarks + sync | `src/PDFViewer.jsx` | user-visible | `pdfviewer-pages` | open |
-| P1-47 | Bookmark drag-reorder is O(n²) | MED | Bookmarks | `src/sidebar/BookmarksPanel.jsx` | user-visible | `bookmarks-panel` | open |
-| P1-48 | Rejected duplicate-name bookmark rename keeps showing unsaved name | MED | Bookmarks | `src/sidebar/BookmarksPanel.jsx` | user-visible | `bookmarks-panel` | open |
-| P1-49 | Search results go stale after page reorder/rotate | MED | Search | `src/PDFViewer.jsx`, `src/sidebar/SearchTextPanel.jsx` | user-visible | `pdfviewer-pages` | open |
-| P1-50 | Concurrent Spaces edits are whole-array LWW | MED | Spaces + collab | `src/services/annotationDocStore.js` | user-visible | `pdfviewer-spaces` | open |
-| P1-51 | Activating an empty Space blanks the canvas with no explanation | MED | Spaces | `src/PDFViewer.jsx` | user-visible | `pdfviewer-spaces` | open |
-| P1-52 | Deleting a region while a teammate draws inside it orphans their annotation | MED | Spaces + collab | `src/utils/annotationVisibilityRules.js` | user-visible | `pdfviewer-spaces` | open |
-| P1-53 | Sync pill shows red “Offline” during every healthy save | MED | Sync UX | `src/utils/syncStatusViewModel.js` | user-visible | `sync-status-history` | **fixed** |
-| P1-54 | Black-thumbnail-detection guard is dead code | LOW | Pages | `src/sidebar/PagesPanel.jsx` | test-only | `pages-panel` | open |
-| P1-55 | Legacy dual-write to `document_annotations` is dead (comments claim live) | LOW | Sync | `src/services/annotationCloudSync.js` | test-only | `sync-status-history` | open |
+| ID | Title | Status | Evidence |
+|---|---|---|---|
+| P1-21 | Switching tools mid-stroke discards in-progress ink/shape | **proven** | `SVGAnnotationLayer.jsx:1314-1325` `commitShapeCreationRef` on tool-switch |
+| P1-22 | Eraser skips cross-author delete confirmation | **proven** | `lib/collab/bulkDeletePlan.js:105` `buildBulkDeletePlan`; `eraseApprovalCandidates.js`; `PDFViewer.jsx:18699` |
+| P1-23 | Non-owners cannot erase/edit imported markups | **proven** | `pdfAnnotationImporter.js:74` `stampImportedAnnotationAuthor` (`:5134` apply). `fix-logs/e2e-testpdf-import.md` |
+| P1-24 | Survey-marker move/resize fails open | **proven** | `lib/collab/permissionScope.js:249` `canModifySurveyMarker`; `PDFViewer.jsx:26960` (no outer fail-open guard) |
+| P1-25 | Legacy group arrows ignore rotation/scale | **proven** | `legacyGroupArrow.js:8` `isLegacyGroupArrow` / `buildLegacyArrowGroupTransform`. Export sibling `legacyArrowGroupToLine`. `fix-logs/export-flatten-siblings.md` |
+| P1-26 | Double-click edit is a no-op on legacy group arrows | **proven** | `PDFViewer.jsx:121` import; `:11491` / `:31713` dblclick maps `isLegacyGroupArrow` |
+| P1-27 | Legacy `circle`-typed ellipses ignore toolbar restyle | **proven** | `PDFViewer.jsx:3872` / `:7468` circle in fill/stroke gates; `:23156` selection maps circle→ellipse |
+| P1-28 | Clearing all text leaves an invisible ghost | **proven** | `textEditCommit.js:142` / `:197` blank → `null` |
+| P1-29 | Shift+marquee replaces callout selection | **proven** | `useSVGInteraction.js:141` `unionIdSet` / `:147` `subtractIdSet` vs `selectedCalloutIds` (`:2939` / `:2953`). `tests/svgInteractionFixes.test.mjs` |
+| P1-30 | Remote-delete “Removed by X — Restore?” toast is dead | **proven** | `components/collab/remoteDeleteInteraction.js:8` `collectLocalInteractionIds`; YDocProvider Restore toast |
+| P1-31 | AutoCAD SHX Text shows working resize/rotate handles | **proven** | `selectionHandleVisibility.js:80-89` `shouldShowSelectionTransformHandles`; `SVGAnnotationLayer.jsx:106` SHX in select-delete-only set. `tests/selectionHandleVisibility.test.mjs` |
+| P1-32 | Holding rotation-field arrow key creates one undo per keypress | **proven** | `RotationInputField.jsx:105` ``rotation-input:${annotationIndex}:${Date.now()}`` |
+| P1-33 | Open context menu can apply z-order to the wrong shape | **proven** | `annotationZOrder.js:124`; `PDFViewer.jsx:26283` `resolveAnnotationIndexById` |
+| P1-34 | Cmd+C/X only work for exactly one shape | **proven** | `SVGAnnotationLayer.jsx:845` `selectedIds` (multi-id copy/cut) |
+| P1-35 | Repeat-paste offset hardcodes US-Letter | **proven** | `PDFViewer.jsx:4043` / `:7890` `pageSizesRef` (612/792 is fallback only) |
+| P1-36 | Owner-scoping silently drops undo for contributor edits | **proven** | `annotationLocalHistory.js:30` `isOwnAnnotation` |
+| P1-37 | Font color opacity slider is dead on desktop | **proven** | `AppShell.jsx:1833` `showOpacity={false}` |
+| P1-38 | “Match Fill” swatch never shows selected when fill is translucent | **proven** | **Stomp one-liner still live:** `CompactColorPicker.jsx:336` `Math.abs(localOpacity - matchOpacityPct) <= 1`. `tests/compactColorPickerLayout.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
+| P1-39 | Hex field accepts invalid colors like `zzzzzz` | **proven** | `annotationStyleCatalog.js:65` `normalizeHexColor` / `:79` `isValidHexColor` |
+| P1-40 / P1-41 | Cmd+0/1/2 silently degrade fit / keyboard fit % disagrees | **proven** | `PDFViewer.jsx:7880` `handleZoomModeSelectRef`; `:6818` / `:23706-23716` FIT_PAGE / WIDTH / HEIGHT |
+| P1-42 | Sidebar thumbnails never use IndexedDB cache | **proven** | `pagesPanelUtils.js:25` `getPdfDocumentCacheStamp`; `PagesPanel.jsx:403` `thumbnailStore`. `tests/pagesPanelUtils.test.mjs` |
+| P1-43 | Drag-reorder in a filtered Space also moves hidden pages | **proven** | `pagesPanelUtils.js:79` `canReorderVisiblePages`; `PagesPanel.jsx:214`. Same test |
+| P1-44 | New bookmarks jump to top of an already-ordered list | **proven** | `bookmarkEditUtils.js:3` `nextBookmarkOrder`. `tests/bookmarkAtomicEdit.test.mjs` |
+| P1-45 | Deleting a bookmark group nukes nested bookmarks with no count/undo | **proven** | `bookmarkEditUtils.js:81-99` count/confirm; `:117` `planBookmarkDelete`; `PDFViewer.jsx:12778` `bookmark:delete` slice. `tests/bookmarkAtomicEdit.test.mjs`; `tests/pdfViewerUndoOneLiners.test.mjs`; `fix-logs/p1-45-undo.md` |
+| P1-46 | Bookmarks/page names/spaces metadata localStorage-only | **proven** | `sidebarPersistence.js:57` `mergeSidebarWrite`; `PDFViewer.jsx:9993`. Guest / no-Y.Doc still localStorage-only (accepted leftover, not leftover-18) |
+| P1-47 | Bookmark drag-reorder is O(n²) | **proven** | `bookmarkReorderUtils.js:138` `collectBookmarkTreePersistUpdates`. `tests/bookmarkReorderUtils.test.mjs` |
+| P1-48 | Rejected duplicate-name bookmark rename keeps showing unsaved name | **proven** | `BookmarksPanel.jsx` `commitName` → `prepareAtomicBookmarkEdit`. `tests/bookmarkAtomicEdit.test.mjs` |
+| P1-49 | Search results go stale after page reorder/rotate | **proven** | `PDFViewer.jsx:7343-7346` `pageMutationRevision` in search key |
+| P1-50 | Concurrent Spaces edits are whole-array LWW | **proven** | `annotationDocStore.js:601` `SPACES_MAP = 'spacesById'` |
+| P1-51 | Activating an empty Space blanks the canvas | **proven** | `spaceRegionOrphans.js:19` `spaceHasActivatableRegions`; `PDFViewer.jsx:19595` |
+| P1-52 | Deleting a region while a teammate draws inside it orphans their annotation | **proven** | `spaceRegionOrphans.js:25` `unscopeOrphanedRegionAnnotations` |
+| P1-53 | Sync pill shows red “Offline” during every healthy save | **proven** | **Stomp one-liner still live:** `syncStatusViewModel.js:41-48` `pending` **before** queue-offline (`:50`). `tests/syncStatusUi.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
+| P1-54 | Black-thumbnail-detection guard is dead code | **proven** | `pagesPanelUtils.js:45` `isLikelyBlackThumbnailPixels`; `PagesPanel.jsx:166`. `tests/pagesPanelUtils.test.mjs` |
+| P1-55 | Legacy dual-write to `document_annotations` is dead | **proven** | `annotationCloudSync.js:52` `DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE = false`. `tests/annotationDualWriteRetired.test.mjs` |
 
 ### Pass 2 — CRITICAL / HIGH
 
-| ID | Title | Sev | Area | Primary files | Visible? | Bucket | Status |
-|---|---|---|---|---|---|---|---|
-| P2-01 | Free-tier sharing paywall is client-side only | CRITICAL | Sharing / abuse | `src/home/ShareModal.jsx`, invite RLS migrations, `supabase/functions/send-invite-email/` | user-visible | `sharing-invites` | open |
-| P2-02 | Offline/conflict retry queue is never fed | CRITICAL | Offline queue | `src/lib/collab/crdtDualWriteQueue.js`, `src/services/annotationCloudSync.js`, `src/services/annotationDocSync.js` | user-visible (missing safety net) | *decision* — see note | open |
-| P2-03 | Account deletion destroys collaborators’ work; backend callable today | HIGH | Account | `supabase/functions/delete-account/`, account-deletion migration, `src/components/AccountSettings.jsx` | user-visible via API | `account-settings` | open |
-| P2-04 | OneDrive/SharePoint save silently overwrites existing files | HIGH | OneDrive | `src/PDFViewer.jsx`, `src/services/excelGraphService.js` | user-visible | `pdfviewer-excel-onedrive` | open |
-| P2-05 | Revoke pending invite does not remove already-granted access | HIGH | Sharing | `src/services/documentInviteService.js`, `kal31_revoke_document_invite` | user-visible | `sharing-invites` | open |
-| P2-06 | Any project member can open Manage Team and fire false emails | HIGH | Roles | `src/home/ProjectsFolderTree.jsx`, `src/home/ManageTeamModal.jsx` | user-visible | `roles-team` | open |
-| P2-07 | Promoting to Owner never unlocks Manage Access | HIGH | Roles | `src/home/SurveyHub.jsx`, `src/home/AccessManagementModal.jsx` | user-visible | `roles-team` | open |
-| P2-08 | “Connect Google” is sign-in, not link — can switch accounts | HIGH | Auth | `src/components/AccountSettings.jsx`, `src/contexts/AuthContext.jsx` | user-visible | `account-settings` | open |
-| P2-09 | Manual Sync to Excel reports success when every write failed | HIGH | Excel | `src/PDFViewer.jsx` | user-visible | `pdfviewer-excel-onedrive` | open |
-| P2-10 | SharePoint-tier can mint duplicate Survey Markers for one Excel row | HIGH | Excel identity | `supabase/migrations/20260625120000_kal309_excel_sync.sql` | user-visible | `excel-identity-sql` | open |
-| P2-11 | Desktop quit is a fixed ~5s hang and abandons long saves | HIGH | Electron | `src/electron-main.js`, `src/PDFViewer.jsx` (`notifySaveComplete` already fires) | user-visible | `electron-desktop` | open |
-| P2-12 | Access-removed banner can be permanently lost after re-sign-in | HIGH | Collab UX | `src/components/collab/YDocProvider.jsx` | user-visible | `collab-ux` | open |
-| P2-13 | Microsoft sign-in on iOS/Android is a dead end | HIGH | MS auth + mobile | `src/contexts/MSGraphContext.jsx`, `src/utils/microsoftOAuthRouting.js` | user-visible | `microsoft-auth` | open |
-| P2-14 | Desktop Microsoft connect clobbers web/mobile tokens | HIGH | MS auth | `src/contexts/MSGraphContext.jsx`, `src/utils/microsoftConnectionMarker.js` | user-visible | `microsoft-auth` | open |
-| P2-15 | Delete-account button permanently disabled (backend is live) | HIGH | Account | `src/components/AccountSettings.jsx` | user-visible | `account-settings` | open · **after P2-03** |
+| ID | Title | Status | Evidence |
+|---|---|---|---|
+| P2-01 | Free-tier sharing paywall is client-side only | **proven** | `send-invite-email/handler.js:194` `invite_blocked_free_tier`; SQL `kal31_guard_invite_creator_tier`. **Apply leftover** (not leftover-18) |
+| P2-02 | Offline/conflict retry queue is never fed | **proven** | `annotationOutboxRetryView.js:39` `summarizeOutboxRetry`; live UL-44 `e2e-outbox-retry.spec.mjs` |
+| P2-03 | Account deletion destroys collaborators’ work | **proven** | `delete-account/index.ts:109` `ACCOUNT_HAS_COLLABORATORS`; `20260820020000_…`. **Apply leftover** |
+| P2-04 | OneDrive/SharePoint save silently overwrites existing files | **proven** | `PDFViewer.jsx:147` / `:36619` `TemplateOverwriteWarningModal` |
+| P2-05 | Revoke pending invite does not remove already-granted access | **proven** | `20260820010000_…` `kal31_revoke_document_invite` `DELETE FROM document_collaborators`. **Apply leftover** |
+| P2-06 | Any project member can open Manage Team | **proven** | `projectInviteService.js:86` `userCanManageProjectTeam` on `ProjectsFolderTree.jsx:428` / `ManageTeamModal.jsx:424`. `tests/rolesTeamManageGate.test.mjs` |
+| P2-07 | Promoting to Owner never unlocks Manage Access | **proven** | `projectInviteService.js:72` `userCanManageDocumentAccess`; `SurveyHub.jsx:110`. `tests/rolesTeamManageGate.test.mjs`; `tests/kal31InviteContract.test.mjs` |
+| P2-08 | “Connect Google” is sign-in, not link | **proven** | `AuthContext.jsx:695` `linkGoogleIdentity` |
+| P2-09 | Manual Sync to Excel reports success when every write failed | **proven** | `excelLiveSyncWriteStatus.js:5`; `PDFViewer.jsx:14023` |
+| P2-10 | SharePoint-tier can mint duplicate Survey Markers for one Excel row | **proven** | `20260820230000_…` `excel_sync_state_identity_fingerprint_uidx`. **Apply leftover** |
+| P2-11 | Desktop quit is a fixed ~5s hang | **proven** | `quitCoordinator.cjs:7` `createQuitCoordinator`. **Zero** `checkAndQuit` in `src/` |
+| P2-12 | Access-removed banner can be permanently lost after re-sign-in | **proven** | `collabBannerState.js:12` `storageStateAfterResignIn`; `YDocProvider.jsx:1704` |
+| P2-13 | Microsoft sign-in on iOS/Android is a dead end | **proven** | `microsoftOAuthRouting.js:20` `isCapacitorMicrosoftConnectHidden`; `:23` `isMicrosoftConnectAvailable`. `tests/microsoftOAuthRouting.test.mjs`. Deep-link OAuth leftover (not leftover-18 list) |
+| P2-14 | Desktop Microsoft connect clobbers web/mobile tokens | **proven** | `microsoftConnectionMarker.js:32` `preserveLegacyTokenMetadata`. `src/services/__tests__/microsoftConnectionMarker.test.mjs`. Live MSAL is leftover-18 A-02 / UL-21 |
+| P2-15 | Delete-account button permanently disabled | **proven** | `accountPlatform.js:228` `ACCOUNT_DELETION_CONFIRMATION = 'DELETE'` |
 
 ### Pass 2 — MEDIUM / LOW
 
-| ID | Title | Sev | Area | Primary files | Visible? | Bucket | Status |
-|---|---|---|---|---|---|---|---|
-| P2-16 | Remote-delete Restore? toast permanently dead (pass-2 confirmation of P1-30) | MED | Collab | `src/components/collab/YDocProvider.jsx` | user-visible | `collab-ux` | open · same defect family as P1-30; close together |
-| P2-17 | “N viewing” drops anyone idle 2 minutes on one page | MED | Presence | `src/PDFViewer.jsx`, `src/utils/presenceRoster.js` | user-visible | `pdfviewer-presence` | open |
-| P2-18 | Re-sign-in modal accepts a different account mid-session | MED | Auth + collab | `src/components/collab/YDocProvider.jsx`, `src/contexts/AuthContext.jsx` | user-visible | `pdfviewer-presence` | open |
-| P2-19 | “Live sync real-time” copy is only half-true (app→Excel push disabled) | MED | Excel | `src/utils/excelWritebackGate.js`, `src/components/SurveySpacesRail.jsx` | user-visible | `pdfviewer-excel-onedrive` | open |
-| P2-20 | Every Live Sync connect double-fires and orphans a workbook session | MED | Excel | `src/PDFViewer.jsx` | user-visible | `pdfviewer-excel-onedrive` | open |
-| P2-21 | Excel `create` ops skip the field/template whitelist `apply` enforces | MED | Excel identity | `supabase/migrations/20260625120000_kal309_excel_sync.sql` | user-visible (abuse) | `excel-identity-sql` | open |
-| P2-22 | OneDrive picker never refreshes the Microsoft token | MED | OneDrive | `src/components/OneDriveFolderBrowser.jsx`, `src/PDFViewer.jsx` | user-visible | `pdfviewer-excel-onedrive` | open |
-| P2-23 | Two owners removing each other can leave a document ownerless | MED | Sharing | last-owner trigger migration | user-visible | `last-owner-race` | open |
-| P2-24 | One tab’s stale MS token failure wipes the shared connection row | MED | MS auth | `src/contexts/MSGraphContext.jsx` | user-visible | `microsoft-auth` | open |
-| P2-25 | Switching MS accounts on desktop can silently refresh as the old account | MED | MS auth | `src/msalAuthMain.js` | user-visible | `microsoft-auth` | open |
-| P2-26 | Network blip at desktop launch treated as broken MS connection | MED | MS auth | `src/contexts/MSGraphContext.jsx` | user-visible | `microsoft-auth` | open |
-| P2-27 | Billing lifecycle emails route “return to merchant” to google.com | MED | Billing | `supabase/functions/stripe-webhook/index.ts` | user-visible | `billing` | open |
-| P2-28 | Unlimited repeat 7-day Pro trials via cancel → resubscribe | MED | Billing | `supabase/functions/create-checkout-session/index.ts` | user-visible | `billing` | open |
-| P2-29 | Stripe webhook emails are not idempotent | MED | Billing | `supabase/functions/stripe-webhook/index.ts` | user-visible | `billing` | open |
-| P2-30 | Half-failed account deletion strands a live account whose data is gone | MED | Account | `supabase/functions/_shared/accountDeletion.ts` | user-visible | `account-settings` | open |
-| P2-31 | Profile save reports total failure even when name already saved | MED | Account | `src/components/AccountSettings.jsx` | user-visible | `account-settings` | open |
-| P2-32 | Google-only accounts see a Change Password form that can never succeed | MED | Auth | `src/components/AccountSettings.jsx` | user-visible | `account-settings` | open |
-| P2-33 | Invite link → sign-in → dashboard; invite abandoned | MED | Auth + invites | `src/home/InviteAcceptPage.jsx` | user-visible | `sharing-invites` | open |
-| P2-34 | Eight documented keyboard shortcuts do nothing (3 merged tickets) | MED | Shortcuts | `src/components/KeyboardShortcutsOverlay.jsx`, `src/PDFViewer.jsx`, `src/electron-main.js` | user-visible | `pdfviewer-shortcuts` | open |
-| P2-35 | Mobile bottom sheets: reopen race, missing exits, stuck mid-drag (3 merged) | MED | Mobile | `src/hooks/useMobileSheetMotion.js` | user-visible | `mobile-sheets` | open |
-| P2-36 | Launching desktop twice races the Microsoft token cache | MED | Electron | `src/electron-main.js` | user-visible | `electron-desktop` | open |
-| P2-37 | Export/print can serialize literal `Infinity`/`NaN` into the PDF | MED | Export | `src/utils/pdfAnnotationsPdfLib.js` | user-visible (hostile/corrupt data) | `export-print` | **fixed** |
-| P2-38 | Post-checkout `?billing=success` is never read | LOW | Billing | `supabase/functions/_shared/billingReturn.ts` | user-visible | `billing` | open |
-| P2-39 | Save Log local-disk write hardcoded to maintainer path | LOW | Electron | `src/AppShell.jsx`, `src/PDFViewer.jsx` | test-only (swallowed) | `pdfviewer-shortcuts` | open |
+| ID | Title | Status | Evidence |
+|---|---|---|---|
+| P2-16 | Remote-delete Restore? toast permanently dead | **proven** | same as P1-30 (`remoteDeleteInteraction.js:8`) |
+| P2-17 | “N viewing” drops anyone idle 2 minutes on one page | **proven** | `presenceRoster.js:30` `PRESENCE_STALE_MS = 10 * 60 * 1000` + `:31` 60s heartbeat |
+| P2-18 | Re-sign-in modal accepts a different account mid-session | **proven** | `reSignInAccount.js:2` `isSameReSignInUser`; `ReSignInModal.jsx:118` |
+| P2-19 | “Live sync real-time” copy is only half-true | **proven** | `excelWritebackGate.js:14` `EXCEL_AUTOMATIC_WRITEBACK_ENABLED = false` (X-06 writeback leftover-18) |
+| P2-20 | Every Live Sync connect double-fires | **proven** | `PDFViewer.jsx:13978` live-sync effect gated on `oneDriveFileId` + `excelSessionId` |
+| P2-21 | Excel `create` ops skip the field/template whitelist | **proven** | same `20260820230000` create-branch whitelist. **Apply leftover** |
+| P2-22 | OneDrive picker never refreshes the Microsoft token | **proven** | `OneDriveFolderBrowser.jsx:106` `ensureFreshToken`; `PDFViewer.jsx:14293` |
+| P2-23 | Two owners removing each other can leave a document ownerless | **proven** | `20260820220000_…` `FOR UPDATE`. **Apply leftover** |
+| P2-24 | One tab’s stale MS token failure wipes the shared connection row | **proven** | `microsoftConnectionMarker.js:68` `shouldWipeSharedConnectionRow`. Same Node test as P2-14 |
+| P2-25 | Switching MS accounts on desktop can silently refresh as the old account | **proven** | `electron/msalAuthMain.js:78` `selectPreferredAccount`. `tests/msalAuthMain.test.mjs` |
+| P2-26 | Network blip at desktop launch treated as broken MS connection | **proven** | `electron/msalAuthMain.js:59` `classifySilentTokenError`. `tests/msGraphMicrosoftAuth.test.mjs` |
+| P2-27 | Billing lifecycle emails route “return to merchant” to google.com | **proven** | `billingReturn.ts` `CANONICAL_RETURN_URL = 'https://surveytool.app/'` |
+| P2-28 | Unlimited repeat 7-day Pro trials | **proven** | `billingTrial.ts` `proTrialPeriodDays`. `tests/billing.test.mjs`. **Apply leftover** |
+| P2-29 | Stripe webhook emails are not idempotent | **proven** | `stripeEventIdempotency.ts` `withStripeEventIdempotency`. Same test. **Apply leftover** |
+| P2-30 | Half-failed account deletion strands a live account whose data is gone | **proven** | `delete-account` `DATA_REMOVED_RETRY`; `accountPlatform.js:247` |
+| P2-31 | Profile save reports total failure even when name already saved | **proven** | `accountPlatform.js:142` `describeProfileSaveOutcome`; `AccountSettings.jsx:321` |
+| P2-32 | Google-only accounts see a Change Password form that can never succeed | **proven** | `accountPlatform.js:73` `canUnlinkProvider`; `AccountSettings.jsx:1230` |
+| P2-33 | Invite link → sign-in → dashboard; invite abandoned | **proven** | `pendingInviteResume.js:68` `resumePendingInviteAfterAuth`; `main.jsx:360` |
+| P2-34 | Eight documented keyboard shortcuts do nothing (3 merged) | **proven** | Overlay `KeyboardShortcutsOverlay.jsx:45-47` Home/End; `:73` `B`; no Ctrl+W / Ctrl+Tab. `PDFViewer.jsx:23680` `B`; `:23761` family page-nav. `tests/sidebarToggleHotkey.test.mjs` |
+| P2-35 | Mobile bottom sheets: reopen race, missing exits, stuck mid-drag | **proven** | `useMobileSheetMotion.js:226` `onTouchCancel`; hosts bind `PDFSidebar.jsx:375`. `useMobileSheetMotion.touchcancel.test.mjs`; `fix-logs/mobile-sheets-p2-35b.md` |
+| P2-36 | Launching desktop twice races the Microsoft token cache | **proven** | `electron-main.js:21` `app.requestSingleInstanceLock()` |
+| P2-37 | Export/print can serialize literal `Infinity`/`NaN` | **proven** | `pdfAnnotationsPdfLib.js:3372` flatten skip non-finite box. `tests/printFlattenOnPage.test.mjs` |
+| P2-38 | Post-checkout `?billing=success` is never read | **proven** | `billingReturn.js:4` `readBillingQuery`; `ToastHost.jsx:43` `consumeBillingQueryOnBoot` |
+| P2-39 | Save Log local-disk write hardcoded to maintainer path | **proven** | `surveyDiagPaths.js:3` `surveyTestLogsDir`; `PDFViewer.jsx:5008` |
+
+### P2-34 / P2-35 sub-defects (headline extras, not extra inventory IDs)
+
+| Sub | Status | Evidence |
+|---|---|---|
+| P2-34(a) Home/End / ←→ in continuous | **proven** | Overlay `:45-47`; `PDFViewer.jsx` page-nav |
+| P2-34(b) `B` sidebar | **proven** | `PDFViewer.jsx:23680`; overlay `:73` |
+| P2-34(c) Ctrl+W / Ctrl+Tab overlay lies | **proven** | Overlay no longer lists them (Navigation/Actions/Interface only) |
+| P2-35(a) dismiss-then-reopen race | **proven** | `useMobileSheetMotion.js` generation-guard + `resetMotion` |
+| P2-35(b) hard-hide survey exits | **proven** | `requestClose`; `fix-logs/mobile-sheets-p2-35b.md` |
+| P2-35(c) `touchcancel` | **proven** | hook `:226` `onTouchCancel` → `settleDrag` |
 
 ### P2-02 placement note
 
-P2-02 is a **product decision**, not a file-local bug: either wire the live `annotationDocSync` / outbox failures into `enqueueDualWrite`, or retire `crdtDualWriteQueue` and port stuck-banner/quarantine UX onto the outbox that actually runs. Do **not** leave two half-systems. Owner: orchestrator + a dedicated `offline-queue` worker after the decision. Primary files would then be either `src/services/annotationDocSync.js` + `src/lib/collab/crdtDualWriteQueue.js` **or** a deletion of the unused queue. Not assigned to a parallel YES bucket until the decision is made.
-
-### P2-34 sub-defects (keep all three)
-
-1. Home/End and ←/→ page-nav do nothing in continuous mode.
-2. `B` does not toggle the sidebar.
-3. Overlay lists Ctrl+W / Ctrl+Tab which are browser-reserved on web and unimplemented on Electron.
-
-### P2-35 sub-defects (keep all three)
-
-1. Dismiss-then-reopen race (uncancellable close timer).
-2. Survey-sheet close paths hard-hide (no exit animation) and desync motion.
-3. No `touchcancel` — interrupted drag leaves the sheet stranded.
+P2-02 was a product decision (wire outbox vs retire unused queue). Closed as **proven** via the live outbox path (`summarizeOutboxRetry` + UL-44). Do **not** reintroduce a second half-system.
 
 ---
 
-## Suggested owner feature buckets (for E2E later)
+## Feature-bucket roster (historical spawn map)
 
-See `FEATURE-MATRIX.md`. Issue → E2E feature mapping:
+Buckets below are the original wave-1 parallelization map. Statuses in the tables above supersede any “open / wave-1 fixed” notes in this roster.
 
-| Issue IDs | E2E feature |
+| Bucket | IDs |
 |---|---|
-| P1-01..04, P2-37 | Save / Export / Print |
-| KB-1, P1-22 | Eraser |
-| KB-2, P1-33 | Z-order / context menu |
-| P1-05, P1-06, P1-08, P1-29, P1-31 | Select / move / resize / rotate |
-| P1-07, P1-28, P1-37 | Text tool + formatting |
-| P1-15, P1-34 (callout half) | Callouts |
-| P1-09..13, P1-32, P1-36 | Undo / redo |
-| P1-14, P1-27 | Counters / shapes toolbar |
-| P1-16, P1-24 | Survey markers |
-| P1-17..19, P1-42, P1-43, P1-54 | Pages |
-| P1-44..48, P1-46 | Bookmarks |
-| P1-49 | Search |
-| P1-50..52 | Spaces / regions |
-| P1-20, P1-21, P1-34, P1-35, P1-40, P1-41, P2-34 | Shortcuts / zoom / clipboard |
-| P1-38, P1-39 | Color pickers |
-| P2-01, P2-05, P2-33 | Sharing / invites |
-| P2-06, P2-07, P2-23 | Roles / team |
-| P2-03, P2-08, P2-15, P2-30..32 | Account / auth |
-| P2-04, P2-09, P2-10, P2-19..22 | Excel / OneDrive |
-| P2-11, P2-36, P2-39 | Electron |
-| P2-13, P2-14, P2-24..26 | Microsoft connect |
-| P2-27..29, P2-38 | Billing |
-| P2-12, P2-16..18, P1-30 | Collab UX / presence |
-| P2-35 | Mobile chrome |
+| `export-print` | P1-01, P1-02, P1-03, P1-04, P2-37 |
+| `eraser-policy` | KB-1 |
+| `color-picker` | P1-37, P1-38, P1-39 |
+| `sharing-invites` | P2-01, P2-05, P2-33 |
+| `roles-team` | P2-06, P2-07 |
+| `account-settings` | P2-03, P2-08, P2-15, P2-30, P2-31, P2-32 |
+| `billing` | P2-27, P2-28, P2-29, P2-38 |
+| `bookmarks-panel` | P1-44, P1-45, P1-47, P1-48 |
+| `pages-panel` | P1-42, P1-43, P1-54 |
+| `sync-status-history` | P1-12, P1-53, P1-55 |
+| `excel-identity-sql` | P2-10, P2-21 |
+| `mobile-sheets` | P2-35 |
+| `electron-desktop` | P2-11, P2-36 |
+| `microsoft-auth` | P2-13, P2-14, P2-24, P2-25, P2-26 |
+| `text-commit` | P1-28 |
+| `counter-numbering` | P1-14 |
+| `collab-ux` | P1-30, P2-12, P2-16 |
+| `last-owner-race` | P2-23 |
+| `svg-interaction` | P1-05, P1-06, P1-08, P1-29 |
+| `z-order` | KB-2, P1-33 |
+| `pdfviewer-*` | remaining P1 / P2 SERIALIZE rows (see prior wave-1 table) |
 
 ---
 
-## Worker-prompt allowlists (copy-paste)
+## Goal
 
-See the “Recommended next worker prompts” section in the wave-1 return message. File allowlists are the **Primary ownership** column above. High-risk files may be read but not edited except by the serialized `pdfviewer-*` / `z-order` / `eraser-preview` / `svg-locks` workers.
+Leftover **18** still blocks `/goal` complete. This inventory refresh does **not** mark the goal complete.
