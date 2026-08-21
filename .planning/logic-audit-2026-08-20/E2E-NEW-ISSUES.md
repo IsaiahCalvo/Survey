@@ -68,6 +68,13 @@ Found while automating color / font / format / export / resize / rotation / draw
 - Now uses `getHistoryDocumentId(pdfFile)`. Proof: live Restore brought the id back.
 - Receipt: `fix-logs/e2e-wave-remaining.md`.
 
+### E2E-LINK-01 — PdfjsLinkLayer opened unsanitized `url` (ftp + any future scheme) — **fixed**
+
+- Web `window.open(link.url)` had no protocol allowlist. Electron IPC already allowed only `http:` / `https:` / `mailto:`.
+- pdf.js 6.1.200 puts `javascript:` / `data:` / `file:` on `unsafeUrl` (`url=null`) but still promotes `ftp://` into `url`.
+- Fix: `src/utils/pdfExternalLink.js` + `PdfjsLinkLayer` skip disallowed `url`s (never read `unsafeUrl`).
+- **Proof:** Node `tests/pdfExternalLink.test.mjs` **5 / 5**; live `e2e-pdf-links.spec.mjs` **1 / 1** — claude.com + mailto open; javascript/data/file/ftp never become hrefs; dest GoTo → page 2; Pen armed no-ops. Receipt `fix-logs/pdf-links-2026-08-21.md`.
+
 ## New this wave
 
 W3-01 closed (wrong selectors). W4-02 true pinch closed (CDP two-touch). W4-03 closed (local History on `?testPdf=`). W5-01 closed (local delete-restore). Wave 5 live-proved leftover helper-only rows that can run on `?testPdf=`.

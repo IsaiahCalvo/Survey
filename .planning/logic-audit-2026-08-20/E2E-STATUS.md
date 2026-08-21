@@ -1,5 +1,7 @@
 # E2E status — wave 5 remaining + hub leftovers
 
+**This-pass (2026-08-21 later):** unique cluster **native PDF Link / URL / mailto / page-jump** live-proven. Receipt `.planning/logic-audit-2026-08-20/fix-logs/pdf-links-2026-08-21.md` + `fix-logs/e2e-pdf-links.md`. Playwright `e2e-pdf-links.spec.mjs` **1 / 1 (3.7s)**. Product: E2E-LINK-01 allowlist (`http:`/`https:`/`mailto:`) in `PdfjsLinkLayer`. No create/edit Link tool (not invented). Leftover **18** unchanged. Did **not** replay waves 5–12 / flatten / survey-marker / pages menu. Goal stays open.
+
 **Date:** 2026-08-21  
 **Worktree:** `nifty-elion-773074`  
 **This wave does not claim the whole app is done.** Wave 5 live-tested leftover helper-only rows on reused Vite `http://localhost:5173` + `?testPdf=`. Receipt: `fix-logs/e2e-wave-remaining.md`. Hub leftovers (`hubPreview` templates, 1-dot tap, U-04, kal441 widgets): `fix-logs/e2e-hub-templates-leftovers.md`. U-04 archive-with-markers closed on `?hubPreview=1`: `fix-logs/e2e-u04-archive.md`. Did not stamp `file.id`.

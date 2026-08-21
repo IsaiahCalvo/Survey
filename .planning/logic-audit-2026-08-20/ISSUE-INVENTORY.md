@@ -3,6 +3,8 @@
 Written: 2026-08-20 · Wave 1 foundation
 Sources: `REPORT.md` + `known-bugs-deep-dive.json`
 
+**This-pass (2026-08-21):** new E2E finding **E2E-LINK-01** (not one of the original 96) — `PdfjsLinkLayer` opened pdf.js `url` without an http/https/mailto allowlist (`ftp://` still promoted). Fixed + live-proven. See `E2E-NEW-ISSUES.md` + `fix-logs/pdf-links-2026-08-21.md`. Original 96 IDs unchanged. Leftover 18 unchanged.
+
 ## Count reconciliation
 
 | Source | Claimed | Canonical unique IDs in this inventory |
