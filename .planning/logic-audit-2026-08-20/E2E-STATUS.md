@@ -1,6 +1,8 @@
 # E2E status — wave 5 remaining + hub leftovers
 
-**This-pass (2026-08-21 keyboard shortcut matrix):** first unique unblocked leftover after print/export-options/stamp/measure were compile-gated or already proven. Live-proved Delete, Ctrl+]/[, Ctrl+F, tool letters P/H/T/Q/L/A/C/V, Esc overlay, and no-Duplicate / no-Group. Playwright `e2e-keyboard-shortcut-matrix.spec.mjs` **1 / 1 (4.2s)**. Node `keyboardShortcutMatrix.test.mjs` **2 / 2**. No product bug. Official `npm test` 8448 leftover not loosened (no high-risk edit). Receipt `.planning/logic-audit-2026-08-20/fix-logs/keyboard-shortcut-matrix-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-21 Search Previous):** unique leftover after wave6 Next wrap. Live-proved Previous walk `3→2→1`, first→last wrap (`1 of 12` → `12 of 12`), X + Esc dismiss/clear highlights, 0-hit hidden, 1-hit stay, empty query, literal `.*(` , Previous while Pen armed, Shift+Enter vs page-focused button, no case-toggle, hyphen/`é`, query-change reset, wrap after page jump. Playwright `e2e-search-previous.spec.mjs` **1 / 1 (1.1m)** on `?testPdf=text-search-glyph-lab.pdf`. Node `searchPrevious.test.mjs` **2 / 2**. No product bug. Official `npm test` 8448 leftover not loosened (no high-risk edit). Receipt `.planning/logic-audit-2026-08-20/fix-logs/search-previous-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-21 keyboard shortcut matrix):** first unique unblocked leftover after print/export-options/stamp/measure were compile-gated or already proven. Live-proved Delete, Ctrl+]/[, Ctrl+F, tool letters P/H/T/Q/L/A/C/V, Esc overlay, and no-Duplicate / no-Group. Playwright `e2e-keyboard-shortcut-matrix.spec.mjs` **1 / 1 (4.2s)**. Node `keyboardShortcutMatrix.test.mjs` **2 / 2**. No product bug. Official `npm test` 8448 leftover not loosened (no high-risk edit). Receipt `.planning/logic-audit-2026-08-20/fix-logs/keyboard-shortcut-matrix-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-21 env-unlock + mobile chrome hit targets):** secrets hunt found **no** `VITE_DEV_AUTO_LOGIN_*` / `SUPABASE_SERVICE_ROLE_KEY` / Stripe / MSAL. Leftover-18 **0** newly fully proven. Track B: 390×844 viewer More/header/dock + hub mobile list/filter/detail live-proven. Playwright `e2e-mobile-chrome-hit-targets.spec.mjs` **3 / 3 (9.2s)**. Node `mobileChromeHitTargets.test.mjs` **2 / 2**. Product: live page-input commit + mobile `pageInputRef`. Official `npm test` after PDFViewer: standing leftover `partialEraserComplexity` **11970.51 > 8448** (not loosened). Receipt `.planning/logic-audit-2026-08-20/fix-logs/env-unlock-or-next-gap-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
@@ -54,7 +56,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | V-05 | Page nav | **pass** (overlay) | ←/→ Home/End listed. **Window:** 1-page PDF ignores next; multi-page Home/End jump. |
 | V-06 | Pages panel | **pass** (live thumbs) | jump page 3; 1-page next no-op; IntersectionObserver JPEG upgrade + long-doc scroll |
 | V-07 | Bookmarks | **pass** (live drag) | dnd-kit reorder Alpha→bottom; clash toast; page 99 clamps; self-drop no-op |
-| V-08 | Search | **pass** (window wrap) | Search text → `the` → Next wraps `2 of 2` ↔ `1 of 2`. `*` and `(` reported `1 of 1` on this fixture (chars exist / leftover count) — no crash. |
+| V-08 | Search | **pass** (Next + Previous wrap) | Wave6: Next wrap / no-match / Esc-clear. This pass: `Helvetica` **12** hits on glyph-lab; Previous `3→2→1` and first→last `1↔12`; X + Esc clear highlights; `in` 1-hit stay; `zzzz` / `.*(` 0-hit hidden; Pen-armed Previous; Shift+Enter vs page-focused button; no case-toggle (`HELVETICA`=`helvetica`=12); `-`=6 / `é`=5 wrap; query change resets to `1 of 4`. Receipt `fix-logs/search-previous-2026-08-21.md`. |
 | V-09 | Shortcuts overlay | **pass** (overlay) | `?` lists tools; Escape owned by focus trap. **Window:** press `?` then Esc. |
 | D-01 | Pen / ink | **pass** (window stroke + 1-dot tap) | True tap (down+up, no drag) on `?testPdf=clickable-link-test.pdf` committed path `268ff89b-…`. Intended: `createProductionPaperInk` keeps a 1-point centerline. Mid-zoom still W4 Zoom-in. |
 | D-02 | Highlighter | **pass** (window freehand + print) | Text-highlight split menu is hidden (KAL-240). **Cmd+P** is base PDF (`withMarkup=false`). **Cmd+Shift+P** flattens regular marks: highlighter included (`fabric: 1`), survey-marker highlight excluded (`surveyMarkers: 1`). Receipt `fix-logs/e2e-unblocked-followup-2.md`. |
@@ -119,7 +121,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | V-02 marquee / Shift-click | **pass** |
 | V-03 ⇧V | **pass** |
 | V-04 pinch | **pass** — CDP two-touch; cancel commits preview; lift → pinch-release; mid-ink pinch discards |
-| V-08 Find wrap | **pass** |
+| V-08 Find wrap | **pass** (Next wave6 + Previous this pass) |
 | E-04 Backspace | **pass** (after blur) |
 | E-05 undo/redo | **pass** |
 | A-07 revisions | **pass** (W4-03 local History + named cloud restore) |
@@ -141,6 +143,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | Catalog reconcile hub extras (Copy/Paste / Select Duplicate / Move/Copy / Sort / Preview) | **pass** — `e2e-hub-docs-extras.spec.mjs` 1/1 (1.7s). Receipt `fix-logs/catalog-reconcile-2026-08-21.md`. Cluster GAP **0**; per-swatch still open until pickers pass. |
 | Pickers every swatch / font / format / handles | **pass** — `e2e-pickers-every-swatch.spec.mjs` 5/5 (32.6s). Receipt `fix-logs/pickers-every-swatch-2026-08-21.md`. Per-value GAP **0**. |
 | Keyboard shortcut matrix (Delete / Ctrl+]/[ / Ctrl+F / tool letters / Esc / no Duplicate) | **pass** — `e2e-keyboard-shortcut-matrix.spec.mjs` 1/1 (4.2s). Overlay omits Delete/Duplicate/z-order rows; keys still live. Group/Ungroup stay compile-hidden. Receipt `fix-logs/keyboard-shortcut-matrix-2026-08-21.md`. |
+| Search Previous remainder (walk / wrap / X+Esc / 0+1-hit / literal / armed / focus) | **pass** — `e2e-search-previous.spec.mjs` 1/1 (1.1m) on glyph-lab `Helvetica` 12 hits. No case-toggle. Receipt `fix-logs/search-previous-2026-08-21.md`. |
 
 W3-01 was a harness miss (`contenteditable`, not textarea). W4-02 true two-finger pinch proven via Chrome CDP (see `fix-logs/w4-02-pinch.md`). Toolbar Zoom-in remains the zoomGeneration ink-commit proof; live pinch mid-ink discards. Wave 5: `fix-logs/e2e-wave-remaining.md`. Unblocked follow-up: `fix-logs/e2e-unblocked-followup.md`. Leftover edges: `fix-logs/e2e-unblocked-followup-2.md`.
 
