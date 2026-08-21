@@ -41,6 +41,8 @@ test('P1-18: page-structure commit remaps clipboardPage', () => {
   const start = VIEWER_SOURCE.indexOf('const commitPageStructureState = useCallback');
   const body = VIEWER_SOURCE.slice(start, start + 2200);
   assert.match(body, /remapClipboardPage\(prev, operation\)/);
+  assert.match(body, /localAnnotationUndoRef\.current = \[\];/);
+  assert.match(body, /localAnnotationRedoRef\.current = \[\];/);
 });
 
 test('P1-20: Cmd+Shift+D debug toggle is DEV-only', () => {

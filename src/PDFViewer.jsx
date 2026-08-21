@@ -12355,6 +12355,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRegionOverlayDisabled(next.regionOverlayDisabled);
     setUndoHistory([]);
     setRedoHistory([]);
+    undoHistoryRef.current = [];
+    redoHistoryRef.current = [];
+    undoHistoryMetaRef.current = [];
+    redoHistoryMetaRef.current = [];
+    lastCheckpointHashRef.current = null;
+    // Page mutations remap annotation addresses. Stale local-lane actions
+    // still carry pre-move page numbers; undoing them after a move zeros
+    // remapped siblings. Wipe the same lanes a document switch wipes.
+    localAnnotationUndoRef.current = [];
+    localAnnotationRedoRef.current = [];
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
     setPageMutationRevision((revision) => revision + 1);
     setClipboardPage((prev) => remapClipboardPage(prev, operation));
     clearAnnotationSelectionForContextChange('page-structure-change');
