@@ -121,6 +121,7 @@ export function isLegacyAnnotationHistoryMeta(meta) {
     || reason.startsWith('survey-marker:')
     || reason.startsWith('space:')
     || reason.startsWith('bookmark:')
+    || reason.startsWith('excel:')
     || reason === 'delete:batch'
     || reason === 'eraser:gesture'
     || reason === 'annotations:save';

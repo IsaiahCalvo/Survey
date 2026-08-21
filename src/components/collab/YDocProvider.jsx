@@ -1295,6 +1295,26 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     setReviewPanelOpen(false);
   }, [docId]);
 
+  // DEV-only transport/auth banner seam (phase28-login-expired.spec).
+  // Production bundles never set this — import.meta.env.DEV is false there.
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    window.__test_emitTransportState = (next) => {
+      if (!next || typeof next !== 'object') return;
+      const code = typeof next.code === 'string' ? next.code : '';
+      if (!code) return;
+      setStorageState({
+        code,
+        role: next.role || 'unknown',
+        detail: next.detail || null,
+      });
+      if (code === 'login_expiry_failure') setLoginExpired(true);
+    };
+    return () => {
+      delete window.__test_emitTransportState;
+    };
+  }, []);
+
   // Phase 30 — test seam for e2e specs that need to assert Y.Doc annotation
   // count post-backfill. Updates whenever yMapAnnotations.observe fires.
   useEffect(() => {

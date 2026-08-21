@@ -32,6 +32,16 @@ test('sync status view model exposes pending debounce as visible saving state', 
     },
   );
   assert.deepEqual(
+    getSyncStatusViewModel({ stage: 'pending' }, 3),
+    {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    },
+    'realistic producer input is pending+queue, not pending+0',
+  );
+  assert.deepEqual(
     getSyncStatusViewModel({ stage: 'syncing' }, 0),
     {
       state: 'syncing',
@@ -93,6 +103,10 @@ test('yellow and red sync states explain the cause, local backup, and retry beha
   );
   assert.equal(
     getCompactSyncStatusMessage({ stage: 'pending' }, 0),
+    'Changes are saved locally and backing up now.',
+  );
+  assert.equal(
+    getCompactSyncStatusMessage({ stage: 'pending' }, 3),
     'Changes are saved locally and backing up now.',
   );
   assert.equal(

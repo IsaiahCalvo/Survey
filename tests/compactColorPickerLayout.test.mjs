@@ -10,6 +10,11 @@ test('attached color picker joins its header without changing standalone corners
   assert.match(SOURCE, /borderRadius:\s*attachedHeader\s*\?\s*'0 0 8px 8px'\s*:\s*'8px'/);
 });
 
+test('Match Fill selected ring compares local opacity to fill opacity, not >= 99', () => {
+  assert.match(SOURCE, /Math\.abs\(localOpacity - matchOpacityPct\) <= 1/);
+  assert.doesNotMatch(SOURCE, /localOpacity >= 99/);
+});
+
 test('opacity field reserves room for 0 through 100 and the percent suffix', () => {
   assert.match(SOURCE, /width:\s*'72px',\s*flex:\s*'0 0 72px'/);
   assert.match(SOURCE, /aria-label="Opacity percentage"/);

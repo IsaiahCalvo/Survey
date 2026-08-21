@@ -331,8 +331,9 @@ const CompactColorPicker = ({
                         const isMatchSlot = idx === 0 && isMatchFirst;
                         const presetValue = isMatchSlot ? '__match__' : c;
                         const isTransparent = !isMatchSlot && c === 'transparent';
+                        const matchOpacityPct = Math.round((Number(matchFillOpacity) || 1) * 100);
                         const isSelected = isMatchSlot
-                            ? (!transparentMode && matchFillColor && localHex.toLowerCase() === matchFillColor.toLowerCase() && localOpacity >= 99)
+                            ? (!transparentMode && matchFillColor && localHex.toLowerCase() === matchFillColor.toLowerCase() && Math.abs(localOpacity - matchOpacityPct) <= 1)
                             : isTransparent
                                 ? transparentMode
                                 : (!transparentMode && localHex === c);

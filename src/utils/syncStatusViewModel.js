@@ -38,6 +38,15 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  if (stage === 'pending') {
+    return {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    };
+  }
+
   if (pendingCount > 0 || stage === 'queued') {
     return {
       state: 'offline',
@@ -46,15 +55,6 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
         : 'Saved locally',
       detail: 'Your changes are safe on this device and are waiting for cloud backup.',
       retryLabel: 'Backup is retrying automatically.',
-    };
-  }
-
-  if (stage === 'pending') {
-    return {
-      state: 'syncing',
-      label: 'Saving...',
-      detail: 'Your changes are saved on this device and are waiting to be backed up.',
-      retryLabel: 'Backup will retry automatically.',
     };
   }
 
@@ -98,11 +98,11 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
     return 'Cloud backup failed; changes are safe and retrying.';
   }
 
+  if (stage === 'pending') return 'Changes are saved locally and backing up now.';
   if (pendingCount > 0 || stage === 'queued') {
     const count = pendingCount > 0 ? `${pendingCount} change${pendingCount === 1 ? '' : 's'}` : 'Changes';
     return `${count} are safe locally and waiting to back up.`;
   }
-  if (stage === 'pending') return 'Changes are saved locally and backing up now.';
   if (stage === 'hydrating' || stage === 'migrating' || stage === 'syncing') {
     return errorText.includes('checking whether')
       ? 'Checking this document’s cloud backup status.'
