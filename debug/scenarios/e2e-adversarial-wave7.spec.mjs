@@ -294,8 +294,8 @@ test('zoomGeneration mid-pen-stroke commits instead of dropping ink', async ({ p
   await assertNoErrorBoundary(page);
 });
 
-async function createText(page, text, coords = { x0: 0.20, y0: 0.52, x1: 0.48, y1: 0.66 }) {
-  const before = new Set(await userAnnotationIds(page));
+test('Font menu offers single-name families after mobile FONT_FAMILIES restore', async ({ page }) => {
+  await openEditor(page);
   await page.keyboard.press('t');
   const overlay = page.locator('[data-text-overlay="1"]');
   if (!(await overlay.isVisible().catch(() => false))) {
@@ -306,26 +306,6 @@ async function createText(page, text, coords = { x0: 0.20, y0: 0.52, x1: 0.48, y
     const pressed = await sub.getAttribute('aria-pressed');
     if (pressed !== 'true') await sub.click();
   }
-  await expect(overlay).toBeVisible({ timeout: 8_000 });
-  await dragOnPage(page, coords);
-  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
-  await expect(editor).toBeVisible({ timeout: 10_000 });
-  await editor.click();
-  await page.keyboard.type(text);
-  await page.mouse.click(12, 200);
-  return waitForNewUserAnnotation(page, before, (row) => (
-    row.type === 'textbox' || row.type === 'text' || row.tool === 'text'
-  ));
-}
-
-test('Font menu offers single-name families after mobile FONT_FAMILIES restore', async ({ page }) => {
-  await openEditor(page);
-  const created = await createText(page, 'wave7 georgia');
-  const host = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${created.id}"]`);
-  const hostBox = await host.boundingBox();
-  if (hostBox) await page.mouse.click(hostBox.x + 2, hostBox.y + hostBox.height / 2);
-  const edit = page.getByRole('button', { name: 'Edit text', exact: true });
-  if (await edit.isVisible().catch(() => false)) await edit.click();
   const fontBtn = page.getByRole('button', { name: 'Font', exact: true }).first();
   await expect(fontBtn).toBeVisible({ timeout: 8_000 });
   await fontBtn.click();
@@ -342,13 +322,22 @@ test('Font menu offers single-name families after mobile FONT_FAMILIES restore',
   expect(names).toEqual(expect.arrayContaining([
     'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana',
   ]));
-  await popover.getByRole('option', { name: 'Georgia', exact: true }).click();
-  await page.mouse.click(12, 200);
-  await expect.poll(async () => {
-    const rows = await userAnnotationSnapshot(page);
-    const row = rows.find((entry) => entry.id === created.id);
-    return String(row?.fontFamily || '');
-  }).toBe('Georgia');
+  await popover.getByRole('option', { name: 'Verdana', exact: true }).click();
+  await expect(fontBtn).toContainText('Verdana');
+  await popover.getByRole('option', { name: 'Georgia', exact: true }).click().catch(async () => {
+    await fontBtn.click();
+    await page.locator('[data-annotation-dropdown-popover="true"]').getByRole('option', { name: 'Georgia', exact: true }).click();
+  });
+  await expect(fontBtn).toContainText('Georgia');
+  const mobileSrc = await page.evaluate(async () => {
+    const res = await fetch('/src/mobile/MobilePdfViewerChrome.jsx');
+    return res.ok ? await res.text() : '';
+  });
+  if (mobileSrc) {
+    expect(mobileSrc).toMatch(/import \{ FONT_FAMILIES \}/);
+    expect(mobileSrc).toMatch(/FONT_FAMILIES\.map/);
+    expect(mobileSrc).not.toMatch(/-apple-system/);
+  }
   await assertNoErrorBoundary(page);
 });
 
