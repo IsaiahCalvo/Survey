@@ -320,6 +320,17 @@ test('P1-14 renumberCounters persist after page-bucket change', async ({ page })
   await selectStroke(page, pin1.id, 1);
   await page.keyboard.press('Delete');
   if (await annotationById(page, pin1.id, 1)) await page.keyboard.press('Backspace');
+  if (await annotationById(page, pin1.id, 1)) {
+    const pinBox = await page.locator(
+      `[data-counter-overlay] [data-anno-id="${pin1.id}"], [data-svg-annotation-layer="1"] [data-anno-id="${pin1.id}"]`
+    ).first().boundingBox();
+    if (pinBox) {
+      await page.mouse.click(pinBox.x + pinBox.width / 2, pinBox.y + pinBox.height / 2, { button: 'right' });
+      const del = page.locator('[data-annotation-context-menu="true"]').getByText('Delete', { exact: true });
+      if (await del.count()) await del.click();
+      else await page.keyboard.press('Escape');
+    }
+  }
   await expect.poll(async () => Boolean(await annotationById(page, pin1.id, 1))).toBeFalsy();
   await expect.poll(async () => counterNums([pin2.id, pin3.id])).toEqual([1, 2]);
 
