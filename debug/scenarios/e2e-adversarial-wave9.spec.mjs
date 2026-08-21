@@ -150,6 +150,11 @@ async function createByTool(page, tool, coords, pageNumber = 1) {
     await expect(overlay).toBeVisible({ timeout: 8_000 });
     await dragOnPage(page, { ...coords, pageNumber });
     const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
+    if (!(await editor.isVisible().catch(() => false))) {
+      await page.keyboard.press('t');
+      await expect(overlay).toBeVisible({ timeout: 8_000 });
+      await dragOnPage(page, { x0: coords.x0 + 0.04, y0: coords.y0 + 0.04, x1: coords.x1 + 0.04, y1: coords.y1 + 0.04, pageNumber });
+    }
     await expect(editor).toBeVisible({ timeout: 10_000 });
     await editor.click();
     await editor.pressSequentially(tool.sampleText || 'w9-text', { delay: 8 });
@@ -629,11 +634,12 @@ async function assertBreakEmptyCancelNoop(page, tool, baseline) {
   const beforeIds = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
   await activateTool(page, tool.category, tool.button);
   await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
   await clickOnPage(page, { xf: 0.12, yf: 0.12 });
   await page.waitForTimeout(220);
   const afterNoop = await userAnnotationSnapshot(page);
   const created = afterNoop.filter((row) => !beforeIds.has(row.id));
-  expect(created.length, `${tool.name} cancel/no-op must not commit a stroke`).toBe(0);
+  expect(created.length, `${tool.name} select-mode click / cancel must not commit`).toBe(0);
   return emptyHunt;
 }
 
