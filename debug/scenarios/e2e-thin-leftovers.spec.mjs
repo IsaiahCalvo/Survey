@@ -200,7 +200,7 @@ async function createCallout(page, text, coords, pageNumber = 1) {
     calloutId = ids.find((id) => !before.includes(id)) || null;
     return calloutId;
   }).not.toBeNull();
-  await page.keyboard.press('v');
+  await page.mouse.click(12, 200);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   return calloutId;
 }
@@ -425,6 +425,11 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     x0: 0.48, y0: 0.54, x1: 0.68, y1: 0.68,
   }, 1);
   expect(calloutId).toBeTruthy();
+  await page.keyboard.press('v');
+  const calloutEl = page.locator(`[data-callout-id="${calloutId}"]`).first();
+  await expect(calloutEl).toBeVisible({ timeout: 15_000 });
+  const callBox = await calloutEl.boundingBox();
+  await page.mouse.click(callBox.x + Math.min(8, callBox.width / 2), callBox.y + Math.min(8, callBox.height / 2));
   await page.keyboard.press('ControlOrMeta+c');
   const page2CalloutsBefore = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count();
   await gotoPage(page, 2);
