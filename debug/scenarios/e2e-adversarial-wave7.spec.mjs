@@ -214,18 +214,14 @@ test('context menu stays isolated from bookmark delete undo', async ({ page }) =
   await openEditor(page);
   const rect = await createRect(page, { x0: 0.18, y0: 0.20, x1: 0.38, y1: 0.36 });
   await page.keyboard.press('v');
-  await expect.poll(() => page.evaluate(() => typeof window.__onAnnotationContextMenu)).toBe('function');
-  await page.evaluate((id) => {
-    const el = document.querySelector(`[data-svg-annotation-layer="1"] [data-anno-id="${id}"]`);
-    const index = Number(el?.getAttribute('data-annotation-index') || 0);
-    window.__onAnnotationContextMenu({
-      pageNumber: 1,
-      annotationIndex: index,
-      event: { clientX: 240, clientY: 240, target: el },
-    });
-  }, rect.id);
-  const menu = page.getByRole('menu').filter({ hasText: /Bring to front|Delete|Copy/i }).first();
+  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${rect.id}"]`);
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${rect.id}`).toBeTruthy();
+  await page.mouse.click(box.x + 2, box.y + box.height / 2, { button: 'right' });
+  const menu = page.locator('[data-annotation-context-menu="true"]');
   await expect(menu).toBeVisible({ timeout: 8_000 });
+  await expect(menu.getByText('Bring to front', { exact: true })).toBeVisible();
 
   await createBookmark(page, 'wave7-bm-keep');
   expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
@@ -305,6 +301,11 @@ async function createText(page, text, coords = { x0: 0.20, y0: 0.52, x1: 0.48, y
   if (!(await overlay.isVisible().catch(() => false))) {
     await page.getByRole('button', { name: 'Text', exact: true }).first().click();
   }
+  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Text', exact: true });
+  if (await sub.count()) {
+    const pressed = await sub.getAttribute('aria-pressed');
+    if (pressed !== 'true') await sub.click();
+  }
   await expect(overlay).toBeVisible({ timeout: 8_000 });
   await dragOnPage(page, coords);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
@@ -320,11 +321,11 @@ async function createText(page, text, coords = { x0: 0.20, y0: 0.52, x1: 0.48, y
 test('Font menu offers single-name families after mobile FONT_FAMILIES restore', async ({ page }) => {
   await openEditor(page);
   const created = await createText(page, 'wave7 georgia');
-  const host = page.locator(`[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"]`).first();
+  const host = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${created.id}"]`);
   const hostBox = await host.boundingBox();
-  if (hostBox) await page.mouse.click(hostBox.x + 6, hostBox.y + 6);
+  if (hostBox) await page.mouse.click(hostBox.x + 2, hostBox.y + hostBox.height / 2);
   const edit = page.getByRole('button', { name: 'Edit text', exact: true });
-  if (await edit.count()) await edit.click();
+  if (await edit.isVisible().catch(() => false)) await edit.click();
   const fontBtn = page.getByRole('button', { name: 'Font', exact: true }).first();
   await expect(fontBtn).toBeVisible({ timeout: 8_000 });
   await fontBtn.click();
