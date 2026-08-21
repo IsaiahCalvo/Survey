@@ -91,7 +91,8 @@ Fixture: `?testPdf=text-search-glyph-lab.pdf` (3 native pages, no annots).
 
 `W10_INSERT_BLANK` log: rect `cc3eb622-…`, ellipse `2c3171d4-…`, line `2ed819cd-…`.
 
-Node `tests/pagesPanelUtils.test.mjs` **5 / 5**. Did **not** run official `npm test`.
+Node `tests/pagesPanelUtils.test.mjs` **5 / 5**. Did **not** run official `npm test`.  
+`graphify` CLI was not on PATH (`graphify-out/graph.json` still present); no graph refresh this pass.
 
 ## Leftover 18 — unchanged
 
