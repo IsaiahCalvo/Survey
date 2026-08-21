@@ -356,7 +356,14 @@ test('P1-43 canReorderVisiblePages space filter intended / break / edge', async 
   await expect(page.getByRole('button', { name: 'Go to page 2', exact: true })).toBeVisible({ timeout: 8_000 });
   await expect(page.getByRole('button', { name: 'Go to page 5', exact: true })).toBeVisible();
 
+  // Page-only assignments cannot activate (spaceHasActivatableRegions).
   await page.getByLabel('Turn on space').click();
+  await expect(page.getByText(/no regions yet/i).first()).toBeVisible({ timeout: 8_000 });
+
+  // Region-edit is the unblocked activate path; it sets activeSpaceId.
+  await page.getByRole('button', { name: 'Edit region areas on the page' }).first().click();
+  await expect(page.getByLabel('Turn off space')).toBeVisible({ timeout: 8_000 });
+  await page.keyboard.press('Escape');
   await openPages(page);
   await expect.poll(async () => (await sidebarPageNumbers(page)).length, { timeout: 15_000 }).toBe(2);
   const filtered = await sidebarPageNumbers(page);
