@@ -3369,8 +3369,19 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   }
 
   if (type === 'path') {
-    const path = fabricPathToSvgPath(shifted.path);
+    // Same affine as SVG / ink export (createInkPageTransform): after
+    // move/scale/rotate the authored path stays local and left/top/scale/
+    // angle/pathOffset carry the transform. Drawing raw commands printed
+    // the unmoved stroke.
+    const localPath = normalizeOperationalInkPath(shifted.path);
+    const transform = createInkPageTransform(shifted, localPath);
+    const path = fabricPathToSvgPath(transformInkPath(localPath, transform));
     if (!path) return 0;
+    const inkStrokeWidth = Math.max(
+      0.5,
+      (Number(shifted?.strokeWidth) || 1)
+        * (Number.isFinite(transform.strokeScale) ? transform.strokeScale : 1),
+    );
     // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
     // origin {x: 0, y: pageHeight} + RAW app-space (y-down) path coordinates.
     // The default origin (page bottom-left) negates y off-page.
@@ -3378,7 +3389,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       x: 0,
       y: pageHeight,
       borderColor: stroke.color,
-      borderWidth: strokeWidth,
+      borderWidth: inkStrokeWidth,
       borderOpacity: stroke.opacity,
     });
     return 1;
