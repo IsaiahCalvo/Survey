@@ -98,13 +98,17 @@ const MOCK_MEMBERS = [
 ];
 
 const MOCK_PROJECTS = [
-  { id: 'p1', name: 'Tower 5 — Security', user_id: 'u1', created_at: iso(40), members: ['IC', 'JM', 'RD'] },
+  // Preview owner chrome (P2-06): creator id matches mockUser so Manage Team
+  // is visible. Other rows stay `u1` so non-owner Team buttons stay hidden.
+  { id: 'p1', name: 'Tower 5 — Security', user_id: mockUser.id, created_at: iso(40), members: ['IC', 'JM', 'RD'] },
   { id: 'p2', name: 'Lab Reno — MEP', user_id: 'u1', created_at: iso(30), members: ['IC', 'AS', 'RD', 'KM'] },
   { id: 'p3', name: 'MEP Phase 2', user_id: 'u1', created_at: iso(20), members: ['RD', 'IC'] },
 ];
 
 const INITIAL_DOCUMENTS = [
-  { id: 'd1', name: 'SE-011 Security Shop Drawings.pdf', file_size: 25_050_000, project_id: 'p1', owner: 'IC', pages: 48, created_at: iso(9), updated_at: iso(2, 9, 14), shared: false },
+  // Preview owner chrome (P2-07): creator id matches mockUser so Share opens
+  // Manage Access. Package 2 stays unstamped so leftover A-03 ShareModal holds.
+  { id: 'd1', name: 'SE-011 Security Shop Drawings.pdf', file_size: 25_050_000, project_id: 'p1', owner: 'IC', user_id: mockUser.id, pages: 48, created_at: iso(9), updated_at: iso(2, 9, 14), shared: false },
   { id: 'd2', name: 'Package 2 — Rev 4 — IC.pdf', file_size: 7_930_000, project_id: null, owner: 'IC', pages: 22, created_at: iso(8), updated_at: iso(1, 16, 48), shared: true },
   { id: 'd3', name: 'RFI-014 Lobby Camera Coverage.pdf', file_size: 1_820_000, project_id: 'p1', owner: 'JM', pages: 9, created_at: iso(1), updated_at: iso(0, 11, 2), shared: false },
   { id: 'd4', name: 'Door Hardware Schedule — A.601.pdf', file_size: 3_400_000, project_id: 'p2', owner: 'AS', pages: 14, created_at: iso(15), updated_at: iso(15, 17, 25), shared: false },
@@ -470,7 +474,7 @@ export default function HubPreview() {
             templatesLoadError={loadErrors.templates}
             onRetryTemplates={() => retryLoad('templates')}
             members={MOCK_MEMBERS}
-            user={guestFixture ? null : { name: 'Isaiah Calvo', email: 'dev-hubpreview@example.invalid' }}
+            user={guestFixture ? null : { id: mockUser.id, name: 'Isaiah Calvo', email: 'dev-hubpreview@example.invalid' }}
             isPro
             initialTab={initialTab}
             initialMobileDetailOpen={initialMobileDetailOpen}
