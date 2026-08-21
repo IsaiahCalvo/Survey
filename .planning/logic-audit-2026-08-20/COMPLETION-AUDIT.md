@@ -15,6 +15,8 @@
 
 **This-pass after twelve FIX-LOG stomps (2026-08-21 later):** P1-12/38/53 restored `8efdbb4e` + live `fix-logs/e2e-p1-12-38-53-live.md` **3 / 3**. P1-02/42/43/54/44/47/55 + P2-06/07 restored `22985061` + live `fix-logs/e2e-stomp-nine-live.md` **9 / 9**. §1 proofs for those twelve now cite the current restore + live receipts (not the pre-stomp snapshot). Official `npm test` / `node scripts/run-node-tests.mjs` **exit 1**: main files + isolated `annotationDocConcurrency` / `partialEraseCurveLocality` **0 fail**; isolated `partialEraserComplexity` **9 / 10** — only leftover `500 crossing cuts` **11960.45 MiB > 8448.00 MiB**. Cap **not** loosened. Timing **75 / 250** held. Extra contract fix this pass: `tests/kal31InviteContract.test.mjs` (`00fda232` `userCanManageDocumentAccess` asserts). Leftover **18** unchanged. Did **not** replay those live specs, wave7, or leftover 18. See `fix-logs/npm-test-after-stomps.md`.
 
+**This-pass after thirteen leftover 00fda232 drops (2026-08-21 later):** P1-14, P1-01/03/04, P1-05/06/08/29, P2-13 restored `84f21370` + live `fix-logs/e2e-00fda232-thirteen-live.md` Playwright **5 / 5**. P2-14/24/25/26 Node-only (same receipt + `fix-logs/diff-00fda232-leftover-drops.md` **55 / 55**). §1 proofs for those thirteen now cite the current restore + live/Node receipts. Official `npm test` / `node scripts/run-node-tests.mjs` **exit 1**: main files + isolated `annotationDocConcurrency` / `partialEraseCurveLocality` **0 fail**; isolated `partialEraserComplexity` **9 / 10** — only leftover `500 crossing cuts` **11961.28 MiB > 8448.00 MiB**. Cap **not** loosened. Timing **75 / 250** held. Extra contract fix this pass: `tests/accountSettingsLogic.test.mjs` (`00fda232` `isMicrosoftConnectAvailable` / `shouldStartFullPageMicrosoftOAuth` asserts). Leftover **18** unchanged. Did **not** replay those live specs, the prior 12, wave7, or leftover 18. See `fix-logs/npm-test-after-thirteen.md`.
+
 **Legend:** **proven** = live `file:line` and/or spec/receipt covering intended + break + edge. **weak** = symbol present but leftover still matches the original defect. **missing** = symbol gone. **host-blocked** = remaining intended path needs Stripe / MSAL / captcha / SQL apply / lease / Capacitor / native dialog / `file.id` (do not retry).
 
 ---
@@ -47,7 +49,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 
 **Lease:** transcript + `.planning/` scan (725 files) found **no** complete existing-account `email\|userId\|tier\|status` tuple. Official `assign` also requires the credentials file for passwords (`resolveAccountBundle`) — stopped, did not read `.bot-credentials.json` / `.env*`. A-06 / UL-45 stays host-blocked. See `fix-logs/e2e-local-hosts.md`.
 
-**Suite slice:** official `node scripts/run-node-tests.mjs` after the twelve-stomp restore — main files **0 fail** (including `tests/kal31InviteContract.test.mjs` after the P2-07 contract realign, `tests/rolesTeamManageGate.test.mjs`, `tests/historyStacks.test.mjs`, `tests/syncStatusUi.test.mjs`, `tests/compactColorPickerLayout.test.mjs`, `tests/lineArrowEndingExport.test.mjs`, `tests/pagesPanelUtils.test.mjs`, `tests/bookmarkAtomicEdit.test.mjs`, `tests/bookmarkReorderUtils.test.mjs`, `tests/annotationDualWriteRetired.test.mjs`). Isolated `annotationDocConcurrency` **103 / 103**; `partialEraseCurveLocality` **15 / 15**. Isolated `partialEraserComplexity` **9 / 10**: leftover `500 crossing cuts` allocation **11960.45 MiB > 8448.00 MiB** (pre-existing host/V8 leftover — **do not loosen** 8448). Timing **75 / 250** held on this official run. Prior wall-clock flake under load is diagnose-only (`fix-logs/eraser-timing-budget.md`); this official leftover is allocation (`fix-logs/eraser-memory-cap.md`, `fix-logs/npm-test-after-stomps.md`). Invariants re-grepped this pass.
+**Suite slice:** official `node scripts/run-node-tests.mjs` after the thirteen leftover-drop restore — main files **0 fail** (including `tests/accountSettingsLogic.test.mjs` after the P2-13 contract realign, `tests/kal31InviteContract.test.mjs`, `tests/microsoftOAuthRouting.test.mjs`, `tests/svgInteractionFixes.test.mjs`, `tests/counterNumberingPageRefs.test.mjs`, `tests/counterRenumberSavePolicy.test.mjs`, `src/services/__tests__/microsoftConnectionMarker.test.mjs`, `tests/msalAuthMain.test.mjs`, `tests/lineArrowEndingExport.test.mjs`). Isolated `annotationDocConcurrency` **103 / 103**; `partialEraseCurveLocality` **15 / 15**. Isolated `partialEraserComplexity` **9 / 10**: leftover `500 crossing cuts` allocation **11961.28 MiB > 8448.00 MiB** (pre-existing host/V8 leftover — **do not loosen** 8448). Timing **75 / 250** held on this official run. Prior wall-clock flake under load is diagnose-only (`fix-logs/eraser-timing-budget.md`); this official leftover is allocation (`fix-logs/eraser-memory-cap.md`, `fix-logs/npm-test-after-thirteen.md`). Invariants re-grepped this pass.
 
 ---
 
@@ -64,20 +66,20 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 
 | ID | Title | Verdict | Proof |
 |---|---|---|---|
-| P1-01 | Line/arrow export+print position | **proven** | `tests/lineArrowPersistence.test.mjs` |
+| P1-01 | Line/arrow export+print position | **proven** | **Restored** `84f21370`: `pdfAnnotationsPdfLib.js:3310-3313` flatten offsets only `left`/`top` (not `x1..y2`). Live `fix-logs/e2e-00fda232-thirteen-live.md` (`getLineEndpoints` world `(100,100)` vs buggy `x1+left`). Node `tests/lineArrowEndingExport.test.mjs` + `tests/svgInteractionFixes.test.mjs`. |
 | P1-02 | Arrowheads dropped on export | **proven** | **Restored** `22985061`: `pdfAnnotationsPdfLib.js:2461` `resolveExportedLineEnding2` maps `arrowheadStyle` / `tool:'arrow'` → `/LE`. Live `fix-logs/e2e-stomp-nine-live.md` (Arrow export `/LE [ /None /ClosedArrow ]`; plain Line adds no extra ClosedArrow). Node `tests/lineArrowEndingExport.test.mjs`. |
-| P1-03 | Cloud rect borders lost on export | **proven** | export cluster + live S-01 Cloud |
-| P1-04 | Printed shapes use pre-resize size | **proven** | `tests/lineArrowPersistence.test.mjs` + `tests/printFlattenOnPage.test.mjs` |
-| P1-05 | Multi-select rotate/resize displaces lines | **proven** | `src/hooks/useSVGInteraction.js` shift/marquee; live E-01/E-02 |
-| P1-06 | Transform commit by stale index | **proven** | `annotationZOrder.js:124` `resolveAnnotationIndexById` |
+| P1-03 | Cloud rect borders lost on export | **proven** | **Restored** `84f21370`: `/BE` + `buildCloudPathCommands` flatten + `pdfAppAnnotationMetadata.js:53-54` `pdfCloudIntensity` / `pdfCloudPathD` allowlist. Live `fix-logs/e2e-00fda232-thirteen-live.md` (Cloud Rectangle `/BE << /S /C /I 2 >>`; plain Square `be: null`). |
+| P1-04 | Printed shapes use pre-resize size | **proven** | **Restored** `84f21370`: `pdfAnnotationsPdfLib.js:3324-3329` `width * \|scaleX\|` / `height * \|scaleY\|`; skip non-finite box. Live `fix-logs/e2e-00fda232-thirteen-live.md` (resize `scaleX ≈ 1.40`; export `/Rect` uses scaled width). Node `tests/printFlattenOnPage.test.mjs`. |
+| P1-05 | Multi-select rotate/resize displaces lines | **proven** | **Restored** `84f21370`: `useSVGInteraction.js:178` `applyGroupLineWorldTransform` via `getLineEndpoints`. Live `fix-logs/e2e-00fda232-thirteen-live.md` (group-line 90° → `(100,100)→(60,150)` not `x1+left`). Node `tests/svgInteractionFixes.test.mjs`. |
+| P1-06 | Transform commit by stale index | **proven** | **Restored** `84f21370`: `resolveAnnotationIndexById` at pointermove / pointerup; capture `annotationId` at drag start. Live `fix-logs/e2e-00fda232-thirteen-live.md` (stale id → `-1`; remap `b` `1→0`; gone id clears). Node `tests/svgInteractionFixes.test.mjs`. |
 | P1-07 | Text-edit commit by stale index | **proven** | `TextEditOverlay.jsx` `replaceTextInPageJson` `findIndex` by `targetId`; caller passes `originalRef.current`. `tests/pdfViewerStaleIdCommits.test.mjs` |
-| P1-08 | Undo retargets selection | **proven** | `PDFViewer.jsx` `setPendingSvgSelection` after `restoreHistoryState` |
+| P1-08 | Undo retargets selection | **proven** | **Restored** `84f21370`: `useSVGInteraction.js:121` `captureSelectionStableIds` / `:131` `remapSelectionByStableIds`. Live `fix-logs/e2e-00fda232-thirteen-live.md` (delete first rect, drag next; Undo keeps later rect selectable). Node `tests/svgInteractionFixes.test.mjs`. |
 | P1-09 | Redo resurrects old snapshot | **proven** | `PDFViewer.jsx` `redoHistoryRef` clear in `pushLocalAnnotationHistoryAction` |
 | P1-10 | Own undo wipes teammate edits | **proven** | `src/utils/crdtHistoryScope.js` `scopeHistoryStateForCrdtRestore` |
 | P1-11 | Own undo reverts teammate same-object | **proven** | `src/utils/annotationLocalHistory.js` `mergeAnnotationHistoryUpdate` |
 | P1-12 | Excel auto-sync jams undo | **proven** | **Restored** `8efdbb4e`: `historyHelpers.js:124` `startsWith('excel:')` in `isLegacyAnnotationHistoryMeta`. Producer still `PDFViewer.jsx:17157` `addHistoryCheckpoint('excel:auto-sync', …)`. Live `fix-logs/e2e-p1-12-38-53-live.md` **3 / 3** (toolbar Undo pops `excel:auto-sync`; `zoom:fit` / empty ineligible; `excel:manual-sync` edge). Node `tests/historyStacks.test.mjs`. |
 | P1-13 | First undo after import deletes imports | **proven** | `PDFViewer.jsx` `previewBaselineByPageRef` delete after import skip-save |
-| P1-14 | Cross-page counter renumber never saves | **proven** | `src/utils/counterNumbering.js:25` `renumberCounters`; live S-05 |
+| P1-14 | Cross-page counter renumber never saves | **proven** | **Restored** `84f21370`: `counterNumbering.js:26` `renumberCounters` replaces changed page buckets (clone objects); unchanged pages keep `===`. Live `fix-logs/e2e-00fda232-thirteen-live.md` (duplicate page, pins 1–3, delete #1 via context menu; remaining `[1, 2]` persist page 2→1). Node `tests/counterNumberingPageRefs.test.mjs` + `tests/counterRenumberSavePolicy.test.mjs`. |
 | P1-15 | Callout text clobbers teammate | **proven** | `PDFViewer.jsx` callout `onEditCommit` writes text/box only |
 | P1-16 | Reopen hides all survey markers | **proven** | `PDFViewer.jsx` `matchesSelectedModule` (no early-return on null module) |
 | P1-17 | Page ops revert concurrent edits | **proven** | `src/utils/pageAnnotationReindex.js` `mergeLivePagePresentation` |
@@ -92,7 +94,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | P1-26 | Dblclick no-op on legacy group arrows | **proven** | `PDFViewer.jsx` imports `isLegacyGroupArrow` into dblclick / bbox strip |
 | P1-27 | Circle missing from ellipse toolbar | **proven** | `PDFViewer.jsx` circle fill/stroke gates |
 | P1-28 | Blank text leaves ghost | **proven** | `textEditCommit.js` + `TextEditOverlay` splice |
-| P1-29 | Shift+marquee / Alt-subtract callouts | **proven** | `useSVGInteraction.js` `shiftKey` / `altHeld` |
+| P1-29 | Shift+marquee / Alt-subtract callouts | **proven** | **Restored** `84f21370`: `useSVGInteraction.js:141` `unionIdSet` / `:147` `subtractIdSet` against `selectedCalloutIds`. Live `fix-logs/e2e-00fda232-thirteen-live.md` (two callouts survive Shift+marquee then Alt-subtract). Node `tests/svgInteractionFixes.test.mjs`. |
 | P1-30 | Remote-delete Restore? toast dead | **proven** | `remoteDeleteInteraction.js`; YDocProvider `Restore?` toast |
 | P1-31 | SHX transform-lock shows handles | **proven** | `SVGAnnotationLayer.jsx` + `tests/selectionHandleVisibility.test.mjs` |
 | P1-32 | Rotation nudges lack interactionId | **proven** | `RotationInputField.jsx` `rotation-input:` |
@@ -135,8 +137,8 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | P2-10 | Duplicate Survey Markers per Excel row | **proven** | `20260820230000_…` `excel_sync_state_identity_fingerprint_uidx`. **Apply leftover.** |
 | P2-11 | Desktop quit 5s hang | **proven** | `quitCoordinator.cjs:7` `createQuitCoordinator`. **Zero** `checkAndQuit` in `src/`. |
 | P2-12 | Access-removed banner lost after re-sign-in | **proven** | `collabBannerState.js` `storageStateAfterResignIn` |
-| P2-13 | Microsoft sign-in on iOS/Android dead end | **proven** | `microsoftOAuthRouting.js` `isCapacitorMicrosoftConnectHidden`. Deep-link OAuth leftover. |
-| P2-14 | Desktop MS connect clobbers web tokens | **proven** | `AuthContext.jsx` `file://` OAuth + `oauthWindowPolicy.cjs` |
+| P2-13 | Microsoft sign-in on iOS/Android dead end | **proven** | **Restored** `84f21370`: `microsoftOAuthRouting.js:20` `isCapacitorMicrosoftConnectHidden`; `:23` `isMicrosoftConnectAvailable`; `:26` `shouldStartFullPageMicrosoftOAuth`. Live `fix-logs/e2e-00fda232-thirteen-live.md` (HubPreview Connect fail-closed; Capacitor hide + no full-page). Node `tests/microsoftOAuthRouting.test.mjs`. Contract realign this pass: `tests/accountSettingsLogic.test.mjs`. Deep-link OAuth leftover. |
+| P2-14 | Desktop MS connect clobbers web tokens | **proven** | **Restored** `84f21370`: `microsoftConnectionMarker.js:32` `preserveLegacyTokenMetadata` + existing-metadata merge. Node-only `fix-logs/e2e-00fda232-thirteen-live.md` (merge keeps `web-rt`; no invented tokens). Node `src/services/__tests__/microsoftConnectionMarker.test.mjs`. Live MSAL leftover A-02 / UL-21. |
 | P2-15 | Delete-account button permanently disabled | **proven** | `accountPlatform.js` `ACCOUNT_DELETION_CONFIRMATION = 'DELETE'` |
 | P2-16 | Restore? toast still dead | **proven** | same as P1-30 |
 | P2-17 | Presence idle timeout 2 min | **proven** | `presenceRoster.js` (10 min + heartbeat) |
@@ -146,9 +148,9 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | P2-21 | Excel `create` skips apply whitelist | **proven** | same `20260820230000` create-branch whitelist. **Apply leftover.** |
 | P2-22 | OneDrive picker never refreshes token | **proven** | `OneDriveFolderBrowser.jsx` `ensureFreshToken` |
 | P2-23 | Two owners can leave document ownerless | **proven** | `20260820220000_…` `FOR UPDATE`. **Apply leftover.** |
-| P2-24 | Stale-tab MS wipe | **proven** | `MSGraphContext.jsx` `hardBlockedUntil` / `cooldownUntil` |
-| P2-25 | Desktop MS account switch silent refresh | **proven** | same + `msalAuthMain.js` |
-| P2-26 | Network blip treated as broken MS | **proven** | `MSGraphContext.jsx` transient retry |
+| P2-24 | Stale-tab MS wipe | **proven** | **Restored** `84f21370`: `microsoftConnectionMarker.js:68` `shouldWipeSharedConnectionRow` / `:73` `shouldAdoptRemoteRefreshToken`. Node-only `fix-logs/e2e-00fda232-thirteen-live.md` (wipe only when stored === failed; adopt when rotated). Node `src/services/__tests__/microsoftConnectionMarker.test.mjs`. |
+| P2-25 | Desktop MS account switch silent refresh | **proven** | **Restored** `84f21370`: `msalAuthMain.js:78` `selectPreferredAccount` + evict others after interactive sign-in. Node-only `fix-logs/e2e-00fda232-thirteen-live.md`. Node `tests/msalAuthMain.test.mjs`. |
+| P2-26 | Network blip treated as broken MS | **proven** | **Restored** `84f21370`: `msalAuthMain.js:59` `classifySilentTokenError` + `interpretMainProcessRestore` + `online` retry. Node-only `fix-logs/e2e-00fda232-thirteen-live.md` (restore `adopt` / `reconnect` / `transient`). Node `tests/msGraphMicrosoftAuth.test.mjs`. |
 | P2-27 | Billing emails return-to google.com | **proven** | `billingReturn.ts` `https://surveytool.app/` |
 | P2-28 | Repeat 7-day Pro trials | **proven** | `billingTrial.ts` `proTrialPeriodDays`. **Apply leftover.** |
 | P2-29 | Stripe webhook emails not idempotent | **proven** | `stripeEventIdempotency.ts` `withStripeEventIdempotency`. **Apply leftover.** Also E2E-CHROME-01. |
@@ -254,7 +256,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 
 | Invariant | Holds? | Proof |
 |---|---|---|
-| `zoomGeneration` | **yes** | `PDFViewer.jsx:3238` `useState(0)`; `setZoomGeneration` `:1950` zoom-start + `:1986` `gesture-start` |
+| `zoomGeneration` | **yes** | `PDFViewer.jsx:3244` `useState(0)`; `setZoomGeneration` `:1956` zoom-start + `:1992` `gesture-start` |
 | SVG `viewBox` owns zoom | **yes** | `SVGAnnotationLayer.jsx:4666` `viewBox={\`0 0 ${width} ${height}\`}` |
 | Container-aware canvas | **yes** | `PageAnnotationLayer.jsx:7747-7751` `containerW / width` → `effectiveScale` |
 | Single-name `fontFamily` | **yes** | `FONT_FAMILIES` six single names (`annotationStyleCatalog.js:10,34`) |
@@ -334,7 +336,7 @@ Pass-1 also merged Line+Arrow into #1 and Rectangle+Move/Resize/Rotate into #6 *
 **Unchanged leftovers (not re-opened as missing IDs):**
 
 - KB-1: engine `erasePageAnnotations({mode:'entire'})` all-hits is **intentional**. Live planner is topmost-only (this-pass Vite 5173 stacked-rect: partial `empty` / entire `targetCount: 1`). No live `src/` bypass. See `fix-logs/eraser-policy-entire-mode.md`.
-- Eraser allocation: official `npm test` still **exit 1** on this host for `partialEraserComplexity` `500 crossing cuts` **11960.45 MiB > 8448.00 MiB**. Pre-existing Node 22.14 / V8 12.4 leftover (same on `main`). **Do not loosen** 8448 or 75 / 250. Timing held on this official run. Prior wall-clock flake under load is diagnose-only. See `fix-logs/eraser-memory-cap.md`, `fix-logs/npm-test-after-stomps.md`.
+- Eraser allocation: official `npm test` still **exit 1** on this host for `partialEraserComplexity` `500 crossing cuts` **11961.28 MiB > 8448.00 MiB**. Pre-existing Node 22.14 / V8 12.4 leftover (same on `main`). **Do not loosen** 8448 or 75 / 250. Timing held on this official run. Prior wall-clock flake under load is diagnose-only. See `fix-logs/eraser-memory-cap.md`, `fix-logs/npm-test-after-thirteen.md`.
 - P1-45: no 30-day trash row (session undo is the close).
 - P1-46: guest / no-Y.Doc still localStorage-only.
 - SQL **apply** leftovers (do not apply to prod Survey): P2-01, P2-03, P2-05, P2-10, P2-21, P2-23, P2-28, P2-29 / E2E-CHROME-01.
@@ -347,5 +349,5 @@ Pass-1 also merged Line+Arrow into #1 and Rectangle+Move/Resize/Rotate into #6 *
 
 Original **96 unique IDs:** **96 proven / 0 weak / 0 missing / 0 host-blocked**.  
 Headline **103** = those 96 + 1 fold + 4 merged-sub extra counts + 2 undocumented rollup. All expandable extras **proven**; +2 has no defect text.  
-E2E catalog remaining host-blocked paths listed above (**18** — unchanged; not retried). Five migrations still unapplied. Official second-account lease blocked (no transcript tuples; assign needs credentials file). Capacitor iPhone 17 Simulator: UL-46 + handle-swipe already proven (`fix-logs/e2e-capacitor-ul46.md`). ReSignInModal Forgot password is no longer a dead-end stub (`AuthContext.resetPassword` + `tests/reSignInReset.test.mjs`). Official `npm test` leftover: `partialEraserComplexity` crossing-500 allocation **11960.45 > 8448** (do not loosen). Twelve stomp IDs cite current restore + live receipts.  
+E2E catalog remaining host-blocked paths listed above (**18** — unchanged; not retried). Five migrations still unapplied. Official second-account lease blocked (no transcript tuples; assign needs credentials file). Capacitor iPhone 17 Simulator: UL-46 + handle-swipe already proven (`fix-logs/e2e-capacitor-ul46.md`). ReSignInModal Forgot password is no longer a dead-end stub (`AuthContext.resetPassword` + `tests/reSignInReset.test.mjs`). Official `npm test` leftover: `partialEraserComplexity` crossing-500 allocation **11961.28 > 8448** (do not loosen). Twelve stomp IDs and thirteen leftover-drop IDs cite current restore + live/Node receipts.  
 **Goal stays open.**
