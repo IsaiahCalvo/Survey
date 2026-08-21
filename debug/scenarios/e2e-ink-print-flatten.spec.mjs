@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { PDFDocument, PDFName, PDFArray, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -270,14 +271,11 @@ async function flattenInk(page, fabricObj, pageSize) {
   }, { obj: fabricObj, sizes: pageSize });
 }
 
-async function fixturePageSize(page) {
-  return page.evaluate(async () => {
-    const { PDFDocument } = await import('pdf-lib');
-    const res = await fetch('/debug-fixtures/clickable-link-test.pdf');
-    const doc = await PDFDocument.load(await res.arrayBuffer());
-    const p = doc.getPage(0);
-    return { width: p.getWidth(), height: p.getHeight() };
-  });
+async function fixturePageSize() {
+  const bytes = readFileSync(new URL('../../debug/fixtures/clickable-link-test.pdf', import.meta.url));
+  const doc = await PDFDocument.load(bytes);
+  const p = doc.getPage(0);
+  return { width: p.getWidth(), height: p.getHeight() };
 }
 
 function firstMove(points) {
@@ -300,7 +298,7 @@ async function assertNoErrorBoundary(page) {
 
 test('intended: draw ink, move/scale/rotate, print flatten follows transform', async ({ page }) => {
   await openEditor(page);
-  const sizes = await fixturePageSize(page);
+  const sizes = await fixturePageSize();
   const pen = await createPen(page, { x0: 0.20, y0: 0.24, x1: 0.44, y1: 0.36 });
   const fresh = await liveInkObject(page, pen.id);
   expect(Array.isArray(fresh?.path) && fresh.path.length > 0, 'drawn ink has a path').toBeTruthy();
@@ -370,7 +368,7 @@ test('intended: draw ink, move/scale/rotate, print flatten follows transform', a
 
 test('break: fresh unmoved ink (left=0, no pathOffset) still identity', async ({ page }) => {
   await openEditor(page);
-  const sizes = await fixturePageSize(page);
+  const sizes = await fixturePageSize();
   const pen = await createPen(page, { x0: 0.18, y0: 0.42, x1: 0.40, y1: 0.50 });
   const live = await liveInkObject(page, pen.id);
   expect(Array.isArray(live?.path) && live.path.length > 0, 'drawn ink has a path').toBeTruthy();
@@ -422,7 +420,7 @@ test('break: fresh unmoved ink (left=0, no pathOffset) still identity', async ({
 
 test('edge: scale + rotate together; stroke scale', async ({ page }) => {
   await openEditor(page);
-  const sizes = await fixturePageSize(page);
+  const sizes = await fixturePageSize();
   const pen = await createPen(page, { x0: 0.28, y0: 0.22, x1: 0.50, y1: 0.34 });
   const fresh = await liveInkObject(page, pen.id);
   expect(Array.isArray(fresh?.path) && fresh.path.length > 0, 'drawn ink has a path').toBeTruthy();
