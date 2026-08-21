@@ -1825,14 +1825,25 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     const counterMetadataJson = options.counterMetadataJson || null;
     const counterMetadata = options.counterMetadata || null;
 
-    const left = fabricObj.left || 0;
-    const top = fabricObj.top || 0;
-    const radius = fabricObj.radius || 10;
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const rawRadius = Number(fabricObj.radius) || 10;
+    const scaleX = Math.abs(Number(fabricObj.scaleX) || 1);
+    const scaleY = Math.abs(Number(fabricObj.scaleY) || 1);
+    // Screen (renderEllipse) uses radius*|scaleX| / radius*|scaleY|.
+    // Axis-aligned imported ovals store the aspect in scaleX/scaleY.
+    const rx = rawRadius * scaleX;
+    const ry = rawRadius * scaleY;
+    // Counter pin body is circular (renderCounter / metadata use scaleX).
+    const radius = rx;
+    if (![left, top, rx, ry, pageHeight].every(Number.isFinite) || rx <= 0 || ry <= 0) {
+      return null;
+    }
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = left;
-    const minY = pageHeight - (top + radius * 2);
-    const maxX = left + radius * 2;
+    const minY = pageHeight - (top + ry * 2);
+    const maxX = left + rx * 2;
     const maxY = pageHeight - top;
 
     let counterAppearance = null;
@@ -2220,6 +2231,18 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
   }
 };
 
+// Screen (renderPolygon / renderPolyline): world = left + scaleX*point.x
+// when pathOffset is 0 (importer points are min-relative). Resize commits
+// scaleX/scaleY and leaves points unbaked — export/print must apply scale.
+const polygonWorldPoint = (obj, point) => {
+  const sx = Math.abs(Number(obj?.scaleX) || 1);
+  const sy = Math.abs(Number(obj?.scaleY) || 1);
+  return {
+    x: (Number(obj?.left) || 0) + sx * (Number(point?.x) || 0),
+    y: (Number(obj?.top) || 0) + sy * (Number(point?.y) || 0),
+  };
+};
+
 /**
  * Create Polygon annotation with optional cloud border effect
  */
@@ -2234,16 +2257,14 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       return null;
     }
 
-    const left = fabricObj.left || 0;
-    const top = fabricObj.top || 0;
-
     // Convert points to PDF coordinates (flip Y)
     const vertices = [];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     points.forEach(point => {
-      const x = left + point.x;
-      const y = pageHeight - (top + point.y);
+      const world = polygonWorldPoint(fabricObj, point);
+      const x = world.x;
+      const y = pageHeight - world.y;
       vertices.push(x, y);
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
@@ -2293,14 +2314,13 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       return null;
     }
 
-    const left = fabricObj.left || 0;
-    const top = fabricObj.top || 0;
     const vertices = [];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     points.forEach(point => {
-      const x = left + point.x;
-      const y = pageHeight - (top + point.y);
+      const world = polygonWorldPoint(fabricObj, point);
+      const x = world.x;
+      const y = pageHeight - world.y;
       vertices.push(x, y);
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
@@ -3293,15 +3313,12 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
 const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   const points = Array.isArray(obj?.points) ? obj.points : [];
   if (points.length < (closePath ? 3 : 2)) return false;
-  const left = getObjNumber(obj, 'left');
-  const top = getObjNumber(obj, 'top');
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
   const d = points.map((point, index) => {
-    const x = left + (Number(point?.x) || 0);
-    const y = top + (Number(point?.y) || 0);
-    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+    const world = polygonWorldPoint(obj, point);
+    return `${index === 0 ? 'M' : 'L'} ${world.x} ${world.y}`;
   }).join(' ') + (closePath ? ' Z' : '');
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const fill = closePath ? parsePdfDrawColor(obj?.fill, '#ffffff') : null;
@@ -3416,9 +3433,14 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'circle' || type === 'ellipse') {
-    const radius = Number(shifted?.radius) || Math.max(width, height) / 2 || 10;
-    const xScale = Number(shifted?.rx) || radius;
-    const yScale = Number(shifted?.ry) || radius;
+    // P1-04 leftover: radius/rx/ry stay unbaked after resize. width/height
+    // above are already *scale — do not reuse them as a radius fallback.
+    const xScale = (
+      Number(shifted?.rx) || Number(shifted?.radius) || (getObjNumber(shifted, 'width') / 2) || 10
+    ) * scaleX;
+    const yScale = (
+      Number(shifted?.ry) || Number(shifted?.radius) || (getObjNumber(shifted, 'height') / 2) || 10
+    ) * scaleY;
     page.drawEllipse({
       x: left + xScale,
       y: getPdfY(pageHeight, top + yScale),
