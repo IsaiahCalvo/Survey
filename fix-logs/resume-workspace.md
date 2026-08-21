@@ -106,7 +106,7 @@ Only remaining unblocked work possible here: restore the landed product, then pr
 | `tests/billing.test.mjs` + `tests/chromeE2EContracts.test.mjs` | **39 / 39** with `--experimental-strip-types` |
 | extra restored cluster (sharing, last-owner SQL file, excel identity, legacy arrow, stale-id, W4-03, named restore, erase approval, CRDT scope, spaces map, YDoc overlap) | **61 / 61** |
 
-Official `npm test` (436 main + 4 isolated) **not fully re-run** this pass. Isolated `partialEraserComplexity` budget left **75 / 250**. Do not treat a wall-clock exit 1 on this host as an audit-ID reopen.
+Official `npm test` **completed this pass** (see §8). Isolated `partialEraserComplexity` budget left **75 / 250**. Do not treat a wall-clock or V8-allocation exit 1 on this host as an audit-ID reopen.
 
 ### Live Vite (this checkout; unblocked only)
 
@@ -140,9 +140,36 @@ After restore + this-pass proofs:
 | E2E-CATALOG-01 More-menu barrier | **proven** Node contract |
 | Full 130-ID live catalog re-run | **not re-run** (prior receipts transferred; do not redo) |
 | Capacitor P-01 / UL-46 | prior Simulator receipts transferred; **not re-run** (no Simulator) |
-| Official full `npm test` | **not completed** (Node 22.14 `.ts` flag; isolated eraser wall-clock leftover) |
+| Official full `npm test` | **exit 1** — only leftover is isolated `partialEraserComplexity` crossing500 **allocation** on this host (timing 75/250 held). See §8. |
 | 18 host leftovers | **still unproven** (blocked; not retried) |
 
 ## 7. Goal
 
 Stays **open**.
+
+## 8. Official `npm test` (this checkout, 2026-08-21)
+
+Command: `npm test` → `node scripts/run-node-tests.mjs`. Node v22.14.0. Did not loosen `INTERACTIVE_BUDGET` 75 / 250. Did not apply prod SQL. Did not retry the 18 host leftovers.
+
+| Run | Exit | What happened |
+|---|---|---|
+| 1 (pre-fix) | **1** | First `.ts` importer (`tests/accountNativeE2EContracts.test.mjs`) — `ERR_UNKNOWN_FILE_EXTENSION` on `billingReturn.ts`. Host/runtime contract, not product. |
+| 2 (strip-types only) | **1** | `tests/releaseIntegrity.test.mjs` "Node test gate isolates files and bounds hangs" still expected `['--test', file]`. |
+| 3 (official after both min-diffs) | **1** | 439 files started (436 main + 3 isolated). **3906 tests / 3864 pass / 1 fail.** Runner stops on first fail, so isolated `svgPathTransformFidelity` was not reached. |
+
+**Fail list (run 3, the official result):**
+
+1. `tests/partialEraserComplexity.test.mjs` — `500 crossing cuts preserve every component inside bounded memory and release time`  
+   `total allocation 11966.34 MiB exceeded 8448.00 MiB`  
+   **Not** a 75 / 250 wall-clock miss. Geometry, component count (501), serialized-bytes, p95/max commit ms, and CPU asserts ran first and passed. Shallow500 (same file) passed.  
+   Same class as the file's own note: crossing allocation is already bimodal on CI from V8 nursery sizing (6.4–7.3 GiB). This cloud VM is a higher mode. **Left the allocation ceiling and the 75 / 250 timing budget.** Do not treat as an audit-ID reopen.
+
+**Reached isolated suites:** `annotationDocConcurrency` 103 / 103; `partialEraseCurveLocality` 15 / 15; `partialEraserComplexity` 9 / 10 (above).  
+**Unreached isolated, run the same spawn after stop:** `svgPathTransformFidelity` 12 / 12.
+
+**Min-diffs (not product / not high-risk files):**
+
+- `scripts/run-node-tests.mjs` — spawn `['--experimental-strip-types', '--test', file]` so restored Deno/edge `_shared/*.ts` helpers load on Node 22.
+- `tests/releaseIntegrity.test.mjs` — runner-contract regex matches that spawn.
+
+Invariants not touched: container-aware canvas sizing, SVG viewBox zoom, `zoomGeneration`, single-name `fontFamily`, CORS `*`.
