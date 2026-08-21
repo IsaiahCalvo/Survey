@@ -642,7 +642,7 @@ test('U-03 blank-rename re-break: nbsp, blur, Escape, select-all delete', async 
   await expect(title).toHaveValue('Adversarial Rename Hold');
 
   await title.click();
-  await page.keyboard.press('Meta+a');
+  await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('Backspace');
   await title.press('Enter');
   await expect(title).toHaveValue('Adversarial Rename Hold');

@@ -810,7 +810,7 @@ test('Cmd+A / select-all if offered, then Escape', async ({ page }) => {
   const a = await createRect(page, { x0: 0.20, y0: 0.24, x1: 0.38, y1: 0.40 });
   const b = await createRect(page, { x0: 0.42, y0: 0.26, x1: 0.60, y1: 0.42 });
   await page.keyboard.press('v');
-  await page.keyboard.press('Meta+a');
+  await page.keyboard.press('ControlOrMeta+a');
   const groupOffered = await page.locator('[data-group-selection-bbox="true"]').count();
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-group-selection-bbox="true"]')).toHaveCount(0);
@@ -821,12 +821,12 @@ test('Cmd+A / select-all if offered, then Escape', async ({ page }) => {
   await enterTextEdit(page, text.id);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
   await editor.click();
-  await page.keyboard.press('Meta+a');
+  await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0);
   expect((await annotationById(page, text.id))?.id).toBe(text.id);
 
-  await page.keyboard.press('Meta+a');
+  await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('Escape');
   expect((await appAnnotationIds(page)).length).toBeGreaterThanOrEqual(2);
   expect(groupOffered === 0 || groupOffered === 1).toBeTruthy();
