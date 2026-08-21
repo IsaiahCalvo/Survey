@@ -123,7 +123,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | V-02 marquee / Shift-click | **pass** |
 | V-03 ⇧V | **pass** |
 | V-04 pinch | **pass** — CDP two-touch; cancel commits preview; lift → pinch-release; mid-ink pinch discards |
-| V-08 Find wrap | **pass** (Next wave6 + Previous this pass) |
+| V-08 Find wrap | **pass** (Next wave6 + Previous + result-row click) |
 | E-04 Backspace | **pass** (after blur) |
 | E-05 undo/redo | **pass** |
 | A-07 revisions | **pass** (W4-03 local History + named cloud restore) |
