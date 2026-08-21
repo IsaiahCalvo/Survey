@@ -104,15 +104,24 @@ async function assertNoErrorBoundary(page) {
   await expect(page.getByText('Something went wrong')).toHaveCount(0);
 }
 
+async function bookmarkVisible(page, name) {
+  const input = await page.locator(`input[value="${name}"]`).count();
+  const text = await page.getByText(name, { exact: true }).count();
+  return input + text;
+}
+
 async function createBookmark(page, name) {
+  await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
   const add = page.getByRole('button', { name: 'Add bookmark', exact: true });
   await expect(add).toBeVisible();
   await add.click();
   const nameField = page.getByPlaceholder('Bookmark name');
   await expect(nameField).toBeVisible();
   await nameField.fill(name);
+  const pageField = page.getByPlaceholder('Page number');
+  if (await pageField.count()) await pageField.fill('1');
   await page.getByRole('button', { name: 'Create bookmark', exact: true }).click();
-  await expect(page.getByText(name).first()).toBeVisible({ timeout: 8_000 });
+  await expect.poll(async () => bookmarkVisible(page, name)).toBeGreaterThan(0);
 }
 
 test('ReSignInModal Forgot password on ?testPdf= fails closed', async ({ page }) => {
@@ -205,38 +214,47 @@ test('context menu stays isolated from bookmark delete undo', async ({ page }) =
   await openEditor(page);
   const rect = await createRect(page, { x0: 0.18, y0: 0.20, x1: 0.38, y1: 0.36 });
   await page.keyboard.press('v');
-  const target = page.locator(`[data-svg-annotation-layer="1"] [data-anno-id="${rect.id}"]`).first();
-  await expect(target).toBeVisible();
-  const box = await target.boundingBox();
-  expect(box).toBeTruthy();
-  await page.mouse.click(box.x + Math.min(8, box.width / 2), box.y + Math.min(8, box.height / 2), {
-    button: 'right',
-  });
+  await expect.poll(() => page.evaluate(() => typeof window.__onAnnotationContextMenu)).toBe('function');
+  await page.evaluate((id) => {
+    const el = document.querySelector(`[data-svg-annotation-layer="1"] [data-anno-id="${id}"]`);
+    const index = Number(el?.getAttribute('data-annotation-index') || 0);
+    window.__onAnnotationContextMenu({
+      pageNumber: 1,
+      annotationIndex: index,
+      event: { clientX: 240, clientY: 240, target: el },
+    });
+  }, rect.id);
   const menu = page.getByRole('menu').filter({ hasText: /Bring to front|Delete|Copy/i }).first();
-  const menuOpen = await menu.isVisible().catch(() => false);
-  await page.keyboard.press('Escape');
+  await expect(menu).toBeVisible({ timeout: 8_000 });
 
-  await page.getByRole('button', { name: 'Bookmarks', exact: true }).click();
   await createBookmark(page, 'wave7-bm-keep');
+  expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
+
+  const done = page.getByRole('button', { name: 'Done', exact: true });
+  if (!(await done.count())) {
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+  }
+  const row = page.locator('[data-bookmark-row-id]').filter({
+    has: page.locator('input[value="wave7-bm-keep"], :text("wave7-bm-keep")'),
+  }).first();
+  const deleteBtn = row.getByRole('button', { name: 'Delete', exact: true });
   page.once('dialog', (dialog) => dialog.dismiss());
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  const deleteBtn = page.getByRole('button', { name: 'Delete', exact: true }).first();
-  if (await deleteBtn.count()) await deleteBtn.click();
-  await expect(page.getByText('wave7-bm-keep').first()).toBeVisible();
+  await deleteBtn.click();
+  await expect.poll(async () => bookmarkVisible(page, 'wave7-bm-keep')).toBeGreaterThan(0);
   expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
 
   page.once('dialog', (dialog) => dialog.accept());
-  if (await deleteBtn.count()) await deleteBtn.click();
-  await expect.poll(async () => page.getByText('wave7-bm-keep').count(), { timeout: 8_000 }).toBe(0);
+  await deleteBtn.click();
+  await expect.poll(async () => bookmarkVisible(page, 'wave7-bm-keep'), { timeout: 8_000 }).toBe(0);
   expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
 
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   if (await undo.isEnabled()) {
     await undo.click();
-    await expect(page.getByText('wave7-bm-keep').first()).toBeVisible({ timeout: 8_000 });
+    await expect.poll(async () => bookmarkVisible(page, 'wave7-bm-keep')).toBeGreaterThan(0);
   }
   expect((await userAnnotationIds(page)).includes(rect.id)).toBeTruthy();
-  expect(typeof menuOpen).toBe('boolean');
   await assertNoErrorBoundary(page);
 });
 
