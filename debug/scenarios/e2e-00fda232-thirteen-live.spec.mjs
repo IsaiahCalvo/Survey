@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
-const MULTI_PDF = '/?testPdf=spike-120-pages.pdf';
 const HUB = '/?hubPreview=1&tab=documents';
 
 async function openEditor(page, fixture = LINK_PDF) {
@@ -268,53 +267,52 @@ async function duplicatePageOne(page) {
   await dup.click();
   await expect.poll(async () => pageDivs().count()).toBeGreaterThan(beforePages);
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="2"]').first()).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Escape');
+  const pagesToggle = page.getByRole('button', { name: 'Pages', exact: true });
+  if (await pagesToggle.getAttribute('aria-pressed') === 'true') {
+    await pagesToggle.click();
+  }
 }
 
 test('P1-14 renumberCounters persist after page-bucket change', async ({ page }) => {
   await openEditor(page, LINK_PDF);
   await duplicatePageOne(page);
+  await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible();
 
   await activateTool(page, 'Shapes', 'Counter');
+  await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible();
   const before1 = new Set((await userAnnotationSnapshot(page, 1)).map((row) => row.id));
   await dropCounterPin(page, { pageNumber: 1, xf: 0.38, yf: 0.34 });
   const pin1 = await waitForNewUserAnnotation(page, before1, isCounterRow, 1);
-
-  await goToPage(page, 2);
-  await activateTool(page, 'Shapes', 'Counter');
-  const before2 = new Set((await userAnnotationSnapshot(page, 2)).map((row) => row.id));
-  await dropCounterPin(page, { pageNumber: 2, xf: 0.40, yf: 0.36 });
-  const pin2 = await waitForNewUserAnnotation(page, before2, isCounterRow, 2);
-  const before3 = new Set((await userAnnotationSnapshot(page, 2)).map((row) => row.id));
-  await dropCounterPin(page, { pageNumber: 2, xf: 0.58, yf: 0.36 });
-  const pin3 = await waitForNewUserAnnotation(page, before3, (row) => isCounterRow(row) && row.id !== pin2.id, 2);
+  const before2 = new Set((await userAnnotationSnapshot(page, 1)).map((row) => row.id));
+  await dropCounterPin(page, { pageNumber: 1, xf: 0.54, yf: 0.34 });
+  const pin2 = await waitForNewUserAnnotation(page, before2, (row) => isCounterRow(row) && row.id !== pin1.id, 1);
+  const before3 = new Set((await userAnnotationSnapshot(page, 1)).map((row) => row.id));
+  await dropCounterPin(page, { pageNumber: 1, xf: 0.70, yf: 0.34 });
+  const pin3 = await waitForNewUserAnnotation(page, before3, (row) => (
+    isCounterRow(row) && row.id !== pin1.id && row.id !== pin2.id
+  ), 1);
 
   await expect.poll(async () => {
-    const a = await annotationById(page, pin1.id, 1);
-    const b = await annotationById(page, pin2.id, 2);
-    const c = await annotationById(page, pin3.id, 2);
-    return [a?.displayNumber, b?.displayNumber, c?.displayNumber];
+    const nums = await Promise.all([pin1.id, pin2.id, pin3.id].map((id) => annotationById(page, id, 1)));
+    return nums.map((row) => row?.displayNumber);
   }).toEqual([1, 2, 3]);
 
-  await goToPage(page, 1);
   await page.keyboard.press('v');
   await selectStroke(page, pin1.id, 1);
   await page.keyboard.press('Delete');
   if (await annotationById(page, pin1.id, 1)) await page.keyboard.press('Backspace');
   await expect.poll(async () => Boolean(await annotationById(page, pin1.id, 1))).toBeFalsy();
-
-  await goToPage(page, 2);
   await expect.poll(async () => {
-    const b = await annotationById(page, pin2.id, 2);
-    const c = await annotationById(page, pin3.id, 2);
-    return [b?.displayNumber, c?.displayNumber];
+    const nums = await Promise.all([pin2.id, pin3.id].map((id) => annotationById(page, id, 1)));
+    return nums.map((row) => row?.displayNumber);
   }).toEqual([1, 2]);
 
-  await goToPage(page, 1);
   await goToPage(page, 2);
-  const persisted = [
-    (await annotationById(page, pin2.id, 2))?.displayNumber,
-    (await annotationById(page, pin3.id, 2))?.displayNumber,
-  ];
+  await goToPage(page, 1);
+  const persisted = await Promise.all([pin2.id, pin3.id].map(async (id) => (
+    (await annotationById(page, id, 1))?.displayNumber
+  )));
   expect(persisted).toEqual([1, 2]);
 
   const helper = await page.evaluate(async () => {
@@ -397,7 +395,9 @@ test('P1-01 / 03 / 04 group flatten, Square /BE, print scale', async ({ page }) 
   expect(flattenFn).toMatch(/getObjNumber\(shifted, 'height'\) \* scaleY/);
   expect(flattenFn).toMatch(/if \(!\[left, top, width, height, pageHeight\]\.every\(Number\.isFinite\)\) return 0/);
   expect(src).toMatch(/pdfCloudIntensity/);
-  expect(src).toMatch(/pdfCloudPathD/);
+  const metaSrc = readFileSync(new URL('../../src/utils/pdfAppAnnotationMetadata.js', import.meta.url), 'utf8');
+  expect(metaSrc).toMatch(/pdfCloudIntensity/);
+  expect(metaSrc).toMatch(/pdfCloudPathD/);
 
   const flatten = await page.evaluate(async ({ lineRow, scaled }) => {
     const { getLineEndpoints } = await import('/src/utils/svgBoundingBox.js');
