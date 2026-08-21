@@ -798,26 +798,30 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
     }
     handleProof[kind] = { resizeIds, rotate: rotateCount > 0 };
     if (kind === 'ellipse' || kind === 'text') {
+      await page.keyboard.press('v');
+      await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
       const beforeRow = await annotationById(page, row.id);
       const beforeBox = await visualBox(page, row.id);
       const before = sizeSignature(beforeRow, beforeBox);
-      const br = page.locator('[data-resize-handle="br"], [data-resize-handle]').last();
+      const br = page.locator('[data-resize-handle="br"]').first();
+      await expect(br).toBeVisible();
       const box = await br.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
-      await page.mouse.move(box.x + 36, box.y + 28, { steps: 6 });
+      await page.mouse.move(box.x + 50, box.y + 40, { steps: 8 });
       await page.mouse.up();
       await expect.poll(async () => sizeSignature(await annotationById(page, row.id), await visualBox(page, row.id)))
         .not.toBe(before);
       handleProof[kind].resized = true;
     }
-    if (kind === 'ellipse' && rotateCount > 0) {
+    if (kind === 'ellipse') {
+      await expect(page.locator('[data-rotation-handle="mtr"]').first()).toBeVisible();
       const angleBefore = Number((await annotationById(page, row.id))?.angle || 0);
-      const rot = rotate.first();
+      const rot = page.locator('[data-rotation-handle="mtr"]').first();
       const rb = await rot.boundingBox();
       await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
       await page.mouse.down();
-      await page.mouse.move(rb.x + 36, rb.y + 8, { steps: 6 });
+      await page.mouse.move(rb.x + 50, rb.y + 12, { steps: 8 });
       await page.mouse.up();
       await expect.poll(async () => Number((await annotationById(page, row.id))?.angle || 0)).not.toBe(angleBefore);
       handleProof[kind].rotated = true;
