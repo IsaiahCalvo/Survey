@@ -433,14 +433,20 @@ test('1 intended: polyline/polygon resize then export/print world-scales vertice
   }, { poly: scaledPoly, line: scaledLine });
 
   const scaledAnnots = await exportedAnnots(Uint8Array.from(scaledExport.exportBytes));
-  const polyVerts = scaledAnnots.rows.find((row) => row.isPolygon)?.vertices;
-  const lineVerts = scaledAnnots.rows.find((row) => row.isPolyLine)?.vertices;
-  expect(polyVerts, 'export writes Polygon /Vertices').toBeTruthy();
-  expect(lineVerts, 'export writes PolyLine /Vertices').toBeTruthy();
-  expect(closeArrays(polyVerts, worldVertices(scaledPoly, scaledAnnots.pageHeight))).toBe(true);
-  expect(closeArrays(polyVerts, rawVertices(scaledPoly, scaledAnnots.pageHeight))).toBe(false);
-  expect(closeArrays(lineVerts, worldVertices(scaledLine, scaledAnnots.pageHeight))).toBe(true);
-  expect(closeArrays(lineVerts, rawVertices(scaledLine, scaledAnnots.pageHeight))).toBe(false);
+  const expectedPoly = worldVertices(scaledPoly, scaledAnnots.pageHeight);
+  const rawPoly = rawVertices(scaledPoly, scaledAnnots.pageHeight);
+  const expectedLine = worldVertices(scaledLine, scaledAnnots.pageHeight);
+  const rawLine = rawVertices(scaledLine, scaledAnnots.pageHeight);
+  const polyVerts = scaledAnnots.rows.filter((row) => row.isPolygon)
+    .map((row) => row.vertices)
+    .find((verts) => closeArrays(verts, expectedPoly));
+  const lineVerts = scaledAnnots.rows.filter((row) => row.isPolyLine)
+    .map((row) => row.vertices)
+    .find((verts) => closeArrays(verts, expectedLine));
+  expect(polyVerts, `scaled polygon /Vertices among ${JSON.stringify(scaledAnnots.rows.filter((row) => row.isPolygon).map((row) => row.vertices))}`).toBeTruthy();
+  expect(lineVerts, 'scaled polyline /Vertices').toBeTruthy();
+  expect(closeArrays(polyVerts, rawPoly)).toBe(false);
+  expect(closeArrays(lineVerts, rawLine)).toBe(false);
 
   const pts = devicePathPoints(await pageContentText(Uint8Array.from(scaledExport.flattenBytes)));
   const lineOps = pts.filter((point) => point.op === 'm' || point.op === 'l');
@@ -523,7 +529,12 @@ test('3 break: scale=1 move-only still left+point.x / unscaled radius', async ({
   ));
   const beforeCircle = await liveObject(page, ellipse.id);
   await selectStroke(page, ellipse.id);
-  await moveSelected(page, ellipse.id, 1, 40, 28);
+  const selBox = await page.locator('[data-selection-bbox]').first().boundingBox();
+  expect(selBox, 'selection bbox for move').toBeTruthy();
+  await page.mouse.move(selBox.x + selBox.width / 2, selBox.y + selBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(selBox.x + selBox.width / 2 + 48, selBox.y + selBox.height / 2 + 32, { steps: 8 });
+  await page.mouse.up();
   const afterCircle = await liveObject(page, ellipse.id);
   expect(Math.abs((Number(afterCircle.scaleX) || 1) - 1)).toBeLessThan(0.04);
   expect(Math.abs((Number(afterCircle.left) || 0) - (Number(beforeCircle.left) || 0))).toBeGreaterThan(4);
