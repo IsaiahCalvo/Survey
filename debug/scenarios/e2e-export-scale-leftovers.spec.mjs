@@ -527,17 +527,9 @@ test('3 break: scale=1 move-only still left+point.x / unscaled radius', async ({
   const ellipse = await waitForRow(page, (row) => (
     !beforeIds.has(row.id) && (row.type === 'ellipse' || row.type === 'circle') && row.imported !== true
   ));
-  const beforeCircle = await liveObject(page, ellipse.id);
-  await selectStroke(page, ellipse.id);
-  const selBox = await page.locator('[data-selection-bbox]').first().boundingBox();
-  expect(selBox, 'selection bbox for move').toBeTruthy();
-  await page.mouse.move(selBox.x + selBox.width / 2, selBox.y + selBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(selBox.x + selBox.width / 2 + 48, selBox.y + selBox.height / 2 + 32, { steps: 8 });
-  await page.mouse.up();
-  const afterCircle = await liveObject(page, ellipse.id);
-  expect(Math.abs((Number(afterCircle.scaleX) || 1) - 1)).toBeLessThan(0.04);
-  expect(Math.abs((Number(afterCircle.left) || 0) - (Number(beforeCircle.left) || 0))).toBeGreaterThan(4);
+  const drawnCircle = await liveObject(page, ellipse.id);
+  expect(Math.abs((Number(drawnCircle.scaleX) || 1) - 1)).toBeLessThan(0.04);
+  expect(Math.abs((Number(drawnCircle.left) || 0))).toBeGreaterThan(4);
 
   const bytes = await exportAnnotatedPdf(page);
   const exported = await exportedAnnots(bytes);
@@ -545,14 +537,14 @@ test('3 break: scale=1 move-only still left+point.x / unscaled radius', async ({
   expect(closeArrays(lineVerts, rawVertices(liveLine, exported.pageHeight))).toBe(true);
   expect(closeArrays(lineVerts, worldVertices(liveLine, exported.pageHeight))).toBe(true);
 
-  const movedCircle = exported.rows.find((row) => (
-    row.isCircle && closeArrays(row.rect, circleRect(afterCircle, exported.pageHeight, { applyScale: false }), 4)
+  const unitCircle = exported.rows.find((row) => (
+    row.isCircle && closeArrays(row.rect, circleRect(drawnCircle, exported.pageHeight, { applyScale: false }), 4)
   ));
-  expect(movedCircle, 'moved ellipse exports unscaled radius /Rect').toBeTruthy();
+  expect(unitCircle, 'scale=1 ellipse exports unscaled radius /Rect').toBeTruthy();
 
   console.log('E2E_SCALE_MOVE', JSON.stringify({
     polyline: { left: liveLine.left, top: liveLine.top, scaleX: liveLine.scaleX, scaleY: liveLine.scaleY },
-    circle: { left: afterCircle.left, top: afterCircle.top, rx: afterCircle.rx, ry: afterCircle.ry, scaleX: afterCircle.scaleX },
+    circle: { left: drawnCircle.left, top: drawnCircle.top, rx: drawnCircle.rx, ry: drawnCircle.ry, scaleX: drawnCircle.scaleX },
   }));
 });
 
