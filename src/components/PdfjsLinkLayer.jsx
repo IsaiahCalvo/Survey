@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { resolvePdfOutlinePageNumber } from '../utils/bookmarkOutline';
+import { isAllowedPdfExternalUrl, openPdfExternalUrl } from '../utils/pdfExternalLink';
 
 /**
  * PdfjsLinkLayer — clickable hyperlink overlay for one page under the owned
@@ -40,7 +41,12 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
         const out = [];
         for (const a of annots) {
           if (a.subtype !== 'Link') continue;
-          if (!a.url && a.dest == null) continue;
+          // pdf.js puts javascript:/data:/file: on `unsafeUrl` (url=null) and
+          // still promotes ftp:// into `url`. Only http(s)/mailto become
+          // clickable; never read `unsafeUrl`.
+          const rawUrl = typeof a.url === 'string' ? a.url : null;
+          const url = rawUrl && isAllowedPdfExternalUrl(rawUrl) ? rawUrl : null;
+          if (!url && a.dest == null) continue;
           // pdf.js 5 removed PageViewport.convertToViewportRectangle. Convert
           // both corners with the supported point API and normalize below.
           const start = viewport.convertToViewportPoint(a.rect[0], a.rect[1]);
@@ -56,7 +62,7 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
             top: (y / pageHeight) * 100,
             width: (w / pageWidth) * 100,
             height: (h / pageHeight) * 100,
-            url: a.url || null,
+            url,
             dest: a.dest != null ? a.dest : null,
           });
         }
@@ -73,13 +79,14 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
     event.stopPropagation();
     if (link.url) {
       const api = typeof window !== 'undefined' ? window.electronAPI : null;
-      if (api && typeof api.openExternal === 'function') {
-        api.openExternal(link.url).catch(() => {
-          try { window.open(link.url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
-        });
-      } else {
-        try { window.open(link.url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
-      }
+      await openPdfExternalUrl(link.url, {
+        openExternal: api && typeof api.openExternal === 'function'
+          ? (url) => api.openExternal(url)
+          : null,
+        openWindow: (url) => {
+          try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+        },
+      });
       return;
     }
     try {
@@ -99,6 +106,7 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
         <a
           key={i}
           href={link.url || '#'}
+          rel="noopener noreferrer"
           onClick={(event) => handleLink(link, event)}
           title={link.url || 'Go to page'}
           style={{
