@@ -797,26 +797,32 @@ test('Style every option + resize/rotate handles per creatable type', async ({ p
       expect(rotateCount, `${kind} rotation handle`).toBeGreaterThan(0);
     }
     handleProof[kind] = { resizeIds, rotate: rotateCount > 0 };
+    if (kind === 'ellipse' || kind === 'text') {
+      const beforeRow = await annotationById(page, row.id);
+      const beforeBox = await visualBox(page, row.id);
+      const before = sizeSignature(beforeRow, beforeBox);
+      const br = page.locator('[data-resize-handle="br"], [data-resize-handle]').last();
+      const box = await br.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + 36, box.y + 28, { steps: 6 });
+      await page.mouse.up();
+      await expect.poll(async () => sizeSignature(await annotationById(page, row.id), await visualBox(page, row.id)))
+        .not.toBe(before);
+      handleProof[kind].resized = true;
+    }
+    if (kind === 'ellipse' && rotateCount > 0) {
+      const angleBefore = Number((await annotationById(page, row.id))?.angle || 0);
+      const rot = rotate.first();
+      const rb = await rot.boundingBox();
+      await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(rb.x + 36, rb.y + 8, { steps: 6 });
+      await page.mouse.up();
+      await expect.poll(async () => Number((await annotationById(page, row.id))?.angle || 0)).not.toBe(angleBefore);
+      handleProof[kind].rotated = true;
+    }
   }
-
-  await resizeBr(page, created.ellipse.id);
-  const ellipseAngleBefore = Number((await annotationById(page, created.ellipse.id))?.angle || 0);
-  const rot = page.locator('[data-rotation-handle="mtr"]').first();
-  await expect(rot).toBeVisible();
-  const rb = await rot.boundingBox();
-  await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(rb.x + 36, rb.y + 8, { steps: 6 });
-  await page.mouse.up();
-  await expect.poll(async () => Number((await annotationById(page, created.ellipse.id))?.angle || 0))
-    .not.toBe(ellipseAngleBefore);
-
-  await resizeBr(page, created.text.id);
-  await selectStroke(page, created.callout.id);
-  const calloutResize = page.locator('[data-resize-handle]').first();
-  await expect(calloutResize).toBeVisible();
-  const calloutRotate = page.locator('[data-rotation-handle="mtr"]');
-  expect(await calloutRotate.count()).toBeGreaterThan(0);
 
   const persistProbe = await page.evaluate(() => {
     const keys = Object.keys(localStorage).filter((key) => /annotation|callout|testPdf/i.test(key));
