@@ -4,7 +4,7 @@
  * Default export PagesPanel renders lazy (IntersectionObserver) page thumbnails
  * rendered via pdf.js (fast low-res then crisp upgrade through a LIFO queue), plus
  * click-to-navigate, drag reorder (onReorderPages), and a right-click context menu
- * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
+ * for cut/copy/paste/duplicate/insert-blank/rotate/mirror/reset/delete. Honors pageTransformations.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
@@ -686,6 +686,12 @@ const PagesPanel = ({
     setContextMenu(null);
   }, [onDuplicatePage]);
 
+  const handleInsertBlank = useCallback((pageNumber) => {
+    if (onInsertBlankPage) {
+      onInsertBlankPage(pageNumber);
+    }
+    setContextMenu(null);
+  }, [onInsertBlankPage]);
 
   const handleDelete = useCallback((pageNumber) => {
     if (onDeletePage && window.confirm(`Delete page ${pageNumber}?`)) {
@@ -1267,6 +1273,34 @@ const PagesPanel = ({
           >
             <Icon name="duplicate" size={14} color="#8d96a6" />
             Duplicate
+          </button>
+          <button
+            onClick={() => handleInsertBlank(contextMenu.pageNumber)}
+            disabled={!onInsertBlankPage}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '13px',
+              textAlign: 'left',
+              cursor: onInsertBlankPage ? 'pointer' : 'not-allowed',
+              color: onInsertBlankPage ? '#e8e2d4' : '#5a6473',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              opacity: onInsertBlankPage ? 1 : 0.5
+            }}
+            onMouseEnter={(e) => {
+              if (onInsertBlankPage) e.currentTarget.style.background = '#2a3140';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Icon name="plus" size={14} color={onInsertBlankPage ? "#8d96a6" : "#5a6473"} />
+            Insert blank page
           </button>
           <div style={{
             height: '1px',

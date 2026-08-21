@@ -83,4 +83,6 @@ test('PagesPanel wires IndexedDB cache, black-frame reject, and space-filter reo
   assert.match(panel, /isLikelyBlackThumbnailSrc/);
   assert.match(panel, /canReorderPages/);
   assert.match(panel, /application\/pdf-page-internal/);
+  assert.match(panel, /Insert blank page/);
+  assert.match(panel, /handleInsertBlank/);
 });
