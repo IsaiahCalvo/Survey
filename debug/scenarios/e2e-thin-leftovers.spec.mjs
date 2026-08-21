@@ -249,11 +249,18 @@ async function copyAnnotation(page, id, pageNumber = 1) {
   await page.keyboard.press('ControlOrMeta+c');
 }
 
+async function copyCurrentSelection(page) {
+  await page.keyboard.press('ControlOrMeta+c');
+}
+
 async function pasteOnPage(page, pageNumber, beforeIds, predicate, { xf = 0.62, yf = 0.28 } = {}) {
   await rightClickEmptyPage(page, pageNumber, { xf, yf });
   const menu = page.locator('[data-annotation-context-menu="true"]');
   await expect(menu).toBeVisible({ timeout: 8_000 });
-  await menu.getByText('Paste', { exact: true }).click();
+  const pasteItem = menu.getByText('Paste', { exact: true });
+  const pasteColor = await pasteItem.evaluate((el) => getComputedStyle(el).color);
+  expect(pasteColor, 'Paste must be enabled (clipboard populated)').not.toMatch(/rgb\(90,\s*100,\s*115\)/);
+  await pasteItem.click();
   return waitForNewUserAnnotation(page, beforeIds, predicate, pageNumber);
 }
 
@@ -334,6 +341,8 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   const afterEmpty = (await userAnnotationSnapshot(page, 2)).map((row) => row.id);
   expect(afterEmpty.every((id) => beforeEmpty.has(id))).toBeTruthy();
 
+  const hunts = [];
+
   const rect = await createShape(page, {
     category: 'Shapes',
     button: 'Rectangle',
@@ -341,36 +350,8 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
     coords: { x0: 0.18, y0: 0.22, x1: 0.36, y1: 0.38 },
     pageNumber: 1,
   });
-  const ellipse = await createShape(page, {
-    category: 'Shapes',
-    button: 'Ellipse',
-    predicate: (row) => row.type === 'ellipse' || row.type === 'circle' || row.tool === 'ellipse',
-    coords: { x0: 0.40, y0: 0.22, x1: 0.56, y1: 0.38 },
-    pageNumber: 1,
-  });
-  const pen = await createShape(page, {
-    category: 'Draw',
-    button: 'Pen',
-    predicate: (row) => row.type === 'path' || row.tool === 'pen',
-    coords: { x0: 0.20, y0: 0.44, x1: 0.48, y1: 0.48 },
-    pageNumber: 1,
-  });
-  const text = await createText(page, 'xpaste', {
-    x0: 0.18, y0: 0.54, x1: 0.42, y1: 0.66,
-  }, 1);
-  const calloutId = await createCallout(page, 'xp-call', {
-    x0: 0.48, y0: 0.54, x1: 0.68, y1: 0.68,
-  }, 1);
-
   expect(rect.id).toBeTruthy();
-  expect(ellipse.id).toBeTruthy();
-  expect(pen.id).toBeTruthy();
-  expect(text.id).toBeTruthy();
-  expect(calloutId).toBeTruthy();
-
-  const hunts = [];
-
-  await copyAnnotation(page, rect.id, 1);
+  await copyCurrentSelection(page);
   const page2BeforeRect = new Set((await userAnnotationSnapshot(page, 2)).map((row) => row.id));
   const pastedRect = await pasteOnPage(page, 2, page2BeforeRect, (row) => (
     row.type === 'rect' || row.type === 'rectangle'
@@ -379,7 +360,15 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   expect(await userAnnotationSnapshot(page, 1).then((rows) => rows.some((row) => row.id === rect.id))).toBeTruthy();
   hunts.push({ hunt: 'intended — rect page 1 → page 2', pass: true, source: rect.id, clone: pastedRect.id });
 
-  await copyAnnotation(page, ellipse.id, 1);
+  const ellipse = await createShape(page, {
+    category: 'Shapes',
+    button: 'Ellipse',
+    predicate: (row) => row.type === 'ellipse' || row.type === 'circle' || row.tool === 'ellipse',
+    coords: { x0: 0.40, y0: 0.22, x1: 0.56, y1: 0.38 },
+    pageNumber: 1,
+  });
+  expect(ellipse.id).toBeTruthy();
+  await copyCurrentSelection(page);
   const page2BeforeEllipse = new Set((await userAnnotationSnapshot(page, 2)).map((row) => row.id));
   const pastedEllipse = await pasteOnPage(page, 2, page2BeforeEllipse, (row) => (
     row.type === 'ellipse' || row.type === 'circle' || row.tool === 'ellipse'
@@ -387,7 +376,15 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   expect(pastedEllipse.id).not.toBe(ellipse.id);
   hunts.push({ hunt: 'intended — ellipse page 1 → page 2', pass: true, source: ellipse.id, clone: pastedEllipse.id });
 
-  await copyAnnotation(page, pen.id, 1);
+  const pen = await createShape(page, {
+    category: 'Draw',
+    button: 'Pen',
+    predicate: (row) => row.type === 'path' || row.tool === 'pen',
+    coords: { x0: 0.20, y0: 0.44, x1: 0.52, y1: 0.58 },
+    pageNumber: 1,
+  });
+  expect(pen.id).toBeTruthy();
+  await copyCurrentSelection(page);
   const page3BeforePen = new Set((await userAnnotationSnapshot(page, 3)).map((row) => row.id));
   const pastedPen = await pasteOnPage(page, 3, page3BeforePen, (row) => (
     row.type === 'path' || row.tool === 'pen'
@@ -395,6 +392,10 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   expect(pastedPen.id).not.toBe(pen.id);
   hunts.push({ hunt: 'intended — pen page 1 → page 3', pass: true, source: pen.id, clone: pastedPen.id });
 
+  const text = await createText(page, 'xpaste', {
+    x0: 0.18, y0: 0.54, x1: 0.42, y1: 0.66,
+  }, 1);
+  expect(text.id).toBeTruthy();
   await copyAnnotation(page, text.id, 1);
   const page3BeforeText = new Set((await userAnnotationSnapshot(page, 3)).map((row) => row.id));
   const pastedText = await pasteOnPage(page, 3, page3BeforeText, (row) => (
@@ -403,13 +404,11 @@ test('cross-page paste: intended types + break empty/deleted/armed + edge undo/r
   expect(pastedText.id).not.toBe(text.id);
   hunts.push({ hunt: 'intended — text page 1 → page 3', pass: true, source: text.id, clone: pastedText.id });
 
-  await gotoPage(page, 1);
-  await selectMode(page);
-  const calloutEl = page.locator(`[data-callout-id="${calloutId}"]`).first();
-  await expect(calloutEl).toBeVisible({ timeout: 15_000 });
-  const callBox = await calloutEl.boundingBox();
-  await page.mouse.click(callBox.x + Math.min(8, callBox.width / 2), callBox.y + callBox.height / 2);
-  await page.keyboard.press('ControlOrMeta+c');
+  const calloutId = await createCallout(page, 'xp-call', {
+    x0: 0.48, y0: 0.54, x1: 0.68, y1: 0.68,
+  }, 1);
+  expect(calloutId).toBeTruthy();
+  await copyCurrentSelection(page);
   const page2CalloutsBefore = await page.locator('[data-svg-annotation-layer="2"] [data-callout-id]').count();
   await gotoPage(page, 2);
   await rightClickEmptyPage(page, 2, { xf: 0.80, yf: 0.62 });
