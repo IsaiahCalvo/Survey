@@ -1,0 +1,47 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+// Source contracts for the keyboard-shortcut matrix cluster.
+// Live proof is debug/scenarios/e2e-keyboard-shortcut-matrix.spec.mjs.
+
+const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
+
+test('overlay catalogs tools/Esc/search and omits Delete/Duplicate/z-order', () => {
+  const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
+  assert.match(overlay, /keys: \['P'\], description: 'Pen'/);
+  assert.match(overlay, /keys: \['V'\], description: 'Select annotations'/);
+  assert.match(overlay, /keys: \['Shift', 'V'\], description: 'Select text on the page'/);
+  assert.match(overlay, /description: 'Search text'/);
+  assert.match(overlay, /keys: \['Esc'\], description: 'Close dialogs\/cancel'/);
+  assert.doesNotMatch(overlay, /Duplicate/);
+  assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
+  assert.doesNotMatch(overlay, /Bring forward/);
+  assert.doesNotMatch(overlay, /description: 'Delete'/);
+});
+
+test('viewer mounts no overlay; z-order/Delete/tool keys stay live; group/duplicate stay hidden', () => {
+  const shell = read('src/AppShell.jsx');
+  assert.match(shell, /KeyboardShortcutsOverlay only renders on the home tab/);
+  assert.match(shell, /!isViewerVisible && <KeyboardShortcutsOverlay/);
+
+  const svg = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(svg, /e\.key !== 'Delete' && e\.key !== 'Backspace'/);
+  assert.match(svg, /code === 'BracketRight'/);
+  assert.match(svg, /code === 'BracketLeft'/);
+  assert.match(svg, /e\.shiftKey \? 'front' : 'forward'/);
+  assert.match(svg, /e\.shiftKey \? 'back' : 'backward'/);
+  assert.match(svg, /Cmd\+G and Cmd\+Shift\+G shortcuts are short-circuited/);
+  assert.match(svg, /useEffect\(\(\) => \{\s*return;/);
+
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /key === 'f'/);
+  assert.match(viewer, /openSearchPanel\(\{ focus: true, select: true \}\)/);
+  assert.match(viewer, /e\.key === 'p' \|\| e\.key === 'P'/);
+  assert.doesNotMatch(viewer, /setActiveTool\('duplicate'\)/);
+
+  const menu = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(menu, /Cmd\+Shift\+\]  → Bring to Front/);
+  assert.doesNotMatch(menu, /item\('Duplicate'/);
+});
