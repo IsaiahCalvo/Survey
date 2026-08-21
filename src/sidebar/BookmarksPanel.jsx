@@ -21,11 +21,12 @@ import { CSS } from '@dnd-kit/utilities';
 import { showToast } from '../utils/toast';
 import Icon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
-import { describeBookmarkDeleteConfirm, prepareAtomicBookmarkEdit, prepareBookmarkCreate } from './bookmarkEditUtils.js';
+import { describeBookmarkDeleteConfirm, nextBookmarkOrder, prepareAtomicBookmarkEdit, prepareBookmarkCreate } from './bookmarkEditUtils.js';
 import {
   BOOKMARK_INDENTATION_WIDTH,
   GROUP_AUTO_EXPAND_OFFSET_PX,
   applyBookmarkTreeProjection,
+  collectBookmarkTreePersistUpdates,
   flattenBookmarkTreeForSort,
   getAutoExpandTargetFolder,
   getBookmarkProjection,
@@ -436,6 +437,7 @@ const BookmarksPanel = ({
   bookmarks,
   onBookmarkCreate,
   onBookmarkUpdate,
+  onBookmarkUpdates,
   onBookmarkDelete,
   onNavigateToPage,
   pageNum,
@@ -751,14 +753,17 @@ const BookmarksPanel = ({
   }, [activeId, flattenedItems, offsetLeft]);
 
   const persistBookmarkTree = useCallback((nextTree) => {
+    const updates = collectBookmarkTreePersistUpdates(nextTree, bookmarks);
+    if (updates.length === 0) return;
+    if (typeof onBookmarkUpdates === 'function') {
+      onBookmarkUpdates(updates);
+      return;
+    }
     if (!onBookmarkUpdate) return;
-    flattenBookmarkTreeForSort(nextTree).forEach((item) => {
-      onBookmarkUpdate(item.id, {
-        order: item.index,
-        parentId: item.parentId ?? null,
-      });
+    updates.forEach(({ id, updates: patch }) => {
+      onBookmarkUpdate(id, patch);
     });
-  }, [onBookmarkUpdate]);
+  }, [bookmarks, onBookmarkUpdate, onBookmarkUpdates]);
 
   const handleDragStart = useCallback(({ active, activatorEvent }) => {
     const activeItem = flattenedItems.find((item) => item.id === active.id);
@@ -1061,7 +1066,7 @@ const BookmarksPanel = ({
   const handleAddChildBookmark = useCallback((folderId) => {
     if (!onBookmarkCreate) return;
     const parent = findItem(folderId, bookmarkTree)?.item;
-    const nextOrder = parent?.children?.length ?? 0;
+    const nextOrder = nextBookmarkOrder(bookmarks, folderId);
     const initialPage = pageNum && pageNum > 0
       ? (numPages ? Math.min(pageNum, numPages) : pageNum)
       : null;
@@ -1076,7 +1081,7 @@ const BookmarksPanel = ({
       parentId: folderId,
       order: nextOrder,
     });
-  }, [bookmarkTree, expandFolderOnly, findItem, numPages, onBookmarkCreate, pageNum]);
+  }, [bookmarkTree, bookmarks, expandFolderOnly, findItem, numPages, onBookmarkCreate, pageNum]);
 
   const handleDelete = useCallback((id) => {
     const message = describeBookmarkDeleteConfirm({ bookmarks, id });
@@ -1124,7 +1129,8 @@ const BookmarksPanel = ({
       onBookmarkCreate({
         name: prepared.updates.name,
         pageIds: prepared.updates.pageIds,
-        type: 'bookmark'
+        type: 'bookmark',
+        order: nextBookmarkOrder(bookmarks, null),
       });
     }
 
@@ -1236,7 +1242,8 @@ const BookmarksPanel = ({
         id: folderId,
         name: groupName.trim(),
         type: 'folder',
-        children: []
+        children: [],
+        order: nextBookmarkOrder(bookmarks, null),
       });
     }
 
@@ -1255,7 +1262,7 @@ const BookmarksPanel = ({
     setShowBookmarkGroupModal(false);
     setGroupName('');
     setGroupBookmarks([]);
-  }, [groupName, groupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
+  }, [bookmarks, groupName, groupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
 
   const handleAddExistingBookmark = useCallback((bookmarkId) => {
     const bookmark = bookmarks.find(b => b.id === bookmarkId);
@@ -1378,12 +1385,13 @@ const BookmarksPanel = ({
         if (numPages && pageValue > numPages) return false;
         return true;
       })
-      .map(b => ({
+      .map((b, index) => ({
         id: generateId(),
         name: b.name.trim(),
         type: 'bookmark',
         pageIds: b.pageIds || [],
-        parentId: targetGroupId
+        parentId: targetGroupId,
+        order: nextBookmarkOrder(bookmarks, targetGroupId) + index,
       }));
 
     const existingBookmarkIds = addToGroupBookmarks
@@ -1405,7 +1413,7 @@ const BookmarksPanel = ({
     setShowAddToGroupModal(false);
     setTargetGroupId(null);
     setAddToGroupBookmarks([]);
-  }, [targetGroupId, addToGroupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
+  }, [bookmarks, targetGroupId, addToGroupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
 
   if (mobileMode) {
     // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the

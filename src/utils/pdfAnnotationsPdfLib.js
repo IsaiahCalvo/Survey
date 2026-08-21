@@ -2341,10 +2341,10 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
     }
 
     // Add line endings (arrows, etc.)
-    if (fabricObj.lineEnding1 || fabricObj.lineEnding2) {
+    const le2 = resolveExportedLineEnding2(fabricObj);
+    if (fabricObj.lineEnding1 || le2) {
       const le1 = fabricObj.lineEnding1 || 'None';
-      const le2 = fabricObj.lineEnding2 || 'None';
-      annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
+      annotationDict.LE = [PDFName.of(le1), PDFName.of(le2 || 'None')];
     }
 
     // UX (2026-07-17, callout line style): dashed/dotted strokes export as a
@@ -2456,6 +2456,14 @@ const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
   [ARROWHEAD_STYLES.V_SHAPE]: 'Slash',
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
+};
+
+const resolveExportedLineEnding2 = (fabricObj) => {
+  if (fabricObj?.lineEnding2) return fabricObj.lineEnding2;
+  const style = fabricObj?.data?.arrowheadStyle
+    ?? (fabricObj?.tool === 'arrow' ? ARROWHEAD_STYLES.SOLID_TRIANGLE : null);
+  if (!style) return null;
+  return ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[style] || null;
 };
 
 // Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas

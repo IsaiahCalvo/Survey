@@ -23,11 +23,14 @@ import {
   deserializeRowsToCallouts
 } from './annotationTypeSerializers.js';
 
-// Phase 30 — Migration Phase A — Dual-Write Era (narrow waiver per
-// 30-CONTEXT.md DO NOT CHANGE list). The two functions added below
-// (dualWriteFabricCommit + dualWriteFabricDelete) fan out new-annotation
-// saves to BOTH the legacy document_annotations row (existing behavior,
-// byte-identical) AND the CRDT path via the Phase 29 bridge.
+// Phase 30 dual-write helpers below are RETIRED leftovers. Live saves go
+// through annotationDocSync / the Y.Doc outbox. DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE
+// is false — comments must not claim a live dual-write era.
+//
+// Phase 30 — Migration Phase A leftovers (narrow waiver per
+// 30-CONTEXT.md DO NOT CHANGE list). The two functions below
+// (dualWriteFabricCommit + dualWriteFabricDelete) are unused fan-out
+// helpers. They are not the live write path.
 //
 // CONTEXT.md "No 'diff = delete' logic anywhere" architectural lock — these  // NO_DIFF_DELETE_OK: docstring describes the lock the file honors.
 // fan-out functions NEVER read both stores and delete the difference. If    // NO_DIFF_DELETE_OK: docstring describes what the lock forbids.
@@ -45,6 +48,8 @@ import {
   isSurveyMarkerType,
   SURVEY_MARKER_TYPE_VALUES,
 } from '../utils/surveyMarkerType.js';
+
+export const DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE = false;
 
 export const NON_HIGHLIGHT_TYPES = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
@@ -589,11 +594,12 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
 }
 
 /**
- * Phase 30 — Dual-write fan-out for a single Fabric annotation save (create/edit).
+ * RETIRED — Phase 30 dual-write fan-out for a single Fabric annotation save.
+ * Not a live write path; DOCUMENT_ANNOTATIONS_DUAL_WRITE_LIVE is false.
  *
- * Behavior:
- *   - ALWAYS fires the legacy upsertFabricAnnotation. v2.3 clients still in the
- *     wild read from this column; the dual-write era keeps them whole.
+ * Behavior (if a leftover caller invoked it):
+ *   - Fires the legacy upsertFabricAnnotation. v2.3 clients still in the
+ *     wild read from this column; the dual-write era was meant to keep them whole.
  *   - If isCRDTEnabled() is false → legacy only (kill switch override; current
  *     behavior unchanged for kill-switch-off deployments).
  *   - If annotation_type === 'surveyMarker' → legacy only (Excel-sync carve-out

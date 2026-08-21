@@ -28,11 +28,87 @@ export { buildInviteUrl };
 
 const ROLE_SET = new Set(['viewer', 'editor', 'owner']);
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const NO_ROW_UPDATED = 'No project collaborator was updated. The change was not saved.';
+const NO_ROW_REMOVED = 'No project collaborator was removed. The change was not saved.';
 
 function normalizeRole(role) {
   if (!role) return 'viewer';
   const lower = String(role).toLowerCase();
   return ROLE_SET.has(lower) ? lower : 'viewer';
+}
+
+function explicitRoleOf(record) {
+  if (!record || typeof record !== 'object') return '';
+  return String(
+    record.role
+    || record.collaborator_role
+    || record.my_role
+    || record.current_user_role
+    || '',
+  ).toLowerCase();
+}
+
+/**
+ * Owner-manage gate used by Manage Team / Manage Access.
+ * True when the signed-in user is the original creator OR has
+ * collaborator role=owner (payload field or collaborator rows).
+ */
+export function userHasOwnerManagePermission({
+  ownerUserId,
+  user,
+  role,
+  collaboratorRows = [],
+} = {}) {
+  if (!user?.id) return false;
+  if (ownerUserId != null && ownerUserId === user.id) return true;
+  if (String(role || '').toLowerCase() === 'owner') return true;
+  const rows = Array.isArray(collaboratorRows) ? collaboratorRows : [];
+  return rows.some((row) => {
+    const uid = row?.user_id ?? row?.userId;
+    return uid === user.id && String(row?.role || '').toLowerCase() === 'owner';
+  });
+}
+
+export function userCanManageDocumentAccess(doc, user, collaboratorRows) {
+  if (!doc) return false;
+  const rows = collaboratorRows
+    ?? doc.collaborators
+    ?? doc.document_collaborators
+    ?? [];
+  return userHasOwnerManagePermission({
+    ownerUserId: doc.user_id,
+    user,
+    role: explicitRoleOf(doc),
+    collaboratorRows: rows,
+  });
+}
+
+export function userCanManageProjectTeam(project, user, collaboratorRows) {
+  if (!project) return false;
+  const rows = collaboratorRows ?? project.collaborators ?? [];
+  return userHasOwnerManagePermission({
+    ownerUserId: project.user_id,
+    user,
+    role: explicitRoleOf(project),
+    collaboratorRows: rows,
+  });
+}
+
+/** RLS can discard an UPDATE/DELETE as 0 rows with error=null. Treat that as failure. */
+export function confirmMutationAffectedRows(data, { action = 'updated' } = {}) {
+  const rows = Array.isArray(data) ? data : (data == null ? [] : [data]);
+  if (rows.length === 0) {
+    return {
+      success: false,
+      error: action === 'removed' ? NO_ROW_REMOVED : NO_ROW_UPDATED,
+    };
+  }
+  return { success: true, data: rows };
+}
+
+/** Notification emails fire only after a confirmed write. */
+export function shouldNotifyTeamChange(writeResult) {
+  return writeResult?.success === true;
 }
 
 function newToken() {
@@ -310,34 +386,36 @@ export async function listProjectCollaboratorsForProjects(projectIds) {
  * @param {string} newRole - 'viewer' | 'editor' | 'owner'
  */
 export async function updateProjectCollaboratorRole(projectId, userId, newRole) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('project_collaborators')
     .update({ role: normalizeRole(newRole) })
     .eq('project_id', projectId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select('id');
 
   if (error) {
     console.error('[KAL-31] Error updating project collaborator role:', error);
     return { success: false, error };
   }
 
-  return { success: true };
+  return confirmMutationAffectedRows(data, { action: 'updated' });
 }
 
 /**
  * Remove a collaborator from a project.
  */
 export async function removeProjectCollaborator(projectId, userId) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('project_collaborators')
     .delete()
     .eq('project_id', projectId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select('id');
 
   if (error) {
     console.error('[KAL-31] Error removing project collaborator:', error);
     return { success: false, error };
   }
 
-  return { success: true };
+  return confirmMutationAffectedRows(data, { action: 'removed' });
 }

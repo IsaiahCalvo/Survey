@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   BOOKMARK_INDENTATION_WIDTH,
   applyBookmarkTreeProjection,
+  collectBookmarkTreePersistUpdates,
   flattenBookmarkTreeForSort,
   getAutoExpandTargetFolder,
   getBookmarkProjection,
@@ -119,4 +121,32 @@ test('collapsed folders are auto-expand targets when dragged over with rightward
   );
 
   assert.equal(target.id, 'details');
+});
+
+test('P1-47 intended: persist updates only include changed order/parentId', () => {
+  const current = [
+    { id: 'a', parentId: null, order: 0 },
+    { id: 'b', parentId: null, order: 1 },
+  ];
+  const nested = [
+    {
+      ...bookmark('a'),
+      children: [{ ...bookmark('b'), children: [] }],
+    },
+  ];
+  const updates = collectBookmarkTreePersistUpdates(nested, current);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].id, 'b');
+  assert.equal(updates[0].updates.parentId, 'a');
+});
+
+test('P1-47 break: identical tree emits no writes', () => {
+  const current = [{ id: 'a', parentId: null, order: 0 }];
+  const tree = [{ ...bookmark('a'), order: 0, children: [] }];
+  assert.deepEqual(collectBookmarkTreePersistUpdates(tree, current), []);
+});
+
+test('P1-47 edge: BookmarksPanel persist uses the delta helper', () => {
+  const panel = readFileSync(new URL('../src/sidebar/BookmarksPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /collectBookmarkTreePersistUpdates\(nextTree, bookmarks\)/);
 });

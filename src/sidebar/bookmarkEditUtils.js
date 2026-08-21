@@ -1,5 +1,14 @@
 import { hasNameConflict } from '../viewerShared.js';
 
+export const nextBookmarkOrder = (bookmarks, parentId = null) => {
+  const siblings = (bookmarks || []).filter((item) => (item?.parentId ?? null) === (parentId ?? null));
+  if (siblings.length === 0) return 0;
+  return siblings.reduce((max, item) => {
+    const order = Number(item?.order);
+    return Math.max(max, Number.isFinite(order) ? order : 0);
+  }, -1) + 1;
+};
+
 export const prepareAtomicBookmarkEdit = ({
   bookmarks,
   bookmark,

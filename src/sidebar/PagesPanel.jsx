@@ -10,7 +10,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
 import { useTooltip } from '../components/Tooltip';
-import { resolvePageThumbnailClick } from './pagesPanelUtils.js';
+import { thumbnailStore } from '../services/thumbnailStore';
+import {
+  buildPagesPanelThumbKey,
+  canReorderVisiblePages,
+  getPdfDocumentCacheStamp,
+  isLikelyBlackThumbnailPixels,
+  resolvePageThumbnailClick,
+} from './pagesPanelUtils.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const FAST_THUMBNAIL_SCALE = 0.15; // Ultra-fast, low-res (was 0.2)
@@ -47,6 +54,7 @@ const PagesPanel = ({
   onPageDragStart,
   tabId,
   mobileMode = false,
+  thumbnailCacheRevision = 0,
 }) => {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -75,6 +83,7 @@ const PagesPanel = ({
   const activeTasksRef = useRef(new Map()); // Map<pageNumber, { cancel: () => void, type: 'fast'|'crisp' }>
   const runningWorkersRef = useRef(0);
   const pendingRequestsRef = useRef(new Set()); // Track pages currently in queue or running
+  const blackRetryRef = useRef(new Map());
 
   useEffect(() => {
     thumbnailsRef.current = thumbnails;
@@ -153,37 +162,7 @@ const PagesPanel = ({
           }
           probeContext.drawImage(img, 0, 0, width, height);
           const { data } = probeContext.getImageData(0, 0, width, height);
-          if (!data || data.length === 0) {
-            resolve(false);
-            return;
-          }
-
-          const totalPixels = width * height;
-          let opaquePixels = 0;
-          let darkOpaquePixels = 0;
-          let minLuminance = 255;
-          let maxLuminance = 0;
-
-          for (let offset = 0; offset < data.length; offset += 4) {
-            const r = data[offset];
-            const g = data[offset + 1];
-            const b = data[offset + 2];
-            const a = data[offset + 3];
-            const luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
-            if (luminance < minLuminance) minLuminance = luminance;
-            if (luminance > maxLuminance) maxLuminance = luminance;
-            if (a >= 220) {
-              opaquePixels += 1;
-              if (luminance <= 12) {
-                darkOpaquePixels += 1;
-              }
-            }
-          }
-
-          const opaqueRatio = opaquePixels / totalPixels;
-          const darkOpaqueRatio = opaquePixels > 0 ? (darkOpaquePixels / opaquePixels) : 0;
-          const contrast = maxLuminance - minLuminance;
-          resolve(opaqueRatio >= 0.9 && darkOpaqueRatio >= 0.94 && contrast <= 10);
+          resolve(isLikelyBlackThumbnailPixels(data, width, height));
         } catch {
           resolve(false);
         }
@@ -231,6 +210,8 @@ const PagesPanel = ({
     return Array.from({ length: numPages }, (_, i) => i + 1);
   }, [activeSpacePages, shouldShowPage, numPages]);
 
+  const canReorderPages = canReorderVisiblePages({ allowedPages, numPages });
+
   // Update selected page when pageNum prop changes
   useEffect(() => {
     if (allowedPages.includes(pageNum)) {
@@ -275,9 +256,10 @@ const PagesPanel = ({
     queueRef.current.crisp = [];
     pendingRequestsRef.current.clear();
     runningWorkersRef.current = 0;
+    blackRetryRef.current.clear();
   }, [pdfDoc, numPages, getThumbnail]);
 
-  const applyThumbnailResult = useCallback((pageNumber, normalized) => {
+  const commitThumbnailResult = useCallback((pageNumber, normalized) => {
     if (!isMountedRef.current || !normalized) return;
 
     const ratioWidth = normalized.width || normalized.containerWidth;
@@ -319,6 +301,26 @@ const PagesPanel = ({
       [pageNumber]: normalized
     }));
   }, []);
+
+  const applyThumbnailResult = useCallback((pageNumber, normalized, options = {}) => {
+    if (!isMountedRef.current || !normalized) return;
+    const commit = () => {
+      commitThumbnailResult(pageNumber, normalized);
+      options.onApplied?.();
+    };
+    if (!normalized.src || options.skipBlackCheck) {
+      commit();
+      return;
+    }
+    void isLikelyBlackThumbnailSrc(normalized.src).then((isBlack) => {
+      if (!isMountedRef.current) return;
+      if (isBlack) {
+        options.onBlack?.();
+        return;
+      }
+      commit();
+    });
+  }, [commitThumbnailResult, isLikelyBlackThumbnailSrc]);
 
   const renderPdfJsThumbnail = useCallback(async (pageNumber, quality = 'fast', onCancel) => {
     if (!pdfDoc) return null;
@@ -396,9 +398,26 @@ const PagesPanel = ({
 
     try {
       let thumbnailResult = null;
+      const cacheKey = buildPagesPanelThumbKey({
+        stamp: getPdfDocumentCacheStamp(pdfDoc),
+        pageNumber,
+        quality: type,
+        revision: thumbnailCacheRevision,
+      });
+
+      if (cacheKey) {
+        const stored = await thumbnailStore().get(cacheKey);
+        if (stored?.url) {
+          thumbnailResult = {
+            src: stored.url,
+            source: 'idb',
+            quality: type,
+          };
+        }
+      }
 
       // For fast thumbnails, we check if Pdfjs provided one (unlikely given previous issues, but safe optimization)
-      if (type === 'fast' && typeof getThumbnail === 'function') {
+      if (!thumbnailResult && type === 'fast' && typeof getThumbnail === 'function') {
         // ... (existing logic for external provider if needed, mostly unused now)
       }
 
@@ -409,9 +428,28 @@ const PagesPanel = ({
       }
 
       if (isMountedRef.current && thumbnailResult) {
-        let normalized = normalizeThumbnailResult(thumbnailResult);
+        const normalized = normalizeThumbnailResult(thumbnailResult);
+        const fromCache = thumbnailResult.source === 'idb';
 
-        applyThumbnailResult(pageNumber, normalized);
+        applyThumbnailResult(pageNumber, normalized, {
+          skipBlackCheck: fromCache,
+          onApplied: () => {
+            if (!fromCache && cacheKey && normalized?.src) {
+              const aspect = (normalized.height && normalized.width)
+                ? normalized.height / normalized.width
+                : undefined;
+              void thumbnailStore().put(cacheKey, { url: normalized.src, aspect });
+            }
+          },
+          onBlack: () => {
+            const retries = blackRetryRef.current.get(pageNumber) || 0;
+            if (retries < 1) {
+              blackRetryRef.current.set(pageNumber, retries + 1);
+              queueRef.current[type].push({ pageNumber });
+              processQueue();
+            }
+          },
+        });
 
         // Schedule upgrade if fast
         if (type === 'fast') {
@@ -435,7 +473,7 @@ const PagesPanel = ({
         processQueue(); // Loop
       }
     }
-  }, [pdfDoc, getThumbnail, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult]);
+  }, [pdfDoc, getThumbnail, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult, thumbnailCacheRevision]);
 
   const scheduleThumbnail = useCallback((pageNumber, priority = 'fast') => {
     if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
@@ -709,7 +747,9 @@ const PagesPanel = ({
   const handleDragStart = useCallback((e, pageNumber) => {
     setDraggedPage(pageNumber);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/pdf-page-internal', pageNumber.toString());
+    if (canReorderPages) {
+      e.dataTransfer.setData('application/pdf-page-internal', pageNumber.toString());
+    }
 
     // Also set data for external drag (to tabs)
     if (onPageDragStart && tabId) {
@@ -719,7 +759,7 @@ const PagesPanel = ({
         pdfDoc: null
       }));
     }
-  }, [onPageDragStart, tabId]);
+  }, [canReorderPages, onPageDragStart, tabId]);
 
   // Handle drag over for internal reordering
   const handleDragOver = useCallback((e, targetPageNumber) => {
@@ -729,6 +769,10 @@ const PagesPanel = ({
     // Check if this is an internal drag
     const types = Array.from(e.dataTransfer.types || []);
     if (types.includes('application/pdf-page-internal')) {
+      if (!canReorderPages) {
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
       e.dataTransfer.dropEffect = 'move';
       if (draggedPage !== null && draggedPage !== targetPageNumber) {
         setDragOverPage(targetPageNumber);
@@ -737,7 +781,7 @@ const PagesPanel = ({
       // External drag to tab - allow it
       e.dataTransfer.dropEffect = 'move';
     }
-  }, [draggedPage]);
+  }, [canReorderPages, draggedPage]);
 
   // Handle drag leave
   const handleDragLeave = useCallback((e) => {
@@ -757,14 +801,19 @@ const PagesPanel = ({
     // Check if this is an internal reorder
     if (types.includes('application/pdf-page-internal')) {
       const sourcePageNumber = parseInt(e.dataTransfer.getData('application/pdf-page-internal'));
-      if (sourcePageNumber && sourcePageNumber !== targetPageNumber && onReorderPages) {
+      if (
+        canReorderPages
+        && sourcePageNumber
+        && sourcePageNumber !== targetPageNumber
+        && onReorderPages
+      ) {
         onReorderPages(sourcePageNumber, targetPageNumber);
       }
     }
 
     setDraggedPage(null);
     setDragOverPage(null);
-  }, [onReorderPages]);
+  }, [canReorderPages, onReorderPages]);
 
   // Handle drag end to reset state if drag is cancelled
   const handleDragEnd = useCallback(() => {

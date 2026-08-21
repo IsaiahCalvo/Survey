@@ -35,6 +35,7 @@ import { copyTextToClipboard } from '../utils/clipboard';
 import { closeButtonStyle } from './hubControls';
 import { Icon } from './HubShell';
 import { lastOwnerBlockReason } from './lastOwnerGuard';
+import { shouldNotifyTeamChange, userCanManageDocumentAccess } from '../services/projectInviteService';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',
@@ -132,6 +133,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   }, [open, refresh]);
 
   const ownerCount = members.filter((m) => String(m.role).toLowerCase() === 'owner').length;
+  const canManage = userCanManageDocumentAccess(item, currentUser, members);
   const documentName = item?.name || item?.title || 'Untitled';
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || 'An owner';
 
@@ -161,7 +163,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     setStatus(`Updated ${member.email || 'collaborator'} to ${roleLabel(next)}.`);
 
     // Email best-effort.
-    if (member.email) {
+    if (shouldNotifyTeamChange(res) && member.email) {
       sendPermissionChangedEmail({
         email: member.email,
         documentName,
@@ -188,7 +190,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
       return;
     }
     setStatus(`Removed ${member.email || 'collaborator'}.`);
-    if (member.email) {
+    if (shouldNotifyTeamChange(res) && member.email) {
       sendAccessRemovedEmail({
         email: member.email,
         documentName,

@@ -8,6 +8,7 @@ import {
   deleteBookmarksById,
   describeBookmarkDeleteConfirm,
   historyStateHasBookmarks,
+  nextBookmarkOrder,
   planBookmarkDelete,
   prepareAtomicBookmarkEdit,
   snapshotBookmarksForHistory,
@@ -168,4 +169,25 @@ test('P1-48: desktop commitName uses the atomic helper (intended + break + edge)
   assert.equal(empty.ok, false);
   assert.equal(ok.ok, true);
   assert.equal(ok.updates.name, 'Lobby');
+});
+
+test('P1-44 intended: new bookmarks append after the sibling max order', () => {
+  const list = [
+    { id: 'a', name: 'Two', parentId: null, order: 2 },
+    { id: 'b', name: 'Five', parentId: null, order: 5 },
+    { id: 'c', name: 'Nested', parentId: 'folder', order: 9 },
+  ];
+  assert.equal(nextBookmarkOrder(list, null), 6);
+  assert.equal(nextBookmarkOrder(list, 'folder'), 10);
+});
+
+test('P1-44 break: empty list starts at 0; missing order counts as 0', () => {
+  assert.equal(nextBookmarkOrder([], null), 0);
+  assert.equal(nextBookmarkOrder([{ id: 'a', parentId: null }], null), 1);
+});
+
+test('P1-44 edge: desktop create stamps nextBookmarkOrder', () => {
+  const panel = read('src/sidebar/BookmarksPanel.jsx');
+  assert.match(panel, /order:\s*nextBookmarkOrder\(bookmarks,\s*null\)/);
+  assert.match(panel, /nextBookmarkOrder\(bookmarks,\s*folderId\)/);
 });

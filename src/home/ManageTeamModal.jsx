@@ -34,6 +34,8 @@ import {
   updateProjectCollaboratorRole,
   removeProjectCollaborator,
   buildInviteUrl,
+  userCanManageProjectTeam,
+  shouldNotifyTeamChange,
 } from '../services/projectInviteService';
 import {
   sendPermissionChangedEmail,
@@ -419,6 +421,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   /* Last-owner protection mirrors AccessManagementModal: the creator counts
      as an owner, so ownerCount is creator + collaborator owners. */
   const ownerCount = memberList.filter((m) => String(m.role).toLowerCase() === 'owner').length;
+  const canManage = userCanManageProjectTeam(project, currentUser, collabRows);
 
   if (!open) return null;
 
@@ -470,12 +473,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     if (!m || m.role === role) return;
     const blocked = guardMember(m, role);
     if (blocked) { setError(blocked); return; }
+    if (!canManage) { setError('Only a project owner can change roles.'); return; }
     setBusy(true);
     const res = await updateProjectCollaboratorRole(projectId, m.userId, role.toLowerCase());
     setBusy(false);
     if (!res?.success) { setError(res?.error?.message || res?.error || 'Could not update role.'); return; }
     setStatus(`Updated ${m.email || m.name} to ${role}.`);
-    if (m.email) {
+    if (shouldNotifyTeamChange(res) && m.email) {
       sendPermissionChangedEmail({
         email: m.email,
         documentName: `the project "${projectName}"`,
@@ -493,12 +497,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     if (!m) return;
     const blocked = guardMember(m, null);
     if (blocked) { setError(blocked); return; }
+    if (!canManage) { setError('Only a project owner can remove teammates.'); return; }
     setBusy(true);
     const res = await removeProjectCollaborator(projectId, m.userId);
     setBusy(false);
     if (!res?.success) { setError(res?.error?.message || res?.error || 'Could not remove collaborator.'); return; }
     setStatus(`Removed ${m.email || m.name}.`);
-    if (m.email) {
+    if (shouldNotifyTeamChange(res) && m.email) {
       sendAccessRemovedEmail({
         email: m.email,
         documentName: `the project "${projectName}"`,
@@ -529,6 +534,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const revokeInvite = async (inv) => {
     setError(""); setStatus("");
+    if (!canManage) { setError('Only a project owner can revoke invites.'); return; }
     setBusy(true);
     const res = await revokeProjectInvite(inv.id);
     setBusy(false);
@@ -539,6 +545,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
   const resendInvite = async (inv) => {
     setError(""); setStatus("");
+    if (!canManage) { setError('Only a project owner can resend invites.'); return; }
     setBusy(true);
     const res = await resendProjectInvite(inv.id, {
       projectName,

@@ -135,6 +135,23 @@ export const getAutoExpandTargetFolder = (items, activeId, overId, dragOffset) =
   )) ?? null;
 };
 
+export const collectBookmarkTreePersistUpdates = (nextTree, currentBookmarks = []) => {
+  const currentById = new Map((currentBookmarks || []).filter((item) => item?.id).map((item) => [item.id, item]));
+  return flattenBookmarkTreeForSort(nextTree).reduce((updates, item) => {
+    if (!item?.id) return updates;
+    const parentId = item.parentId ?? null;
+    const order = item.index;
+    const previous = currentById.get(item.id);
+    const previousParentId = previous?.parentId ?? null;
+    const previousOrder = previous?.order;
+    if (previous && previousParentId === parentId && previousOrder === order) {
+      return updates;
+    }
+    updates.push({ id: item.id, updates: { order, parentId } });
+    return updates;
+  }, []);
+};
+
 export const applyBookmarkTreeProjection = (tree, activeId, overId, projection) => {
   if (!projection || !activeId || !overId) return tree;
 
