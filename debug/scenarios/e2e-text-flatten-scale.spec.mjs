@@ -240,7 +240,7 @@ function countTextShows(contentText) {
   return (contentText.match(/Tj\b/g) || []).length;
 }
 
-async function pageContentText(bytes) {
+async function pageContentStreams(bytes) {
   const doc = await PDFDocument.load(bytes);
   const page = doc.getPage(0);
   const contentsRef = page.node.get(PDFName.of('Contents'));
@@ -250,20 +250,35 @@ async function pageContentText(bytes) {
     : [contents];
   return streams
     .filter((stream) => stream instanceof PDFRawStream)
-    .map((stream) => new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode()))
-    .join('\n');
+    .map((stream) => new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode()));
 }
 
-async function exportAndFlatten(page, fabricObj, pageSize) {
-  return page.evaluate(async ({ obj, sizes }) => {
+async function flattenOverlayText(bytes) {
+  const streams = await pageContentStreams(bytes);
+  return streams.at(-1) || '';
+}
+
+async function overlayShows(bytes) {
+  return countTextShows(await flattenOverlayText(bytes));
+}
+
+async function exportAndFlatten(page, fabricObj, pageSize, { blankWrap = false } = {}) {
+  const blankBytes = blankWrap ? await (async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    return [...new Uint8Array(await doc.save())];
+  })() : null;
+  return page.evaluate(async ({ obj, sizes, blank }) => {
     const {
       savePDFWithAnnotationsPdfLib,
       savePDFWithFlattenedRegularAnnotationsForPrint,
     } = await import('/src/utils/pdfAnnotationsPdfLib.js');
-    const res = await fetch('/debug-fixtures/clickable-link-test.pdf');
-    const buf = await res.arrayBuffer();
-    const file = { name: 'text-flatten.pdf', arrayBuffer: async () => buf };
-    const pageSizes = { 1: sizes };
+    const fixtureBuf = await (await fetch('/debug-fixtures/clickable-link-test.pdf')).arrayBuffer();
+    const file = {
+      name: 'text-flatten.pdf',
+      arrayBuffer: async () => (blank ? Uint8Array.from(blank).buffer : fixtureBuf),
+    };
+    const pageSizes = { 1: blank ? { width: 200, height: 200 } : sizes };
     const annotations = { 1: { objects: [obj] } };
     const exportBytes = await savePDFWithAnnotationsPdfLib(
       file,
@@ -281,7 +296,7 @@ async function exportAndFlatten(page, fabricObj, pageSize) {
       exportBytes: [...new Uint8Array(exportBytes)],
       flattenBytes: [...new Uint8Array(flattenBytes)],
     };
-  }, { obj: fabricObj, sizes: pageSize });
+  }, { obj: fabricObj, sizes: pageSize, blank: blankBytes });
 }
 
 async function fixturePageSize() {
@@ -291,23 +306,21 @@ async function fixturePageSize() {
   return { width: p.getWidth(), height: p.getHeight() };
 }
 
-async function groupResizePersistContract(page) {
-  return page.evaluate(async () => {
-    const src = await (await fetch('/src/hooks/useSVGInteraction.js')).text();
-    const groupResize = src.slice(
-      src.indexOf("ds.mode === 'group-resize' && ds.groupMemberOriginals"),
-      src.indexOf('ds.currentAnnotations = updatedAnnotations'),
-    );
-    const individualTextBake = src.includes(
-      "objType === 'textbox' || objType === 'i-text' || objType === 'text'",
-    ) && src.includes('obj.scaleX = 1') && src.includes('obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1))');
-    return {
-      groupWritesScale: /target\.scaleX = \(orig\.scaleX \|\| 1\) \* Math\.abs\(sx\)/.test(groupResize),
-      groupBakesTextWidth: /target\.width = \(orig\.width/.test(groupResize)
-        && groupResize.includes("textbox"),
-      individualTextBake,
-    };
-  });
+function groupResizePersistContract() {
+  const src = readFileSync(new URL('../../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  const groupStart = src.indexOf("ds.mode === 'group-resize' && ds.groupMemberOriginals");
+  const groupEnd = src.indexOf('ds.currentAnnotations = updatedAnnotations', groupStart);
+  const groupResize = src.slice(groupStart, groupEnd);
+  const textBakeStart = src.indexOf("objType === 'textbox' || objType === 'i-text' || objType === 'text'");
+  const textBake = src.slice(textBakeStart, src.indexOf('isPointsShape', textBakeStart));
+  const individualTextBake = textBake.includes('obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1))')
+    && textBake.includes('obj.scaleX = 1');
+  return {
+    groupWritesScale: /target\.scaleX = \(orig\.scaleX \|\| 1\) \* Math\.abs\(sx\)/.test(groupResize),
+    groupBakesTextWidth: /target\.width = \(orig\.width/.test(groupResize)
+      && groupResize.includes('textbox'),
+    individualTextBake,
+  };
 }
 
 async function assertNoErrorBoundary(page) {
@@ -327,7 +340,7 @@ function applyGroupResizePersist(obj, scaleX, scaleY) {
 test('intended: group-resize persist leaves unbaked scale; export/print use scaled box', async ({ page }) => {
   await openEditor(page);
   const sizes = await fixturePageSize();
-  const contract = await groupResizePersistContract(page);
+  const contract = groupResizePersistContract();
   expect(contract.groupWritesScale, 'group-resize persist multiplies scaleX/scaleY').toBe(true);
   expect(contract.groupBakesTextWidth, 'group-resize must not bake text width').toBe(false);
 
@@ -358,19 +371,19 @@ test('intended: group-resize persist leaves unbaked scale; export/print use scal
   expect(hit, `scaled FreeText /Rect among ${JSON.stringify(exported.rows)}`).toBeTruthy();
   expect(closeArrays(hit.rect, raw), 'scaled /Rect must not stay at raw width/height').toBe(false);
 
-  const scaledShows = countTextShows(await pageContentText(Uint8Array.from(hunt.flattenBytes)));
+  const scaledShows = await overlayShows(Uint8Array.from(hunt.flattenBytes));
   const rawHunt = await exportAndFlatten(page, { ...grouped, scaleX: 1, scaleY: 1 }, sizes);
-  const rawShows = countTextShows(await pageContentText(Uint8Array.from(rawHunt.flattenBytes)));
+  const rawShows = await overlayShows(Uint8Array.from(rawHunt.flattenBytes));
   expect(scaledShows, 'scaled print wrote text').toBeGreaterThan(0);
   expect(rawShows, 'raw-width print wrote text').toBeGreaterThan(0);
-  if (rawShows >= 2) {
+  if (rawShows >= 2 && scaledShows !== rawShows) {
     expect(scaledShows).toBeLessThan(rawShows);
   } else {
-    const narrow = { ...grouped, width: 40, height: 40, scaleX: 2, scaleY: 1, text: WRAP_TEXT };
-    const narrowHunt = await exportAndFlatten(page, narrow, sizes);
-    const narrowRaw = await exportAndFlatten(page, { ...narrow, scaleX: 1, scaleY: 1 }, sizes);
-    const narrowScaledShows = countTextShows(await pageContentText(Uint8Array.from(narrowHunt.flattenBytes)));
-    const narrowRawShows = countTextShows(await pageContentText(Uint8Array.from(narrowRaw.flattenBytes)));
+    const narrow = { ...grouped, width: 40, height: 40, scaleX: 2, scaleY: 1, text: WRAP_TEXT, fontSize: 12 };
+    const narrowHunt = await exportAndFlatten(page, narrow, sizes, { blankWrap: true });
+    const narrowRaw = await exportAndFlatten(page, { ...narrow, scaleX: 1, scaleY: 1 }, sizes, { blankWrap: true });
+    const narrowScaledShows = await overlayShows(Uint8Array.from(narrowHunt.flattenBytes));
+    const narrowRawShows = await overlayShows(Uint8Array.from(narrowRaw.flattenBytes));
     expect(narrowRawShows).toBeGreaterThanOrEqual(2);
     expect(narrowScaledShows).toBe(1);
   }
@@ -391,7 +404,7 @@ test('intended: group-resize persist leaves unbaked scale; export/print use scal
 test('break: individual resize bakes scale=1; export/print still use raw width', async ({ page }) => {
   await openEditor(page);
   const sizes = await fixturePageSize();
-  const contract = await groupResizePersistContract(page);
+  const contract = groupResizePersistContract();
   expect(contract.individualTextBake, 'individual text resize bakes width and scale=1').toBe(true);
 
   const text = await createText(page, WRAP_TEXT, { x0: 0.20, y0: 0.40, x1: 0.36, y1: 0.52 });
@@ -422,7 +435,7 @@ test('break: individual resize bakes scale=1; export/print still use raw width',
   expect(hit, `baked FreeText /Rect among ${JSON.stringify(exported.rows)}`).toBeTruthy();
   expect(closeArrays(hit.rect, doubleScaled), 'baked resize must not be re-multiplied').toBe(false);
 
-  const shows = countTextShows(await pageContentText(Uint8Array.from(hunt.flattenBytes)));
+  const shows = await overlayShows(Uint8Array.from(hunt.flattenBytes));
   expect(shows, 'baked print wrote text').toBeGreaterThan(0);
 
   await assertNoErrorBoundary(page);
@@ -458,16 +471,16 @@ test('edge: non-uniform |scaleX|≠|scaleY| stretches wrap and /Rect independent
   expect(Math.abs((y2 - y1) - visualH)).toBeLessThan(RECT_TOL);
   expect(Math.abs((x2 - x1) - (y2 - y1))).toBeGreaterThan(4);
 
-  const xOnly = applyGroupResizePersist({ ...live, text: WRAP_TEXT, width: 40, height: 40 }, 2, 1);
-  const yOnly = applyGroupResizePersist({ ...live, text: WRAP_TEXT, width: 40, height: 16 }, 1, 3);
-  const xHunt = await exportAndFlatten(page, xOnly, sizes);
-  const yHunt = await exportAndFlatten(page, yOnly, sizes);
+  const xOnly = applyGroupResizePersist({ ...live, text: WRAP_TEXT, width: 40, height: 40, fontSize: 12 }, 2, 1);
+  const yOnly = applyGroupResizePersist({ ...live, text: WRAP_TEXT, width: 40, height: 16, fontSize: 12 }, 1, 3);
+  const xHunt = await exportAndFlatten(page, xOnly, sizes, { blankWrap: true });
+  const yHunt = await exportAndFlatten(page, yOnly, sizes, { blankWrap: true });
   const xExport = await exportedFreeTexts(Uint8Array.from(xHunt.exportBytes));
   const yExport = await exportedFreeTexts(Uint8Array.from(yHunt.exportBytes));
   expect(closeArrays(xExport.rows[0]?.rect, scaledRect(xOnly, xExport.pageHeight))).toBe(true);
   expect(closeArrays(yExport.rows[0]?.rect, scaledRect(yOnly, yExport.pageHeight))).toBe(true);
-  const xShows = countTextShows(await pageContentText(Uint8Array.from(xHunt.flattenBytes)));
-  const yShows = countTextShows(await pageContentText(Uint8Array.from(yHunt.flattenBytes)));
+  const xShows = await overlayShows(Uint8Array.from(xHunt.flattenBytes));
+  const yShows = await overlayShows(Uint8Array.from(yHunt.flattenBytes));
   expect(xShows).toBe(1);
   expect(yShows).toBeGreaterThanOrEqual(2);
 
