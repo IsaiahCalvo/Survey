@@ -172,16 +172,24 @@ async function dragOnPage(page, {
 
 async function selectStroke(page, id, pageNumber = 1) {
   await page.keyboard.press('v');
-  const byId = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-anno-id="${id}"]`);
-  const byPdf = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-id="${id}"]`);
-  const byType = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-type="${id}"]`);
-  const target = (await byId.count())
-    ? byId.first()
-    : ((await byPdf.count()) ? byPdf.first() : byType.first());
-  await expect(target).toBeVisible();
-  const box = await target.boundingBox();
-  expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + Math.min(10, Math.max(4, box.width / 2)), box.y + Math.max(3, box.height / 2));
+  const hooked = await page.evaluate((annoId) => {
+    if (typeof window.__fix19SelectAnnotation === 'function') {
+      return window.__fix19SelectAnnotation(annoId);
+    }
+    return false;
+  }, id);
+  if (!hooked) {
+    const byId = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-anno-id="${id}"]`);
+    const byPdf = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-id="${id}"]`);
+    const byType = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-pdf-annotation-type="${id}"]`);
+    const target = (await byId.count())
+      ? byId.first()
+      : ((await byPdf.count()) ? byPdf.first() : byType.first());
+    await expect(target).toBeVisible();
+    const box = await target.boundingBox();
+    expect(box, `bbox for ${id}`).toBeTruthy();
+    await page.mouse.click(box.x + Math.min(10, Math.max(4, box.width / 2)), box.y + Math.max(3, box.height / 2));
+  }
   await expect(page.locator('[data-resize-handle], [data-selection-bbox]').first()).toBeVisible({ timeout: 8_000 });
 }
 
@@ -379,15 +387,15 @@ test('1 intended: polyline/polygon resize then export/print world-scales vertice
   const polygon = await waitForRow(page, (row) => row.pdfType === 'Polygon' && row.pointCount >= 3);
   const polyline = await waitForRow(page, (row) => row.pdfType === 'PolyLine' && row.pointCount >= 2);
 
-  await selectStroke(page, polygon.pdfType);
+  await selectStroke(page, polygon.id);
   await resizeHandle(page, 'br', 70, 50);
-  const afterPoly = await liveObject(page, 'Polygon');
+  const afterPoly = await liveObject(page, polygon.id);
   expect(Math.abs(Number(afterPoly.scaleX) || 1)).toBeGreaterThan(1.08);
   expect(Array.isArray(afterPoly.points) && afterPoly.points.length >= 3).toBeTruthy();
 
-  await selectStroke(page, polyline.pdfType);
+  await selectStroke(page, polyline.id);
   await resizeHandle(page, 'br', 60, 40);
-  const afterLine = await liveObject(page, 'PolyLine');
+  const afterLine = await liveObject(page, polyline.id);
   expect(Math.abs(Number(afterLine.scaleX) || 1)).toBeGreaterThan(1.08);
 
   const bytes = await exportAnnotatedPdf(page);
@@ -489,10 +497,10 @@ test('2 intended: circle/ellipse resize then export /Rect uses scaled radii', as
 test('3 break: scale=1 move-only still left+point.x / unscaled radius', async ({ page }) => {
   await openEditor(page, LINK_PDF);
   const polyline = await waitForRow(page, (row) => row.pdfType === 'PolyLine' && row.pointCount >= 2);
-  const beforeMove = await liveObject(page, 'PolyLine');
-  await selectStroke(page, polyline.pdfType);
-  await moveSelected(page, polyline.pdfType, 1, 36, 24);
-  const afterMove = await liveObject(page, 'PolyLine');
+  const beforeMove = await liveObject(page, polyline.id);
+  await selectStroke(page, polyline.id);
+  await moveSelected(page, polyline.id, 1, 36, 24);
+  const afterMove = await liveObject(page, polyline.id);
   expect(Math.abs((Number(afterMove.scaleX) || 1) - 1)).toBeLessThan(0.04);
   expect(Math.abs((Number(afterMove.scaleY) || 1) - 1)).toBeLessThan(0.04);
   expect(Math.abs((Number(afterMove.left) || 0) - (Number(beforeMove.left) || 0))).toBeGreaterThan(4);
