@@ -394,6 +394,12 @@ test('all official real-account entry points use the verified lease loader', () 
     'tests/authAccountFlows.test.mjs',
     'tests/supabaseAuthRecovery.test.mjs',
   ]);
+  // Mention `.bot-credentials.json` only to assert the file is absent.
+  // They do not sign in, lease, or read that file.
+  const failClosedAbsenceChecks = new Set([
+    'tests/leftover18FailClosed.test.mjs',
+    'debug/scenarios/e2e-leftover18-save-export.spec.mjs',
+  ]);
   const credentialMarker =
     /VITE_DEV_AUTO_LOGIN_(?:EMAIL|PASSWORD)|auth\.signInWithPassword|\.bot-credentials\.json|makeClient\(['"]user['"]\)|dev auto-login|auto-login as (?:the )?(?:dev|document owner)|harvest(?:s|ing)? (?:the )?browser'?s? dev auto-login/i;
   const protectedClient = readFileSync(join(root, 'agent-cli/lib/client.mjs'), 'utf8');
@@ -449,6 +455,16 @@ test('all official real-account entry points use the verified lease loader', () 
       localSourceContractTests.has(relativePath)
       && !source.includes("from '@playwright/test'")
       && !source.includes('auth.signInWithPassword(')
+    ) {
+      continue;
+    }
+    if (
+      failClosedAbsenceChecks.has(relativePath)
+      && source.includes("existsSync(join(")
+      && source.includes('.bot-credentials.json')
+      && source.includes('false')
+      && !source.includes('auth.signInWithPassword(')
+      && !source.includes('loadVerifiedTestAccounts')
     ) {
       continue;
     }
