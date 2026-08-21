@@ -64,7 +64,7 @@ node scripts/run-node-tests.mjs
 
 | Kind | File / test | Detail | Action |
 |---|---|---|---|
-| **Cap leftover (left)** | `tests/partialEraserComplexity.test.mjs:636` — 500 crossing cuts preserve every component inside bounded memory and release time | `total allocation 11960.00 MiB exceeded 8448.00 MiB` | **Left.** Same leftover as `fix-logs/eraser-memory-cap.md` / `fix-logs/npm-test-after-thirteen.md`. Cap **8448** unchanged. |
+| **Cap leftover (left)** | `tests/partialEraserComplexity.test.mjs:604` — 500 crossing cuts preserve every component inside bounded memory and release time | `total allocation 11960.00 MiB exceeded 8448.00 MiB` | **Left.** Same leftover as `fix-logs/eraser-memory-cap.md` / `fix-logs/npm-test-after-thirteen.md`. Cap **8448** unchanged. |
 
 No other official-suite fails. Main files **0 fail** (447 files; `pass 0` rows are `# SKIP`, not fails). Isolated `annotationDocConcurrency` **103 / 103**. Isolated `partialEraseCurveLocality` **15 / 15**. Isolated `partialEraserComplexity` **9 / 10**. Runner stopped before `svgPathTransformFidelity` (first isolated fail).
 
