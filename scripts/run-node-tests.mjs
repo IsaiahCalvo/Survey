@@ -53,7 +53,10 @@ function runTestFile(file, label, timeoutMs = 120_000) {
     // A fresh process per file avoids Node 24's worker-pool wedge. The named
     // timeout turns any future leaked handle or unfinished test into a useful,
     // bounded failure that reports the exact file.
-    const child = spawn(process.execPath, ['--test', file], {
+    // Node 22 cannot import the restored Deno/edge `_shared/*.ts` helpers
+    // (billingReturn, accountDeletion, stripe*) without type-stripping.
+    // The flag is a no-op for .mjs/.js files.
+    const child = spawn(process.execPath, ['--experimental-strip-types', '--test', file], {
       stdio: 'inherit',
     });
     let timedOut = false;
