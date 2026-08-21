@@ -10956,6 +10956,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
+  // DEV-only: live-prove excel:/unknown history reasons without a host workbook.
+  useEffect(() => {
+    if (import.meta.env.MODE === 'production') return undefined;
+    if (typeof window === 'undefined') return undefined;
+    window.__test_addHistoryCheckpoint = (reason, context) => addHistoryCheckpoint(reason, context);
+    return () => {
+      try { delete window.__test_addHistoryCheckpoint; } catch { /* swallow */ }
+    };
+  }, [addHistoryCheckpoint]);
+
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
   // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like

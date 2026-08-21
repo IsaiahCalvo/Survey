@@ -6,6 +6,7 @@ import { AuthContext } from './contexts/AuthContext';
 import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
+import SyncStatusChip from './components/SyncStatusChip';
 import App from './AppShell';
 
 // Editor tools on this route are real. Live account / auth mutations
@@ -104,6 +105,32 @@ const readSurveyTemplateWorkflowTemplates = () => {
     return [];
   }
 };
+
+// DEV-only live host for SyncStatusChip. ?testPdf= has no file.id, so the
+// sidebar chip stays correctly hidden (leftover X-01). This overlay lets
+// pending+N vs Offline be proven without enabling cloud sync or inventing a
+// document id.
+function DevSyncChipPreview() {
+  const [preview, setPreview] = useState(null);
+  useEffect(() => {
+    window.__test_setSyncChipPreview = (next) => {
+      setPreview(next && typeof next === 'object' ? next : null);
+    };
+    return () => {
+      try { delete window.__test_setSyncChipPreview; } catch { /* swallow */ }
+    };
+  }, []);
+  if (!preview) return null;
+  return (
+    <div data-sync-chip-preview style={{ position: 'fixed', top: 8, right: 8, zIndex: 4000 }}>
+      <SyncStatusChip
+        status={preview.status || { stage: 'idle' }}
+        queueSize={preview.queueSize ?? 0}
+        enabled
+      />
+    </div>
+  );
+}
 
 export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) {
   const [status, setStatus] = useState('loading');
@@ -213,6 +240,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
       <AuthContext.Provider value={mockAuthValue}>
         <MSGraphContext.Provider value={mockMSGraphValue}>
           <App devPreviewReturnTab={returnTab} />
+          <DevSyncChipPreview />
           <KeyboardShortcutsOverlay />
         </MSGraphContext.Provider>
       </AuthContext.Provider>
