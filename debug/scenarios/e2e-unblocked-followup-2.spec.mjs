@@ -96,11 +96,32 @@ async function annotationById(page, id) {
   return (await userAnnotationSnapshot(page)).find((row) => row.id === id) || null;
 }
 
+async function toolAlreadyArmed(button) {
+  const pressed = await button.getAttribute('aria-pressed');
+  const className = (await button.getAttribute('class')) || '';
+  return pressed === 'true' || className.includes('btn-active');
+}
+
+async function closeAnnotationColorPicker(page) {
+  const picker = page.locator('[data-annotation-color-picker]');
+  if (!(await picker.count())) return;
+  const trigger = page.locator('[data-annotation-color-trigger]').first();
+  if (await trigger.count()) {
+    await trigger.click({ force: true });
+  } else {
+    await page.keyboard.press('Escape');
+  }
+  await expect(picker).toHaveCount(0, { timeout: 5_000 });
+}
+
 async function activateTool(page, categoryName, toolName) {
+  await closeAnnotationColorPicker(page);
   const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
   if (await sub.count()) {
-    const pressed = await sub.first().getAttribute('aria-pressed');
-    if (pressed !== 'true') await sub.first().click();
+    const button = sub.first();
+    if (!(await toolAlreadyArmed(button))) {
+      await button.click({ timeout: 8_000 });
+    }
     return;
   }
   const tool = page.getByRole('button', { name: toolName, exact: true });
@@ -109,8 +130,9 @@ async function activateTool(page, categoryName, toolName) {
   }
   const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
   const target = (await again.count()) ? again.first() : tool.first();
-  const pressed = await target.getAttribute('aria-pressed');
-  if (pressed !== 'true') await target.click();
+  if (!(await toolAlreadyArmed(target))) {
+    await target.click({ timeout: 8_000 });
+  }
 }
 
 async function dragOnPage(page, {
@@ -398,6 +420,7 @@ test('D-02 highlighter print-exclusion vs markup intended / break / edge', async
   if (await slider.isVisible().catch(() => false)) {
     await slider.fill('0');
   }
+  await closeAnnotationColorPicker(page);
   await dismissMenus(page);
 
   const beforeHi = new Set(await appAnnotationIds(page));
