@@ -250,10 +250,12 @@ test('search Previous remainder: walk, wrap, dismiss, breaks, edges', async ({ p
 
   await fillQuery(page, search, 'Helvetica');
   await waitForTotal(page, (row) => row.total === multi.total && row.at === 1, 'restore Helvetica before armed-tool');
-  await page.keyboard.press('p');
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
   const pen = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Pen', exact: true });
   await expect(pen).toBeVisible({ timeout: 8_000 });
+  if (!(String(await pen.getAttribute('class') || '').includes('btn-active'))) await pen.click();
   await expect.poll(async () => String(await pen.getAttribute('class') || '')).toMatch(/btn-active/);
+  expect(await search.inputValue()).toBe('Helvetica');
   await prevBtn(page).click();
   await expect.poll(async () => (await readIndex(page)).at).toBe(multi.total);
   hunts.push({ hunt: 'break — Previous while Pen is armed still wraps', pass: true });
