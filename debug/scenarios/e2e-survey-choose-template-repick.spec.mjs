@@ -150,8 +150,10 @@ test('Choose survey template re-pick after already in a template', async ({ page
   expect(persist, 'no file.id').toBeNull();
 
   const markerId = await placeMarker(page, 'repick-a', { x0: 0.22, y0: 0.32, x1: 0.44, y1: 0.50 });
+  await expect.poll(async () => (await storedMarker(page, markerId))?.categoryId, {
+    message: 'placed marker stores KAL-436 Walls category',
+  }).toBe('kal436-category');
   const storedBefore = await storedMarker(page, markerId);
-  expect(storedBefore?.categoryId).toBe('kal436-category');
   expect(storedBefore?.moduleId).toBe('kal436-module');
 
   await expect(rightRail(page).getByRole('heading', { name: KAL436 })).toBeVisible();
@@ -182,9 +184,11 @@ test('Choose survey template re-pick after already in a template', async ({ page
   await expect(rightRail(page).getByRole('heading', { name: KAL436 })).toBeVisible();
   expect(await markerIds(page)).toEqual([markerId]);
 
-  // Break: cancel via click-outside (chrome, not the armed page).
+  // Break: cancel via click-outside (body mousedown, not a chrome control).
   await openTemplatePicker(page);
-  await page.mouse.click(16, 16);
+  await page.evaluate(() => {
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  });
   await expect(templateListbox(page)).toHaveCount(0);
   await expect(rightRail(page).getByRole('heading', { name: KAL436 })).toBeVisible();
   expect(await markerIds(page)).toEqual([markerId]);
