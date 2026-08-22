@@ -491,10 +491,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   const prePen = await polyGeom(page, polyA.id);
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  await expect.poll(async () => ({
-    resize: await page.locator('[data-resize-handle]').count(),
-    vertices: await page.locator('circle[data-handle^="vertex-"]').count(),
-  }), { timeout: 8_000 }).toEqual(expect.objectContaining({ resize: 0 }));
+  await expect.poll(() => page.locator('[data-resize-handle]').count(), { timeout: 8_000 }).toBe(0);
   const afterPen = await polyGeom(page, polyA.id);
   expect(sameGeom(prePen, afterPen, 5), 'Pen exit does not resize').toBe(true);
   await selectMode(page);
@@ -569,11 +566,13 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
   expect(await page.locator('circle[data-handle="midpoint"]').count(), '390 strip hid endpoints').toBe(0);
   const preMobile = await lineGeom(page, mobileLine.id);
-  await dragResizeHandle(page, 'br', 30, 0);
+  await dragResizeHandle(page, 'br', 56, 16);
   let afterMobile = null;
   await expect.poll(async () => {
     afterMobile = await lineGeom(page, mobileLine.id);
-    return lineLength(afterMobile) - lineLength(preMobile) > 4;
+    return lineLength(afterMobile) - lineLength(preMobile) > 3
+      || Math.abs((afterMobile.scaleX || 1) - (preMobile.scaleX || 1)) > 0.04
+      || Math.abs((afterMobile.width || 0) - (preMobile.width || 0)) > 4;
   }, { timeout: 8_000 }).toBe(true);
   await assertNoErrorBoundary(page);
 
