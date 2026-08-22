@@ -133,11 +133,17 @@ test('Templates entity opacity + independent Border tab intended + break + edge'
   expect(restored?.border.toLowerCase()).toBe(GC_HEX);
 
   await clickEditColor(page, 'GC');
+  await colorPanel(page).getByRole('button', { name: 'Fill', exact: true }).click();
+  await expect(colorPanel(page).getByText('Match fill', { exact: true })).toHaveCount(0);
   expect(await readOpacity(page)).toBe(35);
   await setOpacity(page, 80);
   await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
   await pickPreset(page, '#0000FF');
   await setOpacity(page, 50);
+  await colorPanel(page).getByRole('button', { name: 'Fill', exact: true }).click();
+  await expect(colorPanel(page).getByLabel('Hex color')).toHaveValue(/d8a84e/i);
+  expect(await readOpacity(page), 'in-memory fill opacity before Save').toBe(80);
+  await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
   const subBefore = await findEntitySwatch(page, 'Subcontractor');
   await entitiesRail(page).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(entitiesRail(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
