@@ -25,7 +25,7 @@ test('rail zoom % field clamps 1–4000, strips letters, Escape skips blur-commi
   assert.match(viewer, /commitZoomInput\(e\.currentTarget\?\.value\)/);
   assert.match(viewer, /skipZoomInputCommitRef\.current = true/);
   assert.match(viewer, /if \(skipZoomInputCommitRef\.current\)/);
-  assert.match(viewer, /commitZoomInput\(e\?\.\target\?\.value\)/);
+  assert.match(viewer, /commitZoomInput\(e\?\.target\?\.value\)/);
   assert.match(viewer, /activeElement === inputElement/);
 
   const shell = read('src/AppShell.jsx');
