@@ -48,8 +48,8 @@ test('compile-hidden stamp/measure/Group/Extract/Note-Link/Forms are unreachable
   await assertNamedToolsAbsent(page);
 
   await page.getByRole('button', { name: 'Text', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Text', exact: true }).nth(1).or(page.getByRole('button', { name: 'Callout', exact: true }))).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Callout', exact: true })).toBeVisible();
+  await expect(page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Text', exact: true })).toBeVisible();
+  await expect(page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Callout', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Note', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Link', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Underline', exact: true })).toHaveCount(0);
