@@ -985,6 +985,14 @@ export const renderEllipse = (obj, index) => {
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
 
+  // UX 2026-04-21 / 2026-08-22: honor the Border Style picker's dashed /
+  // dotted choice. Rect / line / poly already map Fabric strokeDashArray
+  // onto SVG strokeDasharray; ellipse create + selected-patch stamp the
+  // same [6,4] / [2,4] arrays and were painting solid without this attr.
+  const dashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   const ellEl = (
     <ellipse
       cx={cx}
@@ -995,6 +1003,7 @@ export const renderEllipse = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
+      strokeDasharray={dashArrayAttr}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
       data-shape-id={shapeId}
@@ -1028,6 +1037,7 @@ export const renderEllipse = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={sw}
+      strokeDasharray={dashArrayAttr}
       opacity={obj.opacity ?? 1}
       data-shape-id={shapeId}
       data-shape-kind="ellipse"
@@ -1240,6 +1250,11 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           fill="none"
           stroke={obj.stroke}
           strokeWidth={obj.strokeWidth}
+          strokeDasharray={
+            Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+              ? obj.strokeDashArray.join(' ')
+              : undefined
+          }
           data-stroke-uniform={obj.strokeUniform ? 'true' : undefined}
         />
       ) : null}
