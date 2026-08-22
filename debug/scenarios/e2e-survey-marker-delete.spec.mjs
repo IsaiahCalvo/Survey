@@ -159,18 +159,25 @@ async function selectUntilDeleteChrome(page, id) {
     }
     return deleteChrome(page).count();
   }, { timeout: 12_000 }).toBeGreaterThan(0);
-  await expect(deleteChrome(page).first()).toBeVisible({ timeout: 8_000 });
+  // SVG <g role="button"> has no CSS box; Playwright marks it hidden even
+  // when the painted rect is on-page. Presence + a client rect is enough.
+  await expect(deleteChrome(page)).toHaveCount(1);
 }
 
 async function clickDeleteChrome(page) {
   const chrome = deleteChrome(page).first();
-  await expect(chrome).toBeVisible({ timeout: 8_000 });
+  await expect(chrome).toHaveCount(1);
   const box = await chrome.boundingBox();
-  if (box) {
+  if (box && box.width > 2 && box.height > 2) {
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  } else {
-    await chrome.dispatchEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, button: 0 });
+    return;
   }
+  await chrome.dispatchEvent('pointerup', {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    button: 0,
+  });
 }
 
 async function clickEmpty(page) {
