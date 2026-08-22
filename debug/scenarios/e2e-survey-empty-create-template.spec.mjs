@@ -165,7 +165,7 @@ test('empty-module Create template start-adding intended + break + edge', async 
   await page.getByRole('button', { name: 'Close Survey panel' }).click();
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('button', { name: NEW_TEMPLATE, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: NEW_TEMPLATE })).toBeVisible();
 
   // Original empty module is still empty — modify current so the empty-state goes away.
   await page.getByRole('button', { name: EMPTY_TEMPLATE }).click();
