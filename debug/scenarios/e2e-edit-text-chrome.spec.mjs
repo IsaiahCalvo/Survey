@@ -169,17 +169,14 @@ async function activateTool(page, categoryName, toolName) {
 async function selectMode(page) {
   await blurInputs(page);
   if (await page.locator('[data-text-edit-overlay]').count()) await commitEdit(page);
-  const selectBtn = page.getByRole('button', { name: 'Select', exact: true }).first();
-  if (await selectBtn.isVisible().catch(() => false)) {
-    await selectBtn.click();
-  } else {
-    const mode = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
-    if (await mode.isVisible().catch(() => false)) await mode.click();
-    else await page.keyboard.press('v');
-  }
+  await blurInputs(page);
+  await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
-  await expect(page.locator('[data-text-overlay="1"]')).toHaveCount(0, { timeout: 8_000 });
+  await expect.poll(async () => page.locator('[data-text-overlay="1"]').count(), {
+    timeout: 8_000,
+    message: 'V must leave the Text draw overlay',
+  }).toBe(0);
 }
 
 async function dismissChrome(page) {
