@@ -198,15 +198,15 @@ async function rightClickUntilPasteOnly(page, candidates = [
 }
 
 async function rightClickStroke(page, id) {
+  await selectMode(page);
   const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
-  const box = await target.boundingBox();
-  expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(
-    box.x + Math.min(8, Math.max(2, box.width / 2)),
-    box.y + Math.max(2, box.height / 2),
-    { button: 'right' },
-  );
+  await target.click({ button: 'right', position: { x: 6, y: 6 } }).catch(async () => {
+    const box = await target.boundingBox();
+    expect(box, `bbox for ${id}`).toBeTruthy();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+  });
+  await expect(page.locator('[data-annotation-context-menu="true"]')).toBeVisible({ timeout: 8_000 });
 }
 
 async function clickMenuItem(page, label) {
@@ -218,7 +218,17 @@ async function clickMenuItem(page, label) {
 
 async function selectMode(page) {
   await blurInputs(page);
-  await page.keyboard.press('v');
+  const selectBtn = page.getByRole('button', { name: 'Select', exact: true });
+  let clicked = false;
+  const count = await selectBtn.count();
+  for (let i = 0; i < count; i += 1) {
+    const button = selectBtn.nth(i);
+    if (!(await button.isVisible().catch(() => false))) continue;
+    await button.click();
+    clicked = true;
+    break;
+  }
+  if (!clicked) await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
 }
