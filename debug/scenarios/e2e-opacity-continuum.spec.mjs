@@ -192,14 +192,21 @@ async function activateTool(page, categoryName, toolName) {
 
 async function closePagesOverlay(page) {
   const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
-  const overlay = page.locator('main').getByText('No documents yet').first();
-  if (!(await overlay.isVisible().catch(() => false))) return;
-  if (await pagesToggle.isVisible().catch(() => false)) {
+  if (await page.getByText('No documents yet').isVisible().catch(() => false) && await pagesToggle.isVisible().catch(() => false)) {
     await pagesToggle.click();
-  } else {
-    await page.keyboard.press('Escape');
+    await expect(page.getByText('No documents yet')).toHaveCount(0);
   }
-  await expect(overlay).toBeHidden({ timeout: 8_000 });
+}
+
+async function hideMainEmptyPages(page) {
+  const overlay = page.locator('main').getByText('No documents yet').first();
+  const toggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i }).first();
+  for (let i = 0; i < 3; i += 1) {
+    if (!(await overlay.isVisible().catch(() => false))) return;
+    if (!(await toggle.isVisible().catch(() => false))) return;
+    await toggle.click();
+    await page.waitForTimeout(250);
+  }
 }
 
 async function dismissChrome(page) {
@@ -471,8 +478,7 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
 
   await openEditor(page, { width: 390, height: 844 });
   await assertNoErrorBoundary(page);
-  await dismissChrome(page);
-  await closePagesOverlay(page);
+  await hideMainEmptyPages(page);
 
   await activateTool(page, 'Shapes', 'Rectangle');
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
@@ -487,7 +493,7 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
   const closeFill = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeFill.isVisible().catch(() => false)) await closeFill.click();
-  await closePagesOverlay(page);
+  await hideMainEmptyPages(page);
 
   const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 next-draw fill 25' })
@@ -510,7 +516,7 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await page.keyboard.press('Escape');
   const closeStroke = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeStroke.isVisible().catch(() => false)) await closeStroke.click();
-  await closePagesOverlay(page);
+  await hideMainEmptyPages(page);
 
   const line = await createLine(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.62 });
   await expect.poll(async () => strokeAlphaOf(page, line.id), { message: '390 next-draw stroke 40' })
