@@ -318,6 +318,11 @@ test('390 detail Choose Survey Marker sibling switcher intended + break + edge',
   await page.getByRole('button', { name: KAL436 }).click();
   await expect(page.getByRole('button', { name: /Walls/ }).first()).toBeVisible({ timeout: 15_000 });
   await seedSoloMarker(page);
+  await expect.poll(async () => page.evaluate(() => (
+    Object.values(window.__e2eSurveyMarkers?.get?.() || {}).filter((marker) => (
+      marker.categoryId === 'kal436-category' && marker.moduleId === 'kal436-module'
+    )).length
+  )), { message: 'solo session has exactly one Walls marker' }).toBe(1);
   const arrow390 = page.locator('.survey-marker-category-arrow').first();
   await expect(arrow390).toBeVisible({ timeout: 8_000 });
   await arrow390.evaluate((el) => el.click());
