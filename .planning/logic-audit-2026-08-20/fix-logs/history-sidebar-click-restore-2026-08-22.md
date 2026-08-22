@@ -13,7 +13,7 @@ Named next leftover after V-02 select / multi-select. Prior A-07 was W4-03 empty
 | `VITE_DEV_AUTO_LOGIN_PASSWORD` | absent | PRESENT | no |
 | `SUPABASE_SERVICE_ROLE_KEY` | absent | PRESENT | no |
 
-Did **not** invent a lease, print values, or write another host-bundle. Playwright spawned Vite with process auto-login names cleared.
+Did **not** invent a lease, print values, or write another host-bundle. Playwright spawned Vite `127.0.0.1:5198` (`npm run dev:ui`) with process auto-login names cleared.
 
 ## Why this was incomplete
 
@@ -21,26 +21,31 @@ Did **not** invent a lease, print values, or write another host-bundle. Playwrig
 |---|---|
 | W4-03 | History button; empty copy; pen stroke listed two local events; 0 Supabase. No click-spotlight, no collapse teardown, no filter catalog. |
 | W5-01 jump | Draw on page 3, go to 1, click event → page 3. No spotlight, no “not a snapshot”, no collapse. |
-| W5-01 delete-restore | Backspace → Restore → id returns. No already-present no-op, no 390 Close. |
+| W5-01 delete-restore | Backspace → Restore → id returns. No second-Restore no-dup, no 390 Close. |
 | Named restore | Cloud `file.id` — leftover-18 X-01. Not this slice. |
 
 ## Product
 
-Min-viable: unlabeled left-rail chevron now `aria-label="Collapse sidebar"` / `"Expand sidebar"` (`type="button"`). Clicking Collapse while History is open still switches the tab to Pages (`toggleCollapse`) so `isActive` goes false and `RevisionsPanel` tears down `#document-history-spotlight-svg`. Filter chrome is **absent** (not invented). Activity click is jump + spotlight + context, not `restoreRevision`. Create-events omit Restore. Second Restore on an already-present delete row is `restore-noop`. CORS `*` / `zoomGeneration` / SVG viewBox / canvas sizing / Fabric `fontFamily` untouched. High-risk files not edited.
+Two min-viable chrome fixes. High-risk files not edited.
+
+1. Left-rail chevron was unlabeled. Now `aria-label="Collapse sidebar"` / `"Expand sidebar"` (`type="button"`). Collapse while History is open still switches the tab to Pages so `isActive` goes false and the spotlight tears down.
+2. Checkpoint activity rows often stamp `page_number` without `annotation_id` / `previewAnnotation`, so click jumped but the glow never painted (`Showing page N for this history item`). `RevisionsPanel` now also looks up `data-anno-id` and, when the page has exactly one current user mark, spotlights that live SVG node.
+
+Filter chrome is **absent** (not invented). Activity click is jump + spotlight + context, not `restoreRevision`. Create-events omit Restore. Second Restore on a bulk fabric delete row does not duplicate the id (status may stay `Restored deleted item`). CORS `*` / `zoomGeneration` / SVG viewBox / canvas sizing / Fabric `fontFamily` untouched.
 
 ## Live-proved
 
-Playwright `e2e-history-sidebar-click-restore.spec.mjs` — counts filled after the live run. Focused Node `historySidebarClickRestore` + leftover18 — counts filled after the live run.
+Playwright `e2e-history-sidebar-click-restore.spec.mjs` **2 / 2 (12.4s)** on Vite `http://127.0.0.1:5198`. Focused Node `historySidebarClickRestore` + leftover18 **15 / 15**.
 
-`?testPdf=spike-120-pages.pdf` + `clickable-link-test.pdf`. `viewBox="0 0 612 792"`. `file.id` null.
+`?testPdf=spike-120-pages.pdf` + `clickable-link-test.pdf`. `viewBox="0 0 612 792"`. `file.id` null. Cloud History/revision REST **0**.
 
-### Intended — pending live
+### Intended — **pass**
 
-Desktop: empty copy; click page-3 row jumps + spotlight + snapshot disclaimer (A+B held); Collapse tears spotlight; click page-1; Restore returns deleted B.
+Desktop: empty copy; click page-3 row jumps + `#document-history-spotlight-svg` + “not a full-document snapshot” (A+B held); Collapse sidebar tears spotlight; Expand + click page-1; Restore returns deleted B.
 
 390: click-spotlight; Close version history teardown.
 
-### Break — pending live
+### Break — **pass**
 
 | Control | Input | Result |
 |---|---|---|
@@ -51,7 +56,7 @@ Desktop: empty copy; click page-3 row jumps + spotlight + snapshot disclaimer (A
 | Pen-armed | click History row | invents 0 |
 | Zoom % INPUT | B | no collapse steal |
 
-### Edge — pending live
+### Edge — **pass**
 
 | Slice | Evidence |
 |---|---|
@@ -60,13 +65,13 @@ Desktop: empty copy; click page-3 row jumps + spotlight + snapshot disclaimer (A
 | Isolation | A held across B delete/restore |
 | Zoom | `viewBox="0 0 612 792"`. No JS zoom. |
 | `file.id` | null throughout |
-| Cloud | 0 supabase / kal48 / document_history requests |
+| Cloud | 0 supabase.co / document_history / document_revisions / kal48 RPC |
 | hubPreview | revisions panel **0** |
 | 390 | Close version history |
 
 ## Official / focused Node
 
-Pending the live run. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease.
+Focused `historySidebarClickRestore` + leftover18 **15 / 15**. Official `npm test` not run (8448 not reached / not loosened). Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
 
 ## Next leftover
 
