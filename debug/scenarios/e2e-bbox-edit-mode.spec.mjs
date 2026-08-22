@@ -488,9 +488,10 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
   await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyA.id)) });
   const prePen = await polyGeom(page, polyA.id);
-  const prePenBox = worldBox(prePen);
+  await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  await dragResizeHandle(page, 'br', 32, 20);
+  await expect(page.locator('[data-resize-handle="br"]').first()).toBeVisible({ timeout: 8_000 });
+  await dragResizeHandle(page, 'br', 60, 40);
   let afterPen = null;
   await expect.poll(async () => {
     afterPen = await polyGeom(page, polyA.id);
