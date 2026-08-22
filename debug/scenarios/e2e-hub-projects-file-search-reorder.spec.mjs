@@ -182,9 +182,8 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   const selfMode = await dragByHandle(
     page,
     seHandle,
-    fileRow(page, SE011),
+    seHandle,
     desktopFileOrder,
-    { direction: 'down' },
   );
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('SE-011');
 
