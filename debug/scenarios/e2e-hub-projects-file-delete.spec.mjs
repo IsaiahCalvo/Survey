@@ -240,7 +240,7 @@ test('Projects file More/Select Delete intended + break + edge', async ({ page }
   await expect(mobileDelete).toBeEnabled();
   await mobileDelete.click();
   expect(await confirmDialogCount(page), '390 file Select Delete has no confirm').toBe(0);
-  await expect(page.getByText('No files in this project yet.')).toBeVisible();
+  await expect(page.locator('.projects-mobile-empty-card').getByText('No files in this project yet.')).toBeVisible();
   await expect(page.locator('.projects-mobile-file-row')).toHaveCount(0);
 
   await page.locator('.projects-mobile-back-button').click();
@@ -250,7 +250,7 @@ test('Projects file More/Select Delete intended + break + edge', async ({ page }
   await expect(page.locator('.projects-mobile-file-row').filter({ hasText: SE011 })).toHaveCount(0);
   await mobileFile(DOOR).getByRole('button', { name: 'More' }).click();
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-  await expect(page.getByText('No files in this project yet.')).toBeVisible();
+  await expect(page.locator('.projects-mobile-empty-card').getByText('No files in this project yet.')).toBeVisible();
   await page.locator('.projects-mobile-back-button').click();
   await expect(mobileRow('p3')).toBeVisible();
   await mobileRow('p3').click();
