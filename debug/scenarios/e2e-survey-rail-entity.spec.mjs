@@ -8,6 +8,7 @@ import { test, expect } from '@playwright/test';
 // UL-31 Continue pin stays parked. Leftover-18 parked. No file.id.
 
 const SURVEY_PDF = '/?testPdf=clickable-link-test.pdf&surveyTransitionE2E=1';
+const EMPTY_PDF = '/?testPdf=text-search-glyph-lab.pdf&surveyTransitionE2E=1';
 const EMPTY_TEMPLATE = /KAL-436 Preservation Template/;
 const ENTITIES_TEMPLATE = /Survey Entities Template/;
 const SEEDED_ID = 'e2e-entity-seed';
@@ -18,7 +19,7 @@ async function openEditor(page, { width = 1440, height = 900, url = SURVEY_PDF }
     try { localStorage.removeItem('survey_document_history_events_v1'); } catch { /* ignore */ }
   });
   await page.setViewportSize({ width, height });
-  await page.goto(url);
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"]')).toBeVisible();
@@ -65,14 +66,14 @@ async function enterSurveyTemplate(page, templateName = ENTITIES_TEMPLATE) {
   await page.getByRole('button', { name: 'Walls', exact: true }).click();
 }
 
-async function armWalls(page) {
+async function armWalls(page, templateName = ENTITIES_TEMPLATE) {
   const hostWalls = () => page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Walls', exact: true });
   if (!(await hostWalls().count()) || !(await hostWalls().first().isVisible().catch(() => false))) {
     const survey = page.getByRole('button', { name: 'Survey', exact: true }).first();
     if (await survey.count()) await survey.click();
     const picker = page.getByRole('heading', { name: 'Choose survey template' });
     if (await picker.isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: ENTITIES_TEMPLATE }).click();
+      await page.getByRole('button', { name: templateName }).click();
     }
   }
   const walls = (await hostWalls().count())
@@ -122,9 +123,9 @@ async function markerIds(page) {
   );
 }
 
-async function placeMarker(page, name, coords, { expectEntityDialog = false } = {}) {
+async function placeMarker(page, name, coords, { expectEntityDialog = false, templateName = ENTITIES_TEMPLATE } = {}) {
   const before = new Set(await markerIds(page));
-  await armWalls(page);
+  await armWalls(page, templateName);
   await dragOnLayer(page, coords);
   const sawDialog = await dismissPlaceEntityDialogIfPresent(page);
   if (expectEntityDialog) expect(sawDialog, 'place-time Entity dialog').toBe(true);
@@ -145,14 +146,22 @@ async function expandWallsMarkers(page) {
   await arrow.click();
 }
 
-async function expandMarkerDetails(page, markerId) {
+function markerRowByName(page, name) {
+  return rightRail(page).locator('[id^="highlight-item-"]').filter({
+    has: page.getByRole('textbox', { name: `Rename ${name}` }),
+  });
+}
+
+async function expandMarkerDetails(page, name) {
   await expandWallsMarkers(page);
-  const row = rightRail(page).locator(`#highlight-item-${markerId}`);
+  const row = markerRowByName(page, name);
+  await expect(row).toBeVisible({ timeout: 10_000 });
   const expand = row.getByRole('button', { name: 'Expand marker details' });
   if (await expand.count()) {
     await expand.click();
   }
-  await expect(entityTrigger(page, markerId)).toBeVisible({ timeout: 8_000 });
+  await expect(row.locator('.survey-marker-entity-trigger')).toBeVisible({ timeout: 8_000 });
+  return row;
 }
 
 async function waitSurveyMarkerSeam(page) {
@@ -212,12 +221,12 @@ test('survey-rail Entity picker intended + break + edge', async ({ page }) => {
   await expect(entityTrigger(page)).toHaveCount(0);
   await expect(rightRail(page).getByRole('button', { name: 'Expand marker details' })).toHaveCount(2);
 
-  await expandMarkerDetails(page, markerA);
-  await expect(triggerLabel(page, markerA)).toHaveText('None');
+  const rowA = await expandMarkerDetails(page, 'entity-a');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('None');
   expect((await storedMarker(page, markerA))?.entityId, 'placed A has no entity').toBeFalsy();
 
   // Break: open / close without pick — Esc closes; stored entity stays empty.
-  await entityTrigger(page, markerA).click();
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await expect(entityListbox(page)).toBeVisible({ timeout: 8_000 });
   const openNames = await optionNames(page);
   expect(openNames[0], 'None is the clear option').toBe('None');
@@ -226,22 +235,22 @@ test('survey-rail Entity picker intended + break + edge', async ({ page }) => {
   ]);
   await page.keyboard.press('Escape');
   await expect(entityListbox(page)).toHaveCount(0, { timeout: 8_000 });
-  await expect(triggerLabel(page, markerA)).toHaveText('None');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('None');
   expect((await storedMarker(page, markerA))?.entityId, 'Esc keeps None').toBeFalsy();
 
   // Break: pick None while already None — no-op (same id, no write).
-  await entityTrigger(page, markerA).click();
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await expect(entityListbox(page)).toBeVisible();
   await entityOption(page, 'None').click();
   await expect(entityListbox(page)).toHaveCount(0);
-  await expect(triggerLabel(page, markerA)).toHaveText('None');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('None');
   expect((await storedMarker(page, markerA))?.entityId, 're-pick None stays empty').toBeFalsy();
 
   // Intended: pick GC — stored id + trigger label update.
-  await entityTrigger(page, markerA).click();
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await entityOption(page, 'GC').click();
   await expect(entityListbox(page)).toHaveCount(0);
-  await expect(triggerLabel(page, markerA)).toHaveText('GC');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('GC');
   await expect.poll(async () => (await storedMarker(page, markerA))?.entityId, {
     message: 'stored entityId is GC',
   }).toBe('kal436-entity-gc');
@@ -251,31 +260,31 @@ test('survey-rail Entity picker intended + break + edge', async ({ page }) => {
   expect((await storedMarker(page, markerB))?.entityId, 'B stays unassigned').toBeFalsy();
 
   // Edge: change entity.
-  await entityTrigger(page, markerA).click();
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await entityOption(page, 'Subcontractor').click();
-  await expect(triggerLabel(page, markerA)).toHaveText('Subcontractor');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('Subcontractor');
   await expect.poll(async () => (await storedMarker(page, markerA))?.entityId)
     .toBe('kal436-entity-sub');
 
   // Break: Pen-armed still picks.
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  await expandMarkerDetails(page, markerA);
-  await entityTrigger(page, markerA).click();
+  await expandMarkerDetails(page, 'entity-a');
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await entityOption(page, '100% Complete').click();
-  await expect(triggerLabel(page, markerA)).toHaveText('100% Complete');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('100% Complete');
   await expect.poll(async () => (await storedMarker(page, markerA))?.entityId)
     .toBe('kal436-entity-complete');
 
   // Edge: clear via None.
-  await entityTrigger(page, markerA).click();
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await entityOption(page, 'None').click();
-  await expect(triggerLabel(page, markerA)).toHaveText('None');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('None');
   await expect.poll(async () => (await storedMarker(page, markerA))?.entityId || null)
     .toBeNull();
 
   // Re-pick GC so undo has a real change (None→GC).
-  await entityTrigger(page, markerA).click();
+  await rowA.locator('.survey-marker-entity-trigger').click();
   await entityOption(page, 'GC').click();
   await expect.poll(async () => (await storedMarker(page, markerA))?.entityId)
     .toBe('kal436-entity-gc');
@@ -287,7 +296,7 @@ test('survey-rail Entity picker intended + break + edge', async ({ page }) => {
     timeout: 10_000,
     message: 'undo restores cleared entity',
   }).toBeNull();
-  await expect(triggerLabel(page, markerA)).toHaveText('None');
+  await expect(rowA.locator('.survey-marker-entity-trigger-label')).toHaveText('None');
   expect((await markerIds(page)).includes(markerA), 'undo leaves placed A').toBe(true);
   expect((await markerIds(page)).includes(markerB), 'undo leaves placed B').toBe(true);
 
@@ -298,20 +307,22 @@ test('survey-rail Entity picker intended + break + edge', async ({ page }) => {
   await assertNoErrorBoundary(page);
 
   // Break: empty entity list — KAL-436 has no template.entities; only None.
-  await openEditor(page);
+  // Separate PDF so y-indexeddb / local history from the entities session
+  // cannot alias Walls rows.
+  await openEditor(page, { url: EMPTY_PDF });
   await enterSurveyTemplate(page, EMPTY_TEMPLATE);
   const emptyKeep = keepCheckbox(page);
   if (!(await emptyKeep.isChecked())) await emptyKeep.click();
   const emptyMarker = await placeMarker(page, 'empty-a', {
     x0: 0.24, y0: 0.32, x1: 0.44, y1: 0.50, pageNumber: 1,
-  }, { expectEntityDialog: false });
-  await expandMarkerDetails(page, emptyMarker);
-  await entityTrigger(page, emptyMarker).click();
+  }, { expectEntityDialog: false, templateName: EMPTY_TEMPLATE });
+  const emptyRow = await expandMarkerDetails(page, 'empty-a');
+  await emptyRow.locator('.survey-marker-entity-trigger').click();
   await expect(entityListbox(page)).toBeVisible();
   const emptyNames = await optionNames(page);
   expect(emptyNames, 'empty template list is None only').toEqual(['None']);
   await entityOption(page, 'None').click();
-  await expect(triggerLabel(page, emptyMarker)).toHaveText('None');
+  await expect(emptyRow.locator('.survey-marker-entity-trigger-label')).toHaveText('None');
   expect((await storedMarker(page, emptyMarker))?.entityId, 'empty list cannot store an id').toBeFalsy();
   await assertNoErrorBoundary(page);
 
