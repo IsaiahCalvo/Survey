@@ -509,8 +509,9 @@ test('Line/Arrow dash + arrowhead every discrete style intended + break + edge',
     return `${dashKey(row.strokeDashArray)}|${row.arrowheadStyle}`;
   }).toBe('dotted|vShape');
 
+  await deselectEmpty(page);
   await activateTool(page, 'Shapes', 'Line');
-  expect(await desktopArrowheadTrigger(page).count(), 'Line still has no Arrowhead after Arrow walk').toBe(0);
+  expect(await desktopArrowheadTrigger(page).count(), 'Line armed after empty deselect has no Arrowhead').toBe(0);
   await activateTool(page, 'Shapes', 'Rectangle');
   await page.getByRole('button', { name: 'Style', exact: true }).first().click();
   const rectPopover = page.locator('[data-annotation-dropdown-popover="true"]');
