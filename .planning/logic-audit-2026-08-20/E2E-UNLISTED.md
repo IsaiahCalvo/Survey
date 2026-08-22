@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 survey-marker handle drag):** U-01 / E-01 / E-02 / E-03 leftover (not a new UL row). Live placed-marker body + 8 resize + `mtr`. 390 same overlay (no bbox strip). Receipt `fix-logs/survey-marker-handle-drag-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 survey-marker delete chrome):** U-01 / E-04 leftover (not a new UL row). Live overlay `Delete Survey Marker` + Select Backspace/Delete. Rail `Delete selected items` not this pass. Receipt `fix-logs/survey-marker-delete-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 survey-marker handle drag):** U-01 / E-01 / E-02 / E-03 leftover (not a new UL row). Live placed-marker body + 8 resize + `mtr`. 390 same overlay (no bbox strip). Receipt `fix-logs/survey-marker-handle-drag-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 counter nubbin / Shift-orbit):** S-05 / E-02 leftover (not a new UL row). Live nubbin + Shift-orbit + place-time Shift. 390 uses the same SVG handle (no pause-orbit). Receipt `fix-logs/counter-nubbin-orbit-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
