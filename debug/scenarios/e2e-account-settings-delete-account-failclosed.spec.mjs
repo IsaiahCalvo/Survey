@@ -37,6 +37,11 @@ function wipeButton(dialog) {
   return dialog.getByRole('button', { name: 'Delete account permanently' });
 }
 
+function visibleOwner(page) {
+  // 390 keeps the desktop ledger span in the tree but hidden.
+  return page.getByText(OWNER).filter({ visible: true });
+}
+
 function attachWipeWatchers(page) {
   const wipeReqs = [];
   const authReqs = [];
@@ -184,7 +189,7 @@ test('Account Settings Delete account permanently fail-closed intended / break /
 
   await page.keyboard.press('Escape');
   await expect(settingsDialog(page)).toHaveCount(0);
-  await expect(page.getByText(OWNER).first()).toBeVisible();
+  await expect(visibleOwner(page)).toBeVisible();
   await expect(accountChip(page).locator('.name')).toHaveText('Isaiah Calvo');
   await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0);
 
@@ -195,7 +200,7 @@ test('Account Settings Delete account permanently fail-closed intended / break /
   await expect(settingsDialog(page).locator('.account-error')).toHaveCount(0);
   await expect(settingsDialog(page).getByText('Isaiah', { exact: true })).toBeVisible();
   await settingsDialog(page).locator('.account-settings-close').click();
-  await expect(page.getByText(OWNER).first()).toBeVisible();
+  await expect(visibleOwner(page)).toBeVisible();
 
   // --- Break: empty=1 still has wipe; same fail-closed ---
   const emptyDialog = await openSettingsFromHub(page, { url: HUB_EMPTY });
@@ -248,7 +253,7 @@ test('Account Settings Delete account permanently fail-closed intended / break /
   await clickWipeFailClosed(page, mobile, watchers, { message: hubMsg });
   await page.keyboard.press('Escape');
   await expect(settingsDialog(page)).toHaveCount(0);
-  await expect(page.getByText(OWNER).first()).toBeVisible();
+  await expect(visibleOwner(page)).toBeVisible();
 
   const proof = {
     intendedConfirmGate: true,
