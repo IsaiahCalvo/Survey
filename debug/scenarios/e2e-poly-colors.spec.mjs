@@ -188,10 +188,26 @@ async function selectMode(page) {
   if (await menu.count()) await page.keyboard.press('Escape');
 }
 
+async function vertexHandlesOn(page, id) {
+  const handles = page.locator('circle[data-handle^="vertex-"]');
+  const count = await handles.count();
+  if (!count) return false;
+  const rows = await listPolyGeom(page);
+  const geom = rows.find((row) => row.id === id);
+  if (!geom || count < geom.points.length) return false;
+  return page.getByRole('button', { name: 'Color', exact: true }).first().isVisible().catch(() => false);
+}
+
 async function selectPoly(page, id) {
   // Color only patches when activeTool === 'select'. Do not Escape first:
-  // that drops a just-created selection.
+  // that drops a just-created selection. Skip the page re-click when this
+  // poly is already selected — a second click races CompactColorPicker's
+  // outside-dismiss and leaves Color focused with the popover unmounted.
   await selectMode(page);
+  if (await vertexHandlesOn(page, id)) {
+    await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+    return;
+  }
   const handles = page.locator('circle[data-handle^="vertex-"]');
   await expect.poll(async () => {
     const rows = await listPolyGeom(page);
@@ -241,8 +257,16 @@ async function openColorPicker(page) {
   const trigger = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(trigger).toBeVisible({ timeout: 8_000 });
   const picker = page.locator('[data-annotation-color-picker]');
+  if (await picker.isVisible().catch(() => false)) {
+    await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
+    return;
+  }
+  await trigger.click();
   if (!(await picker.isVisible().catch(() => false))) {
-    await trigger.click();
+    await page.waitForTimeout(80);
+    if (!(await picker.isVisible().catch(() => false))) {
+      await trigger.click();
+    }
   }
   await expect(picker).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
