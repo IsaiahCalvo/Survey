@@ -179,10 +179,11 @@ test('Hub Documents Select All / None / Done intended + break + edge', async ({ 
   // --- Edge: 390 Select / All / None / Done ---
   await openPage(page, { width: 390, height: 844, url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(OWNER).first()).toBeVisible({ timeout: 20_000 });
-  await expect(docsSelect(page)).toBeVisible();
-  await docsSelect(page).click();
-  await expect(docsDone(page)).toBeVisible();
+  await expect(page.locator('.mobile-doc-card').filter({ hasText: OWNER })).toBeVisible({ timeout: 20_000 });
+  const mobileSelect = page.locator('.mobile-header-select-button').filter({ hasText: /Select|Done/ }).first();
+  await expect(mobileSelect).toBeVisible();
+  await mobileSelect.click();
+  await expect(page.locator('.mobile-header-select-button').filter({ hasText: 'Done' })).toBeVisible();
   await expect(docsAll(page)).toBeVisible();
   await expect.poll(() => mobileCheckedIds(page)).toEqual([]);
   await docsAll(page).click();
@@ -191,8 +192,8 @@ test('Hub Documents Select All / None / Done intended + break + edge', async ({ 
   await docsNone(page).click();
   await expect.poll(() => mobileCheckedIds(page)).toEqual([]);
   await expect(docsAll(page)).toBeVisible();
-  await docsDone(page).click();
-  await expect(docsSelect(page)).toBeVisible();
+  await page.locator('.mobile-header-select-button').filter({ hasText: 'Done' }).click();
+  await expect(page.locator('.mobile-header-select-button').filter({ hasText: 'Select' })).toBeVisible();
   await expect(docsAll(page)).toHaveCount(0);
 
   console.log('DOCS_SELECT_ALL_PROOF', JSON.stringify({
