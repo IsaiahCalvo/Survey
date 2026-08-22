@@ -189,7 +189,8 @@ test('Archive row Preview / Close preview + Show documents intended + break + ed
   await page.locator('.archive-desktop-search .archive-sort-menu').getByRole('menuitemradio', { name: /^All/ }).click();
   await expect.poll(() => desktopIds(page)).toEqual(DEFAULT_ORDER);
 
-  // Select mode hides Preview; clicking a row checks instead of previewing
+  // Select mode hides Preview; clicking a row checks instead of previewing.
+  // Done restores the last previewId — Select does not clear it.
   await page.locator('.archive-desktop-card [data-archive-item-id="ad1"]').click();
   await expect(archivePreview(page)).toBeVisible();
   await page.getByRole('button', { name: 'Select', exact: true }).first().click();
@@ -199,15 +200,16 @@ test('Archive row Preview / Close preview + Show documents intended + break + ed
   await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Done', exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
+  await expect(archivePreview(page).getByText('Site plan', { exact: true })).toBeVisible();
 
   // --- Sibling leftover: ledger Show documents expand (independent of Preview) ---
   await expect(ledgerShowDocuments(page)).toBeVisible();
-  await expect(page.locator('.archive-desktop-card').getByText('Level 1')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Preview Level 1' })).toHaveCount(0);
   await ledgerShowDocuments(page).click();
   await expect(ledgerHideDocuments(page)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Level 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Level 2' })).toBeVisible();
-  await expect(archivePreview(page)).toHaveCount(0);
+  await expect(archivePreview(page).getByText('Site plan', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Preview Level 1' }).click();
   await expect(archivePreview(page).getByText('Level 1', { exact: true })).toBeVisible();
