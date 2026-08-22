@@ -27,8 +27,8 @@ test('SpacesPanel handleCreateSpace mints via onSpaceCreate without a precompute
   assert.doesNotMatch(create, /file\.id/);
 
   const button = panel.slice(
-    panel.indexOf('className="spaces-header-actions"'),
-    panel.indexOf('className="spaces-header-export-button"'),
+    panel.indexOf('onClick={handleCreateSpace}'),
+    panel.indexOf('<Icon name="plus" size={14} />') + 40,
   );
   assert.match(button, /onClick=\{handleCreateSpace\}/);
   assert.match(button, /aria-label=\{canManageSpaces \? 'Create space' : 'Upgrade to Pro to create spaces'\}/);
