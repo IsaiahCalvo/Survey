@@ -261,9 +261,9 @@ test('survey-rail Rename intended + break + edge', async ({ page }) => {
   const dupValues = await renameField(page, 'rail-b').evaluateAll((nodes) => nodes.map((node) => node.value));
   expect(dupValues, 'both rows store rail-b').toEqual(['rail-b', 'rail-b']);
 
-  // Edge: undo after a further unique rename. Product has no rename checkpoint
-  // in commitSurveyMarkerName — record whether Z restores the name or pops
-  // the last place/bounds checkpoint.
+  // Edge: undo after a further unique rename. Live-before-fix: Ctrl+Z
+  // popped B's place checkpoint (A reverted to rail-a, B gone). Product
+  // now checkpoints survey-marker:rename so Z restores the name only.
   const undoSource = renameField(page, 'rail-b').first();
   await undoSource.click();
   await undoSource.fill('after-undo');
@@ -272,20 +272,25 @@ test('survey-rail Rename intended + break + edge', async ({ page }) => {
   await page.evaluate(() => document.activeElement?.blur?.());
   const idsBeforeUndo = await markerIds(page);
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(400);
+  await expect.poll(async () => ({
+    a: (await markerIds(page)).includes(markerA),
+    b: (await markerIds(page)).includes(markerB),
+    afterUndo: await renameField(page, 'after-undo').count(),
+    railB: await renameField(page, 'rail-b').count(),
+  }), { message: 'undo restores the renamed row and keeps both markers' }).toEqual({
+    a: true,
+    b: true,
+    afterUndo: 0,
+    railB: 2,
+  });
   const idsAfterUndo = await markerIds(page);
-  const undoNameAfter = (await renameField(page, 'after-undo').count())
-    ? 'after-undo'
-    : (await renameField(page, 'rail-b').count())
-      ? 'rail-b'
-      : (await desktopRenameInputs(page).evaluateAll((nodes) => nodes.map((node) => node.value)));
   const undoProof = {
     idsBefore: idsBeforeUndo,
     idsAfter: idsAfterUndo,
     markerAStill: idsAfterUndo.includes(markerA),
     markerBStill: idsAfterUndo.includes(markerB),
-    undoNameAfter,
-    nameRestored: undoNameAfter === 'rail-b' && idsAfterUndo.includes(markerA),
+    undoNameAfter: 'rail-b',
+    nameRestored: true,
   };
 
   expect(await page.locator('[data-handle]').count(), 'no vertex-N seam').toBe(0);

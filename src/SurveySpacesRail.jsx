@@ -426,6 +426,7 @@ const SurveySpacesRail = ({
   collapseRequestKey = 0,
   onCollapseChange = null,
   mobileMode = false,
+  addHistoryCheckpoint = null,
 }) => {
   // KAL-65: rail controls use the app's instant shared tooltip, never a native
   // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
@@ -782,6 +783,9 @@ const SurveySpacesRail = ({
     if (!annotationId || nextName === oldName) return;
 
     const currentMarker = surveyMarkers[annotationId] || {};
+    if (typeof addHistoryCheckpoint === 'function') {
+      addHistoryCheckpoint('survey-marker:rename', { annotationId });
+    }
     setSurveyMarkers(prev => ({
       ...prev,
       [annotationId]: {

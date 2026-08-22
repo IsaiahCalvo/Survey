@@ -19,7 +19,7 @@ test('commitSurveyMarkerName trims, falls back on empty, and no-ops same name', 
   assert.match(block, /if \(!annotationId \|\| nextName === oldName\) return;/);
   assert.match(block, /name: nextName/);
   assert.doesNotMatch(block, /duplicate|already exists|unique/i);
-  assert.doesNotMatch(block, /addHistoryCheckpoint/);
+  assert.match(block, /addHistoryCheckpoint\('survey-marker:rename'/);
   assert.doesNotMatch(block, /data-handle=\{`vertex-\$\{/);
   assert.doesNotMatch(block, /data-counter-nubbin-handle/);
 });
