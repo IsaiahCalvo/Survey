@@ -959,10 +959,25 @@ export default function TemplatesEditor({
      single source of truth for "make every button function".
      ============================================================ */
 
-  /* Map over one template by id and replace it with `fn`'s result. */
+  /* Map over one template by id and replace it with `fn`'s result.
+     BL-23: a no-op fn (same template reference) must NOT mark dirty —
+     Save/Cancel click can blur an unchanged entity/category field, and
+     that blur used to bump editRevision so an in-flight Save then()
+     refused to clear the bar. */
   const mutateTpl = useCallback((tid, fn) => {
-    setRich((prev) => prev.map((t) => (t.id === tid ? fn(t) : t)));
-    markEdited();
+    let changed = false;
+    setRich((prev) => {
+      let nextChanged = false;
+      const next = prev.map((t) => {
+        if (t.id !== tid) return t;
+        const updated = fn(t);
+        if (updated !== t) nextChanged = true;
+        return updated;
+      });
+      changed = nextChanged;
+      return nextChanged ? next : prev;
+    });
+    if (changed) markEdited();
   }, [markEdited]);
 
   /* --- template-level --- */
@@ -1486,9 +1501,15 @@ export default function TemplatesEditor({
   const renameEntity = (eid, role) => {
     const v = role.trim();
     if (!v || !tpl) return;
-    mutateTpl(tpl.id, (t) => ({
-      ...t, roster: t.roster.map((r) => (r.id === eid ? (r.role === v ? r : { ...r, role: v }) : r)),
-    }));
+    mutateTpl(tpl.id, (t) => {
+      let changed = false;
+      const roster = t.roster.map((r) => {
+        if (r.id !== eid || r.role === v) return r;
+        changed = true;
+        return { ...r, role: v };
+      });
+      return changed ? { ...t, roster } : t;
+    });
   };
   const setEntityColor = (eid, color) => {
     if (!tpl) return;
