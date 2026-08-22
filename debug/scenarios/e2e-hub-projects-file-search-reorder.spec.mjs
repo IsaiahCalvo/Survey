@@ -73,7 +73,7 @@ function desktopFileHandles(page) {
   return desktopLayout(page).locator('[data-document-id] [title="Drag to rearrange"]');
 }
 
-async function pointerDragHandleTo(page, handle, dest, { cancel = false } = {}) {
+async function pointerDragHandleTo(page, handle, dest, { cancel = false, self = false } = {}) {
   await expect(handle).toBeVisible({ timeout: 8_000 });
   const fromBox = await handle.boundingBox();
   const toBox = await dest.boundingBox();
@@ -81,16 +81,16 @@ async function pointerDragHandleTo(page, handle, dest, { cancel = false } = {}) 
   const startX = fromBox.x + fromBox.width / 2;
   const startY = fromBox.y + fromBox.height / 2;
   const destX = toBox.x + Math.min(24, toBox.width / 2);
-  // File rows are 42px; drop past the dest bottom so collision leaves d1.
-  // Same-row dest stays inside the origin so self-drag is a real no-op.
-  const destY = toBox.y > startY + 8
-    ? toBox.y + toBox.height + 24
-    : toBox.y + Math.min(12, toBox.height / 2);
+  const destY = toBox.y + toBox.height + 24;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX, startY + 12, { steps: 8 });
+  // Activate with a horizontal nudge so a self-drag never crosses the
+  // next 42px file row. Vertical travel is only for a real drop / Escape.
+  await page.mouse.move(startX + 8, startY, { steps: 8 });
   await expect(page.locator('body')).toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
-  await page.mouse.move(destX, destY, { steps: 30 });
+  if (!self) {
+    await page.mouse.move(destX, destY, { steps: 30 });
+  }
   if (cancel) {
     await page.keyboard.press('Escape');
     await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
@@ -103,8 +103,8 @@ async function eatDragClick(page) {
   await page.mouse.click(12, 12).catch(() => {});
 }
 
-async function dragByHandle(page, handle, dest, _namesFn, { cancel = false } = {}) {
-  await pointerDragHandleTo(page, handle, dest, { cancel });
+async function dragByHandle(page, handle, dest, _namesFn, { cancel = false, self = false } = {}) {
+  await pointerDragHandleTo(page, handle, dest, { cancel, self });
   await eatDragClick(page);
   return 'pointer';
 }
@@ -175,7 +175,7 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
     seHandle,
     fileRow(page, RFI),
     desktopFileOrder,
-    { cancel: true, direction: 'down' },
+    { cancel: true },
   );
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('SE-011');
 
@@ -184,6 +184,7 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
     seHandle,
     seHandle,
     desktopFileOrder,
+    { self: true },
   );
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('SE-011');
 
@@ -192,7 +193,6 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
     seHandle,
     fileRow(page, RFI),
     desktopFileOrder,
-    { direction: 'down' },
   );
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('RFI-014');
   const orderAfter = await desktopFileOrder(page);
