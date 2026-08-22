@@ -88,8 +88,15 @@ test('PDFViewer + rail + 390 chrome wire the Keep-active rules; notes chrome exi
 
   const rail = read('src/SurveySpacesRail.jsx');
   assert.match(rail, /setSelectedCategoryId\(null\)/);
-  assert.match(rail, /aria-label=\{surveyMarkers\[annotationId\]\?\.note\?\.text \? "Edit item notes" : "Add item notes"\}/);
+  // Photo/Video-only notes still count as saved content — Add/Edit chrome
+  // keys off noteHasContent, not note.text.
+  assert.match(rail, /const noteHasContent = \(note\) => Boolean\(/);
+  assert.match(rail, /Array\.isArray\(note\?\.photos\) && note\.photos\.length/);
+  assert.match(rail, /Array\.isArray\(note\?\.videos\) && note\.videos\.length/);
+  assert.match(rail, /const hasNoteText = noteHasContent\(surveyMarkers\[annotationId\]\?\.note\);/);
+  assert.match(rail, /aria-label=\{noteHasContent\(surveyMarkers\[annotationId\]\?\.note\) \? "Edit item notes" : "Add item notes"\}/);
   assert.match(rail, /aria-label=\{hasNoteText \? 'Edit Survey Marker notes' : 'Add Survey Marker notes'\}/);
+  assert.doesNotMatch(rail, /aria-label=\{surveyMarkers\[annotationId\]\?\.note\?\.text \? "Edit item notes"/);
   assert.match(rail, /setMobileNotesEditorOpen\(false\)/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
