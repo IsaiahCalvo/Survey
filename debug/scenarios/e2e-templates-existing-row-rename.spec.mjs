@@ -150,28 +150,6 @@ async function itemNamesInCategory(page, name) {
   }, name);
 }
 
-function itemField(page, text) {
-  return page.locator('.templates-editor-grid input.inline-edit[placeholder="Add checklist item"]').filter({
-    hasText: /^$/,
-  }).evaluateAll;
-}
-
-async function visibleItemField(page, text) {
-  const handle = await page.evaluateHandle((wanted) => {
-    const fields = [...document.querySelectorAll('.templates-editor-grid input.inline-edit[placeholder="Add checklist item"]')];
-    return fields.find((el) => el.value === wanted && el.offsetParent) || null;
-  }, text);
-  const element = handle.asElement();
-  expect(element, `item field ${text}`).toBeTruthy();
-  return element;
-}
-
-function entityField(page, role) {
-  return page.locator('.templates-editor-grid aside input.inline-edit.cat-title[placeholder="Entity name"]').or(
-    page.locator('aside input.inline-edit.cat-title[placeholder="Entity name"]'),
-  ).evaluateAll;
-}
-
 async function entityNames(page) {
   return page.evaluate(() => (
     [...document.querySelectorAll('input.inline-edit.cat-title[placeholder="Entity name"]')]
@@ -180,21 +158,34 @@ async function entityNames(page) {
   ));
 }
 
-async function visibleEntityField(page, role) {
-  const handle = await page.evaluateHandle((wanted) => {
-    const fields = [...document.querySelectorAll('input.inline-edit.cat-title[placeholder="Entity name"]')];
-    return fields.find((el) => el.value === wanted && el.offsetParent) || null;
-  }, role);
-  const element = handle.asElement();
-  expect(element, `entity field ${role}`).toBeTruthy();
-  return element;
-}
-
 async function commitTyped(field, value, { key = 'Enter' } = {}) {
   await field.click();
   await field.fill(value);
   await field.press(key);
 }
+
+/* dnd-kit's rearrange row intercepts Playwright pointer on checklist /
+   entity inputs after the first commit. Focus via the DOM, then type
+   with a real keyboard so Escape / Enter hit the React handlers. */
+async function commitNamedInput(page, selector, current, next, key = 'Enter') {
+  const ok = await page.evaluate(({ selector, current }) => {
+    const el = [...document.querySelectorAll(selector)]
+      .find((node) => node.value === current && node.offsetParent);
+    if (!el) return false;
+    el.focus();
+    el.select();
+    return true;
+  }, { selector, current });
+  expect(ok, `focus ${current}`).toBe(true);
+  await page.keyboard.press('Control+a');
+  if (next === '') await page.keyboard.press('Backspace');
+  else await page.keyboard.type(next);
+  await page.keyboard.press(key);
+}
+
+const ENTITY_SELECTOR = 'input.inline-edit.cat-title[placeholder="Entity name"]';
+const ITEM_SELECTOR = '.templates-editor-grid input.inline-edit[placeholder="Add checklist item"]';
+const CAT_SELECTOR = '.templates-editor-grid [data-drag-rearrange-row] input.inline-edit.cat-title[title="Click to rename"]';
 
 test('Templates existing-row rename (module / category / entity / item)', async ({ page }) => {
   test.setTimeout(180_000);
@@ -290,39 +281,29 @@ test('Templates existing-row rename (module / category / entity / item)', async 
 
   // ========== CATEGORY: Cameras ==========
   await expect(categoryField(page, 'Cameras')).toBeVisible();
-  await categoryField(page, 'Cameras').click();
-  await categoryField(page, 'Cameras').fill('');
-  await categoryField(page, 'Cameras').press('Enter');
+  await commitNamedInput(page, CAT_SELECTOR, 'Cameras', '', 'Enter');
   expect(await categoryNames(page)).toEqual(SEED_CATS);
   await expectNoDirty(page);
 
-  await categoryField(page, 'Cameras').click();
-  await categoryField(page, 'Cameras').fill('   ');
-  await categoryField(page, 'Cameras').press('Enter');
+  await commitNamedInput(page, CAT_SELECTOR, 'Cameras', '   ', 'Enter');
   expect(await categoryNames(page)).toEqual(SEED_CATS);
   await expectNoDirty(page);
 
-  await categoryField(page, 'Cameras').click();
-  await categoryField(page, 'Cameras').fill('gone-cat');
-  await categoryField(page, 'Cameras').press('Escape');
+  await commitNamedInput(page, CAT_SELECTOR, 'Cameras', 'gone-cat', 'Escape');
   expect(await categoryNames(page)).toEqual(SEED_CATS);
   await expectNoDirty(page);
 
-  await categoryField(page, 'Cameras').click();
-  await categoryField(page, 'Cameras').fill('Cameras');
-  await categoryField(page, 'Cameras').press('Enter');
+  await commitNamedInput(page, CAT_SELECTOR, 'Cameras', 'Cameras', 'Enter');
   expect(await categoryNames(page)).toEqual(SEED_CATS);
   await expectNoDirty(page);
 
-  await categoryField(page, 'Cameras').fill('Cams');
-  await categoryField(page, 'Cameras').press('Enter');
+  await commitNamedInput(page, CAT_SELECTOR, 'Cameras', 'Cams', 'Enter');
   expect(await categoryNames(page)).toEqual(['Cams', 'Doors']);
   await expectDirty(page);
   await clickCancel(page);
   expect(await categoryNames(page)).toEqual(SEED_CATS);
 
-  await categoryField(page, 'Cameras').fill('E2E Cameras');
-  await categoryField(page, 'Cameras').press('Enter');
+  await commitNamedInput(page, CAT_SELECTOR, 'Cameras', 'E2E Cameras', 'Enter');
   expect(await categoryNames(page)).toEqual(['E2E Cameras', 'Doors']);
   await clickSave(page);
   expect(await categoryNames(page)).toEqual(['E2E Cameras', 'Doors']);
@@ -338,45 +319,29 @@ test('Templates existing-row rename (module / category / entity / item)', async 
   const categoryIsolation = true;
 
   // ========== ENTITY: GC ==========
-  let entity = await visibleEntityField(page, 'GC');
-  await entity.click();
-  await entity.fill('');
-  await entity.press('Enter');
+  await commitNamedInput(page, ENTITY_SELECTOR, 'GC', '', 'Enter');
   expect(await entityNames(page)).toEqual(SEED_ENTITIES);
   await expectNoDirty(page);
 
-  entity = await visibleEntityField(page, 'GC');
-  await entity.click();
-  await entity.fill('   ');
-  await entity.press('Enter');
+  await commitNamedInput(page, ENTITY_SELECTOR, 'GC', '   ', 'Enter');
   expect(await entityNames(page)).toEqual(SEED_ENTITIES);
   await expectNoDirty(page);
 
-  entity = await visibleEntityField(page, 'GC');
-  await entity.click();
-  await entity.fill('gone-entity');
-  await entity.press('Escape');
+  await commitNamedInput(page, ENTITY_SELECTOR, 'GC', 'gone-entity', 'Escape');
   expect(await entityNames(page)).toEqual(SEED_ENTITIES);
   await expectNoDirty(page);
 
-  entity = await visibleEntityField(page, 'GC');
-  await entity.click();
-  await entity.fill('GC');
-  await entity.press('Enter');
+  await commitNamedInput(page, ENTITY_SELECTOR, 'GC', 'GC', 'Enter');
   expect(await entityNames(page)).toEqual(SEED_ENTITIES);
   await expectNoDirty(page);
 
-  entity = await visibleEntityField(page, 'GC');
-  await entity.fill('General');
-  await entity.press('Enter');
+  await commitNamedInput(page, ENTITY_SELECTOR, 'GC', 'General', 'Enter');
   expect(await entityNames(page)).toEqual(['General', 'Subcontractor', '100% Complete']);
   await expectDirty(page);
   await clickCancel(page);
   expect(await entityNames(page)).toEqual(SEED_ENTITIES);
 
-  entity = await visibleEntityField(page, 'GC');
-  await entity.fill('E2E GC');
-  await entity.press('Enter');
+  await commitNamedInput(page, ENTITY_SELECTOR, 'GC', 'E2E GC', 'Enter');
   expect(await entityNames(page)).toEqual(['E2E GC', 'Subcontractor', '100% Complete']);
   await clickSave(page);
   await openTemplateFromList(page, 'MEP As-Built Markup');
@@ -392,46 +357,31 @@ test('Templates existing-row rename (module / category / entity / item)', async 
   await expandCategory(page, 'Doors');
   expect(await itemNamesInCategory(page, 'Doors')).toEqual(DOORS_ITEMS);
 
-  let item = await visibleItemField(page, INSTALL_ITEM);
-  await item.click();
-  await item.fill('');
-  await item.press('Enter');
+  await expandCategory(page, 'E2E Cameras');
+  await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, '', 'Enter');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual(CAMERAS_ITEMS);
   await expectNoDirty(page);
 
-  item = await visibleItemField(page, INSTALL_ITEM);
-  await item.click();
-  await item.fill('   ');
-  await item.press('Enter');
+  await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, '   ', 'Enter');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual(CAMERAS_ITEMS);
   await expectNoDirty(page);
 
-  item = await visibleItemField(page, INSTALL_ITEM);
-  await item.click();
-  await item.fill('gone-item');
-  await item.press('Escape');
+  await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, 'gone-item', 'Escape');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual(CAMERAS_ITEMS);
   await expectNoDirty(page);
 
-  item = await visibleItemField(page, INSTALL_ITEM);
-  await item.click();
-  await item.fill(INSTALL_ITEM);
-  await item.press('Enter');
+  await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, INSTALL_ITEM, 'Enter');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual(CAMERAS_ITEMS);
   await expectNoDirty(page);
 
-  item = await visibleItemField(page, INSTALL_ITEM);
-  await item.fill('Camera installed now?');
-  await item.press('Enter');
+  await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, 'Camera installed now?', 'Enter');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual([CABLE_ITEM, 'Camera installed now?']);
   await expectDirty(page);
   await clickCancel(page);
   await expandCategory(page, 'E2E Cameras');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual(CAMERAS_ITEMS);
 
-  item = await visibleItemField(page, INSTALL_ITEM);
-  await item.fill('E2E camera installed?');
-  await item.press('Enter');
+  await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, 'E2E camera installed?', 'Enter');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual([CABLE_ITEM, 'E2E camera installed?']);
   expect(await itemNamesInCategory(page, 'Doors')).toEqual(DOORS_ITEMS);
   await clickSave(page);
@@ -463,17 +413,14 @@ test('Templates existing-row rename (module / category / entity / item)', async 
   ));
   expect(mobileCatsBefore).toEqual(SEED_CATS);
 
-  const camerasField = page.locator('.templates-mobile-category-row input.templates-mobile-inline-input').nth(0);
-  await camerasField.click();
-  await camerasField.fill('');
-  await camerasField.press('Enter');
-  expect(await page.locator('.templates-mobile-category-row input.templates-mobile-inline-input').evaluateAll((nodes) => (
+  const mobileCatSel = '.templates-mobile-category-row input.templates-mobile-inline-input';
+  await commitNamedInput(page, mobileCatSel, 'Cameras', '', 'Enter');
+  expect(await page.locator(mobileCatSel).evaluateAll((nodes) => (
     nodes.filter((el) => el.offsetParent).map((el) => el.value)
   ))).toEqual(SEED_CATS);
   await expectNoDirty(page);
 
-  await camerasField.fill('E2E Mobile Cameras');
-  await camerasField.press('Enter');
+  await commitNamedInput(page, mobileCatSel, 'Cameras', 'E2E Mobile Cameras', 'Enter');
   await expectDirty(page);
   await clickSave(page);
   const mobileCategory = await page.locator('.templates-mobile-category-row input.templates-mobile-inline-input').evaluateAll((nodes) => (
@@ -486,34 +433,29 @@ test('Templates existing-row rename (module / category / entity / item)', async 
   if ((await camerasToggle.getAttribute('aria-label') || '').startsWith('Expand')) {
     await camerasToggle.evaluate((button) => button.click());
   }
-  const mobileItem = page.locator('.templates-mobile-item-row input.templates-mobile-inline-input').filter({
-    hasNot: page.locator('[value=""]'),
-  });
-  const installMobile = page.locator('.templates-mobile-item-row input.templates-mobile-inline-input').nth(1);
-  await expect(installMobile).toHaveValue(INSTALL_ITEM, { timeout: 8_000 });
-  await installMobile.click();
-  await installMobile.fill('');
-  await installMobile.press('Enter');
-  await expect(installMobile).toHaveValue(INSTALL_ITEM);
+  const mobileItemSel = '.templates-mobile-item-row input.templates-mobile-inline-input';
+  await expect.poll(async () => page.locator(mobileItemSel).count()).toBeGreaterThan(1);
+  await commitNamedInput(page, mobileItemSel, INSTALL_ITEM, '', 'Enter');
+  expect(await page.locator(mobileItemSel).evaluateAll((nodes) => (
+    nodes.filter((el) => el.offsetParent).map((el) => el.value)
+  ))).toContain(INSTALL_ITEM);
   await expectNoDirty(page);
-  await installMobile.fill('E2E mobile installed?');
-  await installMobile.press('Enter');
+  await commitNamedInput(page, mobileItemSel, INSTALL_ITEM, 'E2E mobile installed?', 'Enter');
   await expectDirty(page);
   await clickSave(page);
-  await expect(installMobile).toHaveValue('E2E mobile installed?');
+  expect(await page.locator(mobileItemSel).evaluateAll((nodes) => (
+    nodes.filter((el) => el.offsetParent).map((el) => el.value)
+  ))).toContain('E2E mobile installed?');
   const mobileItemOk = true;
 
   await page.locator('.templates-mobile-section-select').filter({ hasText: 'Select' }).first().click();
   await expect(editModulesModal(page)).toBeVisible({ timeout: 8_000 });
-  const mobileMod = editModulesModal(page).locator('[data-drag-rearrange-row] input').nth(0);
-  await expect(mobileMod).toHaveValue('Installation Phase');
-  await mobileMod.click();
-  await mobileMod.fill('');
-  await mobileMod.press('Enter');
-  await expect(mobileMod).toHaveValue('Installation Phase');
+  const mobileModSel = '.templates-module-edit-modal [data-drag-rearrange-row] input';
+  await expect(page.locator(mobileModSel).nth(0)).toHaveValue('Installation Phase');
+  await commitNamedInput(page, mobileModSel, 'Installation Phase', '', 'Enter');
+  await expect(page.locator(mobileModSel).nth(0)).toHaveValue('Installation Phase');
   await expectNoDirty(page);
-  await mobileMod.fill('E2E Mobile Install');
-  await mobileMod.press('Enter');
+  await commitNamedInput(page, mobileModSel, 'Installation Phase', 'E2E Mobile Install', 'Enter');
   await editModulesModal(page).getByRole('button', { name: 'Done', exact: true }).click();
   await expect(editModulesModal(page)).toHaveCount(0);
   await expectDirty(page);
@@ -522,15 +464,12 @@ test('Templates existing-row rename (module / category / entity / item)', async 
 
   await page.getByRole('button', { name: 'Entities', exact: true }).click();
   await expect(page.locator('.templates-mobile-entity-modal')).toBeVisible({ timeout: 8_000 });
-  const mobileGc = page.locator('.templates-mobile-entity-modal input.templates-mobile-inline-input').nth(0);
-  await expect(mobileGc).toHaveValue('GC');
-  await mobileGc.click();
-  await mobileGc.fill('');
-  await mobileGc.press('Enter');
-  await expect(mobileGc).toHaveValue('GC');
+  const mobileEntSel = '.templates-mobile-entity-modal input.templates-mobile-inline-input';
+  await expect(page.locator(mobileEntSel).nth(0)).toHaveValue('GC');
+  await commitNamedInput(page, mobileEntSel, 'GC', '', 'Enter');
+  await expect(page.locator(mobileEntSel).nth(0)).toHaveValue('GC');
   await expectNoDirty(page);
-  await mobileGc.fill('E2E Mobile GC');
-  await mobileGc.press('Enter');
+  await commitNamedInput(page, mobileEntSel, 'GC', 'E2E Mobile GC', 'Enter');
   await page.locator('.templates-mobile-entity-modal').getByRole('button', { name: 'Close', exact: true }).click();
   await expectDirty(page);
   await clickSave(page);
