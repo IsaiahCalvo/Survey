@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 survey-rail Jump / Set location):** U-01 leftover (not a new UL row). Live rail `Jump to this Survey Marker` / `Set location on PDF` → `handleLocateItemOnPDF` / pending draw. Create category / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-jump-set-location-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 survey-rail Entity):** U-01 leftover (not a new UL row). Live rail `survey-marker-entity-trigger` / `aria-label="Entity"` → `applyEntitySelectionForMarker`. Jump / Set location / Create category / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-entity-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 survey-rail Jump / Set location):** U-01 leftover (not a new UL row). Live rail `Jump to this Survey Marker` / `Set location on PDF` → `handleLocateItemOnPDF` / pending draw. Create category / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-jump-set-location-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 survey-rail Create category):** U-01 leftover (not a new UL row). Live rail `Create category` → `CreateCategoryModal` → `addCategoryToCurrentTemplate`. Category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-create-category-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 

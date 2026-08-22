@@ -54,10 +54,6 @@ function entityOption(page, name) {
   return entityListbox(page).getByRole('option', { name, exact: true });
 }
 
-function triggerLabel(page, markerId = null) {
-  return entityTrigger(page, markerId).locator('.survey-marker-entity-trigger-label');
-}
-
 async function enterSurveyTemplate(page, templateName = ENTITIES_TEMPLATE) {
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
