@@ -30,8 +30,8 @@ Exact discrete catalogs used by the UI:
 | D-05 | Draw | Stroke width | Presets + numeric | Min/max; eraser size vs stroke |
 | S-01 | Shapes | Rectangle | Draw + fill/stroke | Zero size; rotation |
 | S-02 | Shapes | Ellipse | Draw + fill/stroke | Circle vs ellipse |
-| S-03 | Shapes | Line | Draw + dash. Single-click `p1`/`p2`/`midpoint` live `e2e-line-endpoint-midpoint.spec.mjs`. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs` | Zero length; 10px snap-to-straight; Pen-armed handle still edits; Pen exits bbox mode |
-| S-04 | Shapes | Arrow + arrowheads | 6 head styles. Same `p1`/`p2`/`midpoint` chrome as Line | Legacy group export |
+| S-03 | Shapes | Line | Draw + dash. Single-click `p1`/`p2`/`midpoint` live `e2e-line-endpoint-midpoint.spec.mjs`. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs`. **Every swatch** live `e2e-line-arrow-colors.spec.mjs` (desktop CompactColorPicker 16 including transparent) | Zero length; 10px snap-to-straight; Pen-armed handle still edits; Pen exits bbox mode |
+| S-04 | Shapes | Arrow + arrowheads | 6 head styles. Same `p1`/`p2`/`midpoint` chrome as Line. **Every swatch** live `e2e-line-arrow-colors.spec.mjs` | Legacy group export |
 | S-05 | Shapes | Counter | Numbered pins + series. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs`. Nubbin + Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs`. UL-31 Continue pin live `e2e-continue-pin.spec.mjs`. UL-35 toolbar **Continue Count** series-row live `e2e-continue-count-toolbar.spec.mjs` | Renumber; last-in-series; fill/number color; overlay-gated Continue pin; toolbar series switch |
 | T-01 | Text | Textbox create/edit | Same-surface editor | Blank discard; tight-fit; wrap |
 | T-02 | Text | Callout create/edit | Leader + text box. Knee / leader / arrowTip / text-box **move** live `e2e-callout-knee-drag.spec.mjs`. **Corner resize** `textBox-tl/tr/bl/br` live `e2e-callout-textbox-resize.spec.mjs`. **Flip + knee-rollback leftovers** `e2e-callout-textbox-resize-leftovers.spec.mjs` | Blank; arrowhead; style patch; Pen-armed no-op; Esc is marquee-only; off-page allow-outside; 20px min clamp; live flip past opposite; resize-into-knee rollback |
@@ -40,7 +40,7 @@ Exact discrete catalogs used by the UI:
 | T-05 | Text | Bold / italic / underline / strike | Toggle each | Combo; callout booleans vs fabric fields |
 | T-06 | Text | Alignment 3×3 | All 9 cells | justify accepted but not offered |
 | T-07 | Text | Font color | All 15 solid swatches + hex. **390 Text color chips** live `e2e-mobile-text-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Invalid hex; transparent first cell |
-| C-01 | Color | Preset grid | Every discrete swatch | Transparent; Match Fill first cell |
+| C-01 | Color | Preset grid | Every discrete swatch. Line/Arrow stroke **every swatch** live `e2e-line-arrow-colors.spec.mjs` | Transparent; Match Fill first cell |
 | C-02 | Color | Hex field | `#rgb` / `#rrggbb` / bare. **Live lengths** `e2e-hex-lengths.spec.mjs` (3/6 accept; 4/5/7/8 + named/rgba reject) | Invalid, rgba(), named, 4/5/7/8 digit |
 | C-03 | Color | Opacity | Slider + % field 0–100 | `minOpacity`; transparentMode restore |
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
