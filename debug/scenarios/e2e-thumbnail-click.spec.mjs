@@ -88,13 +88,13 @@ test('desktop thumbnail click navigates; page input is a different control', asy
   const selectedBorder = await pageThumb(page, 3).evaluate((el) => getComputedStyle(el).borderColor);
   expect(selectedBorder).toMatch(/216,\s*168,\s*78|#d8a84e/i);
 
-  // Break — re-click stays on 3. There is no thumb 99 (input can type it).
+  // Break — re-click stays on 3. There is no thumb 121 (input can type it).
   await clickThumb(page, 3);
   await expect.poll(() => currentPageNumber(page)).toBe(3);
-  await expect(pageThumb(page, 99)).toHaveCount(0);
+  await expect(pageThumb(page, 121)).toHaveCount(0);
 
-  // Break — page input 99 reverts; thumb path never offered 99.
-  await typePageNumber(page, 99);
+  // Break — page input 121 reverts; thumb path never offered 121.
+  await typePageNumber(page, 121);
   await expect.poll(() => currentPageNumber(page)).toBe(3);
 
   // Contrast — type 8 via the input (UL-07 path), then thumb 3 wins.
