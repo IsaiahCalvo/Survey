@@ -353,7 +353,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | V-04 pinch | **pass** — CDP two-touch; cancel commits preview; lift → pinch-release; mid-ink pinch discards |
 | V-08 Find wrap | **pass** (Next wave6 + Previous + result-row click) |
 | E-04 Backspace | **pass** (after blur) |
-| E-05 undo/redo | **pass** |
+| E-05 undo/redo | **pass** — dedicated stack `e2e-undo-redo-stack.spec.mjs` 2/2 (6.7s) |
 | A-07 revisions | **pass** (W4-03 local History + named cloud restore) |
 | A-07 jump + delete-restore | **pass** — W5-01 |
 | Cross-page paste (rect/ellipse/pen/text + **callout** + break/edge) | **pass** — `e2e-thin-leftovers.spec.mjs` (callout clone hard-pass) + `e2e-callout-paste.spec.mjs`. Last-copied wins: copy callout then paste on page M mints a new `callout-…` with leader/text intact. Receipt `fix-logs/callout-cross-page-paste-2026-08-21.md` |
