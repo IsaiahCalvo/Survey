@@ -29,7 +29,7 @@ function moduleTabs(page) {
 }
 
 function moduleTabButton(page, name) {
-  return page.locator('[data-module-tab-id] button', { hasText: name });
+  return page.locator(`[data-module-tab-id] button[title^="${name} ·"]`).filter({ hasText: new RegExp(`^${name}$`) });
 }
 
 function newModulePlus(page) {
