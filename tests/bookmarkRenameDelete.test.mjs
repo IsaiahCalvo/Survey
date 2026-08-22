@@ -25,6 +25,9 @@ test('desktop Edit-mode rename + delete controls are named; group clash is type-
   assert.match(panel, /window\.confirm\(message\)/);
   assert.match(panel, /const commitName = \(\) => \{/);
   assert.match(panel, /prepareAtomicBookmarkEdit\(\{/);
+  assert.match(panel, /skipNameCommitRef\.current = true/);
+  assert.match(panel, /skipPageCommitRef\.current = true/);
+  assert.match(panel, /if \(skipNameCommitRef\.current\) \{/);
 
   const utils = read('src/sidebar/bookmarkEditUtils.js');
   assert.match(utils, /const kind = bookmark\?\.type === 'folder' \? 'bookmark group' : 'bookmark'/);

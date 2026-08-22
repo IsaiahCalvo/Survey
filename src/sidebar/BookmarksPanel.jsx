@@ -96,6 +96,8 @@ const BookmarkTreeRow = ({
   const tip = useTooltip();
   const [editName, setEditName] = React.useState(item.name || '');
   const [editPage, setEditPage] = React.useState(item.pageIds?.[0]?.toString() ?? '');
+  const skipNameCommitRef = React.useRef(false);
+  const skipPageCommitRef = React.useRef(false);
 
   React.useEffect(() => {
     setEditName(item.name || '');
@@ -122,6 +124,11 @@ const BookmarkTreeRow = ({
       : CSS.Translate.toString(transform);
 
   const commitName = () => {
+    if (skipNameCommitRef.current) {
+      skipNameCommitRef.current = false;
+      setEditName(item.name || '');
+      return;
+    }
     const nextName = editName.trim();
     if (!nextName || nextName === item.name) {
       setEditName(item.name || '');
@@ -157,6 +164,11 @@ const BookmarkTreeRow = ({
   };
 
   const commitPage = () => {
+    if (skipPageCommitRef.current) {
+      skipPageCommitRef.current = false;
+      setEditPage(item.pageIds?.[0]?.toString() ?? '');
+      return;
+    }
     const originalPage = item.pageIds?.[0]?.toString() ?? '';
     const trimmedValue = editPage.trim();
     if (!trimmedValue) {
@@ -289,8 +301,10 @@ const BookmarkTreeRow = ({
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 commitName();
+                skipNameCommitRef.current = true;
                 event.currentTarget.blur();
               } else if (event.key === 'Escape') {
+                skipNameCommitRef.current = true;
                 setEditName(item.name || '');
                 event.currentTarget.blur();
               }
@@ -336,8 +350,10 @@ const BookmarkTreeRow = ({
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   commitPage();
+                  skipPageCommitRef.current = true;
                   event.currentTarget.blur();
                 } else if (event.key === 'Escape') {
+                  skipPageCommitRef.current = true;
                   setEditPage(item.pageIds?.[0]?.toString() ?? '');
                   event.currentTarget.blur();
                 }

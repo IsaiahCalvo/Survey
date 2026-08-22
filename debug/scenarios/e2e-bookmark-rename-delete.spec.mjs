@@ -153,8 +153,11 @@ function waitForConfirm(page) {
 async function openMobileBookmarks(page) {
   const hubClose = page.getByRole('button', { name: 'Close document hub' });
   const dock = page.getByRole('button', { name: 'Open pages, search, and bookmarks' });
-  await expect(dock).toBeVisible({ timeout: 15_000 });
-  if (!(await hubClose.isVisible().catch(() => false))) await dock.click();
+  // Resize-from-desktop can already have the sheet open (dock hidden).
+  if (!(await hubClose.isVisible().catch(() => false))) {
+    await expect(dock).toBeVisible({ timeout: 15_000 });
+    await dock.click();
+  }
   await expect(hubClose).toBeVisible({ timeout: 15_000 });
   const bookmarksTab = page.locator('.mobile-pdf-hub-tab').filter({ hasText: 'Bookmarks' })
     .or(page.getByRole('button', { name: 'Bookmarks', exact: true }));
