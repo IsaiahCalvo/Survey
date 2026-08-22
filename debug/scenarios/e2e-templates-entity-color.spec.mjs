@@ -128,8 +128,9 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
     mobileBefore = await mobileEdit.count();
     if (mobileBefore > 0) {
       await mobileEdit.first().click();
-      await expect(page.locator('[data-entity-color-panel]')).toBeVisible();
-      await page.locator('[data-entity-color-panel]').getByTitle('#0000FF', { exact: true }).click();
+      const mobilePanel = mobileDialog.locator('[data-entity-color-panel]');
+      await expect(mobilePanel).toBeVisible();
+      await mobilePanel.getByTitle('#0000FF', { exact: true }).click();
       const mobileSwatch = await mobileEdit.first().evaluate((button) => (
         getComputedStyle(button).getPropertyValue('--entity-color') || getComputedStyle(button).backgroundColor
       ));
