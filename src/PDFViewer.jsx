@@ -32183,6 +32183,9 @@ ${pageBlocks}
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
+                                    // UL-31: right-click / non-primary must not drop a pin.
+                                    // Continue pin owns button 2 on this overlay.
+                                    if (e.button != null && e.button !== 0) return;
                                     // [COUNTER MULTI-LIST] If the click target is inside
                                     // the counter caret popup (or its submenu), bail out
                                     // — the popup floats over the page area in a

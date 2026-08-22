@@ -63,4 +63,5 @@ test('Continue pin is overlay-gated: hit-test kind counter + overlay only while 
   assert.match(viewer, /\{activeTool === 'counter' && \(/);
   assert.match(viewer, /data-counter-overlay=\{pageNumber\}/);
   assert.match(viewer, /pointerEvents: 'auto'/);
+  assert.match(viewer, /if \(e\.button != null && e\.button !== 0\) return;/);
 });
