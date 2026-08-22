@@ -200,6 +200,8 @@ test('U-02 Create space / handleCreateSpace', async ({ page }) => {
   await assertNoErrorBoundary(page);
 
   // Edge: 390 — Create if the button exists; record whether dblclick still multi-mints.
+  // Drop the desktop session first. Same-URL goto can restore the 5 cards.
+  await page.goto('about:blank', { waitUntil: 'domcontentloaded' }).catch(() => {});
   await openEditor(page, { width: 390, height: 844 });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
   const openSpacesBtn = page.getByRole('button', { name: 'Open spaces' });
@@ -211,6 +213,7 @@ test('U-02 Create space / handleCreateSpace', async ({ page }) => {
   const create390PageWide = page.getByRole('button', { name: 'Create space', exact: true });
   let mobileCreate = 0;
   let mobileCreatePageWide = 0;
+  let mobileBeforeClick = 0;
   let mobileAfterClick = 0;
   let mobileAfterDblclick = 0;
   let mobileDblclickDelta = 0;
@@ -220,6 +223,7 @@ test('U-02 Create space / handleCreateSpace', async ({ page }) => {
     mobileCreatePageWide = await create390PageWide.count();
     await expect(create390.first()).toBeVisible({ timeout: 8_000 });
     const beforeClick = await spaceCards(page).count();
+    mobileBeforeClick = beforeClick;
     await create390.first().evaluate((el) => el.click());
     try {
       await expect.poll(async () => spaceCards(page).count(), { timeout: 8_000 }).toBeGreaterThan(beforeClick);
@@ -252,6 +256,7 @@ test('U-02 Create space / handleCreateSpace', async ({ page }) => {
     twoCreateIsolation: true,
     mobileCreate,
     mobileCreatePageWide,
+    mobileBeforeClick,
     mobileAfterClick,
     mobileAfterDblclick,
     mobileDblclickDelta,
