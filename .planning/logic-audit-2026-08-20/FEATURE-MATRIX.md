@@ -18,7 +18,7 @@ Exact discrete catalogs used by the UI:
 | V-02 | Viewer | Select annotations | Click / marquee annotations | Empty page; locked/imported; remote-deleted |
 | V-03 | Viewer | Select text (⇧V) | Select PDF glyphs | No text layer; form fields |
 | V-04 | Viewer | Zoom in/out/fit | Ctrl+/−/0, pinch, toolbar | Floor 10%; Electron zoom factor; `zoomGeneration` auto-commit. **Fit height** is its own mode (not Fit page); live `e2e-fit-height.spec.mjs` |
-| V-05 | Viewer | Page nav | ←/→ Home/End, thumbnails | 1-page; missing page; fit-width |
+| V-05 | Viewer | Page nav | ←/→ Home/End. **Dedicated keyboard** live `e2e-page-nav-keyboard.spec.mjs` (←/→ move; Home first; End last; first/last clamp; INPUT no-steal; 390). Thumbnails are V-06 | 1-page stay; missing page; fit-width |
 | V-06 | Viewer | Pages panel | Jump via thumbnail **left-click** (not the page-number field). UL-32 Mirror V / Reset / Cut / Copy / Paste execute `e2e-survey-keep-notes-page-ctx.spec.mjs` | Collapse; long docs; no thumb 121; Extract **zero callers** (2026-08-22 compile-hidden hunt; no handler / no button) |
 | V-07 | Viewer | Bookmarks | Add/reorder/jump | Empty; rename clash |
 | V-08 | Viewer | Search text | Find in PDF | No hits; wrap; special chars |
