@@ -134,7 +134,6 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   expect(await categoryItemCount(page, 'Category 1')).toBe(0);
 
   // --- New category: break — empty / whitespace snaps back; Escape keeps name ---
-  const cat1 = categoryTitleInputs(page).filter({ hasText: /^$/ }).and(page.locator('[value="Category 1"]'));
   const cat1Field = categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]');
   await expect(cat1Field).toBeVisible();
   await cat1Field.click();
@@ -187,10 +186,9 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   const catDup = categoryChrome(page).getByRole('button', { name: 'Duplicate', exact: true });
   await expect(catDup).toBeVisible();
   await expect(catDup).toBeDisabled();
-  const camerasRow = desktopGrid(page).locator('[data-drag-rearrange-row]').filter({
-    has: page.locator('button[title="Expand"], button[title="Collapse"]'),
-    has: page.locator('input.inline-edit.cat-title[value="Cameras"]'),
-  });
+  const camerasRow = desktopGrid(page).locator('[data-drag-rearrange-row]')
+    .filter({ has: page.locator('button[title="Expand"], button[title="Collapse"]') })
+    .filter({ has: page.locator('input.inline-edit.cat-title[value="Cameras"]') });
   await toggleRowCheckbox(camerasRow);
   await expect(catDup).toBeEnabled();
   await catDup.click();
