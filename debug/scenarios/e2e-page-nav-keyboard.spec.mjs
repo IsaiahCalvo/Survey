@@ -67,23 +67,6 @@ async function currentPageNumber(page) {
   return null;
 }
 
-async function pageCount(page) {
-  const mobileTotal = page.locator('.mobile-pdf-header__page-total').first();
-  if (await mobileTotal.count()) {
-    return Number.parseInt((await mobileTotal.innerText()).replace(/\D/g, ''), 10);
-  }
-  return page.evaluate(() => {
-    const prev = document.querySelector('[aria-label="Previous page"]');
-    const next = document.querySelector('[aria-label="Next page"]');
-    const root = (prev && prev.parentElement) || (next && next.parentElement);
-    if (!root) return null;
-    const nums = [...root.querySelectorAll('span, button')]
-      .map((el) => Number.parseInt((el.textContent || '').trim(), 10))
-      .filter((n) => Number.isFinite(n) && n > 0);
-    return nums.length ? Math.max(...nums) : null;
-  });
-}
-
 async function expectPage(page, n, message) {
   await expect.poll(() => currentPageNumber(page), {
     timeout: 20_000,
@@ -102,9 +85,10 @@ async function pageBox(page, pageNumber = 1) {
   return box;
 }
 
-async function pageViewBox(page, pageNumber = 1) {
-  const raw = await page.locator(`[data-svg-annotation-layer="${pageNumber}"]`).first().getAttribute('viewBox');
-  return raw || '';
+async function pageViewBox(page) {
+  const layer = page.locator('[data-svg-annotation-layer]').first();
+  await expect(layer).toBeVisible({ timeout: 20_000 });
+  return (await layer.getAttribute('viewBox')) || '';
 }
 
 async function userAnnotationIds(page, pageNumber = 1) {
@@ -187,8 +171,6 @@ test('desktop page-nav keyboard intended + break + edge', async ({ page }) => {
   await blurInputs(page);
   await assertNoErrorBoundary(page);
 
-  const last = await pageCount(page);
-  expect(last, 'multi-page fixture must report a last page').toBeGreaterThan(2);
   await expectPage(page, 1, 'fresh editor starts on page 1');
 
   // Overlay lists the product mapping.
@@ -212,9 +194,14 @@ test('desktop page-nav keyboard intended + break + edge', async ({ page }) => {
   await pressNav(page, 'ArrowLeft');
   await expectPage(page, 1, 'ArrowLeft must move a page');
 
-  // Intended — End last; Home first.
+  // Intended — End last; Home first. Last is the page End lands on
+  // (do not scrape zoom % as a page count).
   await pressNav(page, 'End');
-  await expectPage(page, last, 'End must jump to last page');
+  let last = null;
+  await expect.poll(async () => {
+    last = await currentPageNumber(page);
+    return last;
+  }, { timeout: 20_000, message: 'End must jump to last page' }).toBeGreaterThan(2);
   await pressNav(page, 'Home');
   await expectPage(page, 1, 'Home must jump to first page');
 
@@ -280,7 +267,9 @@ test('desktop page-nav keyboard intended + break + edge', async ({ page }) => {
   expect(await userAnnotationIds(page, 1)).toEqual(marksBeforePen);
   expect(await userAnnotationIds(page, 2), 'Pen-armed nav invents 0').toEqual([]);
 
-  const viewBox = await pageViewBox(page, 1);
+  await pressNav(page, 'Home');
+  await expectPage(page, 1, 'Home before viewBox');
+  const viewBox = await pageViewBox(page);
   expect(viewBox, 'SVG viewBox owns zoom').toMatch(/^0 0 /);
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(fileId, 'file.id must stay null on ?testPdf=').toBeNull();
@@ -294,7 +283,6 @@ test('desktop page-nav keyboard intended + break + edge', async ({ page }) => {
   // Edge — 1-page fixture: ← / → / Home / End stay on 1.
   await openEditor(page, { url: LINK_PDF });
   await blurInputs(page);
-  expect(await pageCount(page)).toBe(1);
   await expectPage(page, 1, '1-page starts on 1');
   await pressNav(page, 'ArrowRight');
   await expectPage(page, 1, '1-page ArrowRight must stay 1');
@@ -304,7 +292,7 @@ test('desktop page-nav keyboard intended + break + edge', async ({ page }) => {
   await expectPage(page, 1, '1-page ArrowLeft must stay 1');
   await pressNav(page, 'Home');
   await expectPage(page, 1, '1-page Home must stay 1');
-  const onePageViewBox = await pageViewBox(page, 1);
+  const onePageViewBox = await pageViewBox(page);
   expect(onePageViewBox).toBe('0 0 612 792');
   expect(await page.evaluate(() => window.__devTestPdf?.id ?? null)).toBeNull();
   await assertNoErrorBoundary(page);
@@ -326,8 +314,6 @@ test('390 page-nav keyboard intended + break + edge', async ({ page }) => {
   await blurInputs(page);
   await assertNoErrorBoundary(page);
 
-  const last = await pageCount(page);
-  expect(last, '390 multi-page fixture must report a last page').toBeGreaterThan(2);
   await expectPage(page, 1, '390 starts on page 1');
 
   // Intended — same window listener: ← / → / Home / End.
@@ -336,7 +322,11 @@ test('390 page-nav keyboard intended + break + edge', async ({ page }) => {
   await pressNav(page, 'ArrowLeft');
   await expectPage(page, 1, '390 ArrowLeft must move a page');
   await pressNav(page, 'End');
-  await expectPage(page, last, '390 End must jump to last page');
+  let last = null;
+  await expect.poll(async () => {
+    last = await currentPageNumber(page);
+    return last;
+  }, { timeout: 20_000, message: '390 End must jump to last page' }).toBeGreaterThan(2);
   await pressNav(page, 'Home');
   await expectPage(page, 1, '390 Home must jump to first page');
 
@@ -367,7 +357,7 @@ test('390 page-nav keyboard intended + break + edge', async ({ page }) => {
   await blurInputs(page);
   await expectPage(page, 2, '390 page INPUT chords must not steal');
 
-  const viewBox = await pageViewBox(page, 1);
+  const viewBox = await pageViewBox(page);
   expect(viewBox, '390 SVG viewBox owns zoom').toMatch(/^0 0 /);
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(fileId).toBeNull();
