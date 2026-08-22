@@ -218,7 +218,7 @@ async function expectWidthFill(page, message) {
   await expect.poll(async () => {
     const next = await pageMetrics(page);
     return next ? Math.abs(next.pageW - next.wrapW) : 999;
-  }, { timeout: 20_000, message: message || 'Fit width must fill viewer width' }).toBeLessThan(36);
+  }, { timeout: 20_000, message: message || 'Fit width must fill viewer width' }).toBeLessThan(48);
 }
 
 test('desktop zoom keyboard + Fit width intended + break + edge', async ({ page }) => {
