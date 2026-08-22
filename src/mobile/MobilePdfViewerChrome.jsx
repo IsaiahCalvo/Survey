@@ -333,7 +333,7 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
 
-const RailButton = ({ active = false, disabled = false, icon, label, onClick, children }) => (
+const RailButton = ({ active = false, disabled = false, icon, label, onClick, children, ...buttonProps }) => (
   <button
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
@@ -341,6 +341,7 @@ const RailButton = ({ active = false, disabled = false, icon, label, onClick, ch
     title={label}
     disabled={disabled}
     onClick={onClick}
+    {...buttonProps}
   >
     {children || <Icon name={icon} size={19} color="currentColor" />}
   </button>
@@ -1355,7 +1356,13 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const selectModeMenuRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
+  const selectHoldTimerRef = useRef(null);
+  const suppressSelectClickRef = useRef(false);
+  const lastSelectModeRef = useRef('select');
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
+  useEffect(() => () => {
+    if (selectHoldTimerRef.current) window.clearTimeout(selectHoldTimerRef.current);
+  }, []);
   const presenceUsers = useMemo(() => normalizeMobilePresence({
     presence: leftRailApi?.presence,
     currentUserId: leftRailApi?.currentUserId,
@@ -1408,6 +1415,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const presenceCount = Math.max(presenceUsers.length, 1);
 
   useEffect(() => {
+    if (activeTool === 'select' || activeTool === 'text-select') {
+      lastSelectModeRef.current = activeTool;
+    }
+  }, [activeTool]);
+
+  useEffect(() => {
     onAuxPanelStateChange?.(presenceOpen ? 'users' : null);
     return () => onAuxPanelStateChange?.(null);
   }, [onAuxPanelStateChange, presenceOpen]);
@@ -1421,6 +1434,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   }, [activeGroup, activeTool]);
 
   const selectTool = (toolId) => {
+    if (toolId === 'select' || toolId === 'text-select') lastSelectModeRef.current = toolId;
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
   };

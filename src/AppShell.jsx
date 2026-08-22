@@ -2483,7 +2483,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {bottomToolbarApi.contextTool === 'text-markup' && bottomToolbarApi.setTextMarkupOverlapMode && (
                   <select
                     aria-label="Highlight overlap mode"
-                    title="Layered makes overlaps darker. Uniform keeps each saved range at one visual strength. PDF viewers may blend separate native highlight records."
+                    title="Layered keeps editable native PDF highlights. Uniform keeps one visual strength and exports as a flat mask so other PDF viewers match Survey."
                     value={bottomToolbarApi.textMarkupOverlapMode || 'layered'}
                     onChange={(event) => bottomToolbarApi.setTextMarkupOverlapMode(event.target.value)}
                     style={{ height: 28, border: '1px solid #3a4252', borderRadius: 4, background: '#181b20', color: '#e8e2d4', fontSize: 11 }}

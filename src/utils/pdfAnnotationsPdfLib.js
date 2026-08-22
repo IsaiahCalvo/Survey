@@ -3723,6 +3723,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     }));
     const successfulEditedNativeRemovalRequests = [];
     const pendingAnnotationRefs = [];
+    const uniformHighlightExportGroups = new Map();
     const editedCompositeExpectedItemCounts = new Map();
     const successfulEditedCompositeItemCounts = new Map();
     const editedCompositeRemovalRequests = new Map();
@@ -3745,6 +3746,20 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       const pageNumber = Number.parseInt(pageNumStr, 10) - 1; // Convert to 0-indexed
       const pageSize = pageSizes[pageNumStr] || pageSizes[item.pageNumber];
       const obj = item.object;
+
+      const isUniformHighlight = obj?.data?.type === 'text-markup'
+        && obj?.data?.markupType === 'highlight'
+        && obj?.data?.overlapMode === 'uniform';
+      if (isUniformHighlight) {
+        const key = [
+          item.pageNumber,
+          String(obj.fill || obj.stroke || '#f4d35e').toLowerCase(),
+          Number(obj.opacity ?? 1),
+        ].join(':');
+        if (!uniformHighlightExportGroups.has(key)) uniformHighlightExportGroups.set(key, []);
+        uniformHighlightExportGroups.get(key).push(item);
+        return;
+      }
 
       if (!pageSize) {
         recordSkip(exportDiagnostics, item, 'missing-page-size-at-write');
@@ -3896,6 +3911,25 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         exportDiagnostics.pdfAnnotationsAdded += refsToPush.length;
       } else {
         recordSkip(exportDiagnostics, item, 'pdf-annotation-create-failed');
+      }
+    });
+
+    uniformHighlightExportGroups.forEach((items) => {
+      const pageNumber = Number(items[0]?.pageNumber);
+      const pageIndex = pageNumber - 1;
+      const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber];
+      if (!pageSize || pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
+      const drawnCount = drawUniformHighlightMask(
+        pdfDoc.getPage(pageIndex),
+        items.map((item) => item.object),
+        pageSize.height,
+      );
+      if (drawnCount > 0) {
+        exportDiagnostics.uniformHighlightMasksFlattened = (
+          exportDiagnostics.uniformHighlightMasksFlattened || 0
+        ) + drawnCount;
+      } else {
+        items.forEach((item) => recordSkip(exportDiagnostics, item, 'uniform-highlight-flatten-failed'));
       }
     });
 

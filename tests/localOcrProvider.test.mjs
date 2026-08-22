@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildOcrCacheKey,
+  createTesseractOcrProvider,
+  extractTesseractWords,
   hasUsableEmbeddedText,
   loadCachedOcrResult,
   normalizeOcrResult,
@@ -24,7 +26,7 @@ test('OCR page cache survives reload and rejects stale engine data', () => {
     getItem: (key) => values.get(key) || null,
     setItem: (key, value) => values.set(key, value),
   };
-  const result = { words: [{ text: 'Local' }], engineVersion: 'survey-local-ocr-v1' };
+  const result = { words: [{ text: 'Local' }], engineVersion: 'tesseract-js-7-eng-v1' };
   assert.equal(saveCachedOcrResult('doc:1:eng:v1', result, storage), true);
   assert.deepEqual(loadCachedOcrResult('doc:1:eng:v1', storage), result);
   values.set('survey:ocr:stale', JSON.stringify({ words: [], engineVersion: 'old' }));
@@ -58,4 +60,35 @@ test('provider boundary reports progress, supports cancellation, and never uploa
 
 test('missing engine has a stable provider state', async () => {
   await assert.rejects(() => recognizePageLocally({ provider: null }), { code: 'OCR_ENGINE_UNAVAILABLE' });
+});
+
+test('Tesseract blocks become words with boxes and confidence', () => {
+  assert.deepEqual(extractTesseractWords({ blocks: [{ paragraphs: [{ lines: [{ words: [{
+    text: 'Scan', confidence: 96, bbox: { x0: 4, y0: 6, x1: 24, y1: 18 },
+  }] }] }] }] }), [{
+    text: 'Scan', confidence: 96, box: { x: 4, y: 6, width: 20, height: 12 },
+  }]);
+});
+
+test('built-in Tesseract provider lazy loads, reports progress, and terminates', async () => {
+  const events = [];
+  let terminated = 0;
+  const provider = createTesseractOcrProvider(async () => ({
+    OEM: { LSTM_ONLY: 1 },
+    createWorker: async (_language, _oem, options) => ({
+      recognize: async () => {
+        options.logger({ status: 'recognizing text', progress: 0.6 });
+        return { data: { text: 'Local', blocks: [] } };
+      },
+      terminate: async () => { terminated += 1; },
+    }),
+  }));
+  const result = await provider.recognize({
+    image: { pixels: true },
+    language: 'eng',
+    onProgress: (event) => events.push(event),
+  });
+  assert.equal(result.text, 'Local');
+  assert.deepEqual(events, [{ phase: 'recognizing text', progress: 0.6 }]);
+  assert.equal(terminated, 1);
 });

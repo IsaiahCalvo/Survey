@@ -1,0 +1,106 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  applyAnnotationHistoryAction,
+  invertAnnotationHistoryAction,
+} from '../src/utils/annotationLocalHistory.js';
+import {
+  buildAtomicTextMarkupPageMutation,
+  buildTextMarkupGroupCreateTransaction,
+  expandTextMarkupEraseIntent,
+} from '../src/utils/textMarkupGroupTransactions.js';
+
+const mark = (id, pageNumber, group = 'range-1') => ({
+  type: 'group',
+  data: {
+    id,
+    type: 'text-markup',
+    pageNumber,
+    selectionGroupId: group,
+    markupType: 'highlight',
+  },
+  meta: { authorId: 'user-1' },
+});
+
+test('cross-page text markup creation is one document history action', () => {
+  const tx = buildTextMarkupGroupCreateTransaction({}, [mark('a', 1), mark('b', 2)]);
+  assert.equal(tx.action.type, 'fabric:document-batch');
+  assert.equal(tx.action.actions.length, 2);
+  assert.deepEqual(tx.created.map((entry) => entry.pageNumber), [1, 2]);
+
+  const undone = applyAnnotationHistoryAction(tx.nextByPage, invertAnnotationHistoryAction(tx.action));
+  assert.equal(undone['1'].objects.length, 0);
+  assert.equal(undone['2'].objects.length, 0);
+  const redone = applyAnnotationHistoryAction(undone, tx.action);
+  assert.equal(redone['1'].objects[0].data.id, 'a');
+  assert.equal(redone['2'].objects[0].data.id, 'b');
+});
+
+test('deleting one page member deletes the full selection group as one action', () => {
+  const keep = { type: 'rect', data: { id: 'keep' }, meta: { authorId: 'user-1' } };
+  const before = {
+    1: { objects: [keep, mark('a', 1)] },
+    2: { objects: [mark('b', 2)] },
+    3: { objects: [mark('other', 3, 'range-2')] },
+  };
+  const tx = buildAtomicTextMarkupPageMutation({
+    annotationsByPage: before,
+    pageNumber: 1,
+    nextPage: { objects: [keep] },
+  });
+  assert.equal(tx.action.type, 'fabric:document-batch');
+  assert.deepEqual(tx.selectionGroupIds, ['range-1']);
+  assert.deepEqual(tx.nextByPage['1'].objects.map((item) => item.data.id), ['keep']);
+  assert.equal(tx.nextByPage['2'].objects.length, 0);
+  assert.equal(tx.nextByPage['3'].objects[0].data.id, 'other');
+
+  const restored = applyAnnotationHistoryAction(tx.nextByPage, invertAnnotationHistoryAction(tx.action));
+  assert.deepEqual(restored['1'].objects.map((item) => item.data.id), ['keep', 'a']);
+  assert.equal(restored['2'].objects[0].data.id, 'b');
+  const deletedAgain = applyAnnotationHistoryAction(restored, tx.action);
+  assert.equal(deletedAgain['1'].objects.some((item) => item.data.selectionGroupId === 'range-1'), false);
+  assert.equal(deletedAgain['2'].objects.some((item) => item.data.selectionGroupId === 'range-1'), false);
+});
+
+test('an eraser page mutation keeps unrelated page edits in the same atomic action', () => {
+  const before = {
+    1: { objects: [mark('a', 1), { type: 'path', data: { id: 'ink' }, left: 1, meta: { authorId: 'user-1' } }] },
+    2: { objects: [mark('b', 2)] },
+  };
+  const tx = buildAtomicTextMarkupPageMutation({
+    annotationsByPage: before,
+    pageNumber: 1,
+    nextPage: { objects: [{ type: 'path', data: { id: 'ink' }, left: 4, meta: { authorId: 'user-1' } }] },
+  });
+  assert.equal(tx.action.type, 'fabric:document-batch');
+  assert.equal(tx.nextByPage['1'].objects[0].left, 4);
+  assert.equal(tx.nextByPage['2'].objects.length, 0);
+  const restored = applyAnnotationHistoryAction(tx.nextByPage, invertAnnotationHistoryAction(tx.action));
+  assert.equal(restored['1'].objects.find((item) => item.data.id === 'ink').left, 1);
+  assert.equal(restored['2'].objects[0].data.id, 'b');
+});
+
+test('registered-document erase intent adds every cross-page group member', () => {
+  const before = {
+    1: { objects: [mark('a', 1)] },
+    2: { objects: [mark('b', 2), mark('other', 2, 'range-2')] },
+  };
+  const expanded = expandTextMarkupEraseIntent({
+    mutationId: 'erase-1',
+    pageNumber: 1,
+    targets: [{
+      domain: 'page-object',
+      kind: 'text-markup',
+      operation: 'delete',
+      pageNumber: 1,
+      index: 0,
+      storageKey: 'a',
+      before: mark('a', 1),
+    }],
+    sideEffects: [{ type: 'annotation-delete-history' }, { type: 'keep-me' }],
+  }, before);
+  assert.deepEqual(expanded.targets.map((target) => target.storageKey), ['a', 'b']);
+  assert.deepEqual(expanded.targets.map((target) => target.pageNumber), [1, 2]);
+  assert.deepEqual(expanded.sideEffects, [{ type: 'keep-me' }]);
+  assert.deepEqual(expanded.diagnostics.textMarkupSelectionGroupIds, ['range-1']);
+});

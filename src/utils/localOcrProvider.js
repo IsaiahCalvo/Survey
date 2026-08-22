@@ -1,6 +1,8 @@
 import { mapOcrBoxToPage } from './pdfTextMarkup.js';
 
-export const OCR_ENGINE_VERSION = 'survey-local-ocr-v1';
+export const OCR_ENGINE_VERSION = 'tesseract-js-7-eng-v1';
+export const OCR_ENGINE_NAME = 'Tesseract.js 7';
+export const OCR_ENGINE_LICENSE = 'Apache-2.0';
 
 export function hasUsableEmbeddedText(textContent, minimumCharacters = 2) {
   const text = (textContent?.items || []).map((item) => String(item?.str || '')).join('').replace(/\s/g, '');
@@ -49,8 +51,81 @@ export function normalizeOcrResult(result, { sourceSize, pageSize, rotation = 0 
 
 export function resolveLocalOcrProvider(globalObject = globalThis) {
   const provider = globalObject?.surveyElectron?.ocr || globalObject?.__surveyOcrProvider;
-  if (!provider || typeof provider.recognize !== 'function') return null;
-  return provider;
+  if (provider && typeof provider.recognize === 'function') return provider;
+  return createTesseractOcrProvider();
+}
+
+export function extractTesseractWords(data) {
+  const words = [];
+  for (const block of data?.blocks || []) {
+    for (const paragraph of block?.paragraphs || []) {
+      for (const line of paragraph?.lines || []) {
+        for (const word of line?.words || []) {
+          const bbox = word?.bbox;
+          if (!word?.text?.trim() || !bbox) continue;
+          words.push({
+            text: word.text,
+            confidence: word.confidence,
+            box: {
+              x: Number(bbox.x0),
+              y: Number(bbox.y0),
+              width: Number(bbox.x1) - Number(bbox.x0),
+              height: Number(bbox.y1) - Number(bbox.y0),
+            },
+          });
+        }
+      }
+    }
+  }
+  return words;
+}
+
+export function createTesseractOcrProvider(loadModule = () => import('tesseract.js')) {
+  return {
+    id: OCR_ENGINE_VERSION,
+    name: OCR_ENGINE_NAME,
+    license: OCR_ENGINE_LICENSE,
+    async recognize({ image, language = 'eng', signal, onProgress }) {
+      let worker = null;
+      let terminateRequested = false;
+      let terminatePromise = null;
+      const terminate = () => {
+        terminateRequested = true;
+        if (worker && !terminatePromise) terminatePromise = worker.terminate();
+      };
+      signal?.addEventListener?.('abort', terminate, { once: true });
+      try {
+        if (signal?.aborted) throw new DOMException('OCR cancelled', 'AbortError');
+        const module = await loadModule();
+        const api = module?.createWorker ? module : module?.default;
+        if (!api?.createWorker) throw new Error('Tesseract.js failed to load.');
+        worker = await api.createWorker(language, api.OEM?.LSTM_ONLY ?? 1, {
+          logger: (message) => onProgress?.({
+            phase: message?.status || 'recognizing',
+            progress: Number.isFinite(Number(message?.progress)) ? Number(message.progress) : 0,
+          }),
+        });
+        if (terminateRequested || signal?.aborted) {
+          if (!terminatePromise) terminatePromise = worker.terminate();
+          await terminatePromise;
+          throw new DOMException('OCR cancelled', 'AbortError');
+        }
+        const result = await worker.recognize(image, {}, { text: true, blocks: true });
+        if (signal?.aborted) throw new DOMException('OCR cancelled', 'AbortError');
+        return {
+          words: extractTesseractWords(result?.data),
+          text: String(result?.data?.text || ''),
+          engineVersion: OCR_ENGINE_VERSION,
+        };
+      } finally {
+        signal?.removeEventListener?.('abort', terminate);
+        if (worker) {
+          if (!terminatePromise) terminatePromise = worker.terminate();
+          await terminatePromise;
+        }
+      }
+    },
+  };
 }
 
 export async function recognizePageLocally({ provider, image, language = 'eng', signal, onProgress, mapping }) {

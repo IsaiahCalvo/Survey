@@ -93,6 +93,11 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import {
+  buildAtomicTextMarkupPageMutation,
+  buildTextMarkupGroupCreateTransaction,
+  expandTextMarkupEraseIntent,
+} from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
@@ -373,7 +378,16 @@ import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } 
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { createTextMarkupAnnotation, getSelectionPageRanges } from './utils/pdfTextMarkup.js';
-import { buildOcrCacheKey, hasUsableEmbeddedText, loadCachedOcrResult, recognizePageLocally, resolveLocalOcrProvider, saveCachedOcrResult } from './utils/localOcrProvider.js';
+import {
+  buildOcrCacheKey,
+  hasUsableEmbeddedText,
+  loadCachedOcrResult,
+  OCR_ENGINE_LICENSE,
+  OCR_ENGINE_NAME,
+  recognizePageLocally,
+  resolveLocalOcrProvider,
+  saveCachedOcrResult,
+} from './utils/localOcrProvider.js';
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -3163,6 +3177,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
   const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
   const [liveTextSelection, setLiveTextSelection] = useState(null);
+  const liveTextSelectionRef = useRef(null);
   const [textMarkupOverlapMode, setTextMarkupOverlapMode] = useState(() => {
     try { return localStorage.getItem('survey:text-markup-overlap-mode') === 'uniform' ? 'uniform' : 'layered'; }
     catch { return 'layered'; }
@@ -24319,6 +24334,59 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pasteAnnotationAtRef.
   handleSaveAnnotationsRef.current = handleSaveAnnotations;
 
+  const commitTextMarkupDocumentTransaction = useCallback((transaction, saveContext = null) => {
+    if (!transaction?.action || !transaction?.nextByPage) return false;
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const scopedAction = filterAnnotationHistoryActionByOwner(
+      transaction.action,
+      viewerId,
+      documentOwnerId,
+    );
+    if (!scopedAction) return false;
+    pushLocalAnnotationHistoryAction(scopedAction);
+    annotationsByPageRef.current = transaction.nextByPage;
+    try {
+      flushSync(() => setAnnotationsByPage(transaction.nextByPage));
+    } catch (_error) {
+      setAnnotationsByPage(transaction.nextByPage);
+    }
+    pushHistoryDebugEvent('text_markup_document_transaction_applied', {
+      source: saveContext?.source || 'text-markup:document-transaction',
+      action: saveContext?.action || scopedAction.type,
+      selectionGroupIds: transaction.selectionGroupIds || [],
+      pageNumbers: scopedAction.type === 'fabric:document-batch'
+        ? scopedAction.actions.map((action) => action.pageNumber)
+        : [scopedAction.pageNumber],
+    });
+    return true;
+  }, [
+    documentOwnerId,
+    pushHistoryDebugEvent,
+    pushLocalAnnotationHistoryAction,
+    user?.id,
+    yjsUndoCtx?.userId,
+  ]);
+
+  const handleSaveAnnotationsWithTextMarkupAtomicity = useCallback((pageNumber, json, saveContext = null) => {
+    const transaction = buildAtomicTextMarkupPageMutation({
+      annotationsByPage: annotationsByPageRef.current || {},
+      pageNumber,
+      nextPage: json,
+    });
+    if (transaction && commitTextMarkupDocumentTransaction(transaction, saveContext)) {
+      setSelectedToolbarAnnotation(null);
+      setPendingSvgSelection({
+        pageNumber: null,
+        annotationIndex: null,
+        clearAll: true,
+        reason: 'text-markup-selection-group-delete',
+        tick: Date.now(),
+      });
+      return { atomicTextMarkupGroup: true };
+    }
+    return handleSaveAnnotations(pageNumber, json, saveContext);
+  }, [commitTextMarkupDocumentTransaction, handleSaveAnnotations]);
+
   // KAL-313: Space restore — re-inserts a deleted space into live spaces state
   // exactly as captured at delete time (full object incl. assignedPages).
   // Called by handleRestoreHistoryActivity (standalone space_deleted entry) and
@@ -27128,11 +27196,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         mutationId: intent?.mutationId || null,
       };
     }
-    const preparedIntent = prepareEraseIntentForCommit({
+    const groupExpandedIntent = expandTextMarkupEraseIntent(
       intent,
+      annotationsByPageRef.current || {},
+    );
+    const preparedIntent = prepareEraseIntentForCommit({
+      intent: groupExpandedIntent,
       annotationsByPage: buildEraseHistoryBeforeSnapshot({
         annotationsByPage: annotationsByPageRef.current || {},
-      }, intent).annotationsByPage,
+      }, groupExpandedIntent).annotationsByPage,
       userId: user?.id || null,
       includeDeleteHistory: Boolean(pdfFile?.id),
     });
@@ -27793,6 +27865,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const clearLiveTextSelection = useCallback(() => {
     try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+    liveTextSelectionRef.current = null;
     setLiveTextSelection(null);
   }, []);
 
@@ -27859,7 +27932,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const selection = window.getSelection?.();
     const pages = getSelectionPageRanges(selection, pageSizesRef.current || {});
     if (pages.length === 0) {
-      setLiveTextSelection(null);
+      // The color picker lives in a portal. Browser selection can collapse
+      // when its controls receive focus, but the user still needs the saved
+      // range to apply the chosen pre-creation color and opacity.
+      if (!showAnnotationColorPicker) {
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+      }
       return null;
     }
     const rangeRect = selection.getRangeAt(0).getBoundingClientRect();
@@ -27873,9 +27952,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         height: rangeRect.height,
       },
     };
+    liveTextSelectionRef.current = payload;
     setLiveTextSelection(payload);
     return payload;
-  }, []);
+  }, [showAnnotationColorPicker]);
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
@@ -27883,7 +27963,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return undefined;
     }
     let timer = 0;
-    const captureSoon = () => {
+    const captureSoon = (event) => {
+      const target = event?.target instanceof Element ? event.target : null;
+      if (target?.closest?.('[data-text-selection-action-bar], [data-annotation-color-picker]')) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(capturePdfjsTextSelection, 0);
     };
@@ -27913,12 +27995,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [capturePdfjsTextSelection]);
 
   const handleTextSelectionAction = useCallback(async (action) => {
-    const selection = liveTextSelection || capturePdfjsTextSelection();
+    const selection = liveTextSelection || liveTextSelectionRef.current || capturePdfjsTextSelection();
     if (!selection) return;
     if (action === 'copy') {
       try {
         await navigator.clipboard.writeText(selection.text);
-        showToast('Text copied.', 'success');
+        let readBack = null;
+        try {
+          readBack = await Promise.race([
+            navigator.clipboard.readText(),
+            new Promise((resolve) => setTimeout(() => resolve(null), 750)),
+          ]);
+        } catch { /* write access can exist without read access */ }
+        const verified = readBack === selection.text;
+        if (typeof window !== 'undefined') {
+          window.__surveyLastCopyProof = {
+            expected: selection.text,
+            actual: readBack,
+            verified,
+          };
+        }
+        showToast(verified ? 'Text copied and checked.' : 'Text copied.', 'success');
       } catch {
         try { document.execCommand('copy'); } catch { /* browser copy remains available */ }
       }
@@ -27927,10 +28024,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout'].includes(markupType)) return;
     const selectionGroupId = generateUUID();
-    const created = [];
-    selection.pages.forEach(({ pageNumber, quads, selectedText }) => {
+    const annotations = selection.pages.map(({ pageNumber, quads, selectedText }) => {
       const id = generateUUID();
-      const annotation = createTextMarkupAnnotation({
+      return createTextMarkupAnnotation({
         id,
         pageNumber,
         selectionGroupId,
@@ -27944,16 +28040,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         overlapMode: textMarkupOverlapMode,
         authorId: user?.id || null,
       });
-      if (!annotation) return;
-      const current = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
-      const nextPage = { ...current, objects: [...(current.objects || []), annotation] };
-      handleSaveAnnotations(pageNumber, nextPage, {
+    }).filter(Boolean);
+    const transaction = buildTextMarkupGroupCreateTransaction(
+      annotationsByPageRef.current || {},
+      annotations,
+    );
+    const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
         source: 'text-markup:create',
         action: 'text-markup-create',
         selectionGroupId,
       });
-      created.push({ pageNumber, annotation, annotationIndex: (current.objects || []).length });
-    });
+    const created = committed ? transaction.created : [];
     clearLiveTextSelection();
     if (created.length > 0) {
       setActiveTool('select');
@@ -27968,7 +28065,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         selectCreatedMark();
       }
     }
-  }, [capturePdfjsTextSelection, clearLiveTextSelection, handleSaveAnnotations, liveTextSelection, textMarkupOverlapMode, user?.id]);
+  }, [capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelection, textMarkupOverlapMode, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -30960,12 +31057,15 @@ ${pageBlocks}
                                 <button
                                   type="button"
                                   onClick={() => recognizeTextOnPage(pageNumber)}
-                                  title="Runs on this device. The PDF is not uploaded."
+                                  title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. First use downloads the OCR engine and language data.`}
                                   style={{ padding: '7px 10px', border: '1px solid #3a4252', borderRadius: 5, background: '#181b20', color: '#e8e2d4', cursor: 'pointer' }}
                                 >
                                   Recognize text on this page
                                 </button>
                               )}
+                              <span style={{ color: '#9ca3af', fontSize: 10 }}>
+                                Local {OCR_ENGINE_NAME} - {OCR_ENGINE_LICENSE}. First use downloads engine files.
+                              </span>
                               {ocrStateByPage[pageNumber]?.status === 'error' && (
                                 <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: '#181b20', color: '#fca5a5', fontSize: 11 }}>
                                   {ocrStateByPage[pageNumber].message}
@@ -31056,7 +31156,7 @@ ${pageBlocks}
                                 strokeWidth={Number(strokeWidth) || 3}
                                 arrowheadStyle={arrowheadStyle}
                                 annotations={pageAnnotations}
-                                onSaveAnnotations={handleSaveAnnotations}
+                                onSaveAnnotations={handleSaveAnnotationsWithTextMarkupAtomicity}
                                 onToolChange={setActiveTool}
                                 highlightColor="rgba(255, 193, 7, 0.3)"
                                 newSurveyMarkers={newSurveyMarkersByPage[pageNumber]}
@@ -31118,7 +31218,7 @@ ${pageBlocks}
                                 surveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                 onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
                                 onEraseCommit={!pdfFile?.id
-                                  ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(
+                                  ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotationsWithTextMarkupAtomicity(
                                     pageNumber,
                                     updatedJSON,
                                     {
@@ -31481,7 +31581,7 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
-                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
+                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)}
                                   onRequestEditMode={(annotationIndex, annotationType) => {
                                     // UX: Phase 14 CALL-10 — callout double-click routes
                                     // through the adapter-backed edit path. useSVGInteraction
@@ -31665,7 +31765,7 @@ ${pageBlocks}
                                   surveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                   onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
                                   onEraseCommit={!pdfFile?.id
-                                    ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(
+                                    ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotationsWithTextMarkupAtomicity(
                                       pageNumber,
                                       updatedJSON,
                                       {
@@ -36751,6 +36851,7 @@ ${pageBlocks}
         color={strokeColor}
         opacity={Math.max(0.05, Math.min(1, (Number(strokeOpacity) || 38) / 100))}
         overlapMode={textMarkupOverlapMode}
+        colorPickerOpen={showAnnotationColorPicker}
         onAction={handleTextSelectionAction}
         onColorClick={() => setShowAnnotationColorPicker(true)}
         onOverlapModeChange={setTextMarkupOverlapMode}

@@ -143,6 +143,43 @@ test('print helper flattens saved text markup into visible page content', async 
   assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
 });
 
+test('Uniform highlight export flattens one visual mask while Layered stays native', async () => {
+  const makeMarks = (overlapMode) => [0, 1].map((index) => createTextMarkupAnnotation({
+    id: `${overlapMode}-${index}`,
+    pageNumber: 1,
+    selectionGroupId: `${overlapMode}-group-${index}`,
+    markupType: 'highlight',
+    selectedText: 'overlap',
+    color: '#ffd400',
+    opacity: 0.4,
+    overlapMode,
+    quads: [{
+      x1: 20 + index * 20, y1: 30,
+      x2: 100 + index * 20, y2: 30,
+      x3: 20 + index * 20, y3: 50,
+      x4: 100 + index * 20, y4: 50,
+    }],
+  }));
+  const uniformBytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects: makeMarks('uniform') } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'uniform-export' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(uniformBytes), []);
+  assert.equal(await pageHasContentStream(uniformBytes), true);
+
+  const layeredBytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects: makeMarks('layered') } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'layered-export' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(layeredBytes), ['Highlight', 'Highlight']);
+});
+
 test('PDF save helper refuses original-path overwrite unless explicitly allowed', async () => {
   const originalWindow = globalThis.window;
   let writeCalled = false;

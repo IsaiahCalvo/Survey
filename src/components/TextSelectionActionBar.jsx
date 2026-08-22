@@ -1,4 +1,5 @@
 import Icon from '../Icons';
+import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';
 
 const ACTIONS = [
   { id: 'copy', label: 'Copy', icon: 'copy' },
@@ -8,10 +9,19 @@ const ACTIONS = [
   { id: 'strikeout', label: 'Strikeout', icon: 'strikeout' },
 ];
 
-export default function TextSelectionActionBar({ selection, color, opacity, overlapMode, onAction, onColorClick, onOverlapModeChange }) {
+export default function TextSelectionActionBar({ selection, color, opacity, overlapMode, colorPickerOpen = false, onAction, onColorClick, onOverlapModeChange }) {
   if (!selection?.pages?.length || !selection?.anchor) return null;
-  const left = Math.max(12, Math.min(window.innerWidth - 220, selection.anchor.left + selection.anchor.width / 2));
-  const top = Math.max(12, selection.anchor.top - 48);
+  const chromeBottom = Math.max(
+    document.getElementById('chrome-top-host')?.getBoundingClientRect?.().bottom || 0,
+    colorPickerOpen
+      ? document.querySelector('[data-annotation-color-picker]')?.getBoundingClientRect?.().bottom || 0
+      : 0,
+  );
+  const { left, top } = computeTextSelectionActionBarPosition(selection.anchor, {
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    chromeBottom,
+  });
   return (
     <div
       data-text-selection-action-bar="true"
@@ -42,7 +52,7 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
       ))}
       <select
         aria-label="Highlight overlap mode"
-        title="Layered makes overlaps darker. Uniform keeps the same visual strength within each saved range."
+        title="Layered keeps editable native PDF highlights. Uniform exports as one flat visual mask so overlaps stay even in other viewers."
         value={overlapMode}
         onChange={(event) => onOverlapModeChange(event.target.value)}
         style={{ height: 28, maxWidth: 82, border: '1px solid #3a4252', borderRadius: 4, background: '#22262d', color: '#e8e2d4', fontSize: 11 }}

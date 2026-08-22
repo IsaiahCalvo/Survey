@@ -181,4 +181,25 @@ export function getSelectionPageRanges(selection, pageSizes) {
   return pages.sort((a, b) => a.pageNumber - b.pageNumber);
 }
 
+export function computeTextSelectionActionBarPosition(anchor, {
+  viewportWidth,
+  viewportHeight,
+  chromeBottom = 0,
+  barWidth = 260,
+  barHeight = 40,
+  margin = 8,
+} = {}) {
+  const width = Math.max(1, Number(viewportWidth) || 1);
+  const height = Math.max(1, Number(viewportHeight) || 1);
+  const halfBar = Math.min(barWidth, width - margin * 2) / 2;
+  const center = Number(anchor?.left || 0) + Number(anchor?.width || 0) / 2;
+  const left = Math.max(margin + halfBar, Math.min(width - margin - halfBar, center));
+  const above = Number(anchor?.top || 0) - barHeight - margin;
+  const below = Number(anchor?.top || 0) + Number(anchor?.height || 0) + margin;
+  const minimumTop = Math.max(margin, Number(chromeBottom) + margin);
+  const preferredTop = above >= minimumTop ? above : below;
+  const top = Math.max(minimumTop, Math.min(height - barHeight - margin, preferredTop));
+  return { left, top };
+}
+
 export const TEXT_MARKUP_TYPES = Object.freeze(Array.from(MARKUP_TYPES));

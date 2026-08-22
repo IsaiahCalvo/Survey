@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clientRectToPageQuad,
+  computeTextSelectionActionBarPosition,
   createTextMarkupAnnotation,
   mapOcrBoxToPage,
   mergeLineQuads,
@@ -16,6 +17,23 @@ test('selection client geometry maps through mixed page sizes', () => {
   assert.deepEqual(clientRectToPageQuad(rect, pageRect, { width: 600, height: 800 }), {
     x1: 40, y1: 80, x2: 240, y2: 80, x3: 40, y3: 120, x4: 240, y4: 120,
   });
+});
+
+test('range action bar clears app chrome and stays inside a phone viewport', () => {
+  assert.deepEqual(
+    computeTextSelectionActionBarPosition(
+      { left: 8, top: 82, width: 30, height: 18 },
+      { viewportWidth: 390, viewportHeight: 844, chromeBottom: 77 },
+    ),
+    { left: 138, top: 108 },
+  );
+  assert.deepEqual(
+    computeTextSelectionActionBarPosition(
+      { left: 350, top: 820, width: 20, height: 14 },
+      { viewportWidth: 390, viewportHeight: 844, chromeBottom: 77 },
+    ),
+    { left: 252, top: 772 },
+  );
 });
 
 test('quad mapping supports 0, 90, 180, and 270 degree page rotations', () => {
