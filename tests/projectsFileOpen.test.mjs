@@ -37,7 +37,7 @@ test('SurveyHub + HubPreview Open from Projects assigns fixture + returnTab=proj
   assert.match(preview, /testPdf: workflowE2E \? 'clickable-link-test\.pdf' : 'Package 2 - Rev 4 -- IC\.pdf'/);
   assert.match(preview, /previewName: document\?\.name \|\| 'Document\.pdf'/);
   assert.match(preview, /returnTab,/);
-  assert.match(preview, /window\.location\.assign\(`\/\$\{viewerParams\.toString\(\)\}`\)/);
+  assert.match(preview, /window\.location\.assign\(`\/\?\$\{viewerParams\.toString\(\)\}`\)/);
   assert.match(preview, /onOpenDocument=\{handleOpenDocument\}/);
   assert.match(preview, /\{ id: 'd1', name: 'SE-011 Security Shop Drawings\.pdf'/);
   assert.match(preview, /\{ id: 'd3', name: 'RFI-014 Lobby Camera Coverage\.pdf'/);
@@ -65,6 +65,6 @@ test('file-row Open is not Documents Preview/Open and not leftover-18 Upload', (
   assert.doesNotMatch(deleteSpec, /previewName/);
 
   const preview = read('src/home/HubPreview.jsx');
-  assert.match(preview, /const handleUpload = \(files, meta\) => \{/);
+  assert.match(preview, /const handleUpload = \(projectId = null\) => \{/);
   assert.match(preview, /onUpload=\{handleUpload\}/);
 });
