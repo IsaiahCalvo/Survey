@@ -395,8 +395,7 @@ test('Templates More menu overflow (template-row + entity)', async ({ page }) =>
   }).toBe('Security Walk-Through');
   const mobileTplRenameFocus = true;
   await page.keyboard.press('Escape');
-
-  await page.locator('.templates-mobile-row').filter({ hasText: 'Security Walk-Through' }).first().click();
+  // More → Rename opens the 390 detail so the title can take focus.
   await expect(page.locator('.templates-mobile-detail')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Entities', exact: true }).click();
   const entitiesDialog = page.getByRole('dialog', { name: 'Entities' });
