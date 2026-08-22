@@ -616,6 +616,11 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
   }
   expect(dashProof.map((row) => row.style)).toEqual(DASH_STYLES.map((row) => row.value));
 
+  await openEditor(page, { width: 390, height: 844 });
+  await assertNoErrorBoundary(page);
+  await dismissChrome(page);
+  await ensurePageDrawTarget(page);
+
   const headProof = [];
   for (let i = 0; i < ARROWHEAD_STYLES.length; i += 1) {
     const style = ARROWHEAD_STYLES[i];
@@ -626,9 +631,9 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
     await ensurePageDrawTarget(page);
     const created = await createCallout(page, `mh${i}`, {
       x0: 0.22,
-      y0: 0.30 + (i % 3) * 0.14,
+      y0: 0.26 + i * 0.09,
       x1: 0.70,
-      y1: 0.42 + (i % 3) * 0.14,
+      y1: 0.36 + i * 0.09,
     });
     await expect.poll(async () => String((await annotationById(page, created.id))?.arrowheadStyle || ''))
       .toBe(style.value);
