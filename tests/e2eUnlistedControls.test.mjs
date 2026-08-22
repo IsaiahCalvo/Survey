@@ -356,8 +356,10 @@ test('U-02: Create space is local when there is no document id', () => {
   }), false);
   const spacesSrc = read('src/sidebar/SpacesPanel.jsx');
   assert.match(spacesSrc, /aria-label=\{canManageSpaces \? 'Create space' : 'Upgrade to Pro to create spaces'\}/);
-  assert.match(spacesSrc, /const name = `Space \$\{spaces\.length \+ 1\}`/);
+  assert.match(spacesSrc, /onSpaceCreate\(\{\s*assignedPages: \[\]\s*\}\)/s);
+  assert.doesNotMatch(spacesSrc, /const name = `Space \$\{spaces\.length \+ 1\}`/);
   const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /let generatedName = `Space \$\{counter\}`/);
   assert.match(viewer, /documentId: pdfFile\?\.id \|\| null/);
   assert.doesNotMatch(viewer, /file\.id\s*=/);
 });

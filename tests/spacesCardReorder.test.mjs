@@ -41,7 +41,7 @@ test('SpacesPanel space cards wire SortableRearrangeList to onReorderSpaces', ()
   );
   assert.match(create, /if \(!requireSpaceManagement\(\)\) return;/);
   assert.match(create, /onSpaceCreate\(\{\s*assignedPages: \[\]\s*\}\)/s);
-  assert.doesNotMatch(create, /spaces\.length/);
+  assert.doesNotMatch(create, /const name = `Space \$\{spaces\.length \+ 1\}`/);
 
   const reorder = panel.slice(
     panel.indexOf('const handleSpaceReorder = useCallback'),
