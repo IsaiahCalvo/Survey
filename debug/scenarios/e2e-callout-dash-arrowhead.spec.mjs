@@ -283,6 +283,15 @@ async function annotationById(page, id) {
   return (await calloutSnapshot(page)).find((row) => row.id === id) || null;
 }
 
+async function settleCallout(page, id) {
+  let row = null;
+  await expect.poll(async () => {
+    row = await annotationById(page, id);
+    return row?.lineStyle || row?.arrowheadStyle || row?.visualDash || row?.visualPolygon || row?.visualCircle || row?.visualPolyline || row?.visualTick || null;
+  }, { message: `callout ${id} stored style` }).toBeTruthy();
+  return row;
+}
+
 async function createCallout(page, text, coords) {
   const before = new Set((await calloutSnapshot(page)).map((row) => row.id));
   await blurInputs(page);
@@ -425,17 +434,11 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
       x1: 0.30,
       y1: 0.24 + i * 0.14,
     });
-    console.log('CALLOUT_DASH_NEXT_DRAW', JSON.stringify({
-      wanted: style.value,
-      stored: storedLineStyle(row),
-      visual: dashKey(row.visualDash),
-      box: dashKey(row.visualBoxDash),
-      rawLineStyle: row.lineStyle,
-      head: row.arrowheadStyle,
-      id: row.id,
-    }));
-    expectDash(row, style, `Callout next-draw ${style.label}`);
-    expectArrowhead(row, ARROWHEAD_STYLES[1], `Callout ${style.label} default head`);
+    await expect.poll(async () => storedLineStyle(await annotationById(page, row.id)))
+      .toBe(style.value);
+    const settled = await annotationById(page, row.id);
+    expectDash(settled, style, `Callout next-draw ${style.label}`);
+    expectArrowhead(settled, ARROWHEAD_STYLES[1], `Callout ${style.label} default head`);
     dashProof.push({ style: style.value, id: row.id });
   }
   expect(dashProof.map((row) => row.style)).toEqual(DASH_STYLES.map((row) => row.value));
@@ -447,12 +450,15 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
     await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Solid');
     await pickDesktopOption(page, desktopArrowheadTrigger(page), 'Arrowhead', style.label);
     await expect(desktopArrowheadTrigger(page)).toContainText(style.label);
-    const row = await createCallout(page, `h${i}`, {
+    const created = await createCallout(page, `h${i}`, {
       x0: 0.52,
       y0: 0.14 + i * 0.10,
       x1: 0.74,
       y1: 0.22 + i * 0.10,
     });
+    await expect.poll(async () => String((await annotationById(page, created.id))?.arrowheadStyle || ''))
+      .toBe(style.value);
+    const row = await annotationById(page, created.id);
     expectArrowhead(row, style, `Callout next-draw ${style.label}`);
     expectDash(row, DASH_STYLES[0], `Callout ${style.label} leader stays Solid`);
     headProof.push({ style: style.value, id: row.id });
@@ -602,12 +608,15 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
     await armCallout(page);
     await pickMobileOption(page, 'Border style', style.label);
     await pickMobileOption(page, 'Arrowhead style', 'Solid Triangle');
-    const row = await createCallout(page, `m${i}`, {
+    const created = await createCallout(page, `m${i}`, {
       x0: 0.16,
       y0: 0.16 + i * 0.12,
       x1: 0.62,
       y1: 0.24 + i * 0.12,
     });
+    await expect.poll(async () => storedLineStyle(await annotationById(page, created.id)))
+      .toBe(style.value);
+    const row = await annotationById(page, created.id);
     expectDash(row, style, `390 Callout ${style.label}`);
     dashProof.push({ style: style.value, id: row.id });
   }
@@ -619,12 +628,15 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
     await armCallout(page);
     await pickMobileOption(page, 'Border style', 'Solid');
     await pickMobileOption(page, 'Arrowhead style', style.mobileLabel);
-    const row = await createCallout(page, `mh${i}`, {
+    const created = await createCallout(page, `mh${i}`, {
       x0: 0.18,
       y0: 0.52 + (i % 3) * 0.10,
       x1: 0.58,
       y1: 0.60 + (i % 3) * 0.10,
     });
+    await expect.poll(async () => String((await annotationById(page, created.id))?.arrowheadStyle || ''))
+      .toBe(style.value);
+    const row = await annotationById(page, created.id);
     expectArrowhead(row, style, `390 Callout ${style.mobileLabel}`);
     headProof.push({ style: style.value, id: row.id });
   }

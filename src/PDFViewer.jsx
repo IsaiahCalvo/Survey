@@ -20350,7 +20350,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       for (const pageNum of Object.keys(annotationsByPage || {})) {
         const objs = annotationsByPage[pageNum]?.objects || [];
         for (const obj of objs) {
-          if (obj?.id === id) {
+          if (obj?.id === id || obj?.data?.id === id || obj?.data?.legacyCallout?.id === id) {
             const pageFromKey = Number(pageNum);
             if (obj.pageNumber == null && obj.data?.pageNumber == null && pageFromKey > 0) {
               return { ...obj, pageNumber: pageFromKey };
