@@ -440,6 +440,7 @@ test('390 Select text ⇧V intended + break + edge', async ({ page }) => {
     glyph: mobileGlyph.text.slice(0, 24),
     method: mobileGlyph.method,
     hit: mobileGlyph.hit,
+    selectStart: mobileGlyph.selectStart,
     viewBox: '0 0 612 792',
     fileId: null,
   }));
