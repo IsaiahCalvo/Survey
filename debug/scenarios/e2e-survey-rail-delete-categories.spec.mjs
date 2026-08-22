@@ -268,7 +268,10 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
   }).toBe(false);
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toHaveCount(0);
   await goToOtherModule(page);
-  expect((await markerIds(page)).includes(markerDoors), 'Doors stays after Pen-armed category-delete').toBe(true);
+  await expect.poll(async () => (await markerIds(page)).includes(markerDoors), {
+    timeout: 8_000,
+    message: 'Doors stays after Pen-armed category-delete',
+  }).toBe(true);
   await goToExistingModule(page);
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await markerIds(page)).includes(markerWalls)).toBe(true);
