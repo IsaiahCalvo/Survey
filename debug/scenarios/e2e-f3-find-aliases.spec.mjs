@@ -205,7 +205,7 @@ test('F3 / Ctrl+G find aliases: intended + break + edge', async ({ page }) => {
   expect(typed).toBe('hello-alias');
   const afterTypeIndex = await readIndex(page);
   hunts.push({
-    hunt: 'break — F3 while typing in a text annotation does not insert F3',
+    hunt: 'break — F3 while typing in a text annotation leaves hello-alias',
     pass: true,
     typed,
     beforeTypeIndex,

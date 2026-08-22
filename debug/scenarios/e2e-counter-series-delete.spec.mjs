@@ -21,43 +21,53 @@ async function pageBox(page, pageNumber = 1) {
   return box;
 }
 
-async function counterSnapshot(page, pageNumber = 1) {
+async function userAnnotationSnapshot(page, pageNumber = 1) {
   return page.evaluate((pageNum) => {
+    const annoIds = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
+      .map((group) => group.getAttribute('data-anno-id'))
+      .filter(Boolean);
     const overlayIds = [...document.querySelectorAll(`[data-counter-overlay="${pageNum}"] [data-anno-id]`)]
       .map((group) => group.getAttribute('data-anno-id'))
       .filter(Boolean);
-    const layerIds = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
-      .map((group) => group.getAttribute('data-anno-id'))
-      .filter(Boolean);
-    const ids = [...new Set([...overlayIds, ...layerIds])];
+    const ids = [...new Set([...annoIds, ...overlayIds])];
     return ids.map((id) => {
       const object = window.__phase35GetAnnotationById?.(id) || {};
       const data = object.data || {};
       const host = document.querySelector(`[data-counter-overlay="${pageNum}"] [data-anno-id="${id}"]`)
         || document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-anno-id="${id}"]`);
       const label = host?.querySelector('text')?.textContent?.trim() || '';
-      const type = String(object.type || data.type || '').toLowerCase();
-      const tool = String(data.tool || data.type || object.tool || '').toLowerCase();
-      const isCounter = tool === 'counter'
-        || type.includes('counter')
-        || type === 'circle'
-        || overlayIds.includes(id);
-      if (!isCounter) return null;
       return {
         id,
+        type: String(object.type || data.type || (overlayIds.includes(id) ? 'counter' : '')).toLowerCase(),
+        tool: String(data.tool || data.type || object.tool || (overlayIds.includes(id) ? 'counter' : '')).toLowerCase(),
+        imported: object.isPdfImported === true,
         displayNumber: Number(data.displayNumber ?? label),
         seriesId: data.seriesId || null,
         seriesStart: data.seriesStart ?? null,
         createdAt: data.createdAt ?? null,
         label,
       };
-    }).filter(Boolean).sort((a, b) => {
+    }).filter((row) => row.imported !== true && !/^\d+R$/i.test(String(row.id || '')));
+  }, pageNumber);
+}
+
+function isCounterRow(row) {
+  return row.tool === 'counter'
+    || row.type.includes('counter')
+    || row.type === 'circle'
+    || row.type === 'group'
+    || !row.type;
+}
+
+async function counterSnapshot(page) {
+  return (await userAnnotationSnapshot(page))
+    .filter(isCounterRow)
+    .sort((a, b) => {
       const at = a.createdAt || 0;
       const bt = b.createdAt || 0;
       if (at !== bt) return at - bt;
       return (a.displayNumber || 0) - (b.displayNumber || 0);
     });
-  }, pageNumber);
 }
 
 async function waitForPinCount(page, count) {
@@ -69,36 +79,55 @@ async function waitForPinCount(page, count) {
   return rows;
 }
 
-async function activateCounter(page) {
-  await page.keyboard.press('c');
-  const overlay = page.locator('[data-counter-overlay="1"]');
-  if (!(await overlay.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
-    const counter = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Counter', exact: true });
-    await expect(counter).toBeVisible({ timeout: 8_000 });
-    await counter.click();
+async function activateTool(page, categoryName, toolName) {
+  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
+  if (await sub.count()) {
+    if (!(String(await sub.first().getAttribute('class') || '').includes('btn-active'))) {
+      await sub.first().click();
+    }
+    return;
   }
-  await expect(overlay).toBeVisible({ timeout: 8_000 });
+  await page.getByRole('button', { name: categoryName, exact: true }).click();
+  const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
+  const target = (await again.count()) ? again.first() : page.getByRole('button', { name: toolName, exact: true }).first();
+  if (!(String(await target.getAttribute('class') || '').includes('btn-active'))) {
+    await target.click();
+  }
 }
 
-async function dropPin(page, x0, y0) {
-  const before = new Set((await counterSnapshot(page)).map((row) => row.id));
-  await activateCounter(page);
-  const overlay = page.locator('[data-counter-overlay="1"]');
-  await expect(overlay).toBeVisible();
-  const box = await overlay.boundingBox();
-  expect(box, 'counter overlay geometry').toBeTruthy();
+async function dragOnPage(page, {
+  pageNumber = 1,
+  x0 = 0.55,
+  y0 = 0.40,
+  x1 = 0.58,
+  y1 = 0.43,
+} = {}) {
+  const box = await pageBox(page, pageNumber);
   const start = { x: box.x + box.width * x0, y: box.y + box.height * y0 };
+  const end = { x: box.x + box.width * x1, y: box.y + box.height * y1 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(start.x + box.width * 0.02, start.y + box.height * 0.02, { steps: 4 });
+  await page.mouse.move(end.x, end.y, { steps: 4 });
   await page.mouse.up();
+}
+
+async function activateCounter(page) {
+  await activateTool(page, 'Shapes', 'Counter');
+  await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible({ timeout: 8_000 });
+}
+
+async function dropPin(page, coords) {
+  const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
+  await activateTool(page, 'Shapes', 'Counter');
+  const overlay = page.locator('[data-counter-overlay="1"]');
+  await expect(overlay).toBeVisible({ timeout: 8_000 });
+  await dragOnPage(page, coords);
   let created = null;
   await expect.poll(async () => {
-    const rows = await counterSnapshot(page);
-    created = rows.find((row) => !before.has(row.id)) || null;
+    const rows = await userAnnotationSnapshot(page);
+    created = rows.find((row) => !before.has(row.id) && isCounterRow(row)) || null;
     return created;
-  }, { message: `expected a new counter pin at ${x0},${y0}` }).not.toBeNull();
+  }, { message: `expected a new counter pin at ${JSON.stringify(coords)}` }).not.toBeNull();
   return created;
 }
 
@@ -137,9 +166,9 @@ test('counter-series Delete execute: keyboard pin + series menu', async ({ page 
   const hunts = [];
   await openEditor(page);
 
-  const pin1 = await dropPin(page, 0.30, 0.55);
-  const pin2 = await dropPin(page, 0.45, 0.55);
-  const pin3 = await dropPin(page, 0.60, 0.55);
+  const pin1 = await dropPin(page, { x0: 0.55, y0: 0.40, x1: 0.58, y1: 0.43 });
+  const pin2 = await dropPin(page, { x0: 0.62, y0: 0.28, x1: 0.65, y1: 0.31 });
+  const pin3 = await dropPin(page, { x0: 0.70, y0: 0.50, x1: 0.73, y1: 0.53 });
   const series = await waitForPinCount(page, 3);
   expect(new Set(series.map((row) => row.seriesId)).size, 'one series').toBe(1);
   expect(numbers(series)).toEqual([1, 2, 3]);
