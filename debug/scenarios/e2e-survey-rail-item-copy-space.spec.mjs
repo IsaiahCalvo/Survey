@@ -222,19 +222,20 @@ test('survey-rail item Copy → space selection intended + break + edge', async 
   }, { message: 'expected dest copy of copy-a' }).not.toBeNull();
   expect(destCopy.categoryId, 'dest Walls category').toBe(DEST_WALLS);
   expect((await markersInModule(page, SOURCE_MODULE)).map((row) => row.id), 'source stays').toEqual([markerA]);
-  expect((await markerIds(page)).includes(markerA), 'source overlay stays').toBe(true);
+  expect((await markerIds(page)).includes(destCopy.id), 'dest overlay shows the copy').toBe(true);
+  expect((await markerIds(page)).includes(markerA), 'source overlay hidden after dest switch').toBe(false);
 
-  // Edge: undo drops the dest copy; source stays.
+  // Edge: undo drops the dest copy; source stays in the source module.
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('Control+z');
   await expect.poll(async () => ({
     dest: (await markersInModule(page, DEST_MODULE)).length,
     source: (await markersInModule(page, SOURCE_MODULE)).map((row) => row.id),
-    overlayA: (await markerIds(page)).includes(markerA),
+    overlayDest: (await markerIds(page)).includes(destCopy.id),
   }), { message: 'undo drops dest copy and keeps source' }).toEqual({
     dest: 0,
     source: [markerA],
-    overlayA: true,
+    overlayDest: false,
   });
 
   // Break: Pen-armed still copies via the rail.
