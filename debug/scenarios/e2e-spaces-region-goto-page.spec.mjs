@@ -62,11 +62,6 @@ function goToPageBtn(page, n) {
   return page.getByRole('button', { name: `Go to page ${n}`, exact: true });
 }
 
-function pageThumbs(page) {
-  // Pages panel stays mounted (display:none). Count is not a visibility signal.
-  return page.locator('#chrome-left-host .page-thumbnail[data-page-number], #chrome-left-host [data-page-thumb]');
-}
-
 async function currentPageNumber(page) {
   const fromWindow = await page.evaluate(() => Number(window.__currentPageNumber) || 0);
   if (fromWindow > 0) return fromWindow;
