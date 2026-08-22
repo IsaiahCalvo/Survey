@@ -376,7 +376,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   expect(viewBox.startsWith('0 0 '), 'viewBox owns scale').toBe(true);
   await selectUntilNubbin(page, pinA.id);
   const preZoom = await counterGeom(page, pinA.id);
-  await dragNubbin(page, 48, -36);
+  await dragNubbin(page, 88, -64);
   let afterZoom = null;
   await expect.poll(async () => {
     afterZoom = await counterGeom(page, pinA.id);
@@ -427,7 +427,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
     emptyNoop: angleDelta(preEmpty.svgAngle, afterEmpty.svgAngle) < 1,
     shiftClickNoop: angleDelta(preShiftClick.svgAngle, afterShiftClick.svgAngle) < 1,
     penNoop: angleDelta(prePen.svgAngle, afterPen.svgAngle) < 1,
-    undoRestored: angleDelta(preUndo.svgAngle, afterUndo.svgAngle) < 2,
+    undoRestored: angleDelta(preNub.svgAngle, afterUndo.svgAngle) < 2,
     secondDidNotMoveFirst: angleDelta(firstFrozen.svgAngle, firstAfterB.svgAngle) < 1,
     viewBox,
     zoomThenNubbin: angleDelta(preZoom.svgAngle, afterZoom.svgAngle),
