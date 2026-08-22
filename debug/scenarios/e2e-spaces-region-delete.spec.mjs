@@ -84,6 +84,10 @@ function regionRowByLabel(page, label) {
   return page.locator('.space-region-row').filter({ hasText: label });
 }
 
+function regionDeleteConfirms(dialogs) {
+  return (dialogs || []).filter((entry) => /Delete this space/i.test(entry?.message || ''));
+}
+
 async function openSpaces(page) {
   const tab = spacesTab(page);
   await expect(tab).toBeVisible({ timeout: 15_000 });
@@ -143,7 +147,14 @@ async function armPen(page) {
 test('U-02 region-row Delete removes the page from the space', async ({ page }) => {
   const dialogs = [];
   page.on('dialog', async (dialog) => {
-    dialogs.push(dialog.message());
+    const message = dialog.message();
+    dialogs.push({ type: dialog.type(), message });
+    // Unsaved-document beforeunload must be accepted or the next fixture
+    // goto is aborted. Region-row Delete itself has no confirm.
+    if (dialog.type() === 'beforeunload' || /unsaved|leave/i.test(message)) {
+      await dialog.accept();
+      return;
+    }
     await dialog.dismiss();
   });
 
@@ -170,7 +181,7 @@ test('U-02 region-row Delete removes the page from the space', async ({ page }) 
   // Break: region-row Delete has no confirm (space-card Delete does).
   // Immediate click removes the page row; dismissing a stray dialog would keep it.
   await regionDeleteButtons(page).first().click();
-  expect(dialogs, 'region-row Delete does not open window.confirm').toEqual([]);
+  expect(regionDeleteConfirms(dialogs), 'region-row Delete does not open window.confirm').toEqual([]);
   await expect(regionRows(page)).toHaveCount(0, { timeout: 8_000 });
   await expect(page.locator('[data-space-sortable-row-id]')).toHaveCount(1);
   expect(await overlayRoot(page).count()).toBe(0);
@@ -191,7 +202,7 @@ test('U-02 region-row Delete removes the page from the space', async ({ page }) 
   await expect(overlayRoot(page)).toBeVisible({ timeout: 8_000 });
   await expect(regionDeleteButtons(page).first()).toBeVisible();
   await regionDeleteButtons(page).first().click();
-  expect(dialogs, 'drawn-region Delete still has no confirm').toEqual([]);
+  expect(regionDeleteConfirms(dialogs), 'drawn-region Delete still has no confirm').toEqual([]);
   await expect(regionRows(page)).toHaveCount(0, { timeout: 8_000 });
   await expect(overlayRoot(page)).toHaveCount(0, { timeout: 8_000 });
   await expect(page.locator('[data-space-sortable-row-id]')).toHaveCount(1);
@@ -237,7 +248,7 @@ test('U-02 region-row Delete removes the page from the space', async ({ page }) 
   await dragAndConfirmRegion(page);
   await expect(overlayRoot(page, 1)).toBeVisible({ timeout: 8_000 });
   await regionRowByLabel(page, 'Region 1').locator('.region-delete-button').click();
-  expect(dialogs, 'two-region Delete has no confirm').toEqual([]);
+  expect(regionDeleteConfirms(dialogs), 'two-region Delete has no confirm').toEqual([]);
   await expect(regionRowByLabel(page, 'Region 1')).toHaveCount(0, { timeout: 8_000 });
   await expect(regionRowByLabel(page, 'Region 2')).toBeVisible();
   await expect(regionRows(page)).toHaveCount(1);
@@ -294,7 +305,7 @@ test('U-02 region-row Delete removes the page from the space', async ({ page }) 
     persist,
     noSpacesZero: true,
     noRegionZero: true,
-    noConfirm: dialogs.length === 0,
+    noConfirm: regionDeleteConfirms(dialogs).length === 0,
     dialogs,
     lastRegionDeleted: true,
     undoRestored: true,
