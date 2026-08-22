@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Templates entity color):** U-03 leftover (not a new UL row). Live desktop + 390 `aria-label="Edit color"` / `setEntityColor` / CompactColorPicker. Distinct from viewer every-swatch, leftover-18 Space CSV / PDF Pages, and from Spaces space-card Delete. Product: dirty-bar Cancel/Save passthrough. Receipt `fix-logs/templates-entity-color-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Templates Add module / module Duplicate / Add checklist item):** U-03 leftover (not a new UL row). Live desktop + 390 `addModule` / `duplicateModules` / `addItem`. Duplicate leftover is **module**, not template-list. Distinct from entity color, leftover-18 Space CSV / PDF Pages, and from U-03 create/rename/delete. No product bug. Receipt `fix-logs/templates-module-dup-checklist-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Templates entity color):** U-03 leftover (not a new UL row). Live desktop + 390 `aria-label="Edit color"` / `setEntityColor` / CompactColorPicker. Distinct from viewer every-swatch, leftover-18 Space CSV / PDF Pages, and from Spaces space-card Delete. Product: dirty-bar Cancel/Save passthrough. Receipt `fix-logs/templates-entity-color-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Spaces space-card Delete):** U-02 leftover (not a new UL row). Live desktop + 390 `space-card-delete-button` + confirm / `handleDelete` / `onSpaceDelete`. Cluster / Edit-region last-space delete was contrast only. Distinct from region-row Delete, leftover-18 Space CSV / PDF Pages, and from Create space. Receipt `fix-logs/spaces-card-delete-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
