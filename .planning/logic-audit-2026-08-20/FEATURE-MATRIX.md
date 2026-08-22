@@ -24,7 +24,7 @@ Exact discrete catalogs used by the UI:
 | V-08 | Viewer | Search text | Find in PDF | No hits; wrap; special chars |
 | V-09 | Viewer | Keyboard shortcuts overlay | `?` lists tools | Escape; focus trap |
 | D-01 | Draw | Pen / ink | Freehand stroke | Zoom mid-stroke; 1-dot tap |
-| D-02 | Draw | Highlighter | Translucent stroke | Opacity 0; print exclusion vs markup |
+| D-02 | Draw | Highlighter | Translucent stroke. **Every swatch** live `e2e-highlighter-colors.spec.mjs` (390 9-chip stroke sheet + desktop CompactColorPicker 16) | Opacity 0; print exclusion vs markup |
 | D-03 | Draw | Eraser (object) | Delete hit annotations | Policy: ink-only vs all; preview |
 | D-04 | Draw | Eraser (ink) | Partial path erase | Race; empty path |
 | D-05 | Draw | Stroke width | Presets + numeric | Min/max; eraser size vs stroke |
