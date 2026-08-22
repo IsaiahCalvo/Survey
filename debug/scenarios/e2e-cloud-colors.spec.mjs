@@ -201,43 +201,40 @@ async function dismissChrome(page) {
   }
 }
 
-async function selectMode(page) {
-  await page.keyboard.press('Escape');
-  const selectBtn = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
-  if (await selectBtn.isVisible().catch(() => false)) {
-    await selectBtn.click();
-  } else {
-    await page.keyboard.press('v');
-  }
-  const menu = page.locator('[data-select-mode-menu="true"]');
-  if (await menu.count()) {
-    await page.keyboard.press('Escape');
-  }
-}
-
 async function selectCloud(page, id) {
   // Color only patches a selected cloud when activeTool === 'select'.
-  // Armed Rectangle Color is next-draw preference only.
-  await selectMode(page);
-  const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
-  await expect(target).toBeVisible();
-  const box = await target.boundingBox();
+  // Do not Escape first: create leaves the new cloud selected; Escape drops it
+  // and the default fillOpacity-0 cloud path is stroke-only to hit.
+  await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) await page.keyboard.press('Escape');
+
+  const handles = page.locator('[data-resize-handle], [data-rotation-handle="mtr"]');
+  if (await handles.count()) {
+    await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+    return;
+  }
+
+  const group = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  await expect(group).toBeVisible({ timeout: 8_000 });
+  const box = await group.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
   const points = [
-    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
     { x: box.x + Math.min(8, Math.max(3, box.width / 2)), y: box.y + Math.max(3, box.height / 2) },
-    { x: box.x + 3, y: box.y + box.height / 2 },
-    { x: box.x + box.width / 2, y: box.y + 3 },
+    { x: box.x + 4, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + 4 },
+    { x: box.x + box.width - 4, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + box.height - 4 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
-    const selected = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
-    if (selected > 0) {
+    if (await handles.count()) {
       await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
       return;
     }
   }
-  await expect(page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').first()).toBeVisible({ timeout: 8_000 });
+  await page.locator(`[data-shape-id="${id}"]`).click({ force: true, position: { x: 3, y: 3 } });
+  await expect(handles.first()).toBeVisible({ timeout: 8_000 });
 }
 
 async function openColorPicker(page) {
@@ -296,6 +293,7 @@ async function createCloud(page, coords = { x0: 0.16, y0: 0.24, x1: 0.40, y1: 0.
   const created = await waitForNewUserAnnotation(page, before, isCloudRow);
   expect(created.shapeKind).toBe('cloud-rect');
   expect(Number.isFinite(created.cloudIntensity)).toBeTruthy();
+  await page.keyboard.press('v');
   return created;
 }
 
