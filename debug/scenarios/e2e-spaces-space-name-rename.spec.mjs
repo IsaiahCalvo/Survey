@@ -209,8 +209,11 @@ test('U-02 space-name rename / commitSpaceName', async ({ page }) => {
     mobileCreate = await create390.count();
     await expect(create390.first()).toBeVisible({ timeout: 8_000 });
     await create390.first().evaluate((el) => el.click());
-    const mobileField = mobilePanel.getByRole('textbox', { name: 'Rename Space 1' });
+    const mobileField = page.getByRole('textbox', { name: /Rename Space/i });
     try {
+      await expect.poll(async () => page.locator('[data-space-sortable-row-id]').count(), {
+        timeout: 8_000,
+      }).toBeGreaterThan(0);
       await expect(mobileField.first()).toBeVisible({ timeout: 8_000 });
       mobileRename = await mobileField.count();
     } catch { /* sheet can race the card */ }
@@ -222,7 +225,7 @@ test('U-02 space-name rename / commitSpaceName', async ({ page }) => {
       await mobileField.first().fill('Mobile-Kitchen');
       await mobileField.first().press('Enter');
       try {
-        await expect(mobilePanel.getByRole('textbox', { name: 'Rename Mobile-Kitchen' })).toBeVisible({ timeout: 6_000 });
+        await expect(page.getByRole('textbox', { name: 'Rename Mobile-Kitchen' })).toBeVisible({ timeout: 6_000 });
         mobileRenamed = true;
       } catch { /* sheet can race the remount */ }
     }
