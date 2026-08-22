@@ -437,7 +437,9 @@ const PDFSidebar = React.forwardRef(({
               return (
                 <button
                   key={tab.id}
+                  type="button"
                   className={mobileMode ? `mobile-pdf-hub-tab${isActive ? ' is-active' : ''}` : undefined}
+                  aria-label={tab.label}
                   {...tip(tab.label, 'below')}
                   onClick={() => {
                     if (tab.id === '__savelog') {

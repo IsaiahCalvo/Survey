@@ -36,6 +36,10 @@ test('mobile Bookmarks chrome is up/down buttons, not a 768 tablet shell', () =>
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(mobile, /hubLabels = \{ pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' \}/);
+
+  const sidebar = read('src/PDFSidebar.jsx');
+  assert.match(sidebar, /aria-label=\{tab\.label\}/);
+  assert.match(sidebar, /label: 'Bookmarks'/);
 });
 
 test('swapBookmarkSiblingOrder intended / break / edge', () => {

@@ -20,9 +20,11 @@ async function openMobileEditor(page, fixture) {
 
 async function openMobileBookmarks(page) {
   await page.getByRole('button', { name: 'Open pages, search, and bookmarks' }).click();
-  const bookmarksTab = page.getByRole('button', { name: 'Bookmarks', exact: true });
-  await expect(bookmarksTab).toBeVisible({ timeout: 15_000 });
-  await bookmarksTab.click();
+  await expect(page.getByRole('button', { name: 'Close document hub' })).toBeVisible({ timeout: 15_000 });
+  const bookmarksTab = page.locator('.mobile-pdf-hub-tab').filter({ hasText: 'Bookmarks' })
+    .or(page.getByRole('button', { name: 'Bookmarks', exact: true }));
+  await expect(bookmarksTab.first()).toBeVisible({ timeout: 15_000 });
+  await bookmarksTab.first().click();
   await expect(page.getByRole('button', { name: /Add bookmark|Cancel new bookmark/ })).toBeVisible({ timeout: 15_000 });
 }
 
