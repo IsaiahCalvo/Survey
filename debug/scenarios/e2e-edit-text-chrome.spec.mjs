@@ -136,28 +136,34 @@ async function annotationById(page, id) {
   return (await annotationSnapshot(page)).find((row) => row.id === id) || null;
 }
 
-function toolIsArmed(pressed, className) {
-  const cls = String(className || '');
-  return pressed === 'true' || cls.includes('is-active') || cls.includes('btn-active');
-}
-
 async function activateTool(page, categoryName, toolName) {
-  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
-  if (await sub.count()) {
-    const btn = sub.first();
-    if (!toolIsArmed(await btn.getAttribute('aria-pressed'), await btn.getAttribute('class'))) await btn.click();
+  const hostTool = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true }).first();
+  if (!(await hostTool.isVisible().catch(() => false))) {
+    const buttons = page.getByRole('button', { name: categoryName, exact: true });
+    const count = await buttons.count();
+    for (let i = 0; i < count; i += 1) {
+      if (await buttons.nth(i).isVisible().catch(() => false)) {
+        await buttons.nth(i).click();
+        break;
+      }
+    }
+  }
+  if (await hostTool.isVisible().catch(() => false)) {
+    if ((await hostTool.getAttribute('aria-pressed')) !== 'true') await hostTool.click();
     return;
   }
-  const visible = page.getByRole('button', { name: toolName, exact: true });
-  if (await visible.count() && await visible.first().isVisible().catch(() => false)) {
-    const btn = visible.first();
-    if (!toolIsArmed(await btn.getAttribute('aria-pressed'), await btn.getAttribute('class'))) await btn.click();
+  const mobile = page.getByRole('button', { name: toolName, exact: true });
+  const count = await mobile.count();
+  for (let i = 0; i < count; i += 1) {
+    const btn = mobile.nth(i);
+    if (!(await btn.isVisible().catch(() => false))) continue;
+    const pressed = await btn.getAttribute('aria-pressed');
+    const cls = String(await btn.getAttribute('class') || '');
+    if (pressed === 'true' || cls.includes('is-active') || cls.includes('btn-active')) return;
+    await btn.click();
     return;
   }
-  await page.getByRole('button', { name: categoryName, exact: true }).first().click();
-  const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
-  const target = (await again.count()) ? again.first() : page.getByRole('button', { name: toolName, exact: true }).first();
-  if (!toolIsArmed(await target.getAttribute('aria-pressed'), await target.getAttribute('class'))) await target.click();
+  await expect(hostTool, `tool ${toolName} after ${categoryName}`).toBeVisible();
 }
 
 async function selectMode(page) {
