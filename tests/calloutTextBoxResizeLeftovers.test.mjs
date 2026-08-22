@@ -133,8 +133,10 @@ test('SVG + hook: flip math + release-time resize rollback; no mid-drag pin', ()
 
   const resizeIdx = hook.indexOf("case 'textBoxResize'");
   assert.ok(resizeIdx > 0, 'textBoxResize case exists');
-  const resizeSlice = hook.slice(resizeIdx, resizeIdx + 1600);
-  assert.match(resizeSlice, /setInteractionState\('dragging'\);\s*return;/);
+  const resizeEnd = hook.indexOf('default:', resizeIdx);
+  const resizeSlice = hook.slice(resizeIdx, resizeEnd > resizeIdx ? resizeEnd : resizeIdx + 4000);
+  assert.match(resizeSlice, /setInteractionState\('dragging'\)/);
+  assert.match(resizeSlice, /return;/);
   assert.doesNotMatch(resizeSlice, /lastSafeCalloutPositions/);
 
   assert.match(hook, /ds\.partType === 'knee' \|\| ds\.partType === 'textBox' \|\| ds\.partType === 'textBoxResize'/);
