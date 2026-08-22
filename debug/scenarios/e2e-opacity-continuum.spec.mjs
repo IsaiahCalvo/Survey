@@ -198,15 +198,20 @@ async function closePagesOverlay(page) {
   }
 }
 
-async function hideMainEmptyPages(page) {
-  const overlay = page.locator('main').getByText('No documents yet').first();
+async function ensurePageDrawTarget(page) {
+  const pageEl = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
+  await expect(pageEl).toBeVisible();
+  const box = await pageEl.boundingBox();
+  if (!box) return;
+  const covering = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    const text = el?.textContent || '';
+    return /No documents yet|Upload your first PDF/.test(text);
+  }, { x: box.x + box.width * 0.4, y: box.y + box.height * 0.35 });
+  if (!covering) return;
   const toggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i }).first();
-  for (let i = 0; i < 3; i += 1) {
-    if (!(await overlay.isVisible().catch(() => false))) return;
-    if (!(await toggle.isVisible().catch(() => false))) return;
-    await toggle.click();
-    await page.waitForTimeout(250);
-  }
+  if (await toggle.isVisible().catch(() => false)) await toggle.click();
+  await page.waitForTimeout(300);
 }
 
 async function dismissChrome(page) {
@@ -380,9 +385,8 @@ test('desktop fill + stroke opacity continuum intended + break + edge', async ({
   await injectOpacityRaw(page, 'abc');
   await expect.poll(async () => strokeAlphaOf(page, rect.id)).toBeCloseTo(1, 2);
 
-  await page.keyboard.press('Escape');
-  await selectStroke(page, rect.id);
-  await openFillPicker(page);
+  const fillTab = page.locator('[data-annotation-color-picker]').getByRole('button', { name: 'Fill', exact: true });
+  await fillTab.click();
   await setOpacityPercent(page, 55);
   await expect.poll(async () => fillAlphaOf(page, rect.id)).toBeCloseTo(0.55, 2);
   await page.keyboard.press('Escape');
@@ -478,9 +482,10 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
 
   await openEditor(page, { width: 390, height: 844 });
   await assertNoErrorBoundary(page);
-  await hideMainEmptyPages(page);
+  await dismissChrome(page);
+  await ensurePageDrawTarget(page);
 
-  await activateTool(page, 'Shapes', 'Rectangle');
+  const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await clickVisible(page, 'Fill and border colors');
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toBeVisible();
@@ -489,17 +494,15 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await page.locator('button[title="#00FF00"]').first().click();
   await setOpacityPercent(page, 25);
   await expect(opacityField(page)).toHaveValue('25');
+  await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 selected fill 25' })
+    .toBeCloseTo(0.25, 2);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
   const closeFill = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeFill.isVisible().catch(() => false)) await closeFill.click();
-  await hideMainEmptyPages(page);
+  await ensurePageDrawTarget(page);
 
-  const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
-  await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 next-draw fill 25' })
-    .toBeCloseTo(0.25, 2);
-
-  await activateTool(page, 'Shapes', 'Line');
+  const line = await createLine(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.62 });
   const strokeTrigger = page.getByRole('button', { name: 'Stroke color', exact: true }).first();
   await expect(strokeTrigger).toBeVisible({ timeout: 8_000 });
   await strokeTrigger.click();
@@ -510,17 +513,14 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await page.locator('button[title="#0000FF"]').first().click();
   await setOpacityPercent(page, 40);
   await expect(opacityField(page)).toHaveValue('40');
+  await expect.poll(async () => strokeAlphaOf(page, line.id), { message: '390 selected stroke 40' })
+    .toBeCloseTo(0.4, 2);
   await setOpacityPercent(page, 999);
   await expect(opacityField(page)).toHaveValue('100');
-  await setOpacityPercent(page, 40);
+  await expect.poll(async () => strokeAlphaOf(page, line.id)).toBeCloseTo(1, 2);
   await page.keyboard.press('Escape');
   const closeStroke = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeStroke.isVisible().catch(() => false)) await closeStroke.click();
-  await hideMainEmptyPages(page);
-
-  const line = await createLine(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.62 });
-  await expect.poll(async () => strokeAlphaOf(page, line.id), { message: '390 next-draw stroke 40' })
-    .toBeCloseTo(0.4, 2);
   expect(await fillAlphaOf(page, rect.id)).toBeCloseTo(0.25, 2);
 
   const viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
