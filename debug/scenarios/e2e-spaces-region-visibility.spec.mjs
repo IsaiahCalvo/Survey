@@ -111,7 +111,7 @@ async function userIds(page, pageNumber = 1) {
   return page.evaluate((pageNum) => (
     [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
       .map((group) => group.getAttribute('data-anno-id'))
-      .filter(Boolean)
+      .filter((id) => id && !/^\d+R$/i.test(id))
   ), pageNumber);
 }
 
@@ -336,6 +336,7 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   console.log('SPACES_REGION_VISIBILITY_PROOF', JSON.stringify({
     persist,
     canvasScopedHide: true,
+    hiddenKeptInStore: hiddenStore.stored,
     regionScopedStays: Boolean(regionScope.regionId),
     noSpacesZero: true,
     noRegionDisabledThenToggle: true,
