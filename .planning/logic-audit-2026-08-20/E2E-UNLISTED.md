@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Spaces card Turn on/off):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Turn on space"` / `"Turn off space"` / `onToggleSpace` / `handleToggleSpace`. Distinct from Expand/Collapse and leftover-18 Space CSV / PDF Pages. Last-space off/on was Edit-region contrast only. Receipt `fix-logs/spaces-card-turn-on-off-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Spaces Add pages):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Add pages"` / `handleAssignPages` / `handleSpaceAssignPages`. Catalog completeness only clicked page `1` / rejected `99`. Distinct from leftover-18 Space CSV / PDF Pages and from Create / space-name rename / space-card Delete. Receipt `fix-logs/spaces-add-pages-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Spaces card Turn on/off):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Turn on space"` / `"Turn off space"` / `onToggleSpace` / `handleToggleSpace`. Distinct from Expand/Collapse and leftover-18 Space CSV / PDF Pages. Last-space off/on was Edit-region contrast only. Receipt `fix-logs/spaces-card-turn-on-off-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Spaces card Expand/Collapse):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Expand"` / `"Collapse"` / `onToggleExpand`. Distinct from Turn on/off and leftover-18 Space CSV / PDF Pages. Receipt `fix-logs/spaces-card-expand-collapse-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
