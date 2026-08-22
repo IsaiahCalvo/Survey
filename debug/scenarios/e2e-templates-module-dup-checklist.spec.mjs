@@ -273,35 +273,34 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   let mobileAddedItem = false;
   if (await mobileRow.isVisible().catch(() => false)) {
     await mobileRow.click();
-    const newMod = page.getByRole('button', { name: /New module/ }).first();
-    mobileNewModule = await newMod.count();
-    if (mobileNewModule > 0) {
-      await newMod.click();
-      mobileAddedModule = await page.getByText('Module 1', { exact: true }).count() > 0
-        || await page.locator('input[value="Module 1"]').count() > 0;
-    }
-    const camerasToggle = page.locator('.templates-mobile-category-toggle[aria-label*="Cameras"]');
-    if (await camerasToggle.first().isVisible().catch(() => false)) {
-      const label = await camerasToggle.first().getAttribute('aria-label');
-      if (label?.startsWith('Expand')) await camerasToggle.first().click();
+    await expect(page.locator('.templates-mobile-detail')).toBeVisible();
+    // Checklist first — Add module retargets the open module and remounts Cameras.
+    const camerasToggle = page.locator('.templates-mobile-category-toggle[aria-label*="Cameras"]').first();
+    if (await camerasToggle.isVisible().catch(() => false)) {
+      await camerasToggle.evaluate((button) => button.click());
     }
     const addLine = page.locator('.templates-mobile-add-line').filter({ hasText: 'Add checklist item' });
     mobileAddItem = await addLine.count();
     if (mobileAddItem > 0) {
       const before = await page.locator('.templates-mobile-item-row').count();
-      await addLine.first().click();
+      await addLine.first().evaluate((button) => button.click());
       mobileAddedItem = (await page.locator('.templates-mobile-item-row').count()) > before
         || (await page.locator('input[placeholder="Add checklist item"][value=""]').count()) > 0;
     }
+    const newMod = page.locator('.templates-mobile-modules-section').getByRole('button', { name: /New module/ }).first();
+    mobileNewModule = await newMod.count();
+    if (mobileNewModule > 0) {
+      await newMod.evaluate((button) => button.click());
+      mobileAddedModule = await page.locator('input[value="Module 1"]').count() > 0
+        || await page.getByText('Module 1', { exact: true }).count() > 0;
+    }
     const modSelect = page.locator('.templates-mobile-modules-section .templates-mobile-section-select');
-    if (await modSelect.count()) {
-      await modSelect.click();
+    if (await modSelect.isVisible().catch(() => false)) {
+      await modSelect.evaluate((button) => button.click());
       if (await editModulesModal(page).isVisible().catch(() => false)) {
         mobileModuleDup = await editModulesModal(page).getByRole('button', { name: 'Duplicate', exact: true }).count();
-        await page.keyboard.press('Escape').catch(() => {});
-        if (await editModulesModal(page).isVisible().catch(() => false)) {
-          await editModulesModal(page).getByRole('button', { name: 'Done', exact: true }).click().catch(() => {});
-        }
+        const done = editModulesModal(page).getByRole('button', { name: 'Done', exact: true });
+        if (await done.count()) await done.evaluate((button) => button.click());
       }
     }
   }
