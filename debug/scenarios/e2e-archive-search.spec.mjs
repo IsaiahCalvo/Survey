@@ -200,7 +200,7 @@ test('Archive Search / filter / sort intended + break + edge', async ({ page }) 
   await mSearch.fill('SITE');
   await expect.poll(() => mobileIds(page)).toEqual(['ad1']);
   await mSearch.fill('zzzz-no-such-archive');
-  await expect(page.getByText('No archived items match your search.').first()).toBeVisible();
+  await expect(page.getByText('No archived items match your search.').filter({ visible: true })).toBeVisible();
   await mSearch.fill('');
   await expect.poll(() => mobileIds(page)).toEqual(DEFAULT_ORDER);
   await mobileFilterButton(page).click();
