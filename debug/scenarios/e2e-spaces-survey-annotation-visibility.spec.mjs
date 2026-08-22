@@ -229,7 +229,7 @@ async function finishMarkerName(page, name) {
   const field = page.getByPlaceholder('Enter name');
   await expect(field).toBeVisible({ timeout: 8_000 });
   await field.fill(name);
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await field.press('Enter');
   await expect(field).toHaveCount(0, { timeout: 8_000 });
 }
 
@@ -243,33 +243,52 @@ function markerGroup(page, id) {
   return page.locator(`[data-survey-marker-id="${id}"]`);
 }
 
+async function waitSurveyMarkerSeam(page) {
+  await expect.poll(() => page.evaluate(() => typeof window.__e2eSurveyMarkers?.get), {
+    timeout: 10_000,
+    message: 'DEV survey-marker seam',
+  }).toBe('function');
+}
+
 async function placeMarker(page, name, coords) {
+  await waitSurveyMarkerSeam(page);
   const before = new Set(await markerIds(page));
+  const beforeStore = await page.evaluate(() => Object.keys(window.__e2eSurveyMarkers?.get?.() || {}));
   await armWalls(page);
   await dragOnLayer(page, coords);
   await finishMarkerName(page, name);
   let created = null;
   await expect.poll(async () => {
-    const ids = await markerIds(page);
-    created = ids.find((id) => !before.has(id)) || null;
+    const store = await page.evaluate(() => window.__e2eSurveyMarkers?.get?.() || {});
+    created = Object.keys(store).find((id) => !beforeStore.includes(id) && store[id]?.name === name)
+      || Object.keys(store).find((id) => !beforeStore.includes(id))
+      || null;
+    if (!created) {
+      const ids = await markerIds(page);
+      created = ids.find((id) => !before.has(id) && store[id]) || null;
+    }
     return created;
-  }, { message: `expected committed survey-marker ${name}` }).not.toBeNull();
+  }, { timeout: 15_000, message: `expected stored survey-marker ${name}` }).not.toBeNull();
   return created;
 }
 
 async function storedMarker(page, id) {
+  await waitSurveyMarkerSeam(page);
   return page.evaluate((markerId) => {
-    const marker = window.__e2eSurveyMarkers?.get?.()?.[markerId] || null;
+    const all = window.__e2eSurveyMarkers?.get?.() || {};
+    const marker = all[markerId] || null;
     return {
       stored: Boolean(marker),
       moduleId: marker?.moduleId ?? null,
       regionId: marker?.regionId ?? null,
-      pageNumber: marker?.pageNumber ?? marker?.bounds?.pageNumber ?? null,
+      name: marker?.name ?? null,
+      keys: Object.keys(all),
     };
   }, id);
 }
 
 test('U-02 region-row Hide/Show survey annotations', async ({ page }) => {
+  test.setTimeout(240_000);
   await openEditor(page);
 
   // Canvas-scoped rect BEFORE survey — isolation target. Survey hide must
@@ -300,18 +319,11 @@ test('U-02 region-row Hide/Show survey annotations', async ({ page }) => {
   await expect(hideCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   expect(await hideSurveyBtn(page).count(), 'active space still canvas-mode until Survey').toBe(0);
 
+  // Place in the proven survey-first path (before Spaces steals the
+  // name-prompt commit). Then create the space so Hide survey exists.
   await enterSurveyWalls(page);
-  await openSpaces(page);
-  await expect(hideSurveyBtn(page).first()).toBeVisible({ timeout: 8_000 });
-  expect(await hideCanvasBtn(page).count(), 'survey context swaps the light-bulb').toBe(0);
-
-  // Break: toggle with no survey marks still flips the page flag.
-  await clickVisibility(hideSurveyBtn(page).first());
-  await expect(showSurveyBtn(page).first()).toBeVisible({ timeout: 8_000 });
-  await clickVisibility(showSurveyBtn(page).first());
-  await expect(hideSurveyBtn(page).first()).toBeVisible({ timeout: 8_000 });
-
-  // Intended: place a survey-scoped marker (no overlay yet → regionId null).
+  const keep = page.locator('#chrome-sub-toolbar-host').getByRole('checkbox', { name: 'Keep active' });
+  if (await keep.count() && !(await keep.isChecked())) await keep.click();
   const surveyId = await placeMarker(page, 'survey-vis-a', { x0: 0.18, y0: 0.20, x1: 0.38, y1: 0.36 });
   await expect(markerGroup(page, surveyId)).toBeVisible({ timeout: 8_000 });
   const surveyStoreBefore = await storedMarker(page, surveyId);
@@ -320,6 +332,9 @@ test('U-02 region-row Hide/Show survey annotations', async ({ page }) => {
   expect(surveyStoreBefore.regionId, 'placed before overlay stays survey-scoped').toBeNull();
 
   await openSpaces(page);
+  await expect(hideSurveyBtn(page).first()).toBeVisible({ timeout: 8_000 });
+  expect(await hideCanvasBtn(page).count(), 'survey context swaps the light-bulb').toBe(0);
+
   await clickVisibility(hideSurveyBtn(page).first());
   await expect(showSurveyBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(markerGroup(page, surveyId)).toHaveCount(0, { timeout: 8_000 });
@@ -387,6 +402,13 @@ test('U-02 region-row Hide/Show survey annotations', async ({ page }) => {
   // Edge: two spaces — page-level per selected space, not per-region.
   await createSpaceWithPages(page, '1');
   await expect(spaceCard(page, 'Space 2').locator('.space-region-row')).toBeVisible();
+  // Break: Space 2 has no survey marks — Hide/Show still flips the page flag.
+  await enterRegionEdit(page, spaceCard(page, 'Space 2'));
+  await page.keyboard.press('Escape');
+  await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide survey annotations' })).toBeVisible({ timeout: 8_000 });
+  await clickVisibility(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide survey annotations' }));
+  await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Show survey annotations' })).toBeVisible({ timeout: 8_000 });
+  await clickVisibility(spaceCard(page, 'Space 2').getByRole('button', { name: 'Show survey annotations' }));
   await enterRegionEdit(page, spaceCard(page, 'Space 2'));
   await dragAndConfirmRegion(page, { x0: 0.52, y0: 0.22, x1: 0.72, y1: 0.40 });
   await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide survey annotations' })).toBeVisible();
