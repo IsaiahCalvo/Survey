@@ -262,6 +262,7 @@ const BookmarkTreeRow = ({
             onToggle?.(item.id);
           }}
           disabled={!isFolder || !item.children?.length || isClone}
+          aria-label={(isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group'}
           {...tip((isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group', 'below')}
           style={{
             width: 16,

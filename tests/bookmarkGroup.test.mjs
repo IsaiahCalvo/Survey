@@ -21,6 +21,7 @@ test('desktop New bookmark group opens the create modal; empty name / empty list
   assert.match(panel, /Please ensure all new bookmarks have both a name and a valid page number within the PDF page range\./);
   assert.match(panel, /type: 'folder'/);
   assert.match(panel, /aria-label="Add bookmark to group"/);
+  assert.match(panel, /aria-label=\{\(isCollapsed \|\| isVisuallyCollapsed\) \? 'Expand group' : 'Collapse group'\}/);
   assert.match(panel, /handleAddChildBookmark/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
@@ -51,6 +52,7 @@ test('live spec covers create/expand, empty/cancel, existing join, 390 absent, h
   assert.match(spec, /Please enter a name for the bookmark group/);
   assert.match(spec, /Please add at least one bookmark to the group/);
   assert.match(spec, /create must expand so the child is visible/);
+  assert.match(spec, /Collapse group/);
   assert.match(spec, /child bookmark must jump to page 3/);
   assert.match(spec, /Add bookmark to group/);
   assert.match(spec, /390 New bookmark group must be 0/);
