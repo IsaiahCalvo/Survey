@@ -60,8 +60,15 @@ function projectRow(page, name) {
 }
 
 async function openProject(page, name) {
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.mouse.up().catch(() => {});
   await eatDragClick(page);
-  await projectRow(page, name).locator('div[style*="font-weight: 600"]').click();
+  const row = projectRow(page, name);
+  await expect(row).toBeVisible({ timeout: 8_000 });
+  // Click the name column, not the 28px handle — leftover file-row
+  // pointer-up was starting a card drag instead of setOpenId.
+  await row.click({ position: { x: 80, y: 24 } });
+  await expect(desktopLayout(page).getByRole('textbox', { name: 'Click to rename' })).toHaveValue(name, { timeout: 8_000 });
 }
 
 function fileRow(page, name) {
