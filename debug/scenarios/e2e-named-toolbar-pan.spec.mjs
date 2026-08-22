@@ -58,20 +58,41 @@ async function blurInputs(page) {
   });
 }
 
+async function pageCoveredByHub(page) {
+  const pageEl = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
+  const box = await pageEl.boundingBox();
+  if (!box) return false;
+  return page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    const text = el?.textContent || '';
+    return /No documents yet|Upload your first PDF|Search documents/.test(text);
+  }, { x: box.x + box.width * 0.45, y: box.y + box.height * 0.40 });
+}
+
 async function dismissChrome(page) {
   await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
   const search = page.getByPlaceholder('Search text in PDF...');
   if (await search.isVisible().catch(() => false)) {
     await page.getByRole('button', { name: 'Search text', exact: true }).click().catch(() => {});
     await blurInputs(page);
   }
-  const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
-  if (await pagesToggle.isVisible().catch(() => false)) {
-    const expanded = await page.getByText('No documents yet').isVisible().catch(() => false);
-    if (expanded) {
-      await pagesToggle.click();
-      await expect(page.getByText('No documents yet')).toHaveCount(0);
+  const toggles = [
+    page.getByRole('button', { name: /Open pages, search, and bookmarks/i }),
+    page.getByRole('button', { name: 'Collapse sidebar', exact: true }),
+    page.getByRole('button', { name: 'Pages', exact: true }),
+  ];
+  const emptyVisible = await page.getByText('No documents yet').isVisible().catch(() => false);
+  const covering = emptyVisible || await pageCoveredByHub(page);
+  if (covering) {
+    for (const toggle of toggles) {
+      if (await toggle.first().isVisible().catch(() => false)) {
+        await toggle.first().click().catch(() => {});
+        break;
+      }
     }
+    const pdfTab = page.getByText('clickable-link-test.pdf').first();
+    if (await pdfTab.isVisible().catch(() => false)) await pdfTab.click().catch(() => {});
   }
   await blurInputs(page);
 }
@@ -135,8 +156,14 @@ async function selectedIds(page) {
   return page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
 }
 
+function toolButtons(page, name) {
+  return page.locator(
+    `button.btn-icon[aria-label="${name}"], button.mobile-pdf-tools__button[aria-label="${name}"]`,
+  );
+}
+
 async function clickVisible(page, name) {
-  const buttons = page.getByRole('button', { name, exact: true });
+  const buttons = toolButtons(page, name);
   const count = await buttons.count();
   for (let i = 0; i < count; i += 1) {
     const button = buttons.nth(i);
@@ -144,13 +171,14 @@ async function clickVisible(page, name) {
     await button.click();
     return button;
   }
-  await expect(buttons.first(), `visible ${name}`).toBeVisible();
-  await buttons.first().click();
-  return buttons.first();
+  const fallback = page.getByRole('button', { name, exact: true });
+  await expect(fallback.first(), `visible ${name}`).toBeVisible();
+  await fallback.first().click();
+  return fallback.first();
 }
 
 async function buttonActive(page, name) {
-  const buttons = page.getByRole('button', { name, exact: true });
+  const buttons = toolButtons(page, name);
   const count = await buttons.count();
   for (let i = 0; i < count; i += 1) {
     const button = buttons.nth(i);
@@ -192,12 +220,32 @@ async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
   await page.mouse.up();
 }
 
-async function clickAnnotationCenter(page, id) {
-  const group = page.locator(`[data-anno-id="${id}"]`).first();
-  await expect(group).toBeVisible();
-  const box = await group.boundingBox();
-  expect(box, `annotation ${id} geometry`).toBeTruthy();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+async function strokeClick(page, id) {
+  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  // Default rect fill is transparent — interiors are inert (same model as
+  // Select). Hit the stroke, not the center.
+  const points = [
+    { x: box.x + 2, y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + Math.max(2, box.width / 2), y: box.y + 2 },
+    { x: box.x + Math.max(3, box.width - 3), y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + Math.max(2, box.width / 2), y: box.y + Math.max(3, box.height - 3) },
+  ];
+  const before = (await selectedIds(page)).includes(id);
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    try {
+      await expect.poll(async () => (await selectedIds(page)).includes(id), {
+        timeout: 900,
+      }).not.toBe(before);
+      return;
+    } catch {
+      // This edge missed the stroke; try the next.
+    }
+  }
+  throw new Error(`stroke-click missed ${id}`);
 }
 
 async function createRect(page, coords = { x0: 0.22, y0: 0.28, x1: 0.42, y1: 0.46 }) {
@@ -254,14 +302,14 @@ test('desktop named toolbar Pan intended + break + edge', async ({ page }) => {
   // Break — empty click invents 0 and stays on Pan (not a Space release).
   const pageEl = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
   const pageBox = await pageEl.boundingBox();
-  await page.mouse.click(pageBox.x + pageBox.width * 0.10, pageBox.y + pageBox.height * 0.10);
+  await page.mouse.click(pageBox.x + pageBox.width * 0.88, pageBox.y + pageBox.height * 0.12);
   expect((await userAnnotationSnapshot(page)).map((row) => row.id).sort(), 'empty Pan click invents 0').toEqual(marksAtStart);
   expect(await selectedIds(page), 'empty Pan click must not select').toEqual([]);
   expect(await buttonActive(page, 'Pan'), 'empty click must keep named Pan').toBe(true);
   expect((await viewerState(page)).spacePan, 'empty click must stay armed').toBe('armed');
 
   // Intended — quick-click on a mark selects it and auto-switches to Select.
-  await clickAnnotationCenter(page, rect.id);
+  await strokeClick(page, rect.id);
   await expect.poll(async () => buttonActive(page, 'Select'), {
     message: 'pan quick-click must switch to Select',
   }).toBe(true);
@@ -403,7 +451,7 @@ test('390 named toolbar Pan intended + break + edge', async ({ page }) => {
   expect(afterRect.left, '390 named Pan must not move rect left').toBe(rect.left);
   expect(afterRect.top, '390 named Pan must not move rect top').toBe(rect.top);
 
-  await clickAnnotationCenter(page, rect.id);
+  await strokeClick(page, rect.id);
   await expect.poll(async () => buttonActive(page, 'Select'), {
     message: '390 pan quick-click must switch to Select',
   }).toBe(true);

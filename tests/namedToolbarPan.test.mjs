@@ -65,6 +65,7 @@ test('live spec covers sticky named Pan / quick-click / link / Fit page / 390 / 
   assert.match(spec, /toolbar Pan must be btn-active/);
   assert.match(spec, /named Pan must arm data-space-pan via interactionMode/);
   assert.match(spec, /empty Pan click invents 0/);
+  assert.match(spec, /stroke-click missed|Transparent fill is stroke-only|Hit the stroke/);
   assert.match(spec, /pan quick-click must switch to Select/);
   assert.match(spec, /pan quick-click must select the rect/);
   assert.match(spec, /named Pan must not steal the fixture link/);
