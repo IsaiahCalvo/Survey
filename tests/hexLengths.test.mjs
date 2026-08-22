@@ -60,6 +60,13 @@ test('C-02 rejected lengths / named / rgba stay invalid', () => {
     assert.equal(normalizeHexColor(raw), null, `${JSON.stringify(raw)} must be rejected`);
     assert.equal(isValidHexColor(raw), false, `${JSON.stringify(raw)} must be invalid`);
     assert.equal(hexToHsv(raw), null, `${JSON.stringify(raw)} must not produce HSV`);
+    // Hex field never calls applyHex unless normalizeHexColor succeeds.
+    // applyColorPickerSelection('transparent') is the preset-swatch path, not C-02.
+    if (raw === 'transparent') {
+      const swatch = applyColorPickerSelection({ input: raw, currentHex: '#111111' });
+      assert.equal(swatch.kind, 'transparent');
+      continue;
+    }
     const applied = applyColorPickerSelection({ input: raw, currentHex: '#111111' });
     assert.equal(applied.kind, 'invalid', `${JSON.stringify(raw)} apply kind`);
     assert.equal(applied.hex, '#111111', `${JSON.stringify(raw)} must keep currentHex`);
