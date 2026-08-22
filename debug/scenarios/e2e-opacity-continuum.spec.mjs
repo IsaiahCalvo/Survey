@@ -117,7 +117,6 @@ async function pageBox(page, pageNumber = 1) {
 }
 
 async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
-  await closePagesOverlay(page);
   const pageEl = page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
   await expect(pageEl).toBeVisible();
   const box = await pageEl.boundingBox();
@@ -192,8 +191,8 @@ async function activateTool(page, categoryName, toolName) {
 }
 
 async function closePagesOverlay(page) {
-  const overlay = page.getByText('No documents yet').first();
   const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  const overlay = page.locator('main').getByText('No documents yet').first();
   if (!(await overlay.isVisible().catch(() => false))) return;
   if (await pagesToggle.isVisible().catch(() => false)) {
     await pagesToggle.click();
