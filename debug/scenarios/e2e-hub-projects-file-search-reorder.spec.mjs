@@ -289,7 +289,9 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   await expect(mobileFile(SE011)).toBeVisible();
   await expect(mobileFile(RFI)).toBeVisible();
 
-  // Back clears fileSearch (session-only query).
+  // Back clears fileSearch (session-only query). Blur first — Search
+  // DismissBarrier eats the first outside tap while the field is focused.
+  await fileSearch.blur();
   await page.locator('.projects-mobile-back-button').click();
   await expect(mobileRow('p1')).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.projects-mobile-search-actions input[placeholder="Search projects..."]')).toBeVisible();
@@ -314,6 +316,7 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   await fileSearch.fill('xyzzy');
   await expect(page.getByText('No files match your search.')).toBeVisible();
   await fileSearch.fill('');
+  await fileSearch.blur();
 
   // 390 Tower file-row reorder (handles are file rows, not folder cards).
   await page.locator('.projects-mobile-back-button').click();
