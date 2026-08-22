@@ -162,7 +162,8 @@ async function focusZoomInput(page) {
 async function commitZoomPercent(page, value) {
   const zoomInput = await focusZoomInput(page);
   expect(zoomInput, 'zoom % field').toBeTruthy();
-  await zoomInput.fill(String(value));
+  await clearAndTypeZoom(page, zoomInput, String(value));
+  await expect(zoomInput).toHaveValue(String(value));
   await zoomInput.press('Enter');
   await blurInputs(page);
 }
