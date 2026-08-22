@@ -64,6 +64,8 @@ test('live spec covers type catalog, skip/delete, E vs Shift+E, 390, hub, file.i
   assert.match(spec, /Shift\+E forces Partial erase/);
   assert.match(spec, /zoom % INPUT does not steal E/);
   assert.match(spec, /data-eraser-caret-popup/);
+  assert.match(spec, /data-diag-eraser-wrapper/);
+  assert.match(spec, /function mobileEraserMode/);
   assert.match(spec, /undo restores rect A/);
   assert.match(spec, /hubPreview Eraser type must be 0/);
   assert.match(spec, /Eraser mode: Partial Erase/);

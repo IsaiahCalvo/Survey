@@ -235,13 +235,31 @@ async function eraserTypeLabels(page) {
 }
 
 async function eraseAcrossId(page, id) {
-  const box = await page.locator(`[data-anno-id="${id}"]`).first().boundingBox();
-  expect(box, `bbox ${id}`).toBeTruthy();
-  const x = box.x + Math.max(8, box.width / 2);
-  const y = box.y + Math.max(8, box.height / 2);
-  await page.mouse.move(x - 14, y);
+  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
+  const points = await page.evaluate((annotationId) => {
+    const object = window.__phase35GetAnnotationById?.(annotationId);
+    const wrapper = document.querySelector('[data-diag-eraser-wrapper="1"]');
+    const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+    const rect = wrapper?.getBoundingClientRect();
+    const viewBox = svg?.viewBox?.baseVal;
+    if (!object || !rect || !viewBox?.width || !viewBox?.height) return null;
+    const left = Number(object.left ?? object.x ?? 0);
+    const top = Number(object.top ?? object.y ?? 0);
+    const width = Number(object.width ?? 40);
+    const height = Number(object.height ?? 20);
+    const toClient = (x, y) => ({
+      x: rect.left + (x / viewBox.width) * rect.width,
+      y: rect.top + (y / viewBox.height) * rect.height,
+    });
+    return {
+      a: toClient(left + width * 0.25, top + height * 0.5),
+      b: toClient(left + width * 0.75, top + height * 0.5),
+    };
+  }, id);
+  expect(points?.a && points?.b, `wrapper-mapped stroke for ${id}`).toBeTruthy();
+  await page.mouse.move(points.a.x, points.a.y);
   await page.mouse.down();
-  await page.mouse.move(x + 14, y, { steps: 8 });
+  await page.mouse.move(points.b.x, points.b.y, { steps: 8 });
   await page.mouse.up();
 }
 
@@ -268,7 +286,7 @@ async function ensurePageDrawTarget(page) {
   if (await toggle.isVisible().catch(() => false)) await toggle.click();
 }
 
-async function mobileEraserMode(page) {
+function mobileEraserMode(page) {
   return page.getByRole('button', { name: /Eraser mode:/ });
 }
 
