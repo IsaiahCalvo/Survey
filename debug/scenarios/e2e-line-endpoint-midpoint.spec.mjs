@@ -157,11 +157,9 @@ async function pageToScreen(page, x, y) {
 
 async function clickLineStroke(page, id) {
   const geom = await lineGeom(page, id);
-  const screen = await pageToScreen(
-    page,
-    geom.x1 + (geom.x2 - geom.x1) * 0.38,
-    geom.y1 + (geom.y2 - geom.y1) * 0.38,
-  );
+  const x = geom.midpoint?.x ?? (geom.x1 + (geom.x2 - geom.x1) * 0.38);
+  const y = geom.midpoint?.y ?? (geom.y1 + (geom.y2 - geom.y1) * 0.38);
+  const screen = await pageToScreen(page, x, y);
   await page.mouse.click(screen.x, screen.y);
 }
 
