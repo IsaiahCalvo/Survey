@@ -9,14 +9,14 @@ import { test, expect } from '@playwright/test';
 // swatches, callout family, thin leftovers, PDF links, History, pages
 // structure, flatten, mobile chrome.
 
-const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
+const GLYPH_PDF = '/?testPdf=text-search-glyph-lab.pdf';
 const EPS = 1.6;
 
 async function openEditor(page) {
   await page.addInitScript(() => {
     try { localStorage.removeItem('survey_document_history_events_v1'); } catch { /* ignore */ }
   });
-  await page.goto(LINK_PDF);
+  await page.goto(GLYPH_PDF);
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
   await expect.poll(() => page.evaluate(() => typeof window.__phase35GetAnnotationById)).toBe('function');
@@ -127,23 +127,30 @@ async function createLine(page, coords, key = 'l') {
   return created;
 }
 
+async function pageViewBox(page) {
+  const raw = await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox');
+  const parts = String(raw || '0 0 612 792').trim().split(/\s+/).map(Number);
+  return { raw, W: parts[2] || 612, H: parts[3] || 792 };
+}
+
+async function pageToScreen(page, x, y) {
+  const box = await pageBox(page);
+  const { W, H } = await pageViewBox(page);
+  return { x: box.x + (x / W) * box.width, y: box.y + (y / H) * box.height };
+}
+
 async function clickLineStroke(page, id) {
-  const host = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
-  await expect(host).toBeAttached({ timeout: 8_000 });
-  const stroke = host.locator('line, path').first();
-  if (await stroke.count()) {
-    const box = await stroke.boundingBox();
-    if (box && box.width >= 1 && box.height >= 0) {
-      await page.mouse.click(box.x + box.width / 2, box.y + Math.max(box.height / 2, 1));
-      return;
-    }
-  }
-  await host.click({ force: true });
+  const geom = await lineGeom(page, id);
+  const t = 0.38;
+  const x = geom.x1 + (geom.x2 - geom.x1) * t;
+  const y = geom.y1 + (geom.y2 - geom.y1) * t;
+  const screen = await pageToScreen(page, x, y);
+  await page.mouse.click(screen.x, screen.y);
 }
 
 async function selectUntilHandles(page, id) {
+  await selectMode(page);
   await expect.poll(async () => {
-    await selectMode(page);
     await clickLineStroke(page, id);
     return page.locator('circle[data-handle="midpoint"]').count();
   }, { timeout: 12_000 }).toBeGreaterThan(0);
@@ -246,15 +253,10 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
   const bent = await lineGeom(page, line.id);
   expect(bent.midpoint, 'line still curved').toBeTruthy();
   const midCenter = await handleCenter(page, 'mid');
-  const chordY = (bent.y1 + bent.y2) / 2;
-  const pg = await pageBox(page);
-  const layer = page.locator('[data-svg-annotation-layer="1"]').first();
-  const viewBoxAttr = await layer.getAttribute('viewBox');
-  const vbH = Number(String(viewBoxAttr || '0 0 612 792').split(/\s+/)[3] || 792);
-  const screenChordY = pg.y + (chordY / vbH) * pg.height;
+  const chord = await pageToScreen(page, (bent.x1 + bent.x2) / 2, (bent.y1 + bent.y2) / 2);
   await page.mouse.move(midCenter.x, midCenter.y);
   await page.mouse.down();
-  await page.mouse.move(midCenter.x, screenChordY, { steps: 10 });
+  await page.mouse.move(chord.x, chord.y, { steps: 10 });
   await page.mouse.up();
   let afterSnap = null;
   await expect.poll(async () => {
@@ -334,7 +336,7 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
     await zoomIn.click();
     await zoomIn.click();
   }
-  const viewBox = await layer.getAttribute('viewBox');
+  const viewBox = (await pageViewBox(page)).raw;
   expect(viewBox, 'viewBox present').toBeTruthy();
   expect(viewBox.startsWith('0 0 '), 'viewBox owns scale').toBe(true);
   await selectUntilHandles(page, line.id);
