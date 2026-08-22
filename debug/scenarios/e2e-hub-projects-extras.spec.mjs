@@ -52,6 +52,8 @@ function desktopLayout(page) {
 }
 
 function projectRow(page, name) {
+  const seedId = { [TOWER]: 'p1', [LAB]: 'p2', [MEP]: 'p3' }[name];
+  if (seedId) return desktopLayout(page).locator(`[data-project-id="${seedId}"]`).first();
   return desktopLayout(page).locator('[data-project-id]').filter({ hasText: name }).first();
 }
 
@@ -205,6 +207,7 @@ test('Projects extras Search / Pin / Duplicate / file Copy-Paste intended + brea
   await expect(page.getByText(TOWER)).toHaveCount(0);
   await mobileSearch.fill('');
   await expect(page.getByText(TOWER).first()).toBeVisible();
+  await page.locator('h1.title').click();
 
   const mobileSelect = page.getByTestId('project-select-toggle');
   await mobileSelect.click();
