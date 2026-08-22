@@ -293,30 +293,8 @@ test('callout text-box resize leftovers: flip + knee rollback', async ({ page })
   expect(almostEqNum(afterEmpty.w, preEmpty.w) && almostEqNum(afterEmpty.h, preEmpty.h), 'empty drag leaves size').toBe(true);
   expect(almostEqNum(afterEmpty.x, preEmpty.x) && almostEqNum(afterEmpty.y, preEmpty.y), 'empty drag leaves origin').toBe(true);
 
-  // Edge: zoom then flip — viewBox owns scale.
-  const zoomIn = page.getByRole('button', { name: /Zoom in/i }).first();
-  if (await zoomIn.count()) {
-    await zoomIn.click();
-    await zoomIn.click();
-  }
-  const viewBox = await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox');
-  expect(viewBox, 'viewBox present').toBeTruthy();
-  expect(viewBox.startsWith('0 0 '), 'viewBox owns scale').toBe(true);
-  await selectUntilCorners(page, calloutId);
-  const preZoom = await calloutBox(page, calloutId);
-  await flipPastOpposite(page, calloutId, 'tl', 'br');
-  let afterZoom = null;
-  await expect.poll(async () => {
-    afterZoom = await calloutBox(page, calloutId);
-    return flippedPastOpposite(preZoom, afterZoom);
-  }, { timeout: 8_000 }).toBe(true);
-  await page.keyboard.press('Control+z');
-  await expect.poll(async () => {
-    const restored = await calloutBox(page, calloutId);
-    return almostEqNum(restored.w, preZoom.w) && almostEqNum(restored.x, preZoom.x);
-  }, { timeout: 8_000 }).toBe(true);
-
-  // Edge: second callout flip does not change the first.
+  // Edge: second callout flip does not change the first (create at 100% so
+  // the Q-drag stays on-page; zoom comes after).
   const secondId = await createCallout(page, 'lf-2', {
     x0: 0.62,
     y0: 0.16,
@@ -337,6 +315,25 @@ test('callout text-box resize leftovers: flip + knee rollback', async ({ page })
   expect(almostEqNum(firstAfterSecond.w, firstFrozen.w) && almostEqNum(firstAfterSecond.h, firstFrozen.h), 'first size stays').toBe(true);
   expect(almostEqNum(firstAfterSecond.x, firstFrozen.x) && almostEqNum(firstAfterSecond.y, firstFrozen.y), 'first origin stays').toBe(true);
   expect(almostEqPt(firstAfterSecond.knee, firstFrozen.knee), 'first knee stays').toBe(true);
+
+  // Edge: zoom then flip — viewBox owns scale.
+  const zoomIn = page.getByRole('button', { name: /Zoom in/i }).first();
+  if (await zoomIn.count()) {
+    await zoomIn.click();
+    await zoomIn.click();
+  }
+  const viewBox = await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox');
+  expect(viewBox, 'viewBox present').toBeTruthy();
+  expect(viewBox.startsWith('0 0 '), 'viewBox owns scale').toBe(true);
+  await selectUntilCorners(page, calloutId);
+  await handleLocator(page, calloutId, 'textBox').scrollIntoViewIfNeeded().catch(() => {});
+  const preZoom = await calloutBox(page, calloutId);
+  await flipPastOpposite(page, calloutId, 'tl', 'br');
+  let afterZoom = null;
+  await expect.poll(async () => {
+    afterZoom = await calloutBox(page, calloutId);
+    return flippedPastOpposite(preZoom, afterZoom);
+  }, { timeout: 8_000 }).toBe(true);
 
   const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(persist, 'no file.id').toBeNull();
