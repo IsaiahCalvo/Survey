@@ -444,7 +444,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
 
   const created = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   expect(created.id).toBeTruthy();
-  await activateTool(page, 'Shapes', 'Rectangle');
+  await selectStroke(page, created.id);
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await clickVisible(page, 'Fill and border colors');
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toBeVisible();
@@ -476,9 +476,10 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await clickMatchFill(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
-  const close = page.getByRole('button', { name: 'Close annotation settings', exact: true });
-  if (await close.isVisible().catch(() => false)) await close.click();
+  const close = page.getByRole('button', { name: /Close (annotation settings|text formatting)/i });
+  if (await close.first().isVisible().catch(() => false)) await close.first().click();
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Close text formatting', exact: true })).toHaveCount(0);
   await closePagesOverlay(page);
 
   await expect.poll(async () => storedFill(await annotationById(page, created.id))).toBe('#00FFFF');
