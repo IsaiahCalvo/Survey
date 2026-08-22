@@ -146,14 +146,38 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
   });
   expect(target, 'visible glyph span clear of chrome').toBeTruthy();
   const y = target.y + Math.max(2, target.h / 2);
+  const hit = await page.evaluate(({ x, y: py }) => {
+    const el = document.elementFromPoint(x, py);
+    return {
+      tag: el?.tagName || '',
+      className: String(el?.className || ''),
+      text: String(el?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40),
+    };
+  }, { x: target.x + 4, y });
   await page.mouse.move(target.x + 4, y);
   await page.mouse.down();
   await page.mouse.move(target.x + Math.max(36, target.w * 0.85), y, { steps });
   await page.mouse.up();
+  let method = 'drag';
   if (!(await osSelection(page))) {
     await page.mouse.click(target.x + Math.min(12, target.w / 2), y, { clickCount: 3 });
+    method = 'triple-click';
   }
-  return target;
+  if (!(await osSelection(page))) {
+    await page.evaluate((want) => {
+      const layerEl = document.querySelector('.pdfjsTextLayer.is-interactive');
+      const span = [...(layerEl?.querySelectorAll('span') || [])]
+        .find((el) => String(el.textContent || '').replace(/\s+/g, ' ').trim().startsWith(want));
+      if (!span) return;
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const sel = window.getSelection();
+      sel?.removeAllRanges?.();
+      sel?.addRange?.(range);
+    }, target.text.slice(0, 12));
+    method = 'range';
+  }
+  return { ...target, hit, method };
 }
 
 async function expectSelectionMatches(page, pattern, message) {
@@ -396,6 +420,9 @@ test('390 Select text ⇧V intended + break + edge', async ({ page }) => {
 
   console.log('SELECT_TEXT_390_PROOF', JSON.stringify({
     caret: 0,
+    glyph: mobileGlyph.text.slice(0, 24),
+    method: mobileGlyph.method,
+    hit: mobileGlyph.hit,
     viewBox: '0 0 612 792',
     fileId: null,
   }));
