@@ -46,7 +46,7 @@ Exact discrete catalogs used by the UI:
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
 | C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets | Counter number color; armed tool vs selection |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
-| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04 | Rotated; text wrap height |
+| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04. Polygon/polyline `vertex-N` is X-04 | Rotated; text wrap height |
 | E-02 | Edit | Rotation | Handle + numeric + Shift 45° | Off-screen handle; 0/90/180/270 |
 | E-03 | Edit | Move | Drag selected | Multi-select; snap |
 | E-04 | Edit | Delete | Backspace / context | Last owner; remote delete |
@@ -55,7 +55,7 @@ Exact discrete catalogs used by the UI:
 | X-01 | Save | Cloud save | Persist annotations | Offline outbox; identity-only churn |
 | X-02 | Export | Annotated PDF | File → Export | Every color/font/format in /DA |
 | X-03 | Print | Flatten markup | Print with markup | Decoration first-line only; survey markers excluded |
-| X-04 | Import | PDF annotations | Open foreign PDF | Unsupported types; rotated page |
+| X-04 | Import | PDF annotations | Open foreign PDF. Imported polygon/polyline single-click `vertex-N` live `e2e-poly-vertex-handles.spec.mjs` | Unsupported Stamp; no create-poly tool; rotated page |
 | X-05 | Forms | Form field values | Export/print filled fields | Hidden Forms category |
 | X-06 | Excel | Export / apply changeset | Sheet sync | Identity SQL; CORS `*` intentional |
 | U-01 | Survey | Survey rail / modules | Stamp + filter. **Previous/Next module** is its own navigator (not Walls). **Keep active** + **Survey notes** live `e2e-survey-keep-notes-page-ctx.spec.mjs` | Empty template; KAL-436; first/last disabled; Keep off clears category |

@@ -5550,6 +5550,7 @@ const SVGAnnotationLayer = memo(({
               {worldPoints.map((wp, i) => (
                 <circle
                   key={`vertex-${i}`}
+                  data-handle={`vertex-${i}`}
                   cx={wp.x}
                   cy={wp.y}
                   r={vHandleR}
