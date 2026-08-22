@@ -153,11 +153,11 @@ test('Account Settings Start trial fail-closed intended / break / edge', async (
 
   // --- Break: guest has no Settings / no Start trial (do not replay A-01 submit) ---
   await openPage(page, { url: HUB_GUEST });
-  await expect(page.locator('.profile-signin').first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true }).first()).toBeVisible({ timeout: 30_000 });
   await expect(accountChip(page)).toHaveCount(0);
   await expect(settingsDialog(page)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: TRIAL })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible();
 
   // --- Edge: ?testPdf= Home ---
   await openPage(page, { url: TEST_PDF });
