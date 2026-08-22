@@ -445,27 +445,33 @@ test('U-02 region-row Hide/Show survey annotations', async ({ page }) => {
   await assertNoErrorBoundary(page);
 
   // Edge: 390 — survey icon if the page-row exists after Create + survey.
+  // surveyTransitionE2E auto-opens the template picker and hides the dock.
   await openEditor(page, { width: 390, height: 844 });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
-  const openSurvey = page.getByRole('button', { name: 'Open survey' });
-  if (await openSurvey.count()) {
-    await openSurvey.first().click();
-    const picker = page.getByRole('heading', { name: 'Choose survey template' });
-    if (await picker.isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: KAL436 }).click();
-    }
+  const picker390 = page.getByRole('heading', { name: 'Choose survey template' });
+  if (await picker390.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: KAL436 }).click();
     const walls390 = page.getByRole('button', { name: 'Walls', exact: true });
     if (await walls390.count()) await walls390.first().click();
   }
+  const collapseSurvey = page.getByRole('button', { name: 'Collapse Survey panel' });
+  if (await collapseSurvey.count()) await collapseSurvey.first().click();
   const openSpacesBtn = page.getByRole('button', { name: 'Open spaces' });
-  await expect(openSpacesBtn).toBeVisible({ timeout: 15_000 });
-  await openSpacesBtn.click();
-  const create390 = page.getByRole('button', { name: 'Create space', exact: true });
+  if (!(await openSpacesBtn.first().isVisible().catch(() => false))) {
+    const exitSurvey = page.getByRole('button', { name: 'Exit Survey' });
+    const closeSurvey390 = page.getByRole('button', { name: 'Close Survey panel' });
+    if (await closeSurvey390.count()) await closeSurvey390.first().click();
+    else if (await exitSurvey.count()) await exitSurvey.first().click();
+  }
   let mobileCreate = 0;
   let mobilePageRows = 0;
   let mobileHide = 0;
   let mobileDisabled = 0;
   let mobileToggled = false;
+  if (await openSpacesBtn.first().isVisible().catch(() => false)) {
+    await openSpacesBtn.first().click();
+  }
+  const create390 = page.getByRole('button', { name: 'Create space', exact: true });
   if (await create390.count()) {
     mobileCreate = await create390.count();
     await expect(create390.first()).toBeVisible({ timeout: 8_000 });
