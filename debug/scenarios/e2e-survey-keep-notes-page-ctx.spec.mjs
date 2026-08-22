@@ -224,7 +224,7 @@ test('Keep active desktop checkbox after-place and module-step', async ({ page }
   expect(fileId, 'file.id must stay unset on ?testPdf=').toBeNull();
 });
 
-test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
+test('Keep active 390 toggle and Pen hide', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     try { localStorage.clear(); } catch { /* ignore */ }
