@@ -62,8 +62,27 @@ async function dispatchPrintHotkey(page, { shift = false } = {}) {
   }, shift);
 }
 
-test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({ page }) => {
+test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({ page, context }) => {
   test.setTimeout(120_000);
+  // Repeated native iframe.print() crashes headless Chromium on later
+  // navigations. Stub the iframe print() so the app still logs the call.
+  await context.addInitScript(() => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
+    if (!desc?.get) return;
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+      configurable: true,
+      get() {
+        const win = desc.get.call(this);
+        if (win && !win.__surveyPrintStubbed) {
+          try {
+            win.print = function surveyPrintStub() {};
+            win.__surveyPrintStubbed = true;
+          } catch { /* cross-origin */ }
+        }
+        return win;
+      },
+    });
+  });
   const printLogs = attachPrintLogs(page);
 
   // --- Intended: Ctrl+P on ?testPdf= is blob print, not the custom panel ---
@@ -126,31 +145,35 @@ test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({
   // downloaded annotated PDFs. Do not click it here.
   const exportIsolated = await page.getByRole('button', { name: 'Export annotated PDF', exact: true }).isVisible();
 
-  // --- Break: hubPreview has no PrintPanel listener ---
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  const beforeHub = printLogs.length;
-  await page.keyboard.press('Control+p');
-  await page.waitForTimeout(800);
-  expect(printLogs.slice(beforeHub).some((line) => /PrintPanel/.test(line))).toBe(false);
-  await expect(page.getByRole('dialog', { name: 'Print' })).toHaveCount(0);
-  await expect(page.getByText('Package 2 — Rev 4 — IC.pdf').first()).toBeVisible();
+  // --- Break: hubPreview has no PrintPanel listener (fresh page) ---
+  const hub = await context.newPage();
+  const hubLogs = attachPrintLogs(hub);
+  await hub.setViewportSize({ width: 1440, height: 900 });
+  await hub.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(hub.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  await hub.keyboard.press('Control+p');
+  await hub.waitForTimeout(800);
+  expect(hubLogs.some((line) => /PrintPanel/.test(line))).toBe(false);
+  await expect(hub.getByRole('dialog', { name: 'Print' })).toHaveCount(0);
+  await expect(hub.getByText('Package 2 — Rev 4 — IC.pdf').first()).toBeVisible();
+  await hub.close();
 
-  // --- Edge: 390 same blob path ---
-  await openEditor(page, { width: 390, height: 844 });
-  const beforeMobile = printLogs.length;
-  await page.keyboard.press('Control+p');
+  // --- Edge: 390 same blob path (fresh page) ---
+  const mobile = await context.newPage();
+  const mobileLogs = attachPrintLogs(mobile);
+  await openEditor(mobile, { width: 390, height: 844 });
+  await mobile.keyboard.press('Control+p');
   await expect.poll(
-    () => printLogs.slice(beforeMobile).some((line) => /panel enabled=false/.test(line) && /withMarkup=false/.test(line)),
+    () => mobileLogs.some((line) => /panel enabled=false/.test(line) && /withMarkup=false/.test(line)),
     { timeout: 15_000 },
   ).toBeTruthy();
   await expect.poll(
-    () => printLogs.slice(beforeMobile).some((line) => /disabled — base PDF blob print/.test(line)),
+    () => mobileLogs.some((line) => /disabled — base PDF blob print/.test(line)),
     { timeout: 15_000 },
   ).toBeTruthy();
-  await assertNoCustomPanel(page);
-  await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  await assertNoCustomPanel(mobile);
+  await expect(mobile.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  await mobile.close();
 
   const proof = {
     intendedBlobPrint: true,
