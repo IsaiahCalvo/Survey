@@ -231,9 +231,11 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
   }).toBe(liftedZero);
 
   // Break — mid-keystroke 9999 clamps to 4000; Enter keeps 4000.
+  // Type, do not fill: Playwright fill retries when onChange rewrites 9999→4000.
   const zoomCeil = await focusZoomInput(page);
-  await zoomCeil.fill('9999');
-  expect(await zoomCeil.inputValue(), '9999 must clamp in the field').toBe('4000');
+  await zoomCeil.press('Control+A');
+  await page.keyboard.type('9999');
+  await expect(zoomCeil, '9999 must clamp in the field').toHaveValue('4000');
   await zoomCeil.press('Enter');
   await blurInputs(page);
   await expect.poll(() => zoomPercent(page), {
