@@ -264,13 +264,14 @@ test('U-02 space-card reorder updates stored + rail order', async ({ page }) => 
     await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 1' })).toBeVisible({ timeout: 8_000 });
     await create390.first().click();
     await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 2' })).toBeVisible({ timeout: 8_000 });
+    await page.evaluate(() => document.activeElement?.blur?.());
     mobileHandles = await mobilePanel.locator('[data-space-drag-handle]').count();
     mobileNames = await railSpaceNames(page, mobilePanel);
-    if (mobileHandles >= 2 && mobileNames[0] === 'Space 1' && mobileNames[1] === 'Space 2') {
+    if (mobileHandles >= 2 && mobileNames[0] === 'Space 1' && mobileNames[1] === 'Space 2' && mobileNames.length === 2) {
       try {
-        await dragSpaceTo(page, 'Space 1', 'Space 2');
+        await pointerDragSpaceTo(page, 'Space 1', 'Space 2');
         const after = await railSpaceNames(page, mobilePanel);
-        mobileReordered = after[0] === 'Space 2' && after[1] === 'Space 1';
+        mobileReordered = after[0] === 'Space 2' && after[1] === 'Space 1' && after.length === 2;
         mobileNames = after;
       } catch {
         mobileReordered = false;
