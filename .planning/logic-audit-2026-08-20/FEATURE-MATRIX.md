@@ -71,7 +71,7 @@ Exact discrete catalogs used by the UI:
 | A-07 | History | Revisions / activity | Restore / jump | Quarantine stub bbox |
 | P-01 | Mobile | Sheets + chrome | Tool rail + properties | Hook restore; color takeover |
 | P-02 | Mobile | Text formatting | Same 6 fonts + formats | Numeric size 1–200 |
-| P-03 | Desktop | Electron menus | Open / export / print | No display in headless |
+| P-03 | Desktop | Electron menus | Open / export / print. Desktop TabBar **Close tab** live `e2e-tab-close.spec.mjs` (not Home / `returnToDevHubPreview`; 390 TabBar absent) | No display in headless; page-drop toast stub |
 | P-04 | Desktop | Keyboard tool keys | V ⇧V P H E T Q L A C | Undocumented keys |
 
 ## Wave 1 automation scope
