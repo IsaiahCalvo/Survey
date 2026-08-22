@@ -441,6 +441,12 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
 
+  // Escape tears the takeover and can dismiss the sheet. Re-open, then Stroke tab.
+  if (!(await page.getByRole('button', { name: 'Open fill color picker', exact: true }).isVisible().catch(() => false))) {
+    await clickVisible(page, 'Fill and border colors');
+  }
+  await expect(page.getByRole('button', { name: 'Stroke color', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stroke color', exact: true }).click();
   await page.getByRole('button', { name: 'Open stroke color picker', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
   await expect(page.locator('button[title="Match fill"]')).toBeVisible();
