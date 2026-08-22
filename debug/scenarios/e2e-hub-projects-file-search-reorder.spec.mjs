@@ -238,13 +238,13 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   await openHub(page, { width: 390, height: 844 });
   const mobileRow = (id) => page.locator(`.projects-mobile-folder-row[data-project-id="${id}"]`);
   await expect(mobileRow('p1')).toBeVisible({ timeout: 15_000 });
-  const listSearch = page.locator('input[placeholder="Search projects..."]');
+  const listSearch = page.locator('.projects-mobile-search-actions input[placeholder="Search projects..."]');
   await expect(listSearch).toBeVisible();
   expect(await page.locator('input[placeholder="Search files..."]').count()).toBe(0);
 
   await mobileRow('p1').click();
   await expect(page.locator('.projects-mobile-back-button')).toBeVisible({ timeout: 8_000 });
-  const fileSearch = page.locator('input[placeholder="Search files..."]');
+  const fileSearch = page.locator('.projects-mobile-search-actions input[placeholder="Search files..."]');
   await expect(fileSearch).toBeVisible({ timeout: 8_000 });
   const mobileFile = (name) => page.locator('.projects-mobile-file-row').filter({ hasText: name });
   await expect(mobileFile(SE011)).toBeVisible();
@@ -285,7 +285,7 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   // Back clears fileSearch (session-only query).
   await page.locator('.projects-mobile-back-button').click();
   await expect(mobileRow('p1')).toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('input[placeholder="Search projects..."]')).toBeVisible();
+  await expect(page.locator('.projects-mobile-search-actions input[placeholder="Search projects..."]')).toBeVisible();
   await mobileRow('p1').click();
   await expect(fileSearch).toBeVisible({ timeout: 8_000 });
   await expect(fileSearch).toHaveValue('');
