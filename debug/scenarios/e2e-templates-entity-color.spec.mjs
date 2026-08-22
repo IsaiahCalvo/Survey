@@ -23,14 +23,16 @@ async function assertNoErrorBoundary(page) {
   await expect(page.getByText('Something went wrong')).toHaveCount(0);
 }
 
-function desktopRightRail(page) {
-  return page.locator('.templates-editor-grid > aside').last();
+function entitiesRail(page) {
+  return page.getByRole('complementary').filter({
+    has: page.getByRole('button', { name: 'New entity', exact: true }),
+  });
 }
 
 function desktopEntityRow(page, role) {
-  return desktopRightRail(page).locator('[data-drag-rearrange-row]').filter({
-    has: page.locator(`input.inline-edit.cat-title[value="${role}"], input.inline-edit.cat-title`).first(),
-  }).filter({ hasText: role }).first();
+  return entitiesRail(page).locator('[data-drag-rearrange-row]').filter({
+    has: page.getByDisplayValue(role, { exact: true }),
+  }).first();
 }
 
 function desktopEditColor(page, role) {
@@ -87,7 +89,10 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
   await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
   await expect(colorPanel(page).getByText('Match fill', { exact: true })).toBeVisible();
   await colorPanel(page).locator('input[type="checkbox"]').check();
-  await expect(colorPanel(page).locator('div').filter({ has: page.locator('[aria-label="Hex color"]') }).first()).toHaveCSS('pointer-events', 'none');
+  const matchLocked = await colorPanel(page).evaluate((panel) => (
+    [...panel.querySelectorAll('div')].some((node) => node.style.pointerEvents === 'none')
+  ));
+  expect(matchLocked, 'Match fill locks the border picker').toBe(true);
   await pickPreset(page, '#0000FF').catch(() => {});
   expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe('#ff0000');
   expect((await swatchBackground(page, 'Subcontractor')).toLowerCase()).toBe(subBefore);
