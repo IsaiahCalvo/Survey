@@ -148,10 +148,25 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
   const y = target.y + Math.max(2, target.h / 2);
   const hit = await page.evaluate(({ x, y: py }) => {
     const el = document.elementFromPoint(x, py);
+    const style = el ? getComputedStyle(el) : null;
+    window.__selectStartLog = [];
+    document.addEventListener('selectstart', (event) => {
+      queueMicrotask(() => {
+        window.__selectStartLog.push({
+          prevented: event.defaultPrevented,
+          tag: event.target?.tagName || '',
+          className: String(event.target?.className || ''),
+        });
+      });
+    }, true);
     return {
       tag: el?.tagName || '',
       className: String(el?.className || ''),
       text: String(el?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40),
+      userSelect: style?.userSelect || '',
+      webkitUserSelect: style?.webkitUserSelect || '',
+      inInteractiveLayer: Boolean(el?.closest?.('.pdfjsTextLayer.is-interactive')),
+      inMobileSurface: Boolean(el?.closest?.('.survey-pdfjs-mobile-surface')),
     };
   }, { x: target.x + 4, y });
   await page.mouse.move(target.x + 4, y);
@@ -177,7 +192,8 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
     }, target.text.slice(0, 12));
     method = 'range';
   }
-  return { ...target, hit, method };
+  const selectStart = await page.evaluate(() => window.__selectStartLog || []);
+  return { ...target, hit, method, selectStart };
 }
 
 async function expectSelectionMatches(page, pattern, message) {
