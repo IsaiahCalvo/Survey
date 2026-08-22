@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-22 E-02 RotationInputField):** named leftover after C-06 Match Fill. Live `e2e-rotation-input-field.spec.mjs` **2 / 2 (10.3s)**. Node **15 / 15**. Product: Ctrl+A now clears the degree pill. Receipt `fix-logs/rotation-input-field-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-22 T-01 textbox create auto-edit):** named leftover after E-02 RotationInputField. Live `e2e-textbox-create-edit.spec.mjs` **2 / 2 (18.1s)**. Node **25 / 25**. No product bug. Receipt `fix-logs/textbox-create-edit-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-22 E-02 RotationInputField):** named leftover after C-06 Match Fill. Live `e2e-rotation-input-field.spec.mjs` **2 / 2 (10.3s)**. Node **15 / 15**. Product: Ctrl+A now clears the degree pill. Receipt `fix-logs/rotation-input-field-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-22 completion-audit refresh):** treated `fix-logs/completion-audit-2026-08-22.md` as stale. Reclassified all 96 unique IDs + leftover-18 against the current tree after Continue pin / Continue Count / Print fail-closed / compile-hidden / official contract alignments / leftover-18 host-bundle. **96 proved / 0 stomped / 0 weak / 0 missing / leftover-18 18 fail-closed + 18 host-gated.** Counts unchanged. Focused Node **107 / 107**. No unique unblocked leftover. Did **not** hunt. Receipt `fix-logs/completion-audit-refresh-2026-08-22.md`. Next leftover: leftover-18 live hosts (first **X-01**). Goal stays open.
 
