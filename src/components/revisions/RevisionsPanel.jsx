@@ -613,6 +613,8 @@ export default function RevisionsPanel({
       : String(annotationId).replace(/"/g, '\\"');
     const selectors = [
       `[data-annotation-id="${escaped}"]`,
+      `[data-anno-id="${escaped}"]`,
+      `svg[data-svg-annotation-layer] > g[data-anno-id="${escaped}"]`,
       `[data-shape-id="${escaped}"]`,
       `[data-callout-id="${escaped}"]`,
       `[data-survey-marker-id="${escaped}"]`,
@@ -649,6 +651,28 @@ export default function RevisionsPanel({
     }
     return false;
   }, [renderAnnotationSpotlight]);
+
+  // Click-restore of a live mark: checkpoint rows often stamp page_number
+  // without annotation_id / previewAnnotation. If this page has exactly one
+  // current user annotation, that is the item the row is describing.
+  const spotlightCurrentPageItem = useCallback((pageNumber, annotationId = null) => {
+    if (typeof document === 'undefined' || !Number.isFinite(pageNumber)) return false;
+    const layer = document.querySelector(`svg[data-svg-annotation-layer="${pageNumber}"]`);
+    if (!layer) return false;
+    const groups = [...layer.querySelectorAll(':scope > g[data-anno-id], :scope > g[data-annotation-id]')]
+      .filter((group) => !/^\d+R$/i.test(String(
+        group.getAttribute('data-anno-id') || group.getAttribute('data-annotation-id') || '',
+      )));
+    const wanted = annotationId ? String(annotationId) : '';
+    const match = wanted
+      ? groups.find((group) => (
+        group.getAttribute('data-anno-id') === wanted
+        || group.getAttribute('data-annotation-id') === wanted
+      ))
+      : (groups.length === 1 ? groups[0] : null);
+    if (!match) return false;
+    return renderDomPathFallbackSpotlight(match, pageNumber);
+  }, [renderDomPathFallbackSpotlight]);
 
   const handleRestore = useCallback(async (rev) => {
     if (busy) return;
@@ -699,8 +723,14 @@ export default function RevisionsPanel({
       // the DOM yet on the first attempt — retry the spotlight briefly instead
       // of giving up after one shot.
       const trySpotlight = (attempt) => {
+        const annotationId = event.annotation_id
+          || event.payload?.annotationId
+          || event.payload?.context?.annotationId
+          || event.payload?.context?.calloutId
+          || null;
         const didSpotlight = spotlightHistoryPreview(pageNumber, event)
-          || spotlightAnnotation(event.annotation_id || event.payload?.annotationId, pageNumber);
+          || spotlightAnnotation(annotationId, pageNumber)
+          || spotlightCurrentPageItem(pageNumber, annotationId);
         if (!didSpotlight && attempt < 6) {
           window.setTimeout(() => trySpotlight(attempt + 1), 250);
           return;
@@ -714,7 +744,7 @@ export default function RevisionsPanel({
       return;
     }
     setStatusMsg('This history item is not tied to a specific page.');
-  }, [onNavigateToPage, onRestoreHistoryContext, spotlightAnnotation, spotlightHistoryPreview]);
+  }, [onNavigateToPage, onRestoreHistoryContext, spotlightAnnotation, spotlightCurrentPageItem, spotlightHistoryPreview]);
 
   const handleRestoreActivity = useCallback(async (event) => {
     if (!event || typeof onRestoreHistoryActivity !== 'function' || busy) return;

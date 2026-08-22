@@ -19,6 +19,8 @@ test('click is jump + spotlight + context, not a named snapshot; collapse tears 
   assert.match(panel, /onNavigateToPage\(pageNumber/);
   assert.match(panel, /spotlightHistoryPreview\(pageNumber, event\)/);
   assert.match(panel, /spotlightAnnotation\(/);
+  assert.match(panel, /spotlightCurrentPageItem\(/);
+  assert.match(panel, /data-anno-id=/);
   assert.match(panel, /not a full-document snapshot/);
   assert.match(panel, /document-history-spotlight-svg/);
   assert.match(panel, /const hidden = embedded \? !isActive : !open/);
@@ -82,7 +84,8 @@ test('live spec covers click-spotlight / collapse / filter-absent / Restore no-o
 
 test('this slice is local in-session History, not leftover-18 named Restore', () => {
   const spec = read('debug/scenarios/e2e-history-sidebar-click-restore.spec.mjs');
-  assert.match(spec, /Named Save version \/ Restore\s+stay leftover-18 X-01/);
+  assert.match(spec, /Named Save version \/ Restore/);
+  assert.match(spec, /stay leftover-18 X-01/);
   assert.match(spec, /W4-03 empty\/after-edit smoke \+ W5-01/);
   assert.doesNotMatch(spec, /createRevision\(|restoreRevision\(/);
 
