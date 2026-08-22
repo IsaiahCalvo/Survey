@@ -778,6 +778,53 @@ const SurveySpacesRail = ({
     return m;
   }, [items]);
 
+  // DEV / ?testPdf= seam: Excel-imported unlocated items are leftover-18.
+  // Playwright seeds one local marker without bounds so Set location is reachable.
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    window.__e2eSurveyMarkers = {
+      get: () => surveyMarkers,
+      patch: (updater) => {
+        setSurveyMarkers((prev) => (
+          typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }
+        ));
+      },
+    };
+    return () => {
+      try { delete window.__e2eSurveyMarkers; } catch { /* ignore */ }
+    };
+  }, [surveyMarkers, setSurveyMarkers]);
+
+  const pendingLocationArmedRef = useRef(false);
+  const beginSetLocationOnPdf = (marker) => {
+    if (!marker) return;
+    pendingLocationArmedRef.current = true;
+    setPendingLocationItem(marker);
+    setActiveCategoryDropdown('survey');
+    setActiveTool('survey-marker');
+    if (marker.categoryId) {
+      setSelectedCategoryId(marker.categoryId);
+    }
+  };
+  const locateOrSetSurveyMarker = (marker) => {
+    if (marker?.bounds && marker?.pageNumber) {
+      handleLocateItemOnPDF(marker);
+      return;
+    }
+    beginSetLocationOnPdf(marker);
+  };
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      if (!pendingLocationArmedRef.current) return;
+      pendingLocationArmedRef.current = false;
+      setPendingLocationItem(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [setPendingLocationItem]);
+
   const commitSurveyMarkerName = (annotationId, categoryId, previousName, nextRawName, fallbackName) => {
     const nextName = (nextRawName || '').trim() || fallbackName;
     const oldName = (previousName || '').trim() || fallbackName;
@@ -2024,11 +2071,7 @@ const SurveySpacesRail = ({
                             className="mobile-survey-detail-icon-btn"
                             aria-label="Jump to this Survey Marker"
                             onClick={() => {
-                              if (mobileDetailMarker.bounds && mobileDetailMarker.pageNumber) {
-                                handleLocateItemOnPDF(mobileDetailMarker);
-                              } else {
-                                setPendingLocationItem(mobileDetailMarker);
-                              }
+                              locateOrSetSurveyMarker(mobileDetailMarker);
                             }}
                           >
                             <Icon name="search" size={15} />
@@ -3740,15 +3783,7 @@ const SurveySpacesRail = ({
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      // Check if item has location (bounds and pageNumber)
-                                                      const hasLocation = surveyMarker.bounds && surveyMarker.pageNumber;
-
-                                                      if (hasLocation) {
-                                                        handleLocateItemOnPDF(surveyMarker);
-                                                      } else {
-                                                        // Prompt to surveyMarker
-                                                        setPendingLocationItem(surveyMarker);
-                                                      }
+                                                      locateOrSetSurveyMarker(surveyMarker);
                                                     }}
                                                     style={{
                                                       ...surveyMarkerRowActionStyle,
