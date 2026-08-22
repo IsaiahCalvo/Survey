@@ -97,7 +97,10 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   // Editor: no account chip. Home (Dashboard hub) has the same A-04 menu.
   await openPage(page, { url: TEST_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 60_000 });
-  const editorAccount = await accountChip(page).count();
+  const editorAccountMounted = await accountChip(page).count();
+  const editorAccountVisible = await accountChip(page).evaluateAll((nodes) => (
+    nodes.filter((node) => node.offsetParent !== null).length
+  ));
   await page.locator('.tab-bar').getByText('Home', { exact: true }).click();
   await expect(accountChip(page)).toBeVisible({ timeout: 30_000 });
   await accountChip(page).click();
@@ -135,7 +138,8 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
     settingsTabs,
     signOutCancelKeepsChip: true,
     guestSignIn: true,
-    editorAccount,
+    editorAccountMounted,
+    editorAccountVisible,
     testPdfHomeHasMenu: true,
     testPdfMenuItems,
     mobileMenuItems,
@@ -150,5 +154,6 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   expect(settingsInMenu).toBe(1);
   expect(signOutInMenu).toBe(1);
   expect(desktopArchiveInMenu).toBe(0);
-  expect(editorAccount).toBe(0);
+  expect(editorAccountVisible).toBe(0);
+  expect(editorAccountMounted).toBeGreaterThan(0);
 });
