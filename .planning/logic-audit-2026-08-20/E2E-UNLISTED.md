@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 390 Choose Survey Marker sibling switcher):** U-01 leftover (not a new UL row). Live 390 `aria-label="Choose Survey Marker"` / listbox `Survey Markers in this category`. Distinct from Entity (`Choose Survey Marker entity`). Choose survey template re-pick / checklist Y/N/N-A not replayed as the GAP. Receipt `fix-logs/survey-390-choose-marker-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 390 checklist parked + notes Photo/Video attach):** U-01 leftover (not a new UL row). 390 checklist Y/N/N-A parked — no compiled-in / `surveyTransitionE2E` items; no DEV seed hook. Next leftover is notes Photo/Video attach (desktop + 390). Distinct from text notes. Receipt `fix-logs/survey-checklist-or-next-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 390 Choose Survey Marker sibling switcher):** U-01 leftover (not a new UL row). Live 390 `aria-label="Choose Survey Marker"` / listbox `Survey Markers in this category`. Distinct from Entity (`Choose Survey Marker entity`). Choose survey template re-pick / checklist Y/N/N-A not replayed as the GAP. Receipt `fix-logs/survey-390-choose-marker-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Choose survey template re-pick):** U-01 leftover (not a new UL row). Live desktop + 390 `aria-label="Choose survey template"` after already in a template. Distinct from first-entry KAL-436 pick. Excel fail-closed / item Copy → space not replayed as the GAP. Receipt `fix-logs/survey-choose-template-repick-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
