@@ -211,7 +211,7 @@ async function setEraserType(page, label) {
   await typeBtn.click();
   const pop = page.locator('[data-annotation-dropdown-popover="true"]');
   await expect(pop).toBeVisible({ timeout: 5_000 });
-  await expect(pop.getByRole('heading', { name: 'Eraser type' })).toBeVisible();
+  await expect(pop.locator('.annotation-dropdown__heading')).toHaveText('Eraser type');
   const option = pop.getByRole('option', { name: label, exact: true });
   await expect(option).toBeVisible();
   await option.click();
@@ -400,7 +400,7 @@ test('390 Eraser mode intended + break + edge', async ({ page }) => {
   await ensurePageDrawTarget(page);
 
   const rect = await createRect(page, { x0: 0.22, y0: 0.24, x1: 0.52, y1: 0.40 });
-  await activateTool(page, 'Draw', 'Partial erase');
+  await activateTool(page, 'Draw', 'Eraser');
   const mode = mobileEraserMode(page);
   await expect(mode, '390 Eraser mode trigger').toBeVisible({ timeout: 8_000 });
   await expect(mode).toHaveAttribute('aria-label', /Eraser mode: Partial Erase/);
