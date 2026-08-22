@@ -79,6 +79,17 @@ test('Hub Documents Upload fail-closed intended + break + edge', async ({ page }
   await clickAndExpectUploadLog(page, desktopUpload, logs, choosers);
   await expect(page.locator('.documents-desktop-card [data-document-id]')).toHaveCount(6);
 
+  // Search no-match still has header Upload; click does not mint a row.
+  // empty=1 keeps EmptyState ("No documents yet") even after a query.
+  const search = page.locator('.documents-desktop-search input').first();
+  await search.fill('zzzz-no-such-document');
+  await expect(page.getByText('No documents match your search.').first()).toBeVisible();
+  await clickAndExpectUploadLog(page, desktopUpload, logs, choosers);
+  await expect(page.getByText('No documents match your search.').first()).toBeVisible();
+  await expect(page.locator('.documents-desktop-card [data-document-id]')).toHaveCount(0);
+  await expect(page.getByText(OWNER)).toHaveCount(0);
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+
   // --- Break: empty=1 EmptyState Upload PDF + header Upload ---
   await openHub(page, { url: HUB_EMPTY });
   await expect(page.getByText('No documents yet').first()).toBeVisible({ timeout: 15_000 });
@@ -95,14 +106,6 @@ test('Hub Documents Upload fail-closed intended + break + edge', async ({ page }
   await clickAndExpectUploadLog(page, page.locator('.documents-desktop-upload'), logs, choosers);
   await expect(page.getByText('No documents yet').first()).toBeVisible();
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
-
-  // Search no-match still has header Upload; click does not mint a row.
-  const search = page.locator('.documents-desktop-search input').first();
-  await search.fill('zzzz-no-such-document');
-  await expect(page.getByText('No documents match your search.').first()).toBeVisible();
-  await clickAndExpectUploadLog(page, page.locator('.documents-desktop-upload'), logs, choosers);
-  await expect(page.getByText('No documents match your search.').first()).toBeVisible();
-  await expect(page.locator('[data-document-id]')).toHaveCount(0);
 
   // --- Break: guest Continue-without then Upload (do not replay A-01 submit) ---
   await openHub(page, { url: HUB_GUEST });
