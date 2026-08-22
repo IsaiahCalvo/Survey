@@ -123,6 +123,8 @@ test('live spec covers type / blur / blank / Escape / tight-fit / wrap / 390 / f
   assert.match(spec, /390 empty click-out must discard/);
   assert.match(spec, /viewBox/);
   assert.match(spec, /file\.id/);
+  assert.match(spec, /dismissChrome/);
+  assert.match(spec, /editModeCooldownRef/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
 });

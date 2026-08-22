@@ -59,6 +59,24 @@ async function blurInputs(page) {
   });
 }
 
+async function dismissChrome(page) {
+  await blurInputs(page);
+  const search = page.getByPlaceholder('Search text in PDF...');
+  if (await search.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Search text', exact: true }).click().catch(() => {});
+    await blurInputs(page);
+  }
+  const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  if (await pagesToggle.isVisible().catch(() => false)) {
+    const expanded = await page.getByText('No documents yet').isVisible().catch(() => false);
+    if (expanded) {
+      await pagesToggle.click();
+      await expect(page.getByText('No documents yet')).toHaveCount(0);
+    }
+  }
+  await blurInputs(page);
+}
+
 async function pageBox(page, pageNumber = 1) {
   const box = await page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).boundingBox();
   expect(box, `page ${pageNumber} geometry`).toBeTruthy();
@@ -66,10 +84,11 @@ async function pageBox(page, pageNumber = 1) {
 }
 
 async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
-  const pageEl = page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
-  await expect(pageEl).toBeVisible();
-  const box = await pageEl.boundingBox();
-  expect(box, `page ${pageNumber} geometry`).toBeTruthy();
+  const overlay = page.locator(`[data-text-overlay="${pageNumber}"]`);
+  const target = (await overlay.count()) ? overlay.first() : page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `drag target page ${pageNumber} geometry`).toBeTruthy();
   await page.mouse.move(box.x + box.width * x0, box.y + box.height * y0);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * x1, box.y + box.height * y1, { steps: 10 });
@@ -151,12 +170,13 @@ async function activateTool(page, categoryName, toolName) {
 }
 
 async function selectMode(page) {
-  await blurInputs(page);
+  await dismissChrome(page);
   if (await page.locator('[data-text-edit-overlay]').count()) await commitEdit(page);
   await blurInputs(page);
   await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
+  await dismissChrome(page);
   await expect.poll(async () => page.locator('[data-text-overlay="1"]').count(), {
     timeout: 8_000,
     message: 'V must leave the Text draw overlay',
@@ -170,7 +190,7 @@ async function commitEdit(page) {
     await page.mouse.click(pageGeom.x + pageGeom.width - 12, pageGeom.y + pageGeom.height - 12);
   }
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
-  await blurInputs(page);
+  await dismissChrome(page);
 }
 
 async function waitForNewText(page, beforeIds) {
@@ -184,7 +204,10 @@ async function waitForNewText(page, beforeIds) {
 }
 
 async function armText(page) {
-  await blurInputs(page);
+  await dismissChrome(page);
+  // PDFViewer skips pointerdown for 300ms after an edit commit
+  // (editModeCooldownRef). Without this wait the next drag is a no-op.
+  await page.waitForTimeout(350);
   await activateTool(page, 'Text', 'Text');
   await expect(page.locator('[data-text-overlay="1"]').first()).toBeVisible({ timeout: 8_000 });
 }
@@ -235,6 +258,7 @@ async function enterExistingEdit(page, id) {
 test('desktop T-01 textbox create/edit intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
   await openEditor(page);
+  await dismissChrome(page);
   await assertNoErrorBoundary(page);
 
   expect(await page.locator('[data-text-edit-overlay]').count()).toBe(0);
@@ -365,12 +389,13 @@ test('390 T-01 textbox create/edit intended + break + edge', async ({ page }) =>
   await openEditor(page, { width: 390, height: 844 });
   await assertNoErrorBoundary(page);
 
-  const a = await createText(page, 'Mobile', { x0: 0.18, y0: 0.20, x1: 0.62, y1: 0.34 });
+  await dismissChrome(page);
+  const a = await createText(page, 'Mobile', { x0: 0.28, y0: 0.30, x1: 0.62, y1: 0.44 });
   expect(a.text, '390 typed Mobile must commit Mobile').toBe('Mobile');
 
   const beforeEscape = new Set((await textRows(page)).map((row) => row.id));
   await armText(page);
-  await dragOnPage(page, { x0: 0.18, y0: 0.40, x1: 0.62, y1: 0.54 });
+  await dragOnPage(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.64 });
   await typeInOverlay(page, 'NOPE');
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
@@ -381,7 +406,7 @@ test('390 T-01 textbox create/edit intended + break + edge', async ({ page }) =>
 
   const beforeBlank = new Set((await textRows(page)).map((row) => row.id));
   await armText(page);
-  await dragOnPage(page, { x0: 0.18, y0: 0.58, x1: 0.62, y1: 0.72 });
+  await dragOnPage(page, { x0: 0.28, y0: 0.66, x1: 0.62, y1: 0.80 });
   await expect(page.locator('[data-text-edit-overlay] [contenteditable]').first()).toBeVisible({ timeout: 10_000 });
   await commitEdit(page);
   expect(
