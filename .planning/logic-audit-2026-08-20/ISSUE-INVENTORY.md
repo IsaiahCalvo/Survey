@@ -245,7 +245,7 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | P2-34(c) Ctrl+W / Ctrl+Tab overlay lies | **proven** | Overlay no longer lists them (Navigation/Actions/Interface only) |
 | P2-35(a) dismiss-then-reopen race | **proven** | `useMobileSheetMotion.js` generation-guard + `resetMotion` |
 | P2-35(b) hard-hide survey exits | **proven** | `requestClose`; `fix-logs/mobile-sheets-p2-35b.md` |
-| P2-35(c) `touchcancel` | **proven** | hook `:226` `onTouchCancel` → `settleDrag` |
+| P2-35(c) `touchcancel` | **proven** | `src/mobile/useMobileSheetMotion.js:226` `onTouchCancel` → `settleDrag` |
 
 ### P2-02 placement note
 
