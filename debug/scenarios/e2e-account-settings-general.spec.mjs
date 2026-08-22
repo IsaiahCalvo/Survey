@@ -84,7 +84,7 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
   await expect(last).toHaveValue('Calvo');
   await expect(email).toBeDisabled();
   await expect(email).toHaveValue('dev-hubpreview@example.invalid');
-  await expect(dialog.getByText('Set a password')).toBeVisible();
+  await expect(dialog.getByText('Set a password', { exact: true })).toBeVisible();
   await expect(dialog.getByText('Password requirements')).toBeVisible();
   await expect(dialog.locator('#currentPassword')).toHaveCount(0);
   await first.fill('Pat');
