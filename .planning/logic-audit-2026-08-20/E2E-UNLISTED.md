@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Spaces region-row Click to rename):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Click to rename"` / `commitRegionRename`. Distinct from space-name rename and from Edit region areas. 390 page-row / Edit after Create also live this session (`mobileEdit: 1`, toolbar + DOM Cancel). Receipt `fix-logs/spaces-region-rename-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Spaces region-row Hide/Show canvas annotations):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Hide canvas annotations"` / `region-visibility-button`. Distinct from overlay Hide/Show. Region-row Delete not this pass. Receipt `fix-logs/spaces-region-visibility-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Spaces region-row Click to rename):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Click to rename"` / `commitRegionRename`. Distinct from space-name rename and from Edit region areas. 390 page-row / Edit after Create also live this session (`mobileEdit: 1`, toolbar + DOM Cancel). Receipt `fix-logs/spaces-region-rename-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Spaces Edit region areas + overlay + last space):** U-02 leftover (not a new UL row). Live desktop `aria-label="Edit region areas on the page"` / Region Selection Tool + overlay switch + last space. Distinct from Create / rename / add-pages. Notes Photo/Video / 390 switcher / template re-pick / Excel fail-closed / Copy-space not replayed as the GAP. Receipt `fix-logs/spaces-edit-region-areas-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
