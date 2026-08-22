@@ -935,6 +935,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
   const skipZoomInputCommitRef = useRef(false);
+  const skipPageInputCommitRef = useRef(false);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
@@ -23082,9 +23083,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const commitPageInput = useCallback((liveValue) => {
-    // Prefer the live input value. Playwright fill / last keystroke can commit
-    // in the same tick as onChange, so pageInputValue may still be the old page.
-    const raw = liveValue != null ? liveValue : pageInputValue;
+    // Prefer the mounted input, then the event value, then React state.
+    // Same-tick fill / last keystroke can leave pageInputValue stale.
+    const fromDom = pageInputRef.current && typeof pageInputRef.current.value === 'string'
+      ? pageInputRef.current.value
+      : null;
+    const raw = fromDom != null ? fromDom : (liveValue != null ? liveValue : pageInputValue);
     const value = parseInt(String(raw).replace(/\D/g, ''), 10);
     if (!isNaN(value) && value >= 1 && value <= numPages) {
       // Navigate first, then update input value will be synced by useEffect when pageNum updates
@@ -23102,12 +23106,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitPageInput(e.target?.value);
-      e.target.blur();
+      commitPageInput(e.currentTarget?.value);
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      // Restore the live page. Blur must not commit the typed draft
+      // (setState is async, so commitPageInput would still see the draft).
+      setPageInputValue(String(pageNum));
+      setIsPageInputDirty(false);
+      skipPageInputCommitRef.current = true;
+      e.currentTarget.blur();
     }
-  }, [commitPageInput]);
+  }, [commitPageInput, pageNum]);
 
   const handlePageInputBlur = useCallback((e) => {
+    if (skipPageInputCommitRef.current) {
+      skipPageInputCommitRef.current = false;
+      return;
+    }
     commitPageInput(e?.target?.value);
   }, [commitPageInput]);
 
