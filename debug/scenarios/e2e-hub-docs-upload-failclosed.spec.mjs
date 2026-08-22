@@ -81,7 +81,7 @@ test('Hub Documents Upload fail-closed intended + break + edge', async ({ page }
 
   // Search no-match still has header Upload; click does not mint a row.
   // empty=1 keeps EmptyState ("No documents yet") even after a query.
-  const search = page.locator('.documents-desktop-search input').first();
+  const search = page.locator('.documents-desktop-search input[placeholder="Search documents..."]');
   await search.fill('zzzz-no-such-document');
   await expect(page.getByText('No documents match your search.').first()).toBeVisible();
   await clickAndExpectUploadLog(page, desktopUpload, logs, choosers);
