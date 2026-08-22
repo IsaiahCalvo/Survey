@@ -9937,6 +9937,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Per-document region visibility, persisted in localStorage.
   const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId);
+  // Primitive so the left-rail identity compare republishes when the Map
+  // changes. Function-only getter identity is treated as unchanged
+  // (2026-05-13 chrome churn guard), which left the overlay switch stale.
+  const regionOverlayDisabledKey = useMemo(
+    () => [...regionOverlayDisabled.entries()]
+      .filter(([, disabled]) => disabled === true)
+      .map(([key]) => key)
+      .sort()
+      .join('|'),
+    [regionOverlayDisabled]
+  );
 
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);
@@ -29979,6 +29990,7 @@ ${pageBlocks}
       onToggleRegionOverlay: handleToggleRegionOverlay,
       getRegionOverlayEnabled: isRegionOverlayEnabled,
       isRegionOverlayToggleEnabled,
+      regionOverlayDisabledKey,
       showSurveyPanel,
       selectedModuleId,
       cloudSyncStatus: displayedCloudSyncStatus,
@@ -30082,6 +30094,7 @@ ${pageBlocks}
     handleToggleRegionOverlay,
     isRegionOverlayEnabled,
     isRegionOverlayToggleEnabled,
+    regionOverlayDisabledKey,
     showSurveyPanel,
     selectedModuleId,
     displayedCloudSyncStatus,
