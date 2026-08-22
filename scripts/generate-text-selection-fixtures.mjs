@@ -1,9 +1,27 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import sharp from 'sharp';
 
 const fixtureRoot = new URL('../debug/fixtures/', import.meta.url);
+
+async function resolveHebrewFont() {
+  const candidates = [
+    '/System/Library/Fonts/SFHebrew.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    'C:/Windows/Fonts/arial.ttf',
+  ];
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next common OS font path.
+    }
+  }
+  throw new Error('A Hebrew-capable system font is required (SF Hebrew, DejaVu Sans, or Arial).');
+}
 
 async function buildRotationFixture() {
   const pdf = await PDFDocument.create();
@@ -23,7 +41,7 @@ async function buildRotationFixture() {
     page.drawText('Selectable line two crosses the same page.', { x: 48, y: size[1] - 155, size: 16, font: helvetica });
   });
 
-  const hebrewFontPath = '/System/Library/Fonts/SFHebrew.ttf';
+  const hebrewFontPath = await resolveHebrewFont();
   pdf.registerFontkit(fontkit);
   const hebrewFont = await pdf.embedFont(await readFile(hebrewFontPath), { subset: true });
   const rtlPage = pdf.addPage([500, 500]);
