@@ -91,7 +91,7 @@ const SVGSelectionOverlay = memo(({
   // pill and mt resize never fired. Leave a gap above the visible handle.
   const stemAttachY = handles.mt.y - (
     !hideResizeHandles && visibleResizeHandles.has('mt')
-      ? handleMetrics.hPillH / 2 + handleMetrics.minGap
+      ? handleMetrics.hPillH / 2 + rotationHit.stemHitWidth / 2 + handleMetrics.minGap
       : 0
   );
 
