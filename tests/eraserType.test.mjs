@@ -52,6 +52,8 @@ test('live spec covers type catalog, skip/delete, E vs Shift+E, 390, hub, file.i
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /desktop Eraser type intended \+ break \+ edge/);
   assert.match(spec, /390 Eraser mode intended \+ break \+ edge/);
+  assert.match(spec, /activateTool\(page, 'Draw', 'Eraser'\)/);
+  assert.match(spec, /annotation-dropdown__heading/);
   assert.match(spec, /desktop Eraser type catalog/);
   assert.match(spec, /partial must skip a rect/);
   assert.match(spec, /partial must bite ink/);
