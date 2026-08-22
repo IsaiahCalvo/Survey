@@ -33655,10 +33655,12 @@ ${pageBlocks}
                     <p>No templates available. Please create a template first.</p>
                   </div>
                 ) : (() => {
-                  // Aggregate all spaces from all templates
+                  // Aggregate all spaces from all templates.
+                  // Live templates (and the ?testPdf= E2E seed) store
+                  // modules; older snapshots used spaces. Read both.
                   const allSpaces = [];
                   appTemplates.forEach(template => {
-                    (template.spaces || []).forEach(space => {
+                    (template.modules || template.spaces || []).forEach(space => {
                       allSpaces.push({ ...space, templateId: template.id, templateName: template.name });
                     });
                   });
@@ -33686,6 +33688,14 @@ ${pageBlocks}
                   const availableModules = sourceModuleId
                     ? allSpaces.filter(module => module.id !== sourceModuleId)
                     : allSpaces;
+
+                  if (availableModules.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
+                        <p>No spaces available in any template.</p>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -33935,7 +33945,7 @@ ${pageBlocks}
                               // We're copying items - get the itemIds from the selected surveyMarkers
                               const itemIdsToCopy = [];
 
-                              if (!sourceSpaceId) {
+                              if (!sourceModuleId) {
                                 console.error('No source space ID found');
                                 showToast('Unable to determine source space. Please try again.', 'error');
                                 return;
@@ -33943,11 +33953,11 @@ ${pageBlocks}
 
                               // Find the source template (the one containing the source space)
                               const sourceTemplate = selectedTemplate || appTemplates.find(t =>
-                                t.spaces?.some(s => s.id === sourceSpaceId)
+                                (t.modules || t.spaces || []).some(s => s.id === sourceModuleId)
                               );
 
                               if (!sourceTemplate) {
-                                console.error('Source template not found for space:', sourceSpaceId);
+                                console.error('Source template not found for space:', sourceModuleId);
                                 showToast('Unable to find source template. Please try again.', 'error');
                                 return;
                               }
@@ -34020,9 +34030,16 @@ ${pageBlocks}
                                   return;
                                 } else {
                                   // Direct transfer - copy items to the destination space
+                                  if (typeof addHistoryCheckpoint === 'function') {
+                                    addHistoryCheckpoint('survey-marker:copy', {
+                                      sourceModuleId,
+                                      destModuleId: space.id,
+                                      ids: selectedSurveyMarkerIds,
+                                    });
+                                  }
                                   const result = transferItems(
                                     itemIdsToCopy,
-                                    sourceSpaceId,
+                                    sourceModuleId,
                                     space.id,
                                     template,
                                     items,
@@ -34050,7 +34067,7 @@ ${pageBlocks}
 
                                     // Find source annotation to get coordinates
                                     const sourceAnnotation = Object.values(annotations).find(a =>
-                                      a.itemId === itemId && a.spaceId === sourceSpaceId
+                                      a.itemId === itemId && (a.spaceId === sourceModuleId || a.moduleId === sourceModuleId)
                                     );
 
                                     // Find source surveyMarker by matching the selected ID
@@ -34062,7 +34079,7 @@ ${pageBlocks}
 
 
                                     // Find destination category ID
-                                    const destSpace = template.spaces.find(s => s.id === space.id);
+                                    const destSpace = (template.modules || template.spaces || []).find(s => s.id === space.id);
                                     const destCategory = destSpace?.categories?.find(c => c.name === item.itemType);
 
                                     // Use destination annotation coordinates, or source annotation coordinates, or source surveyMarker bounds
@@ -34125,6 +34142,7 @@ ${pageBlocks}
 
                                   // Switch to the destination space to show the copied items
                               setSelectedTemplate(template);
+                              setSelectedModuleId(space.id);
                               setSelectedSpaceId(space.id);
                               setShowSurveyPanel(true);
 
@@ -34145,7 +34163,7 @@ ${pageBlocks}
 
 
                                 // Check if all required categories exist in destination space
-                                const destSpace = template.spaces.find(s => s.id === space.id);
+                                const destSpace = (template.modules || template.spaces || []).find(s => s.id === space.id);
                                 const missingCategories = [];
                                 legacySurveyMarkers.forEach(h => {
                                   const sourceCategoryName = getCategoryName(sourceTemplate, h.moduleId, h.categoryId);
@@ -34158,6 +34176,17 @@ ${pageBlocks}
                                 if (missingCategories.length > 0) {
                                   showToast(`Cannot copy surveyMarkers. The following categories don't exist in the destination space:\n\n${missingCategories.join(', ')}\n\nPlease create these categories in the destination space first.`, 'error');
                                   return;
+                                }
+
+                                // Sibling of survey-marker:rename / :entity / :reorder —
+                                // without this, Ctrl+Z pops the last place instead of
+                                // dropping only the dest copy.
+                                if (typeof addHistoryCheckpoint === 'function') {
+                                  addHistoryCheckpoint('survey-marker:copy', {
+                                    sourceModuleId,
+                                    destModuleId: space.id,
+                                    ids: selectedSurveyMarkerIds,
+                                  });
                                 }
 
                                 // Create new surveyMarkers in destination space
@@ -34190,6 +34219,7 @@ ${pageBlocks}
 
                                 // Switch to destination space
                                 setSelectedTemplate(template);
+                                setSelectedModuleId(space.id);
                                 setSelectedSpaceId(space.id);
                                 setShowSurveyPanel(true);
 
