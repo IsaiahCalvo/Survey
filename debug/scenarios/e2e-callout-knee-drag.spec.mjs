@@ -116,21 +116,25 @@ async function dragHandle(page, calloutId, part, dx, dy, pageNumber = 1) {
 
 async function calloutGeom(page, calloutId) {
   return page.evaluate((cid) => {
-    const obj = window.__phase35GetAnnotationById?.(cid) || {};
-    const lnc = obj.data?.legacyNormalizedCoords || obj.data?.legacyCallout || {};
-    const pick = (a, b) => (a && Number.isFinite(a.x) ? a : b);
-    const kneeEl = document.querySelector(`[data-callout-id="${cid}"] [data-callout-part="knee"]`);
-    const tipEl = document.querySelector(`[data-callout-id="${cid}"] [data-callout-part="arrowTip"]`);
+    const layer = document.querySelector('[data-svg-annotation-layer="1"]');
+    const vb = layer?.viewBox?.baseVal;
+    const W = vb?.width || 1;
+    const H = vb?.height || 1;
+    const kneeEl = [...document.querySelectorAll(`[data-callout-id="${cid}"] [data-callout-part="knee"]`)].at(-1);
+    const tipEl = [...document.querySelectorAll(`[data-callout-id="${cid}"] [data-callout-part="arrowTip"]`)].at(-1);
     const boxEl = document.querySelector(`[data-callout-id="${cid}"] [data-callout-part="textBox"]`);
+    const kneePx = kneeEl ? { x: Number(kneeEl.getAttribute('cx')), y: Number(kneeEl.getAttribute('cy')) } : null;
+    const tipPx = tipEl ? { x: Number(tipEl.getAttribute('cx')), y: Number(tipEl.getAttribute('cy')) } : null;
+    const boxPx = boxEl ? { x: Number(boxEl.getAttribute('x')), y: Number(boxEl.getAttribute('y')) } : null;
+    const toNorm = (pt) => (pt && Number.isFinite(pt.x) ? { x: pt.x / W, y: pt.y / H } : null);
+    const obj = window.__phase35GetAnnotationById?.(cid);
+    const lnc = obj?.data?.legacyNormalizedCoords || obj?.data?.legacyCallout || {};
     return {
-      arrowTip: pick(lnc.arrowTip, obj.arrowTip),
-      knee: pick(lnc.knee, obj.knee),
-      textBoxPosition: pick(lnc.textBoxPosition, obj.textBoxPosition),
-      svg: {
-        knee: kneeEl ? { cx: Number(kneeEl.getAttribute('cx')), cy: Number(kneeEl.getAttribute('cy')) } : null,
-        arrowTip: tipEl ? { cx: Number(tipEl.getAttribute('cx')), cy: Number(tipEl.getAttribute('cy')) } : null,
-        textBox: boxEl ? { x: Number(boxEl.getAttribute('x')), y: Number(boxEl.getAttribute('y')) } : null,
-      },
+      arrowTip: toNorm(tipPx) || lnc.arrowTip || null,
+      knee: toNorm(kneePx) || lnc.knee || null,
+      textBoxPosition: toNorm(boxPx) || lnc.textBoxPosition || null,
+      page: { W, H },
+      persistedLookup: Boolean(obj),
     };
   }, calloutId);
 }
