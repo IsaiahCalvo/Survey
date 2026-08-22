@@ -17,8 +17,9 @@ export const prepareAtomicBookmarkEdit = ({
   numPages,
 }) => {
   const nextName = typeof name === 'string' ? name.trim() : '';
+  const kind = bookmark?.type === 'folder' ? 'bookmark group' : 'bookmark';
   if (!nextName) {
-    return { ok: false, error: 'Please enter a bookmark name.' };
+    return { ok: false, error: `Please enter a ${kind} name.` };
   }
 
   const nextPage = Number.parseInt(typeof page === 'string' ? page.trim() : page, 10);
@@ -37,7 +38,7 @@ export const prepareAtomicBookmarkEdit = ({
   })) {
     return {
       ok: false,
-      error: 'A bookmark with this name already exists. Please choose a different name.',
+      error: `A ${kind} with this name already exists. Please choose a different name.`,
     };
   }
 

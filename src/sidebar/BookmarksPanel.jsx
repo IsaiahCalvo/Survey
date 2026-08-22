@@ -283,6 +283,7 @@ const BookmarkTreeRow = ({
         {isEditMode && !isClone ? (
           <input
             value={editName}
+            aria-label={isFolder ? `Rename group ${item.name}` : `Rename bookmark ${item.name}`}
             onChange={(event) => setEditName(event.target.value)}
             onBlur={commitName}
             onKeyDown={(event) => {
@@ -329,6 +330,7 @@ const BookmarkTreeRow = ({
           isEditMode && !isClone ? (
             <input
               value={editPage}
+              aria-label={`Bookmark page ${item.name}`}
               onChange={(event) => handlePageInputChange(event.target.value)}
               onBlur={commitPage}
               onKeyDown={(event) => {
@@ -398,7 +400,7 @@ const BookmarkTreeRow = ({
               onDelete?.(item.id);
             }}
             {...tip('Delete', 'below')}
-            aria-label="Delete"
+            aria-label={isFolder ? `Delete group ${item.name}` : `Delete bookmark ${item.name}`}
             style={{
               background: 'transparent',
               border: 'none',
@@ -1559,7 +1561,7 @@ const BookmarksPanel = ({
                   <button
                     type="button"
                     className="mobile-bookmark-move mobile-bookmark-delete"
-                    aria-label={`Delete bookmark ${item.name}`}
+                    aria-label={isFolder ? `Delete group ${item.name}` : `Delete bookmark ${item.name}`}
                     onClick={() => handleDelete(item.id)}
                   >
                     <Icon name="trash" size={13} color="currentColor" />
