@@ -883,6 +883,15 @@ const SurveySpacesRail = ({
     const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const entities = selectedTemplate?.entities || [];
     const entity = entityId ? entities.find(e => e.id === entityId) : null;
+    const previousEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId || '';
+    const nextEntityId = entity?.id || '';
+    if (previousEntityId === nextEntityId) return;
+
+    // Sibling of survey-marker:rename — without this, Ctrl+Z pops the
+    // highlight:create place instead of restoring the prior entity.
+    if (typeof addHistoryCheckpoint === 'function') {
+      addHistoryCheckpoint('survey-marker:entity', { annotationId, entityId: nextEntityId || null });
+    }
 
     setSurveyMarkers(prev => ({
       ...prev,

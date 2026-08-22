@@ -73,26 +73,41 @@ const mockMSGraphValue = {
   ensureFreshToken: async () => false,
 };
 
+const makeKal436Modules = () => [{
+  id: 'kal436-module',
+  name: 'Existing Survey Data',
+  categories: [{
+    id: 'kal436-category',
+    name: 'Walls',
+    color: '#d8a84e',
+  }],
+}, {
+  id: 'kal436-other-module',
+  name: 'Other Survey Data',
+  categories: [{
+    id: 'kal436-other-category',
+    name: 'Doors',
+    color: '#5ba1f0',
+  }],
+}];
+
+// KAL-436 stays entity-less so existing place-marker E2E still skip the
+// desktop Entity dialog. The second local template seeds entities for the
+// rail picker leftover (not a cloud persist seam). Separate module trees
+// so a category mutation on one template cannot alias the other.
 const surveyTransitionE2ETemplates = [{
   id: 'kal436-template',
   name: 'KAL-436 Preservation Template',
-  modules: [{
-    id: 'kal436-module',
-    name: 'Existing Survey Data',
-    categories: [{
-      id: 'kal436-category',
-      name: 'Walls',
-      color: '#d8a84e',
-    }],
-  }, {
-    id: 'kal436-other-module',
-    name: 'Other Survey Data',
-    categories: [{
-      id: 'kal436-other-category',
-      name: 'Doors',
-      color: '#5ba1f0',
-    }],
-  }],
+  modules: makeKal436Modules(),
+}, {
+  id: 'kal436-entities-template',
+  name: 'Survey Entities Template',
+  entities: [
+    { id: 'kal436-entity-gc', name: 'GC', color: 'rgba(216,168,78,0.5)' },
+    { id: 'kal436-entity-sub', name: 'Subcontractor', color: 'rgba(122,183,230,0.5)' },
+    { id: 'kal436-entity-complete', name: '100% Complete', color: 'rgba(166,224,122,0.5)' },
+  ],
+  modules: makeKal436Modules(),
 }];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
