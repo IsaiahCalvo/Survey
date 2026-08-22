@@ -30,8 +30,8 @@ Exact discrete catalogs used by the UI:
 | D-05 | Draw | Stroke width | Presets + numeric | Min/max; eraser size vs stroke |
 | S-01 | Shapes | Rectangle | Draw + fill/stroke | Zero size; rotation |
 | S-02 | Shapes | Ellipse | Draw + fill/stroke | Circle vs ellipse |
-| S-03 | Shapes | Line | Draw + dash | Zero length |
-| S-04 | Shapes | Arrow + arrowheads | 6 head styles | Legacy group export |
+| S-03 | Shapes | Line | Draw + dash. Single-click `p1`/`p2`/`midpoint` live `e2e-line-endpoint-midpoint.spec.mjs` | Zero length; 10px snap-to-straight; Pen-armed handle still edits |
+| S-04 | Shapes | Arrow + arrowheads | 6 head styles. Same `p1`/`p2`/`midpoint` chrome as Line | Legacy group export |
 | S-05 | Shapes | Counter | Numbered pins + series | Renumber; last-in-series; fill/number color |
 | T-01 | Text | Textbox create/edit | Same-surface editor | Blank discard; tight-fit; wrap |
 | T-02 | Text | Callout create/edit | Leader + text box. Knee / leader / arrowTip / text-box **move** live `e2e-callout-knee-drag.spec.mjs`. **Corner resize** `textBox-tl/tr/bl/br` live `e2e-callout-textbox-resize.spec.mjs`. **Flip + knee-rollback leftovers** `e2e-callout-textbox-resize-leftovers.spec.mjs` | Blank; arrowhead; style patch; Pen-armed no-op; Esc is marquee-only; off-page allow-outside; 20px min clamp; live flip past opposite; resize-into-knee rollback |
@@ -46,7 +46,7 @@ Exact discrete catalogs used by the UI:
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
 | C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets | Counter number color; armed tool vs selection |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
-| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`), not this row | Rotated; text wrap height |
+| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04 | Rotated; text wrap height |
 | E-02 | Edit | Rotation | Handle + numeric + Shift 45° | Off-screen handle; 0/90/180/270 |
 | E-03 | Edit | Move | Drag selected | Multi-select; snap |
 | E-04 | Edit | Delete | Backspace / context | Last owner; remote delete |
