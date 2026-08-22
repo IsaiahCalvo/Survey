@@ -201,13 +201,16 @@ async function rightClickStroke(page, id) {
   await selectMode(page);
   const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
-  const box = await target.boundingBox();
+  await target.scrollIntoViewIfNeeded().catch(() => {});
+  const shape = target.locator('[data-shape-kind], rect, path, ellipse, polygon, polyline').first();
+  const box = (await shape.boundingBox().catch(() => null)) || await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(
-    box.x + Math.min(8, Math.max(2, box.width / 2)),
-    box.y + Math.max(2, box.height / 2),
-    { button: 'right' },
-  );
+  expect(box.width, `width for ${id}`).toBeGreaterThan(4);
+  expect(box.height, `height for ${id}`).toBeGreaterThan(4);
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.click(x, y);
+  await page.mouse.click(x, y, { button: 'right' });
   await expect(page.locator('[data-annotation-context-menu="true"]')).toBeVisible({ timeout: 8_000 });
 }
 
