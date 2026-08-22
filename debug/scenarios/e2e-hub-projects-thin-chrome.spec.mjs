@@ -93,6 +93,7 @@ async function pointerDragHandleTo(page, handle, dest, { cancel = false } = {}) 
     await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
   }
   await page.mouse.up();
+  await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
 }
 
 async function keyboardMoveHandle(page, handle, { direction = 'down', cancel = false } = {}) {
@@ -342,12 +343,14 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   ));
   const p1Handle = mobileRow('p1').locator('[title="Drag to rearrange"]');
   await pointerDragHandleTo(page, p1Handle, mobileRow('p2'));
+  await page.mouse.click(12, 12).catch(() => {});
   const mobileOrderAfter = await page.locator('.projects-mobile-folder-row').evaluateAll((rows) => (
     rows.map((row) => row.querySelector('strong')?.textContent?.trim() || '')
   ));
   const mobileReordered = mobileOrderAfter.join('|') !== mobileOrderBefore.join('|');
 
-  await mobileRow('p1').locator('strong').click();
+  await mobileRow('p1').locator('.projects-mobile-folder-copy').click();
+  await expect(page.locator('.projects-mobile-back-button')).toBeVisible({ timeout: 8_000 });
   const mobileFile = page.locator('.projects-mobile-file-row').filter({ hasText: SE011 });
   await expect(mobileFile).toBeVisible({ timeout: 8_000 });
   await page.getByRole('button', { name: 'Select', exact: true }).locator('visible=true').click();
