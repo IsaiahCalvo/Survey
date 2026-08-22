@@ -201,8 +201,24 @@ async function dismissChrome(page) {
   }
 }
 
+async function selectMode(page) {
+  await page.keyboard.press('Escape');
+  const selectBtn = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
+  if (await selectBtn.isVisible().catch(() => false)) {
+    await selectBtn.click();
+  } else {
+    await page.keyboard.press('v');
+  }
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) {
+    await page.keyboard.press('Escape');
+  }
+}
+
 async function selectCloud(page, id) {
-  await page.keyboard.press('v');
+  // Color only patches a selected cloud when activeTool === 'select'.
+  // Armed Rectangle Color is next-draw preference only.
+  await selectMode(page);
   const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
@@ -216,9 +232,12 @@ async function selectCloud(page, id) {
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
     const selected = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
-    const chrome = await page.getByRole('button', { name: /^(Color|Style)$/ }).count();
-    if (selected > 0 || chrome > 0) return;
+    if (selected > 0) {
+      await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+      return;
+    }
   }
+  await expect(page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').first()).toBeVisible({ timeout: 8_000 });
 }
 
 async function openColorPicker(page) {
@@ -281,8 +300,7 @@ async function createCloud(page, coords = { x0: 0.16, y0: 0.24, x1: 0.40, y1: 0.
 }
 
 async function patchFillEverySwatch(page, id) {
-  const colorVisible = await page.getByRole('button', { name: 'Color', exact: true }).first().isVisible().catch(() => false);
-  if (!colorVisible) await selectCloud(page, id);
+  await selectCloud(page, id);
   await openColorPicker(page);
   await clickTab(page, 'Fill');
   await assertCloudTabs(page, { onBorder: false });
@@ -303,6 +321,7 @@ async function patchFillEverySwatch(page, id) {
 }
 
 async function patchBorderEverySwatch(page, id) {
+  await selectCloud(page, id);
   await openColorPicker(page);
   await clickTab(page, 'Border');
   await assertCloudTabs(page, { onBorder: true });
