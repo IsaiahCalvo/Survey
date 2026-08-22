@@ -409,10 +409,15 @@ test('desktop Callout CompactColorPicker Fill + Border every swatch intended + b
   expect(storedFill(await annotationById(page, nextFill.id))).toBe('#80FF00');
   expect(storedBorder(await annotationById(page, nextBorder.id))).toBe('#FF8000');
 
-  // Edge: undo drops the last next-draw callout; prior fill/border stay.
+  // Edge: undo drops the last next-draw callout. Create + text commit can
+  // be two history entries, so rewind until that id is gone.
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeVisible();
-  await undo.click();
+  for (let i = 0; i < 8; i += 1) {
+    const stillThere = (await calloutSnapshot(page)).some((row) => row.id === nextBorder.id);
+    if (!stillThere) break;
+    await undo.click();
+  }
   await expect.poll(async () => {
     const rows = await calloutSnapshot(page);
     return rows.some((row) => row.id === nextBorder.id);
