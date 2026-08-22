@@ -124,7 +124,12 @@ test('lease assign cannot invent a second-account tuple', () => {
   assert.doesNotMatch(LEASE, /function listAccounts|cmd === 'list'/);
   assert.equal(existsSync(join(root, '.bot-credentials.json')), false);
   assert.equal(existsSync(join(root, '.survey-test-account.json')), false);
-  assert.equal(existsSync(join(root, '.env.local')), false);
+  // X-01 names may live in gitignored .env.local. Fail-closed stays: no
+  // coordinator lease, no bot credentials, no invented second-account tuple.
+  // Do not require the file's absence.
+  if (existsSync(join(root, '.env.local'))) {
+    assert.match(read('.gitignore'), /^\.env\.local$/m);
+  }
   assert.equal(existsSync(join(root, '.env.test')), false);
 });
 
