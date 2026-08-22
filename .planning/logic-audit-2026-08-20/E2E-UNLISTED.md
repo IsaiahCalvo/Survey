@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 survey-rail category reorder):** U-01 leftover (not a new UL row). Live desktop `DragRearrangeHandle` → `handleReorderSurveyCategories`. Empty-module Create template / place-time Entity / rail Entity / Jump / Set location / Create category plus / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-category-reorder-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 survey-rail item reorder):** U-01 leftover (not a new UL row). Live desktop `DragRearrangeHandle` → `reorderSurveyMarkersInCategory`. Category reorder / empty-module Create template / place-time Entity / rail Entity / Jump / Set location / Create category plus / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-item-reorder-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 survey-rail category reorder):** U-01 leftover (not a new UL row). Live desktop `DragRearrangeHandle` → `handleReorderSurveyCategories`. Empty-module Create template / place-time Entity / rail Entity / Jump / Set location / Create category plus / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-category-reorder-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 empty-module Create template):** U-01 leftover (not a new UL row). Live empty-state `Create category for empty module` → CreateCategoryModal start-adding. Place-time Entity / rail Entity / Jump / Set location / Create category plus / category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-empty-create-template-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
