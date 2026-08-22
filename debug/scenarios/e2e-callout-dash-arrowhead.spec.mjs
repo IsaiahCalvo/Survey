@@ -288,14 +288,14 @@ async function createCallout(page, text, coords) {
   await blurInputs(page);
   await activateTool(page, 'Text', 'Callout');
   await dragOnPage(page, coords);
-  const created = await waitForNewCallout(page, before);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
-  if (await editor.isVisible().catch(() => false)) {
-    await editor.click();
-    await editor.pressSequentially(text, { delay: 6 });
-    await page.keyboard.press('Escape');
-    await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
-  }
+  await expect(editor).toBeVisible({ timeout: 10_000 });
+  await editor.click();
+  await editor.pressSequentially(text, { delay: 6 });
+  const created = await waitForNewCallout(page, before);
+  const box = await pageBox(page);
+  await page.mouse.click(box.x + 8, box.y + box.height - 8);
+  await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   await blurInputs(page);
   await selectMode(page);
   return created;
