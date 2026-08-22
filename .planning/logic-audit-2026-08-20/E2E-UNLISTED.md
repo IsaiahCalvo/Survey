@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 requirement-by-requirement completion audit):** not a new UL row. Re-classified leftover-18 UL rows as fail-closed local + host-gated. No unique unblocked leftover. Receipt `fix-logs/completion-audit-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 host probe + Print fail-closed):** not a new UL row. X-01 hosts absent. Classified compile-hidden Print: custom panel stays UL-40–43 flag-off; reachable Cmd/Ctrl+P blob/OS fail-closed is X-03 / dedicated `e2e-print-panel-failclosed.spec.mjs`. Receipts `fix-logs/host-probe-2026-08-22.md` + `fix-logs/print-panel-failclosed-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 requirement-by-requirement completion audit):** not a new UL row. Re-classified leftover-18 UL rows as fail-closed local + host-gated. No unique unblocked leftover. Receipt `fix-logs/completion-audit-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 leftover-18 UL-16 Delete account permanently fail-closed):** not a new UL row. Dedicated intended+break+edge for Account Settings **Delete account permanently** (`Preview cannot delete accounts.`; wipe invoke **0**; Isaiah still signed in; Package 2 stay). Distinct from leftover18-unblock wipe click and Settings General Cancel. Receipt `fix-logs/account-settings-delete-account-failclosed-2026-08-22.md`. Playwright `e2e-account-settings-delete-account-failclosed.spec.mjs` **1 / 1 (16.2s)**. Node `accountSettingsDeleteAccountFailClosed.test.mjs` **4 / 4**. Next leftover-18 fail-closed slice: leftover-18 now needs real hosts. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
@@ -245,7 +247,7 @@ Unblocked catalog follow-up (2026-08-21, not new UL rows): `fix-logs/e2e-unblock
 | UL-13, UL-15–18, UL-20–22 | **chrome live** on `?hubPreview=1`. UL-16 Confirm fail-closed this pass (`e2e-account-settings-delete-account-failclosed.spec.mjs`). Remaining hosts: live Turnstile completion, live account wipe, Stripe Checkout, MSAL, Google OAuth. |
 | UL-24 | **live mint** on a signed-in owner doc (`e2e-signed-in-leftovers.spec.mjs`). HubPreview remains fail-closed. Email Send still not clicked. |
 | UL-27–31 | **closed live** — prior “pdf.js swallow” was a harness miss (right-click at viewer 40,40 is chrome, off-page). |
-| UL-40–43 | **closed live this pass** (`e2e-print-panel.spec.mjs` 1/1). Flag **restored false**. Repeat live needs another DEV flip. |
+| UL-40–43 | **closed live** (`e2e-print-panel.spec.mjs` 1/1) with a DEV flip; flag **restored false**. Repeat custom-panel live needs another flip. 2026-08-22 **flag-off fail-closed** dedicated `e2e-print-panel-failclosed.spec.mjs` (X-03 blob / flatten; no panel chrome). |
 | UL-44 | **closed live** — offline draw on a signed-in UUID doc (`e2e-outbox-retry.spec.mjs`). Chip correctly hidden on `?testPdf=`. |
 | UL-45 | Signed-in self row **just you**. Same-user two tabs / two contexts also **just you**. Two-client roster blocked: official lease has no `list`; `assign` needs a human `email\|userId\|tier\|status` (`fix-logs/e2e-host-leftovers.md`). |
 | UL-46 | Native Capacitor still untested. Web 390×844 chrome is live (`e2e-helper-only-live.spec.mjs`). |
@@ -281,7 +283,7 @@ Wave-1 issues stay closed:
 
 - ShareModal roles are **Viewer / Editor / Owner** only. Commenter lives on Access Management (A-03), not this dialog.
 - Forms category is **compile-hidden** (`false &&` in AppShell). Code + `FORM_TOOLS` stay; flip the flag to ship.
-- Custom **Print panel** is also compile-gated (`PRINT_PANEL_ENABLED = false`). Cmd+P prints the blob/OS path. Flip the flag to ship the panel UI.
+- Custom **Print panel** is also compile-gated (`PRINT_PANEL_ENABLED = false`). Cmd+P prints the blob/OS path. Flip the flag to ship the panel UI. 2026-08-22 dedicated fail-closed proof: `e2e-print-panel-failclosed.spec.mjs` (do not flip).
 - Zoom field advertises 1–4000, but `zoomController` also applies a **dynamic minimum** (often ~fit-page). On `clickable-link-test.pdf` at 1440×900, `0` / `1` / `50` display as `100%`. `200` and `4000` apply.
 - Context-menu Group/Ungroup omitted until the matrix-per-shape rewrite.
 - Callout menu has no z-order (own SVG layer + id-sort).
