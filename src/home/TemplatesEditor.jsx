@@ -1495,6 +1495,15 @@ export default function TemplatesEditor({
      historical responses survive. The modal carries `categoryIndex`,
      `itemId`, label snapshot, and the marker count for the copy. */
   const [archiveConfirm, setArchiveConfirm] = useState(null);
+  const archiveConfirmRef = useRef(null);
+  const archiveConfirmCancelRef = useRef(null);
+  const closeArchiveConfirm = useCallback(() => setArchiveConfirm(null), []);
+  useModalFocusTrap({
+    active: Boolean(archiveConfirm),
+    containerRef: archiveConfirmRef,
+    initialFocusRef: archiveConfirmCancelRef,
+    onClose: closeArchiveConfirm,
+  });
 
   /* Hard-delete an item from the rich tree. Used when the item has zero
      marker references, or as the resolved action from the archive modal's
@@ -3105,10 +3114,16 @@ export default function TemplatesEditor({
     {archiveConfirm && createPortal(
       <div
         data-testid="archive-confirm-modal"
-        onClick={() => setArchiveConfirm(null)}
+        onClick={closeArchiveConfirm}
         style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
       >
         <div
+          ref={archiveConfirmRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Archive checklist item?"
+          data-modal-focus-layer="true"
+          tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 440, maxWidth: 'calc(100vw - 32px)',
@@ -3132,8 +3147,9 @@ export default function TemplatesEditor({
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button
               type="button"
+              ref={archiveConfirmCancelRef}
               data-testid="archive-confirm-cancel"
-              onClick={() => setArchiveConfirm(null)}
+              onClick={closeArchiveConfirm}
               style={{ background: 'transparent', border: '1px solid #3a4252', color: '#c7cdda', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
             >
               Cancel
