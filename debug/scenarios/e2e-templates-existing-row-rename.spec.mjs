@@ -469,10 +469,28 @@ test('Templates existing-row rename (module / category / entity / item)', async 
   await expect(page.locator('.templates-mobile-entity-modal')).toBeVisible({ timeout: 8_000 });
   const mobileEntSel = '.templates-mobile-entity-modal input.templates-mobile-inline-input';
   await expect(page.locator(mobileEntSel).nth(0)).toHaveValue('GC');
-  await commitNamedInput(page, mobileEntSel, 'GC', '', 'Enter');
+  /* Enter after a programmatic clear can land on the sheet Close control
+     (focus trap). Blur-commit is the live path for an existing entity. */
+  const blurred = await page.evaluate((selector) => {
+    const el = [...document.querySelectorAll(selector)].find((node) => node.value === 'GC' && node.offsetParent);
+    if (!el) return false;
+    el.focus();
+    const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+    desc.set.call(el, '');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.blur();
+    return true;
+  }, mobileEntSel);
+  expect(blurred, '390 GC empty blur').toBe(true);
+  await expect(page.locator('.templates-mobile-entity-modal')).toBeVisible();
   await expect(page.locator(mobileEntSel).nth(0)).toHaveValue('GC');
   await expectNoDirty(page);
   await commitNamedInput(page, mobileEntSel, 'GC', 'E2E Mobile GC', 'Enter');
+  if (!(await page.locator('.templates-mobile-entity-modal').isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Entities', exact: true }).click();
+    await expect(page.locator('.templates-mobile-entity-modal')).toBeVisible({ timeout: 8_000 });
+  }
+  await expect(page.locator(mobileEntSel).nth(0)).toHaveValue('E2E Mobile GC');
   await page.locator('.templates-mobile-entity-modal').getByRole('button', { name: 'Close', exact: true }).click();
   await expectDirty(page);
   await clickSave(page);
