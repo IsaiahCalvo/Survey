@@ -281,18 +281,35 @@ async function clickAnno(page, id) {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
 
-async function selectAndExpectEditEnabled(page, id) {
+async function annoBox(page, id) {
+  const scoped = page.locator(`[data-svg-annotation-layer="1"] [data-callout-id="${id}"]`);
+  const target = (await scoped.count())
+    ? scoped.locator('[data-callout-part="textBox"]').first()
+    : page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer="1"] [data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible({ timeout: 8_000 });
+  await target.scrollIntoViewIfNeeded().catch(() => {});
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  return box;
+}
+
+async function marqueeSelect(page, id) {
   await selectMode(page);
   if (await page.locator('[data-text-edit-overlay]').count()) await commitEdit(page);
-  await clickAnno(page, id);
-  if (await page.locator('[data-text-edit-overlay]').count()) {
-    await commitEdit(page);
-    await selectMode(page);
-    await clickAnno(page, id);
-  }
+  const box = await annoBox(page, id);
+  await page.mouse.move(box.x - 10, box.y - 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 10, box.y + box.height + 10, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('[data-text-edit-overlay]'), 'marquee must not enter text edit').toHaveCount(0);
+}
+
+async function selectAndExpectEditEnabled(page, id) {
+  await marqueeSelect(page, id);
   const edit = desktopEdit(page);
   await expect(edit, 'selected text/callout must show Edit text').toBeVisible({ timeout: 8_000 });
-  await expect(edit).toBeEnabled();
+  await expect(edit, 'selected text/callout must enable Edit text').toBeEnabled();
+  await expect(edit).toHaveAttribute('aria-pressed', 'false');
   return edit;
 }
 
