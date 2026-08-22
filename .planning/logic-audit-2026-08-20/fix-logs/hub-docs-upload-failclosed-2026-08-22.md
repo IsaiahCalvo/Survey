@@ -33,7 +33,7 @@ Do **not** invent a native picker, Stripe session, MSAL login, or Turnstile toke
 
 ## Live
 
-Playwright `debug/scenarios/e2e-hub-docs-upload-failclosed.spec.mjs` on reused Vite `http://localhost:5173` — timings filled after the run.
+Playwright `debug/scenarios/e2e-hub-docs-upload-failclosed.spec.mjs` **1 / 1 (3.9s)** on reused Vite `http://localhost:5173`.
 
 | Check | Result |
 |---|---|
@@ -47,7 +47,7 @@ Playwright `debug/scenarios/e2e-hub-docs-upload-failclosed.spec.mjs` on reused V
 | 390 empty | Upload PDF + mobile header Upload stay empty. Desktop Upload hidden. |
 | 390 seed | Mobile header Upload keeps six cards. |
 
-Node `tests/documentsUploadFailClosed.test.mjs`.
+Node `tests/documentsUploadFailClosed.test.mjs` **4 / 4**. leftover18FailClosed **12 / 12** still holds.
 
 ## Light 96-ID audit
 
