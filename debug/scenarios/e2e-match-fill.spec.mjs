@@ -224,6 +224,22 @@ async function closePagesOverlay(page) {
   }
 }
 
+async function ensurePageDrawTarget(page) {
+  const pageEl = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
+  await expect(pageEl).toBeVisible();
+  const overlay = page.locator('main').getByText('No documents yet').first();
+  const toggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i }).first();
+  const box = await pageEl.boundingBox();
+  const covering = box && await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return /No documents yet|Upload your first PDF/.test(el?.textContent || '');
+  }, { x: box.x + box.width * 0.4, y: box.y + box.height * 0.35 });
+  const emptyVisible = await overlay.isVisible().catch(() => false);
+  if (!covering && !emptyVisible) return;
+  if (await toggle.isVisible().catch(() => false)) await toggle.click();
+  await page.waitForTimeout(300);
+}
+
 async function dismissChrome(page) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(80);
@@ -424,6 +440,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await assertNoErrorBoundary(page);
   await dismissChrome(page);
   await closePagesOverlay(page);
+  await ensurePageDrawTarget(page);
 
   await activateTool(page, 'Shapes', 'Rectangle');
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
@@ -463,6 +480,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await closePagesOverlay(page);
   await dismissChrome(page);
   await closePagesOverlay(page);
+  await ensurePageDrawTarget(page);
 
   const created = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect.poll(async () => storedFill(await annotationById(page, created.id))).toBe('#00FFFF');
