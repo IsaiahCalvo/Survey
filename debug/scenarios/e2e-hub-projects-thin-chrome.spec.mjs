@@ -299,10 +299,14 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   await expect(invite.getByText(TEAM_WRITE_FAIL).first()).toBeVisible({ timeout: 15_000 });
   const mintedUrl = await invite.locator('text=/\\/invite\\//').count();
   expect(mintedUrl, 'hubPreview must not mint a real invite URL').toBe(0);
+  const sendInvite = invite.getByRole('button', { name: /Send .* invite/ });
+  await expect(sendInvite).toBeDisabled();
   await invite.getByPlaceholder('name@example.com, name@example.com').fill('not-an-email');
-  await expect(invite.getByRole('button', { name: /Send .* invite/ })).toBeDisabled();
+  await expect(sendInvite).toBeEnabled();
+  await sendInvite.click();
+  await expect(invite.getByText('Enter at least one valid email.')).toBeVisible();
   await invite.getByPlaceholder('name@example.com, name@example.com').fill('teammate@example.invalid');
-  await invite.getByRole('button', { name: /Send .* invite/ }).click();
+  await sendInvite.click();
   await expect(invite.getByText(TEAM_WRITE_FAIL).first()).toBeVisible({ timeout: 15_000 });
   await invite.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(invite).toHaveCount(0);
