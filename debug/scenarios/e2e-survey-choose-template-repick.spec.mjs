@@ -131,13 +131,19 @@ async function placeMarker(page, name, coords) {
   return created;
 }
 
-async function expandWallsIfPresent(page) {
+async function expandWallsMarkers(page) {
   const notes = page.getByRole('button', { name: /item notes/ });
   if (await notes.count() && await notes.first().isVisible().catch(() => false)) return true;
-  const arrow = rightRail(page).locator('.survey-marker-category-arrow').first();
-  if (!(await arrow.count()) || !(await arrow.isVisible().catch(() => false))) return false;
-  await arrow.click();
-  return (await notes.count()) > 0;
+  const toggle = rightRail(page).locator('.survey-marker-expand-toggle').first();
+  if (await toggle.count() && await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+  } else {
+    const arrow = rightRail(page).locator('.survey-marker-category-arrow').first();
+    await expect(arrow).toBeVisible({ timeout: 10_000 });
+    await arrow.click();
+  }
+  await expect(notes.first()).toBeVisible({ timeout: 8_000 });
+  return true;
 }
 
 test('Choose survey template re-pick after already in a template', async ({ page }) => {
@@ -206,10 +212,7 @@ test('Choose survey template re-pick after already in a template', async ({ page
   expect(storedTwoCat, 'store keeps the marker across re-pick').toBeTruthy();
   expect(storedTwoCat?.categoryId, 'marker does not migrate category').toBe('kal436-category');
   expect(storedTwoCat?.moduleId, 'marker does not migrate module').toBe('kal436-module');
-  const twoCatExpanded = await expandWallsIfPresent(page);
-  if (twoCatExpanded) {
-    await expect(page.getByRole('button', { name: /repick-a/ })).toHaveCount(0);
-  }
+  await expect(rightRail(page).locator('.survey-marker-category-arrow')).toHaveCount(0);
 
   // Intended: re-pick Survey Entities — same kal436 module so overlay + rail return.
   await openTemplatePicker(page);
@@ -224,10 +227,11 @@ test('Choose survey template re-pick after already in a template', async ({ page
   const storedEntities = await storedMarker(page, markerId);
   expect(storedEntities?.categoryId).toBe('kal436-category');
   expect(storedEntities?.moduleId).toBe('kal436-module');
-  const entitiesExpanded = await expandWallsIfPresent(page);
-  expect(entitiesExpanded, 'KAL-436 Walls list returns after Entities re-pick').toBe(true);
+  await expandWallsMarkers(page);
   await expect(page.getByRole('button', { name: /item notes/ }).first()).toBeVisible();
-  await expect(page.locator('.survey-marker-entity-trigger').first()).toBeVisible();
+  const expandDetails = rightRail(page).getByRole('button', { name: 'Expand marker details' });
+  if (await expandDetails.count()) await expandDetails.click();
+  await expect(page.locator('.survey-marker-entity-trigger').first()).toBeVisible({ timeout: 8_000 });
 
   // Edge: template switch is not a history checkpoint — undo pops the place, template stays.
   await page.evaluate(() => document.activeElement?.blur?.());
@@ -275,8 +279,8 @@ test('Choose survey template re-pick after already in a template', async ({ page
     escapeCancelKeptKal436: true,
     clickOutsideCancelKeptKal436: true,
     twoCatRailUpdated: true,
-    markerStayNotWipeNotMigrate: true,
-    entitiesRailReturnedMarker: true,
+    markerStayInStoreHiddenOnForeignModule: true,
+    entitiesOverlayReturnedMarker: true,
     undoDidNotRewindTemplate: true,
     penArmedStillRepicks: true,
     emptyPickerLive: 'source-only on surveyTransitionE2E (4 compiled-in templates)',
