@@ -374,6 +374,8 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   // Children are descriptive: no checkbox, no per-child action.
   assert.match(SCREEN, /item\.children\.map/);
   assert.doesNotMatch(SCREEN, /toggleRow\(child\.id\)/);
+  assert.match(SCREEN, /data-archive-item-id=\{item\.id\}/);
+  assert.match(SCREEN, /data-archive-item-type=\{item\.type\}/);
 });
 
 test('the preview pane renders the real first page, ahead of any row thumbnails', () => {
@@ -935,8 +937,13 @@ test('on MOBILE, Archive leaves navigation and lives behind the profile avatar',
 });
 
 test('the hub routes the archive tab to the data container, lazily', () => {
+  assert.match(SURVEY_HUB, /const ArchiveScreen = lazy\(\(\) => import\('\.\/ArchiveScreen'\)\)/);
   assert.match(SURVEY_HUB, /const ArchiveScreenContainer = lazy\(\(\) => import\('\.\/ArchiveScreenContainer'\)\)/);
-  assert.match(SURVEY_HUB, /tab === 'archive' &&[\s\S]*?<ArchiveScreenContainer \{\.\.\.common\} \/>/);
+  // HubPreview can pass a local list; Dashboard omits archiveItems so the
+  // container still loads from Supabase.
+  assert.match(SURVEY_HUB, /Array\.isArray\(archiveItems\) \?/);
+  assert.match(SURVEY_HUB, /<ArchiveScreen[\s\S]*?items=\{archiveItems\}/);
+  assert.match(SURVEY_HUB, /<ArchiveScreenContainer \{\.\.\.common\} \/>/);
 });
 
 test('the container is the only place Archive touches Supabase', () => {
@@ -944,6 +951,10 @@ test('the container is the only place Archive touches Supabase', () => {
   assert.match(CONTAINER, /loadArchive\(userId\)/);
   assert.match(CONTAINER, /restoreArchiveItems\(selected\)/);
   assert.match(CONTAINER, /deleteArchiveItemsForever\(selected\)/);
+  // A non-UUID preview id must not be sent — Postgres rejects it as
+  // "invalid input syntax for type uuid" and Archive shows a host error.
+  assert.match(CONTAINER, /const isUuid = \(value\) => typeof value === 'string' && UUID_RE\.test\(value\)/);
+  assert.match(CONTAINER, /const userId = isUuid\(user\?\.id\) \? user\.id : null/);
   // The presentational screen must stay free of any data access.
   assert.doesNotMatch(SCREEN, /supabaseClient|archiveService|loadArchive/);
 });

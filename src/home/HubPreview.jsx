@@ -15,6 +15,11 @@ import { AuthModal } from '../components/AuthModal';
 import { AuthContext } from '../contexts/AuthContext';
 import { MSGraphContext } from '../contexts/MSGraphContext';
 import { showToast } from '../utils/toast';
+import {
+  normalizeDocumentItem,
+  normalizeProjectItem,
+  normalizeTemplateItem,
+} from '../services/archiveContract';
 
 /* Mock context values so the Settings page (AccountSettings) can render in the
    preview without a real backend. Same pattern as src/DevTestRoute.jsx.
@@ -179,6 +184,54 @@ const previewGetChecklistItemUsageCount = (itemId) => (
   Number(MOCK_CHECKLIST_ITEM_USAGE[itemId]) || 0
 );
 
+/* Local Archive seed — the same normalized shape ArchiveScreen already
+   consumes. There is no HubPreview archive fixture query; `empty=1` is the
+   existing empty contrast. Restore / Delete forever stay previewBlocked
+   (host-blocked leftover-18). Names match tests/archiveScreen.test.mjs so
+   Search / filter / sort can be proven against the model. */
+const BRAVO_ARCHIVE_CONFIG = {
+  entities: [{ id: 'ae1', name: 'GC', color: 'rgba(216,168,78,0.5)' }],
+  modules: [{
+    id: 'am1',
+    name: 'Walk-through',
+    categories: [{ id: 'ac1', name: 'Cameras', checklist: [{ id: 'ai1', text: 'Is the camera labeled?' }] }],
+  }],
+};
+
+const makeMockArchive = () => ([
+  normalizeProjectItem(
+    {
+      id: 'ap1',
+      user_id: mockUser.id,
+      name: 'Atrium',
+      user_archived_at: iso(2),
+      archive_group_id: 'ag1',
+    },
+    [
+      { id: 'ac-d1', name: 'Level 1', project_id: 'ap1', archive_group_id: 'ag1', file_size: 1_200_000, user_archived_at: iso(2) },
+      { id: 'ac-d2', name: 'Level 2', project_id: 'ap1', archive_group_id: 'ag1', file_size: 800_000, user_archived_at: iso(2) },
+    ],
+  ),
+  normalizeDocumentItem(
+    {
+      id: 'ad1',
+      user_id: mockUser.id,
+      name: 'Site plan',
+      project_id: 'p1',
+      file_size: 4_200_000,
+      user_archived_at: iso(8),
+    },
+    { projectName: 'Tower 5 — Security' },
+  ),
+  normalizeTemplateItem({
+    id: 'at1',
+    user_id: mockUser.id,
+    name: 'Bravo checklist',
+    user_archived_at: iso(20),
+    config: BRAVO_ARCHIVE_CONFIG,
+  }),
+]);
+
 /* Append "-copy" before the file extension. */
 const copyName = (name = '') => {
   const dot = name.lastIndexOf('.');
@@ -215,9 +268,9 @@ const persistWorkflowFixture = (key, value) => {
 };
 
 export default function HubPreview() {
-  /* `?empty=1` renders the hub with zero documents/projects/templates so the
-     three empty states can be reviewed with real code (dev-only, like the rest
-     of this harness). */
+  /* `?empty=1` renders the hub with zero documents/projects/templates/archive
+     items so the empty states can be reviewed with real code (dev-only, like
+     the rest of this harness). */
   const params = new URLSearchParams(window.location.search);
   const emptyFixture = params.get('empty') === '1';
   const longDocsFixture = params.get('longDocs') === '1';
@@ -246,6 +299,7 @@ export default function HubPreview() {
       ? readWorkflowObject(MOBILE_WORKFLOW_STORAGE_KEYS.projectPreferences)
       : {}
   ));
+  const [archiveItems] = useState(() => (previewHasNoData ? [] : makeMockArchive()));
   const [loadErrors, setLoadErrors] = useState(() => ({
     documents: errorFixture === 'documents' ? new Error('Documents could not be loaded.') : null,
     projects: errorFixture === 'projects' ? new Error('Projects could not be loaded.') : null,
@@ -500,6 +554,9 @@ export default function HubPreview() {
               });
             }}
             onSignIn={() => setAuthModalOpen(true)}
+            archiveItems={archiveItems}
+            onRestoreArchive={previewBlocked('restore archived items')}
+            onDeleteArchiveForever={previewBlocked('delete archived items forever')}
           />
           {guestFixture ? (
             <AuthModal

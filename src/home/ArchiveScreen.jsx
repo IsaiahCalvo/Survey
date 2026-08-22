@@ -759,6 +759,8 @@ export default function ArchiveScreen({
     return (
       <div key={item.id}>
         <div
+          data-archive-item-id={item.id}
+          data-archive-item-type={item.type}
           onClick={activate}
           role="button"
           tabIndex={0}
@@ -883,6 +885,8 @@ export default function ArchiveScreen({
       <div
         key={`mobile-${item.id}`}
         className="archive-mobile-card"
+        data-archive-item-id={item.id}
+        data-archive-item-type={item.type}
         role="button"
         tabIndex={0}
         onClick={() => { if (selectMode) toggleRow(item.id); }}

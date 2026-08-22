@@ -161,8 +161,9 @@ test('Hub projects rename / delete / create intended + break + edge', async ({ p
 });
 
 test('Hub archive empty chrome intended + break + edge', async ({ page }) => {
-  await openHub(page);
-  await page.locator('aside.side nav.nav-bottom').getByRole('button', { name: 'Archive', exact: true }).click();
+  // Seeded hubPreview now has a local Archive list for Search / filter / sort.
+  // Empty chrome stays on the existing `empty=1` contrast — do not invent Restore.
+  await openHub(page, '/?hubPreview=1&empty=1&tab=archive');
   await expect(page.getByText('Nothing in Archive').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Go to documents' }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
@@ -176,7 +177,7 @@ test('Hub archive empty chrome intended + break + edge', async ({ page }) => {
   if (await wipe.count()) await expect(wipe).toBeDisabled();
 
   await page.getByRole('button', { name: 'Go to documents' }).first().click();
-  await expect(page.getByText('Package 2 — Rev 4 — IC.pdf').first()).toBeVisible();
+  await expect(page.getByText('No documents yet.').first()).toBeVisible();
 
   console.log('HUB_ARCHIVE_PROOF', JSON.stringify({ empty: true, noProdRestore: true, goToDocuments: true }));
 });

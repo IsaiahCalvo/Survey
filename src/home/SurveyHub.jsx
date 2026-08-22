@@ -18,6 +18,7 @@ import { useState, useEffect, useRef, lazy, Suspense, startTransition } from 're
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
+const ArchiveScreen = lazy(() => import('./ArchiveScreen'));
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
@@ -73,6 +74,14 @@ export default function SurveyHub({
   onSettings,
   onSignOut,
   onSignIn,
+  /* HubPreview-only: a local Archive list so Search / filter / sort can run
+     without calling live Supabase. When this is an array (including empty),
+     ArchiveScreen renders that list. Restore / Delete forever stay the
+     fail-closed preview callbacks — they are not invented writeback.
+     Dashboard omits this prop, so the real container still loads Archive. */
+  archiveItems,
+  onRestoreArchive,
+  onDeleteArchiveForever,
 }) {
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -254,10 +263,23 @@ export default function SurveyHub({
 
       {/* KAL-280 — Archive owns its own data: it reads the archived slice
           directly rather than filtering the hub's live lists, because those
-          lists deliberately exclude archived rows. */}
+          lists deliberately exclude archived rows. HubPreview can hand in a
+          local list so Search / filter / sort are reviewable without a
+          host load. */}
       {tab === 'archive' && (
         <Suspense fallback={<HubLoadingSkeletons {...common} tab="documents" />}>
-          <ArchiveScreenContainer {...common} />
+          {Array.isArray(archiveItems) ? (
+            <ArchiveScreen
+              {...common}
+              items={archiveItems}
+              loading={false}
+              error={null}
+              onRestore={onRestoreArchive}
+              onDeleteForever={onDeleteArchiveForever}
+            />
+          ) : (
+            <ArchiveScreenContainer {...common} />
+          )}
         </Suspense>
       )}
 

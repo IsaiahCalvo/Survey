@@ -14,16 +14,24 @@ import ArchiveScreen from './ArchiveScreen';
 import { loadArchive, restoreArchiveItems, deleteArchiveItemsForever } from '../services/archiveService';
 import { notifyLibraryChanged } from '../hooks/libraryChangeBus';
 
+/* Supabase archive rows key on uuid user_id. A preview / mock id that is
+   not a UUID must not be sent — Postgres answers
+   "invalid input syntax for type uuid" and Archive shows a host error
+   instead of the empty or preview list. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = (value) => typeof value === 'string' && UUID_RE.test(value);
+
 export default function ArchiveScreenContainer({ user, onNav, templatesLocked = false }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const userId = user?.id || null;
+  const userId = isUuid(user?.id) ? user.id : null;
 
   const refresh = useCallback(async ({ showSpinner = false } = {}) => {
     if (!userId) {
       setItems([]);
+      setError(null);
       setLoading(false);
       return;
     }
