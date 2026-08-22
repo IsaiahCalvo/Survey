@@ -2591,6 +2591,7 @@ export default function TemplatesEditor({
                                   read-only while a border is matched to the fill. */}
                               <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
                                 <CompactColorPicker
+                                  key={`${r.id}-${layer}`}
                                   color={activeColor}
                                   opacity={activeOp}
                                   onChange={applyColor}
@@ -3040,7 +3041,7 @@ export default function TemplatesEditor({
                                       </label>
                                     ) : null}
                                     <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" passthroughSelector="[data-entity-editor-actions] button" />
+                                      <CompactColorPicker key={`${r.id}-${layer}`} color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" passthroughSelector="[data-entity-editor-actions] button" />
                                     </div>
                                   </div>
                                 );

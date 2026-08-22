@@ -26,6 +26,7 @@ test('desktop applyColor writes fill opacity vs independent border', () => {
 
   assert.match(editor, /\['fill', 'Fill'\], \['border', 'Border'\]/);
   assert.match(editor, /\{layer === 'border' && \(/);
+  assert.match(editor, /key=\{`\$\{r\.id\}-\$\{layer\}`\}/);
 });
 
 test('richToTemplate round-trips fill opacity and unmatched border', () => {

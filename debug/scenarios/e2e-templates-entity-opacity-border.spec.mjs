@@ -113,6 +113,13 @@ test('Templates entity opacity + independent Border tab intended + break + edge'
   await pickPreset(page, '#0000FF');
   await setOpacity(page, 50);
   expect(await readOpacity(page)).toBe(50);
+  await colorPanel(page).getByRole('button', { name: 'Fill', exact: true }).click();
+  await expect(colorPanel(page).getByText('Match fill', { exact: true })).toHaveCount(0);
+  await expect(colorPanel(page).getByLabel('Hex color')).toHaveValue(/d8a84e/i);
+  expect(await readOpacity(page)).toBe(80);
+  await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
+  await expect(colorPanel(page).getByLabel('Hex color')).toHaveValue(/0000ff/i);
+  expect(await readOpacity(page)).toBe(50);
   const dirtySwatch = await findEntitySwatch(page, 'GC');
   expect(dirtySwatch?.fill.toLowerCase()).toBe(GC_HEX);
   expect(dirtySwatch?.border.toLowerCase()).toBe('#0000ff');
@@ -147,9 +154,11 @@ test('Templates entity opacity + independent Border tab intended + break + edge'
 
   await clickEditColor(page, 'GC');
   await colorPanel(page).getByRole('button', { name: 'Fill', exact: true }).click();
+  await expect(colorPanel(page).getByText('Match fill', { exact: true })).toHaveCount(0);
+  await expect(colorPanel(page).getByLabel('Hex color')).toHaveValue(/d8a84e/i);
   expect(await readOpacity(page)).toBe(80);
   await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
-  expect((await colorPanel(page).getByLabel('Hex color').inputValue()).toLowerCase()).toBe('0000ff');
+  await expect(colorPanel(page).getByLabel('Hex color')).toHaveValue(/0000ff/i);
   expect(await readOpacity(page)).toBe(50);
 
   await page.setViewportSize({ width: 390, height: 844 });
