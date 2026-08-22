@@ -339,14 +339,13 @@ test('Templates template-list reorder + checklist item reorder', async ({ page }
     if (await camToggle.isVisible().catch(() => false)) {
       await camToggle.click();
     }
+    const mobileItemRows = page.locator('.templates-mobile-items [data-drag-rearrange-row]');
     mobileItemHandles = await page.locator('.templates-mobile-items [data-drag-rearrange-handle]').count();
     if (mobileItemHandles >= 2) {
-      const firstHandle = page.locator('.templates-mobile-items [data-drag-rearrange-row]').filter({
-        has: page.locator(`input[value="${CAMERAS_ITEMS[0]}"]`),
-      }).locator('[data-drag-rearrange-handle]');
-      const secondRow = page.locator('.templates-mobile-items [data-drag-rearrange-row]').filter({
-        has: page.locator(`input[value="${CAMERAS_ITEMS[1]}"]`),
-      });
+      // Desktop Save may already have swapped the seed order — drag the
+      // first live row, not a stale CAMERAS_ITEMS[0] that is now last.
+      const firstHandle = mobileItemRows.nth(0).locator('[data-drag-rearrange-handle]');
+      const secondRow = mobileItemRows.nth(1);
       if (await firstHandle.isVisible().catch(() => false)) {
         const before = await page.locator('.templates-mobile-items input.templates-mobile-inline-input').evaluateAll((inputs) => (
           inputs.filter((el) => el.offsetParent).map((el) => el.value)
@@ -365,7 +364,9 @@ test('Templates template-list reorder + checklist item reorder', async ({ page }
   }
 
   expect(mobileListHandles, '390 template-list handles').toBeGreaterThan(1);
+  expect(mobileListReordered, '390 template-list reorder').toBe(true);
   expect(mobileItemHandles, '390 checklist item handles').toBeGreaterThan(1);
+  expect(mobileItemReordered, '390 checklist item reorder').toBe(true);
 
   await assertNoErrorBoundary(page);
   console.log(JSON.stringify({
