@@ -2,12 +2,14 @@ import { test, expect } from '@playwright/test';
 
 // V-09 shortcuts overlay — intended + break + edge.
 // Unique leftover after V-03 Select text. Prior V-09 was `?` then Esc
-// smoke (matrix + window). Not leftover-18. Distinct from P-04 tool-key
-// arm, V-05/V-08/E-05 catalog samples, and leftover-18. Do not stamp
-// file.id. Product: `?` toggles; Esc / click-outside / Close dismiss;
-// useKeyPress has no INPUT guard so `?` in a field still opens (documented
-// steal). Catalog is the hardcoded list — Undo/Redo/Delete/Duplicate/
-// z-order/Fit height/Fit width/F3 are live elsewhere and omitted here.
+// smoke (matrix + window), then a documented INPUT steal. This pass
+// guards useKeyPress so `?` in INPUT / TEXTAREA / contentEditable stays
+// in the field. Not leftover-18. Distinct from P-04 tool-key arm,
+// V-05/V-08/E-05 catalog samples, and leftover-18. Do not stamp file.id.
+// Product: `?` toggles; Esc / click-outside / Close dismiss; zoom % and
+// Search keep `?` / do not open the overlay. Catalog is the hardcoded
+// list — Undo/Redo/Delete/Duplicate/z-order/Fit height/Fit width/F3
+// are live elsewhere and omitted here.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -191,26 +193,29 @@ test('desktop shortcuts overlay intended + break + edge', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(modal).toHaveCount(0);
 
-  // Break — documented product: useKeyPress has no INPUT guard, so `?`
-  // while zoom % is focused still opens the overlay (steal).
+  // Break — zoom % is an INPUT. `?` must stay in the field (digits-only
+  // filter drops the glyph) and must not open the overlay.
   const zoomInput = await focusZoomInput(page);
   expect(zoomInput, 'desktop zoom % INPUT').toBeTruthy();
   await expect(zoomInput).toBeFocused();
+  const zoomBefore = await zoomInput.inputValue();
   await page.keyboard.press('?');
-  await expect(modal, 'zoom INPUT `?` must open overlay (documented steal)').toBeVisible({ timeout: 8_000 });
-  await page.keyboard.press('Escape');
-  await expect(modal).toHaveCount(0);
+  await expect(modal, 'zoom INPUT `?` must not open overlay').toHaveCount(0);
+  await expect(zoomInput).toBeFocused();
+  expect(await zoomInput.inputValue(), 'zoom INPUT keeps its value; digits-only drops `?`').toBe(zoomBefore);
 
-  // Break — same steal from the find field (also an INPUT).
+  // Break — Search is a text INPUT. `?` must stay in the query and must
+  // not open the overlay.
   await blurInputs(page);
   await page.keyboard.press('Control+f');
   const search = page.getByPlaceholder('Search text in PDF...');
   await expect(search).toBeVisible({ timeout: 8_000 });
   await expect(search).toBeFocused();
+  const searchBefore = await search.inputValue();
   await page.keyboard.press('?');
-  await expect(modal, 'search INPUT `?` must open overlay (documented steal)').toBeVisible({ timeout: 8_000 });
-  await page.keyboard.press('Escape');
-  await expect(modal).toHaveCount(0);
+  await expect(modal, 'search INPUT `?` must not open overlay').toHaveCount(0);
+  await expect(search).toBeFocused();
+  expect(await search.inputValue(), 'search INPUT must keep the `?` character').toBe(`${searchBefore}?`);
 
   // Edge — opening/closing the overlay invents 0 marks; file.id stays null.
   expect(await userAnnotationIds(page), 'overlay must invent 0 marks').toEqual(idsBefore);
@@ -276,10 +281,11 @@ test('390 shortcuts overlay intended + break + edge', async ({ page }) => {
     const pageInput = page.getByRole('textbox', { name: 'Page number', exact: true });
     await expect(pageInput).toBeVisible();
     await pageInput.click();
+    const pageBefore = await pageInput.inputValue();
     await page.keyboard.press('?');
-    await expect(modal, '390 page INPUT `?` must open overlay (documented steal)').toBeVisible({ timeout: 8_000 });
-    await page.keyboard.press('Escape');
-    await expect(modal).toHaveCount(0);
+    await expect(modal, '390 page INPUT `?` must not open overlay').toHaveCount(0);
+    await expect(pageInput).toBeFocused();
+    expect(await pageInput.inputValue(), '390 page INPUT keeps its value; digits-only drops `?`').toBe(pageBefore);
   }
 
   const viewBox = await pageViewBox(page);

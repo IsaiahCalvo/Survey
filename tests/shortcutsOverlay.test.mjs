@@ -57,11 +57,17 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.doesNotMatch(overlay, /\bF3\b/);
 });
 
-test('useKeyPress has no INPUT guard; AppShell hides overlay on viewer; DevTestRoute remounts; no file.id', () => {
+test('useKeyPress ignores INPUT / TEXTAREA / contentEditable; AppShell hides overlay on viewer; DevTestRoute remounts; no file.id', () => {
   const hook = read('src/utils/hooks.js');
   assert.match(hook, /export function useKeyPress\(targetKey, callback, options = \{\}\) \{/);
-  assert.match(hook, /if \(event\.key === targetKey\)/);
-  assert.doesNotMatch(hook, /INPUT|TEXTAREA|contentEditable|isFormField/);
+  assert.match(hook, /ignoreWhenTyping = true/);
+  assert.match(hook, /tag === 'INPUT' \|\| tag === 'TEXTAREA'/);
+  assert.match(hook, /isContentEditable === true/);
+  assert.match(hook, /contentEditable === 'plaintext-only'/);
+  assert.match(hook, /if \(isTypingTarget\(event\.target\) \|\| isTypingTarget\(active\)\) return;/);
+
+  const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
+  assert.match(overlay, /useKeyPress ignores INPUT \/ TEXTAREA \/ contentEditable/);
 
   const trap = read('src/hooks/useFocusTrap.js');
   assert.match(trap, /if \(e\.key === 'Escape'\)/);
@@ -78,7 +84,7 @@ test('useKeyPress has no INPUT guard; AppShell hides overlay on viewer; DevTestR
   assert.doesNotMatch(dev, /file\.id\s*=/);
 });
 
-test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT steal / 390 / hub', () => {
+test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT no-steal / 390 / hub', () => {
   const spec = read('debug/scenarios/e2e-shortcuts-overlay.spec.mjs');
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /hubPreview=1/);
@@ -89,9 +95,10 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT s
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);
   assert.match(spec, /second `\?` toggles closed/);
-  assert.match(spec, /documented steal/);
-  assert.match(spec, /zoom INPUT `\?` must open overlay/);
-  assert.match(spec, /search INPUT `\?` must open overlay/);
+  assert.match(spec, /zoom INPUT `\?` must not open overlay/);
+  assert.match(spec, /search INPUT `\?` must not open overlay/);
+  assert.match(spec, /search INPUT must keep the `\?` character/);
+  assert.match(spec, /390 page INPUT `\?` must not open overlay/);
   assert.match(spec, /390 overlay exists/);
   assert.match(spec, /hubPreview must not mount the overlay/);
   assert.match(spec, /file\.id stays null/);

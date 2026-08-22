@@ -21,6 +21,8 @@ const KeyboardShortcutsOverlay = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const modalContentRef = React.useRef(null);
 
+  // useKeyPress ignores INPUT / TEXTAREA / contentEditable so `?` in zoom %
+  // or Search stays in the field and does not toggle this overlay.
   useKeyPress('?', () => {
     setIsOpen((prev) => !prev);
   });
