@@ -80,6 +80,13 @@ async function openSettingsFromHub(page, { width = 1440, height = 900, url = HUB
 }
 
 async function openWipeConfirm(dialog) {
+  // Tab switches unmount General chrome but keep deleteConfirmOpen, so
+  // returning to General can already be on the confirm panel.
+  if (await wipeButton(dialog).count()) {
+    await expect(dialog.getByText('Delete this account?')).toBeVisible();
+    await expect(wipeButton(dialog)).toBeVisible();
+    return;
+  }
   const open = dialog.getByRole('button', { name: 'Delete account', exact: true });
   await expect(open).toBeVisible();
   await expect(open).toBeEnabled();
