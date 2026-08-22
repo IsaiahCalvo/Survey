@@ -198,8 +198,13 @@ async function seriesMenuRows(page) {
 }
 
 async function dismissMenu(page) {
+  const menu = page.locator('[data-annotation-context-menu="true"]');
+  if (!(await menu.count())) return;
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-annotation-context-menu="true"]')).toHaveCount(0);
+  if (await menu.count()) {
+    await page.mouse.click(12, 80);
+  }
+  await expect(menu).toHaveCount(0);
 }
 
 async function armPen(page) {
