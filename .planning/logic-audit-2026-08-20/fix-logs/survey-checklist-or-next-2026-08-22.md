@@ -96,7 +96,7 @@ No error boundary. SVG default.
 
 - **GAP found and proven:** notes Photo/Video attach (desktop + 390).
 - **Parked this pass:** 390 checklist Y/N/N-A (no compiled-in items; no DEV seed hook).
-- **Product bugs fixed:** none.
+- **Product bugs fixed:** attachments-only Save left Add/Edit chrome on Add (`note.text` only). `noteHasContent` now includes photos/videos.
 - **Omitted (not invented):** checklist items in product data, category Move/Copy stub, copy-mode toolbar, leftover-18 unplaced-rows, linked workbook.
 - **Next unique leftover (not this pass):** Spaces **Edit region areas on the page** (`aria-label="Edit region areas on the page"` / Region Selection Tool) + overlay on/off / last space. Distinct from Create space / rename / add-pages. Not leftover-18. UL-31 Continue pin stays parked. Do not re-claim unblocked GAP = 0.
 - **leftover-18:** still **18**, parked (`X-01`, `X-05` persist, `X-06` writeback, `U-04` cloud usage, `A-01` Turnstile, `A-02` live MSAL, `A-03` inbox, `A-05` Stripe, `A-06` roster, `UL-03`, `UL-13`, `UL-15`, `UL-16`, `UL-20`, `UL-21`, `UL-22`, `UL-24`, `UL-45`).

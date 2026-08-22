@@ -314,13 +314,19 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   ]);
   expect(await markerIds(page)).toEqual(expect.arrayContaining([markerA, markerB]));
 
-  // Edge: undo has no note checkpoint — attach stays (place is not popped either
-  // if later checkpoints exist; assert attachments survive Ctrl+Z).
+  // Edge: notes have no history checkpoint. Ctrl+Z rewinds the last place
+  // (B) and restores the pre-note snapshot of A.
   await page.keyboard.press('Control+z');
-  await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
-    'keep-photo.png',
-    'pen-armed.png',
-  ]);
+  await expect.poll(async () => (await markerIds(page)).includes(markerB)).toBe(false);
+  await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).length).toBe(0);
+  expect((await storedNote(page, markerA))?.videos || []).toEqual([]);
+
+  await openDesktopNotes(page);
+  await attachDesktopPhoto(page, markerA, 'keep-photo.png');
+  await attachDesktopVideo(page, markerA, 'keep-video.webm');
+  await saveDesktopNotes(page);
+  await expect.poll(async () => (await storedNote(page, markerA))?.photos?.[0]?.name).toBe('keep-photo.png');
+  await expect(page.getByRole('button', { name: 'Edit item notes' }).first()).toBeVisible();
 
   const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
 
@@ -329,7 +335,8 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await open390Detail(page, 'attach-a');
   await expect(page.getByText('No checklist items')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Y$/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit Survey Marker notes' })).toBeVisible();
+  await expect.poll(async () => (await storedNote(page, markerA))?.photos?.[0]?.name).toBe('keep-photo.png');
+  await expect(page.getByRole('button', { name: /Survey Marker notes/ })).toBeVisible();
   await open390Notes(page);
   await expect(page.getByText('Photo', { exact: true })).toBeVisible();
   await expect(page.getByText('Video', { exact: true })).toBeVisible();
@@ -338,10 +345,8 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await save390Notes(page);
   await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
     'keep-photo.png',
-    'pen-armed.png',
     'mobile-extra.png',
   ]);
-  expect((await storedNote(page, markerB))?.photos || []).toEqual([]);
 
   await open390Notes(page);
   await page.getByRole('button', { name: 'Remove mobile-extra.png' }).evaluate((el) => el.click());
@@ -349,7 +354,6 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await page.locator('.mobile-survey-notes-cancel').evaluate((el) => el.click());
   await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
     'keep-photo.png',
-    'pen-armed.png',
     'mobile-extra.png',
   ]);
 
