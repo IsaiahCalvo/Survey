@@ -264,9 +264,11 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
   }).toBe(200);
 
   // Break — letters strip to empty, then restore.
+  // Type, do not fill: Playwright fill retries when onChange strips abc→''.
   const letterInput = await focusZoomInput(page);
-  await letterInput.fill('abc');
-  expect(await letterInput.inputValue(), 'letters must strip').toBe('');
+  await letterInput.press('Control+A');
+  await page.keyboard.type('abc');
+  await expect(letterInput, 'letters must strip').toHaveValue('');
   await letterInput.press('Enter');
   await blurInputs(page);
   await expect.poll(() => zoomPercent(page), {
