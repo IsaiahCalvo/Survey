@@ -84,13 +84,13 @@ This-pass leftover-18 (still parked; legal slices in `fix-logs/leftover18-unbloc
 | X-06 writeback | **partial** — flag off + xlsx | live sheet host |
 | U-04 cloud | **partial** — hubPreview `i1: 3` seed | Dashboard + Supabase meter |
 | A-01 Turnstile | **partial** — no-token gate | live captcha completion |
-| A-02 MSAL | **partial** — Connect fail-closed; `msalInstance: null` | live MSAL |
+| A-02 MSAL | **partial** — Connect click fail-closed (`Preview cannot start Microsoft login.`; OAuth **0**) | live MSAL |
 | A-03 / UL-24 inbox | **partial** — mint/Send fail-closed | live email delivery |
 | A-05 / UL-20 Stripe | **partial** — Start trial click fail-closed (`Must be signed in`; no invoke) | live signed-in Checkout |
 | A-06 / UL-45 roster | **partial** — `user_id` dedupe | second-account lease tuple |
 | UL-03 | **partial** — web `/` Auth modal + hubPreview Upload fail-closed (`e2e-hub-docs-upload-failclosed.spec.mjs`) | native Electron pick/cancel |
 | UL-13 / UL-15 / UL-16 | **partial** — previewBlocked save/wipe + no-token | persist / captcha / wipe |
-| UL-21 / UL-22 | **partial** — Connect fail-closed | live MSAL / Google OAuth |
+| UL-21 / UL-22 | **partial** — Connect click fail-closed (`e2e-account-settings-connect-failclosed.spec.mjs`) | live MSAL / Google OAuth |
 
 ---
 
