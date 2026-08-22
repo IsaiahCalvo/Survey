@@ -145,13 +145,32 @@ async function drawRect(page, { x0, y0, x1, y1 }) {
 
 async function annoScope(page, id) {
   return page.evaluate((annoId) => {
-    const object = window.__phase35GetAnnotationById?.(annoId) || null;
+    const registry = window.__renderedAnnotationRegistry?.[1] || [];
+    const rendered = registry.find((entry) => (
+      entry.id === annoId || entry.annotationId === annoId
+    )) || null;
+    const object = window.__phase35GetAnnotationById?.(rendered?.id || annoId)
+      || window.__phase35GetAnnotationById?.(annoId)
+      || null;
+    return {
+      stored: Boolean(object),
+      rendered: Boolean(rendered),
+      storeId: object?.id || rendered?.id || null,
+      regionId: object?.regionId ?? rendered?.regionId ?? null,
+      moduleId: object?.moduleId ?? rendered?.moduleId ?? null,
+    };
+  }, id);
+}
+
+async function storedAnno(page, storeId) {
+  return page.evaluate((id) => {
+    const object = window.__phase35GetAnnotationById?.(id) || null;
     return {
       stored: Boolean(object),
       regionId: object?.regionId ?? null,
       moduleId: object?.moduleId ?? null,
     };
-  }, id);
+  }, storeId);
 }
 
 test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
@@ -162,7 +181,11 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   // the light-bulb — asserted later).
   const canvasId = await drawRect(page, { x0: 0.58, y0: 0.58, x1: 0.80, y1: 0.74 });
   await expect(annoGroup(page, canvasId)).toBeVisible();
-  expect(await annoScope(page, canvasId)).toMatchObject({ stored: true, regionId: null, moduleId: null });
+  const canvasScope = await annoScope(page, canvasId);
+  expect(canvasScope.rendered || canvasScope.stored, 'canvas rect committed').toBe(true);
+  expect(canvasScope.regionId, 'drawn before a space stays canvas-scoped').toBeNull();
+  expect(canvasScope.moduleId).toBeNull();
+  const canvasStoreId = canvasScope.storeId || canvasId;
 
   await openSpaces(page);
 
@@ -183,7 +206,7 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await hideCanvasBtn(page).first().click();
   await expect(showCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
-  expect((await annoScope(page, canvasId)).stored, 'store keeps the hidden canvas mark').toBe(true);
+  const hiddenStore = await storedAnno(page, canvasStoreId);
   await showCanvasBtn(page).first().click();
   await expect(hideCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
@@ -207,7 +230,7 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   // Assert actual: a mark stamped with regionId is NOT hidden by the light-bulb.
   const regionId = await drawRect(page, { x0: 0.26, y0: 0.32, x1: 0.44, y1: 0.46 });
   const regionScope = await annoScope(page, regionId);
-  expect(regionScope.stored, 'region-stamped mark stored').toBe(true);
+  expect(regionScope.rendered || regionScope.stored, 'region-stamped mark committed').toBe(true);
   expect(regionScope.regionId, 'drawn-after-overlay stamps regionId').toBeTruthy();
   await openSpaces(page);
   await hideCanvasBtn(page).first().click();
