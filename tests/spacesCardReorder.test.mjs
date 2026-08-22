@@ -35,6 +35,14 @@ test('SpacesPanel space cards wire SortableRearrangeList to onReorderSpaces', ()
   assert.match(card, /title="Drag to rearrange"/);
   assert.match(card, /aria-label="Drag to rearrange"/);
 
+  const create = panel.slice(
+    panel.indexOf('const handleCreateSpace = useCallback'),
+    panel.indexOf('const handleRenameSpace = useCallback'),
+  );
+  assert.match(create, /if \(!requireSpaceManagement\(\)\) return;/);
+  assert.match(create, /onSpaceCreate\(\{\s*assignedPages: \[\]\s*\}\)/s);
+  assert.doesNotMatch(create, /spaces\.length/);
+
   const reorder = panel.slice(
     panel.indexOf('const handleSpaceReorder = useCallback'),
     panel.indexOf('const handleSpaceDragStart = useCallback'),
