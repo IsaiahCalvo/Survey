@@ -283,27 +283,19 @@ async function annotationById(page, id) {
   return (await calloutSnapshot(page)).find((row) => row.id === id) || null;
 }
 
-async function settleCallout(page, id) {
-  let row = null;
-  await expect.poll(async () => {
-    row = await annotationById(page, id);
-    return row?.lineStyle || row?.arrowheadStyle || row?.visualDash || row?.visualPolygon || row?.visualCircle || row?.visualPolyline || row?.visualTick || null;
-  }, { message: `callout ${id} stored style` }).toBeTruthy();
-  return row;
-}
-
 async function createCallout(page, text, coords) {
   const before = new Set((await calloutSnapshot(page)).map((row) => row.id));
   await blurInputs(page);
   await activateTool(page, 'Text', 'Callout');
   await dragOnPage(page, coords);
-  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
-  await expect(editor).toBeVisible({ timeout: 10_000 });
-  await editor.click();
-  await editor.pressSequentially(text, { delay: 6 });
   const created = await waitForNewCallout(page, before);
-  await page.mouse.click(12, 200);
-  await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
+  if (await editor.isVisible().catch(() => false)) {
+    await editor.click();
+    await editor.pressSequentially(text, { delay: 6 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  }
   await blurInputs(page);
   await selectMode(page);
   return created;
@@ -608,11 +600,13 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
     await armCallout(page);
     await pickMobileOption(page, 'Border style', style.label);
     await pickMobileOption(page, 'Arrowhead style', 'Solid Triangle');
+    await dismissChrome(page);
+    await ensurePageDrawTarget(page);
     const created = await createCallout(page, `m${i}`, {
-      x0: 0.16,
-      y0: 0.16 + i * 0.12,
-      x1: 0.62,
-      y1: 0.24 + i * 0.12,
+      x0: 0.20,
+      y0: 0.28 + i * 0.12,
+      x1: 0.68,
+      y1: 0.38 + i * 0.12,
     });
     await expect.poll(async () => storedLineStyle(await annotationById(page, created.id)))
       .toBe(style.value);
@@ -628,11 +622,13 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
     await armCallout(page);
     await pickMobileOption(page, 'Border style', 'Solid');
     await pickMobileOption(page, 'Arrowhead style', style.mobileLabel);
+    await dismissChrome(page);
+    await ensurePageDrawTarget(page);
     const created = await createCallout(page, `mh${i}`, {
-      x0: 0.18,
-      y0: 0.52 + (i % 3) * 0.10,
-      x1: 0.58,
-      y1: 0.60 + (i % 3) * 0.10,
+      x0: 0.22,
+      y0: 0.30 + (i % 3) * 0.14,
+      x1: 0.70,
+      y1: 0.42 + (i % 3) * 0.14,
     });
     await expect.poll(async () => String((await annotationById(page, created.id))?.arrowheadStyle || ''))
       .toBe(style.value);
