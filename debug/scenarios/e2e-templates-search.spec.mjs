@@ -100,7 +100,7 @@ async function fillSearch(input, value) {
 
 async function openTemplateFromList(page, name) {
   await templatesList(page).locator('[data-drag-rearrange-row]').filter({ hasText: name }).click();
-  await expect(page.locator('.templates-editor-grid input[title="Click to rename"]')).toHaveValue(name, { timeout: 8_000 });
+  await expect(page.locator('.templates-editor-grid input.inline-edit.cat-title[title="Click to rename"]').first()).toHaveValue(name, { timeout: 8_000 });
 }
 
 async function expectNoDirty(page) {
