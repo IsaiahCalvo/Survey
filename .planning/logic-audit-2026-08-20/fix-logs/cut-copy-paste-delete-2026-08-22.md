@@ -33,7 +33,7 @@ Harness only: retry stroke points after a pasted-clone miss; Cut/Delete click cr
 
 ## Live-proved
 
-Playwright `e2e-cut-copy-paste-delete.spec.mjs` **2 / 2 (12.9s)** on Vite `http://localhost:5173`. Focused Node `cutCopyPasteDelete` + leftover18 **16 / 16**.
+Playwright `e2e-cut-copy-paste-delete.spec.mjs` **2 / 2 (12.9s)** on Vite `http://localhost:5173`. Focused Node `cutCopyPasteDelete` + leftover18 **15 / 15**.
 
 `viewBox="0 0 612 792"`. `file.id` null.
 
@@ -69,7 +69,7 @@ Desktop owned rect lists **Cut / Copy / Paste / Delete**. Copy keeps A; first Pa
 
 ## Official / focused Node
 
-Focused `cutCopyPasteDelete` + leftover18 **16 / 16**. Official `npm test` not run (8448 not reached / not loosened). Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
+Focused `cutCopyPasteDelete` + leftover18 **15 / 15**. Official `npm test` not run (8448 not reached / not loosened). Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
 
 ## Next leftover
 
