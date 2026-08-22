@@ -15,6 +15,9 @@ async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } =
     try { localStorage.removeItem('survey_document_history_events_v1'); } catch { /* ignore */ }
   });
   await page.setViewportSize({ width, height });
+  await page.evaluate(() => {
+    try { window.onbeforeunload = null; } catch { /* ignore */ }
+  }).catch(() => {});
   let lastError = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
