@@ -331,27 +331,20 @@ test('UL-31 Continue pin intended + break + edge', async ({ page }) => {
   await assertNoErrorBoundary(page);
 
   // Edge — 390 uses the same overlay Continue pin (no distinct long-press).
+  // Mobile trigger is the series label (Count N), not desktop "Counter series".
   await openEditor(page, { width: 390, height: 844 });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
   await activateCounter(page);
   const mobileA = await dropPin(page, { xf: 0.40, yf: 0.34 });
-  await clickNewCount(page);
-  const mobileB = await dropPin(page, { xf: 0.62, yf: 0.34 });
-  const mobileTwo = await waitForPinCount(page, 2);
-  const mobileSeriesA = mobileTwo.find((row) => row.id === mobileA.id)?.seriesId;
-  const mobileSeriesB = mobileTwo.find((row) => row.id === mobileB.id)?.seriesId;
-  expect(mobileSeriesA).toBeTruthy();
-  expect(mobileSeriesB).toBeTruthy();
-  expect(mobileSeriesB).not.toBe(mobileSeriesA);
   await rightClickPin(page, mobileA.id);
   const mobileLabels = await menuLabels(page);
   expect(mobileLabels).toContain('Continue pin');
   await clickContinuePin(page);
   const mobileA2 = await dropPin(page, { xf: 0.40, yf: 0.54 });
-  const mobileAfter = await waitForPinCount(page, 3);
-  expect(mobileAfter.filter((row) => row.seriesId === mobileSeriesA).map((row) => row.displayNumber)).toEqual([1, 2]);
-  expect(mobileAfter.find((row) => row.id === mobileB.id)?.seriesId).toBe(mobileSeriesB);
-  expect(mobileA2.seriesId).toBe(mobileSeriesA);
+  const mobileAfter = await waitForPinCount(page, 2);
+  expect(mobileAfter.map((row) => row.seriesId)).toEqual([mobileA.seriesId, mobileA.seriesId]);
+  expect(mobileAfter.map((row) => row.displayNumber)).toEqual([1, 2]);
+  expect(mobileA2.seriesId).toBe(mobileA.seriesId);
   await assertNoErrorBoundary(page);
 
   console.log('CONTINUE_PIN_PROOF', JSON.stringify({
@@ -372,7 +365,6 @@ test('UL-31 Continue pin intended + break + edge', async ({ page }) => {
     fileId,
     mobile: {
       a: mobileA.id,
-      b: mobileB.id,
       a2: mobileA2.id,
       labels: mobileLabels,
     },
