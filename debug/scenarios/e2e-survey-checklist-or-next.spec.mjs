@@ -129,9 +129,11 @@ async function expandWallsMarkers(page) {
   await expect(page.getByRole('button', { name: /item notes/ }).first()).toBeVisible({ timeout: 8_000 });
 }
 
-async function openDesktopNotes(page) {
+async function openDesktopNotes(page, { edit = false } = {}) {
   await expandWallsMarkers(page);
-  const btn = page.getByRole('button', { name: /item notes/ }).first();
+  const btn = edit
+    ? page.getByRole('button', { name: 'Edit item notes' }).first()
+    : page.getByRole('button', { name: /item notes/ }).first();
   await expect(btn).toBeVisible({ timeout: 8_000 });
   await btn.click({ force: true });
   await expect(page.getByRole('heading', { name: 'Note', exact: true })).toBeVisible({ timeout: 8_000 });
@@ -164,13 +166,13 @@ async function attachDesktopVideo(page, id, name = 'e2e-note.webm') {
 }
 
 async function saveDesktopNotes(page) {
-  const save = page.getByRole('heading', { name: 'Note', exact: true })
-    .locator('..')
-    .locator('..')
-    .getByRole('button', { name: 'Save', exact: true });
-  const fallback = page.locator('button.btn-primary').filter({ hasText: 'Save' });
-  const btn = (await save.count()) ? save : fallback;
-  await btn.last().click();
+  await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((el) => (el.textContent || '').trim() === 'Note');
+    const dialog = heading?.parentElement?.parentElement;
+    const save = [...(dialog?.querySelectorAll('button') || [])].find((el) => (el.textContent || '').trim() === 'Save');
+    if (!save) throw new Error('Note dialog Save missing');
+    save.click();
+  });
   await expect(page.getByRole('heading', { name: 'Note', exact: true })).toHaveCount(0, { timeout: 8_000 });
 }
 
@@ -289,22 +291,24 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await expect(page.getByRole('button', { name: 'Edit item notes' }).first()).toBeVisible();
 
   // Break: remove before Save drops the draft photo.
-  await openDesktopNotes(page);
+  await openDesktopNotes(page, { edit: true });
   await expect(page.getByText('keep-photo.png', { exact: true })).toBeVisible();
   await attachDesktopPhoto(page, markerA, 'remove-me.png');
   const removeDraft = page.getByText('remove-me.png', { exact: true }).locator('..').locator('button');
   await removeDraft.click();
   await expect(page.getByText('remove-me.png', { exact: true })).toHaveCount(0);
   await saveDesktopNotes(page);
-  expect(((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual(['keep-photo.png']);
+  await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
+    'keep-photo.png',
+  ]);
 
   // Break: Pen-armed still attaches.
   await page.getByRole('button', { name: 'Draw', exact: true }).click();
   await page.getByRole('button', { name: 'Pen', exact: true }).click();
-  await openDesktopNotes(page);
+  await openDesktopNotes(page, { edit: true });
   await attachDesktopPhoto(page, markerA, 'pen-armed.png');
   await saveDesktopNotes(page);
-  expect(((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
+  await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
     'keep-photo.png',
     'pen-armed.png',
   ]);
