@@ -87,6 +87,13 @@ const SVGSelectionOverlay = memo(({
       y: baseHandles.mt.y - handleSpec.rotationOffset,
     },
   };
+  // Stem hit used to start on mt, so the ~16px stroke ate the whole top
+  // pill and mt resize never fired. Leave a gap above the visible handle.
+  const stemAttachY = handles.mt.y - (
+    !hideResizeHandles && visibleResizeHandles.has('mt')
+      ? handleMetrics.hPillH / 2 + handleMetrics.minGap
+      : 0
+  );
 
   // Center of the bounding box for rotation transform. `rotationCenter`
   // (when supplied) overrides the geometric center so the rotation
@@ -256,7 +263,7 @@ const SVGSelectionOverlay = memo(({
           >
             <line
               x1={handles.mt.x}
-              y1={handles.mt.y}
+              y1={stemAttachY}
               x2={handles.mtr.x}
               y2={handles.mtr.y}
               stroke="transparent"

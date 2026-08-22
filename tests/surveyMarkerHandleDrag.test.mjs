@@ -22,6 +22,8 @@ test('placed survey-marker chrome is body-move + 8 resize + mtr rotate', () => {
   assert.match(overlay, /data-resize-handle=\{id\}/);
   assert.match(overlay, /data-rotation-handle="mtr"/);
   assert.match(overlay, /const cornerHandles = \['tl', 'tr', 'bl', 'br'\]/);
+  assert.match(overlay, /const stemAttachY = handles\.mt\.y -/);
+  assert.match(overlay, /y1=\{stemAttachY\}/);
   const surveyChrome = layer.slice(
     layer.indexOf('const handleSurveyMarkerPointerDown'),
     layer.indexOf('const selectedSurveyMarkerEntry'),
