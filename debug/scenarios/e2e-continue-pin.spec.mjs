@@ -10,7 +10,17 @@ const HUB = '/?hubPreview=1';
 
 async function openEditor(page, { fixture = LINK_PDF, width = 1440, height = 900 } = {}) {
   await page.addInitScript(() => {
-    try { localStorage.removeItem('survey_document_history_events_v1'); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem('survey_document_history_events_v1');
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('annotationsByPage_') || key.startsWith('cloudRenderAnnotationsByPage_'))) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => localStorage.removeItem(key));
+    } catch { /* ignore */ }
   });
   await page.setViewportSize({ width, height });
   await page.goto(fixture);
