@@ -65,7 +65,7 @@ async function assertFailClosedItem(page, item) {
   let downloadFired = false;
   const onDownload = () => { downloadFired = true; };
   page.once('download', onDownload);
-  await item.click();
+  await item.click({ force: true });
   await expect(linkedToast(page)).toBeVisible({ timeout: 8_000 });
   expect(downloadFired, 'fail-closed item must not start a workbook download').toBe(false);
   page.off('download', onDownload);
