@@ -115,6 +115,24 @@ async function storedIntensity(page, id) {
   return rows.find((row) => row.id === id)?.intensity;
 }
 
+async function selectRect(page, id) {
+  await page.keyboard.press('v');
+  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible({ timeout: 8_000 });
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  const points = [
+    { x: box.x + Math.min(8, Math.max(3, box.width / 2)), y: box.y + Math.max(3, box.height / 2) },
+    { x: box.x + 3, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + 3 },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    if (await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count()) return;
+  }
+  expect(await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count()).toBeGreaterThan(0);
+}
+
 async function assertNoErrorBoundary(page) {
   await expect(page.getByRole('button', { name: 'Reload Page' })).toHaveCount(0);
   await expect(page.getByText(/Rendered fewer hooks/i)).toHaveCount(0);
@@ -135,6 +153,10 @@ test('cloud bump every integer 1–20 intended + break + edge', async ({ page })
   const rect = await waitForNewRect(page, before);
   expect(Number.isFinite(rect.intensity)).toBeTruthy();
   hunts.push({ hunt: 'intended — new cloud rect stores pdfCloudIntensity', pass: true, created: rect.intensity });
+
+  // Patch only runs when a shape is selected (toolbar state otherwise stays local).
+  await selectRect(page, rect.id);
+  await expect(await bumpField(page)).toBeVisible();
 
   const proven = [];
   for (let n = 1; n <= 20; n += 1) {

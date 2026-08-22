@@ -14,7 +14,7 @@ test('AppShell Cloud bump field clamps 1–20 and rejects non-digits', () => {
   assert.match(shell, /contextTool === 'rect' && bottomToolbarApi\.lineBorderStyle === 'cloud'/);
   assert.match(shell, /const next = raw === '' \? 1 : Math\.max\(1, Math\.min\(20, parseInt\(raw, 10\)\)\)/);
   assert.match(shell, /if \(raw === '' \|\| \/\^\\d\+\$\/\.test\(raw\)\)/);
-  assert.doesNotMatch(shell, /file\.id/);
+  assert.match(shell, /chromeTip\('Cloud bump size', 'below'\)/);
 });
 
 test('viewer patches selected rect pdfCloudIntensity; mobile uses the same 1–20 clamp', () => {

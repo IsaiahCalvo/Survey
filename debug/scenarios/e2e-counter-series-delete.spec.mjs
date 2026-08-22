@@ -38,7 +38,10 @@ async function counterSnapshot(page, pageNumber = 1) {
       const label = host?.querySelector('text')?.textContent?.trim() || '';
       const type = String(object.type || data.type || '').toLowerCase();
       const tool = String(data.tool || data.type || object.tool || '').toLowerCase();
-      const isCounter = tool === 'counter' || type.includes('counter') || overlayIds.includes(id);
+      const isCounter = tool === 'counter'
+        || type.includes('counter')
+        || type === 'circle'
+        || overlayIds.includes(id);
       if (!isCounter) return null;
       return {
         id,
@@ -81,11 +84,14 @@ async function activateCounter(page) {
 async function dropPin(page, x0, y0) {
   const before = new Set((await counterSnapshot(page)).map((row) => row.id));
   await activateCounter(page);
-  const box = await pageBox(page);
+  const overlay = page.locator('[data-counter-overlay="1"]');
+  await expect(overlay).toBeVisible();
+  const box = await overlay.boundingBox();
+  expect(box, 'counter overlay geometry').toBeTruthy();
   const start = { x: box.x + box.width * x0, y: box.y + box.height * y0 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(start.x + 8, start.y + 6, { steps: 4 });
+  await page.mouse.move(start.x + box.width * 0.02, start.y + box.height * 0.02, { steps: 4 });
   await page.mouse.up();
   let created = null;
   await expect.poll(async () => {
@@ -131,9 +137,9 @@ test('counter-series Delete execute: keyboard pin + series menu', async ({ page 
   const hunts = [];
   await openEditor(page);
 
-  const pin1 = await dropPin(page, 0.24, 0.28);
-  const pin2 = await dropPin(page, 0.42, 0.28);
-  const pin3 = await dropPin(page, 0.60, 0.28);
+  const pin1 = await dropPin(page, 0.30, 0.55);
+  const pin2 = await dropPin(page, 0.45, 0.55);
+  const pin3 = await dropPin(page, 0.60, 0.55);
   const series = await waitForPinCount(page, 3);
   expect(new Set(series.map((row) => row.seriesId)).size, 'one series').toBe(1);
   expect(numbers(series)).toEqual([1, 2, 3]);

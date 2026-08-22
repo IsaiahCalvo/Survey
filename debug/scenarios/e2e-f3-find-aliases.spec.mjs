@@ -197,13 +197,12 @@ test('F3 / Ctrl+G find aliases: intended + break + edge', async ({ page }) => {
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.click();
-  await page.keyboard.type('hello-f3');
+  await page.keyboard.type('hello-alias');
   const beforeTypeIndex = await readIndex(page);
   await page.keyboard.press('F3');
   await waitNavSettle(page);
   const typed = (await editor.innerText()).replace(/\s+/g, '');
-  expect(typed).toMatch(/hello-f3/);
-  expect(typed).not.toMatch(/F3/i);
+  expect(typed).toBe('hello-alias');
   const afterTypeIndex = await readIndex(page);
   hunts.push({
     hunt: 'break — F3 while typing in a text annotation does not insert F3',
