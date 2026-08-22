@@ -1250,10 +1250,14 @@ const BookmarksPanel = ({
       }
     });
 
+    // Same expand as Add-bookmark-to-group: a just-created folder is not in
+    // expandedFolders, so children would otherwise stay collapsed/hidden.
+    expandFolderOnly(folderId);
+
     setShowBookmarkGroupModal(false);
     setGroupName('');
     setGroupBookmarks([]);
-  }, [bookmarks, groupName, groupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
+  }, [bookmarks, expandFolderOnly, groupName, groupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
 
   const handleAddExistingBookmark = useCallback((bookmarkId) => {
     const bookmark = bookmarks.find(b => b.id === bookmarkId);
@@ -1401,10 +1405,12 @@ const BookmarksPanel = ({
       }
     });
 
+    expandFolderOnly(targetGroupId);
+
     setShowAddToGroupModal(false);
     setTargetGroupId(null);
     setAddToGroupBookmarks([]);
-  }, [bookmarks, targetGroupId, addToGroupBookmarks, onBookmarkCreate, onBookmarkUpdate, numPages]);
+  }, [addToGroupBookmarks, bookmarks, expandFolderOnly, numPages, onBookmarkCreate, onBookmarkUpdate, targetGroupId]);
 
   if (mobileMode) {
     // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the
