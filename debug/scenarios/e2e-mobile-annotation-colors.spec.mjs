@@ -195,6 +195,16 @@ async function openFillSheet(page) {
   await expect(page.getByRole('button', { name: `Set Fill color ${MOBILE_ANNOTATION_COLORS[0]}`, exact: true })).toBeVisible({ timeout: 8_000 });
 }
 
+async function closeFillSheet(page) {
+  const close = page.getByRole('button', { name: 'Close annotation settings', exact: true });
+  if (await close.isVisible().catch(() => false)) {
+    await close.click();
+  } else {
+    await page.keyboard.press('Escape');
+  }
+  await expect(page.getByRole('button', { name: `Set Fill color ${MOBILE_ANNOTATION_COLORS[0]}`, exact: true })).toHaveCount(0);
+}
+
 test('390 MOBILE_ANNOTATION_COLORS every chip intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
@@ -214,66 +224,64 @@ test('390 MOBILE_ANNOTATION_COLORS every chip intended + break + edge', async ({
     await expect(page.getByText('No documents yet')).toHaveCount(0);
   }
 
-  const rect = await createRect(page, { x0: 0.34, y0: 0.36, x1: 0.78, y1: 0.58 });
-  expect(rect?.id).toBeTruthy();
-  await selectRect(page, rect.id);
-  await openFillSheet(page);
-  for (const color of MOBILE_ANNOTATION_COLORS) {
-    await expect(page.getByRole('button', { name: `Set Fill color ${color}`, exact: true })).toBeVisible();
-  }
+  // Intended: each 390 chip is the armed-tool fill for the next rectangle.
+  await activateTool(page, 'Shapes', 'Rectangle');
+  await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
 
   const fillProof = [];
-  for (const color of MOBILE_ANNOTATION_COLORS) {
+  for (let i = 0; i < MOBILE_ANNOTATION_COLORS.length; i += 1) {
+    const color = MOBILE_ANNOTATION_COLORS[i];
+    await activateTool(page, 'Shapes', 'Rectangle');
+    await openFillSheet(page);
+    await expect(page.getByRole('button', { name: `Set Fill color ${color}`, exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Set Fill color ${color}`, exact: true }).click();
+    await closeFillSheet(page);
+    const x0 = 0.30 + (i % 3) * 0.08;
+    const y0 = 0.28 + Math.floor(i / 3) * 0.10;
+    const created = await createRect(page, { x0, y0, x1: x0 + 0.16, y1: y0 + 0.08 });
     const expected = colorKey(color);
-    await expect.poll(async () => storedFill(page, rect.id)).toBe(expected);
-    fillProof.push({ chip: color, stored: expected });
+    await expect.poll(async () => storedFill(page, created.id)).toBe(expected);
+    fillProof.push({ chip: color, stored: expected, id: created.id });
   }
   expect(fillProof.map((row) => row.chip)).toEqual([...MOBILE_ANNOTATION_COLORS]);
   expect(fillProof.map((row) => row.stored)).toEqual(MOBILE_ANNOTATION_COLORS.map((color) => colorKey(color)));
+  expect(fillProof[0].id).not.toBe(fillProof[1].id);
+  expect(await storedFill(page, fillProof[0].id), 'earlier chip must stay on its rect').toBe(colorKey(MOBILE_ANNOTATION_COLORS[0]));
 
   // Edge: large swatch still opens CompactColorPicker (desktop catalog).
+  await activateTool(page, 'Shapes', 'Rectangle');
+  await openFillSheet(page);
   await page.getByRole('button', { name: 'Open fill color picker', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
   await page.locator('button[title="#0000FF"]').first().click();
-  await expect.poll(async () => storedFill(page, rect.id)).toBe('#0000FF');
   const hex = page.getByRole('textbox', { name: 'Hex color', exact: true });
   if (await hex.isVisible().catch(() => false)) {
     await hex.fill('red');
     await page.waitForTimeout(80);
-    expect(await storedFill(page, rect.id)).toBe('#0000FF');
     await hex.fill('#FF00');
     await page.waitForTimeout(80);
-    expect(await storedFill(page, rect.id)).toBe('#0000FF');
   }
   await page.keyboard.press('Escape');
+  await closeFillSheet(page);
+  const compactRect = await createRect(page, { x0: 0.30, y0: 0.64, x1: 0.48, y1: 0.74 });
+  await expect.poll(async () => storedFill(page, compactRect.id)).toBe('#0000FF');
+  expect(await storedFill(page, fillProof[0].id)).toBe(colorKey(MOBILE_ANNOTATION_COLORS[0]));
 
-  // Break: invalid / named / short hex keep the CompactColorPicker value.
-  expect(await storedFill(page, rect.id)).toBe('#0000FF');
-
-  // Break: empty-page chip does not invent a second rect.
-  await page.mouse.click(12, 80);
+  // Break: Select / empty page does not invent another chip rect.
+  const beforeSelect = (await userAnnotationSnapshot(page)).length;
   await clickVisible(page, 'Select');
   await page.mouse.click(12, 80);
-  const afterDeselect = (await userAnnotationSnapshot(page)).length;
+  expect((await userAnnotationSnapshot(page)).length).toBe(beforeSelect);
 
-  // Edge: second rect isolated from the first fill.
-  const second = await createRect(page, { x0: 0.22, y0: 0.56, x1: 0.52, y1: 0.72 });
-  expect(second.id).not.toBe(rect.id);
-  await selectRect(page, second.id);
-  await openFillSheet(page);
-  await page.getByRole('button', { name: 'Set Fill color #27C07D', exact: true }).click();
-  await expect.poll(async () => storedFill(page, second.id)).toBe('#27C07D');
-  expect(await storedFill(page, rect.id), 'first rect must stay #0000FF').toBe('#0000FF');
-  expect((await userAnnotationSnapshot(page)).length).toBeGreaterThanOrEqual(afterDeselect);
-
-  // Edge: undo after the isolated green fill.
+  // Edge: undo drops the CompactColorPicker rect; prior chip rects stay.
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
-  if (await undo.isVisible().catch(() => false)) {
-    await undo.click();
-    await expect.poll(async () => storedFill(page, second.id)).not.toBe('#27C07D');
-  }
-  expect(await storedFill(page, rect.id)).toBe('#0000FF');
+  await expect(undo).toBeVisible();
+  await undo.click();
+  await expect.poll(async () => {
+    const rows = await userAnnotationSnapshot(page);
+    return rows.some((row) => row.id === compactRect.id);
+  }).toBe(false);
+  expect(await storedFill(page, fillProof[8].id)).toBe(colorKey(MOBILE_ANNOTATION_COLORS[8]));
 
   const viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
   expect(viewBox).toBe('0 0 612 792');
