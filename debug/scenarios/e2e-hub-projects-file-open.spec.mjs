@@ -96,7 +96,7 @@ async function waitForViewer(page) {
 }
 
 async function returnHomeToProjects(page) {
-  await page.locator('.tab-bar').getByText('Home', { exact: true }).click();
+  await page.locator('.tab-bar').getByTitle('Home').click();
   await page.waitForURL((url) => url.searchParams.get('hubPreview') === '1', { timeout: 15_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(TOWER).first()).toBeVisible({ timeout: 15_000 });
@@ -195,10 +195,12 @@ test('Projects file-row Open intended + break + edge', async ({ page }) => {
   expect(openedSe011.previewName).toBe(SE011);
   expect(openedSe011.returnTab).toBe('projects');
   await waitForViewer(page);
-  const openedFileName = await page.evaluate(() => window.__devTestPdf?.name ?? null);
-  const openedFileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
-  expect(openedFileName).toBe(SE011);
-  expect(openedFileId, 'DevTestRoute must not stamp file.id').toBeNull();
+  // AppShell consumes window.__devTestPdf (sets null) after handing the File
+  // to the tab. The live name is the PDF tab title = previewName.
+  const openedFileName = await page.locator('.tab-bar').getByTitle(SE011).innerText();
+  const leftoverDevFile = await page.evaluate(() => window.__devTestPdf ?? null);
+  expect(openedFileName.replace(/\s+/g, ' ').trim()).toBe(SE011);
+  expect(leftoverDevFile, 'AppShell must consume __devTestPdf').toBeNull();
   await expect(page.locator('.tab-bar').getByTitle(SE011)).toBeVisible();
   await assertNoErrorBoundary(page);
 
@@ -218,7 +220,7 @@ test('Projects file-row Open intended + break + edge', async ({ page }) => {
   expect(openedRfi.previewName).toBe(RFI);
   expect(openedRfi.returnTab).toBe('projects');
   await waitForViewer(page);
-  expect(await page.evaluate(() => window.__devTestPdf?.name ?? null)).toBe(RFI);
+  await expect(page.locator('.tab-bar').getByTitle(RFI)).toBeVisible();
   await returnHomeToProjects(page);
   await openProject(page, LAB);
   await expect(fileRow(page, DOOR)).toBeVisible();
@@ -228,7 +230,7 @@ test('Projects file-row Open intended + break + edge', async ({ page }) => {
   expect(openedDoor.previewName).toBe(DOOR);
   expect(openedDoor.returnTab).toBe('projects');
   await waitForViewer(page);
-  expect(await page.evaluate(() => window.__devTestPdf?.name ?? null)).toBe(DOOR);
+  await expect(page.locator('.tab-bar').getByTitle(DOOR)).toBeVisible();
   await returnHomeToProjects(page);
   await openProject(page, MEP);
   await expect(fileRow(page, MEP_FILE)).toBeVisible();
@@ -282,7 +284,7 @@ test('Projects file-row Open intended + break + edge', async ({ page }) => {
     selectDidNotOpen,
     openedSe011,
     openedFileName,
-    noFileId: openedFileId === null,
+    consumedDevFile: leftoverDevFile === null,
     homeReturnedProjects,
     openedRfi,
     openedDoor,
