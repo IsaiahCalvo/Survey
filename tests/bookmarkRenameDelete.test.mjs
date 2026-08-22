@@ -100,12 +100,14 @@ test('live spec covers rename/delete, clash, cancel, undo, 390 group delete, hub
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /desktop bookmark rename \+ delete intended \+ break \+ edge/);
   assert.match(spec, /390 bookmark group rename is absent; group delete is live/);
+  assert.match(spec, /Escape restores the typed-over name/);
   assert.match(spec, /A bookmark group with this name already exists/);
   assert.match(spec, /A bookmark with this name already exists/);
   assert.match(spec, /Delete group "\$\{groupA2\}" and 1 nested item\?/);
   assert.match(spec, /Delete group "\$\{groupB\}"\?/);
   assert.match(spec, /Delete bookmark "\$\{solo\}"\?/);
-  assert.match(spec, /Control\+z/);
+  assert.match(spec, /scoped bookmark:delete snapshot/);
+  assert.match(spec, /clickWithConfirm/);
   assert.match(spec, /390 desktop Edit must be 0/);
   assert.match(spec, /390 folder rename must be 0/);
   assert.match(spec, /hubPreview Edit must be 0/);

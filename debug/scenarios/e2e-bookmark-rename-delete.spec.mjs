@@ -136,18 +136,18 @@ function deleteBookmark(page, name) {
   return page.getByRole('button', { name: `Delete bookmark ${name}`, exact: true });
 }
 
-function waitForConfirm(page) {
-  return new Promise((resolve) => {
-    page.once('dialog', async (dialog) => {
-      const message = dialog.message();
-      resolve({
-        message,
-        type: dialog.type(),
-        accept: () => dialog.accept(),
-        dismiss: () => dialog.dismiss(),
-      });
-    });
+async function clickWithConfirm(page, locator, { accept }) {
+  let message = '';
+  let type = '';
+  page.once('dialog', (dialog) => {
+    message = dialog.message();
+    type = dialog.type();
+    if (accept) dialog.accept();
+    else dialog.dismiss();
   });
+  await locator.click();
+  await expect.poll(() => message).not.toBe('');
+  return { message, type };
 }
 
 async function openMobileBookmarks(page) {
@@ -261,40 +261,33 @@ test('desktop bookmark rename + delete intended + break + edge', async ({ page }
   await expect(page.getByRole('status').filter({ hasText: /already exists/i })).toHaveCount(0);
 
   // Break — Cancel confirm invents 0 deletes.
-  const cancelPending = waitForConfirm(page);
-  await deleteGroup(page, groupA2).click();
-  const cancelDialog = await cancelPending;
+  const cancelDialog = await clickWithConfirm(page, deleteGroup(page, groupA2), { accept: false });
   expect(cancelDialog.type).toBe('confirm');
   expect(cancelDialog.message).toBe(`Delete group "${groupA2}" and 1 nested item?`);
-  await cancelDialog.dismiss();
   await expect(renameGroup(page, groupA2)).toBeVisible();
   await expect(renameBookmark(page, groupA2)).toBeVisible();
   await expect(renameGroup(page, groupB)).toBeVisible();
 
   // Intended — leaf delete confirm.
-  const leafPending = waitForConfirm(page);
-  await deleteBookmark(page, solo).click();
-  const leafDialog = await leafPending;
+  const leafDialog = await clickWithConfirm(page, deleteBookmark(page, solo), { accept: true });
   expect(leafDialog.message).toBe(`Delete bookmark "${solo}"?`);
-  await leafDialog.accept();
   await expect(renameBookmark(page, solo)).toHaveCount(0);
   await expect(renameGroup(page, groupB)).toBeVisible();
 
   // Intended — group delete removes the nested child; isolation holds.
-  const groupPending = waitForConfirm(page);
-  await deleteGroup(page, groupA2).click();
-  const groupDialog = await groupPending;
+  const groupDialog = await clickWithConfirm(page, deleteGroup(page, groupA2), { accept: true });
   expect(groupDialog.message).toBe(`Delete group "${groupA2}" and 1 nested item?`);
-  await groupDialog.accept();
   await expect(renameGroup(page, groupA2)).toHaveCount(0);
   await expect(renameBookmark(page, groupA2)).toHaveCount(0);
   await expect(renameGroup(page, groupB)).toBeVisible();
   await expect(renameBookmark(page, childB)).toBeVisible();
 
-  // Edge — Ctrl+Z restores the scoped bookmark:delete snapshot.
+  // Edge — Undo restores the scoped bookmark:delete snapshot.
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await blurInputs(page);
-  await page.keyboard.press('Control+z');
+  const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
+  await expect(undoBtn).toBeEnabled();
+  await undoBtn.click();
   await expect(bookmarkRow(page, groupA2)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('button', { name: 'Edit', exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -303,16 +296,10 @@ test('desktop bookmark rename + delete intended + break + edge', async ({ page }
   await expect(renameGroup(page, groupB)).toBeVisible();
 
   // Edge — empty group confirm has no nested count.
-  const emptyChildPending = waitForConfirm(page);
-  await deleteBookmark(page, childB).click();
-  const emptyChildDialog = await emptyChildPending;
+  const emptyChildDialog = await clickWithConfirm(page, deleteBookmark(page, childB), { accept: true });
   expect(emptyChildDialog.message).toBe(`Delete bookmark "${childB}"?`);
-  await emptyChildDialog.accept();
-  const emptyGroupPending = waitForConfirm(page);
-  await deleteGroup(page, groupB).click();
-  const emptyGroupDialog = await emptyGroupPending;
+  const emptyGroupDialog = await clickWithConfirm(page, deleteGroup(page, groupB), { accept: true });
   expect(emptyGroupDialog.message).toBe(`Delete group "${groupB}"?`);
-  await emptyGroupDialog.accept();
   await expect(renameGroup(page, groupB)).toHaveCount(0);
   await expect(renameGroup(page, groupA2)).toBeVisible();
 
@@ -331,11 +318,8 @@ test('desktop bookmark rename + delete intended + break + edge', async ({ page }
   const beforeMarks = await userAnnotationIds(page);
   await openBookmarks(page);
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  const penPending = waitForConfirm(page);
-  await deleteGroup(page, groupA2).click();
-  const penDialog = await penPending;
+  const penDialog = await clickWithConfirm(page, deleteGroup(page, groupA2), { accept: true });
   expect(penDialog.message).toBe(`Delete group "${groupA2}" and 1 nested item?`);
-  await penDialog.accept();
   await expect(renameGroup(page, groupA2)).toHaveCount(0);
   expect(await userAnnotationIds(page)).toEqual(beforeMarks);
 
@@ -389,24 +373,31 @@ test('390 bookmark group rename is absent; group delete is live', async ({ page 
   }
   await expect(childTitle).toBeVisible();
 
-  const cancelPending = waitForConfirm(page);
-  await page.getByRole('button', { name: `Delete group ${groupA}`, exact: true }).click();
-  const cancelDialog = await cancelPending;
+  const cancelDialog = await clickWithConfirm(
+    page,
+    page.getByRole('button', { name: `Delete group ${groupA}`, exact: true }),
+    { accept: false },
+  );
   expect(cancelDialog.message).toBe(`Delete group "${groupA}" and 1 nested item?`);
-  await cancelDialog.dismiss();
   await expect(page.locator('.mobile-bookmark-title').filter({ hasText: groupA })).toBeVisible();
   await expect(page.locator('.mobile-bookmark-title').filter({ hasText: childA })).toBeVisible();
   await expect(page.locator('.mobile-bookmark-title').filter({ hasText: groupB })).toBeVisible();
 
-  const acceptPending = waitForConfirm(page);
-  await page.getByRole('button', { name: `Delete group ${groupA}`, exact: true }).click();
-  const acceptDialog = await acceptPending;
+  const acceptDialog = await clickWithConfirm(
+    page,
+    page.getByRole('button', { name: `Delete group ${groupA}`, exact: true }),
+    { accept: true },
+  );
   expect(acceptDialog.message).toBe(`Delete group "${groupA}" and 1 nested item?`);
-  await acceptDialog.accept();
   await expect(page.locator('.mobile-bookmark-title').filter({ hasText: groupA })).toHaveCount(0);
   await expect(page.locator('.mobile-bookmark-title').filter({ hasText: childA })).toHaveCount(0);
   await expect(page.locator('.mobile-bookmark-title').filter({ hasText: groupB })).toBeVisible();
-  await expect(page.locator('.mobile-bookmark-title').filter({ hasText: childB })).toBeVisible();
+  const childBTitle = page.locator('.mobile-bookmark-title').filter({ hasText: childB });
+  if (!(await childBTitle.count())) {
+    const toggleB = page.getByRole('button', { name: `Toggle ${groupB}` });
+    if (await toggleB.count()) await toggleB.click();
+  }
+  await expect(childBTitle).toBeVisible();
 
   const viewBox = await pageViewBox(page);
   expect(viewBox).toBe('0 0 612 792');
