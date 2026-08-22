@@ -135,12 +135,7 @@ async function blurInputs(page) {
 async function selectMode(page) {
   await blurInputs(page);
   await page.keyboard.press('Escape');
-  const selectBtn = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
-  if (await selectBtn.isVisible().catch(() => false)) {
-    await selectBtn.click();
-  } else {
-    await page.keyboard.press('v');
-  }
+  await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) {
     await page.keyboard.press('Escape');
@@ -446,6 +441,7 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
 
   await openEditor(page);
   await assertNoErrorBoundary(page);
+  await dismissChrome(page);
   await activateTool(page, 'Shapes', 'Line');
   const field = await widthField(page);
   await expect(field).toBeVisible({ timeout: 8_000 });
@@ -457,7 +453,7 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
 
   await pickWidthPreset(page, 12);
   await expect(field).toHaveValue('12');
-  const patchLine = await createLine(page, { x0: 0.16, y0: 0.20, x1: 0.42, y1: 0.24 });
+  const patchLine = await createLine(page, { x0: 0.16, y0: 0.24, x1: 0.42, y1: 0.34 });
   expect(patchLine.strokeWidth, 'seed Line next-draw Width 12').toBe(12);
   await selectStroke(page, patchLine.id);
   const linePatch = await patchWidthPresets(page, patchLine.id);
