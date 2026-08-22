@@ -27,15 +27,15 @@ CORS `*` / `zoomGeneration` / SVG viewBox / canvas sizing / Fabric `fontFamily` 
 
 ## Live-proved
 
-Playwright `e2e-bookmark-group.spec.mjs` — results filled after the run. Focused Node `bookmarkGroup` + leftover18 — results filled after the run.
+Playwright `e2e-bookmark-group.spec.mjs` **2 / 2 (10.0s)** on Vite `http://127.0.0.1:5173`. Focused Node `bookmarkGroup` + leftover18 **15 / 15**.
 
 `?testPdf=spike-120-pages.pdf`. `viewBox="0 0 612 792"`. `file.id` null.
 
-### Intended
+### Intended — **pass**
 
-Desktop: Add bookmark → New bookmark group → named group + child page 3 → Create group expands so the child is visible. Child click jumps to page 3. Add bookmark to group mints `New bookmark`. Existing Solo can join a new group.
+Desktop: Add bookmark → New bookmark group → named group + child page 3 → Create group expands so the child is visible. Child click jumps to page 3. Add bookmark to group mints `New bookmark`. Existing Solo joins a new group (`${name} Page N` picker). Collapse group chevron named.
 
-### Break
+### Break — **pass**
 
 | Control | Input | Result |
 |---|---|---|
