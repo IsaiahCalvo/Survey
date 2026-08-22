@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-21 mobile Bookmarks):** V-07 mobile sheet (not a new UL row). Create / up-down / Open page 3 / 0+999 clamp. Hub tabs now `aria-label`. Receipt `fix-logs/mobile-bookmarks-2026-08-21.md`. Unblocked catalog exhausted: `fix-logs/unblocked-catalog-exhausted-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Fit height):** UL-05 was cluster-level (menu open / Fit page + Fit width). Fit height is its own mode. Receipt `fix-logs/fit-height-2026-08-22.md`. Exhausted “GAP = 0” **falsified**. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-21 mobile Bookmarks):** V-07 mobile sheet (not a new UL row). Create / up-down / Open page 3 / 0+999 clamp. Hub tabs now `aria-label`. Receipt `fix-logs/mobile-bookmarks-2026-08-21.md`. Unblocked catalog exhausted: `fix-logs/unblocked-catalog-exhausted-2026-08-21.md` (later falsified). Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-21 Eraser Size every preset):** D-04 Size catalog every discrete **1…100** + custom 40 (default 20). Not a new UL row; not D-05 Width and not UL-35 Counter Size. Receipt `fix-logs/eraser-size-presets-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
@@ -42,7 +44,7 @@ Unblocked catalog follow-up (2026-08-21, not new UL rows): `fix-logs/e2e-unblock
 | UL-02 | Shortcuts overlay | **B** — toggle sidebar | Open/close left rail | Ignore in INPUT/TEXTAREA/contenteditable; modifiers | **pass** (Node helpers + live width change) |
 | UL-03 | Shortcuts overlay | Ctrl/⌘O Open document | Open file | Web vs Electron File→Open | **pass** (IPC). Native chooser **opened** on 5175; pick/cancel **blocked** (AX + loginwindow). `fix-logs/electron-desktop.md` |
 | UL-04 | Shortcuts overlay | Ctrl+0 Fit page | Fit page (not 100%) | Conflicts with zoom field focus | **pass** (listed + live: 50% then Ctrl+0 left 50%) |
-| UL-05 | AppShell rail | Fit options menu | Fit page / width / height / manual | Narrow shell | **pass** (live click) |
+| UL-05 | AppShell rail | Fit options menu | Fit page / width / **height** / manual | Narrow shell; Fit height ≠ Fit page on 390 | **pass** (this pass: Fit height intended/break/edge — `e2e-fit-height.spec.mjs`; prior live click was page+width only) |
 | UL-06 | AppShell rail | Zoom % edit field | Type a percent; clamp 1–4000 | `0` / 50% lift to engine dynamic min (~100% here); 9999→4000; failed select-all appends | **pass** (live fill: 200%, 0→100%, 9999→4000%, 50→100%; Node clampScale) |
 | UL-07 | AppShell rail | Page number edit | Jump by typing | 0 / >numPages revert; 1-page PDF | **pass** (live: 0+99 stay 1; jump 3 on 120-page; Node `coercePageNumber`) |
 | UL-08 | PDFSidebar | Version history button | Open RevisionsPanel | Guest / no `file.id`; `?testPdf=` uses local key | **pass** (live visible; A-07 is the panel) |

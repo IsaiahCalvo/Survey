@@ -61,8 +61,9 @@ test('Fit height falls back and clamps; missing viewport does not invent a mode'
   const missing = controllerFor(null, { width: 612, height: 792 });
   assert.equal(missing.controller.setMode(ZOOM_MODES.FIT_HEIGHT), 1);
 
+  // height 0 → safeDivide yields 0 → clampScale floor (not the 1.0 missing-viewport fallback).
   const zero = controllerFor({ width: 400, height: 0 }, { width: 612, height: 792 });
-  assert.equal(zero.controller.setMode(ZOOM_MODES.FIT_HEIGHT), 1);
+  assert.equal(zero.controller.setMode(ZOOM_MODES.FIT_HEIGHT), 0.01);
 
   const huge = controllerFor({ width: 400, height: 80_000 }, { width: 10, height: 10 });
   assert.equal(huge.controller.setMode(ZOOM_MODES.FIT_HEIGHT), 40);

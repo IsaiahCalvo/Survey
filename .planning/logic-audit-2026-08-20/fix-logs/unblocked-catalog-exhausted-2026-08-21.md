@@ -3,7 +3,7 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Leftover-18 still blocks `/goal` complete.
 
-Independent source catalog vs `E2E-STATUS.md` + 2026-08-21 fix-logs. This pass live-proved the last unique unblocked cluster found (**mobile Bookmarks**). After that proof, remaining reachable chrome is proven, leftover-18, or compile-hidden.
+Independent source catalog vs `E2E-STATUS.md` + 2026-08-21 fix-logs. This pass live-proved mobile Bookmarks, then claimed remaining reachable chrome was proven / leftover-18 / compile-hidden. **2026-08-22 falsify:** Fit height was omitted (cluster-classified under UL-05 / V-04). Receipt `fit-height-2026-08-22.md`.
 
 Did **not** invent `.env.local`. Did **not** run a 768 Playwright pass. Did **not** invent Print / stamp / measure / Group / Extract / Note / Link create.
 
@@ -29,7 +29,7 @@ Sources inspected this pass (not a copy of catalog-reconcile’s “0 GAP” cla
 - **compile-hidden** — `false &&` / flag off / commented / omitted; not invented
 - **GAP** — reachable on this VM and still thinner than intended+break+edge
 
-**GAP remaining: 0.**
+**GAP remaining: was claimed 0 — FALSIFIED 2026-08-22.** Fit height is a unique unblocked control (own `ZOOM_MODES.FIT_HEIGHT` + `zoomTo(wrapperH/realPageH)`). V-04 / UL-05 / 390 chrome only hard-asserted Fit page + Fit width. Live-proven this pass: `fix-logs/fit-height-2026-08-22.md`. Do **not** treat this file as a current 0.
 
 ## This-pass unique cluster (now proven)
 
@@ -66,7 +66,7 @@ Legal slices already in `leftover18-unblock-2026-08-21.md`. **0** newly fully pr
 
 | Cluster | Class | Evidence |
 |---|---|---|
-| V-01…V-09 viewer | proven | `E2E-STATUS.md` |
+| V-01…V-09 viewer | proven **except Fit height (this catalog missed it)** | V-04 was page+width only. Fit height proven 2026-08-22. |
 | D-01…D-05 draw | proven | incl. Eraser Size every preset `eraser-size-presets-2026-08-21.md` |
 | S-01…S-05 shapes | proven | incl. Cloud bump 1–20 + Counter Size/Start |
 | T-01…T-07 text | proven | pickers-every-swatch |
@@ -88,11 +88,11 @@ Legal slices already in `leftover18-unblock-2026-08-21.md`. **0** newly fully pr
 
 | Class | Count |
 |---|---|
-| **GAP** | **0** |
+| **GAP** | **1 (Fit height — omitted / cluster-classified; proven 2026-08-22)** |
 | **proven** (this independent catalog) | all reachable user chrome above |
 | **compile-hidden** | 10 named controls / flags |
 | **leftover-18** | **18** (still parked) |
 
 ## Goal
 
-Leftover-18 still blocks `/goal` complete. This file is a receipt that **unblocked** unique clusters are exhausted — not that the standing save/export/import/recursive-E2E objective is done.
+Leftover-18 still blocks `/goal` complete. This file's "unblocked clusters exhausted / GAP 0" claim is **falsified**. Fit height was a unique unblocked control. See `fit-height-2026-08-22.md`. Do not stamp a new zero from this file.
