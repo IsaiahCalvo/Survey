@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-22 UL-35 toolbar Continue Count (`fix-logs/continue-count-toolbar-2026-08-22.md`). Cluster-only series-row switch now has intended+break+edge. Barrier contract matched Projects `[ref, trigger]`. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-22 empty-module Create template official contract (`fix-logs/survey-empty-create-template-contract-2026-08-22.md`). Walls belongs to the Two Category sibling seed; empty-module stays `categories: []`. Official next fail-stop is `surveyKeepActive` stale `noteHasContent`. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-22 UL-35 toolbar Continue Count (`fix-logs/continue-count-toolbar-2026-08-22.md`). Cluster-only series-row switch now has intended+break+edge. Barrier contract matched Projects `[ref, trigger]`. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-22 compile-hidden tools hunt (`fix-logs/compile-hidden-tools-2026-08-22.md`). Stamp / measure / Group / Extract / Note-Link / Forms are compile-hidden or zero callers — **no** Print-class reachable fail-closed chrome. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
