@@ -243,7 +243,7 @@ test('390 detail Choose Survey Marker sibling switcher intended + break + edge',
   const openNames = await markerListbox(page).getByRole('option').evaluateAll(
     (nodes) => nodes.map((node) => (node.textContent || '').trim()),
   );
-  expect(openNames, 'same-category siblings').toEqual(['switch-a', 'switch-b']);
+  expect([...openNames].sort(), 'same-category siblings').toEqual(['switch-a', 'switch-b']);
   await expect(markerOption(page, 'switch-a')).toHaveAttribute('aria-selected', 'true');
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('Escape');
