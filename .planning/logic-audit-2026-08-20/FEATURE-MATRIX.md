@@ -40,11 +40,11 @@ Exact discrete catalogs used by the UI:
 | T-05 | Text | Bold / italic / underline / strike | Toggle each | Combo; callout booleans vs fabric fields |
 | T-06 | Text | Alignment 3×3 | All 9 cells | justify accepted but not offered |
 | T-07 | Text | Font color | All 15 solid swatches + hex. **390 Text color chips** live `e2e-mobile-text-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Invalid hex; transparent first cell |
-| C-01 | Color | Preset grid | Every discrete swatch. Line/Arrow stroke **every swatch** live `e2e-line-arrow-colors.spec.mjs` | Transparent; Match Fill first cell |
+| C-01 | Color | Preset grid | Every discrete swatch. Line/Arrow stroke **every swatch** live `e2e-line-arrow-colors.spec.mjs`. Text Fill/Border **every swatch** live `e2e-text-colors.spec.mjs` | Transparent; Match Fill first cell |
 | C-02 | Color | Hex field | `#rgb` / `#rrggbb` / bare. **Live lengths** `e2e-hex-lengths.spec.mjs` (3/6 accept; 4/5/7/8 + named/rgba reject) | Invalid, rgba(), named, 4/5/7/8 digit |
 | C-03 | Color | Opacity | Slider + % field 0–100 | `minOpacity`; transparentMode restore |
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
-| C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets. **390 sheet chips** live `e2e-mobile-annotation-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Counter number color; armed tool vs selection; 390 default fill opacity 0 |
+| C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets. **390 sheet chips** live `e2e-mobile-annotation-colors.spec.mjs`. **Text desktop Fill/Border** live `e2e-text-colors.spec.mjs` (`backgroundColor` / `stroke`, not T-07 fontColor) | Counter number color; armed tool vs selection; 390 default fill opacity 0 |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
 | E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04. Polygon/polyline `vertex-N` is X-04. Double-click / 390-strip bbox mode live `e2e-bbox-edit-mode.spec.mjs`. Placed survey-marker 8 handles live `e2e-survey-marker-handle-drag.spec.mjs` | Rotated; text wrap height; Pen exits bbox |
 | E-02 | Edit | Rotation | Handle + numeric + Shift 45°. Counter nubbin / Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs`. Survey-marker `mtr` live `e2e-survey-marker-handle-drag.spec.mjs` | Off-screen handle; 0/90/180/270; Shift-click toggle ≠ orbit |
