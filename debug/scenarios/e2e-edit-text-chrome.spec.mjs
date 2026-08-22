@@ -173,18 +173,26 @@ async function selectMode(page) {
   if (await menu.count()) await page.keyboard.press('Escape');
 }
 
+async function dismissChrome(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  await page.keyboard.press('Escape');
+  const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  if (await pagesToggle.isVisible().catch(() => false)) {
+    const expanded = await page.getByText('No documents yet').isVisible().catch(() => false);
+    if (expanded) await pagesToggle.click();
+  }
+  await blurInputs(page);
+}
+
 async function commitEdit(page) {
-  // Overlay wrapper is inset:0 / pointer-events:none; the editor box is
-  // pointer-events:auto. Click chrome (not the page) so closest() misses
-  // [data-text-edit-overlay] and the document mousedown commits.
-  await page.mouse.click(8, 220);
+  // Proven path from e2e-text-colors: click the page origin. The overlay
+  // wrapper is pointer-events:none so document capture mousedown commits.
+  const pageGeom = await pageBox(page);
+  await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
   if (await page.locator('[data-text-edit-overlay]').count()) {
-    const selectBtn = page.getByRole('button', { name: 'Select', exact: true }).first();
-    if (await selectBtn.isVisible().catch(() => false)) {
-      await selectBtn.click();
-    } else {
-      await page.mouse.click(8, 420);
-    }
+    await page.mouse.click(pageGeom.x + pageGeom.width - 12, pageGeom.y + pageGeom.height - 12);
   }
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   await blurInputs(page);
@@ -212,10 +220,7 @@ async function createText(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y
   const before = new Set((await annotationSnapshot(page)).filter(isTextRow).map((row) => row.id));
   await blurInputs(page);
   await activateTool(page, 'Text', 'Text');
-  const drawOverlay = page.locator('[data-text-overlay="1"]');
-  if (await drawOverlay.count()) {
-    await expect(drawOverlay.first()).toBeVisible({ timeout: 8_000 });
-  }
+  await expect(page.locator('[data-text-overlay="1"]').first()).toBeVisible({ timeout: 8_000 });
   await dragOnPage(page, coords);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
@@ -223,6 +228,7 @@ async function createText(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y
   await editor.pressSequentially(text, { delay: 6 });
   await commitEdit(page);
   const created = await waitForNew(page, before, isTextRow);
+  await dismissChrome(page);
   await selectMode(page);
   return created;
 }
@@ -424,13 +430,10 @@ test('390 Edit text intended + break + edge', async ({ page }) => {
     || await defaults.count() > 0
     || await page.getByRole('button', { name: /Arial|Helvetica/ }).first().isVisible().catch(() => false);
   expect(defaultsOpen || await aa.getAttribute('aria-expanded') === 'true', '390 unselected Aa opens defaults').toBeTruthy();
-  const closeDefaults = page.getByRole('button', { name: 'Close text formatting', exact: true });
-  if (await closeDefaults.count()) {
-    await closeDefaults.click();
-  } else {
-    await page.getByRole('button', { name: 'Close annotation settings', exact: true }).click();
-  }
-  await expect(closeDefaults).toHaveCount(0, { timeout: 8_000 });
+  const closeX = page.getByRole('button', { name: 'Close annotation settings', exact: true });
+  await expect(closeX, '390 defaults sheet Close').toBeVisible({ timeout: 8_000 });
+  await closeX.click();
+  await expect(page.getByRole('button', { name: 'Close text formatting', exact: true })).toHaveCount(0, { timeout: 8_000 });
   await blurInputs(page);
 
   // Intended — create + select + Aa enters overlay.
