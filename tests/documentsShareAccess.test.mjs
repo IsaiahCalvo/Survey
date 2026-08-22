@@ -73,12 +73,15 @@ test('parseEmails rejects empty/invalid; leftover-18 A-03 mint stays uninvented'
   assert.deepEqual(parseEmails('teammate@example.com'), ['teammate@example.com']);
 
   const live = read('debug/scenarios/e2e-hub-docs-share-access.spec.mjs');
+  const hunt = read('debug/scenarios/e2e-after-docs-share-access-hunt.spec.mjs');
   assert.match(live, /DOCS_SHARE_ACCESS_PROOF/);
   assert.match(live, /Document Access/);
   assert.match(live, /Sharing needs a signed-in cloud account\./);
   assert.match(live, /leftover18InboxNotInvented/);
   assert.doesNotMatch(live, /VITE_DEV_AUTO_LOGIN/);
   assert.doesNotMatch(live, /createDocumentInvite\(/);
+  assert.match(hunt, /AFTER_DOCS_SHARE_HUNT/);
+  assert.match(hunt, /independent hunt after Documents Share/);
 
   const leftover = read('.planning/logic-audit-2026-08-20/fix-logs/leftover18-unblock-2026-08-21.md');
   assert.match(leftover, /A-03/);
