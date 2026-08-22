@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { isLegacyAnnotationHistoryMeta } from '../src/utils/historyHelpers.js';
 
 // Survey-rail Delete selected categories leftover after rail Rename.
 // Live proof: debug/scenarios/e2e-survey-rail-delete-categories.spec.mjs
@@ -28,6 +29,8 @@ test('rail Delete selected categories is confirm-gated and disabled with none se
   assert.match(handler, /deleteCategory\(selectedModuleId, catId\)/);
   assert.match(handler, /checkpointSurveyCategoryDelete\(selectedCatIds\)/);
   assert.match(handler, /delete updated\[annotationId\]/);
+  assert.match(handler, /setNewSurveyMarkersByPage/);
+  assert.match(handler, /preview\?\.annotationId !== annotationId/);
   assert.doesNotMatch(handler, /handleDeleteSurveyMarkerItem/);
   assert.doesNotMatch(handler, /data-handle=\{`vertex-\$\{/);
   assert.doesNotMatch(handler, /data-counter-nubbin-handle/);
@@ -52,10 +55,15 @@ test('PDFViewer category-delete checkpoint restores template + markers', () => {
   const block = viewer.slice(start, start + 700);
   assert.match(block, /snapshot\.surveyTemplate = deepClone\(selectedTemplateRef\.current\)/);
   assert.match(block, /snapshot\.surveyTemplateRestore = true/);
-  assert.match(block, /addHistoryCheckpoint\('survey-category:delete'/);
+  assert.match(block, /addHistoryCheckpoint\('survey-marker:category-delete'/);
   assert.match(viewer, /if \(stateToRestore\.surveyTemplateRestore && stateToRestore\.surveyTemplate\)/);
   assert.match(viewer, /setSelectedTemplate\(nextTemplate\)/);
   assert.match(viewer, /const handleDeleteSurveyCategoryDefinition = useCallback\(\(moduleId, categoryId\) => \{/);
+  assert.equal(
+    isLegacyAnnotationHistoryMeta({ reason: 'survey-marker:category-delete' }),
+    true,
+    'category-delete reason is undo-eligible like survey-marker:rename',
+  );
   assert.doesNotMatch(block, /data-counter-nubbin-handle/);
   assert.doesNotMatch(block, /data-handle=\{`vertex-\$\{/);
 });

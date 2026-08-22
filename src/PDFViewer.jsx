@@ -27444,7 +27444,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const snapshot = getHistorySnapshot();
     snapshot.surveyTemplate = deepClone(selectedTemplateRef.current);
     snapshot.surveyTemplateRestore = true;
-    addHistoryCheckpoint('survey-category:delete', {
+    addHistoryCheckpoint('survey-marker:category-delete', {
       categoryIds: Array.isArray(categoryIds) ? categoryIds : [],
     }, snapshot);
   }, [addHistoryCheckpoint, getHistorySnapshot]);

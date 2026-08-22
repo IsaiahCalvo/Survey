@@ -237,6 +237,7 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
   await goToExistingModule(page);
 
   // Edge: undo restores category + markers if product supports it.
+  await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await markerIds(page)).includes(markerWalls), {
     timeout: 8_000,

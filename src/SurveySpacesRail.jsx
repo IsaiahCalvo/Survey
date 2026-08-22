@@ -2186,7 +2186,7 @@ const SurveySpacesRail = ({
                               if (typeof checkpointSurveyCategoryDelete === 'function') {
                                 checkpointSurveyCategoryDelete(selectedCatIds);
                               } else if (typeof addHistoryCheckpoint === 'function') {
-                                addHistoryCheckpoint('survey-category:delete', { categoryIds: selectedCatIds });
+                                addHistoryCheckpoint('survey-marker:category-delete', { categoryIds: selectedCatIds });
                               }
 
                               selectedCatIds.forEach(catId => {
