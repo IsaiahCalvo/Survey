@@ -42,6 +42,26 @@ function countMatching(logs, re) {
   return logs.filter((line) => re.test(line)).length;
 }
 
+// Native iframe.print() can steal later Playwright keyboard.press('Control+p')
+// into Chromium's print UI. Dispatch the same window keydown the viewer
+// capture-listens for so later presses still hit the fail-closed path.
+async function dispatchPrintHotkey(page, { shift = false } = {}) {
+  await page.evaluate((withShift) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'p',
+      code: 'KeyP',
+      keyCode: 80,
+      which: 80,
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: withShift,
+      altKey: false,
+      bubbles: true,
+      cancelable: true,
+    }));
+  }, shift);
+}
+
 test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({ page }) => {
   test.setTimeout(120_000);
   const printLogs = attachPrintLogs(page);
@@ -71,7 +91,8 @@ test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({
   const afterFirstP = printLogs.length;
 
   // --- Break: second Ctrl+P still fail-closes (no-markup path does not set inFlight) ---
-  await page.keyboard.press('Control+p');
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await dispatchPrintHotkey(page);
   await expect.poll(
     () => countMatching(printLogs, /disabled — base PDF blob print/) >= 2,
     { timeout: 15_000 },
@@ -80,8 +101,8 @@ test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({
   await assertNoCustomPanel(page);
 
   // --- Edge: Ctrl+Shift+P flatten path; second press inFlight-ignored ---
-  await page.keyboard.press('Control+Shift+P');
-  await page.keyboard.press('Control+Shift+P');
+  await dispatchPrintHotkey(page, { shift: true });
+  await dispatchPrintHotkey(page, { shift: true });
   await expect.poll(
     () => printLogs.some((line) => /OPEN requested via window keydown shift/.test(line) && /withMarkup=true/.test(line) && /panel enabled=false/.test(line)),
     { timeout: 30_000 },
