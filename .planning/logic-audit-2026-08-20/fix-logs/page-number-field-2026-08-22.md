@@ -58,7 +58,7 @@ Desktop Edit page number. Type **8** + Enter writes page 8. Click-away **12** co
 
 ## Official / focused Node
 
-Focused `pageNumberField` + leftover18 **15 / 15**. High-risk `PDFViewer.jsx` touched. Official `npm test` pending this commit. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI check pending.
+Focused `pageNumberField` + leftover18 **15 / 15**. High-risk `PDFViewer.jsx` touched. Official `npm test` **exit 1**: main files + isolated `annotationDocConcurrency` / `partialEraseCurveLocality` proceeded; isolated `partialEraserComplexity` **9 / 10** — leftover `500 crossing cuts` **11963.03 MiB > 8448.00 MiB**. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
 
 ## Next leftover
 
