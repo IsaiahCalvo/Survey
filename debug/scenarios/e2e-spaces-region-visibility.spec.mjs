@@ -57,6 +57,13 @@ function overlayHide(page) {
   return page.locator('.space-region-row [data-region-overlay-toggle="true"][aria-label="Hide overlay for this region"]');
 }
 
+async function clickVisibility(button) {
+  await expect(button).toBeVisible({ timeout: 8_000 });
+  // SpacesPanel swallows clicks <300ms apart on the same light-bulb.
+  await button.click({ delay: 20 });
+  await button.page().waitForTimeout(350);
+}
+
 function spaceCard(page, spaceName) {
   return page.locator('[data-space-sortable-row-id]').filter({
     has: page.getByRole('textbox', { name: `Rename ${spaceName}` }),
@@ -203,11 +210,11 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(exitRegionBtn(page)).toHaveCount(0, { timeout: 8_000 });
   await expect(hideCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
-  await hideCanvasBtn(page).first().click();
+  await clickVisibility(hideCanvasBtn(page).first());
   await expect(showCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
   const hiddenStore = await storedAnno(page, canvasStoreId);
-  await showCanvasBtn(page).first().click();
+  await clickVisibility(showCanvasBtn(page).first());
   await expect(hideCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
 
@@ -219,11 +226,11 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await expect(annoGroup(page, canvasId)).toBeVisible();
 
   // Intended: Hide removes the canvas-scoped mark; Show restores it.
-  await hideCanvasBtn(page).first().click();
+  await clickVisibility(hideCanvasBtn(page).first());
   await expect(showCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
   await expect(overlayHide(page).first()).toBeVisible();
-  await showCanvasBtn(page).first().click();
+  await clickVisibility(showCanvasBtn(page).first());
   await expect(hideCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
 
@@ -233,11 +240,11 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   expect(regionScope.rendered || regionScope.stored, 'region-stamped mark committed').toBe(true);
   expect(regionScope.regionId, 'drawn-after-overlay stamps regionId').toBeTruthy();
   await openSpaces(page);
-  await hideCanvasBtn(page).first().click();
+  await clickVisibility(hideCanvasBtn(page).first());
   await expect(showCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
   await expect(annoGroup(page, regionId)).toBeVisible({ timeout: 8_000 });
-  await showCanvasBtn(page).first().click();
+  await clickVisibility(showCanvasBtn(page).first());
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, regionId)).toBeVisible({ timeout: 8_000 });
 
@@ -249,16 +256,16 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
     await pen.click();
   }
   await openSpaces(page);
-  await hideCanvasBtn(page).first().click();
+  await clickVisibility(hideCanvasBtn(page).first());
   await expect(showCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
   const penClass = String(await pen.getAttribute('class') || '');
   expect(penClass.includes('btn-active'), 'Pen stays armed after Hide').toBe(true);
-  await showCanvasBtn(page).first().click();
+  await clickVisibility(showCanvasBtn(page).first());
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
 
   // Edge: undo / redo the visibility flip (region row + overlay stay).
-  await hideCanvasBtn(page).first().click();
+  await clickVisibility(hideCanvasBtn(page).first());
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
   await page.keyboard.press('Control+z');
   await expect(hideCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
@@ -267,7 +274,7 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await page.keyboard.press('Control+Shift+z');
   await expect(showCanvasBtn(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
-  await showCanvasBtn(page).first().click();
+  await clickVisibility(showCanvasBtn(page).first());
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
 
   // Edge: two spaces on the same page — product is page-level per selected
@@ -280,7 +287,7 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
   await expect(annoGroup(page, canvasId)).toBeVisible();
   await spaceCard(page, 'Space 1').getByRole('button', { name: 'Turn on space' }).click();
-  await spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' }).click();
+  await clickVisibility(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' }));
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Show canvas annotations' })).toBeVisible();
   await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
