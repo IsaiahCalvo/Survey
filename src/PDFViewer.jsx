@@ -11295,6 +11295,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted')
           ? lineBorderStyle
           : 'solid',
+        // UX (2026-08-22, callout arrowhead): new callouts honor the Arrowhead
+        // picker's current choice, same as Style already stamps lineStyle.
+        // 'cloud' is rect-only and never reaches this field. Unset toolbar
+        // keeps defaultCalloutStyle (solidTriangle) from createCallout().
+        arrowheadStyle: arrowheadStyle || rawCallout.style?.arrowheadStyle
+          || ARROWHEAD_STYLES.SOLID_TRIANGLE,
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,
           fontFamily: textStyleDefaults.fontFamily,
@@ -11328,7 +11334,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, strokeColor, strokeOpacity, fillColor, fillOpacity, mobileMode, strokeWidth, lineBorderStyle, arrowheadStyle, textStyleDefaults, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
