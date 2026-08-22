@@ -155,13 +155,13 @@ async function switchTo390(page) {
 }
 
 async function openSurveySheet(page) {
+  const inSheet = page.getByRole('button', { name: 'Choose survey template' });
+  if (await inSheet.count() && await inSheet.isVisible().catch(() => false)) return;
   const openSurvey = page.getByRole('button', { name: 'Open survey' });
-  if (await openSurvey.count() && await openSurvey.isVisible().catch(() => false)) {
+  if (await openSurvey.count()) {
     await openSurvey.evaluate((el) => el.click());
   }
-  await expect(page.locator('.mobile-survey-sheet-header, .mobile-survey-detail').first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(inSheet).toBeVisible({ timeout: 15_000 });
 }
 
 async function open390Detail(page, name) {
@@ -170,23 +170,22 @@ async function open390Detail(page, name) {
     await expect(detailName(page, name)).toBeVisible({ timeout: 8_000 });
     return;
   }
-  const otherDetail = page.locator('.mobile-survey-detail-name');
-  if (await otherDetail.count()) {
-    const switcher = chooseMarkerBtn(page);
-    if (await switcher.count() && !(await switcher.isDisabled().catch(() => false))) {
-      await switcher.evaluate((el) => el.click());
-      const opt = markerOption(page, name);
-      await expect(opt).toBeVisible({ timeout: 8_000 });
+  if (await chooseMarkerBtn(page).count() && !(await chooseMarkerBtn(page).isDisabled().catch(() => false))) {
+    await chooseMarkerBtn(page).evaluate((el) => el.click());
+    const opt = markerOption(page, name);
+    if (await opt.count()) {
       await opt.evaluate((el) => el.click());
       await expect(detailName(page, name)).toBeVisible({ timeout: 8_000 });
       return;
     }
+    await page.keyboard.press('Escape');
   }
   const arrow = page.locator('.survey-marker-category-arrow').first();
-  if (await arrow.count() && await arrow.isVisible().catch(() => false)) {
+  await expect(arrow).toBeVisible({ timeout: 10_000 });
+  const openRow = page.getByRole('button', { name: `Open ${name}` });
+  if (!(await openRow.count())) {
     await arrow.evaluate((el) => el.click());
   }
-  const openRow = page.getByRole('button', { name: `Open ${name}` });
   await expect(openRow).toBeVisible({ timeout: 10_000 });
   await openRow.evaluate((el) => el.click());
   await expect(detailName(page, name)).toBeVisible({ timeout: 8_000 });
