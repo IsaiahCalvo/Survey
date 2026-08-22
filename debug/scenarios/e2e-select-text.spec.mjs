@@ -391,6 +391,7 @@ test('390 Select text ⇧V intended + break + edge', async ({ page }) => {
   expect(await svgPointerEvents(page), '390 SVG root must fall through in text-select').toBe('none');
 
   const mobileGlyph = await dragGlyphs(page);
+  expect(['drag', 'triple-click'], '390 must select via pointer, not Range').toContain(mobileGlyph.method);
   await expectSelectionMatches(page, new RegExp(mobileGlyph.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '390 drag must select PDF glyphs');
 
   const pageBtn = page.getByRole('button', { name: 'Jump to page', exact: true });

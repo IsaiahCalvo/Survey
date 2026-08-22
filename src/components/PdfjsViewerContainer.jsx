@@ -1553,21 +1553,27 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const isNativeInteractionTarget = (target) => {
       if (isEditableTarget(target)) return true;
       if (target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
+      // Live glyphs live on `.pdfjsTextLayer` (KAL-239). The off-screen
+      // measurement `.textLayer` is kept for the legacy closest() so a stray
+      // hit there still does not steal selectstart / 1-finger text-select.
       return interactionModeRef.current === 'TextSelection'
-        && Boolean(target?.closest?.('.textLayer, .textLayer span, .annotationLayer'));
+        && Boolean(target?.closest?.('.pdfjsTextLayer.is-interactive, .textLayer, .textLayer span, .annotationLayer'));
     };
 
     const onTouchStart = (event) => {
+      // Two-finger pinch must still start when the first contact is a glyph.
+      if (event.touches.length >= 2) {
+        cancelPanInertia();
+        event.preventDefault();
+        event.stopPropagation();
+        startPinch(event.touches);
+        return;
+      }
       if (isNativeInteractionTarget(event.target)) return;
       cancelPanInertia();
       // Required by Safari to stop native page zoom / Tab Expose and the
       // long-press loupe before either recognizer claims the sequence.
       event.preventDefault();
-      if (event.touches.length >= 2) {
-        event.stopPropagation();
-        startPinch(event.touches);
-        return;
-      }
       if (event.touches.length === 1 && interactionModeRef.current === 'Pan') {
         event.stopPropagation();
         const touch = event.touches[0];
@@ -1595,7 +1601,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchMove = (event) => {
-      if (isNativeInteractionTarget(event.target)) return;
+      const pinchActive = mobileTouchRef.current?.mode === 'pinch'
+        || mobileTouchRef.current?.mode === 'pinch-release';
+      if (isNativeInteractionTarget(event.target) && event.touches.length < 2 && !pinchActive) return;
       event.preventDefault();
       if (event.touches.length >= 2) {
         event.stopPropagation();
@@ -1686,7 +1694,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const onTouchEnd = (event) => {
-      if (isNativeInteractionTarget(event.target)) return;
+      const pinchActive = mobileTouchRef.current?.mode === 'pinch'
+        || mobileTouchRef.current?.mode === 'pinch-release';
+      if (isNativeInteractionTarget(event.target) && !pinchActive) return;
       event.preventDefault();
       const touchState = mobileTouchRef.current;
       if (!touchState) return;
@@ -2179,6 +2189,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           -webkit-user-select: text !important;
           user-select: text !important;
           -webkit-touch-callout: default !important;
+        }
+        /* V-03: text-select on a 390 / coarse surface. The lock above exists to
+           kill Safari's long-press loupe during pan/pinch; it must not win
+           over the interactive glyph layer (its rules have no !important). */
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive,
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive :is(span, br) {
+          -webkit-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
+        }
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive span[role="img"] {
+          -webkit-user-select: none !important;
+          user-select: none !important;
         }
       `}</style>
       {loading ? (

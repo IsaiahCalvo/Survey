@@ -51,6 +51,12 @@ test('Shift+V arms text-select; layer mounts only then; SVG falls through; form 
   assert.match(form, /data-interactive=\{interactive \? 'true' : 'false'\}/);
   assert.match(form, /\.pdfjsFormLayer\[data-interactive="false"\] section \{ pointer-events: none; \}/);
 
+  const viewerContainer = read('src/components/PdfjsViewerContainer.jsx');
+  assert.match(viewerContainer, /\.pdfjsTextLayer\.is-interactive/);
+  assert.match(viewerContainer, /survey-pdfjs-mobile-surface \.pdfjsTextLayer\.is-interactive/);
+  assert.match(viewerContainer, /user-select: text !important/);
+  assert.match(viewerContainer, /Two-finger pinch must still start when the first contact is a glyph/);
+
   const dev = read('src/DevTestRoute.jsx');
   assert.match(dev, /Do NOT set file\.id/);
   assert.doesNotMatch(dev, /file\.id\s*=/);
@@ -75,6 +81,7 @@ test('live spec covers ⇧V / menu / glyph drag / form INPUT / no-layer / 390', 
   assert.match(spec, /390 has no desktop Selection mode caret/);
   assert.match(spec, /390 rail omits Select text/);
   assert.match(spec, /390 drag must select PDF glyphs/);
+  assert.match(spec, /390 must select via pointer, not Range/);
   assert.match(spec, /hubPreview/);
   assert.match(spec, /form fixture viewBox stays page-owned/);
   assert.match(spec, /viewBox/);
