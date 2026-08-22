@@ -10652,6 +10652,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPendingSurveyMarkerName(restoredPendingSurveyMarkerUi.pendingSurveyMarkerName ?? null);
         setSurveyMarkerNameInput(restoredPendingSurveyMarkerUi.surveyMarkerNameInput ?? null);
       }
+      // Category-delete checkpoints carry a template slice. Ordinary
+      // snapshots omit it so pen/shape undo does not rewind Create category.
+      if (stateToRestore.surveyTemplateRestore && stateToRestore.surveyTemplate) {
+        const restoredTemplate = stateToRestore.surveyTemplate;
+        const restoredModules = restoredTemplate.modules || restoredTemplate.spaces || [];
+        const nextTemplate = selectedTemplateRef.current
+          ? {
+            ...selectedTemplateRef.current,
+            modules: restoredModules,
+            spaces: restoredModules,
+          }
+          : restoredTemplate;
+        selectedTemplateRef.current = nextTemplate;
+        setSelectedTemplate(nextTemplate);
+      }
     };
 
     try {
@@ -27422,6 +27437,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
 
+  // Rail Delete selected categories wipes markers then drops the definition.
+  // Snapshot surveyMarkers (via refs) plus a template slice so one undo
+  // restores both. Do not fold the template into every ordinary checkpoint.
+  const checkpointSurveyCategoryDelete = useCallback((categoryIds = []) => {
+    const snapshot = getHistorySnapshot();
+    snapshot.surveyTemplate = deepClone(selectedTemplateRef.current);
+    snapshot.surveyTemplateRestore = true;
+    addHistoryCheckpoint('survey-category:delete', {
+      categoryIds: Array.isArray(categoryIds) ? categoryIds : [],
+    }, snapshot);
+  }, [addHistoryCheckpoint, getHistorySnapshot]);
+
   // The eraser previews only markers this viewer can actually delete. Saved
   // markers use the canonical source-owned permission adapter; a marker absent
   // from surveyMarkers is a pending marker created in this local session.
@@ -30072,6 +30099,7 @@ ${pageBlocks}
       DEFAULT_SURVEY_MARKER_OPACITY,
       deleteAnnotations,
       deleteCategory: handleDeleteSurveyCategoryDefinition,
+      checkpointSurveyCategoryDelete,
       documentSyncEnabled,
       expandedCategories,
       expandedSurveyMarkers,
@@ -30213,6 +30241,7 @@ ${pageBlocks}
     DEFAULT_SURVEY_MARKER_OPACITY,
     deleteAnnotations,
     handleDeleteSurveyCategoryDefinition,
+    checkpointSurveyCategoryDelete,
     documentSyncEnabled,
     expandedCategories,
     expandedSurveyMarkers,

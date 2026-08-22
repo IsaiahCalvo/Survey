@@ -319,6 +319,7 @@ const SurveySpacesRail = ({
   DEFAULT_SURVEY_MARKER_OPACITY,
   deleteAnnotations,
   deleteCategory = () => {},
+  checkpointSurveyCategoryDelete = null,
   documentSyncEnabled,
   expandedCategories,
   expandedSurveyMarkers,
@@ -2178,6 +2179,14 @@ const SurveySpacesRail = ({
                               });
                               if (!confirmed) {
                                 return;
+                              }
+
+                              // Checkpoint before the marker wipe + definition drop so
+                              // one undo restores both. Sibling of survey-marker:rename.
+                              if (typeof checkpointSurveyCategoryDelete === 'function') {
+                                checkpointSurveyCategoryDelete(selectedCatIds);
+                              } else if (typeof addHistoryCheckpoint === 'function') {
+                                addHistoryCheckpoint('survey-category:delete', { categoryIds: selectedCatIds });
                               }
 
                               selectedCatIds.forEach(catId => {
