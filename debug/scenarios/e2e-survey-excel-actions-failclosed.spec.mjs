@@ -62,10 +62,13 @@ async function openExcelMenu(page) {
 }
 
 async function assertFailClosedItem(page, item) {
+  await expect(item).toBeVisible();
   let downloadFired = false;
   const onDownload = () => { downloadFired = true; };
   page.once('download', onDownload);
-  await item.click({ force: true });
+  // DOM click: the handler toasts and closes the menu. Playwright's
+  // actionability click retries forever after that detach.
+  await item.evaluate((el) => el.click());
   await expect(linkedToast(page)).toBeVisible({ timeout: 8_000 });
   expect(downloadFired, 'fail-closed item must not start a workbook download').toBe(false);
   page.off('download', onDownload);
