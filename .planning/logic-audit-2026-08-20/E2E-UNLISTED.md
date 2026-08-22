@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 survey-rail Delete selected categories):** U-01 leftover (not a new UL row). Live rail `Delete selected categories` + confirm → `deleteCategory` + marker wipe. Rename / item Delete / overlay Delete not replayed. Receipt `fix-logs/survey-rail-delete-categories-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 survey-rail Create category):** U-01 leftover (not a new UL row). Live rail `Create category` → `CreateCategoryModal` → `addCategoryToCurrentTemplate`. Category Delete / Rename / item Delete / overlay Delete not replayed as the GAP. Receipt `fix-logs/survey-rail-create-category-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 survey-rail Delete selected categories):** U-01 leftover (not a new UL row). Live rail `Delete selected categories` + confirm → `deleteCategory` + marker wipe. Rename / item Delete / overlay Delete not replayed. Receipt `fix-logs/survey-rail-delete-categories-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 survey-rail Rename):** U-01 leftover (not a new UL row). Live rail `Rename ${name}` → `commitSurveyMarkerName`. Rail Delete / overlay Delete not replayed. Receipt `fix-logs/survey-rail-rename-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
