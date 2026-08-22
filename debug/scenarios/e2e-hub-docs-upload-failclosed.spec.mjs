@@ -84,6 +84,9 @@ test('Hub Documents Upload fail-closed intended + break + edge', async ({ page }
   const search = page.locator('.documents-desktop-search input[placeholder="Search documents..."]');
   await search.fill('zzzz-no-such-document');
   await expect(page.getByText('No documents match your search.').first()).toBeVisible();
+  // Search DismissBarrier eats the first outside click while focused.
+  await page.keyboard.press('Escape');
+  await search.blur();
   await clickAndExpectUploadLog(page, desktopUpload, logs, choosers);
   await expect(page.getByText('No documents match your search.').first()).toBeVisible();
   await expect(page.locator('.documents-desktop-card [data-document-id]')).toHaveCount(0);
