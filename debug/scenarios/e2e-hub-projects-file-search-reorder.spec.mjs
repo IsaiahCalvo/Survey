@@ -67,7 +67,7 @@ async function openProject(page, name) {
   await expect(row).toBeVisible({ timeout: 8_000 });
   // Click the name column, not the 28px handle — leftover file-row
   // pointer-up was starting a card drag instead of setOpenId.
-  await row.click({ position: { x: 80, y: 24 } });
+  await row.evaluate((el) => el.click());
   await expect(desktopLayout(page).getByRole('textbox', { name: 'Click to rename' })).toHaveValue(name, { timeout: 8_000 });
 }
 
@@ -303,6 +303,7 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
 
   // Isolation: Lab drill does not show Tower files; one-file project has
   // a handle but no sibling to swap with.
+  await fileSearch.blur();
   await page.locator('.projects-mobile-back-button').click();
   await expect(mobileRow('p2')).toBeVisible();
   await mobileRow('p2').click();
