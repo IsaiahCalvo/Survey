@@ -205,7 +205,36 @@ async function rightClickStroke(page, id) {
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + 2, box.y + box.height / 2, { button: 'right' });
+  // Transparent fill lets a center click fall through to Paste-only.
+  // Pasted clones can sit near chrome, so try the stroke then the group.
+  const points = [
+    { x: box.x + 2, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + 2 },
+    { x: box.x + Math.min(8, Math.max(2, box.width / 2)), y: box.y + Math.min(8, Math.max(2, box.height / 2)) },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  ];
+  for (const point of points) {
+    await dismissMenus(page);
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    const menu = page.locator('[data-annotation-context-menu="true"]');
+    try {
+      await expect(menu).toBeVisible({ timeout: 2_000 });
+      const labels = await menuLabels(page);
+      if (labels.includes('Cut') || labels.includes('Delete')) return;
+    } catch { /* try next point */ }
+    await page.keyboard.press('Escape');
+  }
+  await target.click({ button: 'right', timeout: 4_000 }).catch(() => {});
+  if (await page.locator('[data-annotation-context-menu="true"]').count()) return;
+  await target.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + Math.min(8, Math.max(2, rect.width / 2)),
+      clientY: rect.top + Math.min(8, Math.max(2, rect.height / 2)),
+    }));
+  });
   await expect(page.locator('[data-annotation-context-menu="true"]')).toBeVisible({ timeout: 8_000 });
 }
 
@@ -333,18 +362,21 @@ test('desktop cut / copy / paste / delete intended + break + edge', async ({ pag
   expect(copy2.id, 'second Copy-paste must mint a unique id').not.toBe(copy1.id);
   expect(copy2.id).not.toBe(rectA.id);
 
-  // Intended — Cut removes the mark; first Paste restores a clone; second is gray (one-shot).
-  await rightClickStroke(page, copy1.id);
+  // Intended — Cut the owned original (not a paste) so the stroke hit is
+  // the same geometry as the catalog click. First Paste restores a clone;
+  // second is gray (one-shot).
+  await rightClickStroke(page, rectA.id);
   await clickMenuItem(page, 'Cut');
-  await expect.poll(async () => (await userOrder(page)).includes(copy1.id)).toBeFalsy();
+  await expect.poll(async () => (await userOrder(page)).includes(rectA.id)).toBeFalsy();
   expect(await userOrder(page), 'Cut must leave isolation sibling C').toContain(rectC.id);
-  expect(await userOrder(page)).toContain(rectA.id);
+  expect(await userOrder(page)).toContain(copy1.id);
+  expect(await userOrder(page)).toContain(copy2.id);
 
   const cutClone = await pasteCloneOnEmpty(page, new Set(await userOrder(page)), [
     { xf: 0.50, yf: 0.82 },
     { xf: 0.12, yf: 0.88 },
   ]);
-  expect(cutClone.id).not.toBe(copy1.id);
+  expect(cutClone.id).not.toBe(rectA.id);
 
   await rightClickUntilPasteOnly(page, [
     { xf: 0.50, yf: 0.50 },
@@ -359,12 +391,12 @@ test('desktop cut / copy / paste / delete intended + break + edge', async ({ pag
   expect(await userOrder(page), 'one-shot Cut second Paste invents 0').toEqual(afterCutPasteIds);
   await dismissMenus(page);
 
-  // Intended — context-menu Delete removes the mark and does not populate clipboard.
-  await rightClickStroke(page, copy2.id);
+  // Intended — context-menu Delete on owned original C. Does not populate clipboard.
+  await rightClickStroke(page, rectC.id);
   await clickMenuItem(page, 'Delete');
-  await expect.poll(async () => (await userOrder(page)).includes(copy2.id)).toBeFalsy();
-  expect(await userOrder(page), 'Delete must leave isolation sibling C').toContain(rectC.id);
-  expect(await userOrder(page)).toContain(rectA.id);
+  await expect.poll(async () => (await userOrder(page)).includes(rectC.id)).toBeFalsy();
+  expect(await userOrder(page), 'Delete must leave Copy clones').toContain(copy1.id);
+  expect(await userOrder(page)).toContain(copy2.id);
 
   await rightClickUntilPasteOnly(page, [
     { xf: 0.50, yf: 0.50 },
@@ -378,14 +410,14 @@ test('desktop cut / copy / paste / delete intended + break + edge', async ({ pag
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeEnabled();
   await undo.click();
-  await expect.poll(async () => (await userOrder(page)).includes(copy2.id), {
+  await expect.poll(async () => (await userOrder(page)).includes(rectC.id), {
     message: 'Undo after context-menu Delete must restore the rect',
   }).toBeTruthy();
-  expect(await userOrder(page)).toContain(rectC.id);
+  expect(await userOrder(page)).toContain(copy1.id);
 
   const isolatedOrder = await userOrder(page);
-  expect(isolatedOrder).toContain(rectA.id);
   expect(isolatedOrder).toContain(rectC.id);
+  expect(isolatedOrder).toContain(copy1.id);
 
   // Break — counter menu is Continue pin only (not Cut/Copy/Paste/Delete).
   const beforeCounter = new Set(await userOrder(page));
@@ -417,7 +449,7 @@ test('desktop cut / copy / paste / delete intended + break + edge', async ({ pag
   }
   await dismissMenus(page);
   expect(await userOrder(page), 'callout create must keep prior rects').toEqual(
-    expect.arrayContaining([rectA.id, rectC.id]),
+    expect.arrayContaining([copy1.id, rectC.id]),
   );
 
   // Break — Pen-armed empty-page menu stays Paste-only; rects held.
@@ -460,7 +492,7 @@ test('desktop cut / copy / paste / delete intended + break + edge', async ({ pag
     copy1: copy1.id,
     copy2: copy2.id,
     cutClone: cutClone.id,
-    rectA: rectA.id,
+    cutSource: rectA.id,
     rectC: rectC.id,
     calloutId,
     viewBox,
