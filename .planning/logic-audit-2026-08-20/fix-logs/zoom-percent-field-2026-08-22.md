@@ -59,7 +59,7 @@ Desktop Edit zoom percentage. Type **200** + Enter writes 200% and grows the pag
 
 ## Official / focused Node
 
-High-risk `PDFViewer.jsx` touched — official `npm test` after this slice. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent unless present at run time.
+Focused `zoomPercentField` + leftover18 **15 / 15**. High-risk `PDFViewer.jsx` touched. Official `npm test` **exit 1**: main files + isolated `annotationDocConcurrency` / `partialEraseCurveLocality` **15 / 15** proceeded; isolated `partialEraserComplexity` **9 / 10** — leftover `500 crossing cuts` **11961.79 MiB > 8448.00 MiB**. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
 
 ## Next leftover
 
