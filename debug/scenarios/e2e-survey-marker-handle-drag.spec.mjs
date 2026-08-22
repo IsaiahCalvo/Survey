@@ -249,6 +249,36 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   expect(await page.locator('[data-counter-nubbin-handle]').count(), 'nubbin untouched').toBe(0);
 
   const intended = {};
+
+  // Body move first — before mtr leaves the rotation pill on the centroid.
+  await clickEmpty(page);
+  await selectUntilHandles(page, markerA);
+  const preMove = await markerGeom(page, markerA);
+  const moveBox = await pageBox(page);
+  const moveVb = await pageViewBox(page);
+  const moveStart = {
+    x: moveBox.x + ((preMove.x + preMove.width * 0.35) / moveVb.W) * moveBox.width,
+    y: moveBox.y + ((preMove.y + preMove.height * 0.40) / moveVb.H) * moveBox.height,
+  };
+  await page.mouse.move(moveStart.x, moveStart.y);
+  await page.mouse.down();
+  await page.mouse.move(moveStart.x + 64, moveStart.y + 48, { steps: 12 });
+  await page.mouse.up();
+  let afterMove = null;
+  await expect.poll(async () => {
+    afterMove = await markerGeom(page, markerA);
+    return posDelta(preMove, afterMove) > 8 && sameSizeAngle(preMove, afterMove, 4);
+  }, { timeout: 8_000 }).toBe(true);
+  intended.move = {
+    dPos: posDelta(preMove, afterMove),
+    dw: afterMove.width - preMove.width,
+    dh: afterMove.height - preMove.height,
+    dAngle: angleDelta(preMove.angle, afterMove.angle),
+  };
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => posDelta(preMove, await markerGeom(page, markerA)) < 3)
+    .toBe(true);
+
   const resizeIds = [...chrome.resize];
   if (chrome.rotate) resizeIds.push('mtr');
 
@@ -280,33 +310,6 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
         && angleDelta(restored.angle, before.angle) < 1;
     }, { timeout: 8_000, message: `undo after ${handleId}` }).toBe(true);
   }
-
-  await selectUntilHandles(page, markerA);
-  const preMove = await markerGeom(page, markerA);
-  const box = await pageBox(page);
-  const { W, H } = await pageViewBox(page);
-  const moveStart = {
-    x: box.x + ((preMove.x + preMove.width / 2) / W) * box.width,
-    y: box.y + ((preMove.y + preMove.height / 2) / H) * box.height,
-  };
-  await page.mouse.move(moveStart.x, moveStart.y);
-  await page.mouse.down();
-  await page.mouse.move(moveStart.x + 64, moveStart.y + 48, { steps: 12 });
-  await page.mouse.up();
-  let afterMove = null;
-  await expect.poll(async () => {
-    afterMove = await markerGeom(page, markerA);
-    return posDelta(preMove, afterMove) > 8 && sameSizeAngle(preMove, afterMove, 4);
-  }, { timeout: 8_000 }).toBe(true);
-  intended.move = {
-    dPos: posDelta(preMove, afterMove),
-    dw: afterMove.width - preMove.width,
-    dh: afterMove.height - preMove.height,
-    dAngle: angleDelta(preMove.angle, afterMove.angle),
-  };
-  await page.keyboard.press('Control+z');
-  await expect.poll(async () => posDelta(preMove, await markerGeom(page, markerA)) < 3)
-    .toBe(true);
 
   // Re-apply one resize so later undo / isolation have a committed edit.
   await selectUntilHandles(page, markerA);
