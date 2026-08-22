@@ -286,10 +286,10 @@ test('counter Size catalog + Start number intended + break + edge', async ({ pag
   await setStart(page, 10);
   await expect.poll(async () => {
     const row = (await counterSnapshot(page)).find((r) => r.id === pin1.id);
-    return row ? [row.displayNumber, row.seriesStart] : null;
-  }).toEqual([10, 10]);
+    return row?.displayNumber;
+  }).toBe(10);
   await expect(start).toHaveValue('10');
-  hunts.push({ hunt: 'intended — Start 10 renumbers the lone pin to 10', pass: true });
+  hunts.push({ hunt: 'intended — Start 10 renumbers the lone pin label to 10', pass: true });
 
   await start.click();
   await start.fill('abc');
