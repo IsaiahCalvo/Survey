@@ -110,6 +110,7 @@ test('live spec covers rename/delete, clash, cancel, undo, 390 group delete, hub
   assert.match(spec, /clickWithConfirm/);
   assert.match(spec, /390 desktop Edit must be 0/);
   assert.match(spec, /390 folder rename must be 0/);
+  assert.match(spec, /Child was allowed to share the group name/);
   assert.match(spec, /hubPreview Edit must be 0/);
   assert.match(spec, /0 0 612 792/);
   assert.match(spec, /Do not stamp/);

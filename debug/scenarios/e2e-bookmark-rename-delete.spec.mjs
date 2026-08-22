@@ -305,9 +305,10 @@ test('desktop bookmark rename + delete intended + break + edge', async ({ page }
 
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
-  await expect(page.getByText(groupA2)).toBeVisible();
-  await expect(bookmarkRow(page, groupA2).locator('span', { hasText: 'P 120' })).toHaveCount(0);
-  await expect(page.locator('[data-bookmark-row-id]').filter({ hasText: groupA2 }).getByText('P 120')).toBeVisible();
+  // Child was allowed to share the group name (same-type conflict only).
+  await expect(page.getByText(groupA2).first()).toBeVisible();
+  await expect(page.getByText(groupA2)).toHaveCount(2);
+  await expect(page.locator('[data-bookmark-row-id]').filter({ hasText: 'P 120' })).toBeVisible();
 
   // Break — Pen-armed delete still works; invents 0 marks.
   await blurInputs(page);
