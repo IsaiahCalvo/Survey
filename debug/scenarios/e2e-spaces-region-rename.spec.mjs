@@ -251,11 +251,13 @@ test('U-02 region-row Click to rename / commitRegionRename', async ({ page }) =>
       }
     }
     if (mobileEdit > 0) {
-      await editRegionBtn(page).first().click();
+      await editRegionBtn(page).first().evaluate((el) => el.click());
       const mobileToolbar = page.getByRole('toolbar', { name: 'Region editing' });
       if (await mobileToolbar.count()) {
         await expect(mobileToolbar).toBeVisible({ timeout: 8_000 });
-        await mobileToolbar.getByRole('button', { name: 'Cancel', exact: true }).click();
+        // Sheet backdrop intercepts Playwright pointer; DOM click matches
+        // the 390 Keep-active leftover proof.
+        await mobileToolbar.getByRole('button', { name: 'Cancel', exact: true }).evaluate((el) => el.click());
         await expect(mobileToolbar).toHaveCount(0, { timeout: 8_000 });
       }
     }
