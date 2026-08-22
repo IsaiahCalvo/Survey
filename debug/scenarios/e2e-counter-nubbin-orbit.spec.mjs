@@ -77,7 +77,7 @@ function tipFrom(geom) {
   const radius = (Number(geom.radius) || 14) * Math.abs(Number(geom.scaleX) || 1);
   const cx = Number(geom.left) + radius;
   const cy = Number(geom.top) + radius;
-  const rad = (Number(geom.pointerAngle) * Math.PI) / 180;
+  const rad = (Number(geom.svgAngle ?? geom.pointerAngle) * Math.PI) / 180;
   const tipDistance = radius * 1.5;
   return {
     cx,
@@ -196,6 +196,11 @@ async function dragNubbin(page, dx, dy) {
 }
 
 async function shiftOrbitBody(page, geom, { dx = 72, dy = -48 } = {}) {
+  await page.waitForTimeout(550);
+  if (await page.locator('[data-resize-handle]').count()) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(120);
+  }
   const box = await pageBox(page);
   const { W, H } = await pageViewBox(page);
   const start = {
@@ -295,6 +300,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
 
   // Break: Shift without drag is a selection toggle, not an orbit.
   await selectUntilNubbin(page, pinA.id);
+  await page.waitForTimeout(550);
   const preShiftClick = await counterGeom(page, pinA.id);
   const shiftBox = await pageBox(page);
   const { W, H } = await pageViewBox(page);
