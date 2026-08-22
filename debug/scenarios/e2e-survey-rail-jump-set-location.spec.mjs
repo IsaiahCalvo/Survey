@@ -37,12 +37,18 @@ function rightRail(page) {
   return page.locator('#chrome-right-host');
 }
 
-function jumpBtn(page) {
-  return rightRail(page).getByRole('button', { name: 'Jump to this Survey Marker' });
+function jumpBtn(page, markerId = null) {
+  const root = markerId
+    ? rightRail(page).locator(`#highlight-item-${markerId}`)
+    : rightRail(page);
+  return root.getByRole('button', { name: 'Jump to this Survey Marker' });
 }
 
-function setLocationBtn(page) {
-  return rightRail(page).getByRole('button', { name: 'Set location on PDF' });
+function setLocationBtn(page, markerId = null) {
+  const root = markerId
+    ? rightRail(page).locator(`#highlight-item-${markerId}`)
+    : rightRail(page);
+  return root.getByRole('button', { name: 'Set location on PDF' });
 }
 
 function locateBanner(page) {
@@ -215,7 +221,7 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
   await goToPage(page, 4);
   expect(await currentPageNumber(page)).toBe(4);
   await expandWallsMarkers(page);
-  await jumpBtn(page).click();
+  await jumpBtn(page, markerA).click();
   await expect.poll(async () => currentPageNumber(page), {
     timeout: 15_000,
     message: 'Jump returns to marker page',
@@ -228,35 +234,38 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
   // Break: Jump with no location is the other label on the same search button.
   await seedUnlocated(page);
   await expandWallsMarkers(page);
-  await expect(setLocationBtn(page)).toBeVisible({ timeout: 8_000 });
-  await expect(jumpBtn(page)).toBeVisible();
+  await expect(setLocationBtn(page, UNLOCATED_ID)).toBeVisible({ timeout: 8_000 });
+  await expect(jumpBtn(page, markerA)).toBeVisible();
   const beforeUnlocated = await storedMarker(page, UNLOCATED_ID);
   expect(beforeUnlocated?.bounds || beforeUnlocated?.pageNumber, 'seed has no location').toBeFalsy();
 
   // Break: Set location then Esc — banner gone, still unlocated.
-  await setLocationBtn(page).click();
+  await setLocationBtn(page, UNLOCATED_ID).click();
   await expect(locateBanner(page)).toBeVisible({ timeout: 8_000 });
   await page.keyboard.press('Escape');
   await expect(locateBanner(page)).toHaveCount(0, { timeout: 8_000 });
   expect((await storedMarker(page, UNLOCATED_ID))?.bounds, 'Esc keeps unlocated').toBeFalsy();
 
   // Break: Set location then banner X cancel.
-  await setLocationBtn(page).click();
+  await setLocationBtn(page, UNLOCATED_ID).click();
   await expect(locateBanner(page)).toBeVisible({ timeout: 8_000 });
-  const cancel = page.locator('div').filter({ hasText: /Draw a box on the PDF to locate/ }).locator('button').last();
-  if (await cancel.count()) {
-    await cancel.click();
-    await expect(locateBanner(page)).toHaveCount(0, { timeout: 8_000 });
-  } else {
-    await page.keyboard.press('Escape');
-    await expect(locateBanner(page)).toHaveCount(0, { timeout: 8_000 });
-  }
+  const cancelledViaX = await page.evaluate(() => {
+    const span = [...document.querySelectorAll('span')].find((node) =>
+      /Draw a box on the PDF to locate/.test(node.textContent || ''),
+    );
+    const button = span?.parentElement?.querySelector('button');
+    if (!button) return false;
+    button.click();
+    return true;
+  });
+  if (!cancelledViaX) await page.keyboard.press('Escape');
+  await expect(locateBanner(page)).toHaveCount(0, { timeout: 8_000 });
   expect((await storedMarker(page, UNLOCATED_ID))?.bounds, 'cancel keeps unlocated').toBeFalsy();
 
   // Break: Pen-armed still lets Set location assign geometry (tool re-arms).
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  await setLocationBtn(page).click();
+  await setLocationBtn(page, UNLOCATED_ID).click();
   await expect(locateBanner(page)).toBeVisible({ timeout: 8_000 });
   await dragOnLayer(page, { x0: 0.18, y0: 0.22, x1: 0.36, y1: 0.38, pageNumber: 1 });
   await expect.poll(async () => {
@@ -264,8 +273,9 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
     return Number(marker?.pageNumber) === 1 && Number(marker?.bounds?.width) > 2;
   }, { timeout: 10_000, message: 'Pen-armed Set location stores page-1 geometry' }).toBe(true);
   await expect(locateBanner(page)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Set location on PDF' })).toHaveCount(0);
-  await expect(jumpBtn(page)).toHaveCount(2, { timeout: 8_000 });
+  await expect(setLocationBtn(page, UNLOCATED_ID)).toHaveCount(0);
+  await expect(jumpBtn(page, UNLOCATED_ID)).toBeVisible({ timeout: 8_000 });
+  await expect(jumpBtn(page, markerA)).toBeVisible();
 
   const locatedOnPage1 = await storedMarker(page, UNLOCATED_ID);
   expect(locatedOnPage1.pageNumber).toBe(1);
@@ -280,13 +290,13 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
     return Boolean(marker && !marker.bounds && !marker.pageNumber);
   }, { timeout: 10_000, message: 'undo restores unlocated' }).toBe(true);
   await expandWallsMarkers(page);
-  await expect(setLocationBtn(page)).toBeVisible({ timeout: 8_000 });
+  await expect(setLocationBtn(page, UNLOCATED_ID)).toBeVisible({ timeout: 8_000 });
   expect((await markerIds(page)).includes(markerA), 'undo leaves placed A').toBe(true);
 
   // Edge: Set location on a different page, then Jump from page 1.
   await goToPage(page, 3);
   await expandWallsMarkers(page);
-  await setLocationBtn(page).click();
+  await setLocationBtn(page, UNLOCATED_ID).click();
   await expect(locateBanner(page)).toBeVisible({ timeout: 8_000 });
   await dragOnLayer(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.48, pageNumber: 3 });
   await expect.poll(async () => {
@@ -301,15 +311,7 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
 
   await goToPage(page, 1);
   await expandWallsMarkers(page);
-  const jumpUnlocated = rightRail(page).locator('.survey-marker-name-inline, [id^="highlight-item-"]')
-    .filter({ hasText: UNLOCATED_NAME })
-    .locator('xpath=ancestor::*[starts-with(@id,"highlight-item-")][1]')
-    .getByRole('button', { name: 'Jump to this Survey Marker' });
-  if (await jumpUnlocated.count()) {
-    await jumpUnlocated.click();
-  } else {
-    await jumpBtn(page).nth(1).click();
-  }
+  await jumpBtn(page, UNLOCATED_ID).click();
   await expect.poll(async () => currentPageNumber(page), {
     timeout: 15_000,
     message: 'Jump after Set location goes to page 3',
@@ -324,11 +326,11 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
   await expandWallsMarkers(page);
-  await jumpBtn(page).first().click();
+  await jumpBtn(page, markerA).click();
   await expect.poll(async () => currentPageNumber(page), {
     timeout: 15_000,
     message: 'Pen-armed Jump still leaves page 2',
-  }).not.toBe(2);
+  }).toBe(1);
 
   expect(await page.locator('[data-handle]').count(), 'no vertex-N seam').toBe(0);
   expect(await page.locator('[data-counter-nubbin-handle]').count(), 'nubbin untouched').toBe(0);
@@ -337,23 +339,24 @@ test('survey-rail Jump / Set location intended + break + edge', async ({ page })
   expect(persist, 'no file.id').toBeNull();
   await assertNoErrorBoundary(page);
 
-  // Edge: 390 — same search control lives on the mobile detail header.
+  // Edge: 390 — desktop row search is hidden; detail header keeps Jump.
+  // Do not click Walls main (that dismisses the sheet). Expand + Open row.
   await openEditor(page, { width: 390, height: 844 });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Open survey' }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
-  const walls390 = page.getByRole('button', { name: /Walls/ }).first();
-  await expect(walls390).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: /Walls/ }).first()).toBeVisible({ timeout: 15_000 });
   await waitSurveyMarkerSeam(page);
   await seedUnlocated(page);
-  const wallsCat = page.getByRole('button', { name: /Walls/ }).first();
-  await wallsCat.evaluate((el) => el.click());
-  const unlocatedRow = page.getByText(UNLOCATED_NAME).first();
-  if (await unlocatedRow.count()) {
-    await unlocatedRow.evaluate((el) => el.click());
-  }
+  const arrow390 = page.locator('.survey-marker-category-arrow').first();
+  await expect(arrow390).toBeVisible({ timeout: 8_000 });
+  await arrow390.evaluate((el) => el.click());
+  const openRow = page.getByRole('button', { name: `Open ${UNLOCATED_NAME}` });
+  await expect(openRow).toBeVisible({ timeout: 8_000 });
+  await openRow.evaluate((el) => el.click());
   const mobileJump = page.getByRole('button', { name: 'Jump to this Survey Marker' });
+  await expect(mobileJump).toBeVisible({ timeout: 8_000 });
   const mobile = {
     jumpCount: await mobileJump.count(),
     setLocationCount: await page.getByRole('button', { name: 'Set location on PDF' }).count(),
