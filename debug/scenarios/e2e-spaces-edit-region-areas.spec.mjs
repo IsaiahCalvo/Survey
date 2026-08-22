@@ -208,11 +208,12 @@ test('U-02 Edit region areas + overlay on/off + last space', async ({ page }) =>
   const penClass = String(await pen.getAttribute('class') || '');
   expect(penClass.includes('btn-active'), 'Pen restores after region confirm').toBe(true);
 
-  // Intended: overlay on/off.
-  await hideOverlay(page).first().click();
+  // Intended: overlay on/off. The switch is a 28×16 div; tip() hover
+  // intercepts Playwright's actionability click, so dispatch on the node.
+  await hideOverlay(page).first().evaluate((el) => el.click());
   await expect(showOverlay(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(overlayRoot(page)).toHaveCount(0);
-  await showOverlay(page).first().click();
+  await showOverlay(page).first().evaluate((el) => el.click());
   await expect(hideOverlay(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(overlayRoot(page)).toBeVisible();
 
