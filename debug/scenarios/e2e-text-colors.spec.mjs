@@ -245,7 +245,12 @@ async function createText(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y
 }
 
 async function selectText(page, id) {
-  await selectMode(page);
+  await blurInputs(page);
+  if (await page.locator('[data-text-edit-overlay]').count()) {
+    await page.mouse.click(12, 200);
+    await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  }
+  await page.keyboard.press('v');
   const target = page.locator(
     `[data-shape-id="${id}"], [data-svg-annotation-layer="1"] [data-anno-id="${id}"]`,
   ).first();
@@ -256,13 +261,23 @@ async function selectText(page, id) {
   const points = [
     { x: box.x + box.width / 2, y: box.y + box.height / 2 },
     { x: box.x + Math.min(8, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + box.width - 4, y: box.y + Math.max(2, box.height / 2) },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
-    const colorBtn = page.getByRole('button', { name: 'Color', exact: true }).first();
-    if (await colorBtn.isVisible().catch(() => false)) return;
+    if (await page.locator('[data-text-edit-overlay]').count()) {
+      await page.mouse.click(12, 200);
+      await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+      await page.keyboard.press('v');
+      continue;
+    }
+    const handles = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
+    const edit = page.getByRole('button', { name: 'Edit text', exact: true }).first();
+    const editEnabled = await edit.isVisible().catch(() => false)
+      && !(await edit.isDisabled().catch(() => true));
+    if (handles > 0 || editEnabled) return;
   }
-  await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').first()).toBeVisible({ timeout: 8_000 });
 }
 
 async function openColorPicker(page) {
