@@ -351,9 +351,13 @@ test('desktop History click-restore / collapse / filter-absent intended + break 
   }).toBeTruthy();
   await expect(page.getByText(/Restored deleted item/i)).toBeVisible();
 
-  await restore.click();
-  await expect(page.getByText(/already present|no restore needed/i)).toBeVisible();
+  const restoreAgain = page.locator('[data-testid^="document-history-event-"]')
+    .filter({ hasText: /deleted/i })
+    .first()
+    .getByRole('button', { name: 'Restore', exact: true });
+  await restoreAgain.click();
   expect((await userIds(page, 3)).filter((id) => id === rectB.id).length, 'second Restore must not duplicate B').toBe(1);
+  await expect(page.getByTestId('kal48-status')).toContainText(/Restored deleted item|already present|no restore needed/i);
 
   const beforePen = (await userIds(page, 1)).length + (await userIds(page, 3)).length;
   await activateTool(page, 'Draw', 'Pen');
@@ -400,7 +404,8 @@ test('390 History click-restore / close / filter-absent intended + break + edge'
   await expect(event).toBeVisible();
   await event.click();
   await expectSpotlight(page, true, '390 click must show the spotlight');
-  await expect(page.getByText(/not a full-document snapshot|Showing (the edited item|page)/i)).toBeVisible();
+  await expect(page.getByText(/not a full-document snapshot/i)).toBeVisible();
+  await expect(page.getByTestId('kal48-status')).toContainText(/Showing the edited item|Showing page/);
   expect((await userIds(page, 1)).includes(rectA.id), '390 click must keep A').toBeTruthy();
 
   const close = page.getByRole('button', { name: 'Close version history', exact: true });
