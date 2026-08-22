@@ -219,11 +219,12 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
       const style = data.style || {};
       if (object.isPdfImported === true) return null;
       const group = document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-anno-id="${id}"]`);
-      const shaft = group?.querySelector('line, path');
-      const polygon = group?.querySelector('polygon');
-      const circle = group?.querySelector('circle:not([data-handle])');
-      const polyline = group?.querySelector('polyline');
-      const lines = [...(group?.querySelectorAll('line') || [])];
+      const paint = group?.querySelector(':scope > g');
+      const shaft = paint?.querySelector('line, path');
+      const polygon = paint?.querySelector('polygon');
+      const circle = paint?.querySelector('circle');
+      const polyline = paint?.querySelector('polyline');
+      const lines = [...(paint?.querySelectorAll('line') || [])];
       return {
         id,
         type: String(object.type || data.type || '').toLowerCase(),
@@ -338,8 +339,11 @@ async function listMobileOptions(page, ariaLabel) {
   await trigger.click();
   const listbox = page.getByRole('listbox', { name: ariaLabel });
   await expect(listbox).toBeVisible({ timeout: 5_000 });
-  const values = (await listbox.getByRole('option').allTextContents()).map((text) => text.trim());
-  await page.keyboard.press('Escape');
+  const values = (await listbox.getByRole('option').allTextContents())
+    .map((text) => text.trim())
+    .filter(Boolean);
+  await listbox.press('Escape').catch(() => {});
+  if (await listbox.count()) await trigger.click();
   await expect(listbox).toHaveCount(0);
   return values;
 }
