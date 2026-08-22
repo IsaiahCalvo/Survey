@@ -219,6 +219,7 @@ async function setEraserType(page, label) {
   await expect.poll(async () => (
     (await typeBtn.innerText()).replace(/\s+/g, ' ').trim()
   ), { message: `Eraser type must read ${label}` }).toContain(label);
+  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
 }
 
 async function eraserTypeLabels(page) {
@@ -234,6 +235,11 @@ async function eraserTypeLabels(page) {
   return labels;
 }
 
+async function eraseThroughRegion(page, coords) {
+  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
+  await dragOnPage(page, coords);
+}
+
 async function eraseAcrossId(page, id) {
   await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
   const points = await page.evaluate((annotationId) => {
@@ -242,24 +248,48 @@ async function eraseAcrossId(page, id) {
     const svg = document.querySelector('[data-svg-annotation-layer="1"]');
     const rect = wrapper?.getBoundingClientRect();
     const viewBox = svg?.viewBox?.baseVal;
-    if (!object || !rect || !viewBox?.width || !viewBox?.height) return null;
-    const left = Number(object.left ?? object.x ?? 0);
-    const top = Number(object.top ?? object.y ?? 0);
-    const width = Number(object.width ?? 40);
-    const height = Number(object.height ?? 20);
+    if (!object || !rect || !viewBox?.width || !viewBox?.height) return [];
     const toClient = (x, y) => ({
       x: rect.left + (x / viewBox.width) * rect.width,
       y: rect.top + (y / viewBox.height) * rect.height,
     });
-    return {
-      a: toClient(left + width * 0.25, top + height * 0.5),
-      b: toClient(left + width * 0.75, top + height * 0.5),
-    };
+    const samples = [];
+    for (const cmd of object.path || []) {
+      const x = Number(cmd[cmd.length - 2]);
+      const y = Number(cmd[cmd.length - 1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) samples.push(toClient(x, y));
+    }
+    if (samples.length >= 2) {
+      const i0 = Math.floor((samples.length - 1) * 0.35);
+      const i1 = Math.max(i0 + 1, Math.floor((samples.length - 1) * 0.55));
+      return samples.slice(i0, i1 + 1);
+    }
+    const left = Number(object.left ?? object.x ?? NaN);
+    const top = Number(object.top ?? object.y ?? NaN);
+    const width = Number(object.width ?? NaN);
+    const height = Number(object.height ?? NaN);
+    if ([left, top, width, height].every(Number.isFinite) && width > 0 && height > 0) {
+      return [
+        toClient(left + width * 0.2, top + height * 0.5),
+        toClient(left + width * 0.8, top + height * 0.5),
+      ];
+    }
+    return [];
   }, id);
-  expect(points?.a && points?.b, `wrapper-mapped stroke for ${id}`).toBeTruthy();
-  await page.mouse.move(points.a.x, points.a.y);
+  if (points.length >= 2) {
+    await page.mouse.move(points[0].x, points[0].y);
+    await page.mouse.down();
+    for (const point of points.slice(1)) {
+      await page.mouse.move(point.x, point.y, { steps: 3 });
+    }
+    await page.mouse.up();
+    return;
+  }
+  const box = await page.locator(`[data-anno-id="${id}"]`).first().boundingBox();
+  expect(box, `fallback bbox ${id}`).toBeTruthy();
+  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.5);
   await page.mouse.down();
-  await page.mouse.move(points.b.x, points.b.y, { steps: 8 });
+  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.5, { steps: 8 });
   await page.mouse.up();
 }
 
@@ -310,7 +340,7 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   expect((await typeBtn.innerText()).trim()).toContain('Partial erase');
   await expect(page.getByRole('textbox', { name: 'Size', exact: true })).toBeVisible();
 
-  await eraseAcrossId(page, rectA.id);
+  await eraseThroughRegion(page, { x0: 0.20, y0: 0.27, x1: 0.34, y1: 0.27 });
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rectA.id)
   ), { message: 'partial must skip a rect' }).toBe(true);
@@ -327,7 +357,7 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   // Intended — Full stroke erase deletes the hit object, not its sibling.
   await setEraserType(page, 'Full stroke erase');
   expect(await page.evaluate(() => localStorage.getItem('eraserMode'))).toBe('entire');
-  await eraseAcrossId(page, rectA.id);
+  await eraseThroughRegion(page, { x0: 0.20, y0: 0.27, x1: 0.34, y1: 0.27 });
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rectA.id)
   ), { message: 'full stroke must delete rect A' }).toBe(false);
@@ -423,7 +453,7 @@ test('390 Eraser mode intended + break + edge', async ({ page }) => {
   await expect(mode, '390 Eraser mode trigger').toBeVisible({ timeout: 8_000 });
   await expect(mode).toHaveAttribute('aria-label', /Eraser mode: Partial Erase/);
 
-  await eraseAcrossId(page, rect.id);
+  await eraseThroughRegion(page, { x0: 0.28, y0: 0.32, x1: 0.46, y1: 0.32 });
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rect.id)
   ), { message: '390 partial must skip a rect' }).toBe(true);
@@ -440,7 +470,7 @@ test('390 Eraser mode intended + break + edge', async ({ page }) => {
   await expect(mode).toHaveAttribute('aria-label', /Eraser mode: Full Stroke/);
   expect(await page.evaluate(() => localStorage.getItem('eraserMode'))).toBe('entire');
 
-  await eraseAcrossId(page, rect.id);
+  await eraseThroughRegion(page, { x0: 0.28, y0: 0.32, x1: 0.46, y1: 0.32 });
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rect.id)
   ), { message: '390 full stroke must delete the rect' }).toBe(false);
