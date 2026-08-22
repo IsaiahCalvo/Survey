@@ -169,16 +169,37 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
       inMobileSurface: Boolean(el?.closest?.('.survey-pdfjs-mobile-surface')),
     };
   }, { x: target.x + 4, y });
+  const snapshots = [];
+  const snap = async (label) => {
+    const row = await page.evaluate(() => {
+      const sel = window.getSelection?.();
+      return {
+        text: String(sel?.toString() || ''),
+        rangeCount: sel?.rangeCount || 0,
+        collapsed: Boolean(sel?.isCollapsed),
+      };
+    });
+    snapshots.push({ label, ...row });
+    return row.text;
+  };
   await page.mouse.move(target.x + 4, y);
   await page.mouse.down();
   await page.mouse.move(target.x + Math.max(36, target.w * 0.85), y, { steps });
   await page.mouse.up();
   let method = 'drag';
-  if (!(await osSelection(page))) {
-    await page.mouse.click(target.x + Math.min(12, target.w / 2), y, { clickCount: 3 });
-    method = 'triple-click';
+  if (!(await snap('drag'))) {
+    const span = page.locator('.pdfjsTextLayer.is-interactive span').filter({
+      hasText: target.text.slice(0, 8),
+    }).first();
+    if (await span.count()) {
+      await span.click({ clickCount: 3, force: true });
+      method = 'locator-triple-click';
+    } else {
+      await page.mouse.click(target.x + Math.min(12, target.w / 2), y, { clickCount: 3 });
+      method = 'triple-click';
+    }
   }
-  if (!(await osSelection(page))) {
+  if (!(await snap(method))) {
     await page.evaluate((want) => {
       const layerEl = document.querySelector('.pdfjsTextLayer.is-interactive');
       const span = [...(layerEl?.querySelectorAll('span') || [])]
@@ -191,9 +212,10 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
       sel?.addRange?.(range);
     }, target.text.slice(0, 12));
     method = 'range';
+    await snap('range');
   }
   const selectStart = await page.evaluate(() => window.__selectStartLog || []);
-  return { ...target, hit, method, selectStart };
+  return { ...target, hit, method, selectStart, snapshots };
 }
 
 async function expectSelectionMatches(page, pattern, message) {
@@ -407,7 +429,14 @@ test('390 Select text ⇧V intended + break + edge', async ({ page }) => {
   expect(await svgPointerEvents(page), '390 SVG root must fall through in text-select').toBe('none');
 
   const mobileGlyph = await dragGlyphs(page);
-  expect(['drag', 'triple-click'], '390 must select via pointer, not Range').toContain(mobileGlyph.method);
+  console.log('SELECT_TEXT_390_PROBE', JSON.stringify({
+    glyph: mobileGlyph.text.slice(0, 24),
+    method: mobileGlyph.method,
+    hit: mobileGlyph.hit,
+    selectStart: mobileGlyph.selectStart,
+    snapshots: mobileGlyph.snapshots,
+  }));
+  expect(['drag', 'triple-click', 'locator-triple-click'], '390 must select via pointer, not Range').toContain(mobileGlyph.method);
   await expectSelectionMatches(page, new RegExp(mobileGlyph.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '390 drag must select PDF glyphs');
 
   const pageBtn = page.getByRole('button', { name: 'Jump to page', exact: true });

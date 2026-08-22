@@ -82,6 +82,7 @@ test('live spec covers ⇧V / menu / glyph drag / form INPUT / no-layer / 390', 
   assert.match(spec, /390 rail omits Select text/);
   assert.match(spec, /390 drag must select PDF glyphs/);
   assert.match(spec, /390 must select via pointer, not Range/);
+  assert.match(spec, /locator-triple-click/);
   assert.match(spec, /hubPreview/);
   assert.match(spec, /form fixture viewBox stays page-owned/);
   assert.match(spec, /viewBox/);
