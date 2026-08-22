@@ -25,6 +25,8 @@ test('RotationInputField commits digits, wraps [0,360), Escape restores, letters
   assert.match(field, /commitTyped\(\)/);
   assert.match(field, /Empty = silent revert/);
   assert.match(field, /if \(e\.key\.length === 1 && !\/\^\[0-9\]\$\/\.test\(e\.key\)\)/);
+  assert.match(field, /if \(e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey\) return/);
+  assert.match(field, /Ctrl\/Cmd\/Alt chords \(Ctrl\+A select-all/);
   assert.match(field, /pointerEvents: 'auto'/);
   assert.doesNotMatch(field, /file\.id\s*=/);
 
@@ -69,6 +71,7 @@ test('live spec covers type / blur / wrap / Escape / Line omit / 390 / file.id',
   assert.match(spec, /click-away blur must commit 180/);
   assert.match(spec, /360 must wrap to 0/);
   assert.match(spec, /405 must wrap to 45/);
+  assert.match(spec, /Ctrl\+A then Backspace must clear 45/);
   assert.match(spec, /empty Enter must restore 45/);
   assert.match(spec, /letters must restore 45/);
   assert.match(spec, /minus must restore 45/);

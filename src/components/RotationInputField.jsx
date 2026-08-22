@@ -375,6 +375,9 @@ function RotationInputField({
       // Navigation/edit keys — let the browser handle natively.
       const NAV = new Set(['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab']);
       if (NAV.has(e.key)) return;
+      // Ctrl/Cmd/Alt chords (Ctrl+A select-all, Cmd+V paste) use e.key === 'a'
+      // / 'v' — they are not modifier-only multi-char keys. Let them through.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       // Single printable char — accept digits 0-9, block everything else.
       if (e.key.length === 1 && !/^[0-9]$/.test(e.key)) {
         e.preventDefault();
@@ -501,8 +504,8 @@ function RotationInputField({
     // signs, no symbols. Navigation keys (Tab, Home, End, left/right arrow)
     // and text-editing keys (Backspace, Delete) are explicitly allowed so
     // the user can position the cursor and erase mistakes. Modifier-only
-    // keystrokes (Shift, Ctrl, Alt, Meta) are multi-char `e.key` values and
-    // so are not blocked by the single-printable-char filter below.
+    // keystrokes (Shift, Ctrl, Alt, Meta) are multi-char `e.key` values.
+    // Ctrl+A / Cmd+A is NOT — e.key is still 'a'. Let those chords through.
     const NAV_AND_EDIT_KEYS = new Set([
       'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab',
     ]);
@@ -510,6 +513,7 @@ function RotationInputField({
       // Let the browser handle cursor positioning and deletion natively.
       return;
     }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key.length === 1) {
       // Printable single-character key. Accept only 0-9; block everything
       // else (letters, spaces, punctuation, symbols) via preventDefault so

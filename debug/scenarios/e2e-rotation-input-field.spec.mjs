@@ -253,8 +253,13 @@ test('desktop RotationInputField intended + break + edge', async ({ page }) => {
   await expectAngle(page, a.id, 45, '405 must wrap to 45');
 
   // Break — empty + letters + minus restore the live angle (digits-only).
+  // Ctrl+A used to be blocked (e.key === 'a'), so Backspace left a leftover digit.
   const emptyInput = await showRotationPill(page);
-  await typeDegrees(emptyInput, '');
+  await expect(emptyInput).toHaveValue('45');
+  await emptyInput.click();
+  await emptyInput.press('Control+A');
+  await emptyInput.press('Backspace');
+  await expect(emptyInput, 'Ctrl+A then Backspace must clear 45').toHaveValue('');
   await emptyInput.press('Enter');
   await expectAngle(page, a.id, 45, 'empty Enter must restore 45');
 
