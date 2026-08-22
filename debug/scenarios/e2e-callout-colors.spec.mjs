@@ -154,11 +154,21 @@ async function annotationById(page, id) {
   return (await calloutSnapshot(page)).find((row) => row.id === id) || null;
 }
 
+async function blurInputs(page) {
+  await page.evaluate(() => {
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+      el.blur();
+    }
+  });
+}
+
 async function dismissChrome(page) {
+  await blurInputs(page);
   const search = page.getByPlaceholder('Search text in PDF...');
   if (await search.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: 'Search text', exact: true }).click();
-    await expect(search).toHaveCount(0);
+    await page.getByRole('button', { name: 'Search text', exact: true }).click().catch(() => {});
+    await blurInputs(page);
   }
   await page.keyboard.press('Escape');
   await page.waitForTimeout(80);
@@ -168,14 +178,11 @@ async function dismissChrome(page) {
     const expanded = await page.getByText('No documents yet').isVisible().catch(() => false);
     if (expanded) await pagesToggle.click();
   }
+  await blurInputs(page);
 }
 
 async function selectMode(page) {
-  const search = page.getByPlaceholder('Search text in PDF...');
-  if (await search.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: 'Search text', exact: true }).click();
-    await expect(search).toHaveCount(0);
-  }
+  await blurInputs(page);
   await page.keyboard.press('Escape');
   const selectBtn = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
   if (await selectBtn.isVisible().catch(() => false)) {
@@ -191,7 +198,7 @@ async function selectMode(page) {
 
 async function createCallout(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y1: 0.40 }) {
   const before = new Set((await calloutSnapshot(page)).map((row) => row.id));
-  await dismissChrome(page);
+  await blurInputs(page);
   await activateTool(page, 'Text', 'Callout');
   await dragOnPage(page, coords);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
@@ -201,7 +208,7 @@ async function createCallout(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42
   const created = await waitForNewCallout(page, before);
   await page.mouse.click(12, 200);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
-  await dismissChrome(page);
+  await blurInputs(page);
   await selectMode(page);
   return created;
 }
