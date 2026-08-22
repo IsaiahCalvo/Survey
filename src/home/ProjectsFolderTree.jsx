@@ -1125,8 +1125,7 @@ export default function ProjectsFolderTree({
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
-                    <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
-                    <div style={{ display: 'grid', gap: 1 }}>
+                    <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles} gap={1}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(f.id);
                         // "Last edited by" owner — the document's own user id
@@ -1196,7 +1195,6 @@ export default function ProjectsFolderTree({
                           </SortableRearrangeRow>
                         );
                       })}
-                    </div>
                     </SortableRearrangeList>
                   )}
                 </div>

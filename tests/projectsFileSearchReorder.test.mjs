@@ -24,7 +24,8 @@ test('ProjectsFolderTree file Search + file-row reorder are live local chrome', 
   assert.match(tree, /const reorderFiles = useCallback\(\(fromId, toId\) => \{/);
   assert.match(tree, /if \(fromId == null \|\| toId == null \|\| fromId === toId \|\| !open\) return/);
   assert.match(tree, /mergeProjectDocumentOrder\(/);
-  assert.match(tree, /<SortableRearrangeList ids=\{openFiles\.map\(\(f\) => f\.id\)\} onReorder=\{reorderFiles\}>/);
+  assert.match(tree, /<SortableRearrangeList ids=\{openFiles\.map\(\(f\) => f\.id\)\} onReorder=\{reorderFiles\} gap=\{1\}>/);
+  assert.doesNotMatch(tree, /onReorder=\{reorderFiles\}>\s*<div style=\{\{ display: 'grid', gap: 1 \}\}>/);
   assert.match(tree, /<SortableRearrangeList ids=\{mobileDrillFiles\.map\(\(f\) => f\.id\)\} onReorder=\{reorderFiles\}>/);
   assert.doesNotMatch(tree, /placeholder="Search files\.\.\."/);
   assert.doesNotMatch(tree, /setCopyModeActive\(true\)/);

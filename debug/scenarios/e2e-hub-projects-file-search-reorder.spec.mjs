@@ -111,17 +111,25 @@ async function keyboardMoveHandle(page, handle, { direction = 'down', cancel = f
   return 'keyboard';
 }
 
+async function eatDragClick(page) {
+  await page.mouse.click(12, 12).catch(() => {});
+}
+
 async function dragByHandle(page, handle, dest, namesFn, { cancel = false, direction = 'down' } = {}) {
   const before = await namesFn(page);
   try {
     await keyboardMoveHandle(page, handle, { direction, cancel });
     const after = await namesFn(page);
     const changed = JSON.stringify(after) !== JSON.stringify(before);
-    if (cancel || changed) return 'keyboard';
+    if (cancel || changed) {
+      await eatDragClick(page);
+      return 'keyboard';
+    }
   } catch { /* pointer fallback */ }
   await page.keyboard.press('Escape').catch(() => {});
   await page.mouse.up().catch(() => {});
   await pointerDragHandleTo(page, handle, dest, { cancel });
+  await eatDragClick(page);
   return 'pointer';
 }
 
