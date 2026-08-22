@@ -66,12 +66,22 @@ async function moduleTabNames(page) {
   ));
 }
 
+function categoryTitleInputs(page) {
+  return desktopGrid(page).locator('[data-drag-rearrange-row]').filter({
+    has: page.locator('button[title="Expand"], button[title="Collapse"]'),
+  }).locator('input.inline-edit.cat-title');
+}
+
 async function categoryNames(page) {
-  return page.evaluate(() => (
-    [...document.querySelectorAll('.templates-editor-grid input.inline-edit.cat-title')]
-      .filter((el) => el.offsetParent)
-      .map((el) => el.value)
-  ));
+  return page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.templates-editor-grid [data-drag-rearrange-row]')];
+    return rows.flatMap((row) => {
+      const toggle = row.querySelector('button[title="Expand"], button[title="Collapse"]');
+      const field = row.querySelector('input.inline-edit.cat-title');
+      if (!toggle || !field || !field.offsetParent) return [];
+      return [field.value];
+    });
+  });
 }
 
 async function toggleRowCheckbox(row) {
@@ -86,10 +96,13 @@ async function toggleRowCheckbox(row) {
 
 async function categoryItemCount(page, name) {
   return page.evaluate((wanted) => {
-    const titles = [...document.querySelectorAll('.templates-editor-grid input.inline-edit.cat-title')];
-    const field = titles.find((el) => el.value === wanted && el.offsetParent);
-    const row = field?.closest('[data-drag-rearrange-row]');
-    const meta = row?.parentElement?.querySelector('.mono');
+    const rows = [...document.querySelectorAll('.templates-editor-grid [data-drag-rearrange-row]')];
+    const row = rows.find((node) => {
+      const toggle = node.querySelector('button[title="Expand"], button[title="Collapse"]');
+      const field = node.querySelector('input.inline-edit.cat-title');
+      return toggle && field && field.value === wanted && field.offsetParent;
+    });
+    const meta = row?.querySelector('.mono') || row?.parentElement?.querySelector('.mono');
     const text = meta?.textContent || '';
     const match = /(\d+)\s+items/.exec(text);
     return match ? Number(match[1]) : -1;
@@ -121,17 +134,18 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   expect(await categoryItemCount(page, 'Category 1')).toBe(0);
 
   // --- New category: break — empty / whitespace snaps back; Escape keeps name ---
-  const cat1 = desktopGrid(page).locator('input.inline-edit.cat-title[value="Category 1"]');
-  await expect(cat1).toBeVisible();
-  await cat1.click();
-  await cat1.fill('   ');
-  await cat1.press('Enter');
+  const cat1 = categoryTitleInputs(page).filter({ hasText: /^$/ }).and(page.locator('[value="Category 1"]'));
+  const cat1Field = categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]');
+  await expect(cat1Field).toBeVisible();
+  await cat1Field.click();
+  await cat1Field.fill('   ');
+  await cat1Field.press('Enter');
   await expect.poll(async () => categoryNames(page)).toContain('Category 1');
   expect(await categoryNames(page)).not.toContain('');
 
-  await desktopGrid(page).locator('input.inline-edit.cat-title[value="Category 1"]').click();
-  await desktopGrid(page).locator('input.inline-edit.cat-title[value="Category 1"]').fill('gone');
-  await desktopGrid(page).locator('input.inline-edit.cat-title[value="gone"]').press('Escape');
+  await categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]').click();
+  await categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]').fill('gone');
+  await categoryTitleInputs(page).locator('xpath=self::input[@value="gone"]').press('Escape');
   await expect.poll(async () => categoryNames(page)).toContain('Category 1');
   expect(await categoryNames(page)).not.toContain('gone');
 
@@ -145,7 +159,7 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   // --- New category: persist + isolation across modules / templates ---
   await newCategoryButton(page).click();
   await expect.poll(async () => categoryNames(page)).toContain('Category 1');
-  const rename = desktopGrid(page).locator('input.inline-edit.cat-title[value="Category 1"]');
+  const rename = categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]');
   await rename.click();
   await rename.fill('E2E Category');
   await rename.press('Enter');
@@ -174,8 +188,9 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   await expect(catDup).toBeVisible();
   await expect(catDup).toBeDisabled();
   const camerasRow = desktopGrid(page).locator('[data-drag-rearrange-row]').filter({
+    has: page.locator('button[title="Expand"], button[title="Collapse"]'),
     has: page.locator('input.inline-edit.cat-title[value="Cameras"]'),
-  }).first();
+  });
   await toggleRowCheckbox(camerasRow);
   await expect(catDup).toBeEnabled();
   await catDup.click();
