@@ -271,7 +271,7 @@ test('Templates list Search + mobile content Search + Edit-modules Search module
   await expect.poll(async () => mobileTemplateNames(page)).toEqual(['MEP As-Built Markup']);
   await fillSearch(mobileListSearch(page), 'XYZZY');
   await expect.poll(async () => mobileTemplateNames(page)).toEqual([]);
-  await expect(page.getByText('No templates match your search')).toBeVisible();
+  await expect(page.locator('.templates-mobile-browser').getByText('No templates match your search')).toBeVisible();
   await fillSearch(mobileListSearch(page), 'WALK');
   await expect.poll(async () => mobileTemplateNames(page)).toEqual(['Security Walk-Through']);
   await mobileListSearch(page).click();
