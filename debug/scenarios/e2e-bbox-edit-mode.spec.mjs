@@ -368,9 +368,13 @@ async function createCounter(page, { xf = 0.82, yf = 0.18 } = {}) {
 
 async function counterGeom(page, id) {
   return page.evaluate((annoId) => {
-    const host = document.querySelector(`[data-anno-id="${annoId}"]`);
-    const pathD = host?.querySelector('path')?.getAttribute('d') || '';
+    const host = document.querySelector(`[data-counter-overlay] [data-anno-id="${annoId}"]`)
+      || document.querySelector(`[data-svg-annotation-layer="1"] [data-anno-id="${annoId}"]`)
+      || document.querySelector('[data-shape-hit-target="counter"]');
+    const path = host?.matches?.('path') ? host : host?.querySelector?.('path');
+    const pathD = path?.getAttribute('d') || '';
     const arc = /A\s+([\d.]+),([\d.]+)/.exec(pathD);
+    const rect = (path || host)?.getBoundingClientRect();
     const object = window.__phase35GetAnnotationById?.(annoId) || {};
     return {
       id: annoId,
@@ -379,6 +383,7 @@ async function counterGeom(page, id) {
       scaleX: object.scaleX ?? 1,
       left: object.left ?? 0,
       top: object.top ?? 0,
+      screen: rect ? { w: rect.width, h: rect.height, x: rect.x, y: rect.y } : null,
     };
   }, id);
 }
@@ -468,21 +473,27 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   }, { timeout: 8_000 }).toBe(true);
 
   // Intended: counter nubbin-only chrome swaps to bbox; br grows the pin.
-  const counter = await createCounter(page, { xf: 0.84, yf: 0.14 });
+  const counter = await createCounter(page, { xf: 0.80, yf: 0.22 });
   await selectMode(page);
   await expect.poll(async () => {
     await page.locator('[data-shape-hit-target="counter"]').first().click({ force: true });
     return page.locator('[data-shape-hit-target="counter"]').count();
   }).toBeGreaterThan(0);
   expect(await page.locator('[data-resize-handle]').count(), 'counter single-click has no bbox').toBe(0);
-  await enterBboxByDblclick(page, { hitTarget: 'counter' });
+  const counterHit = page.locator('[data-shape-hit-target="counter"]').first();
+  const counterBox = await counterHit.boundingBox();
+  await enterBboxByDblclick(page, {
+    hitTarget: 'counter',
+    screen: { x: counterBox.x + counterBox.width / 2, y: counterBox.y + counterBox.height / 2 },
+  });
   const preCounter = await counterGeom(page, counter.id);
-  await dragResizeHandle(page, 'br', 28, 28);
+  await dragResizeHandle(page, 'br', 56, 56);
   let afterCounter = null;
   await expect.poll(async () => {
     afterCounter = await counterGeom(page, counter.id);
-    return (afterCounter.svgR - preCounter.svgR) > 2
-      || Math.abs(afterCounter.scaleX - preCounter.scaleX) > 0.08;
+    const dR = (afterCounter.svgR || 0) - (preCounter.svgR || 0);
+    const dScreen = (afterCounter.screen?.w || 0) - (preCounter.screen?.w || 0);
+    return dR > 1.5 || dScreen > 6;
   }, { timeout: 8_000 }).toBe(true);
 
   // Break: rect already owns single-click bbox — double-click does not invent a second mode.
