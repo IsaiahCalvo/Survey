@@ -22,6 +22,8 @@ test('ProjectsFolderTree Search / Pin / Duplicate / file clipboard are live loca
   assert.match(tree, /name: `\$\{src\.name\} \(copy\)`/);
   assert.match(tree, /\{ label: 'Copy', onClick: \(\) => copyFile\(f\) \}/);
   assert.match(tree, /\{ label: 'Paste', disabled: !clipboard, onClick: \(\) => pasteFile\(\) \}/);
+  assert.match(tree, /function PopupMenu\(\{ anchorRect, onClose, items, align = 'right', minWidth = 160, trigger = null \}\)/);
+  assert.match(tree, /<DismissBarrier insideRefs=\{\[ref, trigger\]\} onDismiss=\{onClose\} \/>/);
   assert.doesNotMatch(tree, /onExportSpaceCSV/);
   assert.doesNotMatch(tree, /PRINT_PANEL_ENABLED/);
   assert.doesNotMatch(tree, /__e2eProjectsExtras/);

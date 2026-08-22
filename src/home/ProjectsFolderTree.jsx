@@ -107,7 +107,7 @@ const orderByStoredIds = (rows, storedIds = []) => {
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
    overflow clipping. `align` decides which corner of the anchor it hangs from. */
-function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
+function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160, trigger = null }) {
   const ref = useRef(null);
 
   if (!anchorRect) return null;
@@ -125,7 +125,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <DismissBarrier insideRefs={[ref, trigger]} onDismiss={onClose} />
       <div
         ref={ref}
         role="menu"
@@ -851,7 +851,7 @@ export default function ProjectsFolderTree({
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
               setTeamMenu(null);
-              setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
+              setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect, trigger: e.currentTarget }));
             }}
             style={moreButtonStyle()}
             title="More" aria-label="More"
@@ -999,7 +999,7 @@ export default function ProjectsFolderTree({
                           // rect so the menu anchors to it.
                           const rect = e.currentTarget.getBoundingClientRect();
                           setFileMenu(null);
-                          setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
+                          setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect, trigger: e.currentTarget }));
                         }}
                         style={moreButtonStyle()}
                         title="More"
@@ -1185,7 +1185,7 @@ export default function ProjectsFolderTree({
                                   // this trigger button's rect.
                                   const rect = e.currentTarget.getBoundingClientRect();
                                   setTeamMenu(null);
-                                  setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
+                                  setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect, trigger: e.currentTarget }));
                                 }}
                                 style={moreButtonStyle()}
                                 title="More"
@@ -1379,7 +1379,7 @@ export default function ProjectsFolderTree({
                                   e.stopPropagation();
                                   const rect = e.currentTarget.getBoundingClientRect();
                                   setFileMenu(null);
-                                  setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
+                                  setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect, trigger: e.currentTarget }));
                                 }}
                                 style={moreButtonStyle()}
                                 title="More"
@@ -1659,7 +1659,7 @@ export default function ProjectsFolderTree({
                     e.stopPropagation();
                     const rect = e.currentTarget.getBoundingClientRect();
                     setFileMenu(null);
-                    setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
+                    setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect, trigger: e.currentTarget }));
                   }}
                   style={moreButtonStyle()}
                   title="More"
@@ -1825,7 +1825,7 @@ export default function ProjectsFolderTree({
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
                           setTeamMenu(null);
-                          setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect }));
+                          setFileMenu((cur) => (cur && cur.id === f.id ? null : { id: f.id, rect, trigger: e.currentTarget }));
                         }}
                         style={moreButtonStyle()}
                         title="More"
@@ -1916,6 +1916,7 @@ export default function ProjectsFolderTree({
         return (
           <PopupMenu
             anchorRect={teamMenu.rect}
+            trigger={teamMenu.trigger}
             onClose={() => setTeamMenu(null)}
             minWidth={184}
             items={[
@@ -1949,6 +1950,7 @@ export default function ProjectsFolderTree({
         return (
           <PopupMenu
             anchorRect={fileMenu.rect}
+            trigger={fileMenu.trigger}
             onClose={() => setFileMenu(null)}
             minWidth={168}
             items={[
