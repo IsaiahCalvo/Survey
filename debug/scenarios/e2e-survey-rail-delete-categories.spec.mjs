@@ -176,18 +176,27 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
   await expect(keep).toBeChecked();
 
   const markerWalls = await placeMarker(page, 'Walls', 'cat-walls', { x0: 0.22, y0: 0.34, x1: 0.46, y1: 0.54 });
+  expect((await markerIds(page)).includes(markerWalls), 'Walls marker placed').toBe(true);
+
   await goToOtherModule(page);
   await page.getByRole('button', { name: 'Doors', exact: true }).first().click();
   const markerDoors = await placeMarker(page, 'Doors', 'cat-doors', { x0: 0.56, y0: 0.28, x1: 0.78, y1: 0.46 });
-  expect((await markerIds(page)).length, 'Walls+Doors placed').toBe(2);
+  expect((await markerIds(page)).includes(markerDoors), 'Doors marker placed').toBe(true);
+  // Overlay filters other-module markers; Walls stays in store, not in this DOM.
+  expect((await markerIds(page)).includes(markerWalls), 'Other module hides Walls overlay').toBe(false);
+
   await goToExistingModule(page);
+  await expect.poll(async () => (await markerIds(page)).includes(markerWalls), {
+    timeout: 8_000,
+    message: 'Existing module shows Walls marker again',
+  }).toBe(true);
 
   await enterCategorySelectMode(page);
 
   // Break: none selected — button is present and disabled (not hidden).
   await expect(deleteCategoriesBtn(page)).toBeVisible();
   await expect(deleteCategoriesBtn(page)).toBeDisabled();
-  expect((await markerIds(page)).length, 'disabled delete does not remove').toBe(2);
+  expect((await markerIds(page)).includes(markerWalls), 'disabled delete does not remove').toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true }).first()).toBeVisible();
 
   // Select Walls (category checkbox, not item Select).
@@ -203,10 +212,9 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
   await cancelDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(confirmDialog(page)).toHaveCount(0);
   expect((await markerIds(page)).includes(markerWalls), 'cancel keeps Walls marker').toBe(true);
-  expect((await markerIds(page)).includes(markerDoors), 'cancel keeps Doors marker').toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true }).first()).toBeVisible();
 
-  // Intended: confirm deletes Walls + its markers; Doors stays.
+  // Intended: confirm deletes Walls + its markers; Doors stays (other module).
   await expect(deleteCategoriesBtn(page)).toBeEnabled();
   await deleteCategoriesBtn(page).click();
   const oneDialog = confirmDialog(page);
@@ -216,11 +224,17 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
     timeout: 8_000,
     message: 'confirm wipes Walls marker',
   }).toBe(false);
-  expect((await markerIds(page)).includes(markerDoors), 'Doors marker stays').toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toHaveCount(0);
 
   // Edge: last remaining category in Existing is allowed (Walls was the only one).
   await expect(categorySelectToggle(page)).toBeVisible();
+
+  await goToOtherModule(page);
+  await expect.poll(async () => (await markerIds(page)).includes(markerDoors), {
+    timeout: 8_000,
+    message: 'Doors marker stays after Walls category-delete',
+  }).toBe(true);
+  await goToExistingModule(page);
 
   // Edge: undo restores category + markers if product supports it.
   await page.keyboard.press('Control+z');
@@ -228,8 +242,10 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
     timeout: 8_000,
     message: 'undo restores Walls marker',
   }).toBe(true);
-  expect((await markerIds(page)).includes(markerDoors), 'undo keeps Doors marker').toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  await goToOtherModule(page);
+  expect((await markerIds(page)).includes(markerDoors), 'undo keeps Doors marker').toBe(true);
+  await goToExistingModule(page);
 
   // Break: Pen-armed does not hide or auto-delete; rail confirm still works.
   await page.evaluate(() => document.activeElement?.blur?.());
@@ -238,7 +254,6 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
   await selectCategory(page, 'Walls');
   await expect(deleteCategoriesBtn(page)).toBeEnabled();
   expect((await markerIds(page)).includes(markerWalls), 'Pen-armed does not delete').toBe(true);
-  expect((await markerIds(page)).includes(markerDoors), 'Pen-armed leaves Doors').toBe(true);
   await deleteCategoriesBtn(page).click();
   const penDialog = confirmDialog(page);
   await expect(penDialog).toBeVisible({ timeout: 8_000 });
@@ -247,8 +262,10 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
     timeout: 8_000,
     message: 'Pen-armed rail confirm still wipes Walls',
   }).toBe(false);
-  expect((await markerIds(page)).includes(markerDoors), 'Doors stays after Pen-armed category-delete').toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toHaveCount(0);
+  await goToOtherModule(page);
+  expect((await markerIds(page)).includes(markerDoors), 'Doors stays after Pen-armed category-delete').toBe(true);
+  await goToExistingModule(page);
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await markerIds(page)).includes(markerWalls)).toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true }).first()).toBeVisible();
