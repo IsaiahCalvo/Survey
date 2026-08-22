@@ -12871,10 +12871,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceUpdate = useCallback((id, updates) => {
     if (!requireSpaceManagement()) return;
-    // Checkpoint history before updating space
+    const nextUpdates = { ...(updates || {}) };
+
+    // Sibling of handleSpaceRenamePage / handleSpaceAssignPages:
+    // name empty / duplicate / same-name used to checkpoint first, then
+    // setSpaces no-op. Ctrl+Z after a rejected rename consumed the last
+    // real space:create / space:update.
+    if (Object.prototype.hasOwnProperty.call(nextUpdates, 'name')) {
+      const trimmedName = typeof nextUpdates.name === 'string' ? nextUpdates.name.trim() : '';
+      const liveSpaces = spacesRef.current || [];
+      const liveSpace = liveSpaces.find((space) => space.id === id);
+      if (!liveSpace) return false;
+      if (!trimmedName) {
+        showToast('Space name cannot be empty.', 'warn');
+        return false;
+      }
+      if (hasNameConflict(liveSpaces, trimmedName, { getName: (space) => space?.name, ignoreId: id })) {
+        showToast('A space with this name already exists. Please choose a different name.', 'error');
+        return false;
+      }
+      if (liveSpace.name === trimmedName) {
+        return;
+      }
+      nextUpdates.name = trimmedName;
+    }
+
     addHistoryCheckpoint('space:update', {
       spaceId: id,
-      updateKeys: Object.keys(updates || {})
+      updateKeys: Object.keys(nextUpdates)
     });
 
     setSpaces(prev => {
@@ -12883,10 +12907,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return prev;
       }
 
-      let sanitizedUpdates = { ...updates };
+      let sanitizedUpdates = { ...nextUpdates };
 
-      if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
-        const trimmedName = typeof updates.name === 'string' ? updates.name.trim() : '';
+      if (Object.prototype.hasOwnProperty.call(nextUpdates, 'name')) {
+        const trimmedName = typeof nextUpdates.name === 'string' ? nextUpdates.name.trim() : '';
         if (!trimmedName) {
           showToast('Space name cannot be empty.', 'warn');
           return prev;

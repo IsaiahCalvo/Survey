@@ -131,7 +131,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       input.parentElement.dataset.value = nextName || ' ';
     }
     if (nextName !== space.name) {
-      onRenameSpace?.(space.id, nextName);
+      const ok = onRenameSpace?.(space.id, nextName);
+      if (ok === false) {
+        input.value = fallbackName;
+        if (input.parentElement) {
+          input.parentElement.dataset.value = fallbackName || ' ';
+        }
+      }
     }
   }, [onRenameSpace, space.id, space.name]);
 
@@ -1135,11 +1141,12 @@ const SpacesPanel = ({
   }, [requireSpaceManagement, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
-    if (!requireSpaceManagement()) return;
+    if (!requireSpaceManagement()) return false;
     const name = nextName?.trim();
     if (spaceId && name && onSpaceUpdate) {
-      onSpaceUpdate(spaceId, { name });
+      return onSpaceUpdate(spaceId, { name });
     }
+    return false;
   }, [onSpaceUpdate, requireSpaceManagement]);
 
   const handleDelete = useCallback((spaceId) => {
