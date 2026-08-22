@@ -25,7 +25,7 @@ test('counter context menu is Continue pin only and calls handleContinuePin', ()
   assert.doesNotMatch(counterBlock, /item\('Delete'/);
   assert.doesNotMatch(counterBlock, /item\('Cut'/);
   assert.doesNotMatch(counterBlock, /item\('Paste'/);
-  assert.match(menu, /kind: 'page' \| 'callout' \| 'counter' \| 'annotation' \| 'group'/);
+  assert.match(menu, /kind, \/\/ 'page' \| 'callout' \| 'counter' \| 'annotation' \| 'group'/);
   assert.match(menu, /ctx\.kind === 'counter' \? 'Counter'/);
 });
 
