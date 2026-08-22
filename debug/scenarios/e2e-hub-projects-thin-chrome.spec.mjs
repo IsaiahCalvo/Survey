@@ -62,6 +62,10 @@ function fileRow(page, name) {
   return desktopLayout(page).locator('[data-document-id]').filter({ hasText: name }).first();
 }
 
+function filesHeader(page) {
+  return desktopLayout(page).locator('span', { hasText: /^Files$/ }).locator('xpath=following-sibling::div[1]');
+}
+
 async function projectOrder(page) {
   return desktopLayout(page).locator('[data-project-id]').evaluateAll((rows) => (
     rows.map((row) => row.querySelector('div[style*="font-weight: 600"]')?.textContent?.trim() || row.textContent?.trim() || '')
@@ -166,10 +170,10 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   await expect(fileRow(page, SE011)).toBeVisible();
   await expect(fileRow(page, RFI)).toBeVisible();
 
-  // File Select Move/Copy — disabled until a file is checked.
-  const fileSelect = desktopLayout(page).getByRole('button', { name: 'Select', exact: true }).first();
+  // File Select Move/Copy — the Files-header Select, not project-list Select.
+  const fileSelect = filesHeader(page).getByRole('button', { name: 'Select', exact: true });
   await fileSelect.click();
-  const moveCopy = desktopLayout(page).getByRole('button', { name: 'Move/Copy', exact: true });
+  const moveCopy = filesHeader(page).getByRole('button', { name: 'Move/Copy', exact: true });
   await expect(moveCopy).toBeDisabled();
   await fileRow(page, SE011).click();
   await expect(moveCopy).toBeEnabled();
@@ -199,7 +203,7 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   await expect(again).toHaveCount(0);
   await expect(fileRow(page, SE011)).toBeVisible();
   await expect(fileRow(page, RFI)).toBeVisible();
-  await desktopLayout(page).getByRole('button', { name: 'Done', exact: true }).first().click();
+  await filesHeader(page).getByRole('button', { name: 'Done', exact: true }).click();
   await projectRow(page, LAB).click();
   await expect(fileRow(page, DOOR)).toBeVisible();
   await expect(fileRow(page, SE011)).toBeVisible();
@@ -208,9 +212,9 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   // Move RFI Tower → MEP: leaves Tower; does not appear on Lab.
   await projectRow(page, TOWER).click();
   await expect(fileRow(page, RFI)).toBeVisible();
-  await desktopLayout(page).getByRole('button', { name: 'Select', exact: true }).first().click();
+  await filesHeader(page).getByRole('button', { name: 'Select', exact: true }).click();
   await fileRow(page, RFI).click();
-  await desktopLayout(page).getByRole('button', { name: 'Move/Copy', exact: true }).click();
+  await filesHeader(page).getByRole('button', { name: 'Move/Copy', exact: true }).click();
   const moveDlg = page.getByRole('dialog', { name: 'Move or copy documents' });
   await expect(moveDlg).toBeVisible();
   await moveDlg.getByRole('button', { name: 'Move', exact: true }).click();
