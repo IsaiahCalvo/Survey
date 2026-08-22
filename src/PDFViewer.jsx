@@ -12920,6 +12920,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
+    const liveSpace = (spacesRef.current || []).find((s) => s.id === spaceId);
+    if (!liveSpace) return;
+    const existingIds = new Set((liveSpace.assignedPages || []).map((entry) => entry.pageId));
+    const newPageIds = pageNumbers.filter((pageNumber) => (
+      Number.isInteger(pageNumber) && !existingIds.has(pageNumber)
+    ));
+    if (newPageIds.length === 0) return;
+
+    // Sibling of handleSpaceRemovePage / handleSpaceRenamePage:
+    // Add pages was setSpaces-only, so Ctrl+Z after Add pages rewound
+    // space:create (the whole card) instead of the assigned page rows.
+    addHistoryCheckpoint('space:update', {
+      spaceId,
+      pageIds: newPageIds,
+      updateKeys: ['assignedPages']
+    });
+
     setSpaces(prev => prev.map(space => {
       if (space.id !== spaceId) {
         return space;
@@ -12965,7 +12982,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         assignedPages: updatedPages
       };
     }));
-  }, [requireSpaceManagement]);
+  }, [addHistoryCheckpoint, requireSpaceManagement]);
 
   const cascadeDeleteScopedAppState = useCallback(({ spaceId, pageIds = null, regionIds = null, reason = 'space-scope-delete' }) => {
     if (!spaceId) return;
