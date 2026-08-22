@@ -212,18 +212,21 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
   const testPdfDialog = settingsDialog(page);
   await expect(testPdfDialog).toBeVisible({ timeout: 15_000 });
   await expect(testPdfDialog.locator('.account-sidebar-btn.active')).toHaveText('General');
-  expect(await displayedProfile(testPdfDialog)).toEqual([
-    'Isaiah',
-    'Calvo',
-    'dev-hubpreview@example.invalid',
+  // Isolation: ?testPdf= Home uses DevTestRoute, not hubPreview Isaiah Calvo.
+  const testPdfProfile = await displayedProfile(testPdfDialog);
+  expect(testPdfProfile).toEqual([
+    'Dev',
+    'Test User',
+    'dev-test-user@example.invalid',
   ]);
+  expect(testPdfProfile).not.toEqual(seededProfile);
   await testPdfDialog.getByRole('button', { name: 'Edit profile' }).click();
   await testPdfDialog.locator('#firstName').fill('HomePat');
   await testPdfDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect(await displayedProfile(testPdfDialog)).toEqual([
-    'Isaiah',
-    'Calvo',
-    'dev-hubpreview@example.invalid',
+    'Dev',
+    'Test User',
+    'dev-test-user@example.invalid',
   ]);
   await testPdfDialog.locator('.account-settings-close').click();
 
@@ -273,7 +276,8 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
     overlayClose: true,
     documentsIsolation: true,
     guestNoSettings: true,
-    testPdfHomeGeneral: true,
+    testPdfHomeGeneral: testPdfProfile,
+    testPdfIsolatedFromHubPreview: true,
     mobileGeneral: true,
     chipNameUnchanged: true,
   };

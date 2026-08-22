@@ -60,6 +60,13 @@ test('General pane is local chrome: display / edit / Cancel / Save / no theme', 
   assert.match(preview, /deleteAccount: previewBlocked\('delete accounts'\)/);
   assert.doesNotMatch(preview, /VITE_DEV_AUTO_LOGIN/);
 
+  const devTest = read('src/DevTestRoute.jsx');
+  assert.match(devTest, /first_name: 'Dev'/);
+  assert.match(devTest, /last_name: 'Test User'/);
+  assert.match(devTest, /email: 'dev-test-user@example.invalid'/);
+  assert.match(devTest, /updateProfile: previewBlocked\('save profile changes'\)/);
+  assert.notEqual(mockHubPreviewUser.email, 'dev-test-user@example.invalid');
+
   assert.match(css, /@media \(max-width: 768px\)/);
   assert.match(css, /\.account-settings-sidebar \{\s*width: 100%;\s*flex-direction: row;/);
 });
