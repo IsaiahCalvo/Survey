@@ -274,6 +274,15 @@ async function eraseAcrossId(page, id) {
       const i1 = Math.max(i0 + 1, Math.floor((samples.length - 1) * 0.55));
       return samples.slice(i0, i1 + 1);
     }
+    const group = document.querySelector(`[data-anno-id="${annotationId}"]`);
+    let box = null;
+    try { box = group?.getBBox?.(); } catch { box = null; }
+    if (box && box.width > 0 && box.height > 0) {
+      return [
+        toClient(box.x + box.width * 0.25, box.y + box.height * 0.5),
+        toClient(box.x + box.width * 0.75, box.y + box.height * 0.5),
+      ];
+    }
     const left = Number(object.left ?? object.x ?? NaN);
     const top = Number(object.top ?? object.y ?? NaN);
     const width = Number(object.width ?? NaN);
@@ -367,6 +376,10 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   // Intended — Full stroke erase deletes the hit object, not its sibling.
   await setEraserType(page, 'Full stroke erase');
   expect(await page.evaluate(() => localStorage.getItem('eraserMode'))).toBe('entire');
+  await activateTool(page, 'Draw', 'Full stroke erase');
+  const size = page.getByRole('textbox', { name: 'Size', exact: true });
+  await size.fill('40');
+  await size.press('Enter');
   await eraseAcrossId(page, rectA.id);
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rectA.id)
@@ -479,6 +492,11 @@ test('390 Eraser mode intended + break + edge', async ({ page }) => {
   await expect(list).toHaveCount(0);
   await expect(mode).toHaveAttribute('aria-label', /Eraser mode: Full Stroke/);
   expect(await page.evaluate(() => localStorage.getItem('eraserMode'))).toBe('entire');
+  const size = page.getByRole('textbox', { name: 'Size', exact: true });
+  if (await size.isVisible().catch(() => false)) {
+    await size.fill('40');
+    await size.press('Enter');
+  }
 
   await eraseAcrossId(page, rect.id);
   await expect.poll(async () => (
