@@ -67,7 +67,8 @@ test('live spec proves fail-closed chrome and does not flip the flag', () => {
   assert.match(live, /PRINT_PANEL_FAILCLOSED_PROOF/);
   assert.match(live, /PRINT_PANEL_ENABLED=false/);
   assert.match(live, /Control\+p/);
-  assert.match(live, /Control\+Shift\+P/);
+  assert.match(live, /dispatchPrintHotkey/);
+  assert.match(live, /shift: true/);
   assert.match(live, /width: 390/);
   assert.match(live, /hubPreview=1/);
   assert.match(live, /panel enabled=false/);
