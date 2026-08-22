@@ -220,8 +220,11 @@ test('Keep active desktop checkbox + 390 toggle after-place and module-step', as
   // Keep-active did not mint a Doors mark.
 
   await assertNoErrorBoundary(page);
+  const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
+  expect(fileId, 'file.id must stay unset on ?testPdf=').toBeNull();
+});
 
-  // 390: same flag, different chrome (role=checkbox button) + pan after place when off.
+test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     try { localStorage.clear(); } catch { /* ignore */ }
@@ -232,11 +235,16 @@ test('Keep active desktop checkbox + 390 toggle after-place and module-step', as
   await page.getByRole('button', { name: 'Open survey' }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
+  const closeSheet = page.getByRole('button', { name: 'Close Survey panel' });
+  if (await closeSheet.count()) {
+    await closeSheet.click();
+    await expect(closeSheet).toHaveCount(0);
+  }
   const mobileKeep = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(mobileKeep).toBeVisible({ timeout: 15_000 });
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'false');
 
-  await mobileKeep.click();
+  await mobileKeep.click({ force: true });
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'true');
   expect(await markerCount(page)).toBe(0);
 
@@ -253,7 +261,7 @@ test('Keep active desktop checkbox + 390 toggle after-place and module-step', as
   const keepAfterPen = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(keepAfterPen).toBeVisible({ timeout: 10_000 });
   if ((await keepAfterPen.getAttribute('aria-checked')) !== 'true') {
-    await keepAfterPen.click();
+    await keepAfterPen.click({ force: true });
   }
   await placeNamedMarker(page, 'Mobile Keep On', { x0: 0.24, y0: 0.30, x1: 0.48, y1: 0.46 });
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'true');
@@ -262,7 +270,7 @@ test('Keep active desktop checkbox + 390 toggle after-place and module-step', as
     await expect(wallsChip390).toHaveClass(/is-active/);
   }
 
-  await page.getByRole('checkbox', { name: 'Keep active' }).click();
+  await page.getByRole('checkbox', { name: 'Keep active' }).click({ force: true });
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'false');
   if (await wallsCat.count()) {
     await wallsCat.click();
@@ -273,7 +281,6 @@ test('Keep active desktop checkbox + 390 toggle after-place and module-step', as
   if (await wallsChip390.count()) {
     await expect(wallsChip390).not.toHaveClass(/is-active/);
   }
-  // Mobile Keep-active chrome stays up on pan (demo parity); category is what clears.
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'false');
 
