@@ -136,21 +136,28 @@ async function annotationById(page, id) {
   return (await annotationSnapshot(page)).find((row) => row.id === id) || null;
 }
 
+function toolIsArmed(pressed, className) {
+  const cls = String(className || '');
+  return pressed === 'true' || cls.includes('is-active') || cls.includes('btn-active');
+}
+
 async function activateTool(page, categoryName, toolName) {
   const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
   if (await sub.count()) {
-    if ((await sub.first().getAttribute('aria-pressed')) !== 'true') await sub.first().click();
+    const btn = sub.first();
+    if (!toolIsArmed(await btn.getAttribute('aria-pressed'), await btn.getAttribute('class'))) await btn.click();
     return;
   }
   const visible = page.getByRole('button', { name: toolName, exact: true });
   if (await visible.count() && await visible.first().isVisible().catch(() => false)) {
-    if ((await visible.first().getAttribute('aria-pressed')) !== 'true') await visible.first().click();
+    const btn = visible.first();
+    if (!toolIsArmed(await btn.getAttribute('aria-pressed'), await btn.getAttribute('class'))) await btn.click();
     return;
   }
   await page.getByRole('button', { name: categoryName, exact: true }).first().click();
   const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
   const target = (await again.count()) ? again.first() : page.getByRole('button', { name: toolName, exact: true }).first();
-  if ((await target.getAttribute('aria-pressed')) !== 'true') await target.click();
+  if (!toolIsArmed(await target.getAttribute('aria-pressed'), await target.getAttribute('class'))) await target.click();
 }
 
 async function selectMode(page) {
@@ -167,8 +174,18 @@ async function selectMode(page) {
 }
 
 async function commitEdit(page) {
-  const box = await pageBox(page);
-  await page.mouse.click(box.x + 12, box.y + 12);
+  // Overlay wrapper is inset:0 / pointer-events:none; the editor box is
+  // pointer-events:auto. Click chrome (not the page) so closest() misses
+  // [data-text-edit-overlay] and the document mousedown commits.
+  await page.mouse.click(8, 220);
+  if (await page.locator('[data-text-edit-overlay]').count()) {
+    const selectBtn = page.getByRole('button', { name: 'Select', exact: true }).first();
+    if (await selectBtn.isVisible().catch(() => false)) {
+      await selectBtn.click();
+    } else {
+      await page.mouse.click(8, 420);
+    }
+  }
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   await blurInputs(page);
 }
@@ -195,6 +212,10 @@ async function createText(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y
   const before = new Set((await annotationSnapshot(page)).filter(isTextRow).map((row) => row.id));
   await blurInputs(page);
   await activateTool(page, 'Text', 'Text');
+  const drawOverlay = page.locator('[data-text-overlay="1"]');
+  if (await drawOverlay.count()) {
+    await expect(drawOverlay.first()).toBeVisible({ timeout: 8_000 });
+  }
   await dragOnPage(page, coords);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
@@ -403,7 +424,13 @@ test('390 Edit text intended + break + edge', async ({ page }) => {
     || await defaults.count() > 0
     || await page.getByRole('button', { name: /Arial|Helvetica/ }).first().isVisible().catch(() => false);
   expect(defaultsOpen || await aa.getAttribute('aria-expanded') === 'true', '390 unselected Aa opens defaults').toBeTruthy();
-  await page.keyboard.press('Escape');
+  const closeDefaults = page.getByRole('button', { name: 'Close text formatting', exact: true });
+  if (await closeDefaults.count()) {
+    await closeDefaults.click();
+  } else {
+    await page.getByRole('button', { name: 'Close annotation settings', exact: true }).click();
+  }
+  await expect(closeDefaults).toHaveCount(0, { timeout: 8_000 });
   await blurInputs(page);
 
   // Intended — create + select + Aa enters overlay.
