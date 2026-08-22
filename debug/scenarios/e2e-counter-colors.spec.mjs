@@ -467,7 +467,7 @@ test('desktop Counter CompactColorPicker Fill + Number every swatch intended + b
   }));
 });
 
-test('390 Counter Fill + Stroke chips every hex intended + break + edge', async ({ page }) => {
+test('390 Counter Fill + Stroke CompactColorPicker every swatch intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
   await openEditor(page, { width: 390, height: 844 });
@@ -482,46 +482,64 @@ test('390 Counter Fill + Stroke chips every hex intended + break + edge', async 
 
   expect((await counterSnapshot(page)).length).toBe(0);
   const pin = await dropPin(page, { xf: 0.34, yf: 0.32 });
-  const fillProof = [];
-  for (const color of MOBILE_ANNOTATION_COLORS) {
-    await openCounterSheet(page, 'fill');
-    await expect(page.getByRole('button', { name: `Set Fill color ${color}`, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: `Set Fill color ${color}`, exact: true }).click();
-    await expect.poll(async () => storedFill(await annotationById(page, pin.id))).toBe(colorKey(color));
-    fillProof.push({ chip: color, stored: colorKey(color) });
-    await closeCounterSheet(page);
-  }
-  expect(fillProof.map((row) => row.chip)).toEqual([...MOBILE_ANNOTATION_COLORS]);
-
-  const numberProof = [];
-  for (const color of MOBILE_ANNOTATION_COLORS) {
-    await openCounterSheet(page, 'stroke');
-    await expect(page.getByRole('button', { name: `Set Stroke color ${color}`, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: `Set Stroke color ${color}`, exact: true }).click();
-    await expect.poll(async () => storedNumber(await annotationById(page, pin.id))).toBe(colorKey(color));
-    numberProof.push({ chip: color, stored: colorKey(color) });
-    await closeCounterSheet(page);
-  }
-  expect(numberProof.map((row) => row.chip)).toEqual([...MOBILE_ANNOTATION_COLORS]);
-  expect(storedFill(await annotationById(page, pin.id))).toBe(colorKey(MOBILE_ANNOTATION_COLORS[8]));
 
   await openCounterSheet(page, 'fill');
+  for (const color of MOBILE_ANNOTATION_COLORS) {
+    await expect(page.getByRole('button', { name: `Set Fill color ${color}`, exact: true })).toBeVisible();
+  }
   await page.getByRole('button', { name: 'Open fill color picker', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
-  await page.locator('button[title="#0000FF"]').first().click();
+  const fillProof = [];
+  for (const swatch of PATCH_ORDER) {
+    await clickSwatch(page, swatch);
+    if (swatch === 'transparent') {
+      await expect.poll(async () => isTransparentFill(await annotationById(page, pin.id))).toBeTruthy();
+      fillProof.push({ swatch, stored: 'TRANSPARENT' });
+    } else {
+      await expect.poll(async () => storedFill(await annotationById(page, pin.id))).toBe(swatch);
+      fillProof.push({ swatch, stored: swatch });
+    }
+  }
+  await clickSwatch(page, '#FF0000');
+  await expect.poll(async () => storedFill(await annotationById(page, pin.id))).toBe('#FF0000');
   await page.keyboard.press('Escape');
   await closeCounterSheet(page);
-  await expect.poll(async () => storedFill(await annotationById(page, pin.id))).toBe('#0000FF');
+
+  await openCounterSheet(page, 'stroke');
+  for (const color of MOBILE_ANNOTATION_COLORS) {
+    await expect(page.getByRole('button', { name: `Set Stroke color ${color}`, exact: true })).toBeVisible();
+  }
+  await page.getByRole('button', { name: 'Open stroke color picker', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
+  const numberProof = [];
+  for (const swatch of PATCH_ORDER) {
+    await clickSwatch(page, swatch);
+    if (swatch === 'transparent') {
+      await expect.poll(async () => isTransparentNumber(await annotationById(page, pin.id))).toBeTruthy();
+      numberProof.push({ swatch, stored: 'TRANSPARENT' });
+    } else {
+      await expect.poll(async () => storedNumber(await annotationById(page, pin.id))).toBe(swatch);
+      numberProof.push({ swatch, stored: swatch });
+    }
+  }
+  await clickSwatch(page, '#0000FF');
+  await expect.poll(async () => storedNumber(await annotationById(page, pin.id))).toBe('#0000FF');
+  await expect.poll(async () => storedFill(await annotationById(page, pin.id))).toBe('#FF0000');
+  await page.keyboard.press('Escape');
+  await closeCounterSheet(page);
 
   await clickNewCount(page);
   const isolated = await dropPin(page, { xf: 0.62, yf: 0.32 });
   expect(isolated.seriesId).not.toBe(pin.seriesId);
   await openCounterSheet(page, 'fill');
-  await page.getByRole('button', { name: `Set Fill color ${MOBILE_ANNOTATION_COLORS[2]}`, exact: true }).click();
+  await page.getByRole('button', { name: 'Open fill color picker', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
+  await clickSwatch(page, '#00FFFF');
+  await page.keyboard.press('Escape');
   await closeCounterSheet(page);
-  await expect.poll(async () => storedFill(await annotationById(page, isolated.id))).toBe(colorKey(MOBILE_ANNOTATION_COLORS[2]));
-  expect(storedFill(await annotationById(page, pin.id))).toBe('#0000FF');
-  expect(storedNumber(await annotationById(page, pin.id))).toBe(colorKey(MOBILE_ANNOTATION_COLORS[8]));
+  await expect.poll(async () => storedFill(await annotationById(page, isolated.id))).toBe('#00FFFF');
+  expect(storedFill(await annotationById(page, pin.id))).toBe('#FF0000');
+  expect(storedNumber(await annotationById(page, pin.id))).toBe('#0000FF');
 
   const beforeSelect = (await counterSnapshot(page)).length;
   await page.getByRole('button', { name: 'Select', exact: true }).first().click();
@@ -557,8 +575,8 @@ test('390 Counter Fill + Stroke chips every hex intended + break + edge', async 
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
 
   console.log('COUNTER_390_SWATCH_PROOF', JSON.stringify({
-    pin: { id: pin.id, fill: fillProof, number: numberProof, compactFill: '#0000FF' },
-    isolated: { id: isolated.id, stored: colorKey(MOBILE_ANNOTATION_COLORS[2]), undone: true },
+    pin: { id: pin.id, fill: fillProof, number: numberProof, restoredFill: '#FF0000', restoredNumber: '#0000FF' },
+    isolated: { id: isolated.id, stored: '#00FFFF', undone: true },
     desktopChips,
     viewBox,
     fileId,

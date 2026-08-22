@@ -64,7 +64,7 @@ test('composeColorForPatch stores every catalog fill + numberColor including tra
 test('live Counter every-swatch spec covers Fill + Number + series isolation + break + edge', () => {
   const spec = read('debug/scenarios/e2e-counter-colors.spec.mjs');
   assert.match(spec, /desktop Counter CompactColorPicker Fill \+ Number every swatch/);
-  assert.match(spec, /390 Counter Fill \+ Stroke chips every hex/);
+  assert.match(spec, /390 Counter Fill \+ Stroke CompactColorPicker every swatch/);
   assert.match(spec, /patchEverySwatch/);
   assert.match(spec, /clickNewCount/);
   assert.match(spec, /#80FF00/);
