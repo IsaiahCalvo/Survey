@@ -206,18 +206,28 @@ test('survey-rail Rename intended + break + edge', async ({ page }) => {
   await expect(renameField(page, 'rail-b')).toHaveValue('rail-b');
   expect(await renameField(page, 'escaped-nope').count(), 'Escape does not commit').toBe(0);
 
-  // Break: empty name falls back to Walls N (not rejected, not left blank).
-  await commitRenameEnter(page, 'renamed-blur', '', 'Walls 1');
-  const emptySnap = await markerRenameSnapshot(page, 'Walls 1');
-  expect(emptySnap.present, 'empty commits fallback Walls 1').toBe(true);
-  expect(emptySnap.value).toBe('Walls 1');
-  expect(emptySnap.ariaLabel).toBe('Rename Walls 1');
+  // Break: empty name falls back to Walls N (index in the category list),
+  // not rejected and not left blank.
+  const emptyField = renameField(page, 'renamed-blur');
+  await emptyField.click();
+  await emptyField.fill('');
+  await emptyField.press('Enter');
+  let emptyFallback = null;
+  await expect.poll(async () => {
+    const values = await desktopRenameInputs(page).evaluateAll((nodes) => nodes.map((node) => node.value));
+    emptyFallback = values.find((value) => /^Walls \d+$/.test(value)) || null;
+    return emptyFallback;
+  }, { message: 'empty name falls back to Walls N' }).toBeTruthy();
+  const emptySnap = await markerRenameSnapshot(page, emptyFallback);
+  expect(emptySnap.present, `empty commits fallback ${emptyFallback}`).toBe(true);
+  expect(emptySnap.value).toBe(emptyFallback);
+  expect(emptySnap.ariaLabel).toBe(`Rename ${emptyFallback}`);
   expect((await markerRenameSnapshot(page, 'rail-b')).value, 'B unchanged after empty fallback').toBe('rail-b');
 
   // Edge: Pen-armed still commits when the field is focused.
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  await commitRenameEnter(page, 'Walls 1', 'pen-renamed');
+  await commitRenameEnter(page, emptyFallback, 'pen-renamed');
   expect((await markerRenameSnapshot(page, 'pen-renamed')).value).toBe('pen-renamed');
   expect((await markerRenameSnapshot(page, 'rail-b')).value, 'B unchanged after Pen-armed rename').toBe('rail-b');
 
