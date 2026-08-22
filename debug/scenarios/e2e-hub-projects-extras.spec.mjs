@@ -66,12 +66,12 @@ async function projectOrder(page) {
 }
 
 async function openProjectMore(page, name) {
-  await projectRow(page, name).locator('button[title="More"]').click();
+  await projectRow(page, name).getByRole('button', { name: 'More' }).click();
   await expect(page.getByRole('menu')).toBeVisible();
 }
 
 async function openFileMore(page, name) {
-  await fileRow(page, name).locator('button[title="More"]').click();
+  await fileRow(page, name).getByRole('button', { name: 'More' }).click();
   await expect(page.getByRole('menu')).toBeVisible();
 }
 
