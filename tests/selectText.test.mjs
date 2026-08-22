@@ -55,6 +55,8 @@ test('Shift+V arms text-select; layer mounts only then; SVG falls through; form 
   assert.match(viewerContainer, /\.pdfjsTextLayer\.is-interactive/);
   assert.match(viewerContainer, /survey-pdfjs-mobile-surface \.pdfjsTextLayer\.is-interactive/);
   assert.match(viewerContainer, /user-select: text !important/);
+  assert.match(viewerContainer, /data-text-select=\{interactionMode === 'TextSelection' \? 'true' : 'false'\}/);
+  assert.match(viewerContainer, /:has\(\.pdfjsTextLayer\.is-interactive\)/);
   assert.match(viewerContainer, /Two-finger pinch must still start when the first contact is a glyph/);
 
   const dev = read('src/DevTestRoute.jsx');

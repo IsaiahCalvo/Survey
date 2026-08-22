@@ -2108,6 +2108,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       id={viewerId}
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
       data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
+      data-text-select={interactionMode === 'TextSelection' ? 'true' : 'false'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -2118,9 +2119,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         WebkitOverflowScrolling: 'touch',
         touchAction: isMobileSurface ? 'none' : 'pan-x pan-y pinch-zoom',
         WebkitTouchCallout: isMobileSurface ? 'none' : undefined,
-        WebkitUserSelect: isMobileSurface ? 'none' : undefined,
+        WebkitUserSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         WebkitUserDrag: isMobileSurface ? 'none' : undefined,
-        userSelect: isMobileSurface ? 'none' : undefined,
+        userSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         ...style
       }}
     >
@@ -2182,6 +2183,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           user-select: none !important;
           -webkit-touch-callout: none !important;
           -webkit-user-drag: none !important;
+        }
+        .survey-pdfjs-mobile-surface[data-text-select='true'],
+        .survey-pdfjs-mobile-surface:has(.pdfjsTextLayer.is-interactive) {
+          -webkit-user-select: text !important;
+          user-select: text !important;
         }
         .survey-pdfjs-mobile-surface input,
         .survey-pdfjs-mobile-surface textarea,
