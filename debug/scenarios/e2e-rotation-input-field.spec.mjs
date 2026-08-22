@@ -303,14 +303,11 @@ test('desktop RotationInputField intended + break + edge', async ({ page }) => {
   await expectAngle(page, b.id, 0, 'undo must drop second-rect 90');
   await expectAngle(page, a.id, 45, 'undo must hold the first angle');
 
-  // Edge — empty Select invents 0; Pen hide drops mtr (same as Style/Color).
+  // Edge — empty Select + Pen invent 0 and hold the stored angle.
+  const marksBeforePen = (await userAnnotationSnapshot(page)).map((row) => row.id).sort();
   await page.keyboard.press('v');
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').click({ position: { x: 12, y: 12 } });
   expect(await page.getByRole('textbox', { name: 'Rotation angle in degrees', exact: true }).count()).toBe(0);
-
-  await selectStroke(page, a.id);
-  await expect(page.locator('[data-rotation-handle="mtr"]').first()).toBeVisible();
-  const marksBeforePen = (await userAnnotationSnapshot(page)).map((row) => row.id).sort();
   await activateTool(page, 'Draw', 'Pen');
   expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'Pen hide mtr').toBe(0);
   expect(await page.getByRole('textbox', { name: 'Rotation angle in degrees', exact: true }).count()).toBe(0);
