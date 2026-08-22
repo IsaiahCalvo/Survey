@@ -63,11 +63,12 @@ async function openProject(page, name) {
   await page.keyboard.press('Escape').catch(() => {});
   await page.mouse.up().catch(() => {});
   await eatDragClick(page);
-  const row = projectRow(page, name);
+  const seedId = { [TOWER]: 'p1', [LAB]: 'p2', [MEP]: 'p3' }[name];
+  const row = desktopLayout(page).locator(`[data-drag-rearrange-row][data-project-id="${seedId}"]`);
   await expect(row).toBeVisible({ timeout: 8_000 });
-  // Click the name column, not the 28px handle — leftover file-row
-  // pointer-up was starting a card drag instead of setOpenId.
-  await row.evaluate((el) => el.click());
+  const done = desktopLayout(page).getByRole('button', { name: 'Done', exact: true });
+  if (await done.count()) await done.click();
+  await row.dispatchEvent('click');
   await expect(desktopLayout(page).getByRole('textbox', { name: 'Click to rename' })).toHaveValue(name, { timeout: 8_000 });
 }
 
