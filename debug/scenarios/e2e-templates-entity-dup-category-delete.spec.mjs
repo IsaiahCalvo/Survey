@@ -412,19 +412,22 @@ test('Templates New entity + entity Duplicate + entity Delete + category Delete'
       await entitiesOpen.click();
       const mobileDialog = page.getByRole('dialog', { name: 'Entities' });
       await expect(mobileDialog).toBeVisible();
+      const entSelect = mobileDialog.getByRole('button', { name: /^(Select|Done)$/ }).first();
+      if (await entSelect.isVisible().catch(() => false)) {
+        const selectLabel = (await entSelect.textContent() || '').trim();
+        if (selectLabel === 'Select') await entSelect.evaluate((button) => button.click());
+        mobileEntDup = await mobileDialog.getByRole('button', { name: 'Duplicate', exact: true }).count();
+        mobileEntDelete = await mobileDialog.getByRole('button', { name: 'Delete', exact: true }).count();
+        mobileDeleteHasConfirm = await confirmDialogOpen(page);
+        const done = mobileDialog.getByRole('button', { name: 'Done', exact: true });
+        if (await done.count()) await done.evaluate((button) => button.click());
+      }
       const newEnt = mobileDialog.getByRole('button', { name: 'New entity', exact: true });
       mobileNewEntity = await newEnt.count();
       if (mobileNewEntity > 0) {
         await newEnt.first().evaluate((button) => button.click());
         mobileAddedEntity = await mobileDialog.locator('input[value="Entity 1"]').count() > 0
           || await mobileDialog.getByText('Entity 1', { exact: true }).count() > 0;
-      }
-      const entSelect = mobileDialog.getByRole('button', { name: /^(Select|Done)$/ }).first();
-      if (await entSelect.isVisible().catch(() => false)) {
-        await entSelect.evaluate((button) => button.click());
-        mobileEntDup = await mobileDialog.getByRole('button', { name: 'Duplicate', exact: true }).count();
-        mobileEntDelete = await mobileDialog.getByRole('button', { name: 'Delete', exact: true }).count();
-        mobileDeleteHasConfirm = await confirmDialogOpen(page);
       }
       const close = mobileDialog.getByRole('button', { name: 'Close', exact: true });
       if (await close.count()) await close.evaluate((button) => button.click());
@@ -436,6 +439,13 @@ test('Templates New entity + entity Duplicate + entity Delete + category Delete'
       mobileDeleteHasConfirm = mobileDeleteHasConfirm || await confirmDialogOpen(page);
     }
   }
+
+  expect(mobileNewEntity, '390 New entity').toBeGreaterThan(0);
+  expect(mobileAddedEntity, '390 minted Entity 1').toBe(true);
+  expect(mobileEntDup, '390 entity Duplicate').toBeGreaterThan(0);
+  expect(mobileEntDelete, '390 entity Delete').toBeGreaterThan(0);
+  expect(mobileCatDelete, '390 category Delete').toBeGreaterThan(0);
+  expect(mobileDeleteHasConfirm, '390 delete still has no confirm').toBe(false);
 
   await assertNoErrorBoundary(page);
   console.log(JSON.stringify({
