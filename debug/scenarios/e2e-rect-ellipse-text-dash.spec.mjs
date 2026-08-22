@@ -202,8 +202,24 @@ async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
 
 async function deselectEmpty(page) {
   await page.keyboard.press('Escape');
+  if (await page.locator('[data-text-edit-overlay]').count()) {
+    const box = await pageBox(page);
+    await page.mouse.click(box.x + 8, box.y + 8);
+    await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  }
   const box = await pageBox(page);
-  await page.mouse.click(box.x + 10, box.y + 10);
+  await page.mouse.click(box.x + 8, box.y + 8);
+}
+
+async function assertNoSelection(page) {
+  await deselectEmpty(page);
+  await selectMode(page);
+  await deselectEmpty(page);
+  await expect.poll(async () => {
+    const overlay = await page.locator('[data-text-edit-overlay]').count();
+    const handles = await page.locator('[data-resize-handle]').count();
+    return overlay + handles;
+  }, { message: 'expected no selected annotation before next-draw Style' }).toBe(0);
 }
 
 async function userAnnotationSnapshot(page, pageNumber = 1) {
@@ -520,13 +536,14 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
   expect(selectedTextProof).toEqual(DASH_STYLES.map((row) => row.value));
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dashed');
   await expect.poll(async () => dashKey((await annotationById(page, textBox.id))?.strokeDashArray)).toBe('dashed');
+  await assertNoSelection(page);
 
   await activateTool(page, 'Shapes', 'Rectangle');
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Cloud');
   await activateTool(page, 'Shapes', 'Ellipse');
   const afterCloudEllipse = await listDesktopOptions(page, desktopStyleTrigger(page), 'Style');
   expect(afterCloudEllipse.join(' | ')).not.toMatch(/cloud/i);
-  await deselectEmpty(page);
+  await assertNoSelection(page);
   await activateTool(page, 'Shapes', 'Ellipse');
   const cloudArmedEllipse = await createEllipse(page, { x0: 0.58, y0: 0.56, x1: 0.80, y1: 0.70 });
   expectCloud(cloudArmedEllipse, false, 'Cloud-armed Ellipse create stays solid');
@@ -535,7 +552,7 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
   await activateTool(page, 'Text', 'Text');
   const afterCloudText = await listDesktopOptions(page, desktopStyleTrigger(page), 'Style');
   expect(afterCloudText.join(' | ')).not.toMatch(/cloud/i);
-  await deselectEmpty(page);
+  await assertNoSelection(page);
   await activateTool(page, 'Text', 'Text');
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dashed');
   const armedText = await createText(page, 'armed dash', {
@@ -553,7 +570,7 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
   expectDash(await annotationById(page, textBox.id), DASH_STYLES[1], 'Pen-armed must not rewrite first dashed Text');
 
   await activateTool(page, 'Shapes', 'Rectangle');
-  await deselectEmpty(page);
+  await assertNoSelection(page);
   await activateTool(page, 'Shapes', 'Rectangle');
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dotted');
   const isolation = await createRect(page, { x0: 0.12, y0: 0.78, x1: 0.28, y1: 0.90 });
