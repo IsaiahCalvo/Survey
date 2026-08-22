@@ -243,6 +243,14 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
     message: '4000% ceiling must apply',
   }).toBe(4000);
 
+  // Recover a usable scale before the restore family. 4000% makes the
+  // page huge; Fit page is the user path off the ceiling.
+  await selectDesktopFit(page, 'Fit page');
+  await expect.poll(() => zoomPercent(page), {
+    timeout: 20_000,
+    message: 'Fit page must leave the 4000% ceiling',
+  }).not.toBe(4000);
+
   // Break — empty + Enter restores the live scale (no 0 / no invent).
   await commitZoomPercent(page, 200);
   await expect.poll(() => zoomPercent(page)).toBe(200);
