@@ -54,7 +54,7 @@ Did not invent checklist items. Did not touch `zoomGeneration`, SVG viewBox zoom
 
 ## Live-proved
 
-Playwright `debug/scenarios/e2e-survey-checklist-or-next.spec.mjs` on Vite `http://localhost:5173` + `?testPdf=clickable-link-test.pdf&surveyTransitionE2E=1`. Node `surveyChecklistOrNext.test.mjs` **3 / 3**. Did **not** run official `npm test` (no high-risk file). 8448 not loosened.
+Playwright `debug/scenarios/e2e-survey-checklist-or-next.spec.mjs` **1 / 1 (5.0s)** on Vite `http://localhost:5173` + `?testPdf=clickable-link-test.pdf&surveyTransitionE2E=1`. Node `surveyChecklistOrNext.test.mjs` **3 / 3**. Did **not** run official `npm test` (no high-risk file). 8448 not loosened.
 
 Receipt log: `SURVEY_CHECKLIST_OR_NEXT_PROOF` persist `null`.
 
@@ -86,7 +86,7 @@ Receipt log: `SURVEY_CHECKLIST_OR_NEXT_PROOF` persist `null`.
 
 | Slice | Verdict | Evidence |
 |---|---|---|
-| Undo | **pass** (no note checkpoint) | Ctrl+Z left attachments in place. |
+| Undo | **pass** (no note checkpoint) | Ctrl+Z popped B’s place and restored A without photos. Re-saved `keep-photo.png` for 390. |
 | 390 same chrome | **pass** | Photo / Video present; `mobile-extra.png` saved; Cancel after Remove kept the stored extra. |
 | no `file.id` | **pass** | `persist: null`. |
 
