@@ -55,6 +55,7 @@ test('live spec covers create/expand, empty/cancel, existing join, 390 absent, h
   assert.match(spec, /Collapse group/);
   assert.match(spec, /child bookmark must jump to page 3/);
   assert.match(spec, /Add bookmark to group/);
+  assert.match(spec, /Existing-list accessible name/);
   assert.match(spec, /390 New bookmark group must be 0/);
   assert.match(spec, /hubPreview New bookmark group must be 0/);
   assert.match(spec, /0 0 612 792/);

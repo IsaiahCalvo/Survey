@@ -213,7 +213,8 @@ test('desktop bookmark group intended + break + edge', async ({ page }) => {
   const groupC = `E2E-GRP-C-${Date.now()}`;
   await openGroupModal(page);
   await page.getByPlaceholder('Enter bookmark group name').fill(groupC);
-  await page.getByRole('button', { name: solo, exact: true }).click();
+  // Existing-list accessible name is `${name} Page N`.
+  await page.getByRole('button', { name: new RegExp(`^${solo}\\b`) }).click();
   await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(bookmarkRow(page, groupC)).toBeVisible({ timeout: 10_000 });
   await expect(bookmarkRow(page, solo)).toBeVisible();
