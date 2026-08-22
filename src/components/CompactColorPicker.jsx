@@ -106,7 +106,9 @@ const CompactColorPicker = ({
         setLocalHex(color || '#000000');
         const hsv = hexToHsv(color);
         if (hsv) {
-            setHue(hsv.h);
+            // 0° and 360° are the same hex. Keep End-key 360 so ArrowRight
+            // clamps instead of looking like a wrap (360 → 0 → 1).
+            setHue((prev) => (prev === 360 && hsv.h === 0 ? 360 : hsv.h));
             setSaturation(hsv.s);
             setValue(hsv.v);
         }

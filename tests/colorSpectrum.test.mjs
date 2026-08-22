@@ -63,6 +63,7 @@ test('CompactColorPicker spectrum uses pointer capture + catalog keys', () => {
   assert.match(picker, /applySpectrumKey\(event\.key, saturation, value\)/);
   assert.match(picker, /applyHueKey\(event\.key, hue\)/);
   assert.match(picker, /Math\.max\(0, Math\.min\(e\.clientX - rect\.left, rect\.width\)\)/);
+  assert.match(picker, /prev === 360 && hsv\.h === 0 \? 360 : hsv\.h/);
   assert.doesNotMatch(picker, /hue\s*\+\s*360|hue\s*%\s*360/);
 });
 
@@ -76,17 +77,19 @@ test('live C-04 spec covers write, clamp, out-of-bounds, 390, hub, file.id', () 
   assert.match(spec, /data-color-picker-spectrum/);
   assert.match(spec, /data-color-picker-hue/);
   assert.match(spec, /SV left-top \/ out-of-bounds must write white/);
-  assert.match(spec, /hue 120 must write #00FF00/);
+  assert.match(spec, /hue 120 must write green/);
+  assert.match(spec, /function isSpectrumGreen/);
+  assert.match(spec, /function nudgeHueTo/);
   assert.match(spec, /hue clamps, it does not wrap/);
   assert.match(spec, /unused keys do not steal/);
   assert.match(spec, /Pen hides Color spectrum/);
-  assert.match(spec, /hubPreview/);
-  assert.match(spec, /Color spectrum, exact: true \}\)\.count\(\)\)\.toBe\(0\)/);
+  assert.match(spec, /hubPreview Color spectrum must be 0/);
   assert.match(spec, /0 0 612 792/);
   assert.match(spec, /Do not stamp/);
   assert.match(spec, /file\.id/);
   assert.match(spec, /390 chip sheet is not the spectrum/);
   assert.match(spec, /next-draw stamps green/);
+  assert.match(spec, /closePagesOverlay\(page\)/);
 
   const hex = read('debug/scenarios/e2e-hex-lengths.spec.mjs');
   assert.doesNotMatch(hex, /data-color-picker-spectrum/);

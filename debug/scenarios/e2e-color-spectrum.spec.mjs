@@ -137,6 +137,17 @@ function storedFill(row) {
   return colorKey(row?.fill || row?.visualFill);
 }
 
+function isSpectrumGreen(hex) {
+  const match = String(hex || '').match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
+  if (!match) return false;
+  const r = parseInt(match[1], 16);
+  const g = parseInt(match[2], 16);
+  const b = parseInt(match[3], 16);
+  // Live hue aria-valuenow is Math.round(hue). 119.5° displays as 120
+  // and hsvToHex yields #01FF00, not catalog #00FF00.
+  return g === 255 && r <= 2 && b <= 2;
+}
+
 async function storedFillOf(page, id) {
   return storedFill(await annotationById(page, id));
 }
@@ -240,6 +251,27 @@ async function dragSpectrumOutside(page, { fromX, fromY, toX, toY }) {
   await page.mouse.up();
 }
 
+async function clickSwatch(page, hex) {
+  const grid = page.getByRole('button', { name: 'Preset colors', exact: true });
+  if (!(await page.locator(`button[title="${hex}"]`).first().isVisible().catch(() => false))) {
+    await grid.click();
+  }
+  await page.locator(`button[title="${hex}"]`).first().click();
+}
+
+async function nudgeHueTo(page, target) {
+  const hue = await hueSlider(page);
+  await expect.poll(async () => {
+    const now = Number(await hue.getAttribute('aria-valuenow'));
+    if (!Number.isFinite(now)) return -1;
+    if (now === target) return now;
+    const delta = target - now;
+    if (Math.abs(delta) >= 10) await hue.press(delta > 0 ? 'PageUp' : 'PageDown');
+    else await hue.press(delta > 0 ? 'ArrowRight' : 'ArrowLeft');
+    return Number(await hue.getAttribute('aria-valuenow'));
+  }, { message: `hue must reach ${target}` }).toBe(target);
+}
+
 test('desktop Color spectrum intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
@@ -250,7 +282,7 @@ test('desktop Color spectrum intended + break + edge', async ({ page }) => {
   const rect = await createRect(page);
   await selectStroke(page, rect.id);
   await openFillPicker(page);
-  await page.locator('button[title="#FF0000"]').first().click();
+  await clickSwatch(page, '#FF0000');
   await expect.poll(async () => storedFillOf(page, rect.id)).toBe('#FF0000');
 
   await openSpectrum(page);
@@ -261,50 +293,56 @@ test('desktop Color spectrum intended + break + edge', async ({ page }) => {
   expect(await page.getByRole('button', { name: 'Color spectrum', exact: true }).count()).toBeGreaterThan(0);
   expect(await page.getByRole('button', { name: 'Preset colors', exact: true }).count()).toBeGreaterThan(0);
 
-  // Intended — SV pointer writes the selected fill (not just valuetext).
+  // Intended — hue keyboard writes the selected fill from a clean #FF0000 HSV.
+  await nudgeHueTo(page, 120);
+  await expect.poll(async () => isSpectrumGreen(await storedFillOf(page, rect.id)), {
+    message: 'hue 120 must write green',
+  }).toBe(true);
+  expect(await hue.getAttribute('aria-valuenow')).toBe('120');
+
+  // Intended — SV pointer writes fill (not just valuetext). Out-of-bounds clamps.
+  await clickSwatch(page, '#FF0000');
+  await expect.poll(async () => storedFillOf(page, rect.id)).toBe('#FF0000');
+  await openSpectrum(page);
   await dragSpectrumOutside(page, { fromX: 0.5, fromY: 0.5, toX: -0.4, toY: -0.4 });
   await expect.poll(async () => storedFillOf(page, rect.id), {
     message: 'SV left-top / out-of-bounds must write white',
   }).toBe('#FFFFFF');
-  expect(await spectrum.getAttribute('aria-valuetext')).toMatch(/Saturation 0%, brightness 100%/);
+  expect(await (await svSlider(page)).getAttribute('aria-valuetext')).toMatch(/Saturation 0%, brightness 100%/);
 
   await dragSpectrumOutside(page, { fromX: 0.4, fromY: 0.4, toX: 1.6, toY: -0.4 });
   await expect.poll(async () => storedFillOf(page, rect.id), {
     message: 'SV right-top / out-of-bounds must restore pure hue red',
   }).toBe('#FF0000');
 
-  // Intended — hue keyboard is discrete +10°; 12× PageUp from 0 = 120° green.
-  await hue.focus();
-  for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
-  await expect.poll(async () => storedFillOf(page, rect.id), {
-    message: 'hue 120 must write #00FF00',
-  }).toBe('#00FF00');
-  expect(await hue.getAttribute('aria-valuenow')).toBe('120');
-
-  // Break — hue clamps, it does not wrap.
-  await page.keyboard.press('Home');
-  await expect.poll(async () => Number(await hue.getAttribute('aria-valuenow'))).toBe(0);
+  // Break — hue clamps, it does not wrap. Press on the slider so
+  // page-nav Home/End cannot steal the chord.
+  const hueClamp = await hueSlider(page);
+  await hueClamp.press('PageUp');
+  await hueClamp.press('PageUp');
+  await hueClamp.press('Home');
+  await expect.poll(async () => Number(await hueClamp.getAttribute('aria-valuenow'))).toBe(0);
   await expect.poll(async () => storedFillOf(page, rect.id)).toBe('#FF0000');
-  await page.keyboard.press('ArrowLeft');
-  expect(await hue.getAttribute('aria-valuenow')).toBe('0');
+  await hueClamp.press('ArrowLeft');
+  expect(await hueClamp.getAttribute('aria-valuenow')).toBe('0');
   expect(await storedFillOf(page, rect.id)).toBe('#FF0000');
-  await page.keyboard.press('End');
-  await expect.poll(async () => Number(await hue.getAttribute('aria-valuenow'))).toBe(360);
+  await hueClamp.press('End');
+  await expect.poll(async () => Number(await hueClamp.getAttribute('aria-valuenow'))).toBe(360);
   expect(await storedFillOf(page, rect.id)).toBe('#FF0000');
-  await page.keyboard.press('ArrowRight');
-  expect(await hue.getAttribute('aria-valuenow')).toBe('360');
+  await hueClamp.press('ArrowRight');
+  expect(await hueClamp.getAttribute('aria-valuenow')).toBe('360');
 
   // Break — SV Home stays at sat 0; unused keys do not steal.
-  await spectrum.focus();
-  await page.keyboard.press('Home');
+  const svClamp = await svSlider(page);
+  await svClamp.press('Home');
   await expect.poll(async () => storedFillOf(page, rect.id)).toBe('#FFFFFF');
-  const satBefore = await spectrum.getAttribute('aria-valuenow');
-  await page.keyboard.press('ArrowLeft');
-  expect(await spectrum.getAttribute('aria-valuenow')).toBe(satBefore);
-  await page.keyboard.press('x');
-  await page.keyboard.press('Enter');
+  const satBefore = await svClamp.getAttribute('aria-valuenow');
+  await svClamp.press('ArrowLeft');
+  expect(await svClamp.getAttribute('aria-valuenow')).toBe(satBefore);
+  await svClamp.press('x');
+  await svClamp.press('Enter');
   expect(await storedFillOf(page, rect.id)).toBe('#FFFFFF');
-  await page.keyboard.press('End');
+  await svClamp.press('End');
   await expect.poll(async () => storedFillOf(page, rect.id)).toBe('#FF0000');
 
   // Break — Select invents 0; Pen hides Color spectrum.
@@ -323,17 +361,16 @@ test('desktop Color spectrum intended + break + edge', async ({ page }) => {
   // Edge — isolation + undo. Spectrum green must not stamp the next rect.
   await selectStroke(page, rect.id);
   await openFillPicker(page);
+  await clickSwatch(page, '#FF0000');
   await openSpectrum(page);
-  await (await hueSlider(page)).focus();
-  await page.keyboard.press('Home');
-  for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
-  await expect.poll(async () => storedFillOf(page, rect.id)).toBe('#00FF00');
+  await nudgeHueTo(page, 120);
+  await expect.poll(async () => isSpectrumGreen(await storedFillOf(page, rect.id))).toBe(true);
   await page.keyboard.press('Escape');
 
   const other = await createRect(page, { x0: 0.50, y0: 0.50, x1: 0.68, y1: 0.66 });
   expect(other.id).not.toBe(rect.id);
-  expect(await storedFillOf(page, rect.id)).toBe('#00FF00');
-  expect(await storedFillOf(page, other.id)).not.toBe('#00FF00');
+  expect(isSpectrumGreen(await storedFillOf(page, rect.id))).toBe(true);
+  expect(isSpectrumGreen(await storedFillOf(page, other.id))).toBe(false);
 
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeVisible();
@@ -342,7 +379,7 @@ test('desktop Color spectrum intended + break + edge', async ({ page }) => {
     const rows = await userAnnotationSnapshot(page);
     return rows.some((row) => row.id === other.id);
   }).toBe(false);
-  expect(await storedFillOf(page, rect.id)).toBe('#00FF00');
+  expect(isSpectrumGreen(await storedFillOf(page, rect.id))).toBe(true);
 
   const viewBox = await pageViewBox(page);
   expect(viewBox).toBe('0 0 612 792');
@@ -351,13 +388,13 @@ test('desktop Color spectrum intended + break + edge', async ({ page }) => {
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  expect(await page.getByRole('button', { name: 'Color spectrum', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'Color spectrum', exact: true }).count(), 'hubPreview Color spectrum must be 0').toBe(0);
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
 
   console.log('C04_DESKTOP_SPECTRUM_PROOF', JSON.stringify({
     rectId: rect.id,
     white: '#FFFFFF',
-    green: '#00FF00',
+    green: 'spectrum-green',
     hueClamp: { home: 0, end: 360, noWrap: true },
     otherId: other.id,
     viewBox,
@@ -383,36 +420,37 @@ test('390 Color spectrum intended + break + edge', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Open fill color picker', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
-  await page.locator('button[title="#FF0000"]').first().click();
+  await clickSwatch(page, '#FF0000');
   await openSpectrum(page);
 
   const spectrum = await svSlider(page);
   const hue = await hueSlider(page);
-  await hue.focus();
-  for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
+  await nudgeHueTo(page, 120);
   await expect.poll(async () => Number(await hue.getAttribute('aria-valuenow'))).toBe(120);
-  await spectrum.focus();
-  await page.keyboard.press('End');
+  await spectrum.press('End');
   await expect.poll(async () => (await spectrum.getAttribute('aria-valuetext'))).toMatch(/Saturation 100%/);
 
   // Break — hue clamp + unused key.
-  await hue.focus();
-  await page.keyboard.press('Home');
-  await page.keyboard.press('ArrowLeft');
+  await hue.press('Home');
+  await hue.press('ArrowLeft');
   expect(await hue.getAttribute('aria-valuenow')).toBe('0');
-  await page.keyboard.press('x');
+  await hue.press('x');
   expect(await hue.getAttribute('aria-valuenow')).toBe('0');
 
-  // Intended — 12× PageUp next-draw stamps green on the created rect.
-  for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
+  // Intended — hue 120 next-draw stamps green on the created rect.
+  await nudgeHueTo(page, 120);
   await expect.poll(async () => Number(await hue.getAttribute('aria-valuenow'))).toBe(120);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
   const close = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await close.isVisible().catch(() => false)) await close.click();
+  await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toHaveCount(0);
+  await closePagesOverlay(page);
+  await dismissChrome(page);
+  await closePagesOverlay(page);
 
   const created = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
-  await expect.poll(async () => storedFillOf(page, created.id)).toBe('#00FF00');
+  await expect.poll(async () => isSpectrumGreen(await storedFillOf(page, created.id))).toBe(true);
 
   // Break: Pen hides Color spectrum / takeover.
   await activateTool(page, 'Draw', 'Pen');
@@ -434,7 +472,7 @@ test('390 Color spectrum intended + break + edge', async ({ page }) => {
   expect(await page.getByRole('button', { name: 'Open fill color picker', exact: true }).count()).toBe(0);
 
   console.log('C04_390_SPECTRUM_PROOF', JSON.stringify({
-    created: { id: created.id, stored: '#00FF00' },
+    created: { id: created.id, stored: 'spectrum-green' },
     viewBox,
     fileId: null,
   }));
