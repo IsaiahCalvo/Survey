@@ -48,7 +48,9 @@ Did **not** invent a persist seam. No `file.id`.
 
 ## Product fix
 
-None. Photo/Video attach already wrote the store. Did not invent checklist items. Did not touch `zoomGeneration`, SVG viewBox zoom, canvas sizing, or high-risk files.
+Min-viable `SurveySpacesRail.jsx` only (not `PDFViewer.jsx`): `noteHasContent` treats photos/videos as a saved note so Add/Edit chrome (desktop gold + `Edit item notes`, 390 `has-note` + `Edit Survey Marker notes`) no longer keys off `note.text` alone. Attachments-only Save used to stay labeled Add.
+
+Did not invent checklist items. Did not touch `zoomGeneration`, SVG viewBox zoom, canvas sizing, or high-risk files.
 
 ## Live-proved
 

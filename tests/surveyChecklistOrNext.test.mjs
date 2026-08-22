@@ -84,6 +84,18 @@ test('desktop Note dialog and 390 notes editor share Photo/Video attach writes',
   assert.match(editor, /aria-label=\{\`Remove \$\{video\?\.name \|\| 'video'\}\`\}/);
   assert.match(editor, /No attachments\./);
   assert.doesNotMatch(editor, /applyChecklistResponseSelection/);
+
+  const railFull = read('src/SurveySpacesRail.jsx');
+  assert.match(railFull, /const noteHasContent = \(note\) => Boolean\(/);
+  assert.match(railFull, /Array\.isArray\(note\?\.photos\) && note\.photos\.length/);
+  assert.match(railFull, /noteHasContent\(surveyMarkers\[annotationId\]\?\.note\)/);
+  assert.doesNotMatch(
+    railFull.slice(
+      railFull.indexOf('aria-label={noteHasContent'),
+      railFull.indexOf('aria-label={noteHasContent') + 180,
+    ),
+    /note\?\.text \? "Edit item notes"/,
+  );
 });
 
 test('390 checklist empty-state is not Photo/Video; leftover-18 unplaced-rows stay parked', () => {

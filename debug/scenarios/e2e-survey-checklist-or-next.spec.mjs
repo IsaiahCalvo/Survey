@@ -129,9 +129,9 @@ async function expandWallsMarkers(page) {
   await expect(page.getByRole('button', { name: /item notes/ }).first()).toBeVisible({ timeout: 8_000 });
 }
 
-async function openDesktopNotes(page, label = /item notes/) {
+async function openDesktopNotes(page) {
   await expandWallsMarkers(page);
-  const btn = page.getByRole('button', { name: label }).first();
+  const btn = page.getByRole('button', { name: /item notes/ }).first();
   await expect(btn).toBeVisible({ timeout: 8_000 });
   await btn.click({ force: true });
   await expect(page.getByRole('heading', { name: 'Note', exact: true })).toBeVisible({ timeout: 8_000 });
@@ -277,7 +277,8 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   expect(emptyNote?.videos || []).toEqual([]);
 
   // Intended: photo + video persist on A; B stays empty.
-  await openDesktopNotes(page, /Edit item notes|Add item notes/);
+  // Attachments-only Save must flip the chrome to Edit (not stay Add).
+  await openDesktopNotes(page);
   await attachDesktopPhoto(page, markerA, 'keep-photo.png');
   await attachDesktopVideo(page, markerA, 'keep-video.webm');
   await saveDesktopNotes(page);
@@ -285,9 +286,10 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   expect((await storedNote(page, markerA))?.videos?.[0]?.name).toBe('keep-video.webm');
   expect((await storedNote(page, markerA))?.photos?.[0]?.dataUrl || '').toMatch(/^data:image\/png;base64,/);
   expect((await storedNote(page, markerB))?.photos || []).toEqual([]);
+  await expect(page.getByRole('button', { name: 'Edit item notes' }).first()).toBeVisible();
 
   // Break: remove before Save drops the draft photo.
-  await openDesktopNotes(page, /Edit item notes/);
+  await openDesktopNotes(page);
   await expect(page.getByText('keep-photo.png', { exact: true })).toBeVisible();
   await attachDesktopPhoto(page, markerA, 'remove-me.png');
   const removeDraft = page.getByText('remove-me.png', { exact: true }).locator('..').locator('button');
@@ -299,7 +301,7 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   // Break: Pen-armed still attaches.
   await page.getByRole('button', { name: 'Draw', exact: true }).click();
   await page.getByRole('button', { name: 'Pen', exact: true }).click();
-  await openDesktopNotes(page, /Edit item notes/);
+  await openDesktopNotes(page);
   await attachDesktopPhoto(page, markerA, 'pen-armed.png');
   await saveDesktopNotes(page);
   expect(((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
@@ -323,6 +325,7 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await open390Detail(page, 'attach-a');
   await expect(page.getByText('No checklist items')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Y$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Edit Survey Marker notes' })).toBeVisible();
   await open390Notes(page);
   await expect(page.getByText('Photo', { exact: true })).toBeVisible();
   await expect(page.getByText('Video', { exact: true })).toBeVisible();

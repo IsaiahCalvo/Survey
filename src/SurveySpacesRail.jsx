@@ -1202,6 +1202,15 @@ const SurveySpacesRail = ({
     });
   };
 
+  // Photo/Video-only notes still count as a saved note. The Add/Edit
+  // chrome used to key off note.text, so an attachments-only Save left
+  // the button labeled Add.
+  const noteHasContent = (note) => Boolean(
+    (typeof note?.text === 'string' && note.text.trim())
+    || (Array.isArray(note?.photos) && note.photos.length)
+    || (Array.isArray(note?.videos) && note.videos.length)
+  );
+
   // ——— Mobile in-sheet notes editor (demo SurveySheet.tsx:191-283) ———
   const openMobileNotesEditor = () => {
     const note = surveyMarkers?.[mobileDetailMarkerId]?.note || {};
@@ -2012,7 +2021,7 @@ const SurveySpacesRail = ({
                     const baseCategoryName = detailCategory?.name?.trim() || 'Untitled Category';
                     const fallbackName = `${baseCategoryName} ${siblingIndex >= 0 ? siblingIndex + 1 : siblingMarkers.length + 1}`;
                     const detailMarkerName = mobileDetailMarker.name || fallbackName;
-                    const hasNoteText = Boolean(surveyMarkers[annotationId]?.note?.text);
+                    const hasNoteText = noteHasContent(surveyMarkers[annotationId]?.note);
                     const imageGlyph = (
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -3930,7 +3939,7 @@ const SurveySpacesRail = ({
                                                       ...surveyMarkerRowActionStyle,
                                                       background: 'transparent',
                                                       border: 'none',
-                                                      color: surveyMarkers[annotationId]?.note?.text ? '#d8a84e' : '#8d96a6',
+                                                      color: noteHasContent(surveyMarkers[annotationId]?.note) ? '#d8a84e' : '#8d96a6',
                                                       opacity: 0.78
                                                     }}
                                                     onMouseEnter={(e) => {
@@ -3941,8 +3950,8 @@ const SurveySpacesRail = ({
                                                       e.currentTarget.style.opacity = '0.78';
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    {...tip(surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes", 'below')}
-                                                    aria-label={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                    {...tip(noteHasContent(surveyMarkers[annotationId]?.note) ? "Edit item notes" : "Add item notes", 'below')}
+                                                    aria-label={noteHasContent(surveyMarkers[annotationId]?.note) ? "Edit item notes" : "Add item notes"}
                                                   >
                                                     <Icon name="pen" size={13} />
                                                   </button>
