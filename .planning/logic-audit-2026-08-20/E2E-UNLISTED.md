@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Keep active / notes / page-ctx):** Keep active is U-01 chrome (not a new UL row). Survey notes is marker chrome (not create-Note). UL-32 execute leftovers: Mirror V / Reset / Cut / Copy / Paste. Extract **missing-handler**. Receipt `fix-logs/survey-keep-notes-page-ctx-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 callout knee / leader / arrowTip drag):** T-02 edit handles (not a new UL row). Not clipboard paste (T-02 / thin leftovers). Receipt `fix-logs/callout-knee-drag-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Keep active / notes / page-ctx):** Keep active is U-01 chrome (not a new UL row). Survey notes is marker chrome (not create-Note). UL-32 execute leftovers: Mirror V / Reset / Cut / Copy / Paste. Extract **missing-handler**. Receipt `fix-logs/survey-keep-notes-page-ctx-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Survey Previous/Next module):** U-01 live module **Next/Prev** (not a new UL row). Walls stays the category **stamp**. Receipt `fix-logs/survey-module-nav-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 

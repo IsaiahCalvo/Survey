@@ -34,7 +34,7 @@ Exact discrete catalogs used by the UI:
 | S-04 | Shapes | Arrow + arrowheads | 6 head styles | Legacy group export |
 | S-05 | Shapes | Counter | Numbered pins + series | Renumber; last-in-series; fill/number color |
 | T-01 | Text | Textbox create/edit | Same-surface editor | Blank discard; tight-fit; wrap |
-| T-02 | Text | Callout create/edit | Leader + text box | Blank; arrowhead; style patch |
+| T-02 | Text | Callout create/edit | Leader + text box. **Knee / leader / arrowTip / text-box handle drag** live `e2e-callout-knee-drag.spec.mjs` | Blank; arrowhead; style patch; Pen-armed no-op; Esc is marquee-only; off-page allow-outside |
 | T-03 | Text | Font family | All 6 offered names | CSS stack rejected; import unknown name |
 | T-04 | Text | Font size | All 18 presets + custom | Clamp 6–200; non-preset prepend |
 | T-05 | Text | Bold / italic / underline / strike | Toggle each | Combo; callout booleans vs fabric fields |
