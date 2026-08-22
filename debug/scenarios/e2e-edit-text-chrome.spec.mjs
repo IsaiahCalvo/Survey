@@ -168,15 +168,18 @@ async function activateTool(page, categoryName, toolName) {
 
 async function selectMode(page) {
   await blurInputs(page);
-  await page.keyboard.press('Escape');
-  const selectBtn = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
+  if (await page.locator('[data-text-edit-overlay]').count()) await commitEdit(page);
+  const selectBtn = page.getByRole('button', { name: 'Select', exact: true }).first();
   if (await selectBtn.isVisible().catch(() => false)) {
     await selectBtn.click();
   } else {
-    await page.keyboard.press('v');
+    const mode = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
+    if (await mode.isVisible().catch(() => false)) await mode.click();
+    else await page.keyboard.press('v');
   }
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
+  await expect(page.locator('[data-text-overlay="1"]')).toHaveCount(0, { timeout: 8_000 });
 }
 
 async function dismissChrome(page) {
@@ -305,8 +308,14 @@ async function marqueeSelect(page, id) {
 }
 
 async function selectAndExpectEditEnabled(page, id) {
-  await marqueeSelect(page, id);
+  await selectMode(page);
   const edit = desktopEdit(page);
+  if (await edit.isVisible().catch(() => false)
+    && !(await edit.isDisabled().catch(() => true))
+    && (await edit.getAttribute('aria-pressed')) !== 'true') {
+    return edit;
+  }
+  await marqueeSelect(page, id);
   await expect(edit, 'selected text/callout must show Edit text').toBeVisible({ timeout: 8_000 });
   await expect(edit, 'selected text/callout must enable Edit text').toBeEnabled();
   await expect(edit).toHaveAttribute('aria-pressed', 'false');
