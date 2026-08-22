@@ -303,16 +303,18 @@ test('desktop RotationInputField intended + break + edge', async ({ page }) => {
   await expectAngle(page, b.id, 0, 'undo must drop second-rect 90');
   await expectAngle(page, a.id, 45, 'undo must hold the first angle');
 
-  // Edge — empty Select invents 0; Pen-armed pill still commits.
+  // Edge — empty Select invents 0; Pen hide drops mtr (same as Style/Color).
   await page.keyboard.press('v');
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').click({ position: { x: 12, y: 12 } });
   expect(await page.getByRole('textbox', { name: 'Rotation angle in degrees', exact: true }).count()).toBe(0);
 
   await selectStroke(page, a.id);
-  await activateTool(page, 'Draw', 'Pen');
+  await expect(page.locator('[data-rotation-handle="mtr"]').first()).toBeVisible();
   const marksBeforePen = (await userAnnotationSnapshot(page)).map((row) => row.id).sort();
-  await commitTypedDegrees(page, 135);
-  await expectAngle(page, a.id, 135, 'Pen-armed 135 must commit');
+  await activateTool(page, 'Draw', 'Pen');
+  expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'Pen hide mtr').toBe(0);
+  expect(await page.getByRole('textbox', { name: 'Rotation angle in degrees', exact: true }).count()).toBe(0);
+  await expectAngle(page, a.id, 45, 'Pen hide must hold the first angle');
   expect((await userAnnotationSnapshot(page)).map((row) => row.id).sort()).toEqual(marksBeforePen);
 
   const viewBox = await pageViewBox(page);

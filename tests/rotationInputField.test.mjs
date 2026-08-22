@@ -78,7 +78,7 @@ test('live spec covers type / blur / wrap / Escape / Line omit / 390 / file.id',
   assert.match(spec, /Escape must restore 45 and not commit 270/);
   assert.match(spec, /Line single-click mtr must be 0/);
   assert.match(spec, /second rect must isolate the first angle/);
-  assert.match(spec, /Pen-armed 135 must commit/);
+  assert.match(spec, /Pen hide must hold the first angle/);
   assert.match(spec, /390 typed 90 must commit 90/);
   assert.match(spec, /390 Escape must restore 90 and not commit 270/);
   assert.match(spec, /390 360 must wrap to 0/);
