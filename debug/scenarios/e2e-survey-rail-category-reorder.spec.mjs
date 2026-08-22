@@ -91,7 +91,7 @@ async function openSurveyRail(page, nameRe = TWO_CAT_TEMPLATE) {
   await expect(categoryRow(page, 'Walls')).toBeVisible({ timeout: 10_000 });
 }
 
-async function dragCategoryTo(page, fromName, toName, { cancel = false } = {}) {
+async function pointerDragCategoryTo(page, fromName, toName, { cancel = false } = {}) {
   const handle = categoryHandle(page, fromName);
   await expect(handle).toBeVisible({ timeout: 8_000 });
   const fromBox = await handle.boundingBox();
@@ -101,18 +101,52 @@ async function dragCategoryTo(page, fromName, toName, { cancel = false } = {}) {
   const startY = fromBox.y + fromBox.height / 2;
   const destX = toBox.x + Math.min(24, toBox.width / 2);
   const destY = toName === fromName
-    ? startY + 72
-    : toBox.y + toBox.height - 4;
+    ? startY + 80
+    : (toBox.y > startY ? toBox.y + toBox.height + 12 : toBox.y + 8);
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX, startY + 10, { steps: 6 });
+  await page.mouse.move(startX, startY + 12, { steps: 8 });
   await expect(page.locator('body')).toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
-  await page.mouse.move(destX, destY, { steps: 20 });
+  await page.mouse.move(destX, destY, { steps: 28 });
   if (cancel) {
     await page.keyboard.press('Escape');
     await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
   }
   await page.mouse.up();
+}
+
+async function keyboardMoveCategory(page, fromName, { direction = 'down', cancel = false } = {}) {
+  const handle = categoryHandle(page, fromName);
+  await expect(handle).toBeVisible({ timeout: 8_000 });
+  await handle.click();
+  await handle.focus();
+  await page.keyboard.press('Space');
+  await expect(page.locator('body')).toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
+  await page.keyboard.press(direction === 'down' ? 'ArrowDown' : 'ArrowUp');
+  if (cancel) {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
+    return 'keyboard';
+  }
+  await page.keyboard.press('Space');
+  await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
+  return 'keyboard';
+}
+
+async function dragCategoryTo(page, fromName, toName, { cancel = false } = {}) {
+  const before = await railCategoryNames(page);
+  const direction = (() => {
+    const fromIdx = before.indexOf(fromName);
+    const toIdx = before.indexOf(toName);
+    if (fromIdx >= 0 && toIdx >= 0 && toIdx < fromIdx) return 'up';
+    return 'down';
+  })();
+  try {
+    return await keyboardMoveCategory(page, fromName, { direction, cancel });
+  } catch {
+    await pointerDragCategoryTo(page, fromName, toName, { cancel });
+    return 'pointer';
+  }
 }
 
 async function enterCategorySelectMode(page) {
