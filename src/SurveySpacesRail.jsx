@@ -465,6 +465,11 @@ const SurveySpacesRail = ({
   const mobileExportMenuRef = useRef(null);
   const surveyMarkerDragRestoreRef = useRef(null);
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
+  const pickSurveyTemplate = (template) => {
+    setIsTemplateSelectorOpen(false);
+    if (!template || template.id === selectedTemplate?.id) return;
+    onSelectSurveyTemplate?.(template);
+  };
   const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
   const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
@@ -680,9 +685,19 @@ const SurveySpacesRail = ({
         setIsTemplateSelectorOpen(false);
       }
     };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setIsTemplateSelectorOpen(false);
+    };
 
     document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [isTemplateSelectorOpen]);
 
   useEffect(() => {
@@ -1555,47 +1570,29 @@ const SurveySpacesRail = ({
                     flexShrink: 0
                   }}>
                     <div
-                      ref={mobileMode ? templateSelectorRef : undefined}
+                      ref={templateSelectorRef}
                       className={mobileMode ? 'mobile-survey-sheet-title' : undefined}
                       style={{ flex: 1, minWidth: 0, position: 'relative' }}
                     >
                       {mobileMode ? <span className="mobile-survey-sheet-eyebrow">Survey template</span> : null}
                       {mobileMode ? (
-                        <>
-                          <button
-                            type="button"
-                            className="mobile-survey-template-button"
-                            aria-label="Choose survey template"
-                            aria-expanded={isTemplateSelectorOpen}
-                            onClick={() => setIsTemplateSelectorOpen((open) => !open)}
-                          >
-                            <span>{selectedTemplate.name || 'Survey'}</span>
-                            <Icon name="chevronDown" size={13} color="currentColor" />
-                          </button>
-                          {isTemplateSelectorOpen && (
-                            <div className="mobile-survey-template-menu" role="listbox">
-                              {availableSurveyTemplates.map((template) => (
-                                <button
-                                  key={template.id}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={template.id === selectedTemplate.id}
-                                  className={template.id === selectedTemplate.id ? 'is-active' : ''}
-                                  onClick={() => {
-                                    onSelectSurveyTemplate?.(template);
-                                    setIsTemplateSelectorOpen(false);
-                                  }}
-                                >
-                                  <span>{template.name || 'Untitled Template'}</span>
-                                  {template.id === selectedTemplate.id ? <Icon name="check" size={13} color="currentColor" /> : null}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </>
+                        <button
+                          type="button"
+                          className="mobile-survey-template-button"
+                          aria-label="Choose survey template"
+                          aria-haspopup="listbox"
+                          aria-expanded={isTemplateSelectorOpen}
+                          onClick={() => setIsTemplateSelectorOpen((open) => !open)}
+                        >
+                          <span>{selectedTemplate.name || 'Survey'}</span>
+                          <Icon name="chevronDown" size={13} color="currentColor" />
+                        </button>
                       ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                         <h2
                           style={{
+                            flex: 1,
+                            minWidth: 0,
                             margin: 0,
                             fontSize: '18px',
                             fontWeight: '600',
@@ -1611,6 +1608,91 @@ const SurveySpacesRail = ({
                             ? ((selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === selectedModuleId)?.name || 'Survey')
                             : (selectedTemplate.name || 'Survey')}
                         </h2>
+                        <button
+                          type="button"
+                          aria-label="Choose survey template"
+                          aria-haspopup="listbox"
+                          aria-expanded={isTemplateSelectorOpen}
+                          onClick={() => setIsTemplateSelectorOpen((open) => !open)}
+                          style={{
+                            flex: '0 0 auto',
+                            width: '28px',
+                            height: '28px',
+                            padding: 0,
+                            borderRadius: '6px',
+                            border: isTemplateSelectorOpen ? '1px solid #d8a84e' : '1px solid #3a4252',
+                            background: isTemplateSelectorOpen ? '#2a3140' : '#1f2430',
+                            color: '#e8e2d4',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Icon name="chevronDown" size={13} color="currentColor" />
+                        </button>
+                        </div>
+                      )}
+                      {isTemplateSelectorOpen && (
+                        <div
+                          className={mobileMode ? 'mobile-survey-template-menu' : undefined}
+                          role="listbox"
+                          aria-label="Choose survey template"
+                          style={mobileMode ? undefined : {
+                            position: 'absolute',
+                            left: 0,
+                            top: 'calc(100% + 7px)',
+                            zIndex: 40,
+                            width: '100%',
+                            padding: '4px',
+                            display: 'grid',
+                            gap: '2px',
+                            color: '#f2f2f2',
+                            background: '#1b1f25',
+                            border: '1px solid #3a4250',
+                            borderRadius: '7px',
+                            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.45)'
+                          }}
+                        >
+                          {availableSurveyTemplates.length === 0 ? (
+                            <div style={{
+                              padding: '10px 9px',
+                              color: '#8d96a6',
+                              fontSize: '12px',
+                              fontWeight: 600
+                            }}>
+                              No templates available
+                            </div>
+                          ) : availableSurveyTemplates.map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              role="option"
+                              aria-selected={template.id === selectedTemplate.id}
+                              className={template.id === selectedTemplate.id ? 'is-active' : ''}
+                              onClick={() => pickSurveyTemplate(template)}
+                              style={mobileMode ? undefined : {
+                                minHeight: '34px',
+                                padding: '0 9px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                                color: template.id === selectedTemplate.id ? '#d8a84e' : '#f2f2f2',
+                                background: template.id === selectedTemplate.id ? '#2a2218' : 'transparent',
+                                border: 0,
+                                borderRadius: '5px',
+                                fontSize: '12px',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                fontFamily: FONT_FAMILY
+                              }}
+                            >
+                              <span>{template.name || 'Untitled Template'}</span>
+                              {template.id === selectedTemplate.id ? <Icon name="check" size={13} color="currentColor" /> : null}
+                            </button>
+                          ))}
+                        </div>
                       )}
                       {!categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
                         // Color the banner by the message's tone so warnings (close Excel,
