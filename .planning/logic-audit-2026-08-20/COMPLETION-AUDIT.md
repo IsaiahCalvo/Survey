@@ -250,7 +250,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | A-01 | **proven** (guest chrome + fail-closed mocks) / **host-blocked** (Turnstile) | `e2e-helper-only-live.spec.mjs`. `HubPreview.jsx` / `DevTestRoute.jsx` `previewBlocked` — no silent sign-in success. Live Turnstile completion still blocked. |
 | A-02 | **proven** (Connect chrome) / **host-blocked** (MSAL) | hubPreview fail-closed |
 | A-03 | **proven** (mint + invalid Send) / **host-blocked** (inbox) | `e2e-signed-in-leftovers.spec.mjs` |
-| A-04 | **proven** | hubPreview profile / password / DELETE / sign out |
+| A-04 | **proven** | hubPreview General pane (display / Cancel / Save fail-closed / DELETE / Settings Sign out fail-closed). Menu open/close already dedicated. Connected / Subscription leftover-18. |
 | A-05 | **proven** (catalog) / **host-blocked** (Stripe click) | cards + Contact sales |
 | A-06 | **proven** (self + same-user two-tab) / **host-blocked** (roster) | `e2e-two-tab-presence.spec.mjs` — still **just you**. Lease path stopped (no in-repo tuples). |
 | A-07 | **proven** | `?testPdf=` jump + `e2e-named-revision-restore.spec.mjs` |
