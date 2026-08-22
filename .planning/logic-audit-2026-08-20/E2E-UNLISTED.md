@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 thumbnail click):** V-06 live thumb **left-click** (not a new UL row). UL-07 stays the page-number **input**. Receipt `fix-logs/thumbnail-click-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Survey Previous/Next module):** U-01 live module **Next/Prev** (not a new UL row). Walls stays the category **stamp**. Receipt `fix-logs/survey-module-nav-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 thumbnail click):** V-06 live thumb **left-click** (not a new UL row). UL-07 stays the page-number **input**. Receipt `fix-logs/thumbnail-click-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Fit height):** UL-05 was cluster-level (menu open / Fit page + Fit width). Fit height is its own mode. Receipt `fix-logs/fit-height-2026-08-22.md`. Exhausted “GAP = 0” **falsified**. Leftover **18** stay parked. Goal stays open.
 

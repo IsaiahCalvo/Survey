@@ -23,6 +23,7 @@ import { COLORS } from './theme';
 import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
+import { resolveSurveyModuleStep } from './utils/surveyModuleNav';
 import { showToast } from './utils/toast';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
@@ -463,8 +464,18 @@ const SurveySpacesRail = ({
   const surveyModuleOptions = selectedTemplate ? ((selectedTemplate.modules || selectedTemplate.spaces) || []) : [];
   const selectedModuleIndex = surveyModuleOptions.findIndex((module) => module.id === selectedModuleId);
   const activeSurveyModule = selectedModuleIndex >= 0 ? surveyModuleOptions[selectedModuleIndex] : null;
-  const canSelectPreviousModule = selectedModuleIndex > 0;
-  const canSelectNextModule = selectedModuleIndex >= 0 && selectedModuleIndex < surveyModuleOptions.length - 1;
+  const previousModuleAction = resolveSurveyModuleStep({
+    modules: surveyModuleOptions,
+    selectedModuleId,
+    direction: 'previous',
+  });
+  const nextModuleAction = resolveSurveyModuleStep({
+    modules: surveyModuleOptions,
+    selectedModuleId,
+    direction: 'next',
+  });
+  const canSelectPreviousModule = previousModuleAction.kind === 'select';
+  const canSelectNextModule = nextModuleAction.kind === 'select';
 
   // Create Category (desktop): hoisted from the old action-row IIFE so the
   // heading-row plus button and the modal share component scope.
@@ -1618,8 +1629,8 @@ const SurveySpacesRail = ({
                           disabled={!canSelectPreviousModule}
                           aria-label="Previous module"
                           onClick={() => {
-                            if (canSelectPreviousModule) {
-                              selectSurveyModule(surveyModuleOptions[selectedModuleIndex - 1]?.id);
+                            if (previousModuleAction.kind === 'select') {
+                              selectSurveyModule(previousModuleAction.moduleId);
                             }
                           }}
                           style={{
@@ -1677,8 +1688,8 @@ const SurveySpacesRail = ({
                           disabled={!canSelectNextModule}
                           aria-label="Next module"
                           onClick={() => {
-                            if (canSelectNextModule) {
-                              selectSurveyModule(surveyModuleOptions[selectedModuleIndex + 1]?.id);
+                            if (nextModuleAction.kind === 'select') {
+                              selectSurveyModule(nextModuleAction.moduleId);
                             }
                           }}
                           style={{

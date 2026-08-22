@@ -58,7 +58,7 @@ Exact discrete catalogs used by the UI:
 | X-04 | Import | PDF annotations | Open foreign PDF | Unsupported types; rotated page |
 | X-05 | Forms | Form field values | Export/print filled fields | Hidden Forms category |
 | X-06 | Excel | Export / apply changeset | Sheet sync | Identity SQL; CORS `*` intentional |
-| U-01 | Survey | Survey rail / modules | Stamp + filter | Empty template; KAL-436 |
+| U-01 | Survey | Survey rail / modules | Stamp + filter. **Previous/Next module** is its own navigator (not Walls). Live `e2e-survey-module-nav.spec.mjs` | Empty template; KAL-436; first/last disabled |
 | U-02 | Survey | Spaces / regions | Overlay + stamp | Region off; last space |
 | U-03 | Survey | Templates | Editor + overwrite warn | Color on entities |
 | U-04 | Survey | Checklists | Archive / complete | Empty |
