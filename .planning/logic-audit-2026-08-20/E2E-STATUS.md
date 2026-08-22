@@ -355,6 +355,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | V-02 marquee / Shift-click | **pass** |
 | V-03 ⇧V | **pass** |
 | V-04 pinch | **pass** — CDP two-touch; cancel commits preview; lift → pinch-release; mid-ink pinch discards |
+| V-04 zoom keyboard + Fit width | **pass** — dedicated `e2e-zoom-keyboard-fit-width.spec.mjs` 2/2 (11.8s) |
 | V-08 Find wrap | **pass** (Next wave6 + Previous + result-row click) |
 | E-04 Backspace | **pass** (after blur) |
 | V-05 page-nav keyboard | **pass** — dedicated `e2e-page-nav-keyboard.spec.mjs` 2/2 (10.0s) |
