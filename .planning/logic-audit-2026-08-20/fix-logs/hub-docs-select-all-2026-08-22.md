@@ -13,7 +13,7 @@ Do **not** replay extras Duplicate / Move/Copy execute. Upload stays leftover-18
 
 ## Live
 
-Playwright `debug/scenarios/e2e-hub-docs-select-all.spec.mjs` on reused Vite `http://localhost:5173`.
+Playwright `debug/scenarios/e2e-hub-docs-select-all.spec.mjs` **1 / 1 (3.4s)** on reused Vite `http://localhost:5173`.
 
 | Check | Result |
 |---|---|
@@ -25,7 +25,7 @@ Playwright `debug/scenarios/e2e-hub-docs-select-all.spec.mjs` on reused Vite `ht
 | Isolation | Archive Select shows Restore / Delete forever, not Duplicate. Documents Select shows Duplicate, not Restore. |
 | 390 | Select / All / None / Done. All checks six mobile cards; None clears. |
 
-Node `tests/documentsSelectAll.test.mjs`.
+Node `tests/documentsSelectAll.test.mjs` **3 / 3**.
 
 ## Product
 
