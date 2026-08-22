@@ -41,14 +41,29 @@ test('Empty Module Template is a local seed with one empty module', () => {
   assert.match(route, /name: 'Empty Survey Data'/);
   assert.match(route, /Local seed only \(not a cloud persist seam\)/);
 
+  // Slice stops at the later two-category seed (Walls + Windows). That
+  // sibling is intended product after Create template — not leftover-18
+  // and not a reason to skip this contract.
   const empty = route.slice(
     route.indexOf("id: 'kal436-empty-module-template'"),
-    route.indexOf('const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY'),
+    route.indexOf("id: 'kal436-two-category-template'"),
   );
   assert.match(empty, /categories: \[\]/);
   assert.doesNotMatch(empty, /entities:/);
   assert.doesNotMatch(empty, /name: 'Walls'/);
   assert.doesNotMatch(empty, /name: 'Doors'/);
+  assert.doesNotMatch(empty, /Two Category Template/);
+  assert.doesNotMatch(empty, /kal436-two-cat-walls/);
+
+  const two = route.slice(
+    route.indexOf("id: 'kal436-two-category-template'"),
+    route.indexOf('const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY'),
+  );
+  assert.match(two, /name: 'Two Category Template'/);
+  assert.match(two, /name: 'Walls'/);
+  assert.match(two, /name: 'Windows'/);
+  assert.doesNotMatch(two, /categories: \[\]/);
+  assert.doesNotMatch(two, /Empty Module Template/);
 
   const kal436 = route.slice(
     route.indexOf("id: 'kal436-template'"),
@@ -56,6 +71,7 @@ test('Empty Module Template is a local seed with one empty module', () => {
   );
   assert.doesNotMatch(kal436, /Empty Module Template/);
   assert.doesNotMatch(kal436, /kal436-empty-module/);
+  assert.doesNotMatch(kal436, /Two Category Template/);
 });
 
 test('CreateCategoryModal still rejects empty and duplicate template names', () => {
