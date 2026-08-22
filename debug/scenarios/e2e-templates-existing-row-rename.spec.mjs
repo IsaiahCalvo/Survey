@@ -383,10 +383,13 @@ test('Templates existing-row rename (module / category / entity / item)', async 
 
   await commitNamedInput(page, ITEM_SELECTOR, INSTALL_ITEM, 'E2E camera installed?', 'Enter');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual([CABLE_ITEM, 'E2E camera installed?']);
+  await expandCategory(page, 'Doors');
   expect(await itemNamesInCategory(page, 'Doors')).toEqual(DOORS_ITEMS);
   await clickSave(page);
   await expandCategory(page, 'E2E Cameras');
   expect(await itemNamesInCategory(page, 'E2E Cameras')).toEqual([CABLE_ITEM, 'E2E camera installed?']);
+  await expandCategory(page, 'Doors');
+  expect(await itemNamesInCategory(page, 'Doors')).toEqual(DOORS_ITEMS);
   await moduleTabButton(page, 'Commissioning Phase').click();
   await expandCategory(page, 'Cameras');
   expect(await itemNamesInCategory(page, 'Cameras')).toEqual(['Camera tested and online?']);
