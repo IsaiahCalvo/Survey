@@ -7325,6 +7325,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { surveyMarker, categoryId } when prompting for Entity
   const [mobileSurveyEntityId, setMobileSurveyEntityId] = useState(null);
+  // Sibling of Set-location Esc: overlay click and the dialog X already skip
+  // to the name prompt without an entity. Escape did not, so the place-time
+  // dialog trapped the keyboard until a click.
+  useEffect(() => {
+    if (!pendingEntitySelection) return undefined;
+    const skipPendingEntitySelection = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingSurveyMarkerName({
+        surveyMarker: pendingEntitySelection.surveyMarker,
+        categoryId: pendingEntitySelection.categoryId,
+      });
+      setPendingEntitySelection(null);
+      setSurveyMarkerNameInput(null);
+    };
+    document.addEventListener('keydown', skipPendingEntitySelection, true);
+    return () => document.removeEventListener('keydown', skipPendingEntitySelection, true);
+  }, [pendingEntitySelection]);
   // Pending Survey Marker deletion participates in legacy Undo/Redo. Keep the
   // entire transient prompt/preview slice together so restoring the marker
   // cannot leave its modal, name input, or selection in the post-delete state.

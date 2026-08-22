@@ -24,6 +24,9 @@ test('place-time Entity dialog opens only when the template has entities', () =>
   assert.match(dialog, /entityName: entity\.name/);
   assert.match(dialog, /entityColor: entityColor/);
   assert.match(dialog, /Cancel - proceed without entity selection/);
+  assert.match(viewer, /skipPendingEntitySelection/);
+  assert.match(viewer, /if \(!pendingEntitySelection\) return undefined;/);
+  assert.match(viewer, /document\.addEventListener\('keydown', skipPendingEntitySelection, true\)/);
   assert.doesNotMatch(dialog, /\{ id: '', name: 'None'/);
   assert.doesNotMatch(dialog, /data-handle=\{`vertex-\$\{/);
   assert.doesNotMatch(dialog, /data-counter-nubbin-handle/);

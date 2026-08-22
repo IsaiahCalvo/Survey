@@ -217,10 +217,8 @@ test('place-time Entity dialog intended + break + edge', async ({ page }) => {
   await dragOnLayer(page, { x0: 0.68, y0: 0.54, x1: 0.86, y1: 0.68 });
   await waitEntityDialog(page);
   await page.keyboard.press('Escape');
-  const escDismissed = !(await entityHeading(page).isVisible().catch(() => false));
-  if (!escDismissed) {
-    await dismissEntityViaX(page);
-  }
+  await expect(entityHeading(page)).toHaveCount(0, { timeout: 8_000 });
+  const escDismissed = true;
   await finishMarkerName(page, 'place-esc');
   const markerEsc = await waitCreatedMarker(page, beforeEsc);
   expect((await storedMarker(page, markerEsc))?.entityId, 'Esc/skip stores no entity').toBeFalsy();
