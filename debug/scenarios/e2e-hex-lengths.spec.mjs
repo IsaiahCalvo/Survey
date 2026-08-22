@@ -174,15 +174,19 @@ async function activateTool(page, categoryName, toolName) {
   if (pressed !== 'true' && !active) await target.click();
 }
 
+async function closePagesOverlay(page) {
+  const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  if (await page.getByText('No documents yet').isVisible().catch(() => false) && await pagesToggle.isVisible().catch(() => false)) {
+    await pagesToggle.click();
+    await expect(page.getByText('No documents yet')).toHaveCount(0);
+  }
+}
+
 async function dismissChrome(page) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(80);
   await page.keyboard.press('Escape');
-  const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
-  if (await pagesToggle.isVisible().catch(() => false)) {
-    const expanded = await page.getByText('No documents yet').isVisible().catch(() => false);
-    if (expanded) await pagesToggle.click();
-  }
+  await closePagesOverlay(page);
 }
 
 async function createRect(page, coords = { x0: 0.22, y0: 0.26, x1: 0.42, y1: 0.44 }) {
@@ -368,11 +372,7 @@ test('390 CompactColorPicker hex lengths intended + break + edge', async ({ page
   await assertNoErrorBoundary(page);
   await dismissChrome(page);
 
-  const closePages = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
-  if (await page.getByText('No documents yet').isVisible().catch(() => false) && await closePages.isVisible().catch(() => false)) {
-    await closePages.click();
-    await expect(page.getByText('No documents yet')).toHaveCount(0);
-  }
+  await closePagesOverlay(page);
 
   await activateTool(page, 'Shapes', 'Rectangle');
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
@@ -398,9 +398,11 @@ test('390 CompactColorPicker hex lengths intended + break + edge', async ({ page
   expect((await field.inputValue()).replace('#', '').toUpperCase()).toBe('FF0000FF');
 
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
   const close = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await close.isVisible().catch(() => false)) await close.click();
-  else await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toHaveCount(0);
+  await closePagesOverlay(page);
 
   const created = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect.poll(async () => storedFillOf(page, created.id)).toBe('#FF0000');
