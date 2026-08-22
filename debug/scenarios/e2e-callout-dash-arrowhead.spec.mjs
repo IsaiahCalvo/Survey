@@ -426,9 +426,12 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
       x1: 0.30,
       y1: 0.24 + i * 0.14,
     });
-    await expect.poll(async () => storedLineStyle(await annotationById(page, row.id)))
-      .toBe(style.value);
+    await expect.poll(async () => {
+      const next = await annotationById(page, row.id);
+      return next ? storedLineStyle(next) : '';
+    }).toBe(style.value);
     const settled = await annotationById(page, row.id);
+    expect(settled, `Callout ${style.label} still present`).toBeTruthy();
     expectDash(settled, style, `Callout next-draw ${style.label}`);
     expectArrowhead(settled, ARROWHEAD_STYLES[1], `Callout ${style.label} default head`);
     dashProof.push({ style: style.value, id: row.id });
@@ -608,9 +611,12 @@ test('390 Callout dash + arrowhead every discrete style intended + break + edge'
       x1: 0.68,
       y1: 0.38 + i * 0.12,
     });
-    await expect.poll(async () => storedLineStyle(await annotationById(page, created.id)))
-      .toBe(style.value);
+    await expect.poll(async () => {
+      const next = await annotationById(page, created.id);
+      return next ? storedLineStyle(next) : '';
+    }).toBe(style.value);
     const row = await annotationById(page, created.id);
+    expect(row, `390 Callout ${style.label} still present`).toBeTruthy();
     expectDash(row, style, `390 Callout ${style.label}`);
     dashProof.push({ style: style.value, id: row.id });
   }
