@@ -71,3 +71,31 @@ export const normalizeMobilePresence = ({
   });
   return users;
 };
+
+const colorAlpha = (value) => {
+  const source = String(value || '').trim();
+  const rgba = source.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/i);
+  if (rgba) return Math.max(0, Math.min(1, Number(rgba[1])));
+  if (/^#[0-9a-f]{8}$/i.test(source)) return Number.parseInt(source.slice(7, 9), 16) / 255;
+  return null;
+};
+
+export const getMobileTextMarkupPresentation = (api = {}) => {
+  const toolbar = api || {};
+  const editingSelection = toolbar.activeTool === 'select' && toolbar.contextTool === 'text-markup';
+  const creatingSelection = toolbar.activeTool === 'text-select';
+  const active = editingSelection || creatingSelection;
+  const selectedPaint = editingSelection ? toolbar.selectedStrokeColor : null;
+  const selectedAlpha = colorAlpha(selectedPaint);
+  const rawOpacity = selectedAlpha == null ? Number(toolbar.strokeOpacity) : selectedAlpha * 100;
+
+  return {
+    active,
+    editingSelection,
+    color: selectedPaint && selectedPaint !== 'transparent'
+      ? selectedPaint
+      : (toolbar.strokeColor || '#f4d35e'),
+    opacity: Math.max(5, Math.min(100, Number.isFinite(rawOpacity) ? rawOpacity : 38)),
+    overlapMode: toolbar.textMarkupOverlapMode === 'uniform' ? 'uniform' : 'layered',
+  };
+};

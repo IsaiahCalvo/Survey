@@ -14,5 +14,7 @@ export const isBlockedFromAreaSelection = (annotation) => Boolean(
   || annotation.blocked
   || annotation.isBlocked
   || annotation.locked
-  || isTransformLockedAnnotation(annotation)
+  // Text markup is a fixed page-space group on purpose. It may still be
+  // selected as one unit for color, opacity, delete, and history edits.
+  || (isTransformLockedAnnotation(annotation) && annotation?.data?.type !== 'text-markup')
 );

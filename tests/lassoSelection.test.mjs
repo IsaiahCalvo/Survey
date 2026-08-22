@@ -98,6 +98,24 @@ test('logical groups select as one unit only when every visible member is enclos
   }).annotationIndices, [0, 1]);
 });
 
+test('fully locked app text markup remains lasso-selectable and atomic', () => {
+  const mark = {
+    type: 'group', id: 'mark-1', left: 10, top: 10, width: 70, height: 30,
+    lockMovementX: true, lockMovementY: true,
+    lockScalingX: true, lockScalingY: true, lockRotation: true,
+    data: {
+      type: 'text-markup', markupType: 'squiggly', selectionGroupId: 'range-1',
+      quads: [
+        { x1: 10, y1: 10, x2: 40, y2: 10, x3: 10, y3: 20, x4: 40, y4: 20 },
+        { x1: 50, y1: 30, x2: 80, y2: 30, x3: 50, y3: 40, x4: 80, y4: 40 },
+      ],
+    },
+  };
+  const args = { annotations: { objects: [mark] }, callouts: [], pageWidth: 100, pageHeight: 100 };
+  assert.deepEqual(resolveLassoHits({ ...args, lassoPolygon: box(0, 0, 90, 50) }).annotationIndices, [0]);
+  assert.deepEqual(resolveLassoHits({ ...args, lassoPolygon: box(0, 0, 45, 25) }).annotationIndices, []);
+});
+
 test('lasso hit result is page-space data and does not depend on display zoom or rotation', () => {
   const annotation = { type: 'rect', left: 30, top: 30, width: 20, height: 10, angle: 45, fill: '#fff' };
   const args = {

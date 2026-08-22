@@ -8,6 +8,14 @@ export const SELECT_MODE_STORAGE_KEY = 'lastSelectMode';
 
 const isSelectMode = (mode) => SELECT_MODE_OPTIONS.some((option) => option.mode === mode);
 
+export function getSelectFamilyTransition(mode = 'rectangle') {
+  const selectionMode = isSelectMode(mode) ? mode : 'rectangle';
+  return {
+    activeTool: selectionMode === 'text' ? 'text-select' : 'select',
+    selectionMode,
+  };
+}
+
 export function loadSelectMode(storage = globalThis?.localStorage) {
   try {
     const stored = storage?.getItem?.(SELECT_MODE_STORAGE_KEY);

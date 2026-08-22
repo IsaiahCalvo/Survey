@@ -60,6 +60,27 @@ test('group is atomic: full enclosure selects it and partial enclosure does not'
   assert.equal(isGeometryFullyInsideLasso(geometry, box(0, 0, 50, 50)), false);
 });
 
+test('text-markup group uses every quad for full-containment lasso selection', () => {
+  const annotation = {
+    type: 'group', left: 10, top: 10, width: 70, height: 30,
+    lockMovementX: true, lockMovementY: true,
+    lockScalingX: true, lockScalingY: true, lockRotation: true,
+    data: {
+      type: 'text-markup', markupType: 'highlight',
+      quads: [
+        { x1: 10, y1: 10, x2: 40, y2: 10, x3: 10, y3: 20, x4: 40, y4: 20 },
+        { x1: 50, y1: 30, x2: 80, y2: 30, x3: 50, y3: 40, x4: 80, y4: 40 },
+      ],
+    },
+  };
+  const geometry = annotationToLassoGeometry(annotation);
+  assert.equal(geometry.outlines.length, 2);
+  assert.equal(isGeometryFullyInsideLasso(geometry, box(0, 0, 90, 50)), true);
+  assert.equal(isGeometryFullyInsideLasso(geometry, box(0, 0, 45, 25)), false);
+  assert.equal(annotation.lockMovementX, true);
+  assert.equal(annotation.lockScalingX, true);
+});
+
 test('hidden, deleted, blocked, and fully locked objects are excluded', () => {
   const annotations = { objects: [
     { type: 'rect', left: 10, top: 10, width: 10, height: 10, visible: false },

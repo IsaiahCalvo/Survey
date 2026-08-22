@@ -3,6 +3,41 @@ const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout']
 const round = (value) => Math.round(Number(value) * 10_000) / 10_000;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
 
+const colorAlpha = (color) => {
+  const match = String(color || '').match(/^rgba?\([^,]+,[^,]+,[^,]+(?:,\s*([\d.]+))?\s*\)$/i);
+  if (match?.[1] != null) return clamp01(match[1]);
+  const hex = String(color || '').trim();
+  if (/^#[\da-f]{8}$/i.test(hex)) return parseInt(hex.slice(7, 9), 16) / 255;
+  if (/^#[\da-f]{4}$/i.test(hex)) return parseInt(hex[4] + hex[4], 16) / 255;
+  return 1;
+};
+
+const colorHex = (color) => {
+  const value = String(color || '').trim();
+  const rgb = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgb) {
+    return `#${rgb.slice(1, 4).map((part) => (
+      Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')
+    )).join('')}`;
+  }
+  if (/^#[\da-f]{3,4}$/i.test(value)) {
+    return `#${value.slice(1, 4).split('').map((part) => part + part).join('')}`;
+  }
+  if (/^#[\da-f]{6,8}$/i.test(value)) return value.slice(0, 7);
+  return null;
+};
+
+export function resolveTextMarkupEditPaint(annotation, fallbackColor = '#f4d35e') {
+  const storedColor = [annotation?.stroke, annotation?.fill, annotation?.data?.color]
+    .find((value) => value && value !== 'none' && value !== 'transparent') || fallbackColor;
+  const rawObjectOpacity = Number(annotation?.opacity ?? 1);
+  const objectOpacity = Number.isFinite(rawObjectOpacity) ? clamp01(rawObjectOpacity) : 1;
+  return {
+    color: colorHex(storedColor) || colorHex(fallbackColor) || '#f4d35e',
+    opacity: Math.round(clamp01(objectOpacity * colorAlpha(storedColor)) * 100),
+  };
+}
+
 export function normalizeTextMarkupType(value) {
   const type = String(value || '').toLowerCase();
   return MARKUP_TYPES.has(type) ? type : null;

@@ -224,7 +224,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
@@ -377,7 +377,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
-import { createTextMarkupAnnotation, getSelectionPageRanges } from './utils/pdfTextMarkup.js';
+import { createTextMarkupAnnotation, getSelectionPageRanges, resolveTextMarkupEditPaint } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -2893,6 +2893,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
   const [selectionMode, setSelectionMode] = useState(loadSelectMode);
+  const activateSelectFamilyMode = useCallback((mode) => {
+    const next = getSelectFamilyTransition(mode);
+    setSelectionMode(next.selectionMode);
+    setActiveTool(next.activeTool);
+  }, []);
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
   const interactionDiagPrevToolRef = useRef('pan');
@@ -3687,13 +3692,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // tool-switch to Select as the plain-annotation branch so followup
       // drags / edits work naturally.
       if (hit.kind === 'callout' && hit.calloutId) {
-        setActiveTool('select');
+        activateSelectFamilyMode('rectangle');
         setSelectedCalloutIds(new Set([hit.calloutId]));
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
-      setActiveTool('select');
+      activateSelectFamilyMode('rectangle');
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
         annotationIndex: hit.annotationIndex,
@@ -3706,7 +3711,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool]);
+  }, [activeTool, activateSelectFamilyMode]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
   // show the same blue hover glow the Select tool shows AND switch the
@@ -5139,7 +5144,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       document.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [activeTool, usePdfjsRenderer]);
+  }, [activeTool, activateSelectFamilyMode, usePdfjsRenderer]);
 
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
@@ -7448,6 +7453,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { strokeOpacityStateRef.current = strokeOpacity; }, [strokeOpacity]);
   useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
   useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
+  useEffect(() => {
+    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
+    const paint = resolveTextMarkupEditPaint(selectedToolbarAnnotation.annotation, strokeColorStateRef.current);
+    strokeColorStateRef.current = paint.color;
+    strokeOpacityStateRef.current = paint.opacity;
+    setStrokeColor(paint.color);
+    setStrokeOpacity(paint.opacity);
+  }, [activeTool, selectedToolbarAnnotation]);
   const getSelectedShapeMeta = () => {
     const sel = selectedToolbarAnnotationRef.current;
     const annotation = sel?.annotation;
@@ -7499,7 +7512,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
         : prev));
     } else if (annotation?.data?.type === 'text-markup') {
-      handlePatchSelectedAnnotation({ fill: rgba, stroke: rgba });
+      const color = getHexFromColor(rgba) || rgba;
+      handlePatchSelectedAnnotation({ fill: color, stroke: color });
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
@@ -7593,7 +7607,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
     } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
-      handlePatchSelectedAnnotation({ opacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
+      const annotation = selectedToolbarAnnotationRef.current.annotation;
+      const paint = resolveTextMarkupEditPaint(annotation, strokeColorStateRef.current);
+      const color = getHexFromColor(strokeColorStateRef.current) || paint.color;
+      handlePatchSelectedAnnotation({
+        fill: color,
+        stroke: color,
+        opacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)),
+      });
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
@@ -23092,6 +23113,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const counterToolFillOpacity = activeTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
       : fillOpacity;
+    const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
+      ? resolveTextMarkupEditPaint(selectedAnnot, strokeColor)
+      : null;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -23129,8 +23153,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Keep editable picker values separate from the effective swatch paint:
       // selectedStrokeColor includes object opacity, while these base fields
       // must not or an edit would bake opacity into the color a second time.
-      strokeColor: counterToolStrokeColor,
-      strokeOpacity: counterToolStrokeOpacity,
+      strokeColor: selectedTextMarkupPaint?.color || counterToolStrokeColor,
+      strokeOpacity: selectedTextMarkupPaint?.opacity ?? counterToolStrokeOpacity,
       selectedStrokeColor: selectedPreviewColors.stroke,
       strokeWidthInputValue: strokeWidthInputValueRef.current,
       eraserSizeInputValue: eraserSizeInputValueRef.current,
@@ -23362,8 +23386,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Prevent default behavior and switch to select tool
         e.preventDefault();
-        setSelectionMode('rectangle');
-        setActiveTool('select');
+        activateSelectFamilyMode('rectangle');
         return;
       }
 
@@ -23378,8 +23401,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           return; // Don't trigger tool switch if focused on input
         }
         e.preventDefault();
-        setSelectionMode('text');
-        setActiveTool('text-select');
+        activateSelectFamilyMode('text');
         return;
       }
 
@@ -28053,7 +28075,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const created = committed ? transaction.created : [];
     clearLiveTextSelection();
     if (created.length > 0) {
-      setActiveTool('select');
+      activateSelectFamilyMode('rectangle');
       const selectCreatedMark = () => setPendingSvgSelection({
         pageNumber: created[0].pageNumber,
         annotationIndex: created[0].annotationIndex,
@@ -28065,7 +28087,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         selectCreatedMark();
       }
     }
-  }, [capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelection, textMarkupOverlapMode, user?.id]);
+  }, [activateSelectFamilyMode, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelection, textMarkupOverlapMode, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;

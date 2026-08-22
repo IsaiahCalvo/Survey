@@ -7,7 +7,7 @@ import CompactColorPicker from '../components/CompactColorPicker';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
-import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { getSelectFamilyLabel, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
@@ -52,12 +52,6 @@ const TOOL_TO_GROUP = Object.entries(TOOL_GROUPS).reduce((result, [groupId, grou
   });
   return result;
 }, {});
-
-const MOBILE_SELECT_TOOLS = [
-  { id: 'select', label: 'Select', icon: 'cursor' },
-  { id: 'lasso-select', label: 'Lasso Select', icon: 'cursor', disabled: true },
-  { id: 'text-select', label: 'Text Select', icon: 'text' },
-];
 
 const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow', 'text', 'callout', 'counter']);
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'text', 'callout', 'counter']);
@@ -626,6 +620,7 @@ export function MobileToolProperties({ api }) {
   const counterMenuRef = useRef(null);
   const counterMenuInsideRefs = useMemo(() => [counterMenuRef], []);
   const tool = api?.contextTool || api?.activeTool;
+  const textMarkup = getMobileTextMarkupPresentation(api);
 
   useEffect(() => {
     // Close every tool-scoped popover/sheet when the active tool changes so a
@@ -633,6 +628,7 @@ export function MobileToolProperties({ api }) {
     setCounterMenuOpen(false);
     setColorPicker(null);
     setTextDefaultsOpen(false);
+    api?.setShowAnnotationColorPicker?.(false);
   }, [tool]);
 
   if (!api) return null;
@@ -773,6 +769,56 @@ export function MobileToolProperties({ api }) {
           onClose={() => setColorPicker(null)}
         />
       )}
+      </>
+    );
+  }
+
+  if (textMarkup.active) {
+    const markupColor = toHexColor(textMarkup.color, '#f4d35e');
+    const markupOpacity = textMarkup.opacity / 100;
+    return (
+      <>
+        <div
+          className="mobile-pdf-properties mobile-pdf-properties--text-markup"
+          data-mobile-tool-properties="true"
+          data-mobile-text-markup-controls={textMarkup.editingSelection ? 'edit' : 'create'}
+          role="toolbar"
+          aria-label={textMarkup.editingSelection ? 'Edit text markup' : 'Text markup defaults'}
+        >
+          <button
+            type="button"
+            className="mobile-pdf-properties__color"
+            aria-label="Text markup color and opacity"
+            title="Text markup color and opacity"
+            aria-expanded={Boolean(api.showAnnotationColorPicker)}
+            onClick={() => api.setShowAnnotationColorPicker?.(true)}
+          >
+            <span style={{ background: markupColor, opacity: markupOpacity }} />
+          </button>
+          <MobileStyledSelect
+            ariaLabel="Highlight overlap mode"
+            minWidth={92}
+            value={textMarkup.overlapMode}
+            options={[
+              { value: 'layered', label: 'Layered' },
+              { value: 'uniform', label: 'Uniform' },
+            ]}
+            onChange={(value) => api.setTextMarkupOverlapMode?.(value)}
+          />
+        </div>
+        {api.showAnnotationColorPicker && (
+          <MobileColorPickerSurface
+            title="Text markup color"
+            color={markupColor}
+            opacity={markupOpacity}
+            minOpacity={0.05}
+            onChange={(hex, alpha) => {
+              api.handleStrokeColorChange?.(hex);
+              api.handleStrokeOpacityChange?.(Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100));
+            }}
+            onClose={() => api.setShowAnnotationColorPicker?.(false)}
+          />
+        )}
       </>
     );
   }
@@ -1356,13 +1402,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const selectModeMenuRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
-  const selectHoldTimerRef = useRef(null);
-  const suppressSelectClickRef = useRef(false);
-  const lastSelectModeRef = useRef('select');
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
-  useEffect(() => () => {
-    if (selectHoldTimerRef.current) window.clearTimeout(selectHoldTimerRef.current);
-  }, []);
   const presenceUsers = useMemo(() => normalizeMobilePresence({
     presence: leftRailApi?.presence,
     currentUserId: leftRailApi?.currentUserId,
@@ -1415,12 +1455,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const presenceCount = Math.max(presenceUsers.length, 1);
 
   useEffect(() => {
-    if (activeTool === 'select' || activeTool === 'text-select') {
-      lastSelectModeRef.current = activeTool;
-    }
-  }, [activeTool]);
-
-  useEffect(() => {
     onAuxPanelStateChange?.(presenceOpen ? 'users' : null);
     return () => onAuxPanelStateChange?.(null);
   }, [onAuxPanelStateChange, presenceOpen]);
@@ -1434,7 +1468,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   }, [activeGroup, activeTool]);
 
   const selectTool = (toolId) => {
-    if (toolId === 'select' || toolId === 'text-select') lastSelectModeRef.current = toolId;
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
   };
@@ -1527,7 +1560,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <>
               <div className="mobile-pdf-tools__divider is-short" />
               <div className="mobile-pdf-tools__subtools">
-                {(openCategory === 'select' ? MOBILE_SELECT_TOOLS : TOOL_GROUPS[openCategory].tools).map((tool) => (
+                {TOOL_GROUPS[openCategory].tools.map((tool) => (
                   <RailButton
                     key={tool.id}
                     active={activeTool === tool.id}

@@ -237,6 +237,20 @@ const geometryFromCounter = (annotation) => {
   return makeGeometry([outline]);
 };
 
+const geometryFromTextMarkup = (annotation) => {
+  const outlines = (Array.isArray(annotation?.data?.quads) ? annotation.data.quads : [])
+    .map((quad) => [
+      { x: Number(quad?.x1), y: Number(quad?.y1) },
+      { x: Number(quad?.x2), y: Number(quad?.y2) },
+      { x: Number(quad?.x4), y: Number(quad?.y4) },
+      { x: Number(quad?.x3), y: Number(quad?.y3) },
+    ])
+    .filter((outline) => outline.every(finitePoint));
+  if (outlines.length) return makeGeometry(outlines);
+  const bbox = getAnnotationBBox(annotation);
+  return makeGeometry([rectangleOutline(bbox.left, bbox.top, bbox.width, bbox.height)]);
+};
+
 const geometryFromGroup = (annotation) => {
   if (annotation?.data?.type === 'counter') {
     return geometryFromCounter(annotation);
@@ -301,6 +315,7 @@ export function annotationToLassoGeometry(annotation) {
   const strokePad = Math.max(0, Number(annotation?.strokeWidth) || 0) * strokeScale / 2;
 
   if (annotation.data?.type === 'counter') return geometryFromCounter(annotation);
+  if (annotation.data?.type === 'text-markup') return geometryFromTextMarkup(annotation);
 
   if (type === 'path') return geometryFromPath(annotation);
   if (type === 'line') return geometryFromLine(annotation);

@@ -7,6 +7,7 @@ import {
   mapOcrBoxToPage,
   mergeLineQuads,
   rotatePageQuad,
+  resolveTextMarkupEditPaint,
 } from '../src/utils/pdfTextMarkup.js';
 import { serializeFabricObjectToRow, deserializeRowToFabricObject } from '../src/services/annotationTypeSerializers.js';
 import { getEraserOperation } from '../src/utils/eraserPolicy.js';
@@ -71,6 +72,23 @@ for (const type of ['highlight', 'underline', 'squiggly', 'strikeout']) {
     assert.equal(annotation.hasControls, false);
   });
 }
+
+test('each selected text mark hydrates its own base color and effective opacity', () => {
+  const amber = createTextMarkupAnnotation({
+    id: 'amber', pageNumber: 1, markupType: 'highlight', color: '#f59e0b', opacity: 0.35,
+    quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],
+  });
+  const blue = createTextMarkupAnnotation({
+    id: 'blue', pageNumber: 1, markupType: 'underline', color: '#2563eb', opacity: 0.8,
+    quads: [{ x1: 20, y1: 2, x2: 30, y2: 2, x3: 20, y3: 7, x4: 30, y4: 7 }],
+  });
+  assert.deepEqual(resolveTextMarkupEditPaint(amber), { color: '#f59e0b', opacity: 35 });
+  assert.deepEqual(resolveTextMarkupEditPaint(blue), { color: '#2563eb', opacity: 80 });
+  assert.deepEqual(
+    resolveTextMarkupEditPaint({ ...blue, stroke: 'rgba(37, 99, 235, 0.5)', opacity: 0.8 }),
+    { color: '#2563eb', opacity: 40 },
+  );
+});
 
 test('OCR boxes map locally to page space and rotation', () => {
   assert.deepEqual(
