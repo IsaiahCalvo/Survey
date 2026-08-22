@@ -109,6 +109,16 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
   const refresh = useCallback(async () => {
     if (!documentId) { setMembers([]); setInvites([]); return; }
+    // HubPreview / testPdf: AuthContext reports no cloud session. Do not
+    // spin "Loading collaborators…" against a live PostgREST lookup — Invite
+    // still opens ShareModal, which fail-closes mint the same way.
+    if (auth.isSupabaseAvailable === false) {
+      setMembers([]);
+      setInvites([]);
+      setError('');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -124,7 +134,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     } finally {
       setLoading(false);
     }
-  }, [documentId]);
+  }, [documentId, auth.isSupabaseAvailable]);
 
   useEffect(() => {
     if (!open) return;

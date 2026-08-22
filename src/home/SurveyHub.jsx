@@ -14,7 +14,7 @@
      onCreateProject()     — start the new-project flow
      onCreateTemplate()    — start the new-template flow
 */
-import { useState, useEffect, useRef, lazy, Suspense, startTransition } from 'react';
+import { useState, useEffect, useRef, useContext, lazy, Suspense, startTransition } from 'react';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
@@ -22,6 +22,7 @@ const ArchiveScreen = lazy(() => import('./ArchiveScreen'));
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
+import { AuthContext } from '../contexts/AuthContext';
 import { getDocumentCollaborators } from '../services/documentAnnotationService';
 import { userCanManageDocumentAccess } from '../services/projectInviteService';
 import { HubChromeContext, HubShell } from './HubShell';
@@ -90,6 +91,7 @@ export default function SurveyHub({
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
   const shareManageRequestRef = useRef(0);
+  const auth = useContext(AuthContext) || {};
 
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
@@ -128,6 +130,13 @@ export default function SurveyHub({
       single.role || single.collaborator_role || single.my_role || single.current_user_role || '',
     ).toLowerCase();
     if (explicitRole && explicitRole !== 'owner') {
+      applyShare(false);
+      return;
+    }
+    // HubPreview / testPdf set AuthContext.isSupabaseAvailable === false.
+    // Do not hang Share on a live document_collaborators lookup — same
+    // fail-closed class as ShareModal Copy link / Send.
+    if (auth.isSupabaseAvailable === false) {
       applyShare(false);
       return;
     }
