@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 hunt after Hub Try again):** not a new UL row. Independent live hunt after Hub **Try again**. Opened every hubPreview tab + `?testPdf=` + unused query seams. No unique unblocked leftover. Receipt `fix-logs/after-hub-retry-exhausted-hunt-2026-08-22.md`. Playwright **2 / 2 (9.5s)**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 leftover-18 UL-03 Documents Upload fail-closed):** not a new UL row. Dedicated intended+break+edge for hubPreview Documents **Upload** (`console.log('[hub preview] upload')`; no file input / no chooser). Distinct from leftover18-unblock web `/` Auth-modal gate + Electron IPC, and from Guest AuthModal A-01. Receipt `fix-logs/hub-docs-upload-failclosed-2026-08-22.md`. Playwright `e2e-hub-docs-upload-failclosed.spec.mjs`. Node `documentsUploadFailClosed.test.mjs`. Next leftover-18 fail-closed slice: **Start trial** (A-05 / UL-20). Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 hunt after Hub Try again):** not a new UL row. Independent live hunt after Hub **Try again**. Opened every hubPreview tab + `?testPdf=` + unused query seams. No unique unblocked leftover. Receipt `fix-logs/after-hub-retry-exhausted-hunt-2026-08-22.md`. Playwright **2 / 2 (9.5s)**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Hub load-error Try again):** not a new UL row. Live desktop + 390 Hub **Try again** (`HubLoadError` / `retryLoad`) on `hubError=documents|projects|templates`. Distinct from Documents Select All / extras / Lock persist / Open file / Share Access, leftover-18 Upload, empty=1 EmptyState, and hubLoading skeletons. Receipt `fix-logs/hub-load-error-retry-2026-08-22.md`. Playwright `e2e-hub-load-error-retry.spec.mjs` **1 / 1 (2.8s)**. Node `hubLoadErrorRetry.test.mjs` **3 / 3**. Hunt `fix-logs/hub-load-error-retry-hunt-2026-08-22.md` — last Select-All hunt did not open `hubError`; do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
@@ -182,7 +184,7 @@ Unblocked catalog follow-up (2026-08-21, not new UL rows): `fix-logs/e2e-unblock
 |---|---|---|---|---|---|
 | UL-01 | Shortcuts overlay | Close (X / backdrop / Esc) | Dismiss overlay; focus trap owns Esc | Close had no accessible name | **pass** (live + Node; Close now `aria-label="Close"`) |
 | UL-02 | Shortcuts overlay | **B** — toggle sidebar | Open/close left rail | Ignore in INPUT/TEXTAREA/contenteditable; modifiers | **pass** (Node helpers + live width change) |
-| UL-03 | Shortcuts overlay | Ctrl/⌘O Open document | Open file | Web vs Electron File→Open | **pass** (IPC). Native chooser **opened** on 5175; pick/cancel **blocked** (AX + loginwindow). `fix-logs/electron-desktop.md` |
+| UL-03 | Shortcuts overlay | Ctrl/⌘O Open document | Open file | Web vs Electron File→Open | **pass** (IPC + hubPreview Upload fail-closed). Native chooser **opened** on 5175; pick/cancel **blocked**. Hub Documents Upload live `e2e-hub-docs-upload-failclosed.spec.mjs` (`[hub preview] upload`; no file input unless `workflowE2E`). `fix-logs/electron-desktop.md`; `fix-logs/hub-docs-upload-failclosed-2026-08-22.md` |
 | UL-04 | Shortcuts overlay | Ctrl+0 Fit page | Fit page (not 100%) | Conflicts with zoom field focus | **pass** (listed + live: 50% then Ctrl+0 left 50%) |
 | UL-05 | AppShell rail | Fit options menu | Fit page / width / **height** / manual | Narrow shell; Fit height ≠ Fit page on 390 | **pass** (this pass: Fit height intended/break/edge — `e2e-fit-height.spec.mjs`; prior live click was page+width only) |
 | UL-06 | AppShell rail | Zoom % edit field | Type a percent; clamp 1–4000 | `0` / 50% lift to engine dynamic min (~100% here); 9999→4000; failed select-all appends | **pass** (live fill: 200%, 0→100%, 9999→4000%, 50→100%; Node clampScale) |
@@ -231,7 +233,7 @@ Unblocked catalog follow-up (2026-08-21, not new UL rows): `fix-logs/e2e-unblock
 
 | IDs | Why blocked |
 |---|---|
-| UL-03 | Native File→Open opened `Open PDF document` on Vite 5175; pick/cancel unproven (AX menu-bar only; clicks hit loginwindow Login). `fix-logs/electron-desktop.md`. |
+| UL-03 | Native File→Open opened `Open PDF document` on Vite 5175; pick/cancel unproven (AX menu-bar only; clicks hit loginwindow Login). HubPreview Documents Upload fail-closed live `e2e-hub-docs-upload-failclosed.spec.mjs`. `fix-logs/electron-desktop.md`; `fix-logs/hub-docs-upload-failclosed-2026-08-22.md`. |
 | UL-13, UL-15–18, UL-20–22 | **chrome live** on `?hubPreview=1`. Remaining: live Turnstile completion, account wipe, Stripe Checkout, MSAL, Google OAuth. |
 | UL-24 | **live mint** on a signed-in owner doc (`e2e-signed-in-leftovers.spec.mjs`). HubPreview remains fail-closed. Email Send still not clicked. |
 | UL-27–31 | **closed live** — prior “pdf.js swallow” was a harness miss (right-click at viewer 40,40 is chrome, off-page). |

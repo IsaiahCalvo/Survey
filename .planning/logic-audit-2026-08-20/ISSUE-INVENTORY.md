@@ -88,7 +88,7 @@ This-pass leftover-18 (still parked; legal slices in `fix-logs/leftover18-unbloc
 | A-03 / UL-24 inbox | **partial** — mint/Send fail-closed | live email delivery |
 | A-05 / UL-20 Stripe | **partial** — catalog; trial not clicked | live Checkout |
 | A-06 / UL-45 roster | **partial** — `user_id` dedupe | second-account lease tuple |
-| UL-03 | **partial** — web `/` Auth modal | native Electron pick/cancel |
+| UL-03 | **partial** — web `/` Auth modal + hubPreview Upload fail-closed (`e2e-hub-docs-upload-failclosed.spec.mjs`) | native Electron pick/cancel |
 | UL-13 / UL-15 / UL-16 | **partial** — previewBlocked save/wipe + no-token | persist / captcha / wipe |
 | UL-21 / UL-22 | **partial** — Connect fail-closed | live MSAL / Google OAuth |
 
