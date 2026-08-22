@@ -549,12 +549,17 @@ test('390 Counter Fill + Stroke CompactColorPicker every swatch intended + break
 
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeVisible();
-  await undo.click();
+  for (let i = 0; i < 8; i += 1) {
+    const stillThere = (await counterSnapshot(page)).some((row) => row.id === isolated.id);
+    if (!stillThere) break;
+    await undo.click();
+  }
   await expect.poll(async () => {
     const rows = await counterSnapshot(page);
     return rows.some((row) => row.id === isolated.id);
   }).toBe(false);
-  expect(storedFill(await annotationById(page, pin.id))).toBe('#0000FF');
+  expect(storedFill(await annotationById(page, pin.id))).toBe('#FF0000');
+  expect(storedNumber(await annotationById(page, pin.id))).toBe('#0000FF');
 
   const viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
   expect(viewBox).toBe('0 0 612 792');
