@@ -252,24 +252,31 @@ test('U-02 space-card Expand/Collapse hides and shows inner rows', async ({ page
   if (await create390.count()) {
     mobileCreate = await create390.count();
     await expect(create390.first()).toBeVisible({ timeout: 8_000 });
-    await create390.first().click();
+    await create390.first().evaluate((el) => el.click());
+    await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 1' })).toBeVisible({ timeout: 8_000 });
+    const mobileCard = mobilePanel.locator('[data-space-sortable-row-id]').first();
+    await expect(mobileCard).toBeVisible({ timeout: 8_000 });
+    mobileCollapse = await mobilePanel.getByRole('button', { name: 'Collapse', exact: true }).count();
     const add390 = mobilePanel.locator('.space-add-pages-input');
     if (await add390.count()) {
       await add390.first().fill('1');
       const addPages = mobilePanel.getByRole('button', { name: 'Add pages', exact: true });
-      if (await addPages.count()) await addPages.first().click();
+      if (await addPages.count()) await addPages.first().evaluate((el) => el.click());
+      try {
+        await expect.poll(async () => mobileCard.locator('.space-region-row').count(), { timeout: 6_000 }).toBeGreaterThan(0);
+      } catch { /* page-row can race on the sheet */ }
     }
-    const mobileCard = mobilePanel.locator('[data-space-sortable-row-id]').first();
-    mobileCollapse = await mobileCard.getByRole('button', { name: 'Collapse', exact: true }).count();
+    mobileCollapse = await mobilePanel.getByRole('button', { name: 'Collapse', exact: true }).count();
     if (mobileCollapse > 0) {
-      await mobileCard.getByRole('button', { name: 'Collapse', exact: true }).first().evaluate((el) => el.click());
-      mobileExpand = await mobileCard.getByRole('button', { name: 'Expand', exact: true }).count();
-      mobileHidRows = (await mobileCard.locator('.space-region-row').count()) === 0;
+      await mobilePanel.getByRole('button', { name: 'Collapse', exact: true }).first().evaluate((el) => el.click());
+      mobileExpand = await mobilePanel.getByRole('button', { name: 'Expand', exact: true }).count();
+      mobileHidRows = (await mobileCard.locator('.space-region-row').count()) === 0
+        && (await mobileCard.locator('.space-add-pages-input').count()) === 0;
       if (mobileExpand > 0) {
-        await mobileCard.getByRole('button', { name: 'Expand', exact: true }).first().evaluate((el) => el.click());
+        await mobilePanel.getByRole('button', { name: 'Expand', exact: true }).first().evaluate((el) => el.click());
         mobileShowedRows = (await mobileCard.locator('.space-region-row').count()) > 0
           || (await mobileCard.locator('.space-add-pages-input').count()) > 0;
-        mobileCollapse = await mobileCard.getByRole('button', { name: 'Collapse', exact: true }).count();
+        mobileCollapse = await mobilePanel.getByRole('button', { name: 'Collapse', exact: true }).count();
       }
     }
   }
