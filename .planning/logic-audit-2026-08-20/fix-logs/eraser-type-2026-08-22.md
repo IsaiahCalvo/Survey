@@ -61,7 +61,7 @@ Desktop catalog `Partial erase` / `Full stroke erase`. Default Partial skips a r
 
 ## Official / focused Node
 
-Official `npm test` after the PDFViewer layout-effect edit fail-stopped on `tests/toolbarWidthDraft.test.mjs` (stale comment/compare regex). Updated that contract to require `eraserMode` in the same layout effect. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
+Official `npm test` after the PDFViewer layout-effect edit: `toolbarWidthDraft` now matches the `eraserMode` layout publish. Suite then fail-stopped on the standing `partialEraserComplexity` 500-crossing-cuts budget (`11964.55 MiB` > **8448**). Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI absent — skipped.
 
 ## Next leftover
 
