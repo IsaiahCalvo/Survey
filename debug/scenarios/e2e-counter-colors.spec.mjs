@@ -129,7 +129,7 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
         tool: String(data.tool || data.type || object.tool || (overlayIds.includes(id) ? 'counter' : '')).toLowerCase(),
         imported: object.isPdfImported === true,
         seriesId: data.seriesId || null,
-        displayNumber: Number(data.displayNumber ?? host?.querySelector('text')?.textContent || 0),
+        displayNumber: Number(data.displayNumber ?? (host?.querySelector('text')?.textContent || 0)),
         createdAt: data.createdAt ?? null,
         fill: object.fill || data.fill || visualFill || null,
         numberColor: data.numberColor || visualNumber || null,
