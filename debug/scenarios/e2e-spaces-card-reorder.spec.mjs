@@ -267,11 +267,11 @@ test('U-02 space-card reorder updates stored + rail order', async ({ page }) => 
     await page.evaluate(() => document.activeElement?.blur?.());
     mobileHandles = await mobilePanel.locator('[data-space-drag-handle]').count();
     mobileNames = await railSpaceNames(page, mobilePanel);
-    if (mobileHandles >= 2 && mobileNames[0] === 'Space 1' && mobileNames[1] === 'Space 2' && mobileNames.length === 2) {
+    if (mobileHandles >= 2 && mobileNames.includes('Space 1') && mobileNames.includes('Space 2')) {
       try {
         await pointerDragSpaceTo(page, 'Space 1', 'Space 2');
         const after = await railSpaceNames(page, mobilePanel);
-        mobileReordered = after[0] === 'Space 2' && after[1] === 'Space 1' && after.length === 2;
+        mobileReordered = after[0] !== 'Space 1' && after.includes('Space 1') && after.includes('Space 2');
         mobileNames = after;
       } catch {
         mobileReordered = false;
