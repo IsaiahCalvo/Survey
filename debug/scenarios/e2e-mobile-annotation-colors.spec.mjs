@@ -86,7 +86,10 @@ async function pageBox(page, pageNumber = 1) {
 }
 
 async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
-  const box = await pageBox(page, pageNumber);
+  const pageEl = page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+  await expect(pageEl).toBeVisible();
+  const box = await pageEl.boundingBox();
+  expect(box, `page ${pageNumber} geometry`).toBeTruthy();
   await page.mouse.move(box.x + box.width * x0, box.y + box.height * y0);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * x1, box.y + box.height * y1, { steps: 8 });
@@ -176,8 +179,7 @@ async function dismissChrome(page) {
 async function selectRect(page, id) {
   await dismissChrome(page);
   await clickVisible(page, 'Select');
-  const host = page.locator(`[data-shape-id="${id}"]`).first()
-    .or(page.locator(`[data-svg-annotation-layer] [data-anno-id="${id}"]`).first());
+  const host = page.locator(`[data-shape-id="${id}"]`).first();
   await expect(host).toBeVisible();
   await host.click({ force: true, position: { x: 8, y: 8 } });
   const swatch = page.getByRole('button', { name: 'Fill and border colors', exact: true }).first();
