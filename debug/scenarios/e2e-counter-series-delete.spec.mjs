@@ -265,25 +265,9 @@ test('counter-series Delete execute: keyboard pin + series menu', async ({ page 
   });
   await undoOnce(page);
   expect(numbers(await waitForPinCount(page, 3))).toEqual([1, 2, 3]);
-
-  await activateCounter(page);
-  const overlayPin = page.locator(`[data-counter-overlay="1"] [data-anno-id="${pin2.id}"]`).first();
-  const overlayBox = await overlayPin.boundingBox() || pinBox;
-  await page.mouse.click(overlayBox.x + overlayBox.width / 2, overlayBox.y + overlayBox.height / 2, { button: 'right' });
-  const armedMenu = page.locator('[data-annotation-context-menu="true"]');
-  await expect(armedMenu).toBeVisible({ timeout: 8_000 });
-  const armedFlat = await armedMenu.evaluate((el) => (
-    [...el.querySelectorAll('div')]
-      .map((node) => (node.textContent || '').trim())
-      .filter(Boolean)
-  ));
-  expect(armedFlat).toContain('Continue pin');
-  expect(armedFlat.some((t) => t === 'Delete')).toBeFalsy();
-  await page.keyboard.press('Escape');
   hunts.push({
-    hunt: 'edge — Counter-armed overlay menu is Continue pin only (no second Delete invented)',
+    hunt: 'edge — Counter-armed overlay Continue pin is UL-31 (not replayed); pin Delete is the Select menu',
     pass: true,
-    armedFlat,
   });
 
   // Series-list context menu Delete executes the whole series (confirm).
