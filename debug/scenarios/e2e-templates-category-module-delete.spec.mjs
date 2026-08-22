@@ -48,6 +48,13 @@ function newCategoryButton(page) {
   return desktopGrid(page).getByRole('button', { name: 'New category', exact: true });
 }
 
+async function enterCategorySelect(page) {
+  const chrome = categoryChrome(page);
+  const done = chrome.getByRole('button', { name: 'Done', exact: true });
+  if (await done.count()) return;
+  await chrome.getByRole('button', { name: 'Select', exact: true }).click();
+}
+
 function dirtyBar(page) {
   return page.locator('[data-entity-editor-actions]');
 }
@@ -142,9 +149,10 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   await expect.poll(async () => categoryNames(page)).toContain('Category 1');
   expect(await categoryNames(page)).not.toContain('');
 
-  await categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]').click();
-  await categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]').fill('gone');
-  await categoryTitleInputs(page).locator('xpath=self::input[@value="gone"]').press('Escape');
+  const cat1Again = categoryTitleInputs(page).locator('xpath=self::input[@value="Category 1"]');
+  await cat1Again.click();
+  await cat1Again.fill('gone');
+  await cat1Again.press('Escape');
   await expect.poll(async () => categoryNames(page)).toContain('Category 1');
   expect(await categoryNames(page)).not.toContain('gone');
 
@@ -182,7 +190,7 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   });
   await expect(templatesList.getByRole('button', { name: 'Select', exact: true })).toBeVisible();
 
-  await categoryChrome(page).getByRole('button', { name: 'Select', exact: true }).click();
+  await enterCategorySelect(page);
   const catDup = categoryChrome(page).getByRole('button', { name: 'Duplicate', exact: true });
   await expect(catDup).toBeVisible();
   await expect(catDup).toBeDisabled();
@@ -206,8 +214,9 @@ test('Templates New category + category Duplicate + module Delete', async ({ pag
   await expect(dirtyBar(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   expect(await categoryNames(page)).toEqual(['Cameras', 'Doors', 'E2E Category']);
 
-  // Persist + isolation
-  await categoryChrome(page).getByRole('button', { name: 'Select', exact: true }).click();
+  // Persist + isolation. Dirty-bar Cancel does not exit category Select
+  // (button stays Done), so only click Select when it is actually shown.
+  await enterCategorySelect(page);
   await toggleRowCheckbox(camerasRow);
   await catDup.click();
   await dirtyBar(page).getByRole('button', { name: 'Save', exact: true }).click();
