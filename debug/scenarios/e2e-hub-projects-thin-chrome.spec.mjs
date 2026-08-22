@@ -347,12 +347,13 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   ));
   const mobileReordered = mobileOrderAfter.join('|') !== mobileOrderBefore.join('|');
 
-  await mobileRow('p1').click();
-  await expect(page.getByText(SE011).first()).toBeVisible({ timeout: 8_000 });
+  await mobileRow('p1').locator('strong').click();
+  const mobileFile = page.locator('.projects-mobile-file-row').filter({ hasText: SE011 });
+  await expect(mobileFile).toBeVisible({ timeout: 8_000 });
   await page.getByRole('button', { name: 'Select', exact: true }).locator('visible=true').click();
   const mobileMove = page.getByRole('button', { name: 'Move/Copy', exact: true }).locator('visible=true');
   await expect(mobileMove).toBeDisabled();
-  await page.locator('.projects-mobile-file-row, [data-document-id]').filter({ hasText: SE011 }).first().click();
+  await mobileFile.click();
   await expect(mobileMove).toBeEnabled();
   await mobileMove.click();
   const mobileDlg = page.getByRole('dialog', { name: 'Move or copy documents' });
