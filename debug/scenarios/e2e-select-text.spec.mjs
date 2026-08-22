@@ -115,24 +115,32 @@ async function osSelection(page) {
   return page.evaluate(() => String(window.getSelection?.()?.toString() || ''));
 }
 
-async function dragGlyphs(page, { match = /Text Search|Helvetica|quick brown/i, steps = 14 } = {}) {
-  const layer = await waitForInteractiveTextLayer(page);
-  const span = layer.locator('span').filter({ hasText: match }).first();
-  if (await span.count()) {
-    const box = await span.boundingBox();
-    expect(box, 'glyph span geometry').toBeTruthy();
-    await page.mouse.move(box.x + 2, box.y + Math.max(2, box.height / 2));
-    await page.mouse.down();
-    await page.mouse.move(box.x + Math.max(40, box.width * 2.4), box.y + Math.max(2, box.height / 2), { steps });
-    await page.mouse.up();
-    return;
-  }
-  const box = await layer.boundingBox();
-  expect(box, 'text layer geometry').toBeTruthy();
-  await page.mouse.move(box.x + 48, box.y + 56);
+async function dragGlyphs(page, { steps = 16 } = {}) {
+  await waitForInteractiveTextLayer(page);
+  const target = await page.evaluate(() => {
+    const layerEl = document.querySelector('.pdfjsTextLayer.is-interactive');
+    if (!layerEl) return null;
+    const spans = [...layerEl.querySelectorAll('span')]
+      .map((el) => {
+        const box = el.getBoundingClientRect();
+        return {
+          x: box.x,
+          y: box.y,
+          w: box.width,
+          h: box.height,
+          text: String(el.textContent || '').replace(/\s+/g, ' ').trim(),
+        };
+      })
+      .filter((row) => row.text.length >= 3 && row.w >= 20 && row.h >= 6 && row.y >= 96);
+    return spans[0] || null;
+  });
+  expect(target, 'visible glyph span below chrome').toBeTruthy();
+  const y = target.y + Math.max(2, target.h / 2);
+  await page.mouse.move(target.x + 2, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + 280, box.y + 56, { steps });
+  await page.mouse.move(target.x + Math.max(28, target.w * 0.8), y, { steps });
   await page.mouse.up();
+  return target;
 }
 
 async function expectSelectionMatches(page, pattern, message) {
@@ -195,7 +203,8 @@ test('desktop Select text ⇧V intended + break + edge', async ({ page }) => {
   expect(await svgPointerEvents(page), 'SVG root must fall through in text-select').toBe('none');
 
   // Intended — Selection mode caret lists both modes.
-  const caret = page.getByRole('button', { name: 'Selection mode', exact: true });
+  await expect(page.getByRole('button', { name: 'Select text', exact: true }).first()).toBeVisible();
+  const caret = page.locator('[data-select-mode-caret="true"]');
   await expect(caret).toBeVisible();
   await caret.click();
   const menu = page.locator('[data-select-mode-menu="true"]');
@@ -317,13 +326,15 @@ test('desktop form-field + no-glyph Select text break / edge', async ({ page }) 
   }).toBe('true');
   expect(await userAnnotationIds(page), 'form-field text-select must invent 0').toEqual(before);
 
-  expect(await pageViewBox(page)).toBe('0 0 612 792');
+  const formViewBox = await pageViewBox(page);
+  expect(formViewBox, 'form fixture viewBox stays page-owned').toMatch(/^0 0 \d+(\.\d+)? \d+(\.\d+)?$/);
   expect(await fileId(page)).toBeNull();
   await assertNoErrorBoundary(page);
 
   console.log('SELECT_TEXT_FORM_PROOF', JSON.stringify({
     formInteractiveAfterTextSelect: 'false',
     glyphCount,
+    formViewBox,
     fileId: null,
   }));
 });

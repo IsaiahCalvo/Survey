@@ -1534,6 +1534,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   }}
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                   className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
+                  aria-label={label}
                   style={isSelect ? { position: 'relative', paddingRight: '16px' } : undefined}
                 >
                   <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />

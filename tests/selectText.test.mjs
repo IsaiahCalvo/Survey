@@ -40,6 +40,7 @@ test('Shift+V arms text-select; layer mounts only then; SVG falls through; form 
   assert.match(shell, /tool: 'text-select', text: 'Select text', hint: '⇧V'/);
   assert.match(shell, /tool: 'select', text: 'Select annotations', hint: 'V'/);
   assert.match(shell, /aria-label="Selection mode"/);
+  assert.match(shell, /aria-label=\{label\}/);
   assert.match(shell, /data-select-mode-menu="true"/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
@@ -75,6 +76,7 @@ test('live spec covers ⇧V / menu / glyph drag / form INPUT / no-layer / 390', 
   assert.match(spec, /390 rail omits Select text/);
   assert.match(spec, /390 drag must select PDF glyphs/);
   assert.match(spec, /hubPreview/);
+  assert.match(spec, /form fixture viewBox stays page-owned/);
   assert.match(spec, /viewBox/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
