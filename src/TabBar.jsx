@@ -226,6 +226,9 @@ function TabItem({
 
       {!isHome && (
         <button
+          type="button"
+          aria-label="Close tab"
+          title="Close tab"
           onClick={handleTabCloseClick}
           onPointerDown={(e) => e.stopPropagation()}
           style={{
