@@ -1,0 +1,298 @@
+import { test, expect } from '@playwright/test';
+
+// V-09 shortcuts overlay — intended + break + edge.
+// Unique leftover after V-03 Select text. Prior V-09 was `?` then Esc
+// smoke (matrix + window). Not leftover-18. Distinct from P-04 tool-key
+// arm, V-05/V-08/E-05 catalog samples, and leftover-18. Do not stamp
+// file.id. Product: `?` toggles; Esc / click-outside / Close dismiss;
+// useKeyPress has no INPUT guard so `?` in a field still opens (documented
+// steal). Catalog is the hardcoded list — Undo/Redo/Delete/Duplicate/
+// z-order/Fit height/Fit width/F3 are live elsewhere and omitted here.
+
+const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
+const HUB = '/?hubPreview=1';
+
+const LISTED = [
+  'Previous/Next page',
+  'First page',
+  'Last page',
+  'Zoom in',
+  'Zoom out',
+  'Fit page',
+  'Open document',
+  'Search text',
+  'Select annotations',
+  'Select text on the page',
+  'Pen',
+  'Highlighter',
+  'Eraser',
+  'Text',
+  'Callout',
+  'Line',
+  'Arrow',
+  'Counter',
+  'Toggle sidebar',
+  'Toggle shortcuts',
+  'Close dialogs/cancel',
+];
+
+const OMITTED = [
+  /\bUndo\b/i,
+  /\bRedo\b/i,
+  /\bDelete\b/,
+  /\bDuplicate\b/i,
+  /Bring (to )?front/i,
+  /Bring forward/i,
+  /Send backward/i,
+  /Fit height/i,
+  /Fit width/i,
+  /\bF3\b/,
+  /Select all/i,
+];
+
+async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
+  await page.addInitScript(() => {
+    try {
+      localStorage.removeItem('survey_document_history_events_v1');
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.startsWith('annotationsByPage_')
+          || key.startsWith('callouts_')
+          || key.startsWith('cloudRenderAnnotationsByPage_')
+          || key.startsWith('toolPrefs_')
+        )) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => localStorage.removeItem(key));
+    } catch { /* ignore */ }
+  });
+  await page.setViewportSize({ width, height });
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"]')).toBeVisible();
+}
+
+async function assertNoErrorBoundary(page) {
+  await expect(page.getByRole('button', { name: 'Reload Page' })).toHaveCount(0);
+  await expect(page.getByText(/Rendered fewer hooks/i)).toHaveCount(0);
+}
+
+async function blurInputs(page) {
+  await page.evaluate(() => {
+    const el = document.activeElement;
+    if (el && typeof el.blur === 'function') el.blur();
+    if (document.body) document.body.focus();
+  });
+}
+
+async function pageViewBox(page) {
+  const layer = page.locator('[data-svg-annotation-layer]').first();
+  await expect(layer).toBeVisible({ timeout: 20_000 });
+  return (await layer.getAttribute('viewBox')) || '';
+}
+
+async function fileId(page) {
+  return page.evaluate(() => window.__devTestPdf?.id ?? null);
+}
+
+async function userAnnotationIds(page, pageNumber = 1) {
+  return page.evaluate((pageNum) => {
+    const ids = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
+      .map((group) => group.getAttribute('data-anno-id'))
+      .filter(Boolean);
+    return ids.filter((id) => {
+      const object = window.__phase35GetAnnotationById?.(id) || {};
+      return object.isPdfImported !== true && !/^\d+R$/i.test(String(id || ''));
+    });
+  }, pageNumber);
+}
+
+function overlay(page) {
+  return page.locator('[data-keyboard-shortcuts-modal="true"]');
+}
+
+async function assertCatalog(text, label) {
+  for (const row of LISTED) {
+    expect(text, `${label} lists ${row}`).toContain(row);
+  }
+  expect(text, `${label} lists Navigation`).toMatch(/Navigation/);
+  expect(text, `${label} lists Actions`).toMatch(/Actions/);
+  expect(text, `${label} lists Tools`).toMatch(/Tools/);
+  expect(text, `${label} lists Interface`).toMatch(/Interface/);
+  expect(text, `${label} lists Shift\\+V`).toMatch(/Shift/);
+  expect(text, `${label} lists Esc`).toMatch(/Esc/);
+  for (const pattern of OMITTED) {
+    expect(text, `${label} must omit ${pattern}`).not.toMatch(pattern);
+  }
+}
+
+async function focusZoomInput(page) {
+  const zoomBtn = page.getByRole('button', { name: 'Edit zoom percentage', exact: true });
+  if (!(await zoomBtn.count())) return null;
+  await zoomBtn.click();
+  const zoomInput = page.getByRole('textbox', { name: 'Zoom percentage', exact: true });
+  await expect(zoomInput).toBeVisible();
+  await zoomInput.click();
+  return zoomInput;
+}
+
+test('desktop shortcuts overlay intended + break + edge', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openEditor(page);
+  await blurInputs(page);
+  await assertNoErrorBoundary(page);
+
+  const idsBefore = await userAnnotationIds(page);
+  expect(idsBefore, 'fresh editor must invent 0 user marks').toEqual([]);
+
+  // Intended — `?` opens; lists the real catalog; Close is autofocused.
+  await page.keyboard.press('?');
+  const modal = overlay(page);
+  await expect(modal).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('heading', { name: 'Keyboard shortcuts', exact: true })).toBeVisible();
+  const catalog = await modal.innerText();
+  await assertCatalog(catalog, 'desktop overlay');
+  const closeBtn = page.getByRole('button', { name: 'Close', exact: true });
+  await expect(closeBtn).toBeFocused();
+
+  // Intended — Esc dismisses (focus trap owns Escape).
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveCount(0);
+
+  // Intended — overlay can be reopened.
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible({ timeout: 8_000 });
+
+  // Break — second `?` toggles closed.
+  await page.keyboard.press('?');
+  await expect(modal).toHaveCount(0);
+
+  // Intended — click-outside (backdrop, not the panel) dismisses.
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible();
+  await modal.click({ position: { x: 8, y: 8 } });
+  await expect(modal).toHaveCount(0);
+
+  // Intended — Close button dismisses; reopen still works.
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible();
+  await closeBtn.click();
+  await expect(modal).toHaveCount(0);
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveCount(0);
+
+  // Break — documented product: useKeyPress has no INPUT guard, so `?`
+  // while zoom % is focused still opens the overlay (steal).
+  const zoomInput = await focusZoomInput(page);
+  expect(zoomInput, 'desktop zoom % INPUT').toBeTruthy();
+  await expect(zoomInput).toBeFocused();
+  await page.keyboard.press('?');
+  await expect(modal, 'zoom INPUT `?` must open overlay (documented steal)').toBeVisible({ timeout: 8_000 });
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveCount(0);
+
+  // Break — same steal from the find field (also an INPUT).
+  await blurInputs(page);
+  await page.keyboard.press('Control+f');
+  const search = page.getByPlaceholder('Search text in PDF...');
+  await expect(search).toBeVisible({ timeout: 8_000 });
+  await expect(search).toBeFocused();
+  await page.keyboard.press('?');
+  await expect(modal, 'search INPUT `?` must open overlay (documented steal)').toBeVisible({ timeout: 8_000 });
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveCount(0);
+
+  // Edge — opening/closing the overlay invents 0 marks; file.id stays null.
+  expect(await userAnnotationIds(page), 'overlay must invent 0 marks').toEqual(idsBefore);
+  const viewBox = await pageViewBox(page);
+  expect(viewBox).toBe('0 0 612 792');
+  expect(await fileId(page)).toBeNull();
+  await assertNoErrorBoundary(page);
+
+  // Isolation — hubPreview is the home tab: AppShell mounts the overlay
+  // there. Viewer chrome is absent. `?` still opens (not PDF-page bound).
+  await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
+  expect(await page.locator('[data-svg-annotation-layer="1"]').count()).toBe(0);
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(overlay(page), 'hubPreview home tab still has the overlay').toBeVisible({ timeout: 8_000 });
+  await page.keyboard.press('Escape');
+  await expect(overlay(page)).toHaveCount(0);
+
+  console.log('SHORTCUTS_OVERLAY_DESKTOP_PROOF', JSON.stringify({
+    listed: LISTED.length,
+    omittedUndoRedo: !/\bUndo\b/i.test(catalog) && !/\bRedo\b/i.test(catalog),
+    viewBox,
+    fileId: await fileId(page),
+  }));
+});
+
+test('390 shortcuts overlay intended + break + edge', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openEditor(page, { width: 390, height: 844 });
+  await blurInputs(page);
+  await assertNoErrorBoundary(page);
+
+  await page.keyboard.press('?');
+  const modal = overlay(page);
+  await expect(modal, '390 overlay exists').toBeVisible({ timeout: 8_000 });
+  const catalog = await modal.innerText();
+  await assertCatalog(catalog, '390 overlay');
+
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveCount(0);
+
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible();
+  await page.keyboard.press('?');
+  await expect(modal, '390 second `?` toggles closed').toHaveCount(0);
+
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible();
+  await modal.click({ position: { x: 8, y: 8 } });
+  await expect(modal, '390 click-outside dismisses').toHaveCount(0);
+
+  await blurInputs(page);
+  await page.keyboard.press('?');
+  await expect(modal).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(modal).toHaveCount(0);
+
+  const jump = page.getByRole('button', { name: 'Jump to page', exact: true });
+  if (await jump.count() && await jump.isVisible().catch(() => false)) {
+    await jump.click();
+    const pageInput = page.getByRole('textbox', { name: 'Page number', exact: true });
+    await expect(pageInput).toBeVisible();
+    await pageInput.click();
+    await page.keyboard.press('?');
+    await expect(modal, '390 page INPUT `?` must open overlay (documented steal)').toBeVisible({ timeout: 8_000 });
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+  }
+
+  const viewBox = await pageViewBox(page);
+  expect(viewBox).toBe('0 0 612 792');
+  expect(await fileId(page)).toBeNull();
+  expect(await userAnnotationIds(page)).toEqual([]);
+  await assertNoErrorBoundary(page);
+
+  console.log('SHORTCUTS_OVERLAY_390_PROOF', JSON.stringify({
+    listed: LISTED.length,
+    viewBox,
+    fileId: await fileId(page),
+  }));
+});
