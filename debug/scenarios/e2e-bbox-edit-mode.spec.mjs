@@ -448,11 +448,15 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   }, { timeout: 8_000 }).toBe(true);
 
   // Intended: line p1/p2/midpoint swap to bbox; br scales the whole stroke.
-  const line = await createLine(page, { x0: 0.16, y0: 0.10, x1: 0.40, y1: 0.10 }, 'Line');
+  const line = await createLine(page, { x0: 0.16, y0: 0.18, x1: 0.40, y1: 0.18 }, 'Line');
   await selectUntilMidpoint(page, line.id);
   expect(await page.locator('[data-resize-handle]').count(), 'line single-click is endpoints').toBe(0);
   const lineGeomNow = await lineGeom(page, line.id);
-  const lineClick = await pageToScreen(page, (lineGeomNow.x1 + lineGeomNow.x2) / 2, (lineGeomNow.y1 + lineGeomNow.y2) / 2);
+  const lineClick = await pageToScreen(
+    page,
+    lineGeomNow.x1 + (lineGeomNow.x2 - lineGeomNow.x1) * 0.32,
+    lineGeomNow.y1 + (lineGeomNow.y2 - lineGeomNow.y1) * 0.32,
+  );
   await enterBboxByDblclick(page, { hitTarget: 'line', screen: lineClick });
   expect(await page.locator('circle[data-handle="midpoint"]').count(), 'midpoint hides').toBe(0);
   const preLine = await lineGeom(page, line.id);
