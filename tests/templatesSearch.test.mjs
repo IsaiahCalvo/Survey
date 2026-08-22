@@ -85,6 +85,8 @@ test('templateMatchesSearch matches name, module, category, item, entity; empty 
   assert.match(editor, /placeholder="Search templates\.\.\."/);
   assert.match(editor, /placeholder=\{mobileTemplateOpen \? 'Search template\.\.\.' : 'Search templates\.\.\.'\}/);
   assert.match(editor, /value=\{mobileTemplateOpen \? templateContentSearch : search\}/);
+  assert.match(editor, /dismissActionSelector="\[data-drag-rearrange-row\]"/);
+  assert.match(editor, /dismissActionSelector=\{mobileTemplateOpen/);
   assert.match(editor, /placeholder="Search modules\.\.\."/);
   assert.match(editor, /if \(!modEdit\) setModSearch\(''\)/);
   assert.doesNotMatch(editor, /PRINT_PANEL_ENABLED/);

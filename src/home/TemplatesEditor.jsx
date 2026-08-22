@@ -1762,7 +1762,9 @@ export default function TemplatesEditor({
           value={mobileTemplateOpen ? templateContentSearch : search}
           onChange={mobileTemplateOpen ? setTemplateContentSearch : setSearch}
           width="100%"
-          dismissActionSelector={mobileTemplateOpen ? '[data-search-dismiss-action]' : ''}
+          dismissActionSelector={mobileTemplateOpen
+            ? '[data-search-dismiss-action], [data-drag-rearrange-row], .templates-mobile-back-button, .templates-mobile-entities-button'
+            : '[data-drag-rearrange-row], .templates-mobile-create-button'}
         />
         {!mobileTemplateOpen ? (
           <button className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={createTemplate}>
@@ -1771,7 +1773,12 @@ export default function TemplatesEditor({
         ) : null}
       </div>
       <div className="templates-desktop-search">
-        <Search placeholder="Search templates..." value={search} onChange={setSearch} />
+        <Search
+          placeholder="Search templates..."
+          value={search}
+          onChange={setSearch}
+          dismissActionSelector="[data-drag-rearrange-row]"
+        />
       </div>
     </>
   );

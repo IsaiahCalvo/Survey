@@ -98,6 +98,11 @@ async function fillSearch(input, value) {
   await input.fill(value);
 }
 
+async function openTemplateFromList(page, name) {
+  await templatesList(page).locator('[data-drag-rearrange-row]').filter({ hasText: name }).click();
+  await expect(page.locator('.templates-editor-grid input[title="Click to rename"]')).toHaveValue(name, { timeout: 8_000 });
+}
+
 async function expectNoDirty(page) {
   await expect(dirtyBar(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
 }
@@ -209,15 +214,22 @@ test('Templates list Search + mobile content Search + Edit-modules Search module
   const clearRestores = true;
   await expectNoDirty(page);
 
-  await templatesList(page).getByText('Security Walk-Through', { exact: true }).click();
+  await fillSearch(desktopSearch(page), 'security');
+  await expect.poll(async () => templateNames(page)).toEqual(['Security Walk-Through']);
+  await openTemplateFromList(page, 'Security Walk-Through');
+  const firstClickOpensFiltered = true;
+  await fillSearch(desktopSearch(page), '');
+  await expect.poll(async () => templateNames(page)).toEqual(SEED_TEMPLATES);
+
+  await openTemplateFromList(page, 'Security Walk-Through');
   await expandCategory(page, 'Cameras');
   expect(await itemNamesInCategory(page, 'Cameras')).toEqual(CAMERAS_ITEMS);
   await expandCategory(page, 'Doors');
   expect(await itemNamesInCategory(page, 'Doors')).toEqual(DOORS_ITEMS);
-  await templatesList(page).getByText('MEP As-Built Markup', { exact: true }).click();
+  await openTemplateFromList(page, 'MEP As-Built Markup');
   await expandCategory(page, 'AHU Equipment');
   expect(await itemNamesInCategory(page, 'AHU Equipment')).toEqual(MEP_ITEMS);
-  await templatesList(page).getByText('Security Walk-Through', { exact: true }).click();
+  await openTemplateFromList(page, 'Security Walk-Through');
   await expectNoDirty(page);
   const listIsolation = true;
 
@@ -345,6 +357,7 @@ test('Templates list Search + mobile content Search + Edit-modules Search module
       selectedFollowsVisible,
       escapeKeepsQuery,
       clearRestores,
+      firstClickOpensFiltered,
       listIsolation,
       moduleSearchDesktop,
       mobileListSearchOk,
