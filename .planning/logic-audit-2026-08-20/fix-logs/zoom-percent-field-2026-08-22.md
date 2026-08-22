@@ -27,23 +27,23 @@ High-risk file: surgical handler only. No `file.id` stamp. SVGAnnotationLayer / 
 
 ## Live-proved
 
-Playwright `e2e-zoom-percent-field.spec.mjs` on Vite `http://127.0.0.1:5173`. Focused Node `zoomPercentField` + leftover18.
+Playwright `e2e-zoom-percent-field.spec.mjs` **2 / 2 (13.5s)** on Vite `http://127.0.0.1:5173`. Focused Node `zoomPercentField` + leftover18 **15 / 15**.
 
 `?testPdf=clickable-link-test.pdf`. `viewBox="0 0 612 792"`. `file.id` null.
 
-### Intended
+### Intended — **pass**
 
-Desktop Edit zoom percentage. Type **200** + Enter writes 200% and grows the page vs Fit page. Blur **250** commits. Fit page / Fit width `data-active` false after a typed %.
+Desktop Edit zoom percentage. Type **200** + Enter writes 200% and grows the page vs Fit page. Click-away **250** commits. Fit page / Fit width `data-active` false after a typed %. Fit page baseline **100%**.
 
-### Break
+### Break — **pass**
 
 | Control | Input | Result |
 |---|---|---|
-| 0 / 1 / 50 | Enter | lift to the same engine dynamic min |
-| 9999 | mid-keystroke | field **4000**; Enter stays 4000 |
+| 0 / 1 / 50 | Enter | lift to **100** (same engine dynamic min as Fit page) |
+| 9999 | sequential type | field **4000**; Enter stays 4000; Fit page leaves the ceiling |
 | empty / `abc` | Enter | restore last live % |
 | Escape | typed 333 | restore; **not** commit 333 |
-| append | End + `2` on 200 | field `2002`; Escape restores |
+| append | ArrowRight + `2` on 200 | field `2002`; Escape restores |
 
 ### Edge
 
