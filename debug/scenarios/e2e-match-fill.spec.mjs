@@ -442,6 +442,8 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await closePagesOverlay(page);
   await ensurePageDrawTarget(page);
 
+  const created = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
+  expect(created.id).toBeTruthy();
   await activateTool(page, 'Shapes', 'Rectangle');
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await clickVisible(page, 'Fill and border colors');
@@ -478,14 +480,10 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   if (await close.isVisible().catch(() => false)) await close.click();
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toHaveCount(0);
   await closePagesOverlay(page);
-  await dismissChrome(page);
-  await closePagesOverlay(page);
-  await ensurePageDrawTarget(page);
 
-  const created = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect.poll(async () => storedFill(await annotationById(page, created.id))).toBe('#00FFFF');
   await expect.poll(async () => storedStroke(await annotationById(page, created.id)), {
-    message: '390 next-draw Match Fill must stamp fill color on stroke',
+    message: '390 selected Match Fill must stamp fill color on stroke',
   }).toBe('#00FFFF');
   await expect.poll(async () => strokeAlpha(await annotationById(page, created.id)), {
     message: '390 opacity lock must stamp fill 40 onto stroke',
