@@ -17,7 +17,8 @@ const HANDLE_DRAG = {
   mr: { dx: 56, dy: 0 },
   ml: { dx: -52, dy: 0 },
   mb: { dx: 0, dy: 44 },
-  mt: { dx: 0, dy: -40 },
+  // Drag down: the rotation stem covers the mt center (shared overlay).
+  mt: { dx: 0, dy: 40, originY: 5 },
   mtr: { dx: 88, dy: 28 },
 };
 
@@ -196,12 +197,15 @@ async function selectUntilHandles(page, id) {
   }, { timeout: 12_000 }).toBeGreaterThan(0);
 }
 
-async function dragSelector(page, selector, dx, dy) {
+async function dragSelector(page, selector, dx, dy, { originX = 0, originY = 0 } = {}) {
   const handle = page.locator(selector).first();
   await expect(handle).toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
   expect(box, selector).toBeTruthy();
-  const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const start = {
+    x: box.x + box.width / 2 + originX,
+    y: box.y + box.height / 2 + originY,
+  };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(start.x + dx, start.y + dy, { steps: 12 });
@@ -209,11 +213,11 @@ async function dragSelector(page, selector, dx, dy) {
   return start;
 }
 
-async function dragHandle(page, id, dx, dy) {
+async function dragHandle(page, id, dx, dy, origin = {}) {
   const selector = id === 'mtr'
     ? '[data-survey-marker-id] [data-rotation-handle="mtr"]'
     : `[data-survey-marker-id] [data-resize-handle="${id}"]`;
-  return dragSelector(page, selector, dx, dy);
+  return dragSelector(page, selector, dx, dy, origin);
 }
 
 async function dragBody(page, id, dx, dy) {
@@ -237,7 +241,7 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   await openEditor(page);
   await enterSurveyWalls(page);
 
-  const markerA = await placeMarker(page, 'handle-a', { x0: 0.24, y0: 0.28, x1: 0.46, y1: 0.46 });
+  const markerA = await placeMarker(page, 'handle-a', { x0: 0.24, y0: 0.36, x1: 0.48, y1: 0.56 });
   await selectUntilHandles(page, markerA);
   const chrome = await listHandleIds(page);
   expect(chrome.resize.length, 'placed marker shows resize handles').toBeGreaterThan(0);
@@ -253,7 +257,10 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
     await selectUntilHandles(page, markerA);
     const before = await markerGeom(page, markerA);
     const drag = HANDLE_DRAG[handleId] || { dx: 48, dy: 32 };
-    await dragHandle(page, handleId, drag.dx, drag.dy);
+    await dragHandle(page, handleId, drag.dx, drag.dy, {
+      originX: drag.originX || 0,
+      originY: drag.originY || 0,
+    });
     let after = null;
     await expect.poll(async () => {
       after = await markerGeom(page, markerA);
