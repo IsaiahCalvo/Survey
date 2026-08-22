@@ -339,12 +339,53 @@ async function createCallout(page, text, coords = { x0: 0.16, y0: 0.72, x1: 0.40
   return created;
 }
 
-async function selectionHandleCount(page) {
-  return page.locator('[data-resize-handle], [data-handle="p1"], [data-handle="p2"], [data-handle="midpoint"]').count();
+async function pageViewBox(page) {
+  const raw = await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox');
+  const parts = String(raw || '0 0 612 792').trim().split(/\s+/).map(Number);
+  return { raw, W: parts[2] || 612, H: parts[3] || 792 };
+}
+
+async function pageToScreen(page, x, y) {
+  const box = await pageBox(page);
+  const { W, H } = await pageViewBox(page);
+  return { x: box.x + (x / W) * box.width, y: box.y + (y / H) * box.height };
+}
+
+async function lineGeom(page, id) {
+  return page.evaluate((annoId) => {
+    const object = window.__phase35GetAnnotationById?.(annoId) || {};
+    const cx = (object.left ?? 0) + (object.width ?? 0) / 2;
+    const cy = (object.top ?? 0) + (object.height ?? 0) / 2;
+    return {
+      id: annoId,
+      x1: cx + (object.x1 ?? 0),
+      y1: cy + (object.y1 ?? 0),
+      x2: cx + (object.x2 ?? 0),
+      y2: cy + (object.y2 ?? 0),
+      midpoint: object.data?.midpoint ? { x: object.data.midpoint.x, y: object.data.midpoint.y } : null,
+    };
+  }, id);
+}
+
+async function clickLineStroke(page, id) {
+  const geom = await lineGeom(page, id);
+  const x = geom.midpoint?.x ?? (geom.x1 + (geom.x2 - geom.x1) * 0.38);
+  const y = geom.midpoint?.y ?? (geom.y1 + (geom.y2 - geom.y1) * 0.38);
+  const screen = await pageToScreen(page, x, y);
+  await page.mouse.click(screen.x, screen.y);
 }
 
 async function selectStroke(page, id) {
   await selectMode(page);
+  const row = await annotationById(page, id);
+  const isLineLike = row && (row.type === 'line' || row.tool === 'line' || row.tool === 'arrow');
+  if (isLineLike) {
+    await expect.poll(async () => {
+      await clickLineStroke(page, id);
+      return page.locator('circle[data-handle="midpoint"]').count();
+    }, { timeout: 12_000, message: `line/arrow midpoint handle for ${id}` }).toBeGreaterThan(0);
+    return;
+  }
   const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
@@ -353,17 +394,12 @@ async function selectStroke(page, id) {
     { x: box.x + box.width / 2, y: box.y + box.height / 2 },
     { x: box.x + box.width * 0.25, y: box.y + box.height / 2 },
     { x: box.x + box.width * 0.75, y: box.y + box.height / 2 },
-    { x: box.x + 6, y: box.y + box.height / 2 },
-    { x: box.x + box.width - 6, y: box.y + box.height / 2 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
-    if (await selectionHandleCount(page) > 0) return;
+    if (await page.locator('[data-resize-handle]').count() > 0) return;
   }
-  await expect(
-    page.locator('[data-resize-handle], [data-handle="midpoint"]').first(),
-    `selection handles for ${id}`,
-  ).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-resize-handle]').first(), `rect handles for ${id}`).toBeVisible({ timeout: 8_000 });
 }
 
 async function selectCallout(page, id) {
@@ -380,7 +416,9 @@ async function selectCallout(page, id) {
     const box = await target.boundingBox();
     if (!box || box.width < 1 || box.height < 1) continue;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    if (await page.getByRole('textbox', { name: 'Width', exact: true }).first().isVisible().catch(() => false)) return;
+    const widthVisible = await page.getByRole('textbox', { name: 'Width', exact: true }).first().isVisible().catch(() => false);
+    const handles = await page.locator('[data-callout-id] [data-handle], [data-resize-handle]').count();
+    if (widthVisible || handles > 0) return;
   }
   await expect(page.getByRole('textbox', { name: 'Width', exact: true }).first()).toBeVisible({ timeout: 8_000 });
 }
