@@ -1141,7 +1141,7 @@ const SpacesPanel = ({
   }, [requireSpaceManagement, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
-    if (!requireSpaceManagement()) return false;
+    if (!requireSpaceManagement()) return;
     const name = nextName?.trim();
     if (spaceId && name && onSpaceUpdate) {
       return onSpaceUpdate(spaceId, { name });
