@@ -792,8 +792,23 @@ const SurveySpacesRail = ({
         ));
       },
     };
+    window.__e2eSurveyItemOrder = {
+      get: (categoryId) => Object.entries(surveyMarkers)
+        .filter(([, marker]) => !categoryId || marker.categoryId === categoryId)
+        .map(([id, marker]) => ({
+          id,
+          name: marker.name,
+          surveyMarkerOrder: marker.surveyMarkerOrder ?? null,
+          categoryId: marker.categoryId,
+        }))
+        .sort((a, b) => compareSurveyMarkersForOrder(
+          { ...surveyMarkers[a.id], id: a.id },
+          { ...surveyMarkers[b.id], id: b.id },
+        )),
+    };
     return () => {
       try { delete window.__e2eSurveyMarkers; } catch { /* ignore */ }
+      try { delete window.__e2eSurveyItemOrder; } catch { /* ignore */ }
     };
   }, [surveyMarkers, setSurveyMarkers]);
 
@@ -1317,6 +1332,12 @@ const SurveySpacesRail = ({
     const reorderedMarkers = moveItemById(orderedMarkers, activeId, overId);
     if (reorderedMarkers === orderedMarkers) return;
 
+    // Sibling of survey-marker:rename / :entity — without this, Ctrl+Z
+    // pops the last place instead of restoring the prior rail order.
+    if (typeof addHistoryCheckpoint === 'function') {
+      addHistoryCheckpoint('survey-marker:reorder', { activeId, overId });
+    }
+
     setSurveyMarkers(prev => {
       let changed = false;
       const next = { ...prev };
@@ -1338,7 +1359,7 @@ const SurveySpacesRail = ({
 
       return changed ? next : prev;
     });
-  }, [setSurveyMarkers]);
+  }, [addHistoryCheckpoint, setSurveyMarkers]);
 
   return (
           <>
