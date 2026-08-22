@@ -245,7 +245,7 @@ test('desktop History click-restore / collapse / filter-absent intended + break 
   const cloudHits = [];
   page.on('request', (req) => {
     const url = req.url();
-    if (/supabase|kal48_|\/rest\/v1\/document_history|\/rest\/v1\/document_revisions/i.test(url)) {
+    if (/supabase\.co|\/rest\/v1\/document_history|\/rest\/v1\/document_revisions|\/rpc\/kal48_/i.test(url)) {
       cloudHits.push(url.split('?')[0]);
     }
   });
