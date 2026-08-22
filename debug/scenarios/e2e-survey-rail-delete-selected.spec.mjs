@@ -170,31 +170,6 @@ test('survey-rail Delete selected items intended + break + edge', async ({ page 
   expect((await markerIds(page)).includes(markerA), 'cancel keeps A').toBe(true);
   expect((await markerIds(page)).includes(markerB), 'cancel keeps B').toBe(true);
 
-  // Edge: notes dialog open — full-viewport overlay covers the rail control.
-  await page.getByRole('button', { name: 'Add item notes' }).first().click();
-  await expect(page.getByRole('heading', { name: 'Note', exact: true })).toBeVisible({ timeout: 8_000 });
-  const notesOverlayBlocks = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find(
-      (node) => node.getAttribute('aria-label') === 'Delete selected items',
-    );
-    if (!btn) return { present: false, covered: true };
-    const box = btn.getBoundingClientRect();
-    const x = box.left + box.width / 2;
-    const y = box.top + box.height / 2;
-    const top = document.elementFromPoint(x, y);
-    return {
-      present: true,
-      covered: !btn.contains(top) && top !== btn,
-      topTag: top?.tagName || null,
-    };
-  });
-  expect(notesOverlayBlocks.present, 'rail Delete still in DOM under notes').toBe(true);
-  expect(notesOverlayBlocks.covered, 'notes overlay covers rail Delete').toBe(true);
-  expect((await markerIds(page)).includes(markerA), 'notes open does not delete A').toBe(true);
-  expect((await markerIds(page)).includes(markerB), 'notes open does not delete B').toBe(true);
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Note', exact: true })).toHaveCount(0);
-
   // Intended: confirm deletes the selected marker; the other stays.
   await expect(deleteSelectedBtn(page)).toBeEnabled();
   await deleteSelectedBtn(page).click();
@@ -213,6 +188,43 @@ test('survey-rail Delete selected items intended + break + edge', async ({ page 
     timeout: 8_000,
     message: 'undo restores rail-deleted A',
   }).toBe(true);
+
+  // Edge: notes dialog open — rail host (z 5600) stays hittable; confirm still deletes.
+  await enterItemSelectMode(page);
+  await selectRailItem(page, 'rail-a');
+  await page.getByRole('button', { name: 'Add item notes' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Note', exact: true })).toBeVisible({ timeout: 8_000 });
+  const notesHit = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find(
+      (node) => node.getAttribute('aria-label') === 'Delete selected items',
+    );
+    if (!btn) return { present: false, hittable: false };
+    const box = btn.getBoundingClientRect();
+    const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return {
+      present: true,
+      hittable: btn.contains(top) || top === btn,
+      disabled: btn.disabled,
+    };
+  });
+  expect(notesHit.present, 'rail Delete stays in DOM while notes open').toBe(true);
+  expect(notesHit.hittable, 'rail Delete stays hittable while notes open').toBe(true);
+  await deleteSelectedBtn(page).click();
+  const notesDialog = confirmDialog(page);
+  await expect(notesDialog).toBeVisible({ timeout: 8_000 });
+  await notesDialog.getByRole('button', { name: 'Delete 1 item', exact: true }).click();
+  await expect.poll(async () => (await markerIds(page)).includes(markerA), {
+    timeout: 8_000,
+    message: 'confirm while notes open removes A',
+  }).toBe(false);
+  expect((await markerIds(page)).includes(markerB), 'B stays after notes-open rail-delete').toBe(true);
+  if (await page.getByRole('heading', { name: 'Note', exact: true }).count()) {
+    const notesCancel = page.getByRole('button', { name: 'Cancel', exact: true });
+    if (await notesCancel.count()) await notesCancel.click();
+  }
+  await expect(page.getByRole('heading', { name: 'Note', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await markerIds(page)).includes(markerA)).toBe(true);
 
   // Break: Pen-armed does not hide or auto-delete; rail confirm still works.
   await page.evaluate(() => document.activeElement?.blur?.());
@@ -284,7 +296,7 @@ test('survey-rail Delete selected items intended + break + edge', async ({ page 
     markerB,
     noneSelectedDisabled: true,
     cancelKeptBoth: true,
-    notesCoveredRail: notesOverlayBlocks,
+    notesHit,
     confirmedDeletedA: true,
     undoRestoredA: true,
     penArmedStillDeletes: true,
