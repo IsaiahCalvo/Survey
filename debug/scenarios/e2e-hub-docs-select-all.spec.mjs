@@ -145,7 +145,7 @@ test('Hub Documents Select All / None / Done intended + break + edge', async ({ 
   await expect.poll(() => desktopIds(page).then((ids) => sorted(ids))).toEqual(SEED_IDS);
 
   // --- Break: All operates over currently visible (search-filtered) rows ---
-  const search = page.getByPlaceholder('Search documents...').first();
+  const search = page.locator('.documents-desktop-search input[placeholder="Search documents..."]');
   await search.fill('SE-011');
   await search.blur();
   await expect.poll(() => desktopIds(page)).toEqual(['d1']);
