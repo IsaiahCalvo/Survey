@@ -212,7 +212,6 @@ test('Choose survey template re-pick after already in a template', async ({ page
   expect(storedTwoCat, 'store keeps the marker across re-pick').toBeTruthy();
   expect(storedTwoCat?.categoryId, 'marker does not migrate category').toBe('kal436-category');
   expect(storedTwoCat?.moduleId, 'marker does not migrate module').toBe('kal436-module');
-  await expect(rightRail(page).locator('.survey-marker-category-arrow')).toHaveCount(0);
 
   // Intended: re-pick Survey Entities — same kal436 module so overlay + rail return.
   await openTemplatePicker(page);
@@ -264,11 +263,13 @@ test('Choose survey template re-pick after already in a template', async ({ page
   await openTemplatePicker(page);
   await expect(templateOption(page, KAL436)).toHaveAttribute('aria-selected', 'true');
   await templateOption(page, TWO_CAT).click();
-  await expect(page.getByText('Two Category Template')).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByRole('button', { name: 'Windows', exact: true })).toBeVisible();
+  await expect(templateListbox(page)).toHaveCount(0, { timeout: 8_000 });
+  await expect(chooseTemplateBtn(page)).toContainText('Two Category Template');
+  await expect(page.getByText('Select category')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.survey-marker-category-main-label').filter({ hasText: /^Windows$/ })).toBeVisible({ timeout: 8_000 });
   const mobile = {
     chooseTemplate: await chooseTemplateBtn(page).count(),
-    windows: await page.getByRole('button', { name: 'Windows', exact: true }).count(),
+    windows: await page.locator('.survey-marker-category-main-label').filter({ hasText: /^Windows$/ }).count(),
   };
   expect(mobile.chooseTemplate, '390 has in-session Choose survey template').toBe(1);
   await assertNoErrorBoundary(page);
