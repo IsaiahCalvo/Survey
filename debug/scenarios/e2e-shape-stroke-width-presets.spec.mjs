@@ -558,8 +558,8 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
 
   console.log('SHAPE_STROKE_WIDTH_DESKTOP_PROOF', JSON.stringify({
     linePresets: lineMetrics.map((row) => row.preset),
-    thinBBox: thin.bboxH,
-    thickBBox: thick.bboxH,
+    thinClientH: thin.clientH,
+    thickClientH: thick.clientH,
     linePatch: linePatch.map((row) => row.preset),
     arrowPresets: arrowMetrics.map((row) => row.preset),
     rectPatch: rectPatch.map((row) => row.preset),
