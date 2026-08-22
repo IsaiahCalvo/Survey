@@ -217,6 +217,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { loadSelectMode, saveSelectMode } from './utils/selectModes.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
@@ -2873,12 +2874,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [activeTool, setActiveTool] = useState('pan');
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
-  const [selectionMode, setSelectionMode] = useState('rectangle');
+  const [selectionMode, setSelectionMode] = useState(loadSelectMode);
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
   const interactionDiagPrevToolRef = useRef('pan');
   // [InteractionDiag] throttle timestamp for continuous zoom-intent logging.
   const interactionDiagZoomLogAtRef = useRef(0);
+
+  useEffect(() => {
+    saveSelectMode(selectionMode);
+  }, [selectionMode]);
 
   // KAL-47 Forms mode state.
   // - `formMode` toggles Pdfjs's `designerMode`. When true, the
@@ -23306,6 +23311,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Prevent default behavior and switch to select tool
         e.preventDefault();
+        setSelectionMode('rectangle');
         setActiveTool('select');
         return;
       }
@@ -23321,6 +23327,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           return; // Don't trigger tool switch if focused on input
         }
         e.preventDefault();
+        setSelectionMode('text');
         setActiveTool('text-select');
         return;
       }

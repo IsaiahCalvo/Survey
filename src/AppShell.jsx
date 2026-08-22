@@ -42,7 +42,7 @@ import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
-import { getSelectFamilyLabel, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { getSelectFamilyLabel, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -397,8 +397,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
-  // KAL-239: the Select tool's selection-mode menu (annotations vs the PDF's own
-  // text). Intended UX: a caret on the Select button opens a two-item menu, the
+  // KAL-239: the Select tool's selection-mode menu. A caret on the Select button
+  // opens the shared Rectangle / Lasso / Text menu, the
   // same split-button shape the Eraser uses for its erase modes, so the user has
   // an obvious way to reach text selection without a new kind of control. The
   // menu is a fixed-position portal anchored under the button (matching the
@@ -406,6 +406,8 @@ export default function App({ devPreviewReturnTab = null }) {
   const [selectModeMenuOpen, setSelectModeMenuOpen] = useState(false);
   const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
   const selectModeButtonRef = useRef(null);
+  const selectModeCaretRef = useRef(null);
+  const selectModeMenuRef = useRef(null);
   useEffect(() => {
     if (!selectModeMenuOpen) return undefined;
     const el = selectModeButtonRef.current;
@@ -413,14 +415,24 @@ export default function App({ devPreviewReturnTab = null }) {
       const r = el.getBoundingClientRect();
       setSelectModeMenuAnchor({ top: r.bottom + 6, left: r.left + r.width / 2 });
     }
+    const focusFrame = window.requestAnimationFrame(() => {
+      const menu = selectModeMenuRef.current;
+      const selected = menu?.querySelector?.('[role="menuitemradio"][aria-checked="true"]');
+      (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
+    });
     const onDown = (e) => {
       if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-caret]'))) return;
       setSelectModeMenuOpen(false);
     };
-    const onKeyDown = (e) => { if (e.key === 'Escape') setSelectModeMenuOpen(false); };
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      setSelectModeMenuOpen(false);
+      window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+    };
     document.addEventListener('mousedown', onDown, true);
     document.addEventListener('keydown', onKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('mousedown', onDown, true);
       document.removeEventListener('keydown', onKeyDown);
     };
@@ -1502,6 +1514,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
                 >
                 <button
+                  type="button"
+                  aria-label={label}
                   onClick={() => {
                     // Activate Select without discarding the mode picked in the
                     // menu (Eraser button does the same with its erase mode).
@@ -1525,38 +1539,54 @@ export default function App({ devPreviewReturnTab = null }) {
                   }}
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                   className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
-                  style={isSelect ? { position: 'relative', paddingRight: '16px' } : undefined}
+                  style={isSelect ? {
+                    position: 'relative',
+                    paddingRight: '4px',
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                  } : undefined}
                 >
                   <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />
-                  {isSelect && (
-                    <div
-                      data-select-mode-caret="true"
-                      role="button"
-                      aria-label="Selection mode"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectModeMenuOpen((open) => !open);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '2px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '2px',
-                        pointerEvents: 'auto',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Icon name="chevronDown" size={10} color="#8d96a6" />
-                    </div>
-                  )}
                 </button>
+                {isSelect && (
+                  <button
+                    ref={selectModeCaretRef}
+                    type="button"
+                    data-select-mode-caret="true"
+                    aria-label="Selection mode"
+                    aria-haspopup="menu"
+                    aria-expanded={selectModeMenuOpen}
+                    aria-controls="desktop-select-mode-menu"
+                    onClick={() => setSelectModeMenuOpen((open) => !open)}
+                    style={{
+                      position: 'static', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      width: '18px', height: '28px', padding: 0,
+                      color: 'inherit', background: 'transparent',
+                      border: 0, borderLeft: '1px solid rgba(141, 150, 166, 0.35)',
+                      borderRadius: '0 4px 4px 0',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Icon name="chevronDown" size={10} color="#8d96a6" />
+                  </button>
+                )}
                 {isSelect && selectModeMenuOpen && createPortal(
                   <div
+                    id="desktop-select-mode-menu"
+                    ref={selectModeMenuRef}
                     data-select-mode-menu="true"
+                    role="menu"
+                    aria-label="Selection mode"
+                    onKeyDown={(e) => {
+                      const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitemradio"]'));
+                      const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+                      const nextIndex = getSelectModeMenuFocusIndex(e.key, currentIndex, items.length);
+                      if (nextIndex != null) {
+                        e.preventDefault();
+                        items[nextIndex]?.focus();
+                      }
+                    }}
                     style={{
                       position: 'fixed',
                       top: `${selectModeMenuAnchor.top}px`,
@@ -1591,9 +1621,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       Selection Mode
                     </div>
                     {SELECT_MODE_OPTIONS.map((opt) => {
-                      const selected = isSelectModeActive(
-                        opt, bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode,
-                      );
+                      const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
                       const optionStyle = {
                         display: 'flex',
                         alignItems: 'center',
@@ -1608,17 +1636,20 @@ export default function App({ devPreviewReturnTab = null }) {
                         cursor: 'pointer',
                         fontSize: '12px',
                         fontFamily: 'inherit',
-                        outline: 'none',
                         whiteSpace: 'nowrap'
                       };
                       return (
                         <button
                           key={opt.mode}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={selected}
                           onClick={(e) => {
                             e.stopPropagation();
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
                             setSelectModeMenuOpen(false);
+                            window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}

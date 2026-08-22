@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  getLassoPolygonValidation,
   isPointInLasso,
   normalizeLassoPolygon,
   resolveLassoHits,
@@ -44,9 +45,14 @@ test('concave lasso uses the concave polygon, not its bounds', () => {
 });
 
 test('self-crossing lasso is rejected instead of using an unclear fill rule', () => {
-  assert.equal(normalizeLassoPolygon([
+  const points = [
     { x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 },
-  ]), null);
+  ];
+  assert.equal(normalizeLassoPolygon(points), null);
+  assert.deepEqual(getLassoPolygonValidation(points), {
+    polygon: null,
+    issue: 'self-intersection',
+  });
 });
 
 test('exact lasso boundary counts as inside', () => {

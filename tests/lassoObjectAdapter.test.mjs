@@ -23,6 +23,24 @@ test('rotated rectangle adapter exposes the transformed outline', () => {
   assert.equal(Math.round(geometry.bounds.bottom), 55);
 });
 
+test('nonuniformly scaled thick path uses its transformed stroke outline', () => {
+  const geometry = annotationToLassoGeometry({
+    type: 'path',
+    path: [['M', 0, 0], ['L', 10, 0]],
+    left: 0, top: 0, width: 10, height: 0,
+    pathOffset: { x: 5, y: 0 },
+    scaleX: 3, scaleY: 0.5,
+    strokeWidth: 10,
+    strokeUniform: false,
+  });
+  assert.ok(geometry);
+  assert.equal(Math.round(geometry.bounds.left * 10) / 10, -30);
+  assert.equal(Math.round(geometry.bounds.right * 10) / 10, 30);
+  assert.equal(Math.round(geometry.bounds.top * 10) / 10, -2.5);
+  assert.equal(Math.round(geometry.bounds.bottom * 10) / 10, 2.5);
+  assert.equal(isGeometryFullyInsideLasso(geometry, box(-31, -4, 31, 4)), true);
+});
+
 test('curved arrow adapter follows the curve and includes the arrowhead', () => {
   const geometry = annotationToLassoGeometry({
     type: 'line', tool: 'arrow', left: 10, top: 10, width: 80, height: 0,
@@ -94,18 +112,45 @@ test('group adapter applies parent scale before rotation', () => {
   assert.equal(Math.round(geometry.bounds.bottom - geometry.bounds.top), 20);
 });
 
-test('adapter covers ink, highlighter, text, image, note, counter, and arrow shapes', () => {
+test('nested group stays atomic and rejects a lasso around only part of it', () => {
+  const geometry = annotationToLassoGeometry({
+    type: 'group', left: 10, top: 10,
+    objects: [{
+      type: 'group', left: 5, top: 5,
+      objects: [
+        { type: 'rect', left: 0, top: 0, width: 10, height: 10 },
+        { type: 'rect', left: 30, top: 0, width: 10, height: 10 },
+      ],
+    }],
+  });
+  assert.deepEqual(geometry.bounds, { left: 15, right: 55, top: 15, bottom: 25 });
+  assert.equal(isGeometryFullyInsideLasso(geometry, box(10, 10, 30, 30)), false);
+  assert.equal(isGeometryFullyInsideLasso(geometry, box(10, 10, 60, 30)), true);
+});
+
+test('adapter fully contains every stored annotation shape in a page-sized lasso', () => {
   const cases = [
     { type: 'path', path: [['M', 10, 10], ['L', 30, 20]], stroke: '#000', strokeWidth: 3 },
     { type: 'path', tool: 'highlighter', path: [['M', 10, 10], ['L', 30, 20]], stroke: '#ff0', strokeWidth: 12 },
     { type: 'textbox', left: 10, top: 10, width: 20, height: 10, text: 'A' },
+    { type: 'i-text', left: 10, top: 10, width: 20, height: 10, text: 'A' },
     { type: 'image', left: 10, top: 10, width: 20, height: 10 },
     { type: 'group', left: 10, top: 10, width: 20, height: 20, data: { type: 'sticky_note' } },
     { type: 'circle', left: 10, top: 10, radius: 8, data: { type: 'counter' } },
     { type: 'line', left: 10, top: 10, width: 20, height: 10, x1: -10, y1: -5, x2: 10, y2: 5, tool: 'arrow' },
+    { type: 'rect', left: 10, top: 10, width: 20, height: 10, strokeWidth: 4 },
+    { type: 'ellipse', left: 10, top: 10, width: 20, height: 10, strokeWidth: 4 },
+    { type: 'triangle', left: 10, top: 10, width: 20, height: 10, strokeWidth: 4 },
+    { type: 'polygon', left: 10, top: 10, pathOffset: { x: 0, y: 0 }, points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 10, y: 10 }] },
+    { type: 'polyline', left: 10, top: 10, pathOffset: { x: 0, y: 0 }, points: [{ x: 0, y: 0 }, { x: 20, y: 10 }] },
   ];
   for (const annotation of cases) {
     const geometry = annotationToLassoGeometry(annotation);
     assert.ok(geometry?.outlines?.length > 0, `${annotation.tool || annotation.data?.type || annotation.type} has outline`);
+    assert.equal(
+      isGeometryFullyInsideLasso(geometry, box(-100, -100, 200, 200)),
+      true,
+      `${annotation.tool || annotation.data?.type || annotation.type} is selectable by its outline`,
+    );
   }
 });

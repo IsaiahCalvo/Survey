@@ -8,7 +8,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
-import { getSelectFamilyLabel, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { getSelectFamilyLabel, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
@@ -1345,6 +1345,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   } = useMobileSheetMotion(() => setPresenceOpen(false));
   const popoverRef = useRef(null);
   const selectModeButtonRef = useRef(null);
+  const selectModeCaretRef = useRef(null);
+  const selectModeMenuRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
@@ -1368,6 +1370,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   useEffect(() => {
     if (sync.state === 'synced') setSyncDetailsOpen(false);
   }, [sync.state]);
+
+  useEffect(() => {
+    if (!selectModeOpen) return undefined;
+    const focusFrame = window.requestAnimationFrame(() => {
+      const menu = selectModeMenuRef.current;
+      const selected = menu?.querySelector?.('[role="menuitemradio"][aria-checked="true"]');
+      (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [selectModeOpen]);
 
   const activateSyncStatus = () => {
     setMoreOpen(false);
@@ -1422,6 +1434,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     }
     setOpenCategory(null);
     setSelectModeOpen(false);
+    window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
   };
 
   const toggleCategory = (groupId) => {
@@ -1466,9 +1479,13 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               <Icon name={activeTool === 'text-select' ? 'text' : 'cursor'} size={19} color="currentColor" />
             </RailButton>
             <button
+              ref={selectModeCaretRef}
               type="button"
               className="mobile-pdf-tools__select-caret"
               aria-label="Selection mode"
+              aria-haspopup="menu"
+              aria-expanded={selectModeOpen}
+              aria-controls="mobile-select-mode-menu"
               onClick={() => {
                 selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
               }}
@@ -1674,20 +1691,36 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       </aside>
       {selectModeOpen && selectModePosition && typeof document !== 'undefined' && createPortal(
         <>
-          <button
-            type="button"
+          <div
             className="mobile-pdf-select-mode__backdrop"
-            aria-label="Close selection mode menu"
-            onClick={() => setSelectModeOpen(false)}
+            aria-hidden="true"
+            onPointerDown={() => setSelectModeOpen(false)}
           />
           <div
+            id="mobile-select-mode-menu"
+            ref={selectModeMenuRef}
             className="mobile-pdf-select-mode__menu"
             role="menu"
             aria-label="Selection mode"
             style={{ left: selectModePosition.left, top: selectModePosition.top }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setSelectModeOpen(false);
+                window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+                return;
+              }
+              const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitemradio"]'));
+              const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+              const nextIndex = getSelectModeMenuFocusIndex(e.key, currentIndex, items.length);
+              if (nextIndex != null) {
+                e.preventDefault();
+                items[nextIndex]?.focus();
+              }
+            }}
           >
             {SELECT_MODE_OPTIONS.map((option) => {
-              const selected = isSelectModeActive(option, activeTool, bottomToolbarApi?.selectionMode);
+              const selected = isSelectModeActive(option, bottomToolbarApi?.selectionMode);
               return (
                 <button
                   key={option.mode}

@@ -87,21 +87,27 @@ const polygonSelfIntersects = (polygon) => {
   return false;
 };
 
-export function normalizeLassoPolygon(points) {
-  if (!Array.isArray(points)) return null;
+export function getLassoPolygonValidation(points) {
+  if (!Array.isArray(points)) return { polygon: null, issue: 'too-few-points' };
   const polygon = [];
   for (const point of points) {
     if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
     if (!polygon.length || !samePoint(polygon.at(-1), point)) polygon.push({ x: point.x, y: point.y });
   }
   if (polygon.length > 1 && samePoint(polygon[0], polygon.at(-1))) polygon.pop();
-  if (polygon.length < 3 || polygonSelfIntersects(polygon)) return null;
+  if (polygon.length < 3) return { polygon: null, issue: 'too-few-points' };
+  if (polygonSelfIntersects(polygon)) return { polygon: null, issue: 'self-intersection' };
   let twiceArea = 0;
   for (let i = 0; i < polygon.length; i += 1) {
     const next = polygon[(i + 1) % polygon.length];
     twiceArea += polygon[i].x * next.y - next.x * polygon[i].y;
   }
-  return Math.abs(twiceArea) <= EPSILON ? null : polygon;
+  if (Math.abs(twiceArea) <= EPSILON) return { polygon: null, issue: 'zero-area' };
+  return { polygon, issue: null };
+}
+
+export function normalizeLassoPolygon(points) {
+  return getLassoPolygonValidation(points).polygon;
 }
 
 export function isPointInLasso(point, polygon) {

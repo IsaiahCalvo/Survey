@@ -43,12 +43,13 @@ import {
   filterMarqueeHits,
 } from '../utils/marqueeSelection.js';
 import {
+  getLassoPolygonValidation,
   LASSO_SIMPLIFY_PX,
-  normalizeLassoPolygon,
   resolveLassoHits,
   shouldSampleLassoPoint,
   simplifyLassoPoints,
 } from '../utils/lassoSelection.js';
+import { showToast } from '../utils/toast.js';
 // Phase 35 Plan 03 — click hit-test gate, updated 2026-07-17 for the LOCKED
 // permissions model (contributors AND owners have full add/edit/delete on
 // everything; viewers look-only). Selection now gates on canDelete (any
@@ -2779,9 +2780,14 @@ export function useSVGInteraction({
         ? [...lasso.points, finalPoint]
         : lasso.points;
       const simplified = simplifyLassoPoints(sampled, LASSO_SIMPLIFY_PX * inverseScale);
-      const polygon = normalizeLassoPolygon(simplified);
+      const validation = getLassoPolygonValidation(simplified);
+      const polygon = validation.polygon;
       cancelLasso(e.pointerId);
       if (!polygon) {
+        if (validation.issue === 'self-intersection') {
+          showToast('Lasso cancelled because the path crossed itself.', 'info');
+          return;
+        }
         if (!lasso.shiftHeld) {
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());

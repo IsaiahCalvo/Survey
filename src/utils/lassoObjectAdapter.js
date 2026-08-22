@@ -197,17 +197,18 @@ const geometryFromPath = (annotation) => {
   const affine = createInkPathAffine(annotation, commands);
   const polylines = commandsToPolylines(commands, 0.5);
   const outlines = [];
-  const metricScale = Math.max(
-    Math.hypot(affine.matrix[0], affine.matrix[1]),
-    Math.hypot(affine.matrix[2], affine.matrix[3]),
-    EPSILON,
-  );
-  const radius = annotation.strokeUniform === true
-    ? Math.max(0, Number(annotation.strokeWidth) || 0) / 2
-    : Math.max(0, Number(annotation.strokeWidth) || 0) * metricScale / 2;
+  const radius = Math.max(0, Number(annotation.strokeWidth) || 0) / 2;
   for (const polyline of polylines) {
-    const points = (polyline.points || []).map((point) => affine.point(point.x, point.y));
-    outlines.push(...strokeOutlines(points, radius, polyline.closed));
+    const localPoints = (polyline.points || []).map((point) => ({ x: point.x, y: point.y }));
+    if (annotation.strokeUniform === true) {
+      const pagePoints = localPoints.map((point) => affine.point(point.x, point.y));
+      outlines.push(...strokeOutlines(pagePoints, radius, polyline.closed));
+    } else {
+      const localOutlines = strokeOutlines(localPoints, radius, polyline.closed);
+      outlines.push(...localOutlines.map((outline) => (
+        outline.map((point) => affine.point(point.x, point.y))
+      )));
+    }
   }
   return makeGeometry(outlines);
 };
@@ -306,6 +307,21 @@ export function annotationToLassoGeometry(annotation) {
   if (type === 'polygon') return geometryFromPoints(annotation, true);
   if (type === 'polyline') return geometryFromPoints(annotation, false);
   if (type === 'group') return geometryFromGroup(annotation);
+
+  if (['textbox', 'i-text', 'text'].includes(type)
+    && Number.isFinite(Number(annotation.width))
+    && Number.isFinite(Number(annotation.height))) {
+    const width = Number(annotation.width) * Math.abs(Number(annotation.scaleX) || 1);
+    const height = Number(annotation.height) * Math.abs(Number(annotation.scaleY) || 1);
+    return makeGeometry([rectangleOutline(
+      Number(annotation.left) || 0,
+      Number(annotation.top) || 0,
+      width,
+      height,
+      Number(annotation.angle) || 0,
+      strokePad,
+    )]);
+  }
 
   const bbox = getAnnotationBBox(annotation);
   if (!bbox) return null;
