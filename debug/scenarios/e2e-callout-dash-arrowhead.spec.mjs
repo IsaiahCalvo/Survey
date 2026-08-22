@@ -403,6 +403,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
 
   await openEditor(page);
   await assertNoErrorBoundary(page);
+  await dismissChrome(page);
 
   await activateTool(page, 'Text', 'Callout');
   const calloutStyles = await listDesktopOptions(page, desktopStyleTrigger(page), 'Style');
