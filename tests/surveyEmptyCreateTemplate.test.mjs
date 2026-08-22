@@ -16,9 +16,10 @@ test('empty-module start-adding opens CreateCategoryModal on desktop only', () =
   assert.match(rail, /className="survey-marker-empty-module-create-button"/);
   assert.match(rail, /aria-label="Create category for empty module"/);
 
+  const emptyStart = rail.indexOf('No categories available for this space.');
   const empty = rail.slice(
-    rail.indexOf('No categories available for this space.'),
-    rail.indexOf('Create category', rail.indexOf('survey-marker-empty-module-create-button')) + 40,
+    emptyStart,
+    rail.indexOf('Choose survey template', emptyStart),
   );
   assert.match(empty, /\{!mobileMode && selectedTemplate && selectedModuleId && \(/);
   assert.match(empty, /onClick=\{\(e\) => \{/);
