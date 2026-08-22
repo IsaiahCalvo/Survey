@@ -239,11 +239,12 @@ test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
   if (await closeSheet.count()) {
     await closeSheet.click({ force: true });
   }
+  await expect(page.locator('.mobile-pdf-sheet-backdrop')).toHaveCount(0);
   const mobileKeep = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(mobileKeep).toBeVisible({ timeout: 15_000 });
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'false');
 
-  await mobileKeep.click({ force: true });
+  await mobileKeep.evaluate((el) => el.click());
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'true');
   expect(await markerCount(page)).toBe(0);
 
@@ -260,7 +261,7 @@ test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
   const keepAfterPen = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(keepAfterPen).toBeVisible({ timeout: 10_000 });
   if ((await keepAfterPen.getAttribute('aria-checked')) !== 'true') {
-    await keepAfterPen.click({ force: true });
+    await keepAfterPen.evaluate((el) => el.click());
   }
   await placeNamedMarker(page, 'Mobile Keep On', { x0: 0.24, y0: 0.30, x1: 0.48, y1: 0.46 });
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'true');
@@ -269,7 +270,7 @@ test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
     await expect(wallsChip390).toHaveClass(/is-active/);
   }
 
-  await page.getByRole('checkbox', { name: 'Keep active' }).click({ force: true });
+  await page.getByRole('checkbox', { name: 'Keep active' }).evaluate((el) => el.click());
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'false');
   if (await wallsCat.count()) {
     await wallsCat.click();
