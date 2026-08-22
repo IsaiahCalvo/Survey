@@ -42,7 +42,10 @@ test('General pane is local chrome: display / edit / Cancel / Save / no theme', 
   assert.match(settings, /handleCancelEdit/);
   assert.match(settings, /setFirstName\(user\?\.user_metadata\?\.first_name \|\| ''\)/);
   assert.match(settings, /Save changes/);
-  assert.match(settings, /No changes detected/);
+  assert.match(settings, /describeProfileSaveOutcome\(\{/);
+  assert.match(settings, /setError\(outcome\.message\)/);
+  const platform = read('src/utils/accountPlatform.js');
+  assert.match(platform, /No changes detected/);
   assert.doesNotMatch(settings, /Dark mode/);
   assert.doesNotMatch(settings, /Appearance/);
   assert.doesNotMatch(settings, /type="checkbox"/);
