@@ -199,9 +199,9 @@ async function createCallout(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42
   await editor.click();
   await editor.pressSequentially(text, { delay: 6 });
   const created = await waitForNewCallout(page, before);
-  const empty = await pageBox(page);
-  await page.mouse.click(empty.x + 12, empty.y + 12);
+  await page.mouse.click(12, 200);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  await dismissChrome(page);
   await selectMode(page);
   return created;
 }
