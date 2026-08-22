@@ -245,7 +245,10 @@ test('survey-rail Delete selected categories intended + break + edge', async ({ 
   }).toBe(true);
   await expect(page.getByRole('button', { name: 'Walls', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await goToOtherModule(page);
-  expect((await markerIds(page)).includes(markerDoors), 'undo keeps Doors marker').toBe(true);
+  await expect.poll(async () => (await markerIds(page)).includes(markerDoors), {
+    timeout: 8_000,
+    message: 'undo keeps Doors marker',
+  }).toBe(true);
   await goToExistingModule(page);
 
   // Break: Pen-armed does not hide or auto-delete; rail confirm still works.
