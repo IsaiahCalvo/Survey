@@ -1063,7 +1063,7 @@ export default function ArchiveScreen({
               <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                   <div className="section-label">Preview</div>
-                  <button onClick={() => setPreviewOpen(false)} title="Close preview" style={closeButtonStyle()}>
+                  <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" style={closeButtonStyle()}>
                     <Icon name="close" size={14} />
                   </button>
                 </div>
