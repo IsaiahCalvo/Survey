@@ -58,8 +58,9 @@ test('live spec covers type catalog, skip/delete, E vs Shift+E, 390, hub, file.i
   assert.match(spec, /partial must skip a rect/);
   assert.match(spec, /partial must bite ink/);
   assert.match(spec, /full stroke must delete rect A/);
-  assert.match(spec, /type === 'path' \|\| tool === 'pen'/);
-  assert.match(spec, /getBBox/);
+  assert.match(spec, /type !== 'path' && tool !== 'pen'/);
+  assert.match(spec, /function eraseInside/);
+  assert.match(spec, /isPointOnRect hits/);
   assert.match(spec, /full stroke isolates rect B/);
   assert.match(spec, /Pen hides Eraser type/);
   assert.match(spec, /Select hides Eraser type/);

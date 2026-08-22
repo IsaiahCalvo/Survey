@@ -246,6 +246,27 @@ async function eraseThroughRegion(page, coords) {
   await page.mouse.up();
 }
 
+async function annotationBox(page, id) {
+  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  return box;
+}
+
+// Default shapes are stroke-only (transparent fill). isPointOnRect hits
+// visible fill or the stroke ring — a mid-box swipe misses the outline.
+// Cross the top and bottom edges the way KB-1 entire-mode already does.
+async function eraseInside(page, box) {
+  const x = box.x + box.width / 2;
+  const inset = Math.max(6, Math.min(12, box.height / 4));
+  await page.mouse.move(x, box.y + inset);
+  await page.mouse.down();
+  await page.mouse.move(x, box.y + box.height / 2, { steps: 4 });
+  await page.mouse.move(x, box.y + box.height - inset, { steps: 4 });
+  await page.mouse.up();
+}
+
 async function eraseAcrossId(page, id) {
   await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
   const points = await page.evaluate((annotationId) => {
@@ -261,39 +282,17 @@ async function eraseAcrossId(page, id) {
     });
     const type = String(object.type || object.data?.type || '').toLowerCase();
     const tool = String(object.tool || object.data?.tool || '').toLowerCase();
+    if (type !== 'path' && tool !== 'pen' && tool !== 'highlighter') return [];
     const samples = [];
-    if (type === 'path' || tool === 'pen' || tool === 'highlighter') {
-      for (const cmd of object.path || []) {
-        const x = Number(cmd[cmd.length - 2]);
-        const y = Number(cmd[cmd.length - 1]);
-        if (Number.isFinite(x) && Number.isFinite(y)) samples.push(toClient(x, y));
-      }
+    for (const cmd of object.path || []) {
+      const x = Number(cmd[cmd.length - 2]);
+      const y = Number(cmd[cmd.length - 1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) samples.push(toClient(x, y));
     }
-    if (samples.length >= 2) {
-      const i0 = Math.floor((samples.length - 1) * 0.35);
-      const i1 = Math.max(i0 + 1, Math.floor((samples.length - 1) * 0.55));
-      return samples.slice(i0, i1 + 1);
-    }
-    const group = document.querySelector(`[data-anno-id="${annotationId}"]`);
-    let box = null;
-    try { box = group?.getBBox?.(); } catch { box = null; }
-    if (box && box.width > 0 && box.height > 0) {
-      return [
-        toClient(box.x + box.width * 0.25, box.y + box.height * 0.5),
-        toClient(box.x + box.width * 0.75, box.y + box.height * 0.5),
-      ];
-    }
-    const left = Number(object.left ?? object.x ?? NaN);
-    const top = Number(object.top ?? object.y ?? NaN);
-    const width = Number(object.width ?? NaN);
-    const height = Number(object.height ?? NaN);
-    if ([left, top, width, height].every(Number.isFinite) && width > 0 && height > 0) {
-      return [
-        toClient(left + width * 0.2, top + height * 0.5),
-        toClient(left + width * 0.8, top + height * 0.5),
-      ];
-    }
-    return [];
+    if (samples.length < 2) return [];
+    const i0 = Math.floor((samples.length - 1) * 0.35);
+    const i1 = Math.max(i0 + 1, Math.floor((samples.length - 1) * 0.55));
+    return samples.slice(i0, i1 + 1);
   }, id);
   if (points.length >= 2) {
     await page.mouse.move(points[0].x, points[0].y);
@@ -304,12 +303,7 @@ async function eraseAcrossId(page, id) {
     await page.mouse.up();
     return;
   }
-  const box = await page.locator(`[data-anno-id="${id}"]`).first().boundingBox();
-  expect(box, `fallback bbox ${id}`).toBeTruthy();
-  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.5, { steps: 8 });
-  await page.mouse.up();
+  await eraseInside(page, await annotationBox(page, id));
 }
 
 async function closePagesOverlay(page) {
@@ -379,7 +373,10 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   await activateTool(page, 'Draw', 'Full stroke erase');
   const size = page.getByRole('textbox', { name: 'Size', exact: true });
   await size.fill('40');
-  await size.press('Enter');
+  await size.press('Tab');
+  await blurInputs(page);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-annotation-dropdown-popover="true"]')).toHaveCount(0);
   await eraseAcrossId(page, rectA.id);
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rectA.id)
@@ -495,7 +492,9 @@ test('390 Eraser mode intended + break + edge', async ({ page }) => {
   const size = page.getByRole('textbox', { name: 'Size', exact: true });
   if (await size.isVisible().catch(() => false)) {
     await size.fill('40');
-    await size.press('Enter');
+    await size.press('Tab');
+    await blurInputs(page);
+    await page.keyboard.press('Escape');
   }
 
   await eraseAcrossId(page, rect.id);
