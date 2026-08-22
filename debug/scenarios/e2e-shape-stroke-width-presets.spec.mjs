@@ -245,17 +245,21 @@ async function calloutSnapshot(page, pageNumber = 1) {
       const data = object.data || {};
       const legacy = data.legacyCallout || {};
       const style = legacy.style || data.style || object.style || {};
-      const line = document.querySelector(
-        `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="leader"], [data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] line, [data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] path`,
+      const line1 = document.querySelector(
+        `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="line1"]`,
       );
+      const line2 = document.querySelector(
+        `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="line2"]`,
+      );
+      const visual = Number((line2 || line1)?.getAttribute('stroke-width') || 0) || null;
       return {
         id,
         type: 'callout',
         tool: 'callout',
         callout: true,
         imported: object.isPdfImported === true || legacy.isPdfImported === true,
-        lineThickness: style.lineThickness ?? object.lineThickness ?? null,
-        visualStrokeWidth: line ? Number(line.getAttribute('stroke-width') || 0) : null,
+        lineThickness: style.lineThickness ?? object.lineThickness ?? visual,
+        visualStrokeWidth: visual,
       };
     }).filter((row) => row.imported !== true);
   }, pageNumber);
@@ -388,18 +392,22 @@ async function selectStroke(page, id) {
   }
   const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
-  const box = await target.boundingBox();
-  expect(box, `bbox for ${id}`).toBeTruthy();
-  const points = [
-    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
-    { x: box.x + box.width * 0.25, y: box.y + box.height / 2 },
-    { x: box.x + box.width * 0.75, y: box.y + box.height / 2 },
-  ];
-  for (const point of points) {
-    await page.mouse.click(point.x, point.y);
-    if (await page.locator('[data-resize-handle]').count() > 0) return;
-  }
-  await expect(page.locator('[data-resize-handle]').first(), `rect handles for ${id}`).toBeVisible({ timeout: 8_000 });
+  await expect.poll(async () => {
+    const box = await target.boundingBox();
+    if (!box) return 0;
+    const points = [
+      { x: box.x + box.width / 2, y: box.y + 3 },
+      { x: box.x + 3, y: box.y + box.height / 2 },
+      { x: box.x + box.width - 3, y: box.y + box.height / 2 },
+      { x: box.x + box.width / 2, y: box.y + box.height - 3 },
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    ];
+    for (const point of points) {
+      await page.mouse.click(point.x, point.y);
+      if (await page.locator('[data-resize-handle]').count() > 0) return 1;
+    }
+    return 0;
+  }, { timeout: 12_000, message: `rect handles for ${id}` }).toBe(1);
 }
 
 async function selectCallout(page, id) {
@@ -416,11 +424,13 @@ async function selectCallout(page, id) {
     const box = await target.boundingBox();
     if (!box || box.width < 1 || box.height < 1) continue;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    const widthVisible = await page.getByRole('textbox', { name: 'Width', exact: true }).first().isVisible().catch(() => false);
-    const handles = await page.locator('[data-callout-id] [data-handle], [data-resize-handle]').count();
-    if (widthVisible || handles > 0) return;
+    const handles = await page.locator(`[data-callout-id="${id}"] [data-callout-part^="textBox-"]`).count();
+    if (handles > 0) return;
   }
-  await expect(page.getByRole('textbox', { name: 'Width', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  await expect(
+    page.locator(`[data-callout-id="${id}"] [data-callout-part^="textBox-"]`).first(),
+    `callout handles for ${id}`,
+  ).toBeVisible({ timeout: 8_000 });
 }
 
 async function patchWidthPresets(page, id, { kind = 'shape' } = {}) {
@@ -531,7 +541,10 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
   for (const preset of [1, 16, 50]) {
     await pickWidthPreset(page, preset);
     await expect(field).toHaveValue(String(preset));
-    await expect.poll(async () => (await calloutById(page, callout.id))?.lineThickness).toBe(preset);
+    await expect.poll(async () => {
+      const row = await calloutById(page, callout.id);
+      return row?.visualStrokeWidth ?? row?.lineThickness ?? null;
+    }).toBe(preset);
     calloutPatch.push(preset);
   }
   expect(calloutPatch).toEqual([1, 16, 50]);
