@@ -315,8 +315,9 @@ test('desktop select / shift-click / marquee intended + break + edge', async ({ 
   await dragOnPage(page, { x0: 0.56, y0: 0.52, x1: 0.90, y1: 0.84, modifiers: ['Shift'] });
   await expectSelected(page, [rectA.id, rectB.id], 'Shift-marquee around B must union B');
 
-  // Intended — Alt+marquee subtracts B.
-  await dragOnPage(page, { x0: 0.56, y0: 0.52, x1: 0.90, y1: 0.84, modifiers: ['Alt'] });
+  // Intended — Alt+marquee subtracts B. Start outside the group union bbox
+  // (A+B spans ~0.16–0.82 × 0.22–0.76) so the drag is a marquee, not a move.
+  await dragOnPage(page, { x0: 0.08, y0: 0.90, x1: 0.90, y1: 0.50, modifiers: ['Alt'] });
   await expectSelected(page, [rectA.id], 'Alt-marquee around B must subtract B');
 
   // Break — sub-threshold drag (< 5px) is an empty click, not a marquee.
