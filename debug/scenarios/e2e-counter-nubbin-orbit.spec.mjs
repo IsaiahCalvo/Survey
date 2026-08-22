@@ -100,35 +100,47 @@ function almostEq(a, b, eps = 3) {
 
 async function counterGeom(page, id) {
   return page.evaluate((annoId) => {
-    const host = document.querySelector(`[data-anno-id="${annoId}"] [data-shape-hit-target="counter"]`)
-      || document.querySelector(`[data-svg-annotation-layer="1"] [data-anno-id="${annoId}"]`);
-    const path = host?.matches?.('path') ? host : host?.querySelector?.('path');
-    const pathD = path?.getAttribute('d') || '';
+    const group = document.querySelector(`[data-svg-annotation-layer="1"] > g[data-anno-id="${annoId}"]`)
+      || document.querySelector(`[data-anno-id="${annoId}"]`);
+    const path = group?.querySelector?.('path') || group;
+    const pathD = path?.getAttribute?.('d') || '';
     const move = /M\s+([-0-9.]+),([-0-9.]+)/.exec(pathD);
-    const object = window.__phase35GetAnnotationById?.(annoId) || {};
-    const radius = Number(object.radius || 14);
-    const scaleX = object.scaleX ?? 1;
-    const left = object.left ?? 0;
-    const top = object.top ?? 0;
-    const pointerAngle = Number(object.data?.pointerAngle ?? 225);
-    const r = radius * Math.abs(scaleX);
-    const cx = left + r;
-    const cy = top + r;
-    const rad = (pointerAngle * Math.PI) / 180;
-    const tipDistance = r * 1.5;
+    const line = /L\s+([-0-9.]+),([-0-9.]+)/.exec(pathD);
+    const arc = /A\s+([\d.]+),([\d.]+)\s+0\s+1\s+1\s+([-0-9.]+),([-0-9.]+)/.exec(pathD);
+    const r = arc ? Number(arc[1]) : 14;
+    const tip = move ? { x: Number(move[1]), y: Number(move[2]) } : null;
+    const t1 = line ? { x: Number(line[1]), y: Number(line[2]) } : null;
+    const t2 = arc ? { x: Number(arc[3]), y: Number(arc[4]) } : null;
+    let cx = 0;
+    let cy = 0;
+    let pointerAngle = 225;
+    if (tip && t1 && t2) {
+      const midX = (t1.x + t2.x) / 2;
+      const midY = (t1.y + t2.y) / 2;
+      const axisX = midX - tip.x;
+      const axisY = midY - tip.y;
+      const axisLen = Math.hypot(axisX, axisY) || 1;
+      const tipDistance = r * 1.5;
+      cx = tip.x + (axisX / axisLen) * tipDistance;
+      cy = tip.y + (axisY / axisLen) * tipDistance;
+      pointerAngle = Math.atan2(tip.y - cy, tip.x - cx) * 180 / Math.PI;
+    }
+    const object = window.__phase35GetAnnotationById?.(annoId);
     return {
       id: annoId,
-      left,
-      top,
-      radius,
-      scaleX,
-      pointerAngle,
-      pathTip: move ? { x: Number(move[1]), y: Number(move[2]) } : null,
-      tip: {
-        x: cx + Math.cos(rad) * tipDistance,
-        y: cy + Math.sin(rad) * tipDistance,
-      },
+      left: Number.isFinite(object?.left) ? object.left : (cx - r),
+      top: Number.isFinite(object?.top) ? object.top : (cy - r),
+      radius: Number(object?.radius || r),
+      scaleX: object?.scaleX ?? 1,
+      pointerAngle: Number.isFinite(object?.data?.pointerAngle)
+        ? Number(object.data.pointerAngle)
+        : pointerAngle,
+      svgAngle: pointerAngle,
+      svgR: r,
+      tip,
       body: { x: cx, y: cy },
+      fromObject: !!(object && Object.keys(object).length),
+      pathD: pathD.slice(0, 80),
     };
   }, id);
 }
@@ -204,36 +216,39 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
 
   // Intended: click-place stores default 225°; selection chrome is nubbin-only.
   const pinA = await createCounter(page, { xf: 0.38, yf: 0.26 });
-  expect(angleDelta(pinA.pointerAngle, 225) < 2, `default angle ${pinA.pointerAngle}`).toBe(true);
+  expect(angleDelta(pinA.svgAngle, 225) < 2, `default angle ${pinA.svgAngle}`).toBe(true);
   await selectUntilNubbin(page, pinA.id);
   expect(await page.locator('[data-resize-handle]').count(), 'single-click has no bbox').toBe(0);
   expect(await page.locator('[data-counter-nubbin-handle="true"]').count(), 'nubbin chrome').toBe(1);
 
   const preNub = await counterGeom(page, pinA.id);
   await dragNubbin(page, 90, -20);
+  await page.mouse.click(18, 220);
   let afterNub = null;
   await expect.poll(async () => {
     afterNub = await counterGeom(page, pinA.id);
-    return angleDelta(preNub.pointerAngle, afterNub.pointerAngle);
+    return angleDelta(preNub.svgAngle, afterNub.svgAngle);
   }, { timeout: 8_000 }).toBeGreaterThan(12);
   expect(almostEq(afterNub.left, preNub.left, 2.5), 'nubbin keeps left').toBe(true);
   expect(almostEq(afterNub.top, preNub.top, 2.5), 'nubbin keeps top').toBe(true);
-  const nubAngleDelta = angleDelta(preNub.pointerAngle, afterNub.pointerAngle);
+  const nubAngleDelta = angleDelta(preNub.svgAngle, afterNub.svgAngle);
 
   // Intended: Shift-drag orbits the body around the frozen tip.
+  await selectUntilNubbin(page, pinA.id);
   const preOrbit = await counterGeom(page, pinA.id);
   const preTip = tipFrom(preOrbit);
   await shiftOrbitBody(page, preOrbit, { dx: 80, dy: 10 });
+  await page.mouse.click(18, 220);
   let afterOrbit = null;
   await expect.poll(async () => {
     afterOrbit = await counterGeom(page, pinA.id);
     const moved = Math.hypot(afterOrbit.left - preOrbit.left, afterOrbit.top - preOrbit.top);
-    return moved > 6 && angleDelta(preOrbit.pointerAngle, afterOrbit.pointerAngle) > 8;
+    return moved > 6 && angleDelta(preOrbit.svgAngle, afterOrbit.svgAngle) > 8;
   }, { timeout: 8_000 }).toBe(true);
   const afterTip = tipFrom(afterOrbit);
   const tipDrift = Math.hypot(afterTip.x - preTip.x, afterTip.y - preTip.y);
   expect(tipDrift < 14, `orbit tip held (drift ${tipDrift.toFixed(2)})`).toBe(true);
-  const orbitAngleDelta = angleDelta(preOrbit.pointerAngle, afterOrbit.pointerAngle);
+  const orbitAngleDelta = angleDelta(preOrbit.svgAngle, afterOrbit.svgAngle);
   const orbitBodyDelta = Math.hypot(afterOrbit.left - preOrbit.left, afterOrbit.top - preOrbit.top);
 
   // Intended: place-time Shift freezes the tip and writes a new pointerAngle.
@@ -260,7 +275,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
     placed = id ? await counterGeom(page, id) : null;
     return placed;
   }, { message: 'expected a Shift-orbit placed pin' }).not.toBeNull();
-  expect(angleDelta(placed.pointerAngle, 225) > 12, `place Shift wrote angle ${placed.pointerAngle}`).toBe(true);
+  expect(angleDelta(placed.svgAngle, 225) > 12, `place Shift wrote angle ${placed.svgAngle}`).toBe(true);
   await selectMode(page);
 
   // Break: empty-page drag with none selected is a no-op.
@@ -274,7 +289,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   await page.mouse.move(emptyBox.x + emptyBox.width * 0.94, emptyBox.y + emptyBox.height * 0.16, { steps: 6 });
   await page.mouse.up();
   const afterEmpty = await counterGeom(page, pinA.id);
-  expect(angleDelta(preEmpty.pointerAngle, afterEmpty.pointerAngle) < 1, 'empty-page no orbit').toBe(true);
+  expect(angleDelta(preEmpty.svgAngle, afterEmpty.svgAngle) < 1, 'empty-page no orbit').toBe(true);
   expect(almostEq(afterEmpty.left, preEmpty.left, 2), 'empty-page no move').toBe(true);
   expect((await listCounterIds(page)).length, 'empty-page no new pin').toBe(emptyCount);
 
@@ -293,7 +308,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   await page.mouse.up();
   await page.keyboard.up('Shift');
   const afterShiftClick = await counterGeom(page, pinA.id);
-  expect(angleDelta(preShiftClick.pointerAngle, afterShiftClick.pointerAngle) < 1, 'Shift-click no orbit').toBe(true);
+  expect(angleDelta(preShiftClick.svgAngle, afterShiftClick.svgAngle) < 1, 'Shift-click no orbit').toBe(true);
   expect(almostEq(afterShiftClick.left, preShiftClick.left, 2), 'Shift-click no move').toBe(true);
 
   // Break: Pen-armed page drag does not orbit the stored pin.
@@ -307,7 +322,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   await page.mouse.move(penBox.x + penBox.width * 0.28, penBox.y + penBox.height * 0.70, { steps: 8 });
   await page.mouse.up();
   const afterPen = await counterGeom(page, pinA.id);
-  expect(angleDelta(prePen.pointerAngle, afterPen.pointerAngle) < 1, 'Pen-armed no orbit').toBe(true);
+  expect(angleDelta(prePen.svgAngle, afterPen.svgAngle) < 1, 'Pen-armed no orbit').toBe(true);
   expect(almostEq(afterPen.left, prePen.left, 2), 'Pen-armed no body move').toBe(true);
   await selectMode(page);
 
@@ -315,13 +330,13 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   await selectUntilNubbin(page, pinA.id);
   const preUndo = await counterGeom(page, pinA.id);
   await dragNubbin(page, -70, 50);
-  await expect.poll(async () => angleDelta(preUndo.pointerAngle, (await counterGeom(page, pinA.id)).pointerAngle))
+  await expect.poll(async () => angleDelta(preUndo.svgAngle, (await counterGeom(page, pinA.id)).svgAngle))
     .toBeGreaterThan(10);
   await page.keyboard.press('Control+z');
   let afterUndo = null;
   await expect.poll(async () => {
     afterUndo = await counterGeom(page, pinA.id);
-    return angleDelta(preUndo.pointerAngle, afterUndo.pointerAngle) < 2
+    return angleDelta(preUndo.svgAngle, afterUndo.svgAngle) < 2
       && almostEq(afterUndo.left, preUndo.left, 3)
       && almostEq(afterUndo.top, preUndo.top, 3);
   }, { timeout: 8_000 }).toBe(true);
@@ -332,10 +347,10 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   await selectUntilNubbin(page, pinB.id);
   const preB = await counterGeom(page, pinB.id);
   await dragNubbin(page, 60, 40);
-  await expect.poll(async () => angleDelta(preB.pointerAngle, (await counterGeom(page, pinB.id)).pointerAngle))
+  await expect.poll(async () => angleDelta(preB.svgAngle, (await counterGeom(page, pinB.id)).svgAngle))
     .toBeGreaterThan(10);
   const firstAfterB = await counterGeom(page, pinA.id);
-  expect(angleDelta(firstFrozen.pointerAngle, firstAfterB.pointerAngle) < 1, 'A isolated').toBe(true);
+  expect(angleDelta(firstFrozen.svgAngle, firstAfterB.svgAngle) < 1, 'A isolated').toBe(true);
   expect(almostEq(firstAfterB.left, firstFrozen.left, 2), 'A left isolated').toBe(true);
 
   // Edge: zoom then nubbin still uses viewBox page-space.
@@ -352,7 +367,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   let afterZoom = null;
   await expect.poll(async () => {
     afterZoom = await counterGeom(page, pinA.id);
-    return angleDelta(preZoom.pointerAngle, afterZoom.pointerAngle);
+    return angleDelta(preZoom.svgAngle, afterZoom.svgAngle);
   }, { timeout: 8_000 }).toBeGreaterThan(8);
   expect(almostEq(afterZoom.left, preZoom.left, 3), 'zoom nubbin keeps body').toBe(true);
 
@@ -372,7 +387,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   let afterMobile = null;
   await expect.poll(async () => {
     afterMobile = await counterGeom(page, mobilePin.id);
-    return angleDelta(preMobile.pointerAngle, afterMobile.pointerAngle);
+    return angleDelta(preMobile.svgAngle, afterMobile.svgAngle);
   }, { timeout: 8_000 }).toBeGreaterThan(8);
   await assertNoErrorBoundary(page);
 
@@ -380,30 +395,31 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
     pinA: pinA.id,
     pinB: pinB.id,
     placed: placed.id,
-    defaultAngle: pinA.pointerAngle,
+    defaultAngle: pinA.svgAngle,
+    fromObject: pinA.fromObject,
     nubbin: {
       dAngle: nubAngleDelta,
       dLeft: afterNub.left - preNub.left,
       dTop: afterNub.top - preNub.top,
-      afterAngle: afterNub.pointerAngle,
+      afterAngle: afterNub.svgAngle,
     },
     orbit: {
       dAngle: orbitAngleDelta,
       bodyDelta: orbitBodyDelta,
       tipDrift,
-      afterAngle: afterOrbit.pointerAngle,
+      afterAngle: afterOrbit.svgAngle,
     },
-    placeShiftAngle: placed.pointerAngle,
-    emptyNoop: angleDelta(preEmpty.pointerAngle, afterEmpty.pointerAngle) < 1,
-    shiftClickNoop: angleDelta(preShiftClick.pointerAngle, afterShiftClick.pointerAngle) < 1,
-    penNoop: angleDelta(prePen.pointerAngle, afterPen.pointerAngle) < 1,
-    undoRestored: angleDelta(preUndo.pointerAngle, afterUndo.pointerAngle) < 2,
-    secondDidNotMoveFirst: angleDelta(firstFrozen.pointerAngle, firstAfterB.pointerAngle) < 1,
+    placeShiftAngle: placed.svgAngle,
+    emptyNoop: angleDelta(preEmpty.svgAngle, afterEmpty.svgAngle) < 1,
+    shiftClickNoop: angleDelta(preShiftClick.svgAngle, afterShiftClick.svgAngle) < 1,
+    penNoop: angleDelta(prePen.svgAngle, afterPen.svgAngle) < 1,
+    undoRestored: angleDelta(preUndo.svgAngle, afterUndo.svgAngle) < 2,
+    secondDidNotMoveFirst: angleDelta(firstFrozen.svgAngle, firstAfterB.svgAngle) < 1,
     viewBox,
-    zoomThenNubbin: angleDelta(preZoom.pointerAngle, afterZoom.pointerAngle),
+    zoomThenNubbin: angleDelta(preZoom.svgAngle, afterZoom.svgAngle),
     mobile: {
       handleCount: mobileHandleCount,
-      dAngle: angleDelta(preMobile.pointerAngle, afterMobile.pointerAngle),
+      dAngle: angleDelta(preMobile.svgAngle, afterMobile.svgAngle),
     },
   }));
 });
