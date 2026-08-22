@@ -10154,6 +10154,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const annotationsByPageRef = useRef(annotationsByPage);
   const surveyMarkersRef = useRef(surveyMarkers);
   const spacesRef = useRef(spaces);
+  // Rapid Create clicks (OS/Playwright dblclick, stacked 390 Create) used to
+  // append two–four cards. Unique Space N minting only stopped the name toast.
+  const spaceCreateBurstRef = useRef(0);
   const undoHistoryRef = useRef(undoHistory);
   const redoHistoryRef = useRef(redoHistory);
   const undoHistoryMetaRef = useRef([]);
@@ -12835,6 +12838,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceCreate = useCallback((space) => {
     if (!requireSpaceManagement()) return;
+    // Gate the burst before the checkpoint so a discarded double-click does
+    // not consume Ctrl+Z. Intentional second Create waits for the new card.
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - spaceCreateBurstRef.current < 320) return;
+    spaceCreateBurstRef.current = now;
     // Checkpoint history before creating space
     addHistoryCheckpoint('space:create', {
       requestedName: typeof space?.name === 'string' ? space.name : null

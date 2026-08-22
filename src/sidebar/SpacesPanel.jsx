@@ -1134,6 +1134,7 @@ const SpacesPanel = ({
     if (onSpaceCreate) {
       // Let handleSpaceCreate mint Space N from the live setSpaces prev so
       // two clicks cannot both send "Space 1" from a stale spaces.length.
+      // Double-click / stacked-390 burst-gating also lives in handleSpaceCreate.
       onSpaceCreate({
         assignedPages: []
       });
