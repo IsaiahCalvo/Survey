@@ -115,7 +115,10 @@ test('PRINT_PANEL_ENABLED=false blob/OS print intended + break + edge', async ({
     () => printLogs.some((line) => /disabled — temporary annotated PDF print/.test(line) || /temporary annotated PDF print failed/.test(line)),
     { timeout: 45_000 },
   ).toBeTruthy();
-  expect(countMatching(printLogs, /OPEN requested via window keydown shift/)).toBe(1);
+  // OPEN is logged before the inFlight gate, so the ignored second press
+  // still records an OPEN line with inFlight=true.
+  expect(countMatching(printLogs, /OPEN requested via window keydown shift/)).toBe(2);
+  expect(countMatching(printLogs, /ignoring — a print job is still composing/)).toBeGreaterThanOrEqual(1);
   await assertNoCustomPanel(page);
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
 
