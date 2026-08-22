@@ -29311,8 +29311,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [addHistoryCheckpoint, setPageAnnotationVisibilityState]);
 
   const handleToggleSurveyAnnotations = useCallback((spaceId, pageId, value) => {
+    const liveSpace = (spacesRef.current || []).find((entry) => entry?.id === spaceId);
+    const livePage = liveSpace?.assignedPages?.find((page) => page.pageId === pageId);
+    const current = getPageAnnotationVisibilityState(livePage).surveyVisible;
+    if (current === value) {
+      return;
+    }
+    // Sibling of handleToggleCanvasAnnotations: the survey icon was
+    // setSpaces-only, so Ctrl+Z after Hide rewound the last space:update
+    // (drawn region / add-pages) instead of the page-level survey flag.
+    addHistoryCheckpoint('space:update', {
+      spaceId,
+      pageId,
+      updateKeys: ['assignedPages']
+    });
     setPageAnnotationVisibilityState(spaceId, pageId, { surveyVisible: value });
-  }, [setPageAnnotationVisibilityState]);
+  }, [addHistoryCheckpoint, setPageAnnotationVisibilityState]);
 
   // UX 2026-04-23: Cmd/Ctrl+P (or File → Print PDF…) opens the custom Print
   // Panel. The renderer-side listener used to fire Pdfjs's built-in
