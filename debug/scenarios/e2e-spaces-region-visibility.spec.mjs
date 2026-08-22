@@ -278,22 +278,25 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
 
   // Edge: two spaces on the same page — product is page-level per selected
-  // space, not per-region. Space 2 keeps Hide; activating it shows canvas.
+  // space, not per-region. An inactive row uses the disabled aria-label.
   await createSpaceWithPages(page, '1');
   await expect(spaceCard(page, 'Space 2').locator('.space-region-row')).toBeVisible();
   await enterRegionEdit(page, spaceCard(page, 'Space 2'));
   await dragAndConfirmRegion(page, { x0: 0.52, y0: 0.22, x1: 0.72, y1: 0.40 });
   await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
-  await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
+  await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Toggle is only available when a space is active' })).toBeVisible();
   await expect(annoGroup(page, canvasId)).toBeVisible();
   await spaceCard(page, 'Space 1').getByRole('button', { name: 'Turn on space' }).click();
+  await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible({ timeout: 8_000 });
   await clickVisibility(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' }));
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Show canvas annotations' })).toBeVisible();
-  await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
   await spaceCard(page, 'Space 2').getByRole('button', { name: 'Turn on space' }).click();
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
-  await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Show canvas annotations' })).toBeVisible();
+  await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
+  await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Toggle is only available when a space is active' })).toBeVisible();
+  await spaceCard(page, 'Space 1').getByRole('button', { name: 'Turn on space' }).click();
+  await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Show canvas annotations' })).toBeVisible({ timeout: 8_000 });
 
   const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(persist, 'no file.id').toBeNull();
