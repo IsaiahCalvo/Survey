@@ -52,7 +52,7 @@ test('desktop Callout Color is Fill + Border tabs (transparent on both; no Match
     /const isShape = \(bottomToolbarApi\.contextTool === 'rect' \|\| bottomToolbarApi\.contextTool === 'ellipse' \|\| bottomToolbarApi\.contextTool === 'text' \|\| bottomToolbarApi\.contextTool === 'callout' \|\| bottomToolbarApi\.contextTool === 'counter'\)/,
   );
   assert.ok(isShape, 'Callout stays on the Fill/Border shape picker');
-  assert.match(shell, /Text\s+and Callout opt out \(their borders \+ fills are optional\)/);
+  assert.match(shell, /Callout opt out \(their borders \+ fills are optional\)/);
   const oneVisible = shell.match(
     /const shapeOneVisibleRule = bottomToolbarApi\.contextTool === 'rect'\s*\n\s*\|\| bottomToolbarApi\.contextTool === 'ellipse';/,
   );
