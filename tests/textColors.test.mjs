@@ -37,7 +37,7 @@ test('desktop Text Color is Fill + Border tabs (transparent on both; no Match Fi
     /const shapeOneVisibleRule = bottomToolbarApi\.contextTool === 'rect'\s*\n\s*\|\| bottomToolbarApi\.contextTool === 'ellipse';/,
   );
   assert.ok(oneVisible, 'Text must not inherit rect/ellipse Match Fill / minOpacity=1');
-  assert.doesNotMatch(shell, /shapeOneVisibleRule =[\s\S]{0,80}text/);
+  assert.doesNotMatch(shell, /shapeOneVisibleRule = bottomToolbarApi\.contextTool === 'text'/);
 
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /if \(type === 'textbox'\) \{\s*\n\s*handlePatchSelectedAnnotation\(\{ backgroundColor: rgba \}\)/);
