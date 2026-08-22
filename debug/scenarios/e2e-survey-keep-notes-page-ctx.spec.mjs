@@ -235,17 +235,22 @@ test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
   await page.getByRole('button', { name: 'Open survey' }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
-  const closeSheet = page.locator('.mobile-pdf-sheet-backdrop').first();
-  if (await closeSheet.count()) {
-    await closeSheet.click({ force: true });
-  }
-  await expect(page.locator('.mobile-pdf-sheet-backdrop')).toHaveCount(0);
   const mobileKeep = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(mobileKeep).toBeVisible({ timeout: 15_000 });
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'false');
-
+  // Sheet backdrop intercepts Playwright pointer events; the handler is on the button.
   await mobileKeep.evaluate((el) => el.click());
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'true');
+  expect(await markerCount(page)).toBe(0);
+
+  const iconClose = page.locator('button.btn-icon[aria-label="Close Survey panel"]');
+  if (await iconClose.count()) {
+    await iconClose.evaluate((el) => el.click());
+  }
+  const backdrop = page.locator('.mobile-pdf-sheet-backdrop');
+  if (await backdrop.count()) {
+    await backdrop.evaluate((el) => el.click());
+  }
   expect(await markerCount(page)).toBe(0);
 
   await page.getByRole('button', { name: 'Draw', exact: true }).click();
