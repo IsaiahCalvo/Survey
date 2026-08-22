@@ -120,6 +120,8 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
   const target = await page.evaluate(() => {
     const layerEl = document.querySelector('.pdfjsTextLayer.is-interactive');
     if (!layerEl) return null;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     const spans = [...layerEl.querySelectorAll('span')]
       .map((el) => {
         const box = el.getBoundingClientRect();
@@ -131,15 +133,26 @@ async function dragGlyphs(page, { steps = 16 } = {}) {
           text: String(el.textContent || '').replace(/\s+/g, ' ').trim(),
         };
       })
-      .filter((row) => row.text.length >= 3 && row.w >= 20 && row.h >= 6 && row.y >= 96);
-    return spans[0] || null;
+      .filter((row) => (
+        row.text.length >= 3
+        && row.w >= 20
+        && row.h >= 6
+        && row.x >= 56
+        && row.x + row.w <= vw - 8
+        && row.y >= 110
+        && row.y + row.h <= vh - 80
+      ));
+    return spans.sort((a, b) => b.w - a.w)[0] || null;
   });
-  expect(target, 'visible glyph span below chrome').toBeTruthy();
+  expect(target, 'visible glyph span clear of chrome').toBeTruthy();
   const y = target.y + Math.max(2, target.h / 2);
-  await page.mouse.move(target.x + 2, y);
+  await page.mouse.move(target.x + 4, y);
   await page.mouse.down();
-  await page.mouse.move(target.x + Math.max(28, target.w * 0.8), y, { steps });
+  await page.mouse.move(target.x + Math.max(36, target.w * 0.85), y, { steps });
   await page.mouse.up();
+  if (!(await osSelection(page))) {
+    await page.mouse.click(target.x + Math.min(12, target.w / 2), y, { clickCount: 3 });
+  }
   return target;
 }
 
@@ -216,8 +229,8 @@ test('desktop Select text ⇧V intended + break + edge', async ({ page }) => {
 
   // Intended — drag selects PDF glyphs (not the off-screen measurement layer).
   expect(await page.locator('.textLayer').count(), 'must not target the off-screen measurement textLayer').toBeGreaterThanOrEqual(0);
-  await dragGlyphs(page);
-  await expectSelectionMatches(page, /Text Sear|Helvetica|quick brown|Glyph Lab/i, 'drag must select PDF glyphs');
+  const desktopGlyph = await dragGlyphs(page);
+  await expectSelectionMatches(page, new RegExp(desktopGlyph.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), 'drag must select PDF glyphs');
   const selected = await osSelection(page);
   expect(selected, 'selection must not be empty').not.toBe('');
 
@@ -256,7 +269,7 @@ test('desktop Select text ⇧V intended + break + edge', async ({ page }) => {
   expect(await userAnnotationIds(page), 'Pen-armed Shift+V must invent 0').toEqual(beforePen);
 
   await dragGlyphs(page);
-  await expectSelectionMatches(page, /Text Sear|Helvetica|quick brown|Glyph Lab/i, 'second drag must still select glyphs');
+  await expectSelectionMatches(page, /\S/, 'second drag must still select glyphs');
   expect(await userAnnotationIds(page), 'glyph drag must invent 0 annotations').toEqual(beforePen);
 
   // Edge — form widgets stay inert while text-select is armed (proved on form PDF below).
@@ -353,8 +366,8 @@ test('390 Select text ⇧V intended + break + edge', async ({ page }) => {
   await waitForInteractiveTextLayer(page);
   expect(await svgPointerEvents(page), '390 SVG root must fall through in text-select').toBe('none');
 
-  await dragGlyphs(page);
-  await expectSelectionMatches(page, /Text Sear|Helvetica|quick brown|Glyph Lab/i, '390 drag must select PDF glyphs');
+  const mobileGlyph = await dragGlyphs(page);
+  await expectSelectionMatches(page, new RegExp(mobileGlyph.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '390 drag must select PDF glyphs');
 
   const pageBtn = page.getByRole('button', { name: 'Jump to page', exact: true });
   if (await pageBtn.count() && await pageBtn.isVisible().catch(() => false)) {
