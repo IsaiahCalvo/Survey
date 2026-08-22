@@ -157,12 +157,14 @@ async function dismissMenus(page) {
   await page.waitForTimeout(80);
 }
 
+const MENU_TITLES = new Set(['Page', 'Annotation', 'Callout', 'Counter']);
+
 async function menuLabels(page) {
-  return page.locator('[data-annotation-context-menu="true"]').evaluate((el) => (
+  return page.locator('[data-annotation-context-menu="true"]').evaluate((el, titles) => (
     [...el.querySelectorAll('div')]
       .map((node) => (node.textContent || '').trim())
-      .filter(Boolean)
-  ));
+      .filter((text) => text && !titles.includes(text))
+  ), [...MENU_TITLES]);
 }
 
 async function rightClickEmptyPage(page, { xf = 0.12, yf = 0.12 } = {}) {
@@ -181,6 +183,9 @@ async function rightClickUntilPasteOnly(page, candidates = [
     await dismissMenus(page);
     await rightClickEmptyPage(page, pos);
     const menu = page.locator('[data-annotation-context-menu="true"]');
+    if (!(await menu.count())) {
+      await page.waitForTimeout(120);
+    }
     if (!(await menu.count())) continue;
     const next = await menuLabels(page);
     if (next.length === 1 && next[0] === 'Paste') {
