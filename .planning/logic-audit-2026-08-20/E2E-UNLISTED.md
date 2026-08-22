@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Spaces space-card reorder):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Drag to rearrange"` / `onReorderSpaces` / `SortableRearrangeList`. Distinct from survey-rail category/item reorder and from region-row Delete. Hide/Show survey annotations not this pass. Receipt `fix-logs/spaces-card-reorder-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Spaces region-row Hide/Show survey annotations):** U-02 leftover (not a new UL row). Live desktop `aria-label="Hide survey annotations"` / `onToggleSurveyAnnotations`. Survey-context only. Sibling of already-proven canvas Hide/Show. Space CSV / PDF Pages stay leftover-18. Receipt `fix-logs/spaces-survey-annotation-visibility-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Spaces space-card reorder):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Drag to rearrange"` / `onReorderSpaces` / `SortableRearrangeList`. Distinct from survey-rail category/item reorder and from region-row Delete. Hide/Show survey annotations not this pass. Receipt `fix-logs/spaces-card-reorder-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Spaces region-row Delete):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Delete"` / `region-delete-button` / `onRemovePage`. Distinct from last-space card delete. Space-card reorder not this pass. Receipt `fix-logs/spaces-region-delete-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
