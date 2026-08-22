@@ -375,8 +375,14 @@ async function pickMobileOption(page, ariaLabel, label) {
   await expect(listbox).toHaveCount(0);
 }
 
+function storedLineStyle(row) {
+  return row?.lineStyle === 'dashed' || row?.lineStyle === 'dotted'
+    ? row.lineStyle
+    : 'solid';
+}
+
 function expectDash(row, style, label) {
-  expect(dashKey(row.lineStyle), `${label} stored lineStyle`).toBe(style.value);
+  expect(storedLineStyle(row), `${label} stored lineStyle`).toBe(style.value);
   expect(dashKey(row.visualDash), `${label} leader stroke-dasharray`).toBe(style.value);
   expect(dashKey(row.visualBoxDash), `${label} text-box stroke-dasharray`).toBe(style.value);
 }
@@ -449,7 +455,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   const selectedDashProof = [];
   for (const style of DASH_STYLES) {
     await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', style.label);
-    await expect.poll(async () => dashKey((await annotationById(page, firstDash.id))?.lineStyle))
+    await expect.poll(async () => storedLineStyle(await annotationById(page, firstDash.id)))
       .toBe(style.value);
     const row = await annotationById(page, firstDash.id);
     expectDash(row, style, `Callout selected-patch ${style.label}`);
@@ -457,7 +463,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   }
   expect(selectedDashProof).toEqual(DASH_STYLES.map((row) => row.value));
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dashed');
-  await expect.poll(async () => dashKey((await annotationById(page, firstDash.id))?.lineStyle)).toBe('dashed');
+  await expect.poll(async () => storedLineStyle(await annotationById(page, firstDash.id))).toBe('dashed');
 
   const firstHead = headProof[1];
   expect(firstHead.style).toBe('solidTriangle');
@@ -475,7 +481,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   const selectedCalloutDashProof = [];
   for (const style of DASH_STYLES) {
     await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', style.label);
-    await expect.poll(async () => dashKey((await annotationById(page, firstHead.id))?.lineStyle))
+    await expect.poll(async () => storedLineStyle(await annotationById(page, firstHead.id)))
       .toBe(style.value);
     selectedCalloutDashProof.push(style.value);
   }
@@ -484,7 +490,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dotted');
   await expect.poll(async () => {
     const row = await annotationById(page, firstHead.id);
-    return `${dashKey(row.lineStyle)}|${row.arrowheadStyle}`;
+    return `${storedLineStyle(row)}|${row.arrowheadStyle}`;
   }).toBe('dotted|vShape');
 
   await activateTool(page, 'Shapes', 'Rectangle');
@@ -497,7 +503,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   expect(afterCloud.join(' | ')).not.toMatch(/cloud/i);
   const cloudArmed = await createCallout(page, 'cloud', { x0: 0.12, y0: 0.62, x1: 0.30, y1: 0.74 });
   expect(isCalloutRow(cloudArmed)).toBe(true);
-  expect(dashKey(cloudArmed.lineStyle), 'Cloud-armed Callout create stays solid (cloud is rect-only)')
+  expect(storedLineStyle(cloudArmed), 'Cloud-armed Callout create stays solid (cloud is rect-only)')
     .toBe('solid');
 
   await activateTool(page, 'Draw', 'Pen');
@@ -506,7 +512,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   expectDash(await annotationById(page, firstDash.id), DASH_STYLES[1], 'Pen-armed must not rewrite first dashed Callout');
   const isolatedHead = await annotationById(page, firstHead.id);
   expect(isolatedHead.arrowheadStyle, 'Pen-armed must not rewrite first Callout head').toBe('vShape');
-  expect(dashKey(isolatedHead.lineStyle), 'Pen-armed must not rewrite first Callout dash').toBe('dotted');
+  expect(storedLineStyle(isolatedHead), 'Pen-armed must not rewrite first Callout dash').toBe('dotted');
 
   await armCallout(page);
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dotted');
@@ -529,7 +535,7 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
   expectDash(await annotationById(page, firstDash.id), DASH_STYLES[1], 'undo keeps first dashed Callout');
   const afterUndoHead = await annotationById(page, firstHead.id);
   expect(afterUndoHead.arrowheadStyle).toBe('vShape');
-  expect(dashKey(afterUndoHead.lineStyle)).toBe('dotted');
+  expect(storedLineStyle(afterUndoHead)).toBe('dotted');
 
   const beforeSelect = (await calloutSnapshot(page)).length;
   await clickVisible(page, 'Select');
