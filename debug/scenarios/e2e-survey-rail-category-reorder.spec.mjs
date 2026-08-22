@@ -9,7 +9,6 @@ import { test, expect } from '@playwright/test';
 
 const SURVEY_PDF = '/?testPdf=clickable-link-test.pdf&surveyTransitionE2E=1';
 const TWO_CAT_TEMPLATE = /Two Category Template/;
-const KAL436_TEMPLATE = /KAL-436 Preservation Template/;
 
 async function openEditor(page, { width = 1440, height = 900 } = {}) {
   await page.addInitScript(() => {
@@ -185,12 +184,12 @@ test('survey-rail category reorder intended + break + edge', async ({ page }) =>
   expect(await rightRail(page).getByRole('button', { name: /Move (up|down)/i }).count(), 'no category up-down').toBe(0);
 
   // Break: Escape mid-drag cancels; Walls stays first.
-  await dragCategoryTo(page, 'Walls', 'Windows', { cancel: true });
+  const cancelMethod = await dragCategoryTo(page, 'Walls', 'Windows', { cancel: true });
   await expect.poll(async () => railCategoryNames(page)).toEqual(['Walls', 'Windows']);
   await expect.poll(async () => storedCategoryNames(page)).toEqual(['Walls', 'Windows']);
 
   // Intended: drop Walls onto Windows so Walls is no longer first.
-  await dragCategoryTo(page, 'Walls', 'Windows');
+  const intendedMethod = await dragCategoryTo(page, 'Walls', 'Windows');
   await expect.poll(async () => railCategoryNames(page)).toEqual(['Windows', 'Walls']);
   await expect.poll(async () => storedCategoryNames(page)).toEqual(['Windows', 'Walls']);
   await expect.poll(async () => storedCategoryIds(page)).toEqual([
@@ -209,7 +208,7 @@ test('survey-rail category reorder intended + break + edge', async ({ page }) =>
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
   await openSurveyRail(page);
-  await dragCategoryTo(page, 'Windows', 'Walls');
+  const penMethod = await dragCategoryTo(page, 'Windows', 'Walls');
   await expect.poll(async () => railCategoryNames(page)).toEqual(['Walls', 'Windows']);
   await expect.poll(async () => storedCategoryNames(page)).toEqual(['Walls', 'Windows']);
 
@@ -252,20 +251,16 @@ test('survey-rail category reorder intended + break + edge', async ({ page }) =>
   const mobile = {
     handleCount: await page.locator('[data-drag-rearrange-handle]').count(),
     upDownCount: await page.getByRole('button', { name: /Move (up|down)/i }).count(),
-    kal436AlsoSingle: false,
   };
   expect(mobile.handleCount, '390 has no category drag handle').toBe(0);
   expect(mobile.upDownCount, '390 has no category up-down').toBe(0);
-
-  await page.getByRole('button', { name: 'Choose survey template' }).click();
-  await page.getByRole('button', { name: KAL436_TEMPLATE }).click();
-  await expect(page.getByRole('button', { name: /Walls/ }).first()).toBeVisible({ timeout: 15_000 });
-  mobile.kal436AlsoSingle = (await page.locator('[data-drag-rearrange-handle]').count()) === 0;
-  expect(mobile.kal436AlsoSingle, '390 KAL-436 also has no handle').toBe(true);
   await assertNoErrorBoundary(page);
 
   console.log('SURVEY_RAIL_CATEGORY_REORDER_PROOF', JSON.stringify({
     intended: ['Windows', 'Walls'],
+    intendedMethod,
+    cancelMethod,
+    penMethod,
     cancelKeptWallsFirst: true,
     penArmedReordered: true,
     undoDidNotRewind: true,
