@@ -383,7 +383,9 @@ const PDFSidebar = React.forwardRef(({
         background: '#12151c'
       }}>
         <button
+          type="button"
           onClick={toggleCollapse}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
             background: 'transparent',
             border: 'none',
