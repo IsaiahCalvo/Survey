@@ -201,16 +201,33 @@ async function dismissChrome(page) {
   }
 }
 
+async function handlesBelongTo(page, id) {
+  const group = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  const handles = page.locator('[data-resize-handle]');
+  if (!(await handles.count()) || !(await group.count())) return false;
+  const box = await group.boundingBox();
+  if (!box) return false;
+  const points = await handles.evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }));
+  const near = points.filter((point) => (
+    point.x >= box.x - 28 && point.x <= box.x + box.width + 28
+    && point.y >= box.y - 28 && point.y <= box.y + box.height + 28
+  ));
+  return near.length >= 2;
+}
+
 async function selectCloud(page, id) {
   // Color only patches a selected cloud when activeTool === 'select'.
-  // Do not Escape first: create leaves the new cloud selected; Escape drops it
-  // and the default fillOpacity-0 cloud path is stroke-only to hit.
+  // Do not Escape first: that drops a just-created selection. Do not treat
+  // "any handles" as success — another cloud can still be the selection.
   await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
 
   const handles = page.locator('[data-resize-handle], [data-rotation-handle="mtr"]');
-  if (await handles.count()) {
+  if (await handlesBelongTo(page, id)) {
     await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
     return;
   }
@@ -220,6 +237,7 @@ async function selectCloud(page, id) {
   const box = await group.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
   const points = [
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
     { x: box.x + Math.min(8, Math.max(3, box.width / 2)), y: box.y + Math.max(3, box.height / 2) },
     { x: box.x + 4, y: box.y + box.height / 2 },
     { x: box.x + box.width / 2, y: box.y + 4 },
@@ -228,13 +246,15 @@ async function selectCloud(page, id) {
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
-    if (await handles.count()) {
+    if (await handlesBelongTo(page, id)) {
       await expect(page.getByRole('button', { name: 'Color', exact: true }).first()).toBeVisible({ timeout: 8_000 });
       return;
     }
   }
   await page.locator(`[data-shape-id="${id}"]`).click({ force: true, position: { x: 3, y: 3 } });
-  await expect(handles.first()).toBeVisible({ timeout: 8_000 });
+  await expect.poll(async () => handlesBelongTo(page, id), {
+    message: `expected selection handles on cloud ${id}`,
+  }).toBeTruthy();
 }
 
 async function openColorPicker(page) {
@@ -289,10 +309,18 @@ async function armCloudRect(page) {
 async function createCloud(page, coords = { x0: 0.16, y0: 0.24, x1: 0.40, y1: 0.40 }) {
   const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
   await armCloudRect(page);
+  // Seed an opaque fill so the new cloud-rect interior is a hit target.
+  // Every-swatch still overwrites this; #808080 is not the first proven solid.
+  await openColorPicker(page);
+  await clickTab(page, 'Fill');
+  await assertCloudTabs(page, { onBorder: false });
+  await clickSwatch(page, '#808080');
+  await page.keyboard.press('Escape');
   await dragOnPage(page, coords);
   const created = await waitForNewUserAnnotation(page, before, isCloudRow);
   expect(created.shapeKind).toBe('cloud-rect');
   expect(Number.isFinite(created.cloudIntensity)).toBeTruthy();
+  await expect.poll(async () => storedFill(created.id ? await annotationById(page, created.id) : null)).toBe('#808080');
   await page.keyboard.press('v');
   return created;
 }
