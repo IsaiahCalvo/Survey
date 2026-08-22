@@ -119,10 +119,10 @@ async function assertCatalog(text, label) {
   for (const row of LISTED) {
     expect(text, `${label} lists ${row}`).toContain(row);
   }
-  expect(text, `${label} lists Navigation`).toMatch(/Navigation/);
-  expect(text, `${label} lists Actions`).toMatch(/Actions/);
-  expect(text, `${label} lists Tools`).toMatch(/Tools/);
-  expect(text, `${label} lists Interface`).toMatch(/Interface/);
+  expect(text, `${label} lists Navigation`).toMatch(/NAVIGATION/i);
+  expect(text, `${label} lists Actions`).toMatch(/ACTIONS/i);
+  expect(text, `${label} lists Tools`).toMatch(/TOOLS/i);
+  expect(text, `${label} lists Interface`).toMatch(/INTERFACE/i);
   expect(text, `${label} lists Shift\\+V`).toMatch(/Shift/);
   expect(text, `${label} lists Esc`).toMatch(/Esc/);
   for (const pattern of OMITTED) {

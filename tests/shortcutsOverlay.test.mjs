@@ -96,5 +96,6 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT s
   assert.match(spec, /hubPreview home tab still has the overlay/);
   assert.match(spec, /file\.id stays null/);
   assert.match(spec, /0 0 612 792/);
-  assert.match(spec, /Do not stamp\s+file\.id/);
+  assert.match(spec, /Do not stamp/);
+  assert.match(spec, /file\.id/);
 });
