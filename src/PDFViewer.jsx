@@ -23181,9 +23181,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const commitZoomInput = useCallback((liveValue) => {
-    // Prefer the live input value. Playwright fill / last keystroke can commit
-    // in the same tick as onChange, so zoomInputValue may still be the old %.
-    const raw = liveValue != null ? liveValue : zoomInputValue;
+    // Prefer the mounted input, then the event value, then React state.
+    // Same-tick fill / last keystroke can leave zoomInputValue stale.
+    const fromDom = zoomInputRef.current && typeof zoomInputRef.current.value === 'string'
+      ? zoomInputRef.current.value
+      : null;
+    const raw = fromDom != null ? fromDom : (liveValue != null ? liveValue : zoomInputValue);
     if (!raw) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;

@@ -201,14 +201,15 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Fit width', exact: true })).toHaveAttribute('data-active', 'false');
   await page.keyboard.press('Escape');
 
-  // Intended — blur also commits.
+  // Intended — click-away blur also commits.
   const zoomForBlur = await focusZoomInput(page);
   await zoomForBlur.fill('250');
-  await zoomForBlur.blur();
+  await expect(zoomForBlur).toHaveValue('250');
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').click({ position: { x: 12, y: 12 } });
   await blurInputs(page);
   await expect.poll(() => zoomPercent(page), {
     timeout: 20_000,
-    message: 'blur must commit 250%',
+    message: 'click-away blur must commit 250%',
   }).toBe(250);
 
   // Break — 0 / 1 / 50 lift to the engine dynamic min (often ~Fit page).

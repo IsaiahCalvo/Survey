@@ -18,7 +18,8 @@ test('rail zoom % field clamps 1–4000, strips letters, Escape skips blur-commi
   assert.match(viewer, /if \(Number\.isFinite\(numeric\) && numeric > 4000\)/);
   assert.match(viewer, /setZoomInputValue\('4000'\)/);
   assert.match(viewer, /const commitZoomInput = useCallback\(\(liveValue\) =>/);
-  assert.match(viewer, /const raw = liveValue != null \? liveValue : zoomInputValue/);
+  assert.match(viewer, /const fromDom = zoomInputRef\.current/);
+  assert.match(viewer, /const raw = fromDom != null \? fromDom : \(liveValue != null \? liveValue : zoomInputValue\)/);
   assert.match(viewer, /const clamped = Math\.min\(Math\.max\(parsed, 1\), 4000\)/);
   assert.match(viewer, /const normalized = clampScale\(clamped \/ 100\)/);
   assert.match(viewer, /controller\.setScale\(normalized\)/);
@@ -80,7 +81,7 @@ test('live spec covers intended + clamp + Escape + 390 absent + file.id', () => 
   assert.match(spec, /testPdf=spike-120-pages\.pdf/);
   assert.match(spec, /typed 200 must commit 200%/);
   assert.match(spec, /200% must grow page width vs Fit page/);
-  assert.match(spec, /blur must commit 250%/);
+  assert.match(spec, /click-away blur must commit 250%/);
   assert.match(spec, /0 must lift above the typed value/);
   assert.match(spec, /50 must lift to the same engine min as 0/);
   assert.match(spec, /9999 must clamp in the field/);
