@@ -486,6 +486,11 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await ensurePageDrawTarget(page);
 
   const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
+  await clickVisible(page, 'Select');
+  const rectHost = page.locator(`[data-shape-id="${rect.id}"]`).first();
+  if (await rectHost.isVisible().catch(() => false)) {
+    await rectHost.click({ force: true, position: { x: 8, y: 8 } });
+  }
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await clickVisible(page, 'Fill and border colors');
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toBeVisible();
@@ -503,6 +508,11 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await ensurePageDrawTarget(page);
 
   const line = await createLine(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.62 });
+  await clickVisible(page, 'Select');
+  const lineHost = page.locator(`[data-shape-id="${line.id}"]`).first();
+  if (await lineHost.isVisible().catch(() => false)) {
+    await lineHost.click({ force: true, position: { x: 4, y: 4 } });
+  }
   const strokeTrigger = page.getByRole('button', { name: 'Stroke color', exact: true }).first();
   await expect(strokeTrigger).toBeVisible({ timeout: 8_000 });
   await strokeTrigger.click();
