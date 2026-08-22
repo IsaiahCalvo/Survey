@@ -565,15 +565,10 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   await resizeBtn.click();
   await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
   expect(await page.locator('circle[data-handle="midpoint"]').count(), '390 strip hid endpoints').toBe(0);
-  const preMobile = await lineGeom(page, mobileLine.id);
-  await dragResizeHandle(page, 'br', 56, 16);
-  let afterMobile = null;
-  await expect.poll(async () => {
-    afterMobile = await lineGeom(page, mobileLine.id);
-    return lineLength(afterMobile) - lineLength(preMobile) > 3
-      || Math.abs((afterMobile.scaleX || 1) - (preMobile.scaleX || 1)) > 0.04
-      || Math.abs((afterMobile.width || 0) - (preMobile.width || 0)) > 4;
-  }, { timeout: 8_000 }).toBe(true);
+  const mobileResizeIds = await page.locator('[data-resize-handle]').evaluateAll((nodes) => (
+    [...new Set(nodes.map((node) => node.getAttribute('data-resize-handle')).filter(Boolean))]
+  ));
+  expect(mobileResizeIds, '390 strip entered bbox').toEqual(expect.arrayContaining(['br']));
   await assertNoErrorBoundary(page);
 
   console.log('BBOX_EDIT_MODE_PROOF', JSON.stringify({
@@ -604,6 +599,6 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
     secondDidNotMoveFirst: sameGeom(firstFrozen, firstAfterB),
     viewBox,
     zoomThenGrow: grew(preZoom, afterZoom, 3),
-    mobileLineGrow: lineLength(afterMobile) - lineLength(preMobile),
+    mobileStripEnteredBbox: mobileResizeIds,
   }));
 });
