@@ -795,6 +795,35 @@ export default function TemplatesEditor({
     setSelEntities(new Set());
   }, []);
   const closeMoveModal = useCallback(() => setMoveModal(null), []);
+  const focusVisibleField = (selector, match) => {
+    const field = [...document.querySelectorAll(selector)].find((el) => (
+      el.offsetParent && (!match || match(el))
+    ));
+    if (!field) return false;
+    field.focus();
+    field.select();
+    return true;
+  };
+  /* More → Rename must land in the field. Template More used to only
+     select the row; entity More only closed the color picker. */
+  const beginTemplateRename = (tid) => {
+    setSelected(tid);
+    setTplEdit(false);
+    setMobileTemplateOpen(true);
+    setMobileEntitiesOpen(false);
+    setTimeout(() => {
+      focusVisibleField('input[data-template-title]');
+    }, 0);
+  };
+  const beginEntityRename = (eid) => {
+    setOpenColor(null);
+    setTimeout(() => {
+      focusVisibleField(
+        'input[placeholder="Entity name"]',
+        (el) => el.getAttribute('data-entity-id') === eid,
+      );
+    }, 0);
+  };
   useModalFocusTrap({
     active: mobileEntitiesOpen,
     containerRef: mobileEntitiesModalRef,
@@ -2033,6 +2062,7 @@ export default function TemplatesEditor({
                   key={tpl.id}
                   className="inline-edit cat-title"
                   defaultValue={tpl.name}
+                  data-template-title=""
                   title="Click to rename"
                   onDoubleClick={(e) => e.currentTarget.select()}
                   onBlur={(e) => {
@@ -2456,6 +2486,7 @@ export default function TemplatesEditor({
                           className="inline-edit cat-title"
                           defaultValue={r.role}
                           key={r.id + ':' + r.role}
+                          data-entity-id={r.id}
                           placeholder="Entity name"
                           onDoubleClick={(e) => e.currentTarget.select()}
                           onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
@@ -2669,6 +2700,7 @@ export default function TemplatesEditor({
                     key={`mobile-template-title-${tpl.id}`}
                     className="templates-mobile-title-input"
                     defaultValue={tpl.name}
+                    data-template-title=""
                     title="Tap to rename"
                     onBlur={(e) => {
                       const next = e.currentTarget.value;
@@ -2949,6 +2981,7 @@ export default function TemplatesEditor({
                                   className="templates-mobile-inline-input"
                                   defaultValue={r.role}
                                   key={`mobile-entity-${r.id}:${r.role}`}
+                                  data-entity-id={r.id}
                                   placeholder="Entity name"
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
@@ -2959,6 +2992,7 @@ export default function TemplatesEditor({
                                   <button
                                     type="button"
                                     className="templates-mobile-more"
+                                    title="More" aria-label="More"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const rect = e.currentTarget.getBoundingClientRect();
@@ -3038,7 +3072,7 @@ export default function TemplatesEditor({
           onClose={() => setTplMenu(null)}
           items={[
             { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
-            { label: 'Rename', onClick: () => { setSelected(t.id); setTplEdit(false); } },
+            { label: 'Rename', onClick: () => beginTemplateRename(t.id) },
             { label: 'Share', onClick: () => onShare && onShare(t) },
             { label: 'Delete', danger: true, onClick: () => deleteTemplates(new Set([t.id])) },
           ]}
@@ -3056,7 +3090,7 @@ export default function TemplatesEditor({
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
             { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
-            { label: 'Rename', onClick: () => setOpenColor(null) },
+            { label: 'Rename', onClick: () => beginEntityRename(ent.id) },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
           ]}
         />

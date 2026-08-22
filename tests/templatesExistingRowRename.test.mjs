@@ -97,7 +97,7 @@ test('Move/Copy stays a dead stub; More menu is not this leftover', () => {
   assert.doesNotMatch(move, /onExportSpaceCSV/);
   assert.doesNotMatch(move, /Copy to Spaces/);
 
-  assert.match(editor, /\{ label: 'Rename', onClick: \(\) => \{ setSelected\(t\.id\); setTplEdit\(false\); \} \}/);
-  assert.match(editor, /\{ label: 'Rename', onClick: \(\) => setOpenColor\(null\) \}/);
+  assert.match(editor, /\{ label: 'Rename', onClick: \(\) => beginTemplateRename\(t\.id\) \}/);
+  assert.match(editor, /\{ label: 'Rename', onClick: \(\) => beginEntityRename\(ent\.id\) \}/);
   assert.doesNotMatch(editor, /Copy to Spaces/);
 });
