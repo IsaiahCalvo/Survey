@@ -41,7 +41,7 @@ Exact discrete catalogs used by the UI:
 | T-06 | Text | Alignment 3×3 | All 9 cells | justify accepted but not offered |
 | T-07 | Text | Font color | All 15 solid swatches + hex. **390 Text color chips** live `e2e-mobile-text-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Invalid hex; transparent first cell |
 | C-01 | Color | Preset grid | Every discrete swatch | Transparent; Match Fill first cell |
-| C-02 | Color | Hex field | `#rgb` / `#rrggbb` / bare | Invalid, rgba(), named, 4/5/7/8 digit |
+| C-02 | Color | Hex field | `#rgb` / `#rrggbb` / bare. **Live lengths** `e2e-hex-lengths.spec.mjs` (3/6 accept; 4/5/7/8 + named/rgba reject) | Invalid, rgba(), named, 4/5/7/8 digit |
 | C-03 | Color | Opacity | Slider + % field 0–100 | `minOpacity`; transparentMode restore |
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
 | C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets. **390 sheet chips** live `e2e-mobile-annotation-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Counter number color; armed tool vs selection; 390 default fill opacity 0 |

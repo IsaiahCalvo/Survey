@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 390 MOBILE_ANNOTATION_COLORS every chip):** not a new UL row. Live-proved the 390 Fill sheet catalog (`MOBILE_ANNOTATION_COLORS`, 9 hexes) that desktop CompactColorPicker every-swatch never opened. Receipt `fix-logs/mobile-annotation-colors-2026-08-22.md`. X-01 names **PRESENT** in process env; `.env.local` not written; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 live C-02 hex lengths):** not a new UL row. Dedicated intended+break+edge for CompactColorPicker hex lengths (3/6 accept; 4/5/7/8 + named/rgba reject). Receipt `fix-logs/hex-lengths-2026-08-22.md`. X-01 names **PRESENT** in `.env.local`; process env absent; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 390 MOBILE_ANNOTATION_COLORS every chip):** not a new UL row. Live-proved the 390 Fill sheet catalog (`MOBILE_ANNOTATION_COLORS`, 9 hexes) that desktop CompactColorPicker every-swatch never opened. Receipt `fix-logs/mobile-annotation-colors-2026-08-22.md`. X-01 names **PRESENT** in process env; `.env.local` not written; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 leftover-18 host-bundle):** not a new UL row. Re-inspected env as authoritative. X-01 hosts still **absent** (no `.env.local`, no process auto-login / Stripe / MSAL / Turnstile, no lease files, Cursor cloud environment **null**). Did not invent hosts. Did not launch another catalog hunt. Receipt `fix-logs/leftover18-host-bundle-2026-08-22.md`. Next leftover-18 live host: **X-01**. Official next fail-stop: isolated **8448**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
