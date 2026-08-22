@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-22 T-01 textbox create auto-edit):** named leftover after E-02 RotationInputField. Live `e2e-textbox-create-edit.spec.mjs` **2 / 2 (18.1s)**. Node **25 / 25**. No product bug. Receipt `fix-logs/textbox-create-edit-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-22 V-01 Spacebar temporary pan):** named leftover after T-01 textbox create auto-edit. Live `e2e-spacebar-pan.spec.mjs` **2 / 2 (9.3s)**. Node **15 / 15**. No product bug. Receipt `fix-logs/spacebar-pan-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-22 T-01 textbox create auto-edit):** named leftover after E-02 RotationInputField. Live `e2e-textbox-create-edit.spec.mjs` **2 / 2 (18.1s)**. Node **25 / 25**. No product bug. Receipt `fix-logs/textbox-create-edit-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-22 E-02 RotationInputField):** named leftover after C-06 Match Fill. Live `e2e-rotation-input-field.spec.mjs` **2 / 2 (10.3s)**. Node **15 / 15**. Product: Ctrl+A now clears the degree pill. Receipt `fix-logs/rotation-input-field-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
