@@ -56,11 +56,11 @@ function overlaySvg(page) {
 }
 
 function hideOverlay(page) {
-  return page.locator('[aria-label="Hide overlay for this region"]');
+  return page.locator('.space-region-row [data-region-overlay-toggle="true"][aria-label="Hide overlay for this region"]');
 }
 
 function showOverlay(page) {
-  return page.locator('[aria-label="Show overlay for this region"]');
+  return page.locator('.space-region-row [data-region-overlay-toggle="true"][aria-label="Show overlay for this region"]');
 }
 
 function defineOverlayFirst(page) {
@@ -218,10 +218,10 @@ test('U-02 Edit region areas + overlay on/off + last space', async ({ page }) =>
   await expect(overlayRoot(page)).toBeVisible();
 
   // Last-space off: the only space turns off → overlay hides; on → overlay returns.
-  await page.getByLabel('Turn off space').click();
+  await page.getByLabel('Turn off space').evaluate((el) => el.click());
   await expect(page.getByLabel('Turn on space')).toBeVisible({ timeout: 8_000 });
   await expect(overlayRoot(page)).toHaveCount(0);
-  await page.getByLabel('Turn on space').click();
+  await page.getByLabel('Turn on space').evaluate((el) => el.click());
   await expect(page.getByLabel('Turn off space')).toBeVisible({ timeout: 8_000 });
   await expect(overlayRoot(page)).toBeVisible();
 

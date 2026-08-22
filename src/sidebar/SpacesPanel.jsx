@@ -489,15 +489,21 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                     ? 'Define regions first to enable overlay'
                                     : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region');
 
+                              const toggleOverlay = (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!isToggleEnabled || !onToggleRegionOverlay) {
+                                  return;
+                                }
+                                onToggleRegionOverlay(space.id, page.pageId);
+                              };
                               return (
                                 <div
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!isToggleEnabled || !onToggleRegionOverlay) {
-                                      return;
-                                    }
-                                    onToggleRegionOverlay(space.id, page.pageId);
-                                  }}
+                                  className="region-overlay-toggle"
+                                  data-region-overlay-toggle="true"
+                                  role="switch"
+                                  aria-checked={isToggleEnabled && isOverlayEnabled}
+                                  tabIndex={isToggleEnabled ? 0 : -1}
                                   style={{
                                     position: 'relative',
                                     width: '28px',
@@ -515,6 +521,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   }}
                                   {...tip(overlayTooltipText, 'below')}
                                   aria-label={overlayTooltipText}
+                                  onClick={toggleOverlay}
+                                  onKeyDown={(e) => {
+                                    if (e.key !== ' ' && e.key !== 'Enter') return;
+                                    toggleOverlay(e);
+                                  }}
                                   onMouseEnter={(e) => {
                                     tip(overlayTooltipText, 'below').onMouseEnter(e);
                                     if (!isToggleEnabled) return;

@@ -16,6 +16,7 @@ test('SpacesPanel exposes Edit region, overlay toggle, and last-space chrome', (
   assert.match(panel, /onCancelRegionEdit\?\.\(space\.id, page\.pageId\)/);
   assert.match(panel, /Hide overlay for this region/);
   assert.match(panel, /Show overlay for this region/);
+  assert.match(panel, /Enable space to toggle overlay/);
   assert.match(panel, /Define regions first to enable overlay/);
   assert.match(panel, /onToggleRegionOverlay\(space\.id, page\.pageId\)/);
   assert.match(panel, /aria-label=\{isActive \? 'Turn off space' : 'Turn on space'\}/);
