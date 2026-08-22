@@ -32,7 +32,7 @@ Exact discrete catalogs used by the UI:
 | S-02 | Shapes | Ellipse | Draw + fill/stroke | Circle vs ellipse |
 | S-03 | Shapes | Line | Draw + dash. Single-click `p1`/`p2`/`midpoint` live `e2e-line-endpoint-midpoint.spec.mjs`. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs` | Zero length; 10px snap-to-straight; Pen-armed handle still edits; Pen exits bbox mode |
 | S-04 | Shapes | Arrow + arrowheads | 6 head styles. Same `p1`/`p2`/`midpoint` chrome as Line | Legacy group export |
-| S-05 | Shapes | Counter | Numbered pins + series. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs` | Renumber; last-in-series; fill/number color; nubbin/orbit not this pass |
+| S-05 | Shapes | Counter | Numbered pins + series. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs`. Nubbin + Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs` | Renumber; last-in-series; fill/number color; UL-31 Continue pin |
 | T-01 | Text | Textbox create/edit | Same-surface editor | Blank discard; tight-fit; wrap |
 | T-02 | Text | Callout create/edit | Leader + text box. Knee / leader / arrowTip / text-box **move** live `e2e-callout-knee-drag.spec.mjs`. **Corner resize** `textBox-tl/tr/bl/br` live `e2e-callout-textbox-resize.spec.mjs`. **Flip + knee-rollback leftovers** `e2e-callout-textbox-resize-leftovers.spec.mjs` | Blank; arrowhead; style patch; Pen-armed no-op; Esc is marquee-only; off-page allow-outside; 20px min clamp; live flip past opposite; resize-into-knee rollback |
 | T-03 | Text | Font family | All 6 offered names | CSS stack rejected; import unknown name |
@@ -47,7 +47,7 @@ Exact discrete catalogs used by the UI:
 | C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets | Counter number color; armed tool vs selection |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
 | E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04. Polygon/polyline `vertex-N` is X-04. Double-click / 390-strip bbox mode live `e2e-bbox-edit-mode.spec.mjs` | Rotated; text wrap height; Pen exits bbox |
-| E-02 | Edit | Rotation | Handle + numeric + Shift 45° | Off-screen handle; 0/90/180/270 |
+| E-02 | Edit | Rotation | Handle + numeric + Shift 45°. Counter nubbin / Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs` | Off-screen handle; 0/90/180/270; Shift-click toggle ≠ orbit |
 | E-03 | Edit | Move | Drag selected | Multi-select; snap |
 | E-04 | Edit | Delete | Backspace / context | Last owner; remote delete |
 | E-05 | Edit | Undo / redo | Cmd+Z / Shift+Z | Collab foreign edits |

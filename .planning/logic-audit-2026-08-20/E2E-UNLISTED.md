@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 bbox edit mode):** not a new UL row. Double-click / 390 **Resize and rotate** leftover after vertex-N (not E-01 rect bbox; not `vertex-N`; not line `p1`/`p2`/`midpoint`). Receipt `fix-logs/bbox-edit-mode-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 counter nubbin / Shift-orbit):** S-05 / E-02 leftover (not a new UL row). Live nubbin + Shift-orbit + place-time Shift. 390 uses the same SVG handle (no pause-orbit). Receipt `fix-logs/counter-nubbin-orbit-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 bbox edit mode):** not a new UL row. Double-click / 390 **Resize and rotate** leftover after vertex-N (not E-01 rect bbox; not `vertex-N`; not line `p1`/`p2`/`midpoint`). Receipt `fix-logs/bbox-edit-mode-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 polygon/polyline vertex handles):** X-04 leftover (not a new UL row; not E-01 bbox; not S-03/S-04 line chrome). Live imported `vertex-N`. Ellipse radii / ink vertices / stamp edit omitted. Receipt `fix-logs/poly-vertex-handles-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
