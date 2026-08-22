@@ -51,7 +51,7 @@ Exact discrete catalogs used by the UI:
 | E-03 | Edit | Move | Drag selected. Survey-marker body live `e2e-survey-marker-handle-drag.spec.mjs` | Multi-select; snap |
 | E-04 | Edit | Delete | Backspace / context. Placed survey-marker overlay Delete + Select Backspace/Delete live `e2e-survey-marker-delete.spec.mjs` | Last owner; remote delete; rail list Delete |
 | E-05 | Edit | Undo / redo | Cmd+Z / Shift+Z | Collab foreign edits |
-| E-06 | Edit | Context menu | Right-click actions. **UL-30 arrange** live `e2e-z-order-arrange.spec.mjs` (Bring forward / Send backward + overlap skip; callout omit) | Callout vs text vs counter |
+| E-06 | Edit | Context menu | Right-click actions. **UL-30 arrange** live `e2e-z-order-arrange.spec.mjs` (Bring forward / Send backward + overlap skip; callout omit). **Lock / Hide / Flatten chrome absent** live `e2e-lock-hide-flatten-chrome.spec.mjs` (no user item; import lock flags only; flatten-to-PDF not invented) | Callout vs text vs counter |
 | X-01 | Save | Cloud save | Persist annotations. **Local `?testPdf=` reload-restore** live `e2e-testpdf-local-save-reload.spec.mjs` (not leftover-18 cloud). | Offline outbox; identity-only churn |
 | X-02 | Export | Annotated PDF | File → Export | Every color/font/format in /DA |
 | X-03 | Print | Flatten markup. 2026-08-22 **fail-closed blob/OS path** live `e2e-print-panel-failclosed.spec.mjs` (`PRINT_PANEL_ENABLED=false`; no custom panel; Ctrl+P blob; Ctrl+Shift+P flatten + inFlight). Flag not flipped. | Print with markup | Decoration first-line only; survey markers excluded; custom panel compile-hidden |
