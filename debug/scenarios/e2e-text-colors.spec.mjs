@@ -236,9 +236,9 @@ async function createText(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.click();
   await editor.pressSequentially(text, { delay: 6 });
-  const created = await waitForNewText(page, before);
   await page.mouse.click(12, 200);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  const created = await waitForNewText(page, before);
   await blurInputs(page);
   await selectMode(page);
   return created;
