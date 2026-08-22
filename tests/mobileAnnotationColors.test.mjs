@@ -65,5 +65,24 @@ test('desktop AppShell does not mount the 390 chip aria-labels', () => {
   const shell = read('src/AppShell.jsx');
   assert.doesNotMatch(shell, /MOBILE_ANNOTATION_COLORS/);
   assert.doesNotMatch(shell, /Set Fill color \$\{/);
+  assert.doesNotMatch(shell, /Set Text color \$\{/);
   assert.match(shell, /CompactColorPicker/);
 });
+
+test('390 Text color chips write fontColor defaults, not fill/stroke handlers', () => {
+  const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
+  assert.match(mobile, /aria-label=\{\`Set Text color \$\{color\}\`\}/);
+  assert.match(mobile, /onClick=\{\(\) => updateTextDefaults\(\{ fontColor: color \}\)\}/);
+  assert.match(mobile, /title: 'Text color'/);
+  assert.match(mobile, /onChange: \(hex\) => updateTextDefaults\(\{ fontColor: hex \}\)/);
+  assert.match(mobile, /showOpacity: false/);
+  assert.match(mobile, /aria-label="Open Text color picker"/);
+
+  const overlay = read('src/components/TextEditOverlay.jsx');
+  assert.match(overlay, /fill: newTextStyle\?\.fontColor \|\| strokeColor \|\| '#007AFF'/);
+
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /newTextStyle=\{mobileMode \? textStyleDefaults : null\}/);
+  assert.match(viewer, /fontColor: textStyleDefaults\.fontColor/);
+});
+
