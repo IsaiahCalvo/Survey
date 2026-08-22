@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-22 UL-07 page number field intended+break+edge (`fix-logs/page-number-field-2026-08-22.md`). Escape skip-commit + live field on `?testPdf=` (no `file.id`). Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-22 C-06 Match Fill intended+break+edge (`fix-logs/match-fill-2026-08-22.md`). Opacity lock + missing-fill one-visible on `?testPdf=` (no `file.id`). P1-38 ring not replayed. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-22 UL-07 page number field intended+break+edge (`fix-logs/page-number-field-2026-08-22.md`). Escape skip-commit + live field on `?testPdf=` (no `file.id`). Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-22 ?testPdf= local save / reload-restore (`fix-logs/testpdf-local-save-reload-2026-08-22.md`). Fidelity audit: pickers wrote the local cache but never reloaded. Live-proved intended+break+edge on `?testPdf=` (no `file.id`). Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still **absent**. Playwright **1 / 1**. Node **3 / 3**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
