@@ -1139,6 +1139,8 @@ export default function ProjectsFolderTree({
                           <SortableRearrangeRow
                             key={f.id}
                             id={f.id}
+                            disableSettledTransition
+                            animateLayoutChanges={() => false}
                           >
                             {({ attributes, listeners, isDragging }) => (
                           <div
@@ -1302,7 +1304,12 @@ export default function ProjectsFolderTree({
                   ) : (
                     <SortableRearrangeList ids={mobileDrillFiles.map((f) => f.id)} onReorder={reorderFiles}>
                       {mobileDrillFiles.map((f) => (
-                        <SortableRearrangeRow key={`drill-file-${f.id}`} id={f.id}>
+                        <SortableRearrangeRow
+                          key={`drill-file-${f.id}`}
+                          id={f.id}
+                          disableSettledTransition
+                          animateLayoutChanges={() => false}
+                        >
                           {({ attributes, listeners, isDragging }) => renderMobileFileRow(
                             f,
                             'drill-file',

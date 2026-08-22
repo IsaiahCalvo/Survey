@@ -178,6 +178,12 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
     { cancel: true },
   );
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('SE-011');
+  await expect.poll(async () => page.evaluate(() => {
+    const first = document.querySelector('.projects-desktop-layout [data-sortable-rearrange-item="d1"]');
+    const second = document.querySelector('.projects-desktop-layout [data-sortable-rearrange-item="d3"]');
+    if (!first || !second) return false;
+    return first.getBoundingClientRect().top < second.getBoundingClientRect().top;
+  })).toBe(true);
 
   const selfMode = await dragByHandle(
     page,
