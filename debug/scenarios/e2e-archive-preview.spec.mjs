@@ -211,15 +211,21 @@ test('Archive row Preview / Close preview + Show documents intended + break + ed
   await expect(page.getByRole('button', { name: 'Preview Level 2' })).toBeVisible();
   await expect(archivePreview(page).getByText('Site plan', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Preview Level 1' }).click();
-  await expect(archivePreview(page).getByText('Level 1', { exact: true })).toBeVisible();
-  await expect(archivePreview(page).getByText(/Document/)).toBeVisible();
-  await expect(archivePreview(page).getByText(/Atrium/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Preview Level 2' })).toBeVisible();
+  await page.locator('.archive-desktop-card [data-archive-item-id="ap1"]').click();
+  await expect(archivePreview(page).locator('.section-label', { hasText: 'Contents' })).toBeVisible();
+  await expect(archivePreview(page).getByText('Level 1')).toBeVisible();
+  await expect(archivePreview(page).getByText('Level 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Preview Level 1' })).toBeVisible();
 
   await archivePreview(page).getByTitle('Hide documents').click();
   await expect(archivePreview(page).getByText('Level 2')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Preview Level 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Preview Level 2' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Preview Level 1' }).click();
+  await expect(archivePreview(page).getByText('Level 1', { exact: true })).toBeVisible();
+  await expect(archivePreview(page).getByText(/Document/)).toBeVisible();
+  await expect(archivePreview(page).getByText(/Atrium/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Level 2' })).toBeVisible();
 
   await ledgerHideDocuments(page).click();
