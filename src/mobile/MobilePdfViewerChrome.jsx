@@ -835,8 +835,15 @@ export function MobileToolProperties({ api }) {
     ? toHexColor(api.fillColor, '#ffffff')
     : toHexColor(api.strokeColor, '#ff0000');
   const applyShapeColor = (color) => {
-    if (shapeSection === 'fill') api.handleFillColorChange?.(color);
-    else api.handleStrokeColorChange?.(color);
+    if (shapeSection === 'fill') {
+      api.handleFillColorChange?.(color);
+      // Solid chips must exit the default transparent fill. CompactColorPicker
+      // already restores remembered opacity; the 390 sheet chips only sent hex.
+      if ((api.fillOpacity ?? 0) <= 0) api.handleFillOpacityChange?.(100);
+    } else {
+      api.handleStrokeColorChange?.(color);
+      if ((api.strokeOpacity ?? 0) <= 0) api.handleStrokeOpacityChange?.(100);
+    }
   };
   // Open the edit sheet from a strip swatch, focused on the tapped colour
   // section (demo: swatch → AnnotationEditPanel focused on that colour).

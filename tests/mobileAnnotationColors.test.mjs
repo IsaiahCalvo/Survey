@@ -47,8 +47,11 @@ test('390 chip catalog is 9 hexes and is not the desktop CompactColorPicker list
 
 test('390 chips apply through the same fill/stroke handlers as desktop Select', () => {
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
-  assert.match(mobile, /if \(shapeSection === 'fill'\) api\.handleFillColorChange\?\.\(color\)/);
-  assert.match(mobile, /else api\.handleStrokeColorChange\?\.\(color\)/);
+  assert.match(mobile, /if \(shapeSection === 'fill'\) \{/);
+  assert.match(mobile, /api\.handleFillColorChange\?\.\(color\)/);
+  assert.match(mobile, /if \(\(api\.fillOpacity \?\? 0\) <= 0\) api\.handleFillOpacityChange\?\.\(100\)/);
+  assert.match(mobile, /api\.handleStrokeColorChange\?\.\(color\)/);
+  assert.match(mobile, /if \(\(api\.strokeOpacity \?\? 0\) <= 0\) api\.handleStrokeOpacityChange\?\.\(100\)/);
   assert.match(mobile, /setColorPicker\(shapeSection\)/);
 
   const viewer = read('src/PDFViewer.jsx');
