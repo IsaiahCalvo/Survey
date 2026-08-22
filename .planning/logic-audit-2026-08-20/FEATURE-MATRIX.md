@@ -39,7 +39,7 @@ Exact discrete catalogs used by the UI:
 | T-04 | Text | Font size | All 18 presets + custom | Clamp 6–200; non-preset prepend |
 | T-05 | Text | Bold / italic / underline / strike | Toggle each | Combo; callout booleans vs fabric fields |
 | T-06 | Text | Alignment 3×3 | All 9 cells | justify accepted but not offered |
-| T-07 | Text | Font color | All 15 solid swatches + hex | Invalid hex; transparent first cell |
+| T-07 | Text | Font color | All 15 solid swatches + hex. **390 Text color chips** live `e2e-mobile-text-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Invalid hex; transparent first cell |
 | C-01 | Color | Preset grid | Every discrete swatch | Transparent; Match Fill first cell |
 | C-02 | Color | Hex field | `#rgb` / `#rrggbb` / bare | Invalid, rgba(), named, 4/5/7/8 digit |
 | C-03 | Color | Opacity | Slider + % field 0–100 | `minOpacity`; transparentMode restore |
@@ -70,7 +70,7 @@ Exact discrete catalogs used by the UI:
 | A-06 | Collab | Presence / re-sign-in | Roster + banner | Access removed; outbox retry |
 | A-07 | History | Revisions / activity | Restore / jump | Quarantine stub bbox |
 | P-01 | Mobile | Sheets + chrome | Tool rail + properties | Hook restore; color takeover |
-| P-02 | Mobile | Text formatting | Same 6 fonts + formats. **390 annotation color chips** live `e2e-mobile-annotation-colors.spec.mjs` (not the P-02 harness) | Numeric size 1–200 |
+| P-02 | Mobile | Text formatting | Same 6 fonts + formats. **390 Fill chips** live `e2e-mobile-annotation-colors.spec.mjs`. **390 Text color chips** live `e2e-mobile-text-colors.spec.mjs` (not the P-02 harness) | Numeric size 1–200 |
 | P-03 | Desktop | Electron menus | Open / export / print. Desktop TabBar **Close tab** live `e2e-tab-close.spec.mjs` (not Home / `returnToDevHubPreview`; 390 TabBar absent) | No display in headless; page-drop toast stub |
 | P-04 | Desktop | Keyboard tool keys | V ⇧V P H E T Q L A C | Undocumented keys |
 
