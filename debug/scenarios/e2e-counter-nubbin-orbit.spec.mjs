@@ -243,6 +243,21 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   expect(almostEq(afterNub.top, preNub.top, 2.5), 'nubbin keeps top').toBe(true);
   const nubAngleDelta = angleDelta(preNub.svgAngle, afterNub.svgAngle);
 
+  // Edge: undo restores stored pointerAngle (must run before later history).
+  await page.keyboard.press('Control+z');
+  let afterUndo = null;
+  await expect.poll(async () => {
+    afterUndo = await counterGeom(page, pinA.id);
+    return angleDelta(preNub.svgAngle, afterUndo.svgAngle) < 2
+      && almostEq(afterUndo.left, preNub.left, 3)
+      && almostEq(afterUndo.top, preNub.top, 3);
+  }, { timeout: 8_000 }).toBe(true);
+  await selectUntilNubbin(page, pinA.id);
+  await dragNubbin(page, 90, -20);
+  await clickEmpty(page);
+  await expect.poll(async () => angleDelta(preNub.svgAngle, (await counterGeom(page, pinA.id)).svgAngle))
+    .toBeGreaterThan(12);
+
   // Intended: Shift-drag orbits the body around the frozen tip.
   const pinOrbit = await createCounter(page, { xf: 0.28, yf: 0.48 });
   await page.waitForTimeout(550);
@@ -339,21 +354,6 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   expect(almostEq(afterPen.left, prePen.left, 2), 'Pen-armed no body move').toBe(true);
   await selectMode(page);
 
-  // Edge: undo restores the last orbit (or nubbin) pose.
-  await selectUntilNubbin(page, pinA.id);
-  const preUndo = await counterGeom(page, pinA.id);
-  await dragNubbin(page, -70, 50);
-  await expect.poll(async () => angleDelta(preUndo.svgAngle, (await counterGeom(page, pinA.id)).svgAngle))
-    .toBeGreaterThan(10);
-  await page.keyboard.press('Control+z');
-  let afterUndo = null;
-  await expect.poll(async () => {
-    afterUndo = await counterGeom(page, pinA.id);
-    return angleDelta(preUndo.svgAngle, afterUndo.svgAngle) < 2
-      && almostEq(afterUndo.left, preUndo.left, 3)
-      && almostEq(afterUndo.top, preUndo.top, 3);
-  }, { timeout: 8_000 }).toBe(true);
-
   // Edge: second counter isolated.
   const pinB = await createCounter(page, { xf: 0.72, yf: 0.58 });
   const firstFrozen = await counterGeom(page, pinA.id);
@@ -406,6 +406,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
 
   console.log('COUNTER_NUBBIN_ORBIT_PROOF', JSON.stringify({
     pinA: pinA.id,
+    pinOrbit: pinOrbit.id,
     pinB: pinB.id,
     placed: placed.id,
     defaultAngle: pinA.svgAngle,
