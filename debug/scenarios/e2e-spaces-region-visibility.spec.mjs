@@ -286,16 +286,16 @@ test('U-02 region-row Hide/Show canvas annotations', async ({ page }) => {
   await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Toggle is only available when a space is active' })).toBeVisible();
   await expect(annoGroup(page, canvasId)).toBeVisible();
-  await spaceCard(page, 'Space 1').getByRole('button', { name: 'Turn on space' }).click();
+  await spaceCard(page, 'Space 1').getByLabel('Turn on space').click();
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible({ timeout: 8_000 });
   await clickVisibility(spaceCard(page, 'Space 1').getByRole('button', { name: 'Hide canvas annotations' }));
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Show canvas annotations' })).toBeVisible();
   await expect(annoGroup(page, canvasId)).toHaveCount(0, { timeout: 8_000 });
-  await spaceCard(page, 'Space 2').getByRole('button', { name: 'Turn on space' }).click();
+  await spaceCard(page, 'Space 2').getByLabel('Turn on space').click();
   await expect(annoGroup(page, canvasId)).toBeVisible({ timeout: 8_000 });
   await expect(spaceCard(page, 'Space 2').getByRole('button', { name: 'Hide canvas annotations' })).toBeVisible();
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Toggle is only available when a space is active' })).toBeVisible();
-  await spaceCard(page, 'Space 1').getByRole('button', { name: 'Turn on space' }).click();
+  await spaceCard(page, 'Space 1').getByLabel('Turn on space').click();
   await expect(spaceCard(page, 'Space 1').getByRole('button', { name: 'Show canvas annotations' })).toBeVisible({ timeout: 8_000 });
 
   const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
