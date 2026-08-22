@@ -219,10 +219,6 @@ async function dragHandle(page, id, dx, dy, origin = {}) {
   return dragSelector(page, selector, dx, dy, origin);
 }
 
-async function dragBody(page, id, dx, dy) {
-  return dragSelector(page, `[data-survey-marker-id="${id}"] [data-survey-marker-hit-target="true"]`, dx, dy);
-}
-
 async function clickEmpty(page) {
   const box = await pageBox(page);
   await page.mouse.click(box.x + box.width * 0.92, box.y + box.height * 0.08);
@@ -251,18 +247,15 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   const intended = {};
 
   // Body move first — before mtr leaves the rotation pill on the centroid.
-  await clickEmpty(page);
   await selectUntilHandles(page, markerA);
   const preMove = await markerGeom(page, markerA);
-  const moveBox = await pageBox(page);
-  const moveVb = await pageViewBox(page);
-  const moveStart = {
-    x: moveBox.x + ((preMove.x + preMove.width * 0.35) / moveVb.W) * moveBox.width,
-    y: moveBox.y + ((preMove.y + preMove.height * 0.40) / moveVb.H) * moveBox.height,
-  };
-  await page.mouse.move(moveStart.x, moveStart.y);
+  const hit = page.locator(`[data-survey-marker-id="${markerA}"] [data-survey-marker-hit-target="true"]`);
+  await expect(hit).toBeVisible({ timeout: 8_000 });
+  const hitBox = await hit.boundingBox();
+  expect(hitBox, 'marker hit target').toBeTruthy();
+  await hit.hover({ position: { x: Math.max(12, hitBox.width * 0.35), y: Math.max(12, hitBox.height * 0.4) } });
   await page.mouse.down();
-  await page.mouse.move(moveStart.x + 64, moveStart.y + 48, { steps: 12 });
+  await page.mouse.move(hitBox.x + hitBox.width * 0.35 + 72, hitBox.y + hitBox.height * 0.4 + 56, { steps: 12 });
   await page.mouse.up();
   let afterMove = null;
   await expect.poll(async () => {
@@ -319,6 +312,18 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
     .toBe(true);
   const afterBr = await markerGeom(page, markerA);
 
+  // Edge: undo restores the committed br grow (before later history).
+  await page.keyboard.press('Control+z');
+  let afterUndo = null;
+  await expect.poll(async () => {
+    afterUndo = await markerGeom(page, markerA);
+    return almostEq(afterUndo.width, preBr.width, 3) && almostEq(afterUndo.height, preBr.height, 3);
+  }, { timeout: 8_000 }).toBe(true);
+  await selectUntilHandles(page, markerA);
+  await dragHandle(page, 'br', 56, 40);
+  await expect.poll(async () => handleChanged('br', afterUndo, await markerGeom(page, markerA)))
+    .toBe(true);
+
   // Break: empty-page drag with none selected.
   await clickEmpty(page);
   expect(await page.locator('[data-survey-marker-id] [data-resize-handle]').count(), 'deselect hides handles').toBe(0);
@@ -351,19 +356,6 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   expect((await markerIds(page)).length, 'Pen-armed no new marker').toBe(penCount);
   await selectMode(page);
 
-  // Edge: undo restores the committed br grow.
-  await page.keyboard.press('Control+z');
-  let afterUndo = null;
-  await expect.poll(async () => {
-    afterUndo = await markerGeom(page, markerA);
-    return almostEq(afterUndo.width, preBr.width, 3) && almostEq(afterUndo.height, preBr.height, 3);
-  }, { timeout: 8_000 }).toBe(true);
-
-  // Re-grow so isolation / zoom have a known committed size, then isolate B.
-  await selectUntilHandles(page, markerA);
-  await dragHandle(page, 'br', 56, 40);
-  await expect.poll(async () => handleChanged('br', afterUndo, await markerGeom(page, markerA)))
-    .toBe(true);
   const frozenA = await markerGeom(page, markerA);
 
   const markerB = await placeMarker(page, 'handle-b', { x0: 0.58, y0: 0.30, x1: 0.78, y1: 0.48 });
@@ -460,9 +452,11 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
     move: intended.move,
     emptyNoop: posDelta(preEmpty, afterEmpty) < 2,
     penNoop: posDelta(prePen, afterPen) < 2,
+    afterBr: { w: afterBr.width, h: afterBr.height },
+    afterB: { w: afterB.width, h: afterB.height },
     undoRestored: almostEq(afterUndo.width, preBr.width, 3),
     secondDidNotMoveFirst: posDelta(frozenA, firstAfterB) < 2,
-    keepCountUnchanged: (await markerIds(page)).length >= 1,
+    keepCountUnchanged: keepCount,
     viewBox,
     zoomThenBr: {
       dw: afterZoom.width - preZoom.width,
