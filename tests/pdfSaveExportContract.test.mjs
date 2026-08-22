@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
+import { PDFDocument, PDFName, decodePDFRawStream, degrees } from 'pdf-lib';
 import {
   buildPdfExportAnnotationPlan,
   buildPrintableRegularAnnotationPayload,
@@ -50,6 +50,21 @@ async function makePdfFile(name = 'source.pdf') {
   };
 }
 
+async function makeRotatedPdfFile(name = 'rotated-source.pdf') {
+  const doc = await PDFDocument.create();
+  for (const rotation of [0, 90, 180, 270]) {
+    const page = doc.addPage([200, 100]);
+    page.setRotation(degrees(rotation));
+  }
+  const bytes = await doc.save();
+  return {
+    name,
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
 async function getPdfAnnotationSubtypes(bytes) {
   const doc = await PDFDocument.load(bytes);
   const page = doc.getPage(0);
@@ -64,6 +79,26 @@ async function getPdfAnnotationDicts(bytes) {
   const annots = page.node.lookup(PDFName.of('Annots'));
   if (!annots) return [];
   return annots.asArray().map((ref) => doc.context.lookup(ref));
+}
+
+async function getPdfAnnotationDictsByPage(bytes) {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getPages().map((page) => {
+    const annots = page.node.lookup(PDFName.of('Annots'));
+    return annots ? annots.asArray().map((ref) => doc.context.lookup(ref)) : [];
+  });
+}
+
+async function getPdfPageContentStrings(bytes) {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getPages().map((page) => {
+    const contents = page.node.lookup(PDFName.of('Contents'));
+    const entries = contents?.asArray?.() || (contents ? [contents] : []);
+    return entries.map((entry) => {
+      const stream = doc.context.lookup(entry);
+      return new TextDecoder().decode(decodePDFRawStream(stream).decode());
+    }).join('\n');
+  });
 }
 
 async function pageHasContentStream(bytes) {
@@ -122,6 +157,79 @@ test('live PDF export writes all four saved text markup subtypes with stored qua
     assert.equal(dict.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
     assert.equal(dict.lookup(PDFName.of('CA')).asNumber(), 0.35);
   });
+});
+
+test('native text markup export converts rotated PDF.js viewport quads into base PDF coordinates', async () => {
+  const viewportSizes = [
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+  ];
+  const annotationsByPage = Object.fromEntries(viewportSizes.map((_size, index) => [index + 1, {
+    objects: [createTextMarkupAnnotation({
+      id: `rotated-${index}`,
+      pageNumber: index + 1,
+      selectionGroupId: 'rotated-group',
+      markupType: 'highlight',
+      selectedText: `rotation ${index * 90}`,
+      color: '#ffd400',
+      opacity: 0.4,
+      quads: [{ x1: 10, y1: 20, x2: 30, y2: 20, x3: 10, y3: 40, x4: 30, y4: 40 }],
+    })],
+  }]));
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makeRotatedPdfFile(),
+    annotationsByPage,
+    Object.fromEntries(viewportSizes.map((size, index) => [index + 1, size])),
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'rotated-native-export' },
+  );
+  const dicts = await getPdfAnnotationDictsByPage(bytes);
+  const quadValues = dicts.map(([dict]) => (
+    dict.lookup(PDFName.of('QuadPoints')).asArray().map((value) => value.asNumber())
+  ));
+  assert.deepEqual(quadValues, [
+    [10, 80, 30, 80, 10, 60, 30, 60],
+    [20, 10, 20, 30, 40, 10, 40, 30],
+    [190, 20, 170, 20, 190, 40, 170, 40],
+    [180, 90, 180, 70, 160, 90, 160, 70],
+  ]);
+});
+
+test('Uniform export converts rotated PDF.js viewport quads before flattening page content', async () => {
+  const viewportSizes = [
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+  ];
+  const annotationsByPage = Object.fromEntries(viewportSizes.map((_size, index) => [index + 1, {
+    objects: [createTextMarkupAnnotation({
+      id: `uniform-rotated-${index}`,
+      pageNumber: index + 1,
+      selectionGroupId: `uniform-rotated-group-${index}`,
+      markupType: 'highlight',
+      selectedText: `rotation ${index * 90}`,
+      color: '#ffd400',
+      opacity: 0.4,
+      overlapMode: 'uniform',
+      quads: [{ x1: 10, y1: 20, x2: 30, y2: 20, x3: 10, y3: 40, x4: 30, y4: 40 }],
+    })],
+  }]));
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makeRotatedPdfFile(),
+    annotationsByPage,
+    Object.fromEntries(viewportSizes.map((size, index) => [index + 1, size])),
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'rotated-uniform-export' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
+  const contents = await getPdfPageContentStrings(bytes);
+  assert.match(contents[0], /10 20 m\s+30 20 l\s+30 40 l\s+10 40 l/);
+  assert.match(contents[1], /20 90 m\s+20 70 l\s+40 70 l\s+40 90 l/);
+  assert.match(contents[2], /190 80 m\s+170 80 l\s+170 60 l\s+190 60 l/);
+  assert.match(contents[3], /180 10 m\s+180 30 l\s+160 30 l\s+160 10 l/);
 });
 
 test('print helper flattens saved text markup into visible page content', async () => {

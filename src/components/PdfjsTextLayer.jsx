@@ -82,7 +82,9 @@ function ensureTextLayerStyles() {
     /* UX: the I-beam covers the WHOLE page in text-selection mode, not just the
        glyph boxes, so the mode reads as "you are selecting text here" even in
        the gaps between words. */
-    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; -webkit-user-select: text !important; user-select: text !important; touch-action: pan-x pan-y; }
+    /* Keep one-finger pan and native text selection, while allowing the page
+       host to receive the browser's two-finger pinch gesture. */
+    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; -webkit-user-select: text !important; user-select: text !important; touch-action: pan-x pan-y pinch-zoom; }
     .pdfjsTextLayer.is-interactive :is(span, br) { -webkit-user-select: text !important; user-select: text !important; -webkit-touch-callout: default !important; }
     .pdfjsTextLayer:not(.is-interactive) { pointer-events: none; }
     .pdfjsTextLayer:not(.is-interactive) :is(span, br) { -webkit-user-select: none; user-select: none; }

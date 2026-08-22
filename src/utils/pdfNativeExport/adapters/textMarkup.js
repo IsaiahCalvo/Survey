@@ -11,7 +11,6 @@
 // pdfAnnotationsPdfLib.createHighlightAnnotation.
 
 import {
-  flipY,
   hexToRgbTriplet,
   pdfStringOrEmpty,
   registerAnnotationDict,
@@ -21,17 +20,58 @@ import {
 } from './shared.js';
 
 
-function buildQuadPointsFromBounds({ left, top, width, height }, pageHeight) {
-  const minX = left;
-  const maxX = left + width;
-  const maxY = flipY(pageHeight, top);
-  const minY = flipY(pageHeight, top + height);
-  return [
-    minX, maxY,  // TopLeft
-    maxX, maxY,  // TopRight
-    minX, minY,  // BottomLeft
-    maxX, minY,  // BottomRight
-  ];
+const normalizedRightAngle = (value) => {
+  const angle = ((Number(value) || 0) % 360 + 360) % 360;
+  return [0, 90, 180, 270].includes(angle) ? angle : 0;
+};
+
+export function getTextMarkupPageGeometry(page, fallbackPageHeight = 0) {
+  const size = page?.getSize?.() || { width: 0, height: Number(fallbackPageHeight) || 0 };
+  const crop = page?.getCropBox?.() || { x: 0, y: 0, width: size.width, height: size.height };
+  return {
+    x: Number(crop.x) || 0,
+    y: Number(crop.y) || 0,
+    width: Number(crop.width) || Number(size.width) || 0,
+    height: Number(crop.height) || Number(size.height) || Number(fallbackPageHeight) || 0,
+    rotation: normalizedRightAngle(page?.getRotation?.()?.angle),
+  };
+}
+
+export function viewportPointToPdfPoint(point, geometry) {
+  const u = Number(point?.x) || 0;
+  const v = Number(point?.y) || 0;
+  const { x, y, width, height, rotation } = geometry;
+  if (rotation === 90) return { x: x + v, y: y + u };
+  if (rotation === 180) return { x: x + width - u, y: y + v };
+  if (rotation === 270) return { x: x + width - v, y: y + height - u };
+  return { x: x + u, y: y + height - v };
+}
+
+export function viewportPointToBaseAppPoint(point, geometry) {
+  const pdfPoint = viewportPointToPdfPoint(point, geometry);
+  return {
+    x: pdfPoint.x - geometry.x,
+    y: geometry.height - (pdfPoint.y - geometry.y),
+  };
+}
+
+const quadToPoints = (quad) => [
+  { x: quad.x1, y: quad.y1 },
+  { x: quad.x2, y: quad.y2 },
+  { x: quad.x3, y: quad.y3 },
+  { x: quad.x4, y: quad.y4 },
+];
+
+function buildQuadPointsFromBounds({ left, top, width, height }, geometry) {
+  return quadToPoints({
+    x1: left, y1: top,
+    x2: left + width, y2: top,
+    x3: left, y3: top + height,
+    x4: left + width, y4: top + height,
+  }).flatMap((point) => {
+    const pdfPoint = viewportPointToPdfPoint(point, geometry);
+    return [pdfPoint.x, pdfPoint.y];
+  });
 }
 
 function buildTextMarkupDict({
@@ -43,6 +83,7 @@ function buildTextMarkupDict({
   fallbackPrefix,
   useFill = false,
 }) {
+  const geometry = getTextMarkupPageGeometry(page, pageHeight);
   const bounds = {
     left: Number(fabricObj?.left) || 0,
     top: Number(fabricObj?.top) || 0,
@@ -53,13 +94,11 @@ function buildTextMarkupDict({
 
   const storedQuads = Array.isArray(fabricObj?.data?.quads) ? fabricObj.data.quads : [];
   const quadPoints = storedQuads.length > 0
-    ? storedQuads.flatMap((quad) => [
-        Number(quad.x1), flipY(pageHeight, Number(quad.y1)),
-        Number(quad.x2), flipY(pageHeight, Number(quad.y2)),
-        Number(quad.x3), flipY(pageHeight, Number(quad.y3)),
-        Number(quad.x4), flipY(pageHeight, Number(quad.y4)),
-      ])
-    : buildQuadPointsFromBounds(bounds, pageHeight);
+    ? storedQuads.flatMap((quad) => quadToPoints(quad).flatMap((point) => {
+        const pdfPoint = viewportPointToPdfPoint(point, geometry);
+        return [pdfPoint.x, pdfPoint.y];
+      }))
+    : buildQuadPointsFromBounds(bounds, geometry);
   const quadXs = quadPoints.filter((_, index) => index % 2 === 0);
   const quadYs = quadPoints.filter((_, index) => index % 2 === 1);
   const minX = Math.min(...quadXs);

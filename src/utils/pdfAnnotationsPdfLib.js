@@ -67,6 +67,8 @@ import {
   adaptSquiggly,
   adaptStrikeOut,
   adaptUnderline,
+  getTextMarkupPageGeometry,
+  viewportPointToBaseAppPoint,
 } from './pdfNativeExport/adapters/textMarkup.js';
 
 const pdfExportDebug = (...args) => {
@@ -3414,16 +3416,24 @@ const drawUniformHighlightMask = (page, objects, pageHeight) => {
   if (!first || quads.length === 0) return 0;
   const color = parsePdfDrawColor(first.fill || first.stroke || '#f4d35e', '#f4d35e');
   const opacity = Math.max(0.05, Math.min(1, Number(first.opacity ?? 1)));
+  const geometry = getTextMarkupPageGeometry(page, pageHeight);
   const path = quads.map((quad) => {
-    const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
-    const right = Math.max(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
-    const top = Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
-    const bottom = Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
-    if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return '';
-    return `M ${left} ${top} L ${right} ${top} L ${right} ${bottom} L ${left} ${bottom} Z`;
+    const points = [
+      { x: quad.x1, y: quad.y1 },
+      { x: quad.x2, y: quad.y2 },
+      { x: quad.x4, y: quad.y4 },
+      { x: quad.x3, y: quad.y3 },
+    ].map((point) => viewportPointToBaseAppPoint(point, geometry));
+    if (!points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) return '';
+    return `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
   }).filter(Boolean).join(' ');
   if (!path) return 0;
-  page.drawSvgPath(path, { x: 0, y: pageHeight, color: color.color, opacity });
+  page.drawSvgPath(path, {
+    x: geometry.x,
+    y: geometry.y + geometry.height,
+    color: color.color,
+    opacity,
+  });
   return 1;
 };
 

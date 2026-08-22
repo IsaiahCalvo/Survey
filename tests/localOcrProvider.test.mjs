@@ -10,6 +10,7 @@ import {
   recognizePageLocally,
   saveCachedOcrResult,
 } from '../src/utils/localOcrProvider.js';
+import { createTextMarkupAnnotation } from '../src/utils/pdfTextMarkup.js';
 
 test('scan detection rejects empty PDF text and accepts usable text', () => {
   assert.equal(hasUsableEmbeddedText({ items: [{ str: ' ' }] }), false);
@@ -70,7 +71,7 @@ test('Tesseract blocks become words with boxes and confidence', () => {
   }]);
 });
 
-test('built-in Tesseract provider lazy loads, reports progress, and terminates', async () => {
+test('built-in Tesseract words map into all four text markup records', async () => {
   const events = [];
   let terminated = 0;
   const provider = createTesseractOcrProvider(async () => ({
@@ -78,7 +79,10 @@ test('built-in Tesseract provider lazy loads, reports progress, and terminates',
     createWorker: async (_language, _oem, options) => ({
       recognize: async () => {
         options.logger({ status: 'recognizing text', progress: 0.6 });
-        return { data: { text: 'Local', blocks: [] } };
+        return { data: { text: 'Local OCR', blocks: [{ paragraphs: [{ lines: [{ words: [
+          { text: 'Local', confidence: 97, bbox: { x0: 10, y0: 20, x1: 50, y1: 40 } },
+          { text: 'OCR', confidence: 95, bbox: { x0: 55, y0: 20, x1: 85, y1: 40 } },
+        ] }] }] }] } };
       },
       terminate: async () => { terminated += 1; },
     }),
@@ -88,7 +92,27 @@ test('built-in Tesseract provider lazy loads, reports progress, and terminates',
     language: 'eng',
     onProgress: (event) => events.push(event),
   });
-  assert.equal(result.text, 'Local');
+  assert.equal(result.text, 'Local OCR');
+  const normalized = normalizeOcrResult(result, {
+    sourceSize: { width: 100, height: 100 },
+    pageSize: { width: 600, height: 800 },
+  });
+  assert.equal(normalized.text, 'Local OCR');
+  assert.equal(normalized.words.length, 2);
+  const quads = normalized.words.map((word) => word.quad);
+  for (const markupType of ['highlight', 'underline', 'squiggly', 'strikeout']) {
+    const annotation = createTextMarkupAnnotation({
+      id: `ocr-${markupType}`,
+      pageNumber: 1,
+      selectionGroupId: 'ocr-range',
+      markupType,
+      selectedText: normalized.text,
+      quads,
+    });
+    assert.equal(annotation.data.markupType, markupType);
+    assert.equal(annotation.data.selectedText, 'Local OCR');
+    assert.equal(annotation.data.quads.length, 2);
+  }
   assert.deepEqual(events, [{ phase: 'recognizing text', progress: 0.6 }]);
   assert.equal(terminated, 1);
 });
