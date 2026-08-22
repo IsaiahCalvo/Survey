@@ -98,9 +98,14 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   await openPage(page, { url: TEST_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 60_000 });
   const editorAccountMounted = await accountChip(page).count();
-  const editorAccountVisible = await accountChip(page).evaluateAll((nodes) => (
-    nodes.filter((node) => node.offsetParent !== null).length
-  ));
+  const editorAccountReachable = await page.evaluate(() => {
+    const btn = document.querySelector('[aria-label="Open account menu"]');
+    if (!btn) return false;
+    const rect = btn.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return false;
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return !!(hit && (hit === btn || btn.contains(hit) || hit.closest?.('[aria-label="Open account menu"]')));
+  });
   await page.locator('.tab-bar').getByText('Home', { exact: true }).click();
   await expect(accountChip(page)).toBeVisible({ timeout: 30_000 });
   await accountChip(page).click();
@@ -139,7 +144,7 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
     signOutCancelKeepsChip: true,
     guestSignIn: true,
     editorAccountMounted,
-    editorAccountVisible,
+    editorAccountReachable,
     testPdfHomeHasMenu: true,
     testPdfMenuItems,
     mobileMenuItems,
@@ -154,6 +159,6 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   expect(settingsInMenu).toBe(1);
   expect(signOutInMenu).toBe(1);
   expect(desktopArchiveInMenu).toBe(0);
-  expect(editorAccountVisible).toBe(0);
+  expect(editorAccountReachable).toBe(false);
   expect(editorAccountMounted).toBeGreaterThan(0);
 });
