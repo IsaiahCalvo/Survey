@@ -59,7 +59,11 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   useFocusTrap(cardRef, open, { onEscape: submitting ? undefined : onClose });
 
   useEffect(() => {
-    if (open) setSubmitError('');
+    if (!open) return;
+    setSubmitError('');
+    setDestId(null);
+    setMode('move');
+    setSubmitting(false);
   }, [open]);
 
   if (!open) return null;
