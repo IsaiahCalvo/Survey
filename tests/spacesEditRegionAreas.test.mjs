@@ -42,6 +42,9 @@ test('RegionSelectionTool Confirm / Cancel / Escape end the session without inve
 
 test('PDFViewer overlay on/off and last-space activate require a drawn region', () => {
   const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /const regionOverlayDisabledKey = useMemo/);
+  assert.match(viewer, /regionOverlayDisabledKey,/);
+
   const toggle = viewer.slice(
     viewer.indexOf('const handleToggleRegionOverlay'),
     viewer.indexOf('const isRegionOverlayEnabled'),
