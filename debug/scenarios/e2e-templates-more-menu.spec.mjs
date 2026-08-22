@@ -133,6 +133,13 @@ async function focusedField(page) {
   });
 }
 
+async function visibleTemplateTitle(page) {
+  return page.evaluate(() => {
+    const field = [...document.querySelectorAll('input[data-template-title]')].find((el) => el.offsetParent);
+    return field?.value || '';
+  });
+}
+
 async function typeIntoFocused(page, next, key = 'Enter') {
   await page.keyboard.press('Control+a');
   if (next === '') await page.keyboard.press('Backspace');
@@ -204,14 +211,14 @@ test('Templates More menu overflow (template-row + entity)', async ({ page }) =>
     return focus.templateTitle ? focus.value : '';
   }).toBe('MEP As-Built Markup');
   await typeIntoFocused(page, 'gone-tpl', 'Escape');
-  await expect.poll(async () => page.locator('input[data-template-title]').inputValue()).toBe('MEP As-Built Markup');
+  await expect.poll(async () => visibleTemplateTitle(page)).toBe('MEP As-Built Markup');
   await expectNoDirty(page);
 
   await openMore(page, templateRow(page, 'MEP As-Built Markup'));
   await clickMenuItem(page, 'Rename');
   await expect.poll(async () => (await focusedField(page)).templateTitle).toBe(true);
   await typeIntoFocused(page, 'MEP Hunt');
-  await expect.poll(async () => page.locator('input[data-template-title]').inputValue()).toBe('MEP Hunt');
+  await expect.poll(async () => visibleTemplateTitle(page)).toBe('MEP Hunt');
   await expectDirty(page);
   await clickCancel(page);
   expect(await templateNames(page)).toEqual([
