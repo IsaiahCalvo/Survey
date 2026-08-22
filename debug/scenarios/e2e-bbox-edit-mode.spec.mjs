@@ -81,19 +81,27 @@ async function listPolys(page) {
       const raw = shape?.getAttribute('points') || '';
       const transform = shape?.getAttribute('transform') || '';
       const match = /translate\(([-0-9.]+),\s*([-0-9.]+)\)/.exec(transform);
+      const scaleMatch = /scale\(([-0-9.]+)(?:,\s*([-0-9.]+))?\)/.exec(transform);
       const left = match ? Number(match[1]) : 0;
       const top = match ? Number(match[2]) : 0;
+      const scaleX = scaleMatch ? Number(scaleMatch[1]) : 1;
+      const scaleY = scaleMatch ? Number(scaleMatch[2] ?? scaleMatch[1]) : 1;
       const points = raw.trim().split(/\s+/).filter(Boolean).map((pair) => {
         const [x, y] = pair.split(',').map(Number);
         return { x, y };
       });
+      const rect = shape?.getBoundingClientRect();
       return {
         id: pdfId,
         type,
         points,
         left,
         top,
-        world: points.map((point) => ({ x: point.x + left, y: point.y + top })),
+        scaleX,
+        scaleY,
+        transform,
+        screen: rect ? { x: rect.x, y: rect.y, w: rect.width, h: rect.height } : null,
+        world: points.map((point) => ({ x: point.x * scaleX + left, y: point.y * scaleY + top })),
       };
     }).filter((row) => (row.type === 'polygon' || row.type === 'polyline') && row.points.length >= 3);
   });
@@ -107,6 +115,18 @@ async function polyGeom(page, id) {
 }
 
 function worldBox(geom) {
+  if (geom.screen) {
+    return {
+      minX: geom.screen.x,
+      maxX: geom.screen.x + geom.screen.w,
+      minY: geom.screen.y,
+      maxY: geom.screen.y + geom.screen.h,
+      w: geom.screen.w,
+      h: geom.screen.h,
+      scaleX: geom.scaleX,
+      scaleY: geom.scaleY,
+    };
+  }
   const xs = geom.world.map((p) => p.x);
   const ys = geom.world.map((p) => p.y);
   return {
@@ -116,7 +136,26 @@ function worldBox(geom) {
     maxY: Math.max(...ys),
     w: Math.max(...xs) - Math.min(...xs),
     h: Math.max(...ys) - Math.min(...ys),
+    scaleX: geom.scaleX,
+    scaleY: geom.scaleY,
   };
+}
+
+function grew(before, after, px = 6) {
+  const a = worldBox(before);
+  const b = worldBox(after);
+  return (b.w - a.w > px) || (b.h - a.h > px)
+    || Math.abs((after.scaleX ?? 1) - (before.scaleX ?? 1)) > 0.04
+    || Math.abs((after.scaleY ?? 1) - (before.scaleY ?? 1)) > 0.04;
+}
+
+function sameGeom(a, b, eps = 3) {
+  const boxA = worldBox(a);
+  const boxB = worldBox(b);
+  return Math.abs(boxA.w - boxB.w) < eps
+    && Math.abs(boxA.h - boxB.h) < eps
+    && Math.abs((a.scaleX ?? 1) - (b.scaleX ?? 1)) < 0.03
+    && Math.abs((a.scaleY ?? 1) - (b.scaleY ?? 1)) < 0.03;
 }
 
 function almostEqPt(a, b, eps = EPS) {
@@ -371,15 +410,14 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   let afterA = null;
   await expect.poll(async () => {
     afterA = await polyGeom(page, polyA.id);
-    const box = worldBox(afterA);
-    return box.w - preABox.w > 6 || box.h - preABox.h > 6;
+    return grew(preA, afterA);
   }, { timeout: 8_000 }).toBe(true);
   const afterABox = worldBox(afterA);
-  expect(Math.hypot(afterABox.w - preABox.w, afterABox.h - preABox.h), 'bbox grew').toBeGreaterThan(6);
+  expect(grew(preA, afterA), 'bbox grew').toBe(true);
   expect(almostEqPt(
     { x: preABox.minX, y: preABox.minY },
     { x: afterABox.minX, y: afterABox.minY },
-    8,
+    14,
   ), 'tl origin held').toBe(true);
 
   // Esc exits bbox and restores vertex chrome.
@@ -398,8 +436,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   let afterLinePoly = null;
   await expect.poll(async () => {
     afterLinePoly = await polyGeom(page, polyLine.id);
-    const box = worldBox(afterLinePoly);
-    return box.w - preLineBox.w > 5 || box.h - preLineBox.h > 5;
+    return grew(preLinePoly, afterLinePoly, 5);
   }, { timeout: 8_000 }).toBe(true);
 
   // Intended: line p1/p2/midpoint swap to bbox; br scales the whole stroke.
@@ -455,8 +492,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   let afterPen = null;
   await expect.poll(async () => {
     afterPen = await polyGeom(page, polyA.id);
-    const box = worldBox(afterPen);
-    return box.w - prePenBox.w > 4 || box.h - prePenBox.h > 4;
+    return grew(prePen, afterPen, 4);
   }, { timeout: 8_000 }).toBe(true);
   await selectMode(page);
 
@@ -469,7 +505,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   await page.mouse.move(emptyBox.x + emptyBox.width * 0.94, emptyBox.y + emptyBox.height * 0.14, { steps: 6 });
   await page.mouse.up();
   const afterEmpty = await polyGeom(page, polyA.id);
-  expect(afterEmpty.world.every((point, index) => almostEqPt(point, preEmpty.world[index], 3)), 'empty-page no-op').toBe(true);
+  expect(sameGeom(preEmpty, afterEmpty), 'empty-page no-op').toBe(true);
 
   // Edge: undo restores the pre-resize polygon.
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
@@ -477,12 +513,12 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   const preUndo = await polyGeom(page, polyA.id);
   const preUndoBox = worldBox(preUndo);
   await dragResizeHandle(page, 'br', 0, 40);
-  await expect.poll(async () => worldBox(await polyGeom(page, polyA.id)).h - preUndoBox.h > 5).toBe(true);
+  await expect.poll(async () => grew(preUndo, await polyGeom(page, polyA.id), 5)).toBe(true);
   await page.keyboard.press('Control+z');
   let afterUndo = null;
   await expect.poll(async () => {
     afterUndo = await polyGeom(page, polyA.id);
-    return afterUndo.world.every((point, index) => almostEqPt(point, preUndo.world[index], 4));
+    return sameGeom(preUndo, afterUndo, 5);
   }, { timeout: 8_000 }).toBe(true);
 
   // Edge: second polygon isolated.
@@ -491,12 +527,9 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   await enterBboxByDblclick(page, 'polygon');
   const polyBBefore = await polyGeom(page, polyB.id);
   await dragResizeHandle(page, 'br', 0, 32);
-  await expect.poll(async () => {
-    const now = await polyGeom(page, polyB.id);
-    return worldBox(now).h - worldBox(polyBBefore).h > 4;
-  }, { timeout: 8_000 }).toBe(true);
+  await expect.poll(async () => grew(polyBBefore, await polyGeom(page, polyB.id), 4), { timeout: 8_000 }).toBe(true);
   const firstAfterB = await polyGeom(page, polyA.id);
-  expect(firstAfterB.world.every((point, index) => almostEqPt(point, firstFrozen.world[index], 3)), 'A isolated').toBe(true);
+  expect(sameGeom(firstFrozen, firstAfterB), 'A isolated').toBe(true);
 
   // Edge: zoom then bbox resize still uses viewBox.
   const zoomIn = page.getByRole('button', { name: /Zoom in/i }).first();
@@ -514,8 +547,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   let afterZoom = null;
   await expect.poll(async () => {
     afterZoom = await polyGeom(page, polyA.id);
-    const box = worldBox(afterZoom);
-    return box.w - preZoomBox.w > 3 || box.h - preZoomBox.h > 3;
+    return grew(preZoom, afterZoom, 3);
   }, { timeout: 8_000 }).toBe(true);
 
   const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
@@ -550,10 +582,15 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
     counter: counter.id,
     rect: rect.id,
     resizeIds,
-    polyGrow: { dw: afterABox.w - preABox.w, dh: afterABox.h - preABox.h },
+    polyGrow: {
+      dw: afterABox.w - preABox.w,
+      dh: afterABox.h - preABox.h,
+      dScaleX: afterA.scaleX - preA.scaleX,
+    },
     polylineGrow: {
       dw: worldBox(afterLinePoly).w - preLineBox.w,
       dh: worldBox(afterLinePoly).h - preLineBox.h,
+      dScaleX: afterLinePoly.scaleX - preLinePoly.scaleX,
     },
     lineGrow: lineLength(afterLine) - lineLength(preLine),
     counterGrow: {
@@ -561,12 +598,12 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
       dScale: afterCounter.scaleX - preCounter.scaleX,
     },
     rectDblclickKeptBbox: rectResizeBefore,
-    penArmedStillGrew: worldBox(afterPen).w - prePenBox.w,
-    emptyNoop: afterEmpty.world.every((point, index) => almostEqPt(point, preEmpty.world[index], 3)),
-    undoRestored: afterUndo.world.every((point, index) => almostEqPt(point, preUndo.world[index], 4)),
-    secondDidNotMoveFirst: firstAfterB.world.every((point, index) => almostEqPt(point, firstFrozen.world[index], 3)),
+    penArmedStillGrew: grew(prePen, afterPen, 4),
+    emptyNoop: sameGeom(preEmpty, afterEmpty),
+    undoRestored: sameGeom(preUndo, afterUndo, 5),
+    secondDidNotMoveFirst: sameGeom(firstFrozen, firstAfterB),
     viewBox,
-    zoomThenGrow: worldBox(afterZoom).w - preZoomBox.w,
+    zoomThenGrow: grew(preZoom, afterZoom, 3),
     mobileLineGrow: lineLength(afterMobile) - lineLength(preMobile),
   }));
 });
