@@ -186,30 +186,12 @@ async function createRect(page, coords = { x0: 0.22, y0: 0.28, x1: 0.42, y1: 0.4
   ));
 }
 
-async function commitZoomPercent(page, value) {
-  const zoomBtn = page.getByRole('button', { name: 'Edit zoom percentage', exact: true });
-  if (!(await zoomBtn.isVisible().catch(() => false))) return false;
-  await zoomBtn.click();
-  const zoomInput = page.getByRole('textbox', { name: 'Zoom percentage', exact: true });
-  await expect(zoomInput).toBeVisible();
-  await zoomInput.click();
-  await zoomInput.press('Control+A');
-  await zoomInput.press('Backspace');
-  await zoomInput.pressSequentially(String(value), { delay: 20 });
-  await expect(zoomInput).toHaveValue(String(value));
-  await zoomInput.press('Enter');
-  await blurInputs(page);
-  return true;
-}
-
 async function zoomUntilOverflow(page) {
-  const typed = await commitZoomPercent(page, 250);
-  if (!typed) {
-    for (let i = 0; i < 8; i += 1) {
-      await page.keyboard.press('Control+=');
-      const state = await viewerState(page);
-      if (state.overflowX > 8 || state.overflowY > 8) break;
-    }
+  await blurInputs(page);
+  for (let i = 0; i < 12; i += 1) {
+    const state = await viewerState(page);
+    if (state.overflowX > 8 || state.overflowY > 8) return;
+    await page.keyboard.press('Control+=');
   }
   await expect.poll(async () => {
     const state = await viewerState(page);
