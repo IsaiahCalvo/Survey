@@ -52,7 +52,7 @@ Exact discrete catalogs used by the UI:
 | E-04 | Edit | Delete | Backspace / context. Placed survey-marker overlay Delete + Select Backspace/Delete live `e2e-survey-marker-delete.spec.mjs` | Last owner; remote delete; rail list Delete |
 | E-05 | Edit | Undo / redo | Cmd+Z / Shift+Z | Collab foreign edits |
 | E-06 | Edit | Context menu | Right-click actions | Callout vs text vs counter |
-| X-01 | Save | Cloud save | Persist annotations | Offline outbox; identity-only churn |
+| X-01 | Save | Cloud save | Persist annotations. **Local `?testPdf=` reload-restore** live `e2e-testpdf-local-save-reload.spec.mjs` (not leftover-18 cloud). | Offline outbox; identity-only churn |
 | X-02 | Export | Annotated PDF | File → Export | Every color/font/format in /DA |
 | X-03 | Print | Flatten markup. 2026-08-22 **fail-closed blob/OS path** live `e2e-print-panel-failclosed.spec.mjs` (`PRINT_PANEL_ENABLED=false`; no custom panel; Ctrl+P blob; Ctrl+Shift+P flatten + inFlight). Flag not flipped. | Print with markup | Decoration first-line only; survey markers excluded; custom panel compile-hidden |
 | X-04 | Import | PDF annotations | Open foreign PDF. Imported polygon/polyline single-click `vertex-N` live `e2e-poly-vertex-handles.spec.mjs`. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs` | Unsupported Stamp; **stamp create compile-hidden / zero callers** (2026-08-22 hunt; no toolbar / shortcut; not invented); no create-poly tool; rotated page |

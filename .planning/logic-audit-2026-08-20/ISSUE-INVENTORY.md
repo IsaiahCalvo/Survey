@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-22 completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-22.md`). Reclassified all 96 unique IDs + leftover-18 against the current tree after Continue pin / Continue Count / Print fail-closed / compile-hidden / official contract alignments / leftover-18 host-bundle. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. Hosts still **absent**. Focused Node **107 / 107**. Did **not** invent hosts. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-22 ?testPdf= local save / reload-restore (`fix-logs/testpdf-local-save-reload-2026-08-22.md`). Fidelity audit: pickers wrote the local cache but never reloaded. Live-proved intended+break+edge on `?testPdf=` (no `file.id`). Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still **absent**. Playwright **1 / 1**. Node **3 / 3**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-22 completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-22.md`). Reclassified all 96 unique IDs + leftover-18 against the current tree after Continue pin / Continue Count / Print fail-closed / compile-hidden / official contract alignments / leftover-18 host-bundle. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. Hosts still **absent**. Focused Node **107 / 107**. Did **not** invent hosts. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-22 leftover-18 host-bundle (`fix-logs/leftover18-host-bundle-2026-08-22.md`). Re-inspected env as authoritative. `.env.local` / process auto-login / Stripe / MSAL / Turnstile / lease files still **absent**. Cursor cloud environment **null**. X-01 **not** live-proved. Official next fail-stop is isolated **8448**. Cap not loosened. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
@@ -97,7 +99,7 @@ This-pass leftover-18 (still parked; legal slices in `fix-logs/leftover18-unbloc
 
 | ID | Verdict | Still-parked host |
 |---|---|---|
-| X-01 | **partial** — no `file.id`; Save version owner-gated | identity-churn (`.env.local` missing) |
+| X-01 | **partial** — no `file.id`; Save version owner-gated; **local `?testPdf=` reload-restore live** (`e2e-testpdf-local-save-reload.spec.mjs`) | identity-churn (`.env.local` missing) |
 | X-05 persist | **partial** — widgets + local fill | saved `file.id` cloud persist |
 | X-06 writeback | **partial** — flag off + xlsx | live sheet host |
 | U-04 cloud | **partial** — hubPreview `i1: 3` seed | Dashboard + Supabase meter |
