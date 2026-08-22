@@ -59,6 +59,11 @@ function projectRow(page, name) {
   return desktopLayout(page).locator('[data-project-id]').filter({ hasText: name }).first();
 }
 
+async function openProject(page, name) {
+  await eatDragClick(page);
+  await projectRow(page, name).locator('div[style*="font-weight: 600"]').click();
+}
+
 function fileRow(page, name) {
   return desktopLayout(page).locator('[data-document-id]').filter({ hasText: name }).first();
 }
@@ -148,7 +153,7 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
 
   await openHub(page);
   await expect(page.getByText(TOWER).first()).toBeVisible({ timeout: 15_000 });
-  await projectRow(page, TOWER).click();
+  await openProject(page, TOWER);
   await expect(fileRow(page, SE011)).toBeVisible();
   await expect(fileRow(page, RFI)).toBeVisible();
 
@@ -207,24 +212,24 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   expect(orderAfter.some((name) => name.includes('RFI-014'))).toBeTruthy();
 
   // Isolation: Lab / MEP file lists unchanged by Tower file reorder.
-  await projectRow(page, LAB).click();
+  await openProject(page, LAB);
   await expect(fileRow(page, DOOR)).toBeVisible();
   await expect(desktopLayout(page).getByText(SE011)).toHaveCount(0);
   await expect(desktopLayout(page).getByText(RFI)).toHaveCount(0);
   expect(await desktopFileHandles(page).count()).toBe(1);
-  await projectRow(page, MEP).click();
+  await openProject(page, MEP);
   await expect(fileRow(page, MEP_FILE)).toBeVisible();
   await expect(desktopLayout(page).getByText(RFI)).toHaveCount(0);
 
   // Session persist: switch back keeps Tower file order. Reload (no
   // workflowE2E) is session-only and restores the seed.
-  await projectRow(page, TOWER).click();
+  await openProject(page, TOWER);
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('RFI-014');
   const sessionKept = (await desktopFileOrder(page))[0].includes('RFI-014');
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await projectRow(page, TOWER).click();
+  await openProject(page, TOWER);
   const afterReload = await desktopFileOrder(page);
   expect(afterReload[0]).toContain('SE-011');
   const reloadResets = afterReload[0].includes('SE-011');
