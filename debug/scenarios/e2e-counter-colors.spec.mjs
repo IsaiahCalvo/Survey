@@ -411,6 +411,8 @@ test('desktop Counter CompactColorPicker Fill + Number every swatch intended + b
   expect(nextDraw.seriesId).not.toBe(first.seriesId);
   expect(nextDraw.seriesId).not.toBe(second.seriesId);
 
+  // Break: Select / empty page invents 0. Pen-armed Color must not clobber
+  // already-drawn Counter fill/number.
   const beforeSelect = (await counterSnapshot(page)).length;
   await page.keyboard.press('Escape');
   await page.keyboard.press('v');

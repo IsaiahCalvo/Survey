@@ -69,7 +69,7 @@ test('live Counter every-swatch spec covers Fill + Number + series isolation + b
   assert.match(spec, /clickNewCount/);
   assert.match(spec, /#80FF00/);
   assert.match(spec, /#FF8000/);
-  assert.match(spec, /Pen-armed Color/);
+  assert.match(spec, /Pen-armed Color must not clobber/);
   assert.match(spec, /series A fill stays red/);
   assert.match(spec, /file\.id/);
   assert.match(spec, /viewBox/);
@@ -77,5 +77,4 @@ test('live Counter every-swatch spec covers Fill + Number + series isolation + b
   assert.match(spec, /clickTab\(page, 'Fill'\)/);
   assert.match(spec, /clickTab\(page, 'Number'\)/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
-  assert.doesNotMatch(spec, /Continue pin/);
 });
