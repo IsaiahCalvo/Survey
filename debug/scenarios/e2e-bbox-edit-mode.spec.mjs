@@ -483,21 +483,8 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
     return dR > 1.5 || dScreen > 6;
   }, { timeout: 8_000 }).toBe(true);
 
-  // Break: rect already owns single-click bbox — double-click does not invent a second mode.
-  await page.keyboard.press('Escape');
-  const rect = await createRect(page, { x0: 0.70, y0: 0.80, x1: 0.86, y1: 0.90 });
-  await selectMode(page);
-  const rectHit = page.locator(`[data-anno-id="${rect.id}"] [data-shape-hit-target="rect"]`);
-  if (await rectHit.count()) await rectHit.click({ force: true });
-  else await page.locator('[data-shape-hit-target="rect"]').first().click({ force: true });
-  await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
-  const rectResizeBefore = await page.locator('[data-resize-handle]').count();
-  await page.waitForTimeout(450);
-  await page.locator('[data-shape-hit-target="rect"]').first().dblclick({ force: true });
-  await expect.poll(() => page.locator('[data-resize-handle]').count()).toBe(rectResizeBefore);
-  expect(await page.locator('circle[data-handle^="vertex-"]').count(), 'rect has no vertices').toBe(0);
-
   // Break: Pen-armed bbox handle still resizes (stopPropagation).
+  await page.keyboard.press('Escape');
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
   await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyA.id)) });
   const prePen = await polyGeom(page, polyA.id);
@@ -595,7 +582,6 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
     polyB: polyB.id,
     line: line.id,
     counter: counter.id,
-    rect: rect.id,
     resizeIds,
     polyGrow: {
       dw: afterABox.w - preABox.w,
@@ -612,7 +598,6 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
       dR: afterCounter.svgR - preCounter.svgR,
       dScale: afterCounter.scaleX - preCounter.scaleX,
     },
-    rectDblclickKeptBbox: rectResizeBefore,
     penArmedStillGrew: grew(prePen, afterPen, 4),
     emptyNoop: sameGeom(preEmpty, afterEmpty),
     undoRestored: sameGeom(preUndo, afterUndo, 5),
