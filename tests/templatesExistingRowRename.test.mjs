@@ -45,7 +45,12 @@ test('renameModule / renameCategory / renameEntity / renameItem no-op without a 
   assert.match(editor, /const mutateModuleAt = \(moduleIndex, fn\) => \{/);
   assert.match(editor, /if \(nextModule === current\) return t;/);
   assert.match(editor, /if \(nextCategory === current\) return m;/);
-  assert.match(editor, /if \(changed\) markEdited\(\);/);
+  const mutateAt = editor.indexOf('const mutateTpl = useCallback((tid, fn) => {');
+  assert.ok(mutateAt > 0, 'mutateTpl');
+  const mutate = editor.slice(mutateAt, editor.indexOf('const renameTemplate = (tid, name) => {', mutateAt));
+  assert.match(mutate, /flushSync\(\(\) => \{/);
+  assert.match(mutate, /if \(changed\) markEdited\(\);/);
+  assert.doesNotMatch(mutate, /markEdited\(\);[\s\S]*setRich/);
 
   assert.deepEqual(resolveTitleCommit('', 'Cameras'), { action: 'restore', name: 'Cameras' });
   assert.deepEqual(resolveTitleCommit('   ', 'Installation Phase'), { action: 'restore', name: 'Installation Phase' });

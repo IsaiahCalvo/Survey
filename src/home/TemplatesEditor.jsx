@@ -971,16 +971,22 @@ export default function TemplatesEditor({
      refused to clear the bar. */
   const mutateTpl = useCallback((tid, fn) => {
     let changed = false;
-    setRich((prev) => {
-      let nextChanged = false;
-      const next = prev.map((t) => {
-        if (t.id !== tid) return t;
-        const updated = fn(t);
-        if (updated !== t) nextChanged = true;
-        return updated;
+    /* Blur-commit (existing-row rename) queues the updater after this
+       function returns, so the `changed` flag used to stay false and the
+       dirty bar never appeared. flushSync keeps markEdited outside the
+       updater (BL-23 / StrictMode) while still reading the real result. */
+    flushSync(() => {
+      setRich((prev) => {
+        let nextChanged = false;
+        const next = prev.map((t) => {
+          if (t.id !== tid) return t;
+          const updated = fn(t);
+          if (updated !== t) nextChanged = true;
+          return updated;
+        });
+        changed = nextChanged;
+        return nextChanged ? next : prev;
       });
-      changed = nextChanged;
-      return nextChanged ? next : prev;
     });
     if (changed) markEdited();
   }, [markEdited]);
