@@ -205,11 +205,17 @@ async function selectUntilVertexHandles(page, id, expectedCount) {
   }, { timeout: 12_000 }).toBe(expectedCount);
 }
 
-async function enterBboxByDblclick(page, hitTarget) {
-  await page.waitForTimeout(450);
-  const target = page.locator(`[data-shape-hit-target="${hitTarget}"]`).first();
-  await expect(target).toBeVisible({ timeout: 8_000 });
-  await target.dblclick({ force: true });
+async function enterBboxByDblclick(page, { hitTarget, screen } = {}) {
+  await page.waitForTimeout(500);
+  if (screen) {
+    await page.mouse.dblclick(screen.x, screen.y);
+  } else {
+    const target = page.locator(`[data-shape-hit-target="${hitTarget}"]`).first();
+    await expect(target).toBeVisible({ timeout: 8_000 });
+    const box = await target.boundingBox();
+    expect(box, `${hitTarget} hit box`).toBeTruthy();
+    await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+  }
   await expect.poll(() => page.locator('[data-resize-handle]').count(), { timeout: 8_000 })
     .toBeGreaterThan(0);
   await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
@@ -396,7 +402,8 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   // Intended: single-click vertex chrome, then double-click swaps to bbox.
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
   expect(await page.locator('[data-resize-handle]').count(), 'no bbox on single-click').toBe(0);
-  await enterBboxByDblclick(page, 'polygon');
+  const polyAClick = await clickCentroid(page, await polyGeom(page, polyA.id));
+  await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: polyAClick });
   expect(await page.locator('circle[data-handle^="vertex-"]').count(), 'vertices hide in bbox').toBe(0);
   const resizeIds = await page.locator('[data-resize-handle]').evaluateAll((nodes) => (
     [...new Set(nodes.map((node) => node.getAttribute('data-resize-handle')).filter(Boolean))]
@@ -428,7 +435,8 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
 
   // Intended: polyline same swap + grow.
   await selectUntilVertexHandles(page, polyLine.id, polyLine.points.length);
-  await enterBboxByDblclick(page, 'polyline');
+  const polyLineClick = await clickPolylineStroke(page, await polyGeom(page, polyLine.id));
+  await enterBboxByDblclick(page, { hitTarget: 'polyline', screen: polyLineClick });
   expect(await page.locator('circle[data-handle^="vertex-"]').count()).toBe(0);
   const preLinePoly = await polyGeom(page, polyLine.id);
   const preLineBox = worldBox(preLinePoly);
@@ -443,7 +451,9 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   const line = await createLine(page, { x0: 0.16, y0: 0.10, x1: 0.40, y1: 0.10 }, 'Line');
   await selectUntilMidpoint(page, line.id);
   expect(await page.locator('[data-resize-handle]').count(), 'line single-click is endpoints').toBe(0);
-  await enterBboxByDblclick(page, 'line');
+  const lineGeomNow = await lineGeom(page, line.id);
+  const lineClick = await pageToScreen(page, (lineGeomNow.x1 + lineGeomNow.x2) / 2, (lineGeomNow.y1 + lineGeomNow.y2) / 2);
+  await enterBboxByDblclick(page, { hitTarget: 'line', screen: lineClick });
   expect(await page.locator('circle[data-handle="midpoint"]').count(), 'midpoint hides').toBe(0);
   const preLine = await lineGeom(page, line.id);
   await dragResizeHandle(page, 'br', 44, 0);
@@ -461,7 +471,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
     return page.locator('[data-shape-hit-target="counter"]').count();
   }).toBeGreaterThan(0);
   expect(await page.locator('[data-resize-handle]').count(), 'counter single-click has no bbox').toBe(0);
-  await enterBboxByDblclick(page, 'counter');
+  await enterBboxByDblclick(page, { hitTarget: 'counter' });
   const preCounter = await counterGeom(page, counter.id);
   await dragResizeHandle(page, 'br', 28, 28);
   let afterCounter = null;
@@ -484,7 +494,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
 
   // Break: Pen-armed bbox handle still resizes (stopPropagation).
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
-  await enterBboxByDblclick(page, 'polygon');
+  await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyA.id)) });
   const prePen = await polyGeom(page, polyA.id);
   const prePenBox = worldBox(prePen);
   await page.keyboard.press('p');
@@ -509,7 +519,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
 
   // Edge: undo restores the pre-resize polygon.
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
-  await enterBboxByDblclick(page, 'polygon');
+  await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyA.id)) });
   const preUndo = await polyGeom(page, polyA.id);
   const preUndoBox = worldBox(preUndo);
   await dragResizeHandle(page, 'br', 0, 40);
@@ -524,7 +534,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   // Edge: second polygon isolated.
   const firstFrozen = await polyGeom(page, polyA.id);
   await selectUntilVertexHandles(page, polyB.id, polyB.points.length);
-  await enterBboxByDblclick(page, 'polygon');
+  await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyB.id)) });
   const polyBBefore = await polyGeom(page, polyB.id);
   await dragResizeHandle(page, 'br', 0, 32);
   await expect.poll(async () => grew(polyBBefore, await polyGeom(page, polyB.id), 4), { timeout: 8_000 }).toBe(true);
@@ -540,7 +550,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   const viewBox = (await pageViewBox(page)).raw;
   expect(viewBox.startsWith('0 0 '), 'viewBox owns scale').toBe(true);
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
-  await enterBboxByDblclick(page, 'polygon');
+  await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyA.id)) });
   const preZoom = await polyGeom(page, polyA.id);
   const preZoomBox = worldBox(preZoom);
   await dragResizeHandle(page, 'br', 24, 16);
