@@ -27,11 +27,11 @@ High-risk file: surgical handler only. No `file.id` stamp. SVGAnnotationLayer / 
 
 ## Live-proved
 
-Playwright `e2e-page-number-field.spec.mjs` pending live. Focused Node `pageNumberField` + leftover18 pending.
+Playwright `e2e-page-number-field.spec.mjs` **2 / 2 (14.2s)** on Vite `http://127.0.0.1:5173`. Focused Node `pageNumberField` + leftover18 **15 / 15**.
 
 `?testPdf=spike-120-pages.pdf` + `clickable-link-test.pdf`. `viewBox="0 0 612 792"`. `file.id` null.
 
-### Intended
+### Intended — **pass**
 
 Desktop Edit page number. Type **8** + Enter writes page 8. Click-away **12** commits.
 
@@ -58,7 +58,7 @@ Desktop Edit page number. Type **8** + Enter writes page 8. Click-away **12** co
 
 ## Official / focused Node
 
-Pending after commit. High-risk `PDFViewer.jsx` touched. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease.
+Focused `pageNumberField` + leftover18 **15 / 15**. High-risk `PDFViewer.jsx` touched. Official `npm test` pending this commit. Cap **8448** / **75/250** not loosened. Did **not** loosen leftover-18 or invent a lease. `graphify` CLI check pending.
 
 ## Next leftover
 

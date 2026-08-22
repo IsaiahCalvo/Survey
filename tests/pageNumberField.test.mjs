@@ -15,13 +15,14 @@ test('rail page number field strips letters, rejects out of range, Escape skips 
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /const skipPageInputCommitRef = useRef\(false\)/);
   assert.match(viewer, /const digitsOnly = e\.target\.value\.replace/);
+  assert.match(viewer, /Prefer the live input value/);
   assert.match(viewer, /const commitPageInput = useCallback\(\(liveValue\) =>/);
   assert.match(viewer, /const fromDom = pageInputRef\.current/);
   assert.match(viewer, /const raw = fromDom != null \? fromDom : \(liveValue != null \? liveValue : pageInputValue\)/);
   assert.match(viewer, /if \(!isNaN\(value\) && value >= 1 && value <= numPages\)/);
   assert.match(viewer, /goToPage\(value\)/);
   assert.match(viewer, /setPageInputValue\(String\(pageNum\)\)/);
-  assert.match(viewer, /commitPageInput\(e\.currentTarget\?\.value\)/);
+  assert.match(viewer, /commitPageInput\(e\.target\?\.value\)/);
   assert.match(viewer, /skipPageInputCommitRef\.current = true/);
   assert.match(viewer, /if \(skipPageInputCommitRef\.current\)/);
   assert.match(viewer, /commitPageInput\(e\?\.target\?\.value\)/);

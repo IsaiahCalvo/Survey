@@ -23083,8 +23083,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const commitPageInput = useCallback((liveValue) => {
+    // Prefer the live input value. Playwright fill / last keystroke can commit
+    // in the same tick as onChange, so pageInputValue may still be the old page.
     // Prefer the mounted input, then the event value, then React state.
-    // Same-tick fill / last keystroke can leave pageInputValue stale.
     const fromDom = pageInputRef.current && typeof pageInputRef.current.value === 'string'
       ? pageInputRef.current.value
       : null;
@@ -23106,8 +23107,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handlePageInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitPageInput(e.currentTarget?.value);
-      e.currentTarget.blur();
+      commitPageInput(e.target?.value);
+      e.target.blur();
     } else if (e.key === 'Escape') {
       // Restore the live page. Blur must not commit the typed draft
       // (setState is async, so commitPageInput would still see the draft).
