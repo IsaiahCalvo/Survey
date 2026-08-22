@@ -111,6 +111,56 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
     wasInteractiveRef.current = interactive;
   }, [interactive]);
 
+  // 390 / coarse surfaces: Chromium fires selectstart on the transformed glyph
+  // spans but never creates a range (rangeCount stays 0). Desktop native drag
+  // still wins — this only fills in when the OS selection is empty after
+  // pointerup. Two-finger pinch is handled by the viewer and never lands here
+  // as a 1-finger up on the interactive layer.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !interactive) return undefined;
+    let startX = 0;
+    let startY = 0;
+    const pickSpan = (clientX, clientY) => {
+      const hit = document.elementFromPoint(clientX, clientY);
+      if (!hit || !el.contains(hit)) return null;
+      const span = hit.closest?.('span');
+      if (!span || span.getAttribute('role') === 'img') return null;
+      return span;
+    };
+    const onDown = (event) => {
+      if (event.pointerType === 'touch' && event.isPrimary === false) return;
+      startX = event.clientX;
+      startY = event.clientY;
+    };
+    const onUp = (event) => {
+      if (event.pointerType === 'touch' && event.isPrimary === false) return;
+      const sel = window.getSelection?.();
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed && String(sel.toString() || '').trim()) return;
+      const from = pickSpan(startX, startY);
+      const to = pickSpan(event.clientX, event.clientY) || from;
+      if (!from) return;
+      try {
+        const range = document.createRange();
+        if (to && to !== from) {
+          const fromFirst = from.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING;
+          range.setStartBefore(fromFirst ? from : to);
+          range.setEndAfter(fromFirst ? to : from);
+        } else {
+          range.selectNodeContents(from);
+        }
+        sel?.removeAllRanges?.();
+        sel?.addRange?.(range);
+      } catch { /* inverted / detached — ignore */ }
+    };
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointerup', onUp);
+    };
+  }, [interactive]);
+
   useEffect(() => {
     let cancelled = false;
     let task = null;
