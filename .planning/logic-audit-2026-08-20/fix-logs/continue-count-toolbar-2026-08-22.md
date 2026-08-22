@@ -58,6 +58,12 @@ IDs: A1 `b32ee2a4-…` series `series-1787407949896`; B1 `2ccb48d1-…` series `
 | hubPreview | Continue Count **0**. |
 | 390 | Same list (series-label trigger). Count 1 after New Count → 1, 2. Continue pin **0**. |
 
+## Official `npm test`
+
+**exit 1** — standing `pageOperationsQueueMounted` (`Cannot find module '/tmp/utils/pageContextOps.js'`). Isolated `partialEraserComplexity` / cap 8448 never reached (runner stops at first fail). Not loosened.
+
+In that same run: `continueCountToolbar` **4 / 4**, `continuePin` **4 / 4**, `hubDismissBarrierContracts` **4 / 4**, `leftover18FailClosed` **12 / 12**.
+
 ## Product
 
 No min-viable product diff. CORS `*` / `zoomGeneration` / SVG viewBox / canvas sizing / Fabric fontFamily untouched. 8448 not loosened.
