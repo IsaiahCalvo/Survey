@@ -246,8 +246,11 @@ test('counter-series Delete execute: keyboard pin + series menu', async ({ page 
   await page.mouse.click(pinBox.x + pinBox.width / 2, pinBox.y + pinBox.height / 2, { button: 'right' });
   const pinMenu = page.locator('[data-annotation-context-menu="true"]');
   await expect(pinMenu).toBeVisible({ timeout: 8_000 });
-  const pinLabels = await pinMenu.locator('[role="menuitem"], button').allInnerTexts();
-  const pinFlat = pinLabels.map((t) => t.trim()).filter(Boolean);
+  const pinFlat = await pinMenu.evaluate((el) => (
+    [...el.querySelectorAll('div')]
+      .map((node) => (node.textContent || '').trim())
+      .filter(Boolean)
+  ));
   expect(pinFlat).toContain('Continue pin');
   expect(pinFlat.some((t) => t === 'Delete')).toBeFalsy();
   await page.keyboard.press('Escape');
