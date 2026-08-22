@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Hub Projects file More/Select Delete):** not a new UL row. Live desktop + 390 Projects file More **Delete** + file Select **Delete** (`deleteFiles`). Distinct from project delete and from file More Copy/Paste. Immediate (no confirm). Session-only unless `workflowE2E`. Last-file allowed. Receipt `fix-logs/hub-projects-file-delete-2026-08-22.md`. Next leftover: file-row Open. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Hub Projects file-row Open):** not a new UL row. Live desktop + 390 Projects file-row **Open** (`onOpenDocument` / HubPreview `handleOpenDocument`). Distinct from Documents Preview / Open file and leftover-18 Upload. File More has no Open item. Same Package 2 fixture for every file; `previewName` is the row name; `returnTab=projects`. Receipt `fix-logs/hub-projects-file-open-2026-08-22.md`. Next leftover: Documents Open file. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Hub Projects file More/Select Delete):** not a new UL row. Live desktop + 390 Projects file More **Delete** + file Select **Delete** (`deleteFiles`). Distinct from project delete and from file More Copy/Paste. Immediate (no confirm). Session-only unless `workflowE2E`. Last-file allowed. Receipt `fix-logs/hub-projects-file-delete-2026-08-22.md`. Next leftover: file-row Open. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Hub Projects file Search + file-row reorder):** not a new UL row. Live desktop + 390 Projects **Search files...** (mobile drill) + **file-row reorder** (`reorderFiles`). Distinct from project Search and project card reorder. Product: file-row list no longer wraps an inner grid (self-drop); file rows skip settle animation after Escape. Receipt `fix-logs/hub-projects-file-search-reorder-2026-08-22.md`. Next leftover: file More/Select Delete. Leftover **18** stay parked. Goal stays open.
 
