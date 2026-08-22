@@ -429,9 +429,12 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   await caret.click();
   const flyout = page.locator('[data-eraser-caret-popup="true"]');
   await expect(flyout).toBeVisible({ timeout: 5_000 });
-  await flyout.getByText('Partial erase', { exact: true }).click();
+  await flyout.getByRole('button', { name: 'Partial erase', exact: true }).click();
   await expect(flyout).toHaveCount(0);
-  expect((await page.getByRole('button', { name: 'Eraser type', exact: true }).innerText()).trim()).toContain('Partial erase');
+  await expect.poll(async () => (
+    (await page.getByRole('button', { name: 'Eraser type', exact: true }).innerText()).trim()
+  ), { message: 'caret flyout must set Partial erase' }).toContain('Partial erase');
+  await expect(page.getByRole('button', { name: 'Partial erase', exact: true })).toBeVisible();
 
   // Edge — undo restores the full-stroke delete; Pen-armed invents 0.
   await page.getByRole('button', { name: 'Undo', exact: true }).click();

@@ -23254,9 +23254,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [mobileSurveyEntities, mobileSurveyEntityId]);
 
-  // AppShell owns the visible Width input while PDFViewer owns the active tool.
-  // Mirror only the tool discriminator before paint so an immediate edit cannot
-  // be routed to the width state of the tool that was active one frame ago.
+  // AppShell owns the visible Width input and Eraser type while PDFViewer owns
+  // the live tool + mode. Mirror those discriminators before paint so a caret
+  // flyout cannot leave the dropdown one frame behind the tool button.
   // The identity guard is required: publishing the complete toolbar API from a
   // layout effect creates a parent/child update loop because that API contains
   // callbacks whose identities legitimately change.
@@ -23267,18 +23267,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (
         !current
         || current.__ownerToken !== ownerToken
-        || current.activeTool === activeTool
+        || (current.activeTool === activeTool && current.eraserMode === eraserMode)
       ) {
         return current;
       }
       return {
         ...current,
         activeTool,
+        eraserMode,
         strokeWidthInputValue: strokeWidthInputValueRef.current,
         eraserSizeInputValue: eraserSizeInputValueRef.current,
       };
     });
-  }, [activeTool, isActive, onBottomToolbarApiChange]);
+  }, [activeTool, eraserMode, isActive, onBottomToolbarApiChange]);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid

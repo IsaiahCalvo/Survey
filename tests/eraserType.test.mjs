@@ -29,6 +29,8 @@ test('desktop Eraser type catalog is Partial / Full stroke; Shift+E forces parti
   assert.match(viewer, /data-eraser-caret-button=\{isEraser \? 'true' : undefined\}/);
   assert.match(viewer, /data-eraser-caret-popup=\{isEraser \? 'true' : undefined\}/);
   assert.match(viewer, /setEraserMode\('entire'\);/);
+  assert.match(viewer, /current\.eraserMode === eraserMode/);
+  assert.match(viewer, /\[activeTool, eraserMode, isActive, onBottomToolbarApiChange\]/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(mobile, /ariaLabel="Eraser mode"/);
