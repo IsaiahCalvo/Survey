@@ -58,6 +58,16 @@ async function moduleTabNames(page) {
   ));
 }
 
+async function toggleModuleCheckbox(row) {
+  const clicked = await row.evaluate((node) => {
+    const box = [...node.querySelectorAll('span')].find((el) => el.style.width === '14px' && el.style.height === '14px');
+    if (!box) return false;
+    box.click();
+    return true;
+  });
+  expect(clicked, 'module checkbox').toBe(true);
+}
+
 async function expandCategory(page, name) {
   const clicked = await page.evaluate((wanted) => {
     const titles = [...document.querySelectorAll('input.inline-edit.cat-title')];
@@ -146,14 +156,13 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   await page.getByText('Security Walk-Through').first().click();
   expect(await moduleTabNames(page)).toEqual(['Installation Phase', 'Commissioning Phase', 'E2E Module']);
 
-  // --- Duplicate: assert MODULE leftover (Edit modules / duplicateModules) ---
-  const listSelect = page.locator('aside').first().getByRole('button', { name: 'Select', exact: true });
-  await listSelect.click();
-  const templateDup = page.locator('aside').first().getByRole('button', { name: 'Duplicate', exact: true });
-  await expect(templateDup).toBeDisabled();
-  await page.getByText('Security Walk-Through', { exact: true }).first().click();
-  await expect(templateDup).toBeEnabled();
-  await page.locator('aside').first().getByRole('button', { name: 'Done', exact: true }).click();
+  // --- Duplicate: leftover is MODULE (Edit modules / duplicateModules).
+  // Template-list Select/Duplicate is a distinct list action (sibling of
+  // already-proven New template / Delete), not this leftover. ---
+  const templatesList = page.getByRole('complementary').filter({
+    has: page.getByRole('button', { name: 'New template', exact: true }),
+  });
+  await expect(templatesList.getByRole('button', { name: 'Select', exact: true })).toBeVisible();
 
   await moduleSelectButton(page).click();
   await expect(editModulesModal(page)).toBeVisible();
@@ -163,7 +172,7 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   const installRow = editModulesModal(page).locator('[data-drag-rearrange-row]').filter({
     has: page.locator('input[value="Installation Phase"]'),
   });
-  await installRow.locator('span').nth(0).click();
+  await toggleModuleCheckbox(installRow);
   await expect(modalDup).toBeEnabled();
   await modalDup.click();
   await expect(editModulesModal(page).locator('input[value="Installation Phase copy"]')).toBeVisible();
@@ -180,7 +189,7 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
 
   // Persist + isolation
   await moduleSelectButton(page).click();
-  await installRow.locator('span').nth(0).click();
+  await toggleModuleCheckbox(installRow);
   await modalDup.click();
   await editModulesModal(page).getByRole('button', { name: 'Done', exact: true }).click();
   await dirtyBar(page).getByRole('button', { name: 'Save', exact: true }).click();
