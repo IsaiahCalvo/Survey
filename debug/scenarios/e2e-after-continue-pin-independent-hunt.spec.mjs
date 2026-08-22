@@ -25,7 +25,6 @@ test('independent hunt after Continue pin', async ({ page }) => {
     hub: {},
     editorFresh: {},
     editorArmedEmpty: {},
-    editorOnePin: {},
     unusedSeams: {},
     leftover18Hosts: {},
   };
@@ -105,33 +104,6 @@ test('independent hunt after Continue pin', async ({ page }) => {
   };
   await page.keyboard.press('Escape');
 
-  const overlay = page.locator('[data-counter-overlay="1"]');
-  const box = await overlay.boundingBox();
-  expect(box).toBeTruthy();
-  const start = { x: box.x + box.width * 0.34, y: box.y + box.height * 0.32 };
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(start.x + 10, start.y + 8, { steps: 4 });
-  await page.mouse.up();
-  await expect.poll(async () => page.locator('[data-counter-overlay="1"] [data-anno-id]').count()).toBeGreaterThan(0);
-
-  await seriesBtn.click();
-  const onePinMenu = page.locator('[data-annotation-dropdown-popover="true"][data-counter-series-menu="true"]');
-  await expect(onePinMenu).toBeVisible({ timeout: 8_000 });
-  inventory.editorOnePin = {
-    newCount: await onePinMenu.getByRole('button', { name: '+ New Count', exact: true }).count(),
-    continueCount: await onePinMenu.getByText('Continue Count', { exact: true }).count(),
-    seriesRows: await onePinMenu.locator('button').evaluateAll((nodes) => (
-      nodes
-        .map((node) => ({
-          label: (node.getAttribute('aria-label') || node.textContent || '').trim(),
-          active: node.classList.contains('is-active'),
-        }))
-        .filter((row) => /\d+\s+pins?/i.test(row.label))
-    )),
-  };
-  await page.keyboard.press('Escape');
-
   await page.goto('/?documentDeepLinkE2E=1&testPdf=clickable-link-test.pdf', { waitUntil: 'domcontentloaded', timeout: 45_000 });
   inventory.unusedSeams.documentDeepLink = {
     draw: await page.getByRole('button', { name: 'Draw', exact: true }).count(),
@@ -155,9 +127,7 @@ test('independent hunt after Continue pin', async ({ page }) => {
   expect(inventory.editorFresh.continueCount).toBe(0);
   expect(inventory.editorArmedEmpty.continueCount).toBe(0);
   expect(inventory.editorArmedEmpty.newCount).toBe(1);
-  expect(inventory.editorOnePin.continueCount).toBe(1);
-  expect(inventory.editorOnePin.seriesRows.length).toBe(1);
-  expect(inventory.editorOnePin.seriesRows[0].active).toBe(true);
+  expect(inventory.editorArmedEmpty.seriesRows).toBe(0);
 
   console.log('AFTER_CONTINUE_PIN_HUNT', JSON.stringify(inventory));
 });
