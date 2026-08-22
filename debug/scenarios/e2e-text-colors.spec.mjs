@@ -287,14 +287,17 @@ async function openColorPicker(page) {
   const trigger = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(trigger).toBeVisible({ timeout: 8_000 });
   const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
-  if (!(await presets.isVisible().catch(() => false))) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await presets.isVisible().catch(() => false)) return;
     await trigger.click();
+    if (await presets.isVisible().catch(() => false)) return;
+    await page.waitForTimeout(120);
   }
   await expect(presets).toBeVisible({ timeout: 8_000 });
 }
 
 async function clickTab(page, name) {
-  const tab = page.locator('[data-annotation-color-picker]').getByRole('button', { name, exact: true });
+  const tab = page.getByRole('button', { name, exact: true }).first();
   await expect(tab).toBeVisible();
   await tab.click();
 }
@@ -320,6 +323,9 @@ async function assertShapeTabs(page, { matchFill = false } = {}) {
 
 async function patchEverySwatch(page, id, layer) {
   await selectText(page, id);
+  const edit = page.getByRole('button', { name: 'Edit text', exact: true }).first();
+  await expect(edit).toBeEnabled({ timeout: 8_000 });
+  await page.waitForTimeout(160);
   await openColorPicker(page);
   await clickTab(page, layer === 'border' ? 'Border' : 'Fill');
   await assertShapeTabs(page, { matchFill: false });
