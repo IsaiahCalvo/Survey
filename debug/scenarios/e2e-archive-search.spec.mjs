@@ -174,9 +174,11 @@ test('Archive Search / filter / sort intended + break + edge', async ({ page }) 
   await expect.poll(() => desktopIds(page)).toEqual(SIZE_DESC);
   await pickMenu(page, page.locator('.archive-desktop-search'), 'Most recently archived');
   await expect.poll(() => desktopIds(page)).toEqual(DEFAULT_ORDER);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.archive-desktop-search .archive-sort-menu')).toHaveCount(0);
 
   // Isolation: Documents still seeded; Archive search does not invent Restore
-  await page.locator('aside.side nav.nav').getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.locator('aside.side nav.nav:not(.nav-bottom)').getByRole('button', { name: 'Documents', exact: true }).click();
   await expect(page.getByText('SE-011 Security Shop Drawings.pdf').first()).toBeVisible({ timeout: 15_000 });
   await page.locator('aside.side nav').getByRole('button', { name: 'Archive', exact: true }).click();
   await waitArchiveSeed(page);
