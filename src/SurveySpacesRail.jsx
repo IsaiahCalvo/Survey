@@ -797,6 +797,27 @@ const SurveySpacesRail = ({
     };
   }, [surveyMarkers, setSurveyMarkers]);
 
+  // DEV / ?testPdf= seam: read stored module category order after rail
+  // drag-reorder (selectedTemplate, not the static seed array).
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    window.__e2eSurveyCategoryOrder = {
+      get: (moduleId) => {
+        const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+        const module = (moduleId && modules.find((m) => m.id === moduleId))
+          || modules.find((m) => m.id === selectedModuleId)
+          || modules[0];
+        return (module?.categories || []).map((category) => ({
+          id: category.id,
+          name: category.name,
+        }));
+      },
+    };
+    return () => {
+      try { delete window.__e2eSurveyCategoryOrder; } catch { /* ignore */ }
+    };
+  }, [selectedTemplate, selectedModuleId]);
+
   const pendingLocationArmedRef = useRef(false);
   const beginSetLocationOnPdf = (marker) => {
     if (!marker) return;

@@ -119,6 +119,20 @@ const surveyTransitionE2ETemplates = [{
     name: 'Empty Survey Data',
     categories: [],
   }],
+}, {
+  // Local seed only (not a cloud persist seam). Two categories in one
+  // module so rail drag-reorder can run without replaying Create category.
+  // Isolated from KAL-436 Existing (single Walls) and Empty Module.
+  id: 'kal436-two-category-template',
+  name: 'Two Category Template',
+  modules: [{
+    id: 'kal436-two-category-module',
+    name: 'Two Category Survey',
+    categories: [
+      { id: 'kal436-two-cat-walls', name: 'Walls', color: '#d8a84e' },
+      { id: 'kal436-two-cat-windows', name: 'Windows', color: '#5ba1f0' },
+    ],
+  }],
 }];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
