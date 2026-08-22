@@ -58,6 +58,8 @@ test('live spec covers text/callout enter, disabled/hidden, 390 defaults, hub, f
   assert.match(spec, /disabled Aa must not open overlay/);
   assert.match(spec, /armed Callout with no selection must disable Edit text/);
   assert.match(spec, /Pen-armed must hide Edit text/);
+  assert.match(spec, /marquee must not enter text edit/);
+  assert.match(spec, /selected text\/callout must enable Edit text/);
   assert.match(spec, /Edit text must open the same-surface overlay/);
   assert.match(spec, /second Aa click must stay in edit/);
   assert.match(spec, /selected Callout also enters/);
