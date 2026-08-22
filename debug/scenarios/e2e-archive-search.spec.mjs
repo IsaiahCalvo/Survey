@@ -212,7 +212,7 @@ test('Archive Search / filter / sort intended + break + edge', async ({ page }) 
 
   await openPage(page, { width: 390, height: 844, url: HUB_EMPTY });
   await waitArchiveSeed(page);
-  await expect(page.getByText('Nothing in Archive').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Nothing in Archive').filter({ visible: true })).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => mobileIds(page)).toEqual([]);
 
   console.log('ARCHIVE_SEARCH_PROOF', JSON.stringify({
