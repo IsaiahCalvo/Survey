@@ -34,7 +34,7 @@ Exact discrete catalogs used by the UI:
 | S-04 | Shapes | Arrow + arrowheads | 6 head styles | Legacy group export |
 | S-05 | Shapes | Counter | Numbered pins + series | Renumber; last-in-series; fill/number color |
 | T-01 | Text | Textbox create/edit | Same-surface editor | Blank discard; tight-fit; wrap |
-| T-02 | Text | Callout create/edit | Leader + text box. **Knee / leader / arrowTip / text-box handle drag** live `e2e-callout-knee-drag.spec.mjs` | Blank; arrowhead; style patch; Pen-armed no-op; Esc is marquee-only; off-page allow-outside |
+| T-02 | Text | Callout create/edit | Leader + text box. Knee / leader / arrowTip / text-box **move** live `e2e-callout-knee-drag.spec.mjs`. **Corner resize** `textBox-tl/tr/bl/br` live `e2e-callout-textbox-resize.spec.mjs` | Blank; arrowhead; style patch; Pen-armed no-op; Esc is marquee-only; off-page allow-outside; 20px min clamp |
 | T-03 | Text | Font family | All 6 offered names | CSS stack rejected; import unknown name |
 | T-04 | Text | Font size | All 18 presets + custom | Clamp 6–200; non-preset prepend |
 | T-05 | Text | Bold / italic / underline / strike | Toggle each | Combo; callout booleans vs fabric fields |
@@ -46,7 +46,7 @@ Exact discrete catalogs used by the UI:
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
 | C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets | Counter number color; armed tool vs selection |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
-| E-01 | Edit | Resize | Handles + live bounds | Rotated; text wrap height |
+| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`), not this row | Rotated; text wrap height |
 | E-02 | Edit | Rotation | Handle + numeric + Shift 45° | Off-screen handle; 0/90/180/270 |
 | E-03 | Edit | Move | Drag selected | Multi-select; snap |
 | E-04 | Edit | Delete | Backspace / context | Last owner; remote delete |
