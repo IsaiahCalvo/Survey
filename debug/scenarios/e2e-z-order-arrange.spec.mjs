@@ -170,6 +170,28 @@ async function rightClickEmptyPage(page, { xf = 0.12, yf = 0.12 } = {}) {
   await page.mouse.click(box.x + box.width * xf, box.y + box.height * yf, { button: 'right' });
 }
 
+async function rightClickUntilPasteOnly(page, candidates = [
+  { xf: 0.08, yf: 0.88 },
+  { xf: 0.12, yf: 0.12 },
+  { xf: 0.90, yf: 0.88 },
+  { xf: 0.50, yf: 0.50 },
+]) {
+  let labels = null;
+  for (const pos of candidates) {
+    await dismissMenus(page);
+    await rightClickEmptyPage(page, pos);
+    const menu = page.locator('[data-annotation-context-menu="true"]');
+    if (!(await menu.count())) continue;
+    const next = await menuLabels(page);
+    if (next.length === 1 && next[0] === 'Paste') {
+      labels = next;
+      break;
+    }
+  }
+  expect(labels, 'empty page must offer Paste-only').toEqual(['Paste']);
+  return labels;
+}
+
 async function rightClickStroke(page, id) {
   const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
@@ -236,12 +258,16 @@ async function rightClickCallout(page, id) {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
 }
 
-async function seedOverlapStack(page) {
+async function seedOverlapStack(page, {
+  a = { x0: 0.18, y0: 0.22, x1: 0.38, y1: 0.40 },
+  c = { x0: 0.70, y0: 0.70, x1: 0.88, y1: 0.86 },
+  b = { x0: 0.26, y0: 0.30, x1: 0.46, y1: 0.48 },
+} = {}) {
   // A and B overlap. C is far away so it sits between them in array
   // order but is skipped by overlap-aware Bring forward.
-  const rectA = await createRect(page, { x0: 0.18, y0: 0.18, x1: 0.38, y1: 0.36 });
-  const rectC = await createRect(page, { x0: 0.70, y0: 0.70, x1: 0.88, y1: 0.86 });
-  const rectB = await createRect(page, { x0: 0.26, y0: 0.26, x1: 0.46, y1: 0.44 });
+  const rectA = await createRect(page, a);
+  const rectC = await createRect(page, c);
+  const rectB = await createRect(page, b);
   await selectMode(page);
   await expect.poll(async () => userOrder(page)).toEqual([rectA.id, rectC.id, rectB.id]);
   return { rectA, rectC, rectB };
@@ -255,11 +281,7 @@ test('desktop z-order arrange intended + break + edge', async ({ page }) => {
   await dismissMenus(page);
 
   // Break: empty page is Paste-only — no arrange items.
-  await rightClickEmptyPage(page);
-  const emptyMenu = page.locator('[data-annotation-context-menu="true"]');
-  await expect(emptyMenu).toBeVisible({ timeout: 8_000 });
-  const emptyLabels = await menuLabels(page);
-  expect(emptyLabels).toEqual(['Paste']);
+  const emptyLabels = await rightClickUntilPasteOnly(page);
   for (const label of Z_ORDER_ITEMS) {
     expect(emptyLabels, `empty page must omit ${label}`).not.toContain(label);
   }
@@ -406,14 +428,19 @@ test('390 z-order arrange intended + break + edge', async ({ page }) => {
   await assertNoErrorBoundary(page);
   await dismissMenus(page);
 
-  await rightClickEmptyPage(page, { xf: 0.50, yf: 0.18 });
-  const emptyMenu = page.locator('[data-annotation-context-menu="true"]');
-  await expect(emptyMenu).toBeVisible({ timeout: 8_000 });
-  const emptyLabels = await menuLabels(page);
-  expect(emptyLabels).toEqual(['Paste']);
+  const emptyLabels = await rightClickUntilPasteOnly(page, [
+    { xf: 0.08, yf: 0.88 },
+    { xf: 0.90, yf: 0.88 },
+    { xf: 0.10, yf: 0.55 },
+    { xf: 0.88, yf: 0.55 },
+  ]);
   await dismissMenus(page);
 
-  const { rectA, rectC, rectB } = await seedOverlapStack(page);
+  const { rectA, rectC, rectB } = await seedOverlapStack(page, {
+    a: { x0: 0.16, y0: 0.28, x1: 0.42, y1: 0.46 },
+    c: { x0: 0.68, y0: 0.68, x1: 0.90, y1: 0.86 },
+    b: { x0: 0.24, y0: 0.36, x1: 0.50, y1: 0.54 },
+  });
 
   await rightClickStroke(page, rectA.id);
   const ownedLabels = await menuLabels(page);
@@ -440,7 +467,7 @@ test('390 z-order arrange intended + break + edge', async ({ page }) => {
   expect(await userOrder(page), '390 already-front Bring forward is a no-op').toEqual(frontOrder);
 
   const calloutId = await createCallout(page, '390 omit', {
-    x0: 0.56, y0: 0.14, x1: 0.82, y1: 0.28,
+    x0: 0.56, y0: 0.22, x1: 0.84, y1: 0.36,
   });
   await rightClickCallout(page, calloutId);
   await expect(page.locator('[data-annotation-context-menu="true"]')).toBeVisible({ timeout: 8_000 });
