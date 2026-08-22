@@ -293,10 +293,11 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
     message: 'Escape must restore 200% and not commit 333',
   }).toBe(200);
 
-  // Break — failed select-all appends digits onto the live value.
+  // Break — opening the field selects the live % (type replaces). ArrowRight
+  // collapses the selection so a later digit appends (failed select-all).
   const appendInput = await focusZoomInput(page);
-  await appendInput.press('End');
-  await appendInput.type('2');
+  await appendInput.press('ArrowRight');
+  await appendInput.pressSequentially('2', { delay: 25 });
   expect(await appendInput.inputValue(), 'append without select-all').toBe('2002');
   await appendInput.press('Escape');
   await blurInputs(page);
