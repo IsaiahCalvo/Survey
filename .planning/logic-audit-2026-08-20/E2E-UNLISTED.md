@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 host probe + Print fail-closed):** not a new UL row. X-01 hosts absent. Classified compile-hidden Print: custom panel stays UL-40–43 flag-off; reachable Cmd/Ctrl+P blob/OS fail-closed is X-03 / dedicated `e2e-print-panel-failclosed.spec.mjs` **1 / 1 (4.8s)**. Receipts `fix-logs/host-probe-2026-08-22.md` + `fix-logs/print-panel-failclosed-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 compile-hidden tools hunt):** not a new UL row. Stamp / measure / Group / Extract / Note-Link / Forms have **no** Print-class reachable fail-closed chrome. UL-32 Extract stays missing-handler. UL-37 Forms stays compile-hidden. Live `e2e-compile-hidden-tools-unreachable.spec.mjs` **1 / 1 (2.8s)**. Receipt `fix-logs/compile-hidden-tools-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 host probe + Print fail-closed):** not a new UL row. X-01 hosts absent. Classified compile-hidden Print: custom panel stays UL-40–43 flag-off; reachable Cmd/Ctrl+P blob/OS fail-closed is X-03 / dedicated `e2e-print-panel-failclosed.spec.mjs` **1 / 1 (4.8s)**. Receipts `fix-logs/host-probe-2026-08-22.md` + `fix-logs/print-panel-failclosed-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 requirement-by-requirement completion audit):** not a new UL row. Re-classified leftover-18 UL rows as fail-closed local + host-gated. No unique unblocked leftover. Receipt `fix-logs/completion-audit-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
@@ -282,8 +284,9 @@ Wave-1 issues stay closed:
 ## Observations (not product bugs)
 
 - ShareModal roles are **Viewer / Editor / Owner** only. Commenter lives on Access Management (A-03), not this dialog.
-- Forms category is **compile-hidden** (`false &&` in AppShell). Code + `FORM_TOOLS` stay; flip the flag to ship.
+- Forms category is **compile-hidden** (`false &&` in AppShell). Code + `FORM_TOOLS` stay; flip the flag to ship. 2026-08-22 hunt: no Print-class shortcut (`e2e-compile-hidden-tools-unreachable.spec.mjs`).
 - Custom **Print panel** is also compile-gated (`PRINT_PANEL_ENABLED = false`). Cmd+P prints the blob/OS path. Flip the flag to ship the panel UI. 2026-08-22 dedicated fail-closed proof: `e2e-print-panel-failclosed.spec.mjs` (do not flip).
+- Stamp create / measurement / Group-Ungroup shortcuts / Extract Pages / Note-Link create: **compile-hidden or zero callers** (2026-08-22 hunt). Not Print-class. Do not invent.
 - Zoom field advertises 1–4000, but `zoomController` also applies a **dynamic minimum** (often ~fit-page). On `clickable-link-test.pdf` at 1440×900, `0` / `1` / `50` display as `100%`. `200` and `4000` apply.
 - Context-menu Group/Ungroup omitted until the matrix-per-shape rewrite.
 - Callout menu has no z-order (own SVG layer + id-sort).
