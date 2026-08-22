@@ -182,7 +182,7 @@ async function seriesMenuRows(page) {
   const seriesBtn = page.getByRole('button', { name: 'Counter series' });
   await expect(seriesBtn).toBeVisible({ timeout: 8_000 });
   await seriesBtn.click();
-  const menu = page.locator('[data-counter-series-menu]');
+  const menu = page.locator('[data-annotation-dropdown-popover="true"][data-counter-series-menu="true"]');
   await expect(menu).toBeVisible({ timeout: 8_000 });
   const rows = await menu.evaluate((el) => (
     [...el.querySelectorAll('button')]
@@ -263,6 +263,9 @@ test('UL-31 Continue pin intended + break + edge', async ({ page }) => {
   expect(seriesBPins).toHaveLength(1);
   expect(seriesBPins[0].id).toBe(pinB1.id);
   expect(seriesBPins[0].displayNumber).toBe(1);
+  const menuAfter = await seriesMenuRows(page);
+  expect(menuAfter.some((row) => /Count 1, 2 pins/i.test(row.label))).toBeTruthy();
+  expect(menuAfter.some((row) => /Count 2, 1 pins/i.test(row.label))).toBeTruthy();
 
   // Break — Counter-armed empty overlay still offers Continue pin (not Paste).
   const box = await pageBox(page);
