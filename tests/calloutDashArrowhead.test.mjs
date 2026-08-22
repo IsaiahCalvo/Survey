@@ -113,8 +113,8 @@ test('Callout Style catalog is Solid/Dashed/Dotted; Cloud is rect-only; Arrowhea
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /if \(isCalloutSelected\(\)\) \{\s*\n\s*if \(next === 'solid' \|\| next === 'dashed' \|\| next === 'dotted'\) \{\s*\n\s*handlePatchSelectedCallout\(\{ lineStyle: next \}\)/);
   assert.match(viewer, /if \(isCalloutSelected\(\)\) \{\s*\n\s*handlePatchSelectedCallout\(\{ arrowheadStyle: next \}\)/);
-  assert.match(viewer, /lineStyle: \(lineBorderStyle === 'dashed' \|\| lineBorderStyle === 'dotted'\)/);
-  assert.match(viewer, /arrowheadStyle: arrowheadStyle \|\| rawCallout\.style\?\.arrowheadStyle/);
+  assert.match(viewer, /lineStyle: \(lineBorderStyleRef\.current === 'dashed' \|\| lineBorderStyleRef\.current === 'dotted'\)/);
+  assert.match(viewer, /arrowheadStyle: arrowheadStyleRef\.current \|\| rawCallout\.style\?\.arrowheadStyle/);
 });
 
 test('buildCalloutRenderSpec stamps every dash on leader+box and every arrowhead kind', () => {

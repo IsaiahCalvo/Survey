@@ -3425,6 +3425,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // newTextPlacement removed — text tool creates text-only callouts via CalloutCanvas
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
   const [lineBorderStyle, setLineBorderStyle] = useState('solid');
+  const arrowheadStyleRef = useRef(arrowheadStyle);
+  const lineBorderStyleRef = useRef(lineBorderStyle);
+  useEffect(() => { arrowheadStyleRef.current = arrowheadStyle; }, [arrowheadStyle]);
+  useEffect(() => { lineBorderStyleRef.current = lineBorderStyle; }, [lineBorderStyle]);
 
   // Callout overlay state — R2.2 Slice 2 (THE FLIP): `callouts` is no longer an
   // independent useState. It is DERIVED from annotationsByPage (the single
@@ -11292,14 +11296,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // UX (2026-07-17, callout line style): new callouts honor the Style
         // picker's current choice, exactly like new shapes do (applyBorderStyle
         // at shape creation). 'cloud' is rect-only — treat as solid here.
-        lineStyle: (lineBorderStyle === 'dashed' || lineBorderStyle === 'dotted')
-          ? lineBorderStyle
+        lineStyle: (lineBorderStyleRef.current === 'dashed' || lineBorderStyleRef.current === 'dotted')
+          ? lineBorderStyleRef.current
           : 'solid',
         // UX (2026-08-22, callout arrowhead): new callouts honor the Arrowhead
         // picker's current choice, same as Style already stamps lineStyle.
-        // 'cloud' is rect-only and never reaches this field. Unset toolbar
-        // keeps defaultCalloutStyle (solidTriangle) from createCallout().
-        arrowheadStyle: arrowheadStyle || rawCallout.style?.arrowheadStyle
+        // Read from refs so a stale handleCreateCallout (SVG window listener)
+        // cannot keep defaultCalloutStyle solid/solidTriangle.
+        arrowheadStyle: arrowheadStyleRef.current || rawCallout.style?.arrowheadStyle
           || ARROWHEAD_STYLES.SOLID_TRIANGLE,
         ...(mobileMode ? {
           fontColor: textStyleDefaults.fontColor,

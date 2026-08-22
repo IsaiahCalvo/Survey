@@ -425,6 +425,15 @@ test('Callout dash + arrowhead every discrete style intended + break + edge', as
       x1: 0.30,
       y1: 0.24 + i * 0.14,
     });
+    console.log('CALLOUT_DASH_NEXT_DRAW', JSON.stringify({
+      wanted: style.value,
+      stored: storedLineStyle(row),
+      visual: dashKey(row.visualDash),
+      box: dashKey(row.visualBoxDash),
+      rawLineStyle: row.lineStyle,
+      head: row.arrowheadStyle,
+      id: row.id,
+    }));
     expectDash(row, style, `Callout next-draw ${style.label}`);
     expectArrowhead(row, ARROWHEAD_STYLES[1], `Callout ${style.label} default head`);
     dashProof.push({ style: style.value, id: row.id });
