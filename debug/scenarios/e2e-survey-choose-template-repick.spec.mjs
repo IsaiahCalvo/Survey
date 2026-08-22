@@ -201,8 +201,9 @@ test('Choose survey template re-pick after already in a template', async ({ page
   await expect(page.getByRole('button', { name: 'Two Category Survey' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Windows', exact: true })).toBeVisible();
-  expect(await markerIds(page), 'overlay markers stay across template switch').toEqual([markerId]);
+  expect(await markerIds(page), 'overlay hides foreign-module markers (not wipe)').toEqual([]);
   const storedTwoCat = await storedMarker(page, markerId);
+  expect(storedTwoCat, 'store keeps the marker across re-pick').toBeTruthy();
   expect(storedTwoCat?.categoryId, 'marker does not migrate category').toBe('kal436-category');
   expect(storedTwoCat?.moduleId, 'marker does not migrate module').toBe('kal436-module');
   const twoCatExpanded = await expandWallsIfPresent(page);
@@ -210,16 +211,19 @@ test('Choose survey template re-pick after already in a template', async ({ page
     await expect(page.getByRole('button', { name: /repick-a/ })).toHaveCount(0);
   }
 
-  // Intended: re-pick Survey Entities — same kal436 ids so rail list returns; entities appear.
+  // Intended: re-pick Survey Entities — same kal436 module so overlay + rail return.
   await openTemplatePicker(page);
   await templateOption(page, ENTITIES).click();
   await expect(rightRail(page).getByRole('heading', { name: ENTITIES })).toBeVisible({ timeout: 8_000 });
   await expect(page.getByRole('button', { name: 'Existing Survey Data' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Windows', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toBeVisible();
-  expect(await markerIds(page)).toEqual([markerId]);
+  await expect.poll(async () => markerIds(page), {
+    message: 'same-module re-pick shows the stayed marker again',
+  }).toEqual([markerId]);
   const storedEntities = await storedMarker(page, markerId);
   expect(storedEntities?.categoryId).toBe('kal436-category');
+  expect(storedEntities?.moduleId).toBe('kal436-module');
   const entitiesExpanded = await expandWallsIfPresent(page);
   expect(entitiesExpanded, 'KAL-436 Walls list returns after Entities re-pick').toBe(true);
   await expect(page.getByRole('button', { name: /item notes/ }).first()).toBeVisible();
