@@ -53,7 +53,7 @@ async function dismissGuestAuth(page) {
 
 async function expectAccessEmpty(page) {
   await expect(accessTitle(page)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(OWNER).first()).toBeVisible();
+  await expect(page.getByText(OWNER, { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Invite', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
   await expect(page.getByText('No collaborators yet. Use Invite to add one.')).toBeVisible();

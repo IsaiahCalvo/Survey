@@ -63,7 +63,7 @@ test('AccessManagementModal is local empty chrome when cloud is unavailable', ()
   assert.match(modal, /setError\('Sharing needs a signed-in cloud account\.'\);/);
   assert.match(modal, /Enter at least one valid email\./);
   assert.match(modal, /const ROLE_OPTIONS = \['Viewer', 'Editor', 'Owner'\];/);
-  assert.match(modal, /kind === 'document'/);
+  assert.match(modal, /return createDocumentInvite\(\{ documentId: targetId/);
   assert.doesNotMatch(modal, /file\.id/);
 });
 
