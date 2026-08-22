@@ -13114,6 +13114,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
+    const liveSpace = (spacesRef.current || []).find((s) => s.id === spaceId);
+    const livePage = liveSpace?.assignedPages?.find((p) => p.pageId === pageId);
+    if (!livePage) return;
+
+    // Sibling of handleSpaceRenamePage / handleToggleCanvasAnnotations:
+    // region-row Delete was setSpaces-only, so Ctrl+Z after Delete rewound
+    // the last space:update (drawn region) instead of the page removal.
+    addHistoryCheckpoint('space:update', {
+      spaceId,
+      pageId,
+      updateKeys: ['assignedPages']
+    });
+
     cascadeDeleteScopedAppState({
       spaceId,
       pageIds: [pageId],
@@ -13177,7 +13190,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
