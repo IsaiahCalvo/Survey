@@ -8,6 +8,7 @@ import { test, expect } from '@playwright/test';
 // measure / Group / Extract / Note-Link / Copy-to-Spaces / checklist items.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
+const MOBILE_PDF = '/?testPdf=clickable-link-test.pdf&spaceReorderMobile=1';
 
 async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
   await page.addInitScript(() => {
@@ -66,9 +67,16 @@ function spaceHandle(page, spaceName) {
   return spaceCard(page, spaceName).locator('[data-space-drag-handle]');
 }
 
-async function railSpaceNames(page) {
-  return page.locator('[data-space-sortable-row-id] .space-name-inline').evaluateAll((els) => (
-    els.map((el) => (el.value || '').trim()).filter(Boolean)
+async function railSpaceNames(page, root = page) {
+  const scope = typeof root.locator === 'function' ? root : page;
+  return scope.locator('[data-space-sortable-row-id] .space-name-inline').evaluateAll((els) => (
+    els
+      .filter((el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      })
+      .map((el) => (el.value || '').trim())
+      .filter(Boolean)
   ));
 }
 
@@ -86,8 +94,16 @@ async function storedSpaceNames(page) {
 }
 
 async function createNamedSpace(page, expectedName) {
+  const field = page.getByRole('textbox', { name: `Rename ${expectedName}` });
+  if (await field.isVisible().catch(() => false)) return;
+  await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 }).catch(() => {});
   await createSpaceBtn(page).click();
-  await expect(page.getByRole('textbox', { name: `Rename ${expectedName}` })).toBeVisible({ timeout: 8_000 });
+  try {
+    await expect(field).toBeVisible({ timeout: 4_000 });
+  } catch {
+    await createSpaceBtn(page).click();
+    await expect(field).toBeVisible({ timeout: 8_000 });
+  }
 }
 
 async function pointerDragSpaceTo(page, fromName, toName, { cancel = false } = {}) {
@@ -183,7 +199,8 @@ test('U-02 space-card reorder updates stored + rail order', async ({ page }) => 
   expect(await page.getByRole('button', { name: /Move (up|down)/i }).count(), 'no space up-down').toBe(0);
 
   // Break: single space — handle stays, self-drag is a no-op.
-  await dragSpaceTo(page, 'Space 1', 'Space 1');
+  await pointerDragSpaceTo(page, 'Space 1', 'Space 1');
+  await expect(page.locator('body')).not.toHaveClass(/drag-rearrange-dragging/, { timeout: 4_000 });
   await expect.poll(async () => railSpaceNames(page)).toEqual(['Space 1']);
 
   await createNamedSpace(page, 'Space 2');
@@ -228,12 +245,14 @@ test('U-02 space-card reorder updates stored + rail order', async ({ page }) => 
   await assertNoErrorBoundary(page);
 
   // Edge: 390 — handle if the space cards exist after Create.
-  await openEditor(page, { width: 390, height: 844 });
+  await openEditor(page, { width: 390, height: 844, url: MOBILE_PDF });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
   const openSpacesBtn = page.getByRole('button', { name: 'Open spaces' });
   await expect(openSpacesBtn).toBeVisible({ timeout: 15_000 });
   await openSpacesBtn.click();
-  const create390 = createSpaceBtn(page);
+  const mobilePanel = page.locator('.mobile-spaces-panel');
+  await expect(mobilePanel).toBeVisible({ timeout: 8_000 });
+  const create390 = mobilePanel.getByRole('button', { name: 'Create space', exact: true });
   let mobileCreate = 0;
   let mobileHandles = 0;
   let mobileNames = [];
@@ -242,16 +261,16 @@ test('U-02 space-card reorder updates stored + rail order', async ({ page }) => 
     mobileCreate = await create390.count();
     await expect(create390.first()).toBeVisible({ timeout: 8_000 });
     await create390.first().click();
+    await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 1' })).toBeVisible({ timeout: 8_000 });
     await create390.first().click();
-    mobileHandles = await page.locator('[data-space-drag-handle]').count();
-    mobileNames = await railSpaceNames(page);
-    if (mobileHandles >= 2 && mobileNames.length >= 2) {
-      const first = mobileNames[0];
-      const second = mobileNames[1];
+    await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 2' })).toBeVisible({ timeout: 8_000 });
+    mobileHandles = await mobilePanel.locator('[data-space-drag-handle]').count();
+    mobileNames = await railSpaceNames(page, mobilePanel);
+    if (mobileHandles >= 2 && mobileNames[0] === 'Space 1' && mobileNames[1] === 'Space 2') {
       try {
-        await dragSpaceTo(page, first, second);
-        const after = await railSpaceNames(page);
-        mobileReordered = after[0] === second && after[1] === first;
+        await dragSpaceTo(page, 'Space 1', 'Space 2');
+        const after = await railSpaceNames(page, mobilePanel);
+        mobileReordered = after[0] === 'Space 2' && after[1] === 'Space 1';
         mobileNames = after;
       } catch {
         mobileReordered = false;

@@ -1125,14 +1125,14 @@ const SpacesPanel = ({
 
   const handleCreateSpace = useCallback(() => {
     if (!requireSpaceManagement()) return;
-    const name = `Space ${spaces.length + 1}`;
     if (onSpaceCreate) {
+      // Let handleSpaceCreate mint Space N from the live setSpaces prev so
+      // two clicks cannot both send "Space 1" from a stale spaces.length.
       onSpaceCreate({
-        name,
         assignedPages: []
       });
     }
-  }, [requireSpaceManagement, spaces.length, onSpaceCreate]);
+  }, [requireSpaceManagement, onSpaceCreate]);
 
   const handleRenameSpace = useCallback((spaceId, nextName) => {
     if (!requireSpaceManagement()) return;
