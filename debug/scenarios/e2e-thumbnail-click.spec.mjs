@@ -26,10 +26,11 @@ async function openDesktopEditor(page, fixture) {
 async function openPagesPanel(page) {
   const pages = page.getByRole('button', { name: 'Pages', exact: true });
   await expect(pages).toBeVisible({ timeout: 15_000 });
-  if ((await pages.getAttribute('aria-pressed')) !== 'true') {
+  const thumbs = page.locator('#chrome-left-host [data-page-number]');
+  if ((await thumbs.count()) === 0) {
     await pages.click();
   }
-  await expect(pages).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => thumbs.count(), { timeout: 15_000 }).toBeGreaterThan(0);
 }
 
 function pageThumb(page, pageNumber) {
