@@ -368,6 +368,71 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
 
+.mobile-pdf-tools__select-family {
+  position: relative;
+}
+
+.mobile-pdf-tools__select-family .mobile-pdf-tools__button {
+  position: relative;
+}
+
+.mobile-pdf-tools__select-caret {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  z-index: 1;
+}
+
+.mobile-pdf-select-mode__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 8998;
+  border: 0;
+  background: transparent;
+}
+
+.mobile-pdf-select-mode__menu {
+  position: fixed;
+  z-index: 8999;
+  width: 196px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #e8e2d4;
+  background: #181b20;
+  border: 1px solid #3c424d;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.mobile-pdf-select-mode__menu > button {
+  min-height: 46px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.mobile-pdf-select-mode__menu > button.is-active {
+  color: var(--accent-primary, #d8a84e);
+  background: #2a2218;
+}
+
 .mobile-pdf-tools__divider {
   width: 26px;
   height: 1px;

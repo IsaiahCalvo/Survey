@@ -42,6 +42,7 @@ import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
+import { getSelectFamilyLabel, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -1480,8 +1481,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
                 { id: 'select', label: 'Select', iconName: 'cursor' }
               ].map(t => {
-                // KAL-239: the Select tool has TWO modes — annotations (default)
-                // and the PDF's own text. Intended UX: the button keeps working
+                // Select-family modes share one list with mobile so the main
+                // button and menu stay ready for future modes. The button keeps working
                 // exactly as before (click = Select, and it never changes the mode
                 // already chosen in the menu, same as the Eraser button), while a
                 // small caret opens a mode menu. This mirrors the Eraser split menu
@@ -1491,7 +1492,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 const isActive = isSelect
                   ? (bottomToolbarApi.activeTool === 'select' || isTextSelect)
                   : bottomToolbarApi.activeTool === t.id;
-                const label = isSelect && isTextSelect ? 'Select text' : t.label;
+                const label = isSelect
+                  ? getSelectFamilyLabel(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode)
+                  : t.label;
                 return (
                 <div
                   key={t.id}
@@ -1502,7 +1505,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   onClick={() => {
                     // Activate Select without discarding the mode picked in the
                     // menu (Eraser button does the same with its erase mode).
-                    bottomToolbarApi.setActiveTool(isSelect && isTextSelect ? 'text-select' : t.id);
+                    bottomToolbarApi.setActiveTool(
+                      isSelect && (isTextSelect || bottomToolbarApi.selectionMode === 'text')
+                        ? 'text-select'
+                        : t.id,
+                    );
                     bottomToolbarApi.setActiveCategoryDropdown(null);
                     setSelectModeMenuOpen(false);
                   }}
@@ -1583,11 +1590,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     }}>
                       Selection Mode
                     </div>
-                    {[
-                      { tool: 'select', text: 'Select annotations', hint: 'V' },
-                      { tool: 'text-select', text: 'Select text', hint: '⇧V' }
-                    ].map((opt) => {
-                      const selected = bottomToolbarApi.activeTool === opt.tool;
+                    {SELECT_MODE_OPTIONS.map((opt) => {
+                      const selected = isSelectModeActive(
+                        opt, bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode,
+                      );
                       const optionStyle = {
                         display: 'flex',
                         alignItems: 'center',
@@ -1607,9 +1613,10 @@ export default function App({ devPreviewReturnTab = null }) {
                       };
                       return (
                         <button
-                          key={opt.tool}
+                          key={opt.mode}
                           onClick={(e) => {
                             e.stopPropagation();
+                            bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
                             setSelectModeMenuOpen(false);
                           }}
@@ -1617,7 +1624,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}
                           style={optionStyle}
                         >
-                          <span>{opt.text}</span>
+                          <span>{opt.label}</span>
                           <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
                         </button>
                       );

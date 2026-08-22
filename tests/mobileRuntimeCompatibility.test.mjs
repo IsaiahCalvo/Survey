@@ -415,7 +415,7 @@ test('one-finger creation strokes stay touch-compatible on the SVG surface', () 
   // surface must keep them explicitly: one-finger strokes must not scroll the
   // page (touchAction none while a creation tool is armed), and 120Hz styli
   // must not lose samples (coalesced pointer capture into page space).
-  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /touchAction: isCreationTool \? 'none' : undefined/);
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /touchAction: \(isCreationTool \|\| \(activeTool === 'select' && selectionMode === 'lasso'\)\) \? 'none' : undefined/);
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /getCoalescedEvents/);
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /appendCoalescedPagePoints\(e\.nativeEvent\)/);
 });

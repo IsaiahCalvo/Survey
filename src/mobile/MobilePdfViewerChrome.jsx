@@ -8,6 +8,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import { getSelectFamilyLabel, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
@@ -1328,6 +1329,8 @@ export function MobileToolProperties({ api }) {
 
 export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange }) {
   const [openCategory, setOpenCategory] = useState(null);
+  const [selectModeOpen, setSelectModeOpen] = useState(false);
+  const [selectModePosition, setSelectModePosition] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
@@ -1341,6 +1344,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false));
   const popoverRef = useRef(null);
+  const selectModeButtonRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
@@ -1403,6 +1407,23 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
   };
 
+  const openSelectModeMenu = () => {
+    const rect = selectModeButtonRef.current?.getBoundingClientRect();
+    if (rect) setSelectModePosition({ left: rect.right + 8, top: Math.max(8, rect.top) });
+    setSelectModeOpen(true);
+  };
+
+  const chooseSelectMode = (mode) => {
+    bottomToolbarApi?.setSelectionMode?.(mode);
+    if (mode === 'text') {
+      selectTool('text-select');
+    } else {
+      selectTool('select');
+    }
+    setOpenCategory(null);
+    setSelectModeOpen(false);
+  };
+
   const toggleCategory = (groupId) => {
     const group = TOOL_GROUPS[groupId];
     setOpenCategory(groupId);
@@ -1429,7 +1450,32 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
           <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
-          <RailButton active={activeTool === 'select'} icon="cursor" label="Select" onClick={() => { setOpenCategory(null); selectTool('select'); }} />
+          <div ref={selectModeButtonRef} className="mobile-pdf-tools__select-family">
+            <RailButton
+              active={activeTool === 'select' || activeTool === 'text-select'}
+              label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
+              onClick={() => {
+                setOpenCategory(null);
+                selectTool(
+                  activeTool === 'text-select' || bottomToolbarApi?.selectionMode === 'text'
+                    ? 'text-select'
+                    : 'select',
+                );
+              }}
+            >
+              <Icon name={activeTool === 'text-select' ? 'text' : 'cursor'} size={19} color="currentColor" />
+            </RailButton>
+            <button
+              type="button"
+              className="mobile-pdf-tools__select-caret"
+              aria-label="Selection mode"
+              onClick={() => {
+                selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
+              }}
+            >
+              <Icon name="chevronDown" size={9} color="currentColor" />
+            </button>
+          </div>
           <div className="mobile-pdf-tools__divider" />
           {Object.entries(TOOL_GROUPS).map(([groupId, group]) => (
             <RailButton
@@ -1626,6 +1672,40 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
         </div>
       </aside>
+      {selectModeOpen && selectModePosition && typeof document !== 'undefined' && createPortal(
+        <>
+          <button
+            type="button"
+            className="mobile-pdf-select-mode__backdrop"
+            aria-label="Close selection mode menu"
+            onClick={() => setSelectModeOpen(false)}
+          />
+          <div
+            className="mobile-pdf-select-mode__menu"
+            role="menu"
+            aria-label="Selection mode"
+            style={{ left: selectModePosition.left, top: selectModePosition.top }}
+          >
+            {SELECT_MODE_OPTIONS.map((option) => {
+              const selected = isSelectModeActive(option, activeTool, bottomToolbarApi?.selectionMode);
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  className={selected ? 'is-active' : ''}
+                  onClick={() => chooseSelectMode(option.mode)}
+                >
+                  <span>{option.label}</span>
+                  {selected && <Icon name="check" size={14} color="currentColor" />}
+                </button>
+              );
+            })}
+          </div>
+        </>,
+        document.body,
+      )}
       {syncDetailsOpen && sync.state !== 'synced' && syncDetailsPosition && typeof document !== 'undefined' && createPortal(
         <div
           ref={syncDetailsRef}

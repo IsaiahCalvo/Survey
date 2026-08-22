@@ -42,6 +42,13 @@ import {
   resolveMarqueeHits,
   filterMarqueeHits,
 } from '../utils/marqueeSelection.js';
+import {
+  LASSO_SIMPLIFY_PX,
+  normalizeLassoPolygon,
+  resolveLassoHits,
+  shouldSampleLassoPoint,
+  simplifyLassoPoints,
+} from '../utils/lassoSelection.js';
 // Phase 35 Plan 03 — click hit-test gate, updated 2026-07-17 for the LOCKED
 // permissions model (contributors AND owners have full add/edit/delete on
 // everything; viewers look-only). Selection now gates on canDelete (any
@@ -66,14 +73,7 @@ import {
   markAnnotationPointerRelease,
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag.js';
-
-const isTransformLockedAnnotation = (obj) => Boolean(
-  obj?.lockMovementX
-  && obj?.lockMovementY
-  && obj?.lockScalingX
-  && obj?.lockScalingY
-  && obj?.lockRotation
-);
+import { isTransformLockedAnnotation } from '../utils/annotationSelectionEligibility.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -135,6 +135,7 @@ export function useSVGInteraction({
   onUpdateCallout,
   // Phase 19 — current tool. Marquee only activates when tool === 'select'.
   activeTool,
+  selectionMode = 'rectangle',
   // Phase 35 Plan 03 — per-user delete authority. Threads the current Supabase
   // auth user id and the active document's owner id through to canModify at
   // every selection-resolve site (marquee post-filter + click hit-test gates).
@@ -245,6 +246,27 @@ export function useSVGInteraction({
     marqueeStateRef.current = next;
     setMarqueeState(next);
   }, []);
+  // The lasso trail stays in page/viewBox coordinates and never enters the
+  // annotation model or history. Shape: { points, shiftHeld, pointerId }.
+  const [lassoState, setLassoState] = useState(null);
+  const lassoStateRef = useRef(null);
+  const applyLassoState = useCallback((next) => {
+    lassoStateRef.current = next;
+    setLassoState(next);
+  }, []);
+
+  const cancelLasso = useCallback((pointerId) => {
+    const current = lassoStateRef.current;
+    if (!current) return false;
+    try { svgRef.current?.releasePointerCapture?.(pointerId ?? current.pointerId); } catch (_) { /* optional */ }
+    applyLassoState(null);
+    return true;
+  }, [applyLassoState, svgRef]);
+
+  const shouldHandoffLassoPointer = useCallback((pointerId) => {
+    const current = lassoStateRef.current;
+    return !!current && current.pointerId !== pointerId;
+  }, []);
 
   // UX: when a drag commits (move or group-move with > 2px delta), stamp
   // this ref with `Date.now()`. The browser's native `dblclick` event fires
@@ -288,15 +310,25 @@ export function useSVGInteraction({
   // attached while a marquee is tracking, so it does not compete with
   // the Escape handler for text-edit or shape-edit modes.
   useEffect(() => {
-    if (!marqueeState) return undefined;
+    if (!marqueeState && !lassoState) return undefined;
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         applyMarqueeState(null);
+        cancelLasso();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [marqueeState, applyMarqueeState]);
+  }, [marqueeState, lassoState, applyMarqueeState, cancelLasso]);
+
+  // PdfjsViewerContainer owns the mobile two-finger gesture and emits this
+  // event before live pinch zoom starts. Drop the transient trail so the PDF
+  // can take over without committing a selection.
+  useEffect(() => {
+    const onPinchStart = () => cancelLasso();
+    window.addEventListener('survey-pdfjs-pinch-start', onPinchStart);
+    return () => window.removeEventListener('survey-pdfjs-pinch-start', onPinchStart);
+  }, [cancelLasso]);
 
   // ---------------------------------------------------------------------------
   // Inverse scale via ResizeObserver (container-aware, NOT zoom percentage)
@@ -1108,6 +1140,26 @@ export function useSVGInteraction({
     // sub-threshold clicks still behave like plain empty-space clicks and
     // fall through to the existing deselect-on-release path. Shift is
     // captured here so the release handler can decide replace vs union.
+    if (e.target === svgRef.current && activeTool === 'select' && selectionMode === 'lasso') {
+      if (lassoStateRef.current && lassoStateRef.current.pointerId !== e.pointerId) {
+        cancelLasso();
+        return 'pinch-handoff';
+      }
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      applyLassoState({
+        points: [{
+          x: Math.max(0, Math.min(pageWidth, svgPoint.x)),
+          y: Math.max(0, Math.min(pageHeight, svgPoint.y)),
+        }],
+        shiftHeld: !!e.shiftKey,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+      });
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      e.preventDefault();
+      return 'lasso-started';
+    }
+
     if (e.target === svgRef.current && activeTool === 'select') {
       const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
       applyMarqueeState({
@@ -1134,13 +1186,27 @@ export function useSVGInteraction({
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, applyMarqueeState, selectedIds, annotations]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
    * Uses CACHED ctmInverse from drag start (per RESEARCH.md Pitfall 1).
    */
   const handlePointerMove = useCallback((e) => {
+    const lasso = lassoStateRef.current;
+    if (lasso) {
+      if (e.pointerId !== lasso.pointerId) return;
+      const raw = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const point = {
+        x: Math.max(0, Math.min(pageWidth, raw.x)),
+        y: Math.max(0, Math.min(pageHeight, raw.y)),
+      };
+      const previous = lasso.points.at(-1);
+      if (!shouldSampleLassoPoint(previous, point, inverseScale)) return;
+      applyLassoState({ ...lasso, points: [...lasso.points, point] });
+      e.preventDefault();
+      return;
+    }
     // UX: Phase 19 — marquee update path. When a marquee is tracking,
     // update the end point, clamp to the page's viewBox (so the rect
     // can't escape the page), and flip `active` once we cross the 5 px
@@ -2695,12 +2761,66 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, inverseScale]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
    */
   const handlePointerUp = useCallback((e) => {
+    const lasso = lassoStateRef.current;
+    if (lasso) {
+      if (e.pointerId !== lasso.pointerId) return;
+      const raw = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const finalPoint = {
+        x: Math.max(0, Math.min(pageWidth, raw.x)),
+        y: Math.max(0, Math.min(pageHeight, raw.y)),
+      };
+      const sampled = shouldSampleLassoPoint(lasso.points.at(-1), finalPoint, inverseScale, 0.5)
+        ? [...lasso.points, finalPoint]
+        : lasso.points;
+      const simplified = simplifyLassoPoints(sampled, LASSO_SIMPLIFY_PX * inverseScale);
+      const polygon = normalizeLassoPolygon(simplified);
+      cancelLasso(e.pointerId);
+      if (!polygon) {
+        if (!lasso.shiftHeld) {
+          deselectAll();
+          onSelectedCalloutIdsChange?.(new Set());
+        }
+        return;
+      }
+      const rawHits = resolveLassoHits({
+        lassoPolygon: polygon,
+        annotations,
+        callouts,
+        pageWidth,
+        pageHeight,
+        pageNumber,
+        selectableAnnotationIndices: typeof getSelectableAnnotationIndices === 'function'
+          ? getSelectableAnnotationIndices()
+          : undefined,
+      });
+      const annotationIndices = filterMarqueeHits(
+        rawHits.annotationIndices,
+        annotations,
+        viewerId,
+        documentOwnerId,
+      );
+      if (lasso.shiftHeld) {
+        if (annotationIndices.length) {
+          setSelectedIds((previous) => new Set([...previous, ...annotationIndices]));
+        }
+        if (rawHits.calloutIds.length && onSelectedCalloutIdsChange) {
+          onSelectedCalloutIdsChange(new Set([
+            ...(selectedCalloutIds instanceof Set ? selectedCalloutIds : selectedCalloutIds || []),
+            ...rawHits.calloutIds,
+          ]));
+        }
+      } else {
+        setSelectedIds(new Set(annotationIndices));
+        onSelectedCalloutIdsChange?.(new Set(rawHits.calloutIds));
+      }
+      return;
+    }
     // UX: Phase 19 — marquee release path. Runs BEFORE annotation drag
     // release so the marquee owns pointerup whenever it's tracking.
     //   - Sub-threshold release (no `active` flag set): treat as empty-
@@ -3672,7 +3792,7 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
@@ -4551,5 +4671,8 @@ export function useSVGInteraction({
     // while the drag is still under the 5 px threshold.
     marqueeRect: marqueeState && marqueeState.active ? getMarqueeRect(marqueeState) : null,
     marqueeDirection: marqueeState && marqueeState.active ? getMarqueeDirection(marqueeState) : null,
+    lassoPoints: lassoState?.points || null,
+    cancelLasso,
+    shouldHandoffLassoPointer,
   };
 }

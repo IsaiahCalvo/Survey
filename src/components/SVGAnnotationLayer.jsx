@@ -62,6 +62,7 @@ import {
   stampAnnotationCreationIdentity,
 } from '../utils/annotationStorageIdentity.js';
 import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
+import { isBlockedFromAreaSelection } from '../utils/annotationSelectionEligibility.js';
 import {
   beginAnnotationGesture,
   markAnnotationPointerRelease,
@@ -293,6 +294,7 @@ const SVGAnnotationLayer = memo(({
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
+  selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
   // UX 2026-04-19: editType of the current edit session ('text' | 'callout' | 'bbox' | null).
   // 'bbox' means the user double-clicked a counter / line / arrow / polygon / polyline and
@@ -505,6 +507,9 @@ const SVGAnnotationLayer = memo(({
     // steals events from annotations underneath.
     marqueeRect,
     marqueeDirection,
+    lassoPoints,
+    cancelLasso,
+    shouldHandoffLassoPointer,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -525,11 +530,14 @@ const SVGAnnotationLayer = memo(({
     onUpdateCallout,
     // UX: Phase 19 — marquee only activates when tool === 'select'.
     activeTool,
+    selectionMode,
     // Phase 35 Plan 03 — forward per-user delete authority props to the
     // hook's marquee post-filter + click hit-test gate.
     viewerId,
     documentOwnerId,
-    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current.map((entry) => entry.index),
+    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current
+      .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
+      .map((entry) => entry.index),
     // Phase 35 Plan 04 — page number + bulk-delete interceptor for
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
@@ -4663,14 +4671,18 @@ const SVGAnnotationLayer = memo(({
         overflow: 'hidden',
         // One-finger creation strokes must not scroll the page on touch
         // devices — the fabric upper canvas used to set this implicitly.
-        touchAction: isCreationTool ? 'none' : undefined,
+        touchAction: (isCreationTool || (activeTool === 'select' && selectionMode === 'lasso')) ? 'none' : undefined,
         cursor: interactionState === 'dragging' ? 'grabbing'
-              : interactionState === 'rotating' ? 'crosshair'
+              : interactionState === 'rotating' || (activeTool === 'select' && selectionMode === 'lasso') ? 'crosshair'
               : undefined,
       }}
       preserveAspectRatio="none"
       onPointerDown={(e) => {
         if (isInteractive) {
+          if (shouldHandoffLassoPointer?.(e.pointerId)) {
+            cancelLasso?.();
+            return;
+          }
           e.stopPropagation(); // Prevent Pdfjs from seeing SVG events (SVGAnimatedString crash)
           // UX: Phase 14 CREATE-01 (callout half) — when the callout tool
           // is active and the click lands on empty SVG space (NOT inside
@@ -4746,7 +4758,8 @@ const SVGAnnotationLayer = memo(({
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, true)) return;
         handlePointerUp(e);
       } : undefined}
-      onPointerCancel={isInteractive ? () => {
+      onPointerCancel={isInteractive ? (e) => {
+        cancelLasso?.(e.pointerId);
         if (surveyMarkerDragRef.current) {
           surveyMarkerDragRef.current = null;
           setSurveyMarkerPreviewBounds(null);
@@ -5059,6 +5072,19 @@ const SVGAnnotationLayer = memo(({
             : 'rgba(0, 200, 100, 0.8)'}
           strokeWidth={1}
           strokeDasharray={marqueeDirection === 'window' ? undefined : '5,5'}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
+      )}
+      {lassoPoints?.length > 0 && (
+        <polyline
+          data-lasso-selection-trail="true"
+          points={lassoPoints.map((point) => `${point.x},${point.y}`).join(' ')}
+          fill="none"
+          stroke="rgba(45, 145, 255, 0.95)"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
           pointerEvents="none"
         />

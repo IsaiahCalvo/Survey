@@ -2871,6 +2871,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Select-family mode for annotation gestures. PDF text keeps its existing
+  // activeTool='text-select' path, so this state can grow without changing it.
+  const [selectionMode, setSelectionMode] = useState('rectangle');
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
   const interactionDiagPrevToolRef = useRef('pan');
@@ -23049,6 +23052,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       zoomMenuRef,
       pageInputRef,
       activeTool,
+      selectionMode,
+      setSelectionMode,
       contextTool,
       activeCategoryDropdown,
       lastDrawTool,
@@ -23166,6 +23171,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    selectionMode,
     annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
@@ -31301,6 +31307,7 @@ ${pageBlocks}
                                     });
                                   }}
                                   activeTool={activeTool}
+                                  selectionMode={selectionMode}
                                   editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
                                   onRequestExitEdit={() => setEditingAnnotation(null)}
