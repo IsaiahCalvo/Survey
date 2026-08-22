@@ -736,7 +736,8 @@ const SurveySpacesRail = ({
     }
   }, [mobileMode, isSurveyPanelCollapsed, setExpandedSurveyMarkers]);
 
-  // Outside-tap closes the detail view's entity / sibling-marker dropdowns.
+  // Outside-tap / Escape close the detail view's entity / sibling-marker
+  // dropdowns. Capture-Escape so survey undo-Esc does not pop a place.
   useEffect(() => {
     if (!mobileDetailDropdown) return undefined;
     const handlePointerDown = (event) => {
@@ -744,8 +745,18 @@ const SurveySpacesRail = ({
         setMobileDetailDropdown(null);
       }
     };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setMobileDetailDropdown(null);
+    };
     document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [mobileDetailDropdown]);
 
   useEffect(() => {
@@ -1997,6 +2008,7 @@ const SurveySpacesRail = ({
                       .map(([id, marker]) => ({ ...marker, id }))
                       .sort(compareSurveyMarkersForOrder);
                     const siblingIndex = siblingMarkers.findIndex(marker => marker.id === annotationId);
+                    const canSwitchSibling = siblingMarkers.length > 1;
                     const baseCategoryName = detailCategory?.name?.trim() || 'Untitled Category';
                     const fallbackName = `${baseCategoryName} ${siblingIndex >= 0 ? siblingIndex + 1 : siblingMarkers.length + 1}`;
                     const detailMarkerName = mobileDetailMarker.name || fallbackName;
@@ -2174,13 +2186,18 @@ const SurveySpacesRail = ({
                               aria-label="Choose Survey Marker"
                               aria-haspopup="listbox"
                               aria-expanded={mobileDetailDropdown === 'markerItem'}
-                              onClick={() => setMobileDetailDropdown(prev => (prev === 'markerItem' ? null : 'markerItem'))}
+                              aria-disabled={!canSwitchSibling}
+                              disabled={!canSwitchSibling}
+                              onClick={() => {
+                                if (!canSwitchSibling) return;
+                                setMobileDetailDropdown(prev => (prev === 'markerItem' ? null : 'markerItem'));
+                              }}
                             >
                               <Icon name="chevronDown" size={13} />
                             </button>
-                            {mobileDetailDropdown === 'markerItem' && (
+                            {canSwitchSibling && mobileDetailDropdown === 'markerItem' && (
                               <div className="mobile-survey-detail-menu" role="listbox" aria-label="Survey Markers in this category">
-                                {siblingMarkers.length ? siblingMarkers.map(sibling => (
+                                {siblingMarkers.map(sibling => (
                                   <button
                                     key={sibling.id}
                                     type="button"
@@ -2188,16 +2205,16 @@ const SurveySpacesRail = ({
                                     aria-selected={sibling.id === annotationId}
                                     className={sibling.id === annotationId ? 'is-active' : ''}
                                     onClick={() => {
-                                      // Jump the detail view to a sibling Survey Marker.
-                                      setExpandedSurveyMarkers({ [sibling.id]: true });
+                                      // Same-id close is a no-op (already the detail marker).
+                                      if (sibling.id !== annotationId) {
+                                        setExpandedSurveyMarkers({ [sibling.id]: true });
+                                      }
                                       setMobileDetailDropdown(null);
                                     }}
                                   >
                                     <span>{sibling.name || 'Untitled Survey Marker'}</span>
                                   </button>
-                                )) : (
-                                  <div className="mobile-survey-detail-menu-empty">No Survey Markers yet</div>
-                                )}
+                                ))}
                               </div>
                             )}
                           </div>
