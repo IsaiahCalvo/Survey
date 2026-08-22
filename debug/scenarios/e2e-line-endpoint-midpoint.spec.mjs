@@ -156,13 +156,6 @@ async function pageToScreen(page, x, y) {
 }
 
 async function clickLineStroke(page, id) {
-  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
-  await expect(target).toBeAttached({ timeout: 8_000 });
-  const box = await target.boundingBox();
-  if (box && box.width >= 1) {
-    await page.mouse.click(box.x + Math.min(12, box.width / 2), box.y + Math.max(2, box.height / 2));
-    return;
-  }
   const geom = await lineGeom(page, id);
   const screen = await pageToScreen(
     page,
@@ -175,9 +168,6 @@ async function clickLineStroke(page, id) {
 async function selectUntilHandles(page, id) {
   await selectMode(page);
   await expect.poll(async () => {
-    if (await page.locator('[data-resize-handle]').count()) {
-      await page.keyboard.press('Escape');
-    }
     await clickLineStroke(page, id);
     return page.locator('circle[data-handle="midpoint"]').count();
   }, { timeout: 12_000 }).toBeGreaterThan(0);
@@ -211,7 +201,11 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
   await openEditor(page);
 
   const line = await createLine(page, { x0: 0.18, y0: 0.30, x1: 0.46, y1: 0.30 }, 'Line');
+  const arrow = await createLine(page, { x0: 0.18, y0: 0.58, x1: 0.44, y1: 0.58 }, 'Arrow');
+  const second = await createLine(page, { x0: 0.58, y0: 0.26, x1: 0.82, y1: 0.26 }, 'Line');
   expect(line.tool === 'line' || line.type === 'line', 'created a line').toBe(true);
+  expect(arrow.id, 'arrow id').not.toBe(line.id);
+  expect(second.id, 'second id').not.toBe(line.id);
   await selectUntilHandles(page, line.id);
 
   const handleCount = await handleGroup(page).locator('circle').count();
@@ -256,7 +250,6 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
   expect(String(afterMid.pathD || ''), 'quadratic').toMatch(/Q/i);
 
   // Intended: arrow uses the same three handles; p2 + midpoint work.
-  const arrow = await createLine(page, { x0: 0.18, y0: 0.58, x1: 0.44, y1: 0.58 }, 'Arrow');
   expect(arrow.tool === 'arrow' || arrow.type === 'line', 'created an arrow').toBe(true);
   await selectUntilHandles(page, arrow.id);
   const preArrow = await lineGeom(page, arrow.id);
@@ -334,9 +327,7 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
       || almostEqPt(afterUndo.midpoint, preUndo.midpoint, 3));
   }, { timeout: 8_000 }).toBe(true);
 
-  // Edge: second line isolate — bending it does not move the first.
-  const second = await createLine(page, { x0: 0.58, y0: 0.26, x1: 0.82, y1: 0.26 }, 'Line');
-  expect(second.id).not.toBe(line.id);
+  // Edge: second line isolate — moving it does not move the first.
   const firstFrozen = await lineGeom(page, line.id);
   await selectUntilHandles(page, second.id);
   await dragHandle(page, 'p2', 0, 40);
