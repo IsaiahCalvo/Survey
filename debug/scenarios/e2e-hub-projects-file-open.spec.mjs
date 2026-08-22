@@ -270,7 +270,8 @@ test('Projects file-row Open intended + break + edge', async ({ page }) => {
   await page.waitForURL((url) => url.searchParams.get('hubPreview') === '1', { timeout: 15_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(viewerParams(page).tab).toBe('projects');
-  await expect(page.getByText(TOWER).first()).toBeVisible({ timeout: 15_000 });
+  // Fresh hub load after Back: mobile list (desktop Tower copy stays CSS-hidden).
+  await expect(page.locator('.projects-mobile-folder-row[data-project-id="p1"]')).toBeVisible({ timeout: 15_000 });
   expect(await page.locator('.mobile-project-rail, .mobile-project-browse, .mobile-project-drive').count()).toBe(0);
 
   await assertNoErrorBoundary(page);
