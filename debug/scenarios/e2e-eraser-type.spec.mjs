@@ -236,8 +236,14 @@ async function eraserTypeLabels(page) {
 }
 
 async function eraseThroughRegion(page, coords) {
-  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
-  await dragOnPage(page, coords);
+  const wrapper = page.locator('[data-diag-eraser-wrapper="1"]');
+  await expect(wrapper).toBeVisible({ timeout: 8_000 });
+  const box = await wrapper.boundingBox();
+  expect(box, 'eraser wrapper geometry').toBeTruthy();
+  await page.mouse.move(box.x + box.width * coords.x0, box.y + box.height * coords.y0);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * coords.x1, box.y + box.height * coords.y1, { steps: 8 });
+  await page.mouse.up();
 }
 
 async function eraseAcrossId(page, id) {
