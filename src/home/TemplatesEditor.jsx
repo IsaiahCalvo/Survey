@@ -351,7 +351,12 @@ function SortableModuleTab({
           onBlur={(e) => onRename(mod.id, e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
-            else if (e.key === 'Escape') onCancelRename();
+            else if (e.key === 'Escape') {
+              /* Restore before unmount so blur-on-cancel cannot commit a
+                 typed name (category / entity / item already snap back). */
+              e.currentTarget.value = mod.name;
+              onCancelRename();
+            }
           }}
           style={{
             background: 'transparent',
@@ -1198,10 +1203,15 @@ export default function TemplatesEditor({
     const v = name.trim();
     if (!v || !tpl) { setModRename(null); return; }
     mutateTpl(tpl.id, (t) => {
-      const modules = t.modules.map((m) => (
-        m.id === id && m.name !== v ? { ...m, name: v } : m
-      ));
-      return { ...t, modules };
+      let changed = false;
+      const modules = t.modules.map((m) => {
+        if (m.id !== id || m.name === v) return m;
+        changed = true;
+        return { ...m, name: v };
+      });
+      /* Same-name / missing-id blur must return `t` so mutateTpl does not
+         dirty — Edit-modules always calls this on blur. */
+      return changed ? { ...t, modules } : t;
     });
     setModRename(null);
   };
@@ -1249,9 +1259,12 @@ export default function TemplatesEditor({
   const mutateModuleAt = (moduleIndex, fn) => {
     if (!tpl) return;
     mutateTpl(tpl.id, (t) => {
+      const current = t.modules[moduleIndex];
+      if (!current) return t;
+      const nextModule = fn(current);
+      if (nextModule === current) return t;
       const modules = t.modules.slice();
-      if (!modules[moduleIndex]) return t;
-      modules[moduleIndex] = fn(modules[moduleIndex]);
+      modules[moduleIndex] = nextModule;
       return { ...t, modules };
     });
   };
@@ -1302,8 +1315,10 @@ export default function TemplatesEditor({
     const v = name.trim();
     if (!v) return;
     mutateModuleAt(moduleIndex, (m) => {
+      const current = m.categories[ci];
+      if (!current || current.name === v) return m;
       const categories = m.categories.slice();
-      if (categories[ci] && categories[ci].name !== v) categories[ci] = { ...categories[ci], name: v };
+      categories[ci] = { ...current, name: v };
       return { ...m, categories };
     });
   };
@@ -1353,18 +1368,27 @@ export default function TemplatesEditor({
   /* --- checklist-item-level (scoped to a category in the open module) --- */
   const mutateCategoryInModule = (moduleIndex, ci, fn) => {
     mutateModuleAt(moduleIndex, (m) => {
+      const current = m.categories[ci];
+      if (!current) return m;
+      const nextCategory = fn(current);
+      if (nextCategory === current) return m;
       const categories = m.categories.slice();
-      if (!categories[ci]) return m;
-      categories[ci] = fn(categories[ci]);
+      categories[ci] = nextCategory;
       return { ...m, categories };
     });
   };
   const mutateCategory = (ci, fn) => mutateCategoryInModule(openMod, ci, fn);
   const addItemToModule = (moduleIndex, ci) => mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
   const addItem = (ci) => addItemToModule(openMod, ci);
-  const renameItemInModule = (moduleIndex, ci, itemId, text) => mutateCategoryInModule(moduleIndex, ci, (c) => ({
-    ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
-  }));
+  const renameItemInModule = (moduleIndex, ci, itemId, text) => mutateCategoryInModule(moduleIndex, ci, (c) => {
+    let changed = false;
+    const items = c.items.map((it) => {
+      if (it.id !== itemId || it.text === text) return it;
+      changed = true;
+      return { ...it, text };
+    });
+    return changed ? { ...c, items } : c;
+  });
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
 
   /* UX (KAL-69): required-row commit rules, shared by the desktop and mobile
@@ -3164,7 +3188,12 @@ export default function TemplatesEditor({
                         <input
                           defaultValue={mod.name}
                           key={mod.id + ':' + mod.name}
-                          onBlur={(e) => renameModule(mod.id, e.currentTarget.value)}
+                          onBlur={(e) => {
+                            const r = resolveTitleCommit(e.currentTarget.value, mod.name);
+                            if (r.action === 'commit') renameModule(mod.id, r.name);
+                            else setModRename(null);
+                            e.currentTarget.value = r.name;
+                          }}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
                           style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: '#f4f1ea', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                         />
