@@ -265,11 +265,15 @@ test('UL-35 toolbar Continue Count intended + break + edge', async ({ page }) =>
   expect(new Set(stillThree.map((row) => row.seriesId)).size).toBe(2);
   await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible();
 
-  // Break — Select-armed hides Counter series / Continue Count.
+  // Break — Select-armed overlay gone. A selected pin still shows Counter
+  // series (contextTool stays counter). Empty-page deselect hides it.
   await page.keyboard.press('Escape');
   await page.keyboard.press('v');
   await expect(page.locator('[data-counter-overlay="1"]')).toHaveCount(0);
-  expect(await page.getByRole('button', { name: 'Counter series' }).count()).toBe(0);
+  const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  expect(pageBox).toBeTruthy();
+  await page.mouse.click(pageBox.x + pageBox.width * 0.12, pageBox.y + pageBox.height * 0.82);
+  await expect.poll(async () => page.getByRole('button', { name: 'Counter series' }).count()).toBe(0);
   expect(await page.getByText('Continue Count', { exact: true }).count()).toBe(0);
 
   // Break — Pen-armed hides Counter series / Continue Count.

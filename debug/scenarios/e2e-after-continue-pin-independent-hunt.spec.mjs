@@ -108,7 +108,11 @@ test('independent hunt after Continue pin', async ({ page }) => {
   const overlay = page.locator('[data-counter-overlay="1"]');
   const box = await overlay.boundingBox();
   expect(box).toBeTruthy();
-  await page.mouse.click(box.x + box.width * 0.34, box.y + box.height * 0.32);
+  const start = { x: box.x + box.width * 0.34, y: box.y + box.height * 0.32 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 10, start.y + 8, { steps: 4 });
+  await page.mouse.up();
   await expect.poll(async () => page.locator('[data-counter-overlay="1"] [data-anno-id]').count()).toBeGreaterThan(0);
 
   await seriesBtn.click();
