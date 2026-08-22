@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-22 leftover-18 host-bundle):** re-inspected env as authoritative. `.env.local` / `.env.test` / process auto-login / Stripe / MSAL / Turnstile / lease files still **absent**. Cursor cloud environment **null** / builds empty. Did not invent hosts. X-01 **not** live-proved. Receipt `fix-logs/leftover18-host-bundle-2026-08-22.md`. Next leftover: leftover-18 live hosts (first **X-01**). Goal stays open.
+**This-pass (2026-08-22 completion-audit refresh):** treated `fix-logs/completion-audit-2026-08-22.md` as stale. Reclassified all 96 unique IDs + leftover-18 against the current tree after Continue pin / Continue Count / Print fail-closed / compile-hidden / official contract alignments / leftover-18 host-bundle. **96 proved / 0 stomped / 0 weak / 0 missing / leftover-18 18 fail-closed + 18 host-gated.** Counts unchanged. Focused Node **107 / 107**. No unique unblocked leftover. Did **not** hunt. Receipt `fix-logs/completion-audit-refresh-2026-08-22.md`. Next leftover: leftover-18 live hosts (first **X-01**). Goal stays open.
+
+**Prior-pass (2026-08-22 leftover-18 host-bundle):** re-inspected env as authoritative. `.env.local` / `.env.test` / process auto-login / Stripe / MSAL / Turnstile / lease files still **absent**. Cursor cloud environment **null** / builds empty. Did not invent hosts. X-01 **not** live-proved. Receipt `fix-logs/leftover18-host-bundle-2026-08-22.md`. Next leftover: leftover-18 live hosts (first **X-01**). Goal stays open.
 
 **Prior-pass (2026-08-22 independent Search-open hunt after keepActive):** last keepActive hunt missed Search. This pass opened it (V-08 dedicated; Match case / Whole word **0**) plus hubPreview / empty=1 / zoom / overlay / kal441 / leftover-18 hosts / 390. **No** unique unblocked leftover. Receipt `fix-logs/after-keepactive-independent-search-hunt-2026-08-22.md`. Next leftover: leftover-18 live hosts (first **X-01**). Goal stays open.
 
