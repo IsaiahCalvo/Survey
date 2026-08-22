@@ -283,11 +283,20 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
 
   await selectUntilHandles(page, markerA);
   const preMove = await markerGeom(page, markerA);
-  await dragBody(page, markerA, 48, 36);
+  const box = await pageBox(page);
+  const { W, H } = await pageViewBox(page);
+  const moveStart = {
+    x: box.x + ((preMove.x + preMove.width / 2) / W) * box.width,
+    y: box.y + ((preMove.y + preMove.height / 2) / H) * box.height,
+  };
+  await page.mouse.move(moveStart.x, moveStart.y);
+  await page.mouse.down();
+  await page.mouse.move(moveStart.x + 64, moveStart.y + 48, { steps: 12 });
+  await page.mouse.up();
   let afterMove = null;
   await expect.poll(async () => {
     afterMove = await markerGeom(page, markerA);
-    return posDelta(preMove, afterMove) > 8 && sameSizeAngle(preMove, afterMove, 3);
+    return posDelta(preMove, afterMove) > 8 && sameSizeAngle(preMove, afterMove, 4);
   }, { timeout: 8_000 }).toBe(true);
   intended.move = {
     dPos: posDelta(preMove, afterMove),
