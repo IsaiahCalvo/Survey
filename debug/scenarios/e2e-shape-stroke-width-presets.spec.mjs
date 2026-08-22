@@ -232,6 +232,7 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
         visualStrokeWidth: strokeEl ? Number(strokeEl.getAttribute('stroke-width') || 0) : null,
         bboxH: bbox?.height ?? null,
         bboxW: bbox?.width ?? null,
+        clientH: strokeEl?.getBoundingClientRect?.()?.height ?? null,
       };
     }).filter(Boolean);
   }, pageNumber);
@@ -429,13 +430,16 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
       preset,
       id: row.id,
       strokeWidth: row.strokeWidth,
-      bboxH: Number((row.bboxH || 0).toFixed(3)),
+      visualStrokeWidth: row.visualStrokeWidth,
+      clientH: Number((row.clientH || 0).toFixed(3)),
     });
   }
   expect(lineMetrics.map((row) => row.preset)).toEqual(WIDTH_PRESETS);
   const thin = lineMetrics.find((row) => row.preset === 1);
   const thick = lineMetrics.find((row) => row.preset === 50);
-  expect(thick.bboxH, 'Line Width 50 must be thicker than Width 1').toBeGreaterThan(thin.bboxH * 4);
+  expect(thick.visualStrokeWidth, 'Line Width 50 visual stroke').toBe(50);
+  expect(thin.visualStrokeWidth, 'Line Width 1 visual stroke').toBe(1);
+  expect(thick.clientH, 'Line Width 50 screen stroke must be thicker than Width 1').toBeGreaterThan(thin.clientH * 8);
 
   const patchLine = lineMetrics.find((row) => row.preset === 12);
   await selectStroke(page, patchLine.id);
