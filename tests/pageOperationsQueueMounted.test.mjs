@@ -52,6 +52,13 @@ async function loadUsePageOperations() {
     .replace(
       "from '../utils/pageMutationTransaction.js';",
       `from ${JSON.stringify(moduleUrl('src/utils/pageMutationTransaction.js'))};`,
+    )
+    // pageContextOps landed after this harness started rewriting the temp
+    // copy of the hook. Leave the specifier relative and the relocated
+    // module resolves it against /tmp, not the repo.
+    .replace(
+      "from '../utils/pageContextOps.js';",
+      `from ${JSON.stringify(moduleUrl('src/utils/pageContextOps.js'))};`,
     );
 
   const tempDir = await mkdtemp(path.join(tmpdir(), 'page-operations-queue-test-'));
