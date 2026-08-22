@@ -18,6 +18,17 @@ const StripeCheckout = (props) => {
         setLoading(true);
         setError(null);
         try {
+            // Preview / guest / ?testPdf= have no session. Fail closed
+            // before invoking create-checkout-session so this click cannot
+            // mint a Stripe Checkout URL.
+            if (!supabase) {
+                throw new Error('Must be signed in to start a trial.');
+            }
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (!sessionData?.session?.access_token) {
+                throw new Error('Must be signed in to start a trial.');
+            }
+
             // Pass tier and billing period to checkout session
             const { data, error } = await supabase.functions.invoke('create-checkout-session', {
                 body: {

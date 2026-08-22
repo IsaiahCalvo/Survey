@@ -87,7 +87,14 @@ test('A-05 / UL-20: developer preview disables StripeCheckout; live URL is not i
   assert.match(HUB, /tier: 'developer'/);
   assert.match(ACCOUNT, /Developer account/);
   assert.match(ACCOUNT, /subscription\?\.tier === 'developer'/);
+  assert.match(STRIPE, /Must be signed in to start a trial/);
+  assert.match(STRIPE, /supabase\.auth\.getSession\(\)/);
   assert.match(STRIPE, /supabase\.functions\.invoke\('create-checkout-session'/);
+  assert.ok(
+    STRIPE.indexOf('Must be signed in to start a trial')
+      < STRIPE.indexOf("supabase.functions.invoke('create-checkout-session'"),
+    'session gate must run before create-checkout-session',
+  );
   assert.doesNotMatch(STRIPE, /checkout\.stripe\.com\/c\/pay\/cs_test_invented/);
   assert.match(STRIPE, /No checkout URL returned/);
 });
