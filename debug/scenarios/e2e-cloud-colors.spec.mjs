@@ -415,7 +415,12 @@ test('desktop Cloud CompactColorPicker Fill + Border every swatch intended + bre
   await assertStillCloud(page, second.id);
 
   // Intended: armed next-draw Cloud uses Fill / Border tabs and stays a cloud.
+  // Deselect first so Style/Color writes next-draw preference, not a re-sync
+  // from the still-selected second cloud (#00FFFF).
   await dismissChrome(page);
+  await page.keyboard.press('v');
+  const emptyBeforeArm = await pageBox(page);
+  await page.mouse.click(emptyBeforeArm.x + 16, emptyBeforeArm.y + 16);
   await armCloudRect(page);
   await openColorPicker(page);
   await clickTab(page, 'Fill');
