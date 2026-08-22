@@ -201,11 +201,13 @@ async function rightClickStroke(page, id) {
   await selectMode(page);
   const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
   await expect(target).toBeVisible();
-  await target.click({ button: 'right', position: { x: 6, y: 6 } }).catch(async () => {
-    const box = await target.boundingBox();
-    expect(box, `bbox for ${id}`).toBeTruthy();
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
-  });
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  await page.mouse.click(
+    box.x + Math.min(8, Math.max(2, box.width / 2)),
+    box.y + Math.max(2, box.height / 2),
+    { button: 'right' },
+  );
   await expect(page.locator('[data-annotation-context-menu="true"]')).toBeVisible({ timeout: 8_000 });
 }
 
@@ -224,7 +226,9 @@ async function selectMode(page) {
   for (let i = 0; i < count; i += 1) {
     const button = selectBtn.nth(i);
     if (!(await button.isVisible().catch(() => false))) continue;
-    await button.click();
+    const cls = String(await button.getAttribute('class') || '');
+    if (cls.includes('mobile-header-select-button')) continue;
+    await button.click({ timeout: 4_000 }).catch(() => {});
     clicked = true;
     break;
   }
