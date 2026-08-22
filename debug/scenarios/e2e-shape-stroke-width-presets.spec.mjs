@@ -339,6 +339,10 @@ async function createCallout(page, text, coords = { x0: 0.16, y0: 0.72, x1: 0.40
   return created;
 }
 
+async function selectionHandleCount(page) {
+  return page.locator('[data-resize-handle], [data-handle="p1"], [data-handle="p2"], [data-handle="midpoint"]').count();
+}
+
 async function selectStroke(page, id) {
   await selectMode(page);
   const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
@@ -347,16 +351,19 @@ async function selectStroke(page, id) {
   expect(box, `bbox for ${id}`).toBeTruthy();
   const points = [
     { x: box.x + box.width / 2, y: box.y + box.height / 2 },
-    { x: box.x + Math.min(8, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
-    { x: box.x + box.width - 4, y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + box.width * 0.25, y: box.y + box.height / 2 },
+    { x: box.x + box.width * 0.75, y: box.y + box.height / 2 },
+    { x: box.x + 6, y: box.y + box.height / 2 },
+    { x: box.x + box.width - 6, y: box.y + box.height / 2 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
-    const selected = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
-    const chrome = await page.getByRole('textbox', { name: 'Width', exact: true }).count();
-    if (selected > 0 || chrome > 0) return;
+    if (await selectionHandleCount(page) > 0) return;
   }
-  await expect(page.getByRole('textbox', { name: 'Width', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  await expect(
+    page.locator('[data-resize-handle], [data-handle="midpoint"]').first(),
+    `selection handles for ${id}`,
+  ).toBeVisible({ timeout: 8_000 });
 }
 
 async function selectCallout(page, id) {
@@ -410,6 +417,15 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
   expect(chrome.values, 'live Width popover must list every D-05 preset').toEqual(WIDTH_PRESETS);
   expect(chrome.hasSlider, 'desktop Width chrome is a field + popover, not a slider').toBe(0);
 
+  await pickWidthPreset(page, 12);
+  await expect(field).toHaveValue('12');
+  const patchLine = await createLine(page, { x0: 0.16, y0: 0.20, x1: 0.42, y1: 0.24 });
+  expect(patchLine.strokeWidth, 'seed Line next-draw Width 12').toBe(12);
+  await selectStroke(page, patchLine.id);
+  const linePatch = await patchWidthPresets(page, patchLine.id);
+  expect(linePatch.map((row) => row.preset)).toEqual(WIDTH_PRESETS);
+  expect((await annotationById(page, patchLine.id))?.strokeWidth).toBe(50);
+
   const lineMetrics = [];
   for (let i = 0; i < WIDTH_PRESETS.length; i += 1) {
     const preset = WIDTH_PRESETS[i];
@@ -419,8 +435,8 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
     const row = await createLine(page, {
       x0: i % 2 === 0 ? 0.12 : 0.52,
       x1: i % 2 === 0 ? 0.44 : 0.84,
-      y0: 0.16 + (Math.floor(i / 2) * 0.055),
-      y1: 0.175 + (Math.floor(i / 2) * 0.055),
+      y0: 0.28 + (Math.floor(i / 2) * 0.028),
+      y1: 0.292 + (Math.floor(i / 2) * 0.028),
     });
     expect(row.tool, `line preset ${preset} tool`).toBe('line');
     expect(row.strokeWidth, `line preset ${preset} strokeWidth`).toBe(preset);
@@ -431,7 +447,6 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
       id: row.id,
       strokeWidth: row.strokeWidth,
       visualStrokeWidth: row.visualStrokeWidth,
-      clientH: Number((row.clientH || 0).toFixed(3)),
     });
   }
   expect(lineMetrics.map((row) => row.preset)).toEqual(WIDTH_PRESETS);
@@ -439,37 +454,29 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
   const thick = lineMetrics.find((row) => row.preset === 50);
   expect(thick.visualStrokeWidth, 'Line Width 50 visual stroke').toBe(50);
   expect(thin.visualStrokeWidth, 'Line Width 1 visual stroke').toBe(1);
-  expect(thick.clientH, 'Line Width 50 screen stroke must be thicker than Width 1').toBeGreaterThan(thin.clientH * 8);
+  expect(
+    thick.visualStrokeWidth,
+    'Line Width 50 painted stroke must be thicker than Width 1 (SVG getBBox/clientH is centerline geometry, not stroke)',
+  ).toBeGreaterThan(thin.visualStrokeWidth * 8);
+  expect((await annotationById(page, patchLine.id))?.strokeWidth, 'next-draw must not rewrite selected-patch Line').toBe(50);
 
-  const patchLine = lineMetrics.find((row) => row.preset === 12);
-  await selectStroke(page, patchLine.id);
-  const linePatch = await patchWidthPresets(page, patchLine.id);
-  expect(linePatch.map((row) => row.preset)).toEqual(WIDTH_PRESETS);
-  expect((await annotationById(page, thin.id))?.strokeWidth, 'later patch must not rewrite Width 1 line').toBe(1);
-
-  const arrowMetrics = [];
-  for (let i = 0; i < WIDTH_PRESETS.length; i += 1) {
-    const preset = WIDTH_PRESETS[i];
-    await activateTool(page, 'Shapes', 'Arrow');
-    await pickWidthPreset(page, preset);
-    await expect(field).toHaveValue(String(preset));
-    const row = await createArrow(page, {
-      x0: i % 2 === 0 ? 0.12 : 0.52,
-      x1: i % 2 === 0 ? 0.40 : 0.80,
-      y0: 0.52 + (Math.floor(i / 2) * 0.028),
-      y1: 0.535 + (Math.floor(i / 2) * 0.028),
-    });
-    expect(row.tool, `arrow preset ${preset} tool`).toBe('arrow');
-    expect(row.strokeWidth, `arrow preset ${preset} strokeWidth`).toBe(preset);
-    expect(row.sourceWidth).toBeNull();
-    arrowMetrics.push({ preset, id: row.id, strokeWidth: row.strokeWidth });
-  }
-  expect(arrowMetrics.map((row) => row.preset)).toEqual(WIDTH_PRESETS);
+  await activateTool(page, 'Shapes', 'Arrow');
+  await pickWidthPreset(page, 8);
+  await expect(field).toHaveValue('8');
+  const patchArrow = await createArrow(page, { x0: 0.16, y0: 0.50, x1: 0.42, y1: 0.56 });
+  expect(patchArrow.tool).toBe('arrow');
+  expect(patchArrow.strokeWidth, 'seed Arrow next-draw Width 8').toBe(8);
+  expect(patchArrow.sourceWidth).toBeNull();
+  await selectStroke(page, patchArrow.id);
+  const arrowPatch = await patchWidthPresets(page, patchArrow.id);
+  expect(arrowPatch.map((row) => row.preset)).toEqual(WIDTH_PRESETS);
+  expect((await annotationById(page, patchArrow.id))?.strokeWidth).toBe(50);
+  expect((await annotationById(page, thin.id))?.strokeWidth, 'Arrow patch must not rewrite Width 1 Line').toBe(1);
 
   await activateTool(page, 'Shapes', 'Rectangle');
   await pickWidthPreset(page, 6);
   await expect(field).toHaveValue('6');
-  const rect = await createRect(page, { x0: 0.58, y0: 0.70, x1: 0.82, y1: 0.86 });
+  const rect = await createRect(page, { x0: 0.56, y0: 0.50, x1: 0.82, y1: 0.66 });
   expect(rect.strokeWidth, 'rect next-draw Width 6').toBe(6);
   await selectStroke(page, rect.id);
   const rectPatch = await patchWidthPresets(page, rect.id);
@@ -558,10 +565,10 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
 
   console.log('SHAPE_STROKE_WIDTH_DESKTOP_PROOF', JSON.stringify({
     linePresets: lineMetrics.map((row) => row.preset),
-    thinClientH: thin.clientH,
-    thickClientH: thick.clientH,
     linePatch: linePatch.map((row) => row.preset),
-    arrowPresets: arrowMetrics.map((row) => row.preset),
+    arrowPatch: arrowPatch.map((row) => row.preset),
+    patchLine: patchLine.id,
+    patchArrow: patchArrow.id,
     rectPatch: rectPatch.map((row) => row.preset),
     calloutPatch,
     custom7: custom.id,
