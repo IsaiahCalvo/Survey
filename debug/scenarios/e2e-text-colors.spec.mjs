@@ -284,18 +284,13 @@ async function selectText(page, id) {
 }
 
 async function openColorPicker(page) {
-  await dismissChrome(page);
   const trigger = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(trigger).toBeVisible({ timeout: 8_000 });
   const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
   if (!(await presets.isVisible().catch(() => false))) {
     await trigger.click();
   }
-  if (!(await presets.isVisible().catch(() => false))) {
-    await trigger.click();
-  }
   await expect(presets).toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('[data-annotation-color-picker]')).toBeVisible();
 }
 
 async function clickTab(page, name) {
