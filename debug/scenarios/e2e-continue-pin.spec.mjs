@@ -41,7 +41,12 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
       .filter(Boolean);
     const ids = [...new Set([...annoIds, ...overlayIds])];
     return ids.map((id) => {
-      const object = window.__phase35GetAnnotationById?.(id) || {};
+      const pages = window.__diagState?.annotationsByPage || {};
+      const objects = Object.values(pages).flatMap((page) => page?.objects || []);
+      const object = objects.find((row) => (
+        String(row?.id || '') === String(id)
+        || String(row?.data?.id || '') === String(id)
+      )) || window.__phase35GetAnnotationById?.(id) || {};
       const data = object.data || {};
       const host = document.querySelector(`[data-counter-overlay="${pageNum}"] [data-anno-id="${id}"]`)
         || document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-anno-id="${id}"]`);
@@ -171,6 +176,25 @@ async function clickNewCount(page) {
   await expect(neu.first()).toBeVisible({ timeout: 8_000 });
   await neu.first().click();
   await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible();
+}
+
+async function seriesMenuRows(page) {
+  const seriesBtn = page.getByRole('button', { name: 'Counter series' });
+  await expect(seriesBtn).toBeVisible({ timeout: 8_000 });
+  await seriesBtn.click();
+  const menu = page.locator('[data-counter-series-menu]');
+  await expect(menu).toBeVisible({ timeout: 8_000 });
+  const rows = await menu.evaluate((el) => (
+    [...el.querySelectorAll('button')]
+      .map((node) => ({
+        label: (node.getAttribute('aria-label') || node.textContent || '').trim(),
+        active: node.classList.contains('is-active'),
+      }))
+      .filter((row) => /\d+\s+pins?/i.test(row.label))
+  ));
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  return rows;
 }
 
 async function dismissMenu(page) {
