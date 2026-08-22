@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-22 compile-hidden tools hunt (`fix-logs/compile-hidden-tools-2026-08-22.md`). Stamp / measure / Group / Extract / Note-Link / Forms are compile-hidden or zero callers — **no** Print-class reachable fail-closed chrome. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-22 UL-35 toolbar Continue Count (`fix-logs/continue-count-toolbar-2026-08-22.md`). Cluster-only series-row switch now has intended+break+edge. Barrier contract matched Projects `[ref, trigger]`. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-22 compile-hidden tools hunt (`fix-logs/compile-hidden-tools-2026-08-22.md`). Stamp / measure / Group / Extract / Note-Link / Forms are compile-hidden or zero callers — **no** Print-class reachable fail-closed chrome. X-01 hosts still **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-22 host probe + Print fail-closed (`fix-logs/host-probe-2026-08-22.md`, `fix-logs/print-panel-failclosed-2026-08-22.md`). X-01 hosts **absent**. 96 unique IDs still **proved**. Leftover-18 still **18** fail-closed local + **18** host-gated. Print custom panel stays compile-hidden; reachable blob/OS path now has a dedicated fail-closed slice (not leftover-18). Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
