@@ -329,37 +329,24 @@ async function createRect(page, coords) {
   return created;
 }
 
-async function createCounter(page, { xf = 0.82, yf = 0.18 } = {}) {
-  const before = await page.evaluate(() => (
-    [...document.querySelectorAll('[data-counter-overlay] [data-anno-id], [data-svg-annotation-layer="1"] [data-shape-hit-target="counter"]')]
-      .map((node) => node.getAttribute('data-anno-id') || node.closest('[data-anno-id]')?.getAttribute('data-anno-id'))
+async function listCounterIds(page) {
+  return page.evaluate(() => (
+    [...document.querySelectorAll('[data-shape-hit-target="counter"]')]
+      .map((node) => node.closest('[data-anno-id]')?.getAttribute('data-anno-id'))
       .filter(Boolean)
   ));
+}
+
+async function createCounter(page, { xf = 0.82, yf = 0.18 } = {}) {
+  const before = await listCounterIds(page);
   await activateShapeTool(page, 'Counter');
   const box = await pageBox(page);
   await page.mouse.click(box.x + box.width * xf, box.y + box.height * yf);
   let created = null;
   await expect.poll(async () => {
-    created = await page.evaluate((prior) => {
-      const hosts = [
-        ...document.querySelectorAll('[data-counter-overlay] [data-anno-id]'),
-        ...document.querySelectorAll('[data-svg-annotation-layer="1"] [data-anno-id]'),
-      ];
-      const ids = [...new Set(hosts.map((node) => node.getAttribute('data-anno-id')).filter(Boolean))];
-      const id = ids.find((next) => !prior.includes(next));
-      if (!id) return null;
-      const host = document.querySelector(`[data-anno-id="${id}"]`);
-      const pathD = host?.querySelector('path')?.getAttribute('d') || '';
-      const arc = /A\s+([\d.]+),([\d.]+)/.exec(pathD);
-      const object = window.__phase35GetAnnotationById?.(id) || {};
-      return {
-        id,
-        type: String(object.data?.type || object.type || '').toLowerCase(),
-        svgR: arc ? Number(arc[1]) : Number(object.radius || 0),
-        radius: Number(object.radius || 0),
-        scaleX: object.scaleX ?? 1,
-      };
-    }, before);
+    const ids = await listCounterIds(page);
+    const id = ids.find((next) => !before.includes(next)) || null;
+    created = id ? await counterGeom(page, id) : null;
     return created;
   }, { message: 'expected a counter pin' }).not.toBeNull();
   await selectMode(page);
@@ -368,9 +355,9 @@ async function createCounter(page, { xf = 0.82, yf = 0.18 } = {}) {
 
 async function counterGeom(page, id) {
   return page.evaluate((annoId) => {
-    const host = document.querySelector(`[data-counter-overlay] [data-anno-id="${annoId}"]`)
-      || document.querySelector(`[data-svg-annotation-layer="1"] [data-anno-id="${annoId}"]`)
-      || document.querySelector('[data-shape-hit-target="counter"]');
+    const host = document.querySelector(`[data-anno-id="${annoId}"] [data-shape-hit-target="counter"]`)
+      || document.querySelector(`[data-counter-overlay] [data-anno-id="${annoId}"]`)
+      || document.querySelector(`[data-svg-annotation-layer="1"] [data-anno-id="${annoId}"]`);
     const path = host?.matches?.('path') ? host : host?.querySelector?.('path');
     const pathD = path?.getAttribute('d') || '';
     const arc = /A\s+([\d.]+),([\d.]+)/.exec(pathD);
