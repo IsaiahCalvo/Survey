@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-22 C-06 Match Fill intended+break+edge (`fix-logs/match-fill-2026-08-22.md`). Opacity lock + missing-fill one-visible on `?testPdf=` (no `file.id`). P1-38 ring not replayed. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-22 E-02 RotationInputField intended+break+edge (`fix-logs/rotation-input-field-2026-08-22.md`). Type / blur / wrap / Escape on `?testPdf=` (no `file.id`). Ctrl+A now clears the pill. P1-32 hold-arrow not replayed. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-22 C-06 Match Fill intended+break+edge (`fix-logs/match-fill-2026-08-22.md`). Opacity lock + missing-fill one-visible on `?testPdf=` (no `file.id`). P1-38 ring not replayed. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-22 UL-07 page number field intended+break+edge (`fix-logs/page-number-field-2026-08-22.md`). Escape skip-commit + live field on `?testPdf=` (no `file.id`). Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
