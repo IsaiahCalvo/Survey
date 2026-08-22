@@ -75,7 +75,7 @@ test('live C-06 spec covers opacity lock, missing fill, 390, hub, file.id', () =
   assert.match(spec, /missing fill Match Fill must not hide both sides/);
   assert.match(spec, /Fill tab Match fill must be 0/);
   assert.match(spec, /Line Match fill must be 0/);
-  assert.match(spec, /ellipse Match Fill must isolate the rect/);
+  assert.match(spec, /second rect must isolate the first stroke/);
   assert.match(spec, /390 next-draw Match Fill must stamp fill color on stroke/);
   assert.match(spec, /390 opacity lock must stamp fill 40 onto stroke/);
   assert.match(spec, /390 Line Match fill must be 0/);

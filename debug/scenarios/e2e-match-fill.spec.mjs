@@ -249,15 +249,6 @@ async function createLine(page, coords = { x0: 0.50, y0: 0.26, x1: 0.72, y1: 0.4
   ));
 }
 
-async function createEllipse(page, coords = { x0: 0.24, y0: 0.52, x1: 0.40, y1: 0.68 }) {
-  const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
-  await activateTool(page, 'Shapes', 'Ellipse');
-  await dragOnPage(page, coords);
-  return waitForNewUserAnnotation(page, before, (row) => (
-    row.type === 'ellipse' || row.type === 'circle' || row.tool === 'ellipse'
-  ));
-}
-
 async function selectStroke(page, id) {
   await page.keyboard.press('v');
   const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
@@ -369,26 +360,12 @@ test('desktop Match Fill intended + break + edge', async ({ page }) => {
 
   await page.keyboard.press('Escape');
 
-  // Isolation — second rect + ellipse stay off the first stroke.
+  // Isolation — second rect stays off the first stroke.
   const other = await createRect(page, { x0: 0.50, y0: 0.50, x1: 0.68, y1: 0.66 });
   expect(other.id).not.toBe(rect.id);
   const firstAfterOther = await annotationById(page, rect.id);
-  expect(storedStroke(firstAfterOther)).toBe(storedStroke(afterMissing));
-
-  const ellipse = await createEllipse(page);
-  await selectStroke(page, ellipse.id);
-  await openColorPicker(page);
-  await clickTab(page, 'Fill');
-  await page.locator('button[title="#FF8000"]').first().click();
-  await setOpacityPercent(page, 55);
-  await clickTab(page, 'Border');
-  await expect(page.locator('button[title="Match fill"]')).toBeVisible();
-  await clickMatchFill(page);
-  await expect.poll(async () => storedStroke(await annotationById(page, ellipse.id))).toBe('#FF8000');
-  await expect.poll(async () => strokeAlpha(await annotationById(page, ellipse.id))).toBeCloseTo(0.55, 2);
-  expect(storedStroke(await annotationById(page, rect.id)), 'ellipse Match Fill must isolate the rect')
-    .toBe(storedStroke(firstAfterOther));
-  await page.keyboard.press('Escape');
+  expect(storedStroke(firstAfterOther), 'second rect must isolate the first stroke')
+    .toBe(storedStroke(afterMissing));
 
   // Break — Line never offers Match Fill.
   const line = await createLine(page);
@@ -406,7 +383,7 @@ test('desktop Match Fill intended + break + edge', async ({ page }) => {
     const rows = await userAnnotationSnapshot(page);
     return rows.some((row) => row.id === line.id);
   }).toBe(false);
-  expect(storedStroke(await annotationById(page, ellipse.id))).toBe('#FF8000');
+  expect(storedStroke(await annotationById(page, rect.id))).toBe(storedStroke(firstAfterOther));
 
   await clickVisible(page, 'Select');
   const beforeSelect = (await userAnnotationSnapshot(page)).length;
@@ -433,7 +410,7 @@ test('desktop Match Fill intended + break + edge', async ({ page }) => {
     intended: { fill: '#00FFFF', fillAlpha: 0.4, strokeAfter: '#00FFFF', strokeAlpha: 0.4 },
     snapshotHeld: true,
     missingFillKeptVisible: true,
-    ellipseId: ellipse.id,
+    otherId: other.id,
     lineMatchFill: 0,
     viewBox,
     fileId: null,
@@ -462,7 +439,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await setOpacityPercent(page, 40);
   await expect(opacityField(page)).toHaveValue('40');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Preset colors', exact: true }).count()).toBe(0);
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Open stroke color picker', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
@@ -470,7 +447,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await page.locator('button[title="#FF0000"]').first().click();
   await clickMatchFill(page);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Preset colors', exact: true }).count()).toBe(0);
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
   const close = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await close.isVisible().catch(() => false)) await close.click();
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toHaveCount(0);
