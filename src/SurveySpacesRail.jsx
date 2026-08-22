@@ -2420,16 +2420,15 @@ const SurveySpacesRail = ({
                                     opens DOWNWARD because its anchor sits near the top of
                                     the panel instead of at the bottom. Height is locked to
                                     24px to match .survey-marker-category-create-button. */}
-                                {(!selectedTemplate.linkedExcelPath || linkedExcelExists !== true) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleExportSurveyToExcel()}
-                                    disabled={isExporting}
-                                    className="survey-marker-export-compact-button"
-                                  >
-                                    {isExporting ? 'EXPORTING...' : 'EXPORT'}
-                                  </button>
-                                ) : (
+                                {(() => {
+                                  // Always show the Excel actions chevron so Open /
+                                  // Update can fail-closed when no linkedExcelPath.
+                                  // Hiding the menu made those items uninspectable;
+                                  // Push-without-a-path would have downloaded a new
+                                  // workbook (a write). Distinct from leftover-18
+                                  // X-06 silent writeback.
+                                  const linkedExcelReady = Boolean(selectedTemplate.linkedExcelPath) && linkedExcelExists === true;
+                                  return (
                                   <div ref={exportMenuRef} className="survey-marker-export-compact-cluster">
                                     <button
                                       type="button"
@@ -2456,14 +2455,17 @@ const SurveySpacesRail = ({
                                     </button>
 
                                     {showExportMenu && (
-                                      <div className="survey-marker-export-compact-menu">
+                                      <div className="survey-marker-export-compact-menu" role="menu">
                           <div
+                            role="menuitem"
+                            aria-label="Open linked"
+                            aria-disabled={!linkedExcelReady}
                             onClick={async () => {
                               const excelPath = selectedTemplate.linkedExcelPath;
                               const isOneDrive = selectedTemplate.isOneDrive;
 
 
-                              if (!excelPath) {
+                              if (!excelPath || linkedExcelExists !== true) {
                                 showToast('No Excel file is linked to this survey.', 'error');
                                 setShowExportMenu(false);
                                 return;
@@ -2637,20 +2639,31 @@ const SurveySpacesRail = ({
                               padding: '12px 16px',
                               color: '#f4f1ea',
                               fontSize: '14px',
-                              cursor: 'pointer',
+                              cursor: linkedExcelReady ? 'pointer' : 'not-allowed',
+                              opacity: linkedExcelReady ? 1 : 0.5,
                               borderBottom: '1px solid #3a4252',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
+                            onMouseEnter={(e) => {
+                              if (linkedExcelReady) e.currentTarget.style.background = '#3a4252';
+                            }}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="document" size={16} />
                             Open Excel
                           </div>
                           <div
+                            role="menuitem"
+                            aria-label="Update existing"
+                            aria-disabled={!linkedExcelReady}
                             onClick={() => {
+                              if (!selectedTemplate.linkedExcelPath || linkedExcelExists !== true) {
+                                showToast('No Excel file is linked to this survey.', 'error');
+                                setShowExportMenu(false);
+                                return;
+                              }
                               handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
                               setShowExportMenu(false);
                             }}
@@ -2658,13 +2671,16 @@ const SurveySpacesRail = ({
                               padding: '12px 16px',
                               color: '#f4f1ea',
                               fontSize: '14px',
-                              cursor: 'pointer',
+                              cursor: linkedExcelReady ? 'pointer' : 'not-allowed',
+                              opacity: linkedExcelReady ? 1 : 0.5,
                               borderBottom: '1px solid #3a4252',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#3a4252'}
+                            onMouseEnter={(e) => {
+                              if (linkedExcelReady) e.currentTarget.style.background = '#3a4252';
+                            }}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="upload" size={16} />
@@ -2807,7 +2823,8 @@ const SurveySpacesRail = ({
                                       </div>
                                     )}
                                   </div>
-                                )}
+                                  );
+                                })()}
                               </div>
                             );
                           })() : copyModeActive ? (
