@@ -17,8 +17,7 @@ const HANDLE_DRAG = {
   mr: { dx: 56, dy: 0 },
   ml: { dx: -52, dy: 0 },
   mb: { dx: 0, dy: 44 },
-  // Drag down: the rotation stem covers the mt center (shared overlay).
-  mt: { dx: 0, dy: 40, originY: 5 },
+  mt: { dx: 0, dy: -48 },
   mtr: { dx: 88, dy: 28 },
 };
 
@@ -257,10 +256,7 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
     await selectUntilHandles(page, markerA);
     const before = await markerGeom(page, markerA);
     const drag = HANDLE_DRAG[handleId] || { dx: 48, dy: 32 };
-    await dragHandle(page, handleId, drag.dx, drag.dy, {
-      originX: drag.originX || 0,
-      originY: drag.originY || 0,
-    });
+    await dragHandle(page, handleId, drag.dx, drag.dy);
     let after = null;
     await expect.poll(async () => {
       after = await markerGeom(page, markerA);
