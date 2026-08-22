@@ -316,18 +316,18 @@ async function openCounterSheet(page, section = 'fill') {
   await activateCounter(page);
   const trigger = page.getByRole('button', { name: 'Counter colors', exact: true }).first();
   await expect(trigger).toBeVisible({ timeout: 8_000 });
-  const chipName = section === 'fill'
-    ? `Set Fill color ${MOBILE_ANNOTATION_COLORS[0]}`
-    : `Set Stroke color ${MOBILE_ANNOTATION_COLORS[0]}`;
-  if (!(await page.getByRole('button', { name: chipName, exact: true }).isVisible().catch(() => false))) {
+  const fillChip = `Set Fill color ${MOBILE_ANNOTATION_COLORS[0]}`;
+  if (!(await page.getByRole('button', { name: fillChip, exact: true }).isVisible().catch(() => false))) {
     await trigger.click();
   }
-  await expect(page.getByRole('button', { name: chipName, exact: true })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('button', { name: fillChip, exact: true })).toBeVisible({ timeout: 8_000 });
   const tab = page.getByRole('tab', { name: section === 'fill' ? 'Fill color' : 'Stroke color' });
-  if (await tab.isVisible().catch(() => false)) {
-    const selected = await tab.getAttribute('aria-selected');
-    if (selected !== 'true') await tab.click();
-  }
+  await expect(tab).toBeVisible({ timeout: 8_000 });
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
+  const chipName = section === 'fill'
+    ? fillChip
+    : `Set Stroke color ${MOBILE_ANNOTATION_COLORS[0]}`;
+  await expect(page.getByRole('button', { name: chipName, exact: true })).toBeVisible({ timeout: 8_000 });
 }
 
 async function closeCounterSheet(page) {
