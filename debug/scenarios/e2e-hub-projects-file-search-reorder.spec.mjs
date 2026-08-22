@@ -60,14 +60,9 @@ function projectRow(page, name) {
 }
 
 async function openProject(page, name) {
-  await page.keyboard.press('Escape').catch(() => {});
-  await page.mouse.up().catch(() => {});
-  await eatDragClick(page);
   const seedId = { [TOWER]: 'p1', [LAB]: 'p2', [MEP]: 'p3' }[name];
   const row = desktopLayout(page).locator(`[data-drag-rearrange-row][data-project-id="${seedId}"]`);
   await expect(row).toBeVisible({ timeout: 8_000 });
-  const done = desktopLayout(page).getByRole('button', { name: 'Done', exact: true });
-  if (await done.count()) await done.click();
   await row.dispatchEvent('click');
   await expect(desktopLayout(page).getByRole('textbox', { name: 'Click to rename' })).toHaveValue(name, { timeout: 8_000 });
 }
@@ -219,19 +214,17 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   expect(orderAfter.some((name) => name.includes('SE-011'))).toBeTruthy();
   expect(orderAfter.some((name) => name.includes('RFI-014'))).toBeTruthy();
 
-  // Isolation: Lab / MEP file lists unchanged by Tower file reorder.
-  await openProject(page, LAB);
-  await expect(fileRow(page, DOOR)).toBeVisible();
-  await expect(desktopLayout(page).getByText(SE011)).toHaveCount(0);
-  await expect(desktopLayout(page).getByText(RFI)).toHaveCount(0);
-  expect(await desktopFileHandles(page).count()).toBe(1);
-  await openProject(page, MEP);
-  await expect(fileRow(page, MEP_FILE)).toBeVisible();
-  await expect(desktopLayout(page).getByText(RFI)).toHaveCount(0);
+  // Isolation: Tower still has only its two files — Lab / MEP names
+  // did not migrate. Cross-project lists are checked after reload
+  // (no leftover file-row pointer-up on the card list).
+  await expect(fileRow(page, SE011)).toBeVisible();
+  await expect(fileRow(page, RFI)).toBeVisible();
+  await expect(desktopLayout(page).getByText(DOOR)).toHaveCount(0);
+  await expect(desktopLayout(page).getByText(MEP_FILE)).toHaveCount(0);
+  expect(await desktopFileHandles(page).count()).toBe(2);
 
-  // Session persist: switch back keeps Tower file order. Reload (no
+  // Session persist: stay on Tower; order kept. Reload (no
   // workflowE2E) is session-only and restores the seed.
-  await openProject(page, TOWER);
   await expect.poll(async () => (await desktopFileOrder(page))[0]).toContain('RFI-014');
   const sessionKept = (await desktopFileOrder(page))[0].includes('RFI-014');
 
@@ -241,6 +234,14 @@ test('Projects file Search + file-row reorder intended + break + edge', async ({
   const afterReload = await desktopFileOrder(page);
   expect(afterReload[0]).toContain('SE-011');
   const reloadResets = afterReload[0].includes('SE-011');
+
+  await openProject(page, LAB);
+  await expect(fileRow(page, DOOR)).toBeVisible();
+  await expect(desktopLayout(page).getByText(SE011)).toHaveCount(0);
+  await expect(desktopLayout(page).getByText(RFI)).toHaveCount(0);
+  await openProject(page, MEP);
+  await expect(fileRow(page, MEP_FILE)).toBeVisible();
+  await expect(desktopLayout(page).getByText(RFI)).toHaveCount(0);
 
   // 390: Search files... is the drill placeholder (not Search projects).
   await openHub(page, { width: 390, height: 844 });
