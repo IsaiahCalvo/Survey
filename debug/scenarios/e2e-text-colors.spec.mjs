@@ -236,18 +236,20 @@ async function createText(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.click();
   await editor.pressSequentially(text, { delay: 6 });
-  await page.mouse.click(12, 200);
+  const pageGeom = await pageBox(page);
+  await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   const created = await waitForNewText(page, before);
-  await blurInputs(page);
-  await selectMode(page);
+  await dismissChrome(page);
+  await page.keyboard.press('v');
   return created;
 }
 
 async function selectText(page, id) {
   await blurInputs(page);
   if (await page.locator('[data-text-edit-overlay]').count()) {
-    await page.mouse.click(12, 200);
+    const pageGeom = await pageBox(page);
+    await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
     await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   }
   await page.keyboard.press('v');
@@ -266,7 +268,8 @@ async function selectText(page, id) {
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
     if (await page.locator('[data-text-edit-overlay]').count()) {
-      await page.mouse.click(12, 200);
+      const pageGeom = await pageBox(page);
+      await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
       await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
       await page.keyboard.press('v');
       continue;
@@ -281,14 +284,18 @@ async function selectText(page, id) {
 }
 
 async function openColorPicker(page) {
+  await dismissChrome(page);
   const trigger = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(trigger).toBeVisible({ timeout: 8_000 });
-  const picker = page.locator('[data-annotation-color-picker]');
-  if (!(await picker.isVisible().catch(() => false))) {
+  const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
+  if (!(await presets.isVisible().catch(() => false))) {
     await trigger.click();
   }
-  await expect(picker).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
+  if (!(await presets.isVisible().catch(() => false))) {
+    await trigger.click();
+  }
+  await expect(presets).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-annotation-color-picker]')).toBeVisible();
 }
 
 async function clickTab(page, name) {
