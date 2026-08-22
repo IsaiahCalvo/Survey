@@ -413,7 +413,10 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
 
   // Break — zoom % INPUT does not steal E.
   await setEraserType(page, 'Full stroke erase');
-  const zoom = page.getByRole('textbox', { name: 'Edit zoom percentage', exact: true });
+  const zoomBtn = page.getByRole('button', { name: 'Edit zoom percentage', exact: true });
+  await expect(zoomBtn).toBeVisible();
+  await zoomBtn.click();
+  const zoom = page.getByRole('textbox', { name: 'Zoom percentage', exact: true });
   await expect(zoom).toBeVisible();
   await zoom.click();
   await page.keyboard.press('e');
