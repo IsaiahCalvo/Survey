@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Text desktop Fill + Border every-swatch):** not a new UL row. Dedicated intended+break+edge for CompactColorPicker Fill (`backgroundColor`) + Border (`stroke`) on a selected Textbox. Distinct from T-07 / 390 fontColor. Receipt `fix-logs/text-colors-2026-08-22.md`. X-01 names **PRESENT** in `.env.local`; process env absent; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 C-03 fill + stroke opacity continuum):** not a new UL row. Dedicated intended+break+edge for viewer Fill + Line stroke opacity (documented continuum, not every integer). Distinct from C-01 every-swatch, C-02 hex, Templates entity opacity, and the smoke 55%/slider-40 row. Receipt `fix-logs/opacity-continuum-2026-08-22.md`. X-01 names **PRESENT** in `.env.local`; process env absent; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Text desktop Fill + Border every-swatch):** not a new UL row. Dedicated intended+break+edge for CompactColorPicker Fill (`backgroundColor`) + Border (`stroke`) on a selected Textbox. Distinct from T-07 / 390 fontColor. Receipt `fix-logs/text-colors-2026-08-22.md`. X-01 names **PRESENT** in `.env.local`; process env absent; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 live C-02 hex lengths):** not a new UL row. Dedicated intended+break+edge for CompactColorPicker hex lengths (3/6 accept; 4/5/7/8 + named/rgba reject). Receipt `fix-logs/hex-lengths-2026-08-22.md`. X-01 names **PRESENT** in `.env.local`; process env absent; no lease. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
