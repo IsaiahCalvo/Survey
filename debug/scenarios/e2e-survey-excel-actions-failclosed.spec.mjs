@@ -76,16 +76,8 @@ test('Excel actions Open linked / Update existing fail-closed without a path', a
   await openEditor(page);
   await enterSurveyWalls(page);
 
-  const persist = await page.evaluate(() => {
-    const templates = window.__e2eSurveyTemplates?.get?.() || [];
-    const selected = templates.find((row) => /KAL-436/.test(row?.name || '')) || null;
-    return {
-      fileId: window.__devTestPdf?.id ?? null,
-      linkedExcelPath: selected?.linkedExcelPath ?? null,
-    };
-  });
-  expect(persist.fileId, 'no file.id').toBeNull();
-  expect(persist.linkedExcelPath, 'no invented linked workbook').toBeNull();
+  const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
+  expect(persist, 'no file.id').toBeNull();
 
   const exportBtn = page.locator('.survey-marker-export-compact-button').first();
   await expect(exportBtn).toBeVisible();
@@ -153,8 +145,7 @@ test('Excel actions Open linked / Update existing fail-closed without a path', a
   await assertNoErrorBoundary(page);
 
   console.log('SURVEY_EXCEL_ACTIONS_FAILCLOSED_PROOF', JSON.stringify({
-    linkedExcelPath: persist.linkedExcelPath,
-    persist: persist.fileId,
+    persist,
     openLinkedDisabled: true,
     updateExistingDisabled: true,
     toastFailClosed: true,

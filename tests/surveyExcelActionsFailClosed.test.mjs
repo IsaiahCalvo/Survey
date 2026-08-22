@@ -23,7 +23,7 @@ test('desktop Excel actions chevron is always compiled-in (not gated off the pat
   assert.match(cluster, /aria-label="Excel actions"/);
   assert.match(cluster, /linkedExcelReady = Boolean\(selectedTemplate\.linkedExcelPath\) && linkedExcelExists === true/);
   assert.doesNotMatch(cluster, /linkedExcelPath \|\| linkedExcelExists !== true\) \? \(/);
-  assert.match(cluster, /mobileMode \? null : !copyModeActive/);
+  assert.match(rail, /mobileMode \? null : !copyModeActive \? \(\(\) => \{/);
   assert.doesNotMatch(cluster, /data-handle=\{`vertex-\$\{/);
   assert.doesNotMatch(cluster, /data-counter-nubbin-handle/);
 });
