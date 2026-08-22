@@ -73,14 +73,21 @@ async function enterSurveyWalls(page) {
 }
 
 async function armWalls(page) {
-  const walls = page.getByRole('button', { name: 'Walls', exact: true });
-  if (!(await walls.count()) || !(await walls.first().isVisible().catch(() => false))) {
-    const survey = page.getByRole('button', { name: 'Survey', exact: true });
+  const hostWalls = () => page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Walls', exact: true });
+  if (!(await hostWalls().count()) || !(await hostWalls().first().isVisible().catch(() => false))) {
+    const survey = page.getByRole('button', { name: 'Survey', exact: true }).first();
     if (await survey.count()) await survey.click();
+    const picker = page.getByRole('heading', { name: 'Choose survey template' });
+    if (await picker.isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
+    }
   }
-  await expect(walls).toBeVisible({ timeout: 15_000 });
-  if (!String(await walls.getAttribute('class') || '').includes('btn-active')) {
-    await walls.click();
+  const walls = (await hostWalls().count())
+    ? hostWalls()
+    : page.getByRole('button', { name: 'Walls', exact: true });
+  await expect(walls.first()).toBeVisible({ timeout: 15_000 });
+  if (!String(await walls.first().getAttribute('class') || '').includes('btn-active')) {
+    await walls.first().click();
   }
 }
 
@@ -237,10 +244,16 @@ function handleChanged(id, before, after) {
 }
 
 test('survey-marker handle drag intended + break + edge', async ({ page }) => {
+  test.setTimeout(240_000);
   await openEditor(page);
   await enterSurveyWalls(page);
+  const keep = keepCheckbox(page);
+  await expect(keep).toBeVisible({ timeout: 8_000 });
+  if (!(await keep.isChecked())) await keep.click();
+  await expect(keep).toBeChecked();
 
   const markerA = await placeMarker(page, 'handle-a', { x0: 0.24, y0: 0.36, x1: 0.48, y1: 0.56 });
+  const markerB = await placeMarker(page, 'handle-b', { x0: 0.58, y0: 0.30, x1: 0.78, y1: 0.48 });
   await selectUntilHandles(page, markerA);
   const chrome = await listHandleIds(page);
   expect(chrome.resize.length, 'placed marker shows resize handles').toBeGreaterThan(0);
@@ -362,7 +375,6 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
 
   const frozenA = await markerGeom(page, markerA);
 
-  const markerB = await placeMarker(page, 'handle-b', { x0: 0.58, y0: 0.30, x1: 0.78, y1: 0.48 });
   await selectUntilHandles(page, markerB);
   const preB = await markerGeom(page, markerB);
   await dragHandle(page, 'br', 48, 32);
@@ -373,23 +385,15 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   expect(posDelta(frozenA, firstAfterB) < 2, 'A isolated').toBe(true);
   expect(sameSizeAngle(frozenA, firstAfterB), 'A size/angle isolated').toBe(true);
 
-  // Edge: Keep-active on does not stamp a second marker when dragging a handle.
-  await page.getByRole('button', { name: 'Survey', exact: true }).click();
-  const keep = keepCheckbox(page);
-  if (await keep.count()) {
-    if (!(await keep.isChecked())) await keep.click();
-    await expect(keep).toBeChecked();
-  }
+  // Edge: Keep-active was on at place; handle drag must not stamp a third.
   const keepCount = (await markerIds(page)).length;
+  expect(keepCount, 'A+B placed under Keep-active').toBe(2);
   await selectUntilHandles(page, markerB);
   const preKeep = await markerGeom(page, markerB);
   await dragHandle(page, chrome.resize.includes('mr') ? 'mr' : 'br', 40, chrome.resize.includes('mr') ? 0 : 28);
   await expect.poll(async () => handleChanged(chrome.resize.includes('mr') ? 'mr' : 'br', preKeep, await markerGeom(page, markerB)))
     .toBe(true);
   expect((await markerIds(page)).length, 'Keep-active handle drag does not stamp').toBe(keepCount);
-  if (await keep.count()) {
-    await expect(keep).toBeChecked();
-  }
 
   // Edge: zoom then handle still uses viewBox page-space.
   const zoomIn = page.getByRole('button', { name: /Zoom in/i }).first();
