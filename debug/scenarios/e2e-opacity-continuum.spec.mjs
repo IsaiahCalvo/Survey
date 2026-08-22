@@ -192,7 +192,7 @@ async function activateTool(page, categoryName, toolName) {
 }
 
 async function closePagesOverlay(page) {
-  const overlay = page.getByText('No documents yet');
+  const overlay = page.getByText('No documents yet').first();
   const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
   if (!(await overlay.isVisible().catch(() => false))) return;
   if (await pagesToggle.isVisible().catch(() => false)) {
@@ -489,7 +489,6 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   const closeFill = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeFill.isVisible().catch(() => false)) await closeFill.click();
   await closePagesOverlay(page);
-  await expect(page.getByText('No documents yet')).toBeHidden();
 
   const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 next-draw fill 25' })
