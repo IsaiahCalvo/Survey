@@ -29262,8 +29262,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [requireSpaceManagement]);
 
   const handleToggleCanvasAnnotations = useCallback((spaceId, pageId, value) => {
+    const liveSpace = (spacesRef.current || []).find((entry) => entry?.id === spaceId);
+    const livePage = liveSpace?.assignedPages?.find((page) => page.pageId === pageId);
+    const current = getPageAnnotationVisibilityState(livePage).canvasVisible;
+    if (current === value) {
+      return;
+    }
+    // Sibling of handleSpaceRenamePage: the light-bulb was setSpaces-only, so
+    // Ctrl+Z after Hide rewound the last space:update (drawn region) instead
+    // of the page-level canvas visibility flag. Checkpoint only on a flip.
+    addHistoryCheckpoint('space:update', {
+      spaceId,
+      pageId,
+      updateKeys: ['assignedPages']
+    });
     setPageAnnotationVisibilityState(spaceId, pageId, { canvasVisible: value });
-  }, [setPageAnnotationVisibilityState]);
+  }, [addHistoryCheckpoint, setPageAnnotationVisibilityState]);
 
   const handleToggleSurveyAnnotations = useCallback((spaceId, pageId, value) => {
     setPageAnnotationVisibilityState(spaceId, pageId, { surveyVisible: value });
