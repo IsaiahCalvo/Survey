@@ -303,28 +303,26 @@ test('Templates template-list reorder + checklist item reorder', async ({ page }
   await expandCategory(page, 'Cameras');
   expect(await itemNamesInCategory(page, 'Cameras')).toEqual(itemSavedOrder);
 
-  // 390 chrome
+  // 390 chrome — Space on a list row opens the template (role=button),
+  // so list reorder is pointer-only. Item handles live in the detail.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.templates-mobile-browser')).toBeVisible({ timeout: 15_000 });
 
   const mobileListHandles = await page.locator('.templates-mobile-browser [data-drag-rearrange-handle]').count();
   let mobileListReordered = false;
   let mobileItemHandles = 0;
   let mobileItemReordered = false;
-  const mobileSecurity = page.locator('.templates-mobile-row').filter({ hasText: 'Security Walk-Through' }).first();
-  const mobileMep = page.locator('.templates-mobile-row').filter({ hasText: 'MEP As-Built Markup' }).first();
+  const mobileSecurity = page.locator('.templates-mobile-browser .templates-mobile-row').filter({ hasText: 'Security Walk-Through' }).first();
+  const mobileMep = page.locator('.templates-mobile-browser .templates-mobile-row').filter({ hasText: 'MEP As-Built Markup' }).first();
   if (mobileListHandles >= 2 && await mobileSecurity.isVisible().catch(() => false)) {
-    const before = await page.locator('.templates-mobile-row strong').evaluateAll((nodes) => (
+    const before = await page.locator('.templates-mobile-browser .templates-mobile-row strong').evaluateAll((nodes) => (
       nodes.filter((el) => el.offsetParent).map((el) => el.textContent.trim())
     ));
     const secHandle = mobileSecurity.locator('[data-drag-rearrange-handle]');
-    try {
-      await keyboardMoveHandle(page, secHandle, { direction: 'down' });
-    } catch {
-      await pointerDragHandleTo(page, secHandle, mobileMep);
-    }
-    const after = await page.locator('.templates-mobile-row strong').evaluateAll((nodes) => (
+    await pointerDragHandleTo(page, secHandle, mobileMep);
+    const after = await page.locator('.templates-mobile-browser .templates-mobile-row strong').evaluateAll((nodes) => (
       nodes.filter((el) => el.offsetParent).map((el) => el.textContent.trim())
     ));
     mobileListReordered = JSON.stringify(after) !== JSON.stringify(before) && after.includes('Security Walk-Through');
@@ -332,7 +330,8 @@ test('Templates template-list reorder + checklist item reorder', async ({ page }
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  const mobileRow = page.locator('.templates-mobile-row').filter({ hasText: 'Security Walk-Through' }).first();
+  await expect(page.locator('.templates-mobile-browser')).toBeVisible({ timeout: 15_000 });
+  const mobileRow = page.locator('.templates-mobile-browser .templates-mobile-row').filter({ hasText: 'Security Walk-Through' }).first();
   if (await mobileRow.isVisible().catch(() => false)) {
     await mobileRow.evaluate((row) => row.click());
     await expect(page.locator('.templates-mobile-detail')).toBeVisible({ timeout: 15_000 });
