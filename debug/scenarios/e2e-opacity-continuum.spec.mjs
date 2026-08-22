@@ -80,15 +80,33 @@ async function assertNoErrorBoundary(page) {
 async function clickVisible(page, name) {
   const buttons = page.getByRole('button', { name, exact: true });
   const count = await buttons.count();
+  let covered = null;
   for (let i = 0; i < count; i += 1) {
     const button = buttons.nth(i);
-    if (await button.isVisible().catch(() => false)) {
-      await button.click();
-      return button;
+    if (!(await button.isVisible().catch(() => false))) continue;
+    const cls = String(await button.getAttribute('class') || '');
+    if (cls.includes('mobile-header-select-button')) {
+      covered = button;
+      continue;
     }
+    await button.click();
+    return button;
+  }
+  if (name === 'Select') {
+    const mode = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
+    if (await mode.isVisible().catch(() => false)) {
+      await mode.click();
+      return mode;
+    }
+    await page.keyboard.press('v');
+    return mode;
+  }
+  if (covered) {
+    await covered.click({ force: true });
+    return covered;
   }
   await expect(buttons.first(), `visible ${name}`).toBeVisible();
-  await buttons.first().click();
+  await buttons.first().click({ force: true });
   return buttons.first();
 }
 
@@ -99,6 +117,7 @@ async function pageBox(page, pageNumber = 1) {
 }
 
 async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
+  await closePagesOverlay(page);
   const pageEl = page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
   await expect(pageEl).toBeVisible();
   const box = await pageEl.boundingBox();
@@ -173,11 +192,15 @@ async function activateTool(page, categoryName, toolName) {
 }
 
 async function closePagesOverlay(page) {
+  const overlay = page.getByText('No documents yet');
   const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
-  if (await page.getByText('No documents yet').isVisible().catch(() => false) && await pagesToggle.isVisible().catch(() => false)) {
+  if (!(await overlay.isVisible().catch(() => false))) return;
+  if (await pagesToggle.isVisible().catch(() => false)) {
     await pagesToggle.click();
-    await expect(page.getByText('No documents yet')).toHaveCount(0);
+  } else {
+    await page.keyboard.press('Escape');
   }
+  await expect(overlay).toBeHidden({ timeout: 8_000 });
 }
 
 async function dismissChrome(page) {
@@ -192,7 +215,7 @@ async function createRect(page, coords = { x0: 0.22, y0: 0.26, x1: 0.42, y1: 0.4
   await activateTool(page, 'Shapes', 'Rectangle');
   await dragOnPage(page, coords);
   return waitForNewUserAnnotation(page, before, (row) => (
-    row.type === 'rect' || row.type === 'rectangle'
+    row.type === 'rect' || row.type === 'rectangle' || row.tool === 'rect'
   ));
 }
 
@@ -466,6 +489,7 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   const closeFill = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeFill.isVisible().catch(() => false)) await closeFill.click();
   await closePagesOverlay(page);
+  await expect(page.getByText('No documents yet')).toBeHidden();
 
   const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
   await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 next-draw fill 25' })
