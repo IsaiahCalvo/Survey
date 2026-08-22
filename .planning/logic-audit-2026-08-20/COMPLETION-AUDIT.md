@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Leftover-18 still blocks `/goal` complete. Uncertain = not achieved. Save / export / import / recursive E2E until no issues remain is still the standing objective — not “96 IDs + leftover-18 parked”.
 
-**This-pass (2026-08-22 survey-marker delete chrome):** unique leftover after placed handle drag. Live `e2e-survey-marker-delete.spec.mjs` **1 / 1 (6.2s)**. Node **3 / 3**. No product bug. Receipt `fix-logs/survey-marker-delete-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-22 Templates entity color):** unique leftover after Spaces space-card Delete. Live `e2e-templates-entity-color.spec.mjs` **1 / 1 (4.3s)**. Node **3 / 3**. Product: dirty-bar Cancel/Save passthrough. Receipt `fix-logs/templates-entity-color-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-22 survey-marker delete chrome):** unique leftover after placed handle drag. Live `e2e-survey-marker-delete.spec.mjs` **1 / 1 (6.2s)**. Node **3 / 3**. No product bug. Receipt `fix-logs/survey-marker-delete-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-22 survey-marker handle drag):** unique leftover after counter nubbin. Live `e2e-survey-marker-handle-drag.spec.mjs` **1 / 1 (9.2s)**. Node **3 / 3**. Product: rotation stem no longer covers `mt`. Receipt `fix-logs/survey-marker-handle-drag-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 

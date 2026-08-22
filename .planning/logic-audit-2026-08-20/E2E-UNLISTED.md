@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Spaces space-card Delete):** U-02 leftover (not a new UL row). Live desktop + 390 `space-card-delete-button` + confirm / `handleDelete` / `onSpaceDelete`. Cluster / Edit-region last-space delete was contrast only. Distinct from region-row Delete, leftover-18 Space CSV / PDF Pages, and from Create space. Receipt `fix-logs/spaces-card-delete-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Templates entity color):** U-03 leftover (not a new UL row). Live desktop + 390 `aria-label="Edit color"` / `setEntityColor` / CompactColorPicker. Distinct from viewer every-swatch, leftover-18 Space CSV / PDF Pages, and from Spaces space-card Delete. Product: dirty-bar Cancel/Save passthrough. Receipt `fix-logs/templates-entity-color-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Spaces space-card Delete):** U-02 leftover (not a new UL row). Live desktop + 390 `space-card-delete-button` + confirm / `handleDelete` / `onSpaceDelete`. Cluster / Edit-region last-space delete was contrast only. Distinct from region-row Delete, leftover-18 Space CSV / PDF Pages, and from Create space. Receipt `fix-logs/spaces-card-delete-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Spaces Create space):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Create space"` / `handleCreateSpace` / `handleSpaceCreate`. Cluster / context-menu only minted Space 1/2 after isolated clicks. Distinct from space-name rename, leftover-18 Space CSV / PDF Pages, and from space-card Delete. Receipt `fix-logs/spaces-create-space-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
