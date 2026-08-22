@@ -69,7 +69,7 @@ IDs: pinA `014a17a2-…`, orbit pin `32334c7c-…`, pinB `beb7dc9f-…`, place-S
 | Second counter | **pass** | Growing pinB left pinA unchanged. |
 | 390 same nubbin | **pass** | Handle count **1**; svgAngle Δ **94.083**. No pause-orbit. |
 
-No `file.id`. No error boundary. SVG default. Cap **8448** not loosened.
+No `file.id`. No error boundary. SVG default. Official `npm test` after SVGAnnotationLayer: `counterNubbinOrbit.test.mjs` **3 / 3**. Suite exit 1 on unrelated `pageOperationsQueueMounted.test.mjs` (`Cannot find module '/tmp/utils/pageContextOps.js'`). Cap **8448** not loosened.
 
 ## Classification after this pass
 

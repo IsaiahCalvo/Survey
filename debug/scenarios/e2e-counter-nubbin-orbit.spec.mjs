@@ -396,7 +396,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   const mobileHandleCount = await page.locator('[data-counter-nubbin-handle="true"]').count();
   expect(mobileHandleCount, '390 has the same nubbin').toBeGreaterThan(0);
   const preMobile = await counterGeom(page, mobilePin.id);
-  await dragNubbin(page, 40, -28);
+  await dragNubbin(page, 72, -48);
   let afterMobile = null;
   await expect.poll(async () => {
     afterMobile = await counterGeom(page, mobilePin.id);
