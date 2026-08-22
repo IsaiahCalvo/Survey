@@ -197,32 +197,33 @@ test('Projects extras Search / Pin / Duplicate / file Copy-Paste intended + brea
   await expect(fileRow(page, DOOR)).toBeVisible();
   await expect(desktopLayout(page).getByText(SE011_COPY)).toHaveCount(0);
 
-  // 390: Search + Select Duplicate + Pin.
+  // 390: Search + Select Duplicate + Pin. Hidden desktop rows stay in DOM.
   await openHub(page, { width: 390, height: 844 });
-  await expect(page.getByText(TOWER).first()).toBeVisible({ timeout: 15_000 });
-  const mobileSearch = page.locator('input[placeholder="Search projects..."]');
+  const mobileRow = (id) => page.locator(`.projects-mobile-folder-row[data-project-id="${id}"]`);
+  await expect(mobileRow('p1')).toBeVisible({ timeout: 15_000 });
+  const mobileSearch = page.getByPlaceholder('Search projects...').locator('visible=true');
   await expect(mobileSearch).toBeVisible();
   await mobileSearch.fill('mep');
-  await expect(page.getByText(MEP).first()).toBeVisible();
-  await expect(page.getByText(TOWER)).toHaveCount(0);
+  await expect(mobileRow('p3')).toBeVisible();
+  await expect(mobileRow('p1')).toHaveCount(0);
   await mobileSearch.fill('');
-  await expect(page.getByText(TOWER).first()).toBeVisible();
+  await expect(mobileRow('p1')).toBeVisible();
   await page.locator('h1.title').click();
 
-  const mobileSelect = page.getByTestId('project-select-toggle');
+  const mobileSelect = page.getByTestId('project-select-toggle').locator('visible=true');
   await mobileSelect.click();
-  const mobileDup = page.getByRole('button', { name: 'Duplicate', exact: true });
+  const mobileDup = page.getByRole('button', { name: 'Duplicate', exact: true }).locator('visible=true');
   await expect(mobileDup).toBeDisabled();
-  await page.locator('[data-project-id="p3"]').first().click();
+  await mobileRow('p3').click();
   await expect(mobileDup).toBeEnabled();
   await mobileDup.click();
-  await expect(page.getByText('MEP Phase 2 (copy)').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.locator('.projects-mobile-folder-row').filter({ hasText: 'MEP Phase 2 (copy)' })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).locator('visible=true').click();
 
-  await page.locator('[data-project-id="p2"]').locator('button[title="More"]').click();
+  await mobileRow('p2').getByRole('button', { name: 'More' }).click();
   await expect(page.getByRole('menuitem', { name: 'Pin project', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Pin project', exact: true }).click();
-  await expect(page.locator('[data-project-id="p2"] [title="Pinned"]')).toBeVisible();
+  await expect(mobileRow('p2').locator('[title="Pinned"]')).toBeVisible();
 
   await assertNoErrorBoundary(page);
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
