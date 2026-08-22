@@ -10,7 +10,7 @@ const viewerSource = readFileSync(
 test('toolbar publishes synchronous pen and eraser width drafts instead of stale effect state', () => {
   assert.match(
     viewerSource,
-    /Mirror only the tool discriminator before paint[\s\S]*?useLayoutEffect\(\(\) => \{[\s\S]*?current\.activeTool === activeTool[\s\S]*?activeTool,\s*strokeWidthInputValue: strokeWidthInputValueRef\.current,\s*eraserSizeInputValue: eraserSizeInputValueRef\.current/,
+    /Mirror those discriminators before paint[\s\S]*?useLayoutEffect\(\(\) => \{[\s\S]*?current\.activeTool === activeTool && current\.eraserMode === eraserMode[\s\S]*?activeTool,\s*eraserMode,\s*strokeWidthInputValue: strokeWidthInputValueRef\.current,\s*eraserSizeInputValue: eraserSizeInputValueRef\.current/,
   );
   assert.match(
     viewerSource,
