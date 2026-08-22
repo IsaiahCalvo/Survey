@@ -192,9 +192,32 @@ async function strokeClick(page, id, { modifiers = [] } = {}) {
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + 2, box.y + box.height / 2, {
-    modifiers,
-  });
+  // Transparent fill is stroke-only. Try left / top / right / bottom edges.
+  // `modifiers` on mouse.click does not reliably set e.shiftKey on the SVG
+  // pointer path — hold the key like the adversarial Shift-click specs.
+  const points = [
+    { x: box.x + 2, y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + Math.max(2, box.width / 2), y: box.y + 2 },
+    { x: box.x + Math.max(3, box.width - 3), y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + Math.max(2, box.width / 2), y: box.y + Math.max(3, box.height - 3) },
+  ];
+  const before = (await selectedIds(page)).includes(id);
+  for (const key of modifiers) await page.keyboard.down(key);
+  try {
+    for (const point of points) {
+      await page.mouse.click(point.x, point.y);
+      try {
+        await expect.poll(async () => (await selectedIds(page)).includes(id), {
+          timeout: 700,
+        }).not.toBe(before);
+        return;
+      } catch {
+        // This edge missed the stroke; try the next.
+      }
+    }
+  } finally {
+    for (const key of [...modifiers].reverse()) await page.keyboard.up(key);
+  }
 }
 
 async function groupOverlayCount(page) {
