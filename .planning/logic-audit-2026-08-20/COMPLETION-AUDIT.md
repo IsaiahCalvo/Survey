@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Leftover-18 still blocks `/goal` complete. Uncertain = not achieved. Save / export / import / recursive E2E until no issues remain is still the standing objective — not “96 IDs + leftover-18 parked”.
 
-**This-pass (2026-08-22 counter nubbin / Shift-orbit):** unique leftover after bbox edit mode. Live `e2e-counter-nubbin-orbit.spec.mjs` **1 / 1 (9.9s)**. Node **3 / 3**. Product: nubbin pointerup now commits `pointerAngle`. Receipt `fix-logs/counter-nubbin-orbit-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-22 survey-marker handle drag):** unique leftover after counter nubbin. Live `e2e-survey-marker-handle-drag.spec.mjs` **1 / 1 (9.2s)**. Node **3 / 3**. Product: rotation stem no longer covers `mt`. Receipt `fix-logs/survey-marker-handle-drag-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-22 counter nubbin / Shift-orbit):** unique leftover after bbox edit mode. Live `e2e-counter-nubbin-orbit.spec.mjs` **1 / 1 (9.9s)**. Node **3 / 3**. Product: nubbin pointerup now commits `pointerAngle`. Receipt `fix-logs/counter-nubbin-orbit-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-22 bbox edit mode):** unique leftover after vertex-N. Live `e2e-bbox-edit-mode.spec.mjs` **1 / 1 (10.8s)**. Node **3 / 3**. No product bug. Receipt `fix-logs/bbox-edit-mode-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 

@@ -46,9 +46,9 @@ Exact discrete catalogs used by the UI:
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
 | C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets | Counter number color; armed tool vs selection |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
-| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04. Polygon/polyline `vertex-N` is X-04. Double-click / 390-strip bbox mode live `e2e-bbox-edit-mode.spec.mjs` | Rotated; text wrap height; Pen exits bbox |
-| E-02 | Edit | Rotation | Handle + numeric + Shift 45°. Counter nubbin / Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs` | Off-screen handle; 0/90/180/270; Shift-click toggle ≠ orbit |
-| E-03 | Edit | Move | Drag selected | Multi-select; snap |
+| E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04. Polygon/polyline `vertex-N` is X-04. Double-click / 390-strip bbox mode live `e2e-bbox-edit-mode.spec.mjs`. Placed survey-marker 8 handles live `e2e-survey-marker-handle-drag.spec.mjs` | Rotated; text wrap height; Pen exits bbox |
+| E-02 | Edit | Rotation | Handle + numeric + Shift 45°. Counter nubbin / Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs`. Survey-marker `mtr` live `e2e-survey-marker-handle-drag.spec.mjs` | Off-screen handle; 0/90/180/270; Shift-click toggle ≠ orbit |
+| E-03 | Edit | Move | Drag selected. Survey-marker body live `e2e-survey-marker-handle-drag.spec.mjs` | Multi-select; snap |
 | E-04 | Edit | Delete | Backspace / context | Last owner; remote delete |
 | E-05 | Edit | Undo / redo | Cmd+Z / Shift+Z | Collab foreign edits |
 | E-06 | Edit | Context menu | Right-click actions | Callout vs text vs counter |
@@ -58,7 +58,7 @@ Exact discrete catalogs used by the UI:
 | X-04 | Import | PDF annotations | Open foreign PDF. Imported polygon/polyline single-click `vertex-N` live `e2e-poly-vertex-handles.spec.mjs`. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs` | Unsupported Stamp; no create-poly tool; rotated page |
 | X-05 | Forms | Form field values | Export/print filled fields | Hidden Forms category |
 | X-06 | Excel | Export / apply changeset | Sheet sync | Identity SQL; CORS `*` intentional |
-| U-01 | Survey | Survey rail / modules | Stamp + filter. **Previous/Next module** is its own navigator (not Walls). **Keep active** + **Survey notes** live `e2e-survey-keep-notes-page-ctx.spec.mjs` | Empty template; KAL-436; first/last disabled; Keep off clears category |
+| U-01 | Survey | Survey rail / modules | Stamp + filter. **Previous/Next module** is its own navigator (not Walls). **Keep active** + **Survey notes** live `e2e-survey-keep-notes-page-ctx.spec.mjs`. Placed-marker handle drag live `e2e-survey-marker-handle-drag.spec.mjs` | Empty template; KAL-436; first/last disabled; Keep off clears category |
 | U-02 | Survey | Spaces / regions | Overlay + stamp | Region off; last space |
 | U-03 | Survey | Templates | Editor + overwrite warn | Color on entities |
 | U-04 | Survey | Checklists | Archive / complete | Empty |

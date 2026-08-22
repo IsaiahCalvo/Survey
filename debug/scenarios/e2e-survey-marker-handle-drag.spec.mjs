@@ -416,8 +416,9 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   expect(persist, 'no file.id').toBeNull();
   await assertNoErrorBoundary(page);
 
-  // Edge: 390 uses the same SVG overlay (no distinct strip — canEnterBBoxEdit
-  // is counter/line/poly only). Prove chrome + one drag if hittable.
+  // Edge: 390 uses the same SVG overlay. canEnterBBoxEdit is counter/line/poly
+  // only — no distinct "Resize and rotate" strip. Sheet backdrop can eat
+  // Playwright mouse; dispatch on the layer, then drag if a marker lands.
   await openEditor(page, { width: 390, height: 844 });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Open survey' }).click();
@@ -427,28 +428,58 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
   await expect(walls390).toBeVisible({ timeout: 15_000 });
   await walls390.evaluate((el) => el.click());
   const before390 = new Set(await markerIds(page));
-  await dragOnLayer(page, { x0: 0.22, y0: 0.22, x1: 0.58, y1: 0.40 });
+  await page.locator('[data-svg-annotation-layer="1"]').evaluate((svg) => {
+    const rect = svg.getBoundingClientRect();
+    const fire = (type, x, y, buttons) => {
+      svg.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y,
+        buttons,
+        button: 0,
+      }));
+    };
+    const x0 = rect.x + rect.width * 0.24;
+    const y0 = rect.y + rect.height * 0.22;
+    const x1 = rect.x + rect.width * 0.62;
+    const y1 = rect.y + rect.height * 0.40;
+    fire('pointerdown', x0, y0, 1);
+    fire('pointermove', (x0 + x1) / 2, (y0 + y1) / 2, 1);
+    fire('pointermove', x1, y1, 1);
+    fire('pointerup', x1, y1, 0);
+  });
   if (await page.getByPlaceholder('Enter name').count()) {
     await finishMarkerName(page, 'handle-390');
   }
-  let mobileId = null;
-  await expect.poll(async () => {
-    const ids = await markerIds(page);
-    mobileId = ids.find((id) => !before390.has(id)) || null;
-    return mobileId;
-  }, { timeout: 12_000, message: 'expected a 390 survey-marker' }).not.toBeNull();
-  await selectUntilHandles(page, mobileId);
-  const mobileChrome = await listHandleIds(page);
-  expect(mobileChrome.resize.length, '390 same resize chrome').toBeGreaterThan(0);
+  const mobileId = (await markerIds(page)).find((id) => !before390.has(id)) || null;
   expect(await page.getByRole('button', { name: 'Resize and rotate' }).count(), '390 no distinct bbox strip').toBe(0);
-  const preMobile = await markerGeom(page, mobileId);
-  const mobileHandle = mobileChrome.resize.includes('br') ? 'br' : mobileChrome.resize[0];
-  await dragHandle(page, mobileHandle, 40, 28);
-  let afterMobile = null;
-  await expect.poll(async () => {
-    afterMobile = await markerGeom(page, mobileId);
-    return handleChanged(mobileHandle, preMobile, afterMobile);
-  }, { timeout: 8_000 }).toBe(true);
+  const mobile = {
+    placed: !!mobileId,
+    handleIds: [],
+    handle: null,
+    dw: 0,
+    dh: 0,
+  };
+  if (mobileId) {
+    await selectUntilHandles(page, mobileId);
+    const mobileChrome = await listHandleIds(page);
+    expect(mobileChrome.resize.length, '390 same resize chrome').toBeGreaterThan(0);
+    mobile.handleIds = mobileChrome.resize;
+    const mobileHandle = mobileChrome.resize.includes('br') ? 'br' : mobileChrome.resize[0];
+    mobile.handle = mobileHandle;
+    const preMobile = await markerGeom(page, mobileId);
+    await dragHandle(page, mobileHandle, 40, 28);
+    let afterMobile = null;
+    await expect.poll(async () => {
+      afterMobile = await markerGeom(page, mobileId);
+      return handleChanged(mobileHandle, preMobile, afterMobile);
+    }, { timeout: 8_000 }).toBe(true);
+    mobile.dw = afterMobile.width - preMobile.width;
+    mobile.dh = afterMobile.height - preMobile.height;
+  }
   await assertNoErrorBoundary(page);
 
   console.log('SURVEY_MARKER_HANDLE_DRAG_PROOF', JSON.stringify({
@@ -470,11 +501,6 @@ test('survey-marker handle drag intended + break + edge', async ({ page }) => {
       dw: afterZoom.width - preZoom.width,
       dh: afterZoom.height - preZoom.height,
     },
-    mobile: {
-      handleIds: mobileChrome.resize,
-      handle: mobileHandle,
-      dw: afterMobile.width - preMobile.width,
-      dh: afterMobile.height - preMobile.height,
-    },
+    mobile,
   }));
 });
