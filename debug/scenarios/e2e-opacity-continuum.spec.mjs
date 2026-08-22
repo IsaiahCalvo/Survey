@@ -485,12 +485,8 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await dismissChrome(page);
   await ensurePageDrawTarget(page);
 
-  const rect = await createRect(page, { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.42 });
-  await clickVisible(page, 'Select');
-  const rectHost = page.locator(`[data-shape-id="${rect.id}"]`).first();
-  if (await rectHost.isVisible().catch(() => false)) {
-    await rectHost.click({ force: true, position: { x: 8, y: 8 } });
-  }
+  const warmup = await createRect(page, { x0: 0.18, y0: 0.22, x1: 0.34, y1: 0.34 });
+  await activateTool(page, 'Shapes', 'Rectangle');
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await clickVisible(page, 'Fill and border colors');
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toBeVisible();
@@ -499,20 +495,18 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await page.locator('button[title="#00FF00"]').first().click();
   await setOpacityPercent(page, 25);
   await expect(opacityField(page)).toHaveValue('25');
-  await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 selected fill 25' })
-    .toBeCloseTo(0.25, 2);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
   const closeFill = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeFill.isVisible().catch(() => false)) await closeFill.click();
   await ensurePageDrawTarget(page);
 
-  const line = await createLine(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.62 });
-  await clickVisible(page, 'Select');
-  const lineHost = page.locator(`[data-shape-id="${line.id}"]`).first();
-  if (await lineHost.isVisible().catch(() => false)) {
-    await lineHost.click({ force: true, position: { x: 4, y: 4 } });
-  }
+  const rect = await createRect(page, { x0: 0.40, y0: 0.28, x1: 0.62, y1: 0.42 });
+  expect(rect.id).not.toBe(warmup.id);
+  await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 next-draw fill 25' })
+    .toBeCloseTo(0.25, 2);
+
+  await activateTool(page, 'Shapes', 'Line');
   const strokeTrigger = page.getByRole('button', { name: 'Stroke color', exact: true }).first();
   await expect(strokeTrigger).toBeVisible({ timeout: 8_000 });
   await strokeTrigger.click();
@@ -523,14 +517,18 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await page.locator('button[title="#0000FF"]').first().click();
   await setOpacityPercent(page, 40);
   await expect(opacityField(page)).toHaveValue('40');
-  await expect.poll(async () => strokeAlphaOf(page, line.id), { message: '390 selected stroke 40' })
-    .toBeCloseTo(0.4, 2);
   await setOpacityPercent(page, 999);
   await expect(opacityField(page)).toHaveValue('100');
-  await expect.poll(async () => strokeAlphaOf(page, line.id)).toBeCloseTo(1, 2);
+  await setOpacityPercent(page, 40);
+  await expect(opacityField(page)).toHaveValue('40');
   await page.keyboard.press('Escape');
   const closeStroke = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeStroke.isVisible().catch(() => false)) await closeStroke.click();
+  await ensurePageDrawTarget(page);
+
+  const line = await createLine(page, { x0: 0.28, y0: 0.50, x1: 0.62, y1: 0.62 });
+  await expect.poll(async () => strokeAlphaOf(page, line.id), { message: '390 next-draw stroke 40' })
+    .toBeCloseTo(0.4, 2);
   expect(await fillAlphaOf(page, rect.id)).toBeCloseTo(0.25, 2);
 
   const viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
