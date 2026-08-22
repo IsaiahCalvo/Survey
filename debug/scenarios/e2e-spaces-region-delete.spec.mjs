@@ -15,7 +15,22 @@ async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } =
     try { localStorage.removeItem('survey_document_history_events_v1'); } catch { /* ignore */ }
   });
   await page.setViewportSize({ width, height });
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || error);
+      if (!/ERR_ABORTED|interrupted|destroyed/i.test(message) || attempt === 2) {
+        throw error;
+      }
+      await page.waitForTimeout(400);
+    }
+  }
+  if (lastError) throw lastError;
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"]')).toBeVisible();
