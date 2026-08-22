@@ -64,7 +64,7 @@ Exact discrete catalogs used by the UI:
 | U-04 | Survey | Checklists | Archive / complete | Empty |
 | A-01 | Auth | Sign in / captcha | Password + Turnstile | Guest upload block; auto-login |
 | A-02 | Auth | Microsoft / OneDrive | MSAL + Graph | Reconnect; Electron `file://` |
-| A-03 | Share | Invites + roles | Owner/Editor/Commenter/Viewer | Last owner; expired invite |
+| A-03 | Share | Invites + roles | Owner/Editor/Commenter/Viewer. Hub Projects **Team write** hubPreview fail-closed live `e2e-hub-projects-thin-chrome.spec.mjs` (no invented mint). File Select Move/Copy + project card reorder are local hub chrome on the same spec (not leftover-18). | Last owner; expired invite; signed-in writeback leftover-18 |
 | A-04 | Account | Account settings | Profile / password | Overlap; notifications |
 | A-05 | Account | Billing | Checkout / portal | CORS `*` must stay |
 | A-06 | Collab | Presence / re-sign-in | Roster + banner | Access removed; outbox retry |
