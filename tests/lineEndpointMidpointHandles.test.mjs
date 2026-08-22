@@ -106,4 +106,8 @@ test('SVG + hook: p1/p2/midpoint wiring; no callout mid-edge; viewBox owns zoom'
   assert.match(hook, /mode: 'endpoint'/);
   assert.match(hook, /originalMidpoint/);
   assert.match(hook, /shouldRevertEndpointCurve|shouldSnapToLinear/);
+
+  assert.match(layer, /onPointerDown=\{\(e\) => \{ e\.stopPropagation\(\); handleHandlePointerDown\(e, 'p1'\)/);
+  assert.match(layer, /onPointerDown=\{\(e\) => \{ e\.stopPropagation\(\); handleHandlePointerDown\(e, 'p2'\)/);
+  assert.match(layer, /onPointerDown=\{\(e\) => \{ e\.stopPropagation\(\); handleHandlePointerDown\(e, 'midpoint'\)/);
 });

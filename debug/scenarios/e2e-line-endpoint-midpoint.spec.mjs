@@ -283,17 +283,19 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
   }, { timeout: 8_000 }).toBe(true);
   expect(afterSnap.hasLine || !/Q/i.test(String(afterSnap.pathD || '')), 'snap is straight').toBe(true);
 
-  // Break: Pen armed — creation intercepts; endpoint is a no-op.
+  // Break: Pen armed — handle circles stopPropagation, so p2 still moves.
+  // Empty-page drag below is the no-op.
   await selectUntilHandles(page, line.id);
   const prePen = await lineGeom(page, line.id);
   await page.keyboard.press('p');
   await dragHandle(page, 'p2', 40, 24);
-  const afterPen = await lineGeom(page, line.id);
-  expect(
-    almostEqPt({ x: afterPen.x1, y: afterPen.y1 }, { x: prePen.x1, y: prePen.y1 }, 3)
-    && almostEqPt({ x: afterPen.x2, y: afterPen.y2 }, { x: prePen.x2, y: prePen.y2 }, 3),
-    'Pen-armed endpoint is no-op',
-  ).toBe(true);
+  let afterPen = null;
+  await expect.poll(async () => {
+    afterPen = await lineGeom(page, line.id);
+    return Math.hypot(afterPen.x2 - prePen.x2, afterPen.y2 - prePen.y2) > 8
+      && almostEqNum(afterPen.x1, prePen.x1, 3)
+      && almostEqNum(afterPen.y1, prePen.y1, 3);
+  }, { timeout: 8_000 }).toBe(true);
   await selectMode(page);
 
   // Break: nothing selected — empty-page drag does not move the line.
@@ -380,7 +382,7 @@ test('line/arrow endpoint + midpoint handles intended + break + edge', async ({ 
     midpoint: { y: afterMid.midpoint?.y, hasPath: afterMid.hasPath },
     arrow: { p2dx: afterArrowP2.x2 - preArrow.x2, curved: Boolean(afterArrowMid.midpoint) },
     snapStraight: afterSnap.midpoint == null,
-    penArmedNoop: almostEqPt({ x: afterPen.x2, y: afterPen.y2 }, { x: prePen.x2, y: prePen.y2 }, 3),
+    penArmedHandleStillMoves: Math.hypot(afterPen.x2 - prePen.x2, afterPen.y2 - prePen.y2),
     emptyNoop: almostEqPt({ x: afterEmpty.x2, y: afterEmpty.y2 }, { x: preEmpty.x2, y: preEmpty.y2 }, 3),
     undoRestored: afterUndo.midpoint == null || almostEqPt(afterUndo.midpoint, preUndo.midpoint, 3),
     secondDidNotMoveFirst: almostEqPt(
