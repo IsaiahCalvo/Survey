@@ -155,6 +155,11 @@ async function annotationById(page, id) {
 }
 
 async function dismissChrome(page) {
+  const search = page.getByPlaceholder('Search text in PDF...');
+  if (await search.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Search text', exact: true }).click();
+    await expect(search).toHaveCount(0);
+  }
   await page.keyboard.press('Escape');
   await page.waitForTimeout(80);
   await page.keyboard.press('Escape');
@@ -166,8 +171,18 @@ async function dismissChrome(page) {
 }
 
 async function selectMode(page) {
+  const search = page.getByPlaceholder('Search text in PDF...');
+  if (await search.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Search text', exact: true }).click();
+    await expect(search).toHaveCount(0);
+  }
   await page.keyboard.press('Escape');
-  await page.keyboard.press('v');
+  const selectBtn = page.getByRole('button', { name: 'Selection mode', exact: true }).first();
+  if (await selectBtn.isVisible().catch(() => false)) {
+    await selectBtn.click();
+  } else {
+    await page.keyboard.press('v');
+  }
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) {
     await page.keyboard.press('Escape');
@@ -176,14 +191,16 @@ async function selectMode(page) {
 
 async function createCallout(page, text, coords = { x0: 0.18, y0: 0.24, x1: 0.42, y1: 0.40 }) {
   const before = new Set((await calloutSnapshot(page)).map((row) => row.id));
-  await page.keyboard.press('q');
+  await dismissChrome(page);
+  await activateTool(page, 'Text', 'Callout');
   await dragOnPage(page, coords);
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.click();
   await editor.pressSequentially(text, { delay: 6 });
   const created = await waitForNewCallout(page, before);
-  await page.mouse.click(12, 200);
+  const empty = await pageBox(page);
+  await page.mouse.click(empty.x + 12, empty.y + 12);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   await selectMode(page);
   return created;
@@ -212,14 +229,16 @@ async function selectCallout(page, id) {
 async function openColorPicker(page) {
   const trigger = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(trigger).toBeVisible({ timeout: 8_000 });
-  if (!(await page.getByRole('button', { name: 'Preset colors', exact: true }).isVisible().catch(() => false))) {
+  const picker = page.locator('[data-annotation-color-picker]');
+  if (!(await picker.isVisible().catch(() => false))) {
     await trigger.click();
   }
+  await expect(picker).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
 }
 
 async function clickTab(page, name) {
-  const tab = page.getByRole('button', { name, exact: true }).first();
+  const tab = page.locator('[data-annotation-color-picker]').getByRole('button', { name, exact: true });
   await expect(tab).toBeVisible();
   await tab.click();
 }
@@ -338,7 +357,8 @@ test('desktop Callout CompactColorPicker Fill + Border every swatch intended + b
   expect(first.id).not.toBe(second.id);
 
   // Intended: armed next-draw uses the Fill / Border tabs.
-  await page.keyboard.press('q');
+  await dismissChrome(page);
+  await activateTool(page, 'Text', 'Callout');
   await openColorPicker(page);
   await clickTab(page, 'Fill');
   await assertShapeTabs(page, { matchFill: false });
@@ -348,7 +368,8 @@ test('desktop Callout CompactColorPicker Fill + Border every swatch intended + b
   await expect.poll(async () => storedFill(await annotationById(page, nextFill.id))).toBe('#80FF00');
   expect(storedFill(await annotationById(page, first.id))).toBe('#FF0000');
 
-  await page.keyboard.press('q');
+  await dismissChrome(page);
+  await activateTool(page, 'Text', 'Callout');
   await openColorPicker(page);
   await clickTab(page, 'Border');
   await assertShapeTabs(page, { matchFill: false });
