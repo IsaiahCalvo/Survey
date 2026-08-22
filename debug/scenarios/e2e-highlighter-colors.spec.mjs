@@ -363,9 +363,11 @@ test('desktop Highlighter CompactColorPicker every swatch intended + break + edg
   expect(storedHighlighterColor(await annotationById(page, desktopProof[10].id))).toBe('#FFFF00');
 
   // Break: Select / empty page invents 0. Pen-armed Color must not clobber
-  // an already-drawn highlighter fill.
+  // an already-drawn highlighter fill. Desktop chrome can leave a covered
+  // header Select under the pdf.js surface — V is the live Select key.
   const beforeSelect = (await userAnnotationSnapshot(page)).length;
-  await clickVisible(page, 'Select');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
   const empty = await pageBox(page);
   await page.mouse.click(empty.x + 16, empty.y + 16);
   expect((await userAnnotationSnapshot(page)).length).toBe(beforeSelect);
