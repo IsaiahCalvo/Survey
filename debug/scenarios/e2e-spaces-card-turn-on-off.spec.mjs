@@ -349,28 +349,36 @@ test('U-02 space-card Turn on/off activates one space and locks pages', async ({
   const penClass = String(await pen.getAttribute('class') || '');
   expect(penClass.includes('btn-active'), 'Pen stays armed after Turn on/off').toBe(true);
 
-  // Edge: product does not checkpoint the toggle — undo pops space:update, not on/off.
+  // Edge: product does not checkpoint the toggle — undo pops space:update
+  // (Space 2 region confirm). The page row from Add pages stays. Toggle
+  // does not come back on.
   await clickToggle(turnOff(space2));
   await expect(turnOn(space2)).toBeVisible({ timeout: 8_000 });
   expect(await activeSpaceId(page)).toBeNull();
   await page.evaluate(() => document.activeElement?.blur?.());
-  await page.keyboard.press('Control+z');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await openSpaces(page);
   await expect(spaceCard(page, 'Space 1')).toBeVisible({ timeout: 8_000 });
   await expect(spaceCard(page, 'Space 2')).toBeVisible({ timeout: 8_000 });
-  // Last checkpoint is Space 2 region confirm (space:update), not the toggle.
-  await expect.poll(async () => regionRows(spaceCard(page, 'Space 2')).count(), {
-    timeout: 8_000,
-    message: 'undo rewinds Space 2 region, not Turn off',
-  }).toBe(0);
   expect(await overlayRoot(page).count(), 'undo does not restore overlay via toggle').toBe(0);
   expect(await turnOff(page).count(), 'undo does not turn a space back on').toBe(0);
-  await page.keyboard.press('Control+Shift+z');
+  expect(await activeSpaceId(page)).toBeNull();
+  // Add-pages row stays; the drawn region is what undo drops — Turn on toasts.
+  await expect(regionRows(spaceCard(page, 'Space 2'))).toHaveCount(1);
+  await clickToggle(turnOn(space2));
+  await expect(page.getByText(/no regions yet/i).first()).toBeVisible({ timeout: 8_000 });
+  await expect(turnOn(space2)).toBeVisible();
+  expect(await activeSpaceId(page), 'undone region cannot activate').toBeNull();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await openSpaces(page);
-  await expect.poll(async () => regionRows(spaceCard(page, 'Space 2')).count(), {
+  await expect(regionRows(spaceCard(page, 'Space 2'))).toHaveCount(1);
+  await clickToggle(turnOn(space2));
+  await expect(turnOff(space2)).toBeVisible({ timeout: 8_000 });
+  await expect.poll(async () => activeSpaceId(page), {
     timeout: 8_000,
-    message: 'redo restores Space 2 region row',
-  }).toBeGreaterThan(0);
+    message: 'redo restores the drawn region so Turn on works',
+  }).toBe(space2Id);
+  await expect(overlayRoot(page)).toBeVisible();
 
   const persist = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(persist, 'no file.id').toBeNull();
