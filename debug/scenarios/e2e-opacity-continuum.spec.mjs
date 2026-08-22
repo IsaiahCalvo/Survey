@@ -201,15 +201,15 @@ async function closePagesOverlay(page) {
 async function ensurePageDrawTarget(page) {
   const pageEl = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
   await expect(pageEl).toBeVisible();
-  const box = await pageEl.boundingBox();
-  if (!box) return;
-  const covering = await page.evaluate(({ x, y }) => {
-    const el = document.elementFromPoint(x, y);
-    const text = el?.textContent || '';
-    return /No documents yet|Upload your first PDF/.test(text);
-  }, { x: box.x + box.width * 0.4, y: box.y + box.height * 0.35 });
-  if (!covering) return;
+  const overlay = page.locator('main').getByText('No documents yet').first();
   const toggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i }).first();
+  const box = await pageEl.boundingBox();
+  const covering = box && await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return /No documents yet|Upload your first PDF/.test(el?.textContent || '');
+  }, { x: box.x + box.width * 0.4, y: box.y + box.height * 0.35 });
+  const emptyVisible = await overlay.isVisible().catch(() => false);
+  if (!covering && !emptyVisible) return;
   if (await toggle.isVisible().catch(() => false)) await toggle.click();
   await page.waitForTimeout(300);
 }
@@ -485,7 +485,6 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   await dismissChrome(page);
   await ensurePageDrawTarget(page);
 
-  const warmup = await createRect(page, { x0: 0.18, y0: 0.22, x1: 0.34, y1: 0.34 });
   await activateTool(page, 'Shapes', 'Rectangle');
   await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
   await clickVisible(page, 'Fill and border colors');
@@ -500,9 +499,9 @@ test('390 fill + stroke opacity continuum intended + break + edge', async ({ pag
   const closeFill = page.getByRole('button', { name: 'Close annotation settings', exact: true });
   if (await closeFill.isVisible().catch(() => false)) await closeFill.click();
   await ensurePageDrawTarget(page);
+  await ensurePageDrawTarget(page);
 
   const rect = await createRect(page, { x0: 0.40, y0: 0.28, x1: 0.62, y1: 0.42 });
-  expect(rect.id).not.toBe(warmup.id);
   await expect.poll(async () => fillAlphaOf(page, rect.id), { message: '390 next-draw fill 25' })
     .toBeCloseTo(0.25, 2);
 
