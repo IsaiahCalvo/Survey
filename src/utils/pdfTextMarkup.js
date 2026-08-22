@@ -164,6 +164,55 @@ export function createTextMarkupAnnotation({
   };
 }
 
+export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, pageWidth) {
+  if (annotation?.data?.type !== 'text-markup' || !['ml', 'mr'].includes(handleId)) return annotation;
+  const quads = Array.isArray(annotation.data.quads)
+    ? annotation.data.quads.map((quad) => ({ ...quad }))
+    : [];
+  if (quads.length === 0 || !Number.isFinite(Number(pointerX))) return annotation;
+
+  const edgeForQuad = (quad) => handleId === 'ml'
+    ? Math.min(Number(quad.x1), Number(quad.x3))
+    : Math.max(Number(quad.x2), Number(quad.x4));
+  const visibleEdge = quads.reduce((best, quad) => (
+    handleId === 'ml'
+      ? Math.min(best, edgeForQuad(quad))
+      : Math.max(best, edgeForQuad(quad))
+  ), handleId === 'ml' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+  const edgeTolerance = 0.001;
+  const edgeQuads = quads.filter((quad) => Math.abs(edgeForQuad(quad) - visibleEdge) <= edgeTolerance);
+  const pageRight = Number.isFinite(Number(pageWidth)) && Number(pageWidth) > 0
+    ? Number(pageWidth)
+    : Number.POSITIVE_INFINITY;
+  const minimumRangeWidth = 0.5;
+  if (handleId === 'ml') {
+    for (const quad of edgeQuads) {
+      const right = Math.min(Number(quad.x2), Number(quad.x4));
+      const nextLeft = round(Math.max(0, Math.min(Number(pointerX), right - minimumRangeWidth)));
+      quad.x1 = nextLeft;
+      quad.x3 = nextLeft;
+    }
+  } else {
+    for (const quad of edgeQuads) {
+      const left = Math.max(Number(quad.x1), Number(quad.x3));
+      const nextRight = round(Math.min(pageRight, Math.max(Number(pointerX), left + minimumRangeWidth)));
+      quad.x2 = nextRight;
+      quad.x4 = nextRight;
+    }
+  }
+
+  const bounds = quadBounds(quads);
+  if (!bounds) return annotation;
+  return {
+    ...annotation,
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+    data: { ...annotation.data, quads },
+  };
+}
+
 export function mapOcrBoxToPage(box, sourceSize, pageSize, rotation = 0) {
   if (!box || !sourceSize?.width || !sourceSize?.height || !pageSize?.width || !pageSize?.height) return null;
   const quad = {

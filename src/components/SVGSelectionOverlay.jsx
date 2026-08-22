@@ -50,6 +50,9 @@ const SVGSelectionOverlay = memo(({
   hideResizeHandles = false,
   hideRotationHandle = false,
   selectionGlowOnly = false,
+  // Text marks keep their line height and angle. These two side handles
+  // rewrite only the first/last selected text quad instead of scaling it.
+  horizontalResizeOnly = false,
 }) => {
   if (!bbox) return null;
 
@@ -151,7 +154,7 @@ const SVGSelectionOverlay = memo(({
       {!isGroupSelection && !moveOnly && !selectionGlowOnly && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
-          {!hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
+          {!horizontalResizeOnly && !hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <circle
@@ -177,7 +180,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Horizontal pills (mt, mb) */}
-          {!hideResizeHandles && ['mt', 'mb'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
+          {!horizontalResizeOnly && !hideResizeHandles && ['mt', 'mb'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <rect
@@ -205,12 +208,13 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Vertical pills (ml, mr) */}
-          {!hideResizeHandles && ['ml', 'mr'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
+          {!hideResizeHandles && ['ml', 'mr'].filter((id) => horizontalResizeOnly || visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <rect
                 key={`pill-${id}`}
                 data-resize-handle={id}
+                data-text-range-handle={horizontalResizeOnly ? id : undefined}
                 x={pos.x - vPillW / 2}
                 y={pos.y - vPillH / 2}
                 width={vPillW}
@@ -233,7 +237,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Rotation handle (mtr) */}
-          {!hideRotationHandle && (
+          {!horizontalResizeOnly && !hideRotationHandle && (
           <g className="rotation-handle" data-rotation-handle="mtr">
             {/* Connector line from top-center of bbox to rotation handle */}
             <line

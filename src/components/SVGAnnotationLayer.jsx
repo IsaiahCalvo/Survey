@@ -482,7 +482,7 @@ const SVGAnnotationLayer = memo(({
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
     handleSvgPointerDown, handleHandlePointerDown,
-    handlePointerMove, handlePointerUp,
+    handlePointerMove, handlePointerUp, handlePointerCancel,
     isSelected, deleteSelected,
     // UX: 2026-04-20 — multi-index selection setter, used by the Ungroup
     // restore path so freed group members stay selected as a multi-set.
@@ -3860,6 +3860,7 @@ const SVGAnnotationLayer = memo(({
       if (!visualTransform) return undefined;
       // Single annotation visual transform (from Plan 02)
       if (typeof visualTransform.id === 'number' && visualTransform.id === i) {
+        if (visualTransform.previewObjects?.[i]) return undefined;
         if (visualTransform.resize) {
           if (Array.isArray(visualTransform.resize.pageMatrix)) {
             return `matrix(${visualTransform.resize.pageMatrix.join(' ')})`;
@@ -4790,6 +4791,7 @@ const SVGAnnotationLayer = memo(({
       } : undefined}
       onPointerCancel={isInteractive ? (e) => {
         cancelLasso?.(e.pointerId);
+        handlePointerCancel(e);
         if (surveyMarkerDragRef.current) {
           surveyMarkerDragRef.current = null;
           setSurveyMarkerPreviewBounds(null);
@@ -5280,7 +5282,10 @@ const SVGAnnotationLayer = memo(({
         let bbox = getAnnotationBBox(selectionObj);
         let overlayTransform;
         if (visualTransform && typeof visualTransform.id === 'number' && visualTransform.id === selectedIndex) {
-          if (visualTransform.resize) {
+          if (visualTransform.previewObjects?.[selectedIndex]) {
+            // The preview object already carries its final page-space quads.
+            // Do not add a generic move transform on top of that geometry.
+          } else if (visualTransform.resize) {
             // During resize: recompute bbox from a transformed copy of the object so
             // type-specific bbox math (e.g. textbox descender buffer) is applied fresh
             // instead of being scaled along with the stored bbox height.
@@ -5717,6 +5722,7 @@ const SVGAnnotationLayer = memo(({
               padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
+              horizontalResizeOnly={selectionObj?.data?.type === 'text-markup' && !isSelectDeleteOnlyPdfTextMarkup}
             />
           </g>
         );

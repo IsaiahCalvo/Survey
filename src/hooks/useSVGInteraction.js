@@ -75,6 +75,7 @@ import {
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag.js';
 import { isTransformLockedAnnotation } from '../utils/annotationSelectionEligibility.js';
+import { resizeTextMarkupHorizontalEdge } from '../utils/pdfTextMarkup.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -189,7 +190,7 @@ export function useSVGInteraction({
   // Mutable refs for drag state
   const dragStateRef = useRef({
     active: false,
-    mode: null,      // 'move' | 'resize' | 'rotate' | 'group-move' | 'group-rotate' | 'group-resize' | 'callout-part'
+    mode: null,      // 'move' | 'resize' | 'rotate' | 'text-markup-horizontal' | group/callout modes
     handleId: null,
     startSVGPoint: null,  // { x, y } in viewBox coords at drag start
     originalProps: null,  // { left, top, scaleX, scaleY, angle, width, height } snapshot
@@ -201,6 +202,8 @@ export function useSVGInteraction({
     centerY: null,        // rotate: annotation center Y
     currentResize: null,  // resize: { newScaleX, newScaleY, newLeft, newTop } during drag
     currentAngle: undefined, // rotate: current angle during drag
+    originalTextMarkup: null,
+    currentTextMarkup: null,
     groupOriginals: null, // group-move: { [idx]: { left, top } } for all selected annotations
     // UX: 2026-04-20 — callout originals captured alongside annotation
     // originals when the multi-selection includes callouts. Live-painted
@@ -1231,6 +1234,7 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    if (ds.mode === 'text-markup-horizontal' && e.pointerId !== ds.pointerId) return;
 
     // KAL-75 (G4): locked/read-only documents — a drag gesture must never
     // mutate geometry. Disarm in place: pointer-up then takes its non-drag
@@ -2176,6 +2180,19 @@ export function useSVGInteraction({
         },
       });
       setInteractionState('dragging');
+    } else if (ds.mode === 'text-markup-horizontal') {
+      const preview = resizeTextMarkupHorizontalEdge(
+        ds.originalTextMarkup,
+        ds.handleId,
+        svgPoint.x,
+        pageWidth,
+      );
+      ds.currentTextMarkup = preview;
+      setVisualTransform({
+        id: ds.annotationIndex,
+        previewObjects: { [ds.annotationIndex]: preview },
+      });
+      setInteractionState('resizing');
     } else if (ds.mode === 'resize') {
       // Determine which axes this handle affects
       const affectsX = !['mt', 'mb'].includes(ds.handleId);
@@ -2958,6 +2975,7 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    if (ds.mode === 'text-markup-horizontal' && e.pointerId !== ds.pointerId) return;
     markAnnotationPointerRelease(ds.diagGestureId, {
       action: ds.mode,
       handleId: ds.handleId || null,
@@ -3320,6 +3338,14 @@ export function useSVGInteraction({
           }
         }
       }
+    } else if (ds.mode === 'text-markup-horizontal' && ds.currentTextMarkup) {
+      const updatedAnnotations = deepClone(annotations);
+      updatedAnnotations.objects[ds.annotationIndex] = ds.currentTextMarkup;
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'text-markup:range-resize',
+        action: 'text-range-resize',
+        checkpointPolicy: 'normal',
+      });
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const {
         newScaleX,
@@ -3793,12 +3819,29 @@ export function useSVGInteraction({
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
       originalPoints: null, vertexIndex: null,
+      originalTextMarkup: null, currentTextMarkup: null,
       currentAnnotations: null,
       diagGestureId: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
   }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+
+  const handlePointerCancel = useCallback((e) => {
+    const ds = dragStateRef.current;
+    if (!ds.active || ds.mode !== 'text-markup-horizontal') return;
+    if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
+    try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    dragStateRef.current = {
+      ...ds,
+      active: false,
+      mode: null,
+      originalTextMarkup: null,
+      currentTextMarkup: null,
+    };
+    setVisualTransform(null);
+    setInteractionState('idle');
+  }, []);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
@@ -4095,6 +4138,22 @@ export function useSVGInteraction({
         height: 2 * counterBaseRadius + counterBaseTipExtension,
         angle: ((pointerAngleDeg + 90) % 360 + 360) % 360,
       };
+    }
+
+    if (obj?.data?.type === 'text-markup' && ['ml', 'mr'].includes(handleId)) {
+      dragStateRef.current = {
+        active: true,
+        mode: 'text-markup-horizontal',
+        handleId,
+        startSVGPoint: svgPoint,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        pointerId: e.pointerId,
+        originalTextMarkup: deepClone(obj),
+        currentTextMarkup: null,
+      };
+      setInteractionState('resizing');
+      return;
     }
 
     // Phase 15 LINE-01 / ARROW-01 — midpoint curvature drag.
@@ -4656,6 +4715,7 @@ export function useSVGInteraction({
     handleHandlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    handlePointerCancel,
     // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint for typed commits
     applyOptimisticRotation,
     clearOptimisticRotation,

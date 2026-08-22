@@ -11,6 +11,18 @@ const selectionSource = fs.readFileSync(
   new URL('../src/components/SVGSelectionOverlay.jsx', import.meta.url),
   'utf8',
 );
+const annotationLayerSource = fs.readFileSync(
+  new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url),
+  'utf8',
+);
+const textActionBarSource = fs.readFileSync(
+  new URL('../src/components/TextSelectionActionBar.jsx', import.meta.url),
+  'utf8',
+);
+const interactionSource = fs.readFileSync(
+  new URL('../src/hooks/useSVGInteraction.js', import.meta.url),
+  'utf8',
+);
 const lifecycleSource = fs.readFileSync(
   new URL('../agent-cli/mobile-annotations/lifecycle.mjs', import.meta.url),
   'utf8',
@@ -39,6 +51,32 @@ test('SVG transform chrome suppresses native touch callouts and context menus', 
   assert.match(selectionSource, /touchAction: 'none'/);
   assert.match(selectionSource, /WebkitTouchCallout: 'none'/);
   assert.match(selectionSource, /onContextMenu=\{\(event\) => \{[\s\S]{0,120}event\.preventDefault\(\)/);
+});
+
+test('text markup selection chrome exposes only left and right range handles', () => {
+  assert.match(selectionSource, /horizontalResizeOnly/);
+  assert.match(selectionSource, /data-text-range-handle/);
+  assert.match(selectionSource, /\['ml', 'mr'\]/);
+  assert.match(annotationLayerSource, /horizontalResizeOnly=\{selectionObj\?\.data\?\.type === 'text-markup'/);
+  assert.match(interactionSource, /const handlePointerCancel = useCallback/);
+  assert.equal(
+    (interactionSource.match(/ds\.mode === 'text-markup-horizontal' && e\.pointerId !== ds\.pointerId/g) || []).length,
+    2,
+    'move and up must reject a second pointer',
+  );
+  assert.match(
+    interactionSource,
+    /ds\.pointerId != null && e\.pointerId != null && ds\.pointerId !== e\.pointerId/,
+    'cancel must reject a second pointer',
+  );
+  assert.match(annotationLayerSource, /onPointerCancel=\{isInteractive[\s\S]{0,180}handlePointerCancel\(e\)/);
+});
+
+test('text action bar uses supplied highlight and squiggle SVGs with existing line icons', () => {
+  assert.match(textActionBarSource, /text-markup-highlight\.svg/);
+  assert.match(textActionBarSource, /text-markup-squiggle\.svg/);
+  assert.match(textActionBarSource, /id: 'underline'.*icon: 'underline'/);
+  assert.match(textActionBarSource, /id: 'strikeout'.*icon: 'strikeout'/);
 });
 
 test('mobile delete long-press targets exposed annotation body instead of transform handles', () => {

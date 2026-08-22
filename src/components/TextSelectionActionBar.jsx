@@ -1,11 +1,13 @@
 import Icon from '../Icons';
 import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';
+import highlightIconSvg from '../assets/text-markup-highlight.svg';
+import squiggleIconSvg from '../assets/text-markup-squiggle.svg';
 
 const ACTIONS = [
   { id: 'copy', label: 'Copy', icon: 'copy' },
-  { id: 'highlight', label: 'Highlight', icon: 'highlighter' },
+  { id: 'highlight', label: 'Highlight', iconAsset: highlightIconSvg },
   { id: 'underline', label: 'Underline', icon: 'underline' },
-  { id: 'squiggly', label: 'Squiggle', icon: 'squiggly' },
+  { id: 'squiggly', label: 'Squiggle', iconAsset: squiggleIconSvg },
   { id: 'strikeout', label: 'Strikeout', icon: 'strikeout' },
 ];
 
@@ -47,7 +49,18 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
           onClick={() => onAction(action.id)}
           style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', border: 0, borderRadius: 4, color: '#e8e2d4', background: 'transparent', cursor: 'pointer' }}
         >
-          <Icon name={action.icon} size={15} />
+          {action.iconAsset ? (
+            <img
+              aria-hidden="true"
+              src={action.iconAsset}
+              alt=""
+              style={{
+                width: 16,
+                height: 16,
+                display: 'block',
+              }}
+            />
+          ) : <Icon name={action.icon} size={15} />}
         </button>
       ))}
       <select
