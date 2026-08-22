@@ -135,6 +135,31 @@ export const getAutoExpandTargetFolder = (items, activeId, overId, dragOffset) =
   )) ?? null;
 };
 
+/**
+ * Mobile up/down reorder: swap `id` one slot among same-parent siblings.
+ * Returns at most two `{ id, updates: { order } }` patches. Empty when the
+ * move would leave the list (first-up / last-down / missing id).
+ */
+export const swapBookmarkSiblingOrder = (bookmarks, id, delta) => {
+  if (!Array.isArray(bookmarks) || !id) return [];
+  const step = Number(delta);
+  if (!Number.isInteger(step) || step === 0) return [];
+  const target = bookmarks.find((item) => item?.id === id);
+  if (!target) return [];
+  const siblings = bookmarks
+    .filter((item) => (item?.parentId ?? null) === (target.parentId ?? null))
+    .sort((a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0));
+  const currentIndex = siblings.findIndex((item) => item.id === id);
+  const swapIndex = currentIndex + step;
+  if (currentIndex < 0 || swapIndex < 0 || swapIndex >= siblings.length) return [];
+  const neighbor = siblings[swapIndex];
+  if (!neighbor?.id) return [];
+  return [
+    { id, updates: { order: Number(neighbor.order) || 0 } },
+    { id: neighbor.id, updates: { order: Number(target.order) || 0 } },
+  ];
+};
+
 export const collectBookmarkTreePersistUpdates = (nextTree, currentBookmarks = []) => {
   const currentById = new Map((currentBookmarks || []).filter((item) => item?.id).map((item) => [item.id, item]));
   return flattenBookmarkTreeForSort(nextTree).reduce((updates, item) => {

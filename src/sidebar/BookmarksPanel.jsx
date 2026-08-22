@@ -31,6 +31,7 @@ import {
   getAutoExpandTargetFolder,
   getBookmarkProjection,
   removeChildrenOf,
+  swapBookmarkSiblingOrder,
 } from './bookmarkReorderUtils.js';
 import { useTooltip } from '../components/Tooltip';
 
@@ -1097,19 +1098,9 @@ const BookmarksPanel = ({
   // introduced. Only the two swapped siblings are rewritten.
   const handleMobileMoveBookmark = useCallback((id, delta) => {
     if (!onBookmarkUpdate) return;
-    const target = (bookmarks || []).find((b) => b.id === id);
-    if (!target) return;
-    const siblings = (bookmarks || [])
-      .filter((b) => (b.parentId ?? null) === (target.parentId ?? null))
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-    const currentIndex = siblings.findIndex((b) => b.id === id);
-    const swapIndex = currentIndex + delta;
-    if (currentIndex < 0 || swapIndex < 0 || swapIndex >= siblings.length) return;
-    const neighbor = siblings[swapIndex];
-    const targetOrder = target.order || 0;
-    const neighborOrder = neighbor.order || 0;
-    onBookmarkUpdate(id, { order: neighborOrder });
-    onBookmarkUpdate(neighbor.id, { order: targetOrder });
+    for (const patch of swapBookmarkSiblingOrder(bookmarks, id, delta)) {
+      onBookmarkUpdate(patch.id, patch.updates);
+    }
   }, [bookmarks, onBookmarkUpdate]);
 
   // Existing create/modal handlers remain the same
