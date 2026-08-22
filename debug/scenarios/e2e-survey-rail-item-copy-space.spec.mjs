@@ -238,29 +238,37 @@ test('survey-rail item Copy → space selection intended + break + edge', async 
     overlayDest: false,
   });
 
-  // Break: Pen-armed still copies via the rail.
+  // Break: Pen-armed still copies via the rail. Stay on Two Category
+  // (Survey-tool click after the dest switch opens Home). Place on dest
+  // Walls, arm Pen, then Copy back to Existing (has Walls).
+  const destWalls = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Walls', exact: true });
+  if (await destWalls.count() && await destWalls.first().isVisible().catch(() => false)) {
+    if (!String(await destWalls.first().getAttribute('class') || '').includes('btn-active')) {
+      await destWalls.first().click();
+    }
+  } else {
+    await page.getByRole('button', { name: /^Walls/ }).first().click();
+  }
+  const beforePen = new Set(await markerIds(page));
+  await dragOnLayer(page, { x0: 0.28, y0: 0.58, x1: 0.50, y1: 0.76 });
+  await finishMarkerName(page, 'copy-pen');
+  let penId = null;
+  await expect.poll(async () => {
+    const ids = await markerIds(page);
+    penId = ids.find((id) => !beforePen.has(id)) || null;
+    return penId;
+  }, { message: 'expected Pen-armed dest Walls place' }).not.toBeNull();
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  const surveyBtn = page.getByRole('button', { name: 'Survey', exact: true }).first();
-  if (await surveyBtn.count()) await surveyBtn.click();
-  const picker = page.getByRole('heading', { name: 'Choose survey template' });
-  if (await picker.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: KAL436 }).click();
-  }
-  const walls = page.getByRole('button', { name: 'Walls', exact: true });
-  await expect(walls.first()).toBeVisible({ timeout: 15_000 });
-  if (!String(await walls.first().getAttribute('class') || '').includes('btn-active')) {
-    await walls.first().click();
-  }
   await enterItemSelectMode(page);
-  await selectRailItem(page, 'copy-a');
+  await selectRailItem(page, 'copy-pen');
   await itemCopyBtn(page).click();
   await expect(spacePicker(page)).toBeVisible({ timeout: 8_000 });
-  await destSpaceBtn(page, 'Two Category Survey').click();
-  await expect.poll(async () => (
-    (await markersInModule(page, DEST_MODULE)).some((row) => row.name === 'copy-a' && row.id !== markerA)
-  ), { message: 'Pen-armed Copy still writes dest' }).toBe(true);
-  expect((await markersInModule(page, SOURCE_MODULE)).map((row) => row.id)).toEqual([markerA]);
+  await destSpaceBtn(page, 'Existing Survey Data').first().click();
+  await expect.poll(async () => {
+    const src = await markersInModule(page, SOURCE_MODULE);
+    return src.some((row) => row.name === 'copy-pen' && row.id !== penId) && src.some((row) => row.id === markerA);
+  }, { message: 'Pen-armed Copy writes Existing and keeps source' }).toBe(true);
 
   expect(await page.locator('[data-handle]').count(), 'no vertex-N seam').toBe(0);
   expect(await page.locator('[data-counter-nubbin-handle]').count(), 'nubbin untouched').toBe(0);
