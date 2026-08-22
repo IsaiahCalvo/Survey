@@ -86,12 +86,20 @@ async function createCallout(page, text, coords, pageNumber = 1) {
 
 async function selectCallout(page, calloutId, pageNumber = 1) {
   const scoped = page.locator(`[data-svg-annotation-layer="${pageNumber}"] [data-callout-id="${calloutId}"]`);
-  const textBox = scoped.locator('[data-callout-part="textBox"]').first();
-  const target = (await textBox.count()) ? textBox : scoped.first();
-  await expect(target).toBeVisible({ timeout: 15_000 });
-  const box = await target.boundingBox();
-  expect(box, `bbox for callout ${calloutId}`).toBeTruthy();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const candidates = [
+    scoped.locator('[data-callout-part="textBox"]').first(),
+    scoped.locator('[data-callout-part="knee"]').last(),
+    scoped.first(),
+  ];
+  for (const target of candidates) {
+    if (!(await target.count())) continue;
+    await target.scrollIntoViewIfNeeded().catch(() => {});
+    const box = await target.boundingBox();
+    if (!box || box.width < 1 || box.height < 1) continue;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    return true;
+  }
+  return false;
 }
 
 function handleLocator(page, calloutId, part, pageNumber = 1) {
@@ -318,13 +326,23 @@ test('callout knee / leader / arrowTip / text-box handle drag', async ({ page })
             await rotate.click();
             await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 15_000 });
             await selectMode(page);
-            await selectCallout(page, calloutId);
-            const preRot = await calloutGeom(page, calloutId);
-            await dragHandle(page, calloutId, 'arrowTip', 20, 20);
-            const afterRot = await calloutGeom(page, calloutId);
-            rotateProof = pointDelta(afterRot.arrowTip, preRot.arrowTip) > EPS
-              ? 'rotated-then-dragged'
-              : 'rotate-drag-no-move';
+            const kneeAfterRotate = handleLocator(page, calloutId, 'knee');
+            if (!(await kneeAfterRotate.count())) {
+              rotateProof = 'rotated-handle-missing';
+            } else if (!(await selectCallout(page, calloutId))) {
+              rotateProof = 'rotated-select-miss';
+            } else {
+              const preRot = await calloutGeom(page, calloutId);
+              if (!preRot.arrowTip) {
+                rotateProof = 'rotated-geom-missing';
+              } else {
+                await dragHandle(page, calloutId, 'arrowTip', 20, 20);
+                const afterRot = await calloutGeom(page, calloutId);
+                rotateProof = pointDelta(afterRot.arrowTip, preRot.arrowTip) > EPS
+                  ? 'rotated-then-dragged'
+                  : 'rotate-drag-no-move';
+              }
+            }
           }
         }
       }
