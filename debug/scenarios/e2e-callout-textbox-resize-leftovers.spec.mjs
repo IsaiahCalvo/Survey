@@ -134,6 +134,21 @@ async function dragHandle(page, calloutId, part, dx, dy, pageNumber = 1) {
   return { x, y };
 }
 
+async function handleCenter(page, calloutId, part, pageNumber = 1) {
+  const box = await handleLocator(page, calloutId, part, pageNumber).boundingBox();
+  expect(box, `${part} handle center`).toBeTruthy();
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2, box };
+}
+
+async function flipPastOpposite(page, calloutId, from = 'tl', to = 'br', pageNumber = 1) {
+  const start = await handleCenter(page, calloutId, `textBox-${from}`, pageNumber);
+  const end = await handleCenter(page, calloutId, `textBox-${to}`, pageNumber);
+  const dx = (end.x + 22) - start.x;
+  const dy = (end.y + 22) - start.y;
+  await dragHandle(page, calloutId, `textBox-${from}`, dx, dy, pageNumber);
+  return { dx, dy };
+}
+
 async function calloutBox(page, calloutId) {
   return page.evaluate((cid) => {
     const layer = document.querySelector('[data-svg-annotation-layer="1"]');
@@ -208,7 +223,7 @@ test('callout text-box resize leftovers: flip + knee rollback', async ({ page })
   const preFlip = await calloutBox(page, calloutId);
   expect(preFlip, 'stored text box').toBeTruthy();
   expect(preFlip.knee, 'knee present').toBeTruthy();
-  await dragHandle(page, calloutId, 'textBox-tl', preFlip.wPx + 48, preFlip.hPx + 28);
+  await flipPastOpposite(page, calloutId, 'tl', 'br');
   let afterFlip = null;
   await expect.poll(async () => {
     afterFlip = await calloutBox(page, calloutId);
@@ -260,7 +275,7 @@ test('callout text-box resize leftovers: flip + knee rollback', async ({ page })
   await selectUntilCorners(page, calloutId);
   const prePen = await calloutBox(page, calloutId);
   await page.keyboard.press('p');
-  await dragHandle(page, calloutId, 'textBox-tl', prePen.wPx + 40, prePen.hPx + 24);
+  await flipPastOpposite(page, calloutId, 'tl', 'br');
   const afterPen = await calloutBox(page, calloutId);
   expect(almostEqNum(afterPen.w, prePen.w) && almostEqNum(afterPen.h, prePen.h), 'Pen-armed flip is no-op').toBe(true);
   expect(almostEqNum(afterPen.x, prePen.x) && almostEqNum(afterPen.y, prePen.y), 'Pen-armed origin stays').toBe(true);
@@ -289,7 +304,7 @@ test('callout text-box resize leftovers: flip + knee rollback', async ({ page })
   expect(viewBox.startsWith('0 0 '), 'viewBox owns scale').toBe(true);
   await selectUntilCorners(page, calloutId);
   const preZoom = await calloutBox(page, calloutId);
-  await dragHandle(page, calloutId, 'textBox-tl', preZoom.wPx + 44, preZoom.hPx + 26);
+  await flipPastOpposite(page, calloutId, 'tl', 'br');
   let afterZoom = null;
   await expect.poll(async () => {
     afterZoom = await calloutBox(page, calloutId);
@@ -312,7 +327,7 @@ test('callout text-box resize leftovers: flip + knee rollback', async ({ page })
   const firstFrozen = await calloutBox(page, calloutId);
   await selectUntilCorners(page, secondId);
   const secondBefore = await calloutBox(page, secondId);
-  await dragHandle(page, secondId, 'textBox-tl', secondBefore.wPx + 40, secondBefore.hPx + 22);
+  await flipPastOpposite(page, secondId, 'tl', 'br');
   let secondAfter = null;
   await expect.poll(async () => {
     secondAfter = await calloutBox(page, secondId);
