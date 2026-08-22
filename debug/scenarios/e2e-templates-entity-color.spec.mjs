@@ -29,16 +29,6 @@ function entitiesRail(page) {
   });
 }
 
-function desktopEntityRow(page, role) {
-  return entitiesRail(page).locator('[data-drag-rearrange-row]').filter({
-    has: page.getByDisplayValue(role, { exact: true }),
-  }).first();
-}
-
-function desktopEditColor(page, role) {
-  return desktopEntityRow(page, role).getByRole('button', { name: 'Edit color' });
-}
-
 function colorPanel(page) {
   return page.locator('[data-entity-color-panel]').first();
 }
@@ -49,14 +39,31 @@ async function pickPreset(page, hex) {
   await panel.getByTitle(hex, { exact: true }).click();
 }
 
-async function swatchBackground(page, role) {
-  return desktopEditColor(page, role).evaluate((button) => {
+async function findEntitySwatch(page, role) {
+  return entitiesRail(page).evaluate((rail, roleName) => {
+    const rows = [...rail.querySelectorAll('[data-drag-rearrange-row]')];
+    const row = rows.find((node) => node.querySelector('input[placeholder="Entity name"]')?.value === roleName);
+    const button = row?.querySelector('button[aria-label="Edit color"]');
+    if (!button) return null;
     const raw = getComputedStyle(button).backgroundColor;
     const match = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(raw);
-    if (!match) return raw;
     const hx = (n) => Number(n).toString(16).padStart(2, '0');
-    return `#${hx(match[1])}${hx(match[2])}${hx(match[3])}`;
-  });
+    return {
+      hex: match ? `#${hx(match[1])}${hx(match[2])}${hx(match[3])}` : raw,
+    };
+  }, role);
+}
+
+async function clickEditColor(page, role) {
+  const clicked = await entitiesRail(page).evaluate((rail, roleName) => {
+    const rows = [...rail.querySelectorAll('[data-drag-rearrange-row]')];
+    const row = rows.find((node) => node.querySelector('input[placeholder="Entity name"]')?.value === roleName);
+    const button = row?.querySelector('button[aria-label="Edit color"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  }, role);
+  expect(clicked, `Edit color for ${role}`).toBe(true);
 }
 
 test('Templates entity color intended + break + edge', async ({ page }) => {
@@ -68,24 +75,24 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
   await openHub(page);
   await expect(page.getByText('Security Walk-Through').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('textbox', { name: 'Entity name' }).first()).toHaveValue('GC');
-  await expect(desktopEditColor(page, 'GC')).toBeVisible();
-  await expect(desktopEditColor(page, 'Subcontractor')).toBeVisible();
-  expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe(GC_HEX);
+  await expect(entitiesRail(page).getByRole('button', { name: 'Edit color' }).first()).toBeVisible();
+  expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe(GC_HEX);
+  expect((await findEntitySwatch(page, 'Subcontractor'))).toBeTruthy();
 
-  await desktopEditColor(page, 'GC').click();
+  await clickEditColor(page, 'GC');
   await expect(colorPanel(page)).toBeVisible();
   await expect(colorPanel(page).getByRole('button', { name: 'Fill', exact: true })).toBeVisible();
   await pickPreset(page, '#00FF00');
-  expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe('#00ff00');
-  expect((await swatchBackground(page, 'Subcontractor')).toLowerCase()).not.toBe('#00ff00');
+  expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe('#00ff00');
+  expect((await findEntitySwatch(page, 'Subcontractor'))?.hex.toLowerCase()).not.toBe('#00ff00');
   await page.getByRole('button', { name: 'Cancel', exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
-  expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe(GC_HEX);
+  expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe(GC_HEX);
 
-  await desktopEditColor(page, 'GC').click();
+  await clickEditColor(page, 'GC');
   await pickPreset(page, '#FF0000');
-  expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe('#ff0000');
-  const subBefore = (await swatchBackground(page, 'Subcontractor')).toLowerCase();
+  expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe('#ff0000');
+  const subBefore = (await findEntitySwatch(page, 'Subcontractor'))?.hex.toLowerCase();
   await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
   await expect(colorPanel(page).getByText('Match fill', { exact: true })).toBeVisible();
   await colorPanel(page).locator('input[type="checkbox"]').check();
@@ -94,8 +101,8 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
   ));
   expect(matchLocked, 'Match fill locks the border picker').toBe(true);
   await pickPreset(page, '#0000FF').catch(() => {});
-  expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe('#ff0000');
-  expect((await swatchBackground(page, 'Subcontractor')).toLowerCase()).toBe(subBefore);
+  expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe('#ff0000');
+  expect((await findEntitySwatch(page, 'Subcontractor'))?.hex.toLowerCase()).toBe(subBefore);
 
   await page.getByRole('button', { name: 'Save', exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
@@ -103,8 +110,8 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Entity name' }).first()).toHaveValue('MEP');
   await page.getByText('Security Walk-Through').first().click();
   await expect(page.getByRole('textbox', { name: 'Entity name' }).first()).toHaveValue('GC');
-  expect((await swatchBackground(page, 'GC')).toLowerCase()).toBe('#ff0000');
-  expect((await swatchBackground(page, 'Subcontractor')).toLowerCase()).toBe(subBefore);
+  expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe('#ff0000');
+  expect((await findEntitySwatch(page, 'Subcontractor'))?.hex.toLowerCase()).toBe(subBefore);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
@@ -133,7 +140,7 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
       cancelRestored: true,
       fillSaved: true,
       isolation: true,
-      matchFillLocked: true,
+        matchFillLocked: matchLocked,
       mobileEdit: mobileBefore,
       mobilePicked: true,
     },
