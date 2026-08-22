@@ -120,6 +120,12 @@ async function dropPin(page, coords) {
   const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
   await activateTool(page, 'Shapes', 'Counter');
   const overlay = page.locator('[data-counter-overlay="1"]');
+  if (!(await overlay.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    const counter = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Counter', exact: true });
+    await expect(counter).toBeVisible({ timeout: 8_000 });
+    await counter.click();
+  }
   await expect(overlay).toBeVisible({ timeout: 8_000 });
   await dragOnPage(page, coords);
   let created = null;
@@ -167,8 +173,8 @@ test('counter-series Delete execute: keyboard pin + series menu', async ({ page 
   await openEditor(page);
 
   const pin1 = await dropPin(page, { x0: 0.55, y0: 0.40, x1: 0.58, y1: 0.43 });
-  const pin2 = await dropPin(page, { x0: 0.62, y0: 0.28, x1: 0.65, y1: 0.31 });
-  const pin3 = await dropPin(page, { x0: 0.70, y0: 0.50, x1: 0.73, y1: 0.53 });
+  const pin2 = await dropPin(page, { x0: 0.38, y0: 0.55, x1: 0.41, y1: 0.58 });
+  const pin3 = await dropPin(page, { x0: 0.72, y0: 0.55, x1: 0.75, y1: 0.58 });
   const series = await waitForPinCount(page, 3);
   expect(new Set(series.map((row) => row.seriesId)).size, 'one series').toBe(1);
   expect(numbers(series)).toEqual([1, 2, 3]);
