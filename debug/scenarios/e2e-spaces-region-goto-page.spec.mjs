@@ -63,7 +63,8 @@ function goToPageBtn(page, n) {
 }
 
 function pageThumbs(page) {
-  return page.locator('#chrome-left-host [data-page-number]');
+  // Pages panel stays mounted (display:none). Count is not a visibility signal.
+  return page.locator('#chrome-left-host .page-thumbnail[data-page-number], #chrome-left-host [data-page-thumb]');
 }
 
 async function currentPageNumber(page) {
@@ -156,7 +157,12 @@ test('U-02 region-row Go to page navigates; thumb and page input are different c
   await expect(regionRows(page).first()).toBeVisible({ timeout: 8_000 });
   await expect(goToPageBtn(page, 3)).toBeVisible();
   expect(await goToPageBtn(page, 1).count(), 'page-1 pill is a different region').toBe(0);
-  expect(await pageThumbs(page).count(), 'Spaces tab is not the Pages thumbnail rail').toBe(0);
+  const pill3 = goToPageBtn(page, 3);
+  await expect(pill3).toHaveClass(/region-page-pill/);
+  expect(
+    await pill3.evaluate((el) => el.closest('[data-page-number], .page-thumbnail') ? true : false),
+    'Go to page pill is not a Pages thumbnail',
+  ).toBe(false);
 
   const turnOff = page.getByLabel('Turn off space');
   if (await turnOff.count()) {
@@ -168,7 +174,8 @@ test('U-02 region-row Go to page navigates; thumb and page input are different c
 
   await goToPageBtn(page, 3).click();
   await waitForPage(page, 3);
-  expect(await pageThumbs(page).count(), 'Go to page did not open the Pages thumbs').toBe(0);
+  await expect(spacesTab(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create space', exact: true })).toBeVisible();
 
   // Break: already on that page → stay.
   await goToPageBtn(page, 3).click();
@@ -267,7 +274,7 @@ test('U-02 region-row Go to page navigates; thumb and page input are different c
     penArmed: true,
     twoRegionEachPage: true,
     onePageStay: true,
-    thumbsNeverOpened: true,
+    pillNotThumbnail: true,
     mobileCreate,
     mobilePageRows,
     mobileGoTo,
