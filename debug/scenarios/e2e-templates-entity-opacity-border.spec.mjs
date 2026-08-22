@@ -146,6 +146,7 @@ test('Templates entity opacity + independent Border tab intended + break + edge'
   expect((await findEntitySwatch(page, 'Subcontractor'))?.border.toLowerCase()).toBe(subBefore.border.toLowerCase());
 
   await clickEditColor(page, 'GC');
+  await colorPanel(page).getByRole('button', { name: 'Fill', exact: true }).click();
   expect(await readOpacity(page)).toBe(80);
   await colorPanel(page).getByRole('button', { name: 'Border', exact: true }).click();
   expect((await colorPanel(page).getByLabel('Hex color').inputValue()).toLowerCase()).toBe('0000ff');
