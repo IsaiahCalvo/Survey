@@ -287,9 +287,10 @@ export function buildFreehandCommitJSON({
       ? { meta: { authorId } }
       : {}),
     points,
-    // Parity quirk preserved: the fabric brush color was never composed with
-    // strokeOpacity for pen, and highlighter used the fixed highlightColor.
-    color: tool === 'highlighter' ? highlightColor : strokeColor,
+    // Pen uses strokeColor (opacity is composed by the picker before commit
+    // for selected patches). Highlighter paint is highlightColor, which
+    // PDFViewer derives from the Color picker (strokeColor + strokeOpacity).
+    color: tool === 'highlighter' ? (highlightColor || strokeColor) : strokeColor,
     width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
     data: { id },
   });

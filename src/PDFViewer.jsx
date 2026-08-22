@@ -31418,7 +31418,7 @@ ${pageBlocks}
                                 annotations={pageAnnotations}
                                 onSaveAnnotations={handleSaveAnnotations}
                                 onToolChange={setActiveTool}
-                                highlightColor="rgba(255, 193, 7, 0.3)"
+                                highlightColor={composeColorForPatch(strokeColor, strokeOpacity)}
                                 newSurveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                 surveyMarkersToRemove={surveyMarkersToRemoveByPage[pageNumber]}
                                 onSurveyMarkerCreated={handleSurveyMarkerCreated}
@@ -31993,7 +31993,7 @@ ${pageBlocks}
                                   strokeOpacity={strokeOpacity}
                                   fillColor={fillColor}
                                   fillOpacity={fillOpacity}
-                                  highlightColor="rgba(255, 193, 7, 0.3)"
+                                  highlightColor={composeColorForPatch(strokeColor, strokeOpacity)}
                                   strokeWidth={strokeWidth}
                                   arrowheadStyle={arrowheadStyle}
                                   lineBorderStyle={lineBorderStyle}
