@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Leftover-18 still blocks `/goal` complete. Uncertain = not achieved. Save / export / import / recursive E2E until no issues remain is still the standing objective — not “96 IDs + leftover-18 parked”.
 
-**This-pass (2026-08-21 leftover-18 unblock):** inspected env / lease / SQL / source for each leftover. `.env.local`, `.env.test`, `.bot-credentials.json`, and Docker are **missing**. Did not invent captcha / Stripe / MSAL / lease emails. Did not apply SQL to prod. Did not stamp `file.id`.
+**This-pass (2026-08-21 unblocked catalog + mobile Bookmarks):** independent catalog found one unique unblocked cluster still thinner than intended+break+edge — mobile Bookmarks up/down / create / Open. Live `e2e-mobile-bookmarks.spec.mjs` **1 / 1 (3.7s)**. Node **2 / 2**. Product: `swapBookmarkSiblingOrder` + hub-tab `aria-label`. After that proof, unique unblocked GAP **0**. Compile-hidden Print / stamp / measure / Group / Extract / Note / Link stay parked (flags cited in `fix-logs/unblocked-catalog-exhausted-2026-08-21.md`). No 768 tablet chrome in source. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-21 leftover-18 unblock):** inspected env / lease / SQL / source for each leftover. `.env.local`, `.env.test`, `.bot-credentials.json`, and Docker are **missing**. Did not invent captcha / Stripe / MSAL / lease emails. Did not apply SQL to prod. Did not stamp `file.id`.
 
 | Leftover-18 verdict | Count |
 |---|---|
@@ -412,5 +414,7 @@ E2E catalog remaining host-blocked paths listed above (**18** — unchanged; not
 **This-pass thin leftovers (2026-08-21 later):** cross-page paste + Pages Duplicate execute + imported sticky chrome. Live `e2e-thin-leftovers.spec.mjs` **3 / 3**. Product: imported `/Text` stamps `id`/`data.id`. Receipt `fix-logs/thin-leftovers-2026-08-21.md`. Leftover **18** unchanged. Goal stays open.
 
 **This-pass (2026-08-21 status refresh):** original **96 unique IDs** still **96 proven / 0 stomped / 0 weak / 0 missing**. Leftover **18** still parked (not retried). Zero product restores. `ISSUE-INVENTORY.md` statuses refreshed from current `file:line` greps. Receipt `fix-logs/audit-status-refresh-2026-08-21.md`.
+
+**This-pass (2026-08-21 unblocked catalog + mobile Bookmarks):** last unique unblocked cluster (390 Bookmarks sheet) live-proven. Unique unblocked GAP **0**. Leftover **18** still parked. Receipts `fix-logs/mobile-bookmarks-2026-08-21.md` + `fix-logs/unblocked-catalog-exhausted-2026-08-21.md`.
 
 **Goal stays open.** Leftover-18 still blocks `/goal` complete.

@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-21 Eraser Size every preset):** D-04 Size catalog every discrete **1…100** + custom 40 (default 20). Not a new UL row; not D-05 Width and not UL-35 Counter Size. Receipt `fix-logs/eraser-size-presets-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-21 mobile Bookmarks):** V-07 mobile sheet (not a new UL row). Create / up-down / Open page 3 / 0+999 clamp. Hub tabs now `aria-label`. Receipt `fix-logs/mobile-bookmarks-2026-08-21.md`. Unblocked catalog exhausted: `fix-logs/unblocked-catalog-exhausted-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-21 Eraser Size every preset):** D-04 Size catalog every discrete **1…100** + custom 40 (default 20). Not a new UL row; not D-05 Width and not UL-35 Counter Size. Receipt `fix-logs/eraser-size-presets-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-21 Counter Size + Start):** UL-35 Size catalog every preset 5…64 + clamp 4–76; Start number intended/break/edge (lock after second pin). Not D-05 Width. Receipt `fix-logs/counter-size-start-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 

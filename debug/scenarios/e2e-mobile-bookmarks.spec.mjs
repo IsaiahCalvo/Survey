@@ -133,7 +133,7 @@ test('mobile Bookmarks create / up-down / jump intended + break + edge', async (
     firstUpDisabled: true,
     lastDownDisabled: true,
     emptyNameRejected: true,
-    page0and99Rejected: true,
+    page0and999Rejected: true,
     clashRejected: true,
     deleteAccepted: true,
     jumpedTo: 3,
