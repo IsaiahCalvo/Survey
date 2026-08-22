@@ -13312,6 +13312,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleReorderSpaces = useCallback((fromIndex, toIndex) => {
     if (!requireSpaceManagement()) return;
+    const live = spacesRef.current || [];
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= live.length ||
+      toIndex >= live.length
+    ) {
+      return;
+    }
+    // Sibling of handleSpaceRenamePage / handleSpaceRemovePage:
+    // space-card reorder was setSpaces-only, so Ctrl+Z after a drop
+    // rewound the last space:create instead of the card order.
+    addHistoryCheckpoint('space:update', {
+      fromIndex,
+      toIndex,
+      updateKeys: ['order'],
+    });
     setSpaces(prev => {
       if (
         fromIndex < 0 ||
@@ -13324,7 +13342,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const reordered = arrayMove(prev, fromIndex, toIndex);
       return [...reordered];
     });
-  }, [requireSpaceManagement]);
+  }, [addHistoryCheckpoint, requireSpaceManagement]);
 
   // Helper function to get user initials
   const getUserInitials = useCallback(() => {

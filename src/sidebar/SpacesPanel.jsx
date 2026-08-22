@@ -180,6 +180,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               data-space-drag-handle
               isDragging={isDragging}
               title="Drag to rearrange"
+              aria-label="Drag to rearrange"
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: '24px',
