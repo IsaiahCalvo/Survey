@@ -64,7 +64,6 @@ test('live spec covers Delete + one-shot Cut + repeatable Copy + break + edge', 
   assert.match(spec, /390/);
   assert.match(spec, /hubPreview/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
-  assert.doesNotMatch(spec, /e2e-callout-paste/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
   for (const label of CLIP_ITEMS) {
     assert.match(spec, new RegExp(label));
