@@ -332,24 +332,11 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   await expect(team).toHaveCount(0);
   await expect(page.getByText(TOWER).first()).toBeVisible();
 
-  // 390: file Move/Copy + card reorder + Team write fail-closed.
+  // 390: drill first (no leftover drag click), then back, then card reorder.
   await openHub(page, { width: 390, height: 844 });
   const mobileRow = (id) => page.locator(`.projects-mobile-folder-row[data-project-id="${id}"]`);
   await expect(mobileRow('p1')).toBeVisible({ timeout: 15_000 });
-  const mobileHandles = await page.locator('.projects-mobile-folder-row [title="Drag to rearrange"]').count();
-  expect(mobileHandles).toBeGreaterThanOrEqual(2);
-  const mobileOrderBefore = await page.locator('.projects-mobile-folder-row').evaluateAll((rows) => (
-    rows.map((row) => row.querySelector('strong')?.textContent?.trim() || '')
-  ));
-  const p1Handle = mobileRow('p1').locator('[title="Drag to rearrange"]');
-  await pointerDragHandleTo(page, p1Handle, mobileRow('p2'));
-  await page.mouse.click(12, 12).catch(() => {});
-  const mobileOrderAfter = await page.locator('.projects-mobile-folder-row').evaluateAll((rows) => (
-    rows.map((row) => row.querySelector('strong')?.textContent?.trim() || '')
-  ));
-  const mobileReordered = mobileOrderAfter.join('|') !== mobileOrderBefore.join('|');
-
-  await mobileRow('p1').locator('.projects-mobile-folder-copy').click();
+  await mobileRow('p1').click();
   await expect(page.locator('.projects-mobile-back-button')).toBeVisible({ timeout: 8_000 });
   const mobileFile = page.locator('.projects-mobile-file-row').filter({ hasText: SE011 });
   await expect(mobileFile).toBeVisible({ timeout: 8_000 });
@@ -365,7 +352,7 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   await expect(mobileDlg).toHaveCount(0);
   await page.getByRole('button', { name: 'Done', exact: true }).locator('visible=true').click();
 
-  const mobileTeam = page.getByRole('button', { name: 'Manage team' }).locator('visible=true');
+  const mobileTeam = page.getByRole('button', { name: 'Manage team' }).or(page.getByRole('button', { name: 'Team', exact: true })).locator('visible=true');
   await expect(mobileTeam).toBeVisible();
   await mobileTeam.click();
   const mobileTeamDlg = page.getByRole('dialog', { name: 'Manage Team' });
@@ -378,6 +365,22 @@ test('Projects file Move/Copy + card reorder + Team write fail-closed', async ({
   expect(await mobileInvite.locator('text=/\\/invite\\//').count()).toBe(0);
   await mobileInvite.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.keyboard.press('Escape');
+  await expect(mobileTeamDlg).toHaveCount(0);
+
+  await page.locator('.projects-mobile-back-button').click();
+  await expect(mobileRow('p1')).toBeVisible({ timeout: 8_000 });
+  const mobileHandles = await page.locator('.projects-mobile-folder-row [title="Drag to rearrange"]').count();
+  expect(mobileHandles).toBeGreaterThanOrEqual(2);
+  const mobileOrderBefore = await page.locator('.projects-mobile-folder-row').evaluateAll((rows) => (
+    rows.map((row) => row.querySelector('strong')?.textContent?.trim() || '')
+  ));
+  const p1Handle = mobileRow('p1').locator('[title="Drag to rearrange"]');
+  await pointerDragHandleTo(page, p1Handle, mobileRow('p2'));
+  await page.mouse.click(12, 12).catch(() => {});
+  const mobileOrderAfter = await page.locator('.projects-mobile-folder-row').evaluateAll((rows) => (
+    rows.map((row) => row.querySelector('strong')?.textContent?.trim() || '')
+  ));
+  const mobileReordered = mobileOrderAfter.join('|') !== mobileOrderBefore.join('|');
 
   await assertNoErrorBoundary(page);
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
