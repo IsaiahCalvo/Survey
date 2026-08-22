@@ -1,6 +1,6 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 host probe + Print fail-closed):** not a new UL row. X-01 hosts absent. Classified compile-hidden Print: custom panel stays UL-40–43 flag-off; reachable Cmd/Ctrl+P blob/OS fail-closed is X-03 / dedicated `e2e-print-panel-failclosed.spec.mjs`. Receipts `fix-logs/host-probe-2026-08-22.md` + `fix-logs/print-panel-failclosed-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 host probe + Print fail-closed):** not a new UL row. X-01 hosts absent. Classified compile-hidden Print: custom panel stays UL-40–43 flag-off; reachable Cmd/Ctrl+P blob/OS fail-closed is X-03 / dedicated `e2e-print-panel-failclosed.spec.mjs` **1 / 1 (4.8s)**. Receipts `fix-logs/host-probe-2026-08-22.md` + `fix-logs/print-panel-failclosed-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 requirement-by-requirement completion audit):** not a new UL row. Re-classified leftover-18 UL rows as fail-closed local + host-gated. No unique unblocked leftover. Receipt `fix-logs/completion-audit-2026-08-22.md`. Next leftover-18 live host: **X-01**. Do **not** re-claim unblocked GAP = 0. Leftover **18** stay parked. Goal stays open.
 
