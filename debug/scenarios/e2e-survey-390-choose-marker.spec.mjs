@@ -10,6 +10,7 @@ import { test, expect } from '@playwright/test';
 // then switch viewport to 390×844. One-marker break seeds via __e2eSurveyMarkers.
 
 const SURVEY_PDF = '/?testPdf=clickable-link-test.pdf&surveyTransitionE2E=1';
+const SOLO_PDF = '/?testPdf=text-search-glyph-lab.pdf&surveyTransitionE2E=1';
 const KAL436 = /KAL-436 Preservation Template/;
 const SEEDED_ID = 'e2e-choose-marker-solo';
 const SEEDED_NAME = 'solo-seed';
@@ -308,8 +309,9 @@ test('390 detail Choose Survey Marker sibling switcher intended + break + edge',
   await assertNoErrorBoundary(page);
 
   // Break: one marker only — switcher disabled. Seed via existing seam
-  // (390 place is blocked by the sheet backdrop).
-  await openEditor(page, { width: 390, height: 844 });
+  // (390 place is blocked by the sheet backdrop). Separate PDF so
+  // y-indexeddb from the two-sibling session cannot alias Walls rows.
+  await openEditor(page, { width: 390, height: 844, url: SOLO_PDF });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Open survey' }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
