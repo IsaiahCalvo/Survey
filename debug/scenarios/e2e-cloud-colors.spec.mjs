@@ -306,21 +306,25 @@ async function armCloudRect(page) {
   await expect(page.getByRole('textbox', { name: 'Cloud bump size', exact: true })).toBeVisible({ timeout: 8_000 });
 }
 
-async function createCloud(page, coords = { x0: 0.16, y0: 0.24, x1: 0.40, y1: 0.40 }) {
+async function createCloud(page, coords = { x0: 0.16, y0: 0.24, x1: 0.40, y1: 0.40 }, { seedFill = '#808080' } = {}) {
   const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
   await armCloudRect(page);
   // Seed an opaque fill so the new cloud-rect interior is a hit target.
-  // Every-swatch still overwrites this; #808080 is not the first proven solid.
-  await openColorPicker(page);
-  await clickTab(page, 'Fill');
-  await assertCloudTabs(page, { onBorder: false });
-  await clickSwatch(page, '#808080');
-  await page.keyboard.press('Escape');
+  // Skip when the caller already armed next-draw Fill/Border.
+  if (seedFill) {
+    await openColorPicker(page);
+    await clickTab(page, 'Fill');
+    await assertCloudTabs(page, { onBorder: false });
+    await clickSwatch(page, seedFill);
+    await page.keyboard.press('Escape');
+  }
   await dragOnPage(page, coords);
   const created = await waitForNewUserAnnotation(page, before, isCloudRow);
   expect(created.shapeKind).toBe('cloud-rect');
   expect(Number.isFinite(created.cloudIntensity)).toBeTruthy();
-  await expect.poll(async () => storedFill(created.id ? await annotationById(page, created.id) : null)).toBe('#808080');
+  if (seedFill) {
+    await expect.poll(async () => storedFill(await annotationById(page, created.id))).toBe(seedFill);
+  }
   await page.keyboard.press('v');
   return created;
 }
@@ -421,7 +425,7 @@ test('desktop Cloud CompactColorPicker Fill + Border every swatch intended + bre
   await assertCloudTabs(page, { onBorder: true });
   await clickSwatch(page, '#FF8000');
   await page.keyboard.press('Escape');
-  const nextCloud = await createCloud(page, { x0: 0.16, y0: 0.46, x1: 0.40, y1: 0.60 });
+  const nextCloud = await createCloud(page, { x0: 0.16, y0: 0.46, x1: 0.40, y1: 0.60 }, { seedFill: null });
   await expect.poll(async () => storedFill(await annotationById(page, nextCloud.id))).toBe('#80FF00');
   await expect.poll(async () => storedBorder(await annotationById(page, nextCloud.id))).toBe('#FF8000');
   expect(storedFill(await annotationById(page, first.id))).toBe('#FF0000');
