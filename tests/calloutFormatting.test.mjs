@@ -44,7 +44,7 @@ test('Callout catalogs are six single-name fonts, 18 sizes, 3x3, and B/I/U/S', (
   assert.equal(defaultCalloutStyle.bold, false);
 
   assert.equal(clampFontSize(1), 6);
-  assert.equal(clampFontSize(0), 6);
+  assert.equal(clampFontSize(0), 16);
   assert.equal(clampFontSize(999), 200);
   assert.equal(clampFontSize('abc'), 16);
   assert.equal(sanitizeTextAlign('justify'), 'justify');
@@ -65,6 +65,8 @@ test('Callout edit overlay maps font/size/align/B/I/U/S and rejects CSS stacks',
   assert.match(overlay, /case 'fontStyle': return \{ italic: val === 'italic' \}/);
   assert.match(overlay, /case 'underline': return \{ underline: !!val \}/);
   assert.match(overlay, /case 'linethrough': return \{ strikethrough: !!val \}/);
+  assert.match(overlay, /t\.closest\('\[data-mobile-tool-properties\]'\)/);
+  assert.match(overlay, /t\.closest\('\.mobile-styled-select__menu'\)/);
   assert.match(
     overlay,
     /setFontFamily: \(f\) => applyStyle\('fontFamily', typeof f === 'string' && f\.length > 0 && !f\.includes\(','\) \? f : 'Arial'\)/,

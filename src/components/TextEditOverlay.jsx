@@ -583,6 +583,8 @@ export default function TextEditOverlay({
         || t.closest('[data-mini-toolbar]')
         || t.closest('[data-font-color-picker]')
         || t.closest('[data-testid="compact-color-picker"]')
+        || t.closest('[data-mobile-tool-properties]')
+        || t.closest('.mobile-styled-select__menu')
       ) return;
       commitRef.current();
     };

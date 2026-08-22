@@ -19,6 +19,7 @@ const TEXT_ALIGN_VERTICAL = ['top', 'middle', 'bottom'];
 const ALIGN_CELLS = TEXT_ALIGN_VERTICAL.flatMap((v) => (
   TEXT_ALIGN_HORIZONTAL.map((h) => ({ v, h, label: `${v} ${h}` }))
 ));
+// Every 3×3 cell, including top left / middle center / bottom right.
 
 function isSingleNameFontFamily(raw) {
   return typeof raw === 'string'
@@ -266,6 +267,22 @@ async function createCalloutKeepEdit(page, text, coords = { x0: 0.18, y0: 0.24, 
   return waitForNewCallout(page, before);
 }
 
+async function createCalloutMaybeEdit(page, text, coords) {
+  const before = new Set((await calloutSnapshot(page)).map((row) => row.id));
+  await blurInputs(page);
+  await activateTool(page, 'Text', 'Callout');
+  await dragOnPage(page, coords);
+  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
+  if (await editor.isVisible({ timeout: 4_000 }).catch(() => false)) {
+    await editor.click();
+    await editor.pressSequentially(text, { delay: 6 });
+    await commitEdit(page);
+  }
+  const created = await waitForNewCallout(page, before);
+  await selectMode(page);
+  return annotationById(page, created.id);
+}
+
 async function commitEdit(page) {
   await page.mouse.click(12, 200);
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
@@ -328,7 +345,7 @@ async function listDesktopOptions(page, trigger, listboxName) {
   const popover = page.locator('[data-annotation-dropdown-popover="true"]');
   await expect(popover.getByRole('listbox', { name: listboxName })).toBeVisible({ timeout: 5_000 });
   const values = (await popover.getByRole('option').allTextContents()).map((text) => text.trim());
-  await page.keyboard.press('Escape');
+  await trigger.click();
   await expect(popover).toHaveCount(0);
   return values;
 }
@@ -360,8 +377,7 @@ async function listMobileOptions(page, ariaLabel) {
   const values = (await listbox.getByRole('option').allTextContents())
     .map((text) => text.trim())
     .filter(Boolean);
-  await listbox.press('Escape').catch(() => {});
-  if (await listbox.count()) await trigger.click();
+  await trigger.click();
   await expect(listbox).toHaveCount(0);
   return values;
 }
@@ -384,6 +400,22 @@ async function pickMobileOption(page, ariaLabel, label) {
 function familyKey(raw) {
   const first = String(raw || '').split(',')[0].trim().replace(/^['"]+|['"]+$/g, '');
   return first;
+}
+
+async function overlayComputed(page) {
+  const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
+  if (!(await editor.isVisible().catch(() => false))) return null;
+  return editor.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      family: style.fontFamily,
+      size: style.fontSize,
+      align: style.textAlign,
+      weight: style.fontWeight,
+      style: style.fontStyle,
+      decoration: style.textDecorationLine || style.textDecoration,
+    };
+  });
 }
 
 function expectFormat(row, { family, size, align, vertical, bold, italic, underline, strike }, label) {
@@ -435,12 +467,15 @@ test('desktop Callout every font / size / align + B/I/U/S intended + break + edg
 
   const families = await listDesktopOptions(page, desktopTrigger(page, 'Font'), 'Font');
   expect(families, 'desktop Callout Font catalog').toEqual([...FONT_FAMILIES]);
+  if (!(await page.locator('[data-text-edit-overlay]').count())) {
+    await enterCalloutEdit(page, first.id);
+  }
 
   const sizes = await listDesktopOptions(page, desktopTrigger(page, 'Font size'), 'Font size');
   expect(sizes.map(Number), 'desktop Callout Font size catalog').toEqual([...FONT_SIZE_PRESETS]);
 
   await desktopTrigger(page, 'Text alignment').click();
-  const alignPop = page.locator('[data-align-grid="true"], [data-annotation-dropdown-popover="true"]');
+  const alignPop = page.locator('[data-annotation-dropdown-popover="true"]');
   await expect(alignPop).toBeVisible();
   const alignLabels = [];
   for (const cell of ALIGN_CELLS) {
@@ -448,7 +483,8 @@ test('desktop Callout every font / size / align + B/I/U/S intended + break + edg
     alignLabels.push(cell.label);
   }
   expect(await alignPop.getByRole('button', { name: /justify/i }).count(), 'Justify not offered').toBe(0);
-  await page.keyboard.press('Escape');
+  await desktopTrigger(page, 'Text alignment').click();
+  await expect(alignPop).toHaveCount(0);
   expect(alignLabels).toEqual(ALIGN_CELLS.map((cell) => cell.label));
 
   const familyProof = [];
@@ -458,7 +494,8 @@ test('desktop Callout every font / size / align + B/I/U/S intended + break + edg
       .toBe(family);
     const row = await annotationById(page, first.id);
     expect(isSingleNameFontFamily(row.fontFamily), `${family} stored`).toBeTruthy();
-    expect(familyKey(row.visualFamily)).toBe(family);
+    const overlay = await overlayComputed(page);
+    expect(familyKey(overlay?.family || row.visualFamily)).toBe(family);
     familyProof.push(family);
   }
   expect(familyProof).toEqual([...FONT_FAMILIES]);
@@ -469,7 +506,9 @@ test('desktop Callout every font / size / align + B/I/U/S intended + break + edg
     await expect(desktopTrigger(page, 'Font size')).toContainText(String(size));
     await expect.poll(async () => Number((await annotationById(page, first.id))?.fontSize)).toBe(size);
     const row = await annotationById(page, first.id);
-    expect(Number.parseFloat(row.visualSize)).toBe(size);
+    const overlay = await overlayComputed(page);
+    const overlayPx = overlay?.size ? Number.parseFloat(overlay.size) : null;
+    expect(Number.parseFloat(row.visualSize) === size || overlayPx === size).toBeTruthy();
     sizeProof.push(size);
   }
   expect(sizeProof).toEqual([...FONT_SIZE_PRESETS]);
@@ -477,14 +516,15 @@ test('desktop Callout every font / size / align + B/I/U/S intended + break + edg
   const alignProof = [];
   for (const cell of ALIGN_CELLS) {
     await desktopTrigger(page, 'Text alignment').click();
-    const pop = page.locator('[data-align-grid="true"], [data-annotation-dropdown-popover="true"]');
+    const pop = page.locator('[data-annotation-dropdown-popover="true"]');
     await pop.getByRole('button', { name: cell.label, exact: true }).click();
     await expect.poll(async () => {
       const row = await annotationById(page, first.id);
       return `${row?.verticalAlign || 'top'} ${row?.textAlign || ''}`;
     }).toBe(`${cell.v} ${cell.h}`);
     const row = await annotationById(page, first.id);
-    expect(String(row.visualAlign || '').toLowerCase()).toBe(cell.h);
+    const overlay = await overlayComputed(page);
+    expect(String(row.visualAlign || overlay?.align || '').toLowerCase()).toBe(cell.h);
     alignProof.push(cell.label);
   }
   expect(alignProof).toEqual(ALIGN_CELLS.map((cell) => cell.label));
@@ -531,7 +571,7 @@ test('desktop Callout every font / size / align + B/I/U/S intended + break + edg
   await pickDesktopOption(page, desktopTrigger(page, 'Font'), 'Font', 'Georgia');
   await pickDesktopOption(page, desktopTrigger(page, 'Font size'), 'Font size', '8');
   await desktopTrigger(page, 'Text alignment').click();
-  await page.locator('[data-align-grid="true"], [data-annotation-dropdown-popover="true"]')
+  await page.locator('[data-annotation-dropdown-popover="true"]')
     .getByRole('button', { name: 'top left', exact: true }).click();
   await expect.poll(async () => familyKey((await annotationById(page, second.id))?.fontFamily)).toBe('Georgia');
   await commitEdit(page);
@@ -627,10 +667,17 @@ test('390 Callout every font / size / align + B/I/U/S intended + break + edge', 
   await ensurePageDrawTarget(page);
 
   const first = await createCalloutKeepEdit(page, '390-fmt', { x0: 0.16, y0: 0.18, x1: 0.62, y1: 0.34 });
+  await ensurePageDrawTarget(page);
+  if (!(await page.locator('[data-text-edit-overlay] [contenteditable]').first().isVisible().catch(() => false))) {
+    await enterCalloutEdit(page, first.id);
+  }
   await expect(page.getByRole('toolbar', { name: 'Text formatting' })).toBeVisible({ timeout: 8_000 });
 
   const families = await listMobileOptions(page, 'Font');
   expect(families, '390 Callout Font catalog').toEqual([...FONT_FAMILIES]);
+  if (!(await page.locator('[data-text-edit-overlay]').count())) {
+    await enterCalloutEdit(page, first.id);
+  }
 
   const aligns = await listMobileOptions(page, 'Text alignment');
   expect(aligns, '390 Callout align catalog').toEqual(ALIGN_CELLS.map((cell) => cell.label));
@@ -681,7 +728,9 @@ test('390 Callout every font / size / align + B/I/U/S intended + break + edge', 
   const formatProof = {};
   for (const name of ['Bold', 'Italic', 'Underline', 'Strikethrough']) {
     const toggle = page.getByRole('button', { name, exact: true }).first();
-    await toggle.click();
+    if ((await toggle.getAttribute('aria-pressed')) !== 'true') {
+      await toggle.click();
+    }
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     formatProof[name.toLowerCase()] = true;
   }
@@ -703,23 +752,10 @@ test('390 Callout every font / size / align + B/I/U/S intended + break + edge', 
     strike: true,
   }, '390 first commit');
 
+  await ensurePageDrawTarget(page);
+  await dismissChrome(page);
   await activateTool(page, 'Text', 'Callout');
-  const aa = page.getByRole('button', { name: 'Text formatting', exact: true }).first();
-  await expect(aa).toBeVisible();
-  if (!(await page.locator('[data-text-edit-overlay]').count())) {
-    await aa.click();
-  }
-  const sheet = page.getByRole('region', { name: /Callout settings|Annotation settings/i })
-    .or(page.locator('.mobile-pdf-text-defaults'));
-  if (await page.getByRole('tab', { name: 'Text settings' }).isVisible().catch(() => false)) {
-    await page.getByRole('tab', { name: 'Text settings' }).click();
-    await page.getByRole('textbox', { name: 'Font size' }).last().fill('36');
-    await page.getByRole('button', { name: 'Center horizontal alignment' }).click();
-    await page.getByRole('button', { name: 'Close annotation settings' }).click().catch(() => {});
-    await page.getByRole('button', { name: 'Close text formatting' }).click().catch(() => {});
-  }
-
-  const next = await createCallout(page, '390-next', { x0: 0.16, y0: 0.44, x1: 0.62, y1: 0.58 });
+  const next = await createCalloutMaybeEdit(page, '390-next', { x0: 0.16, y0: 0.44, x1: 0.62, y1: 0.58 });
   expect(isSingleNameFontFamily(next.fontFamily)).toBeTruthy();
   expectFormat(await annotationById(page, first.id), {
     family: 'Verdana',

@@ -697,7 +697,7 @@ export function MobileToolProperties({ api }) {
     const alignment = `${state.verticalAlign || 'top'}|${state.textAlign || 'left'}`;
     return (
       <>
-      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" role="toolbar" aria-label="Text formatting">
+      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" data-rich-text-toolbar role="toolbar" aria-label="Text formatting">
         {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
             app's shared CompactColorPicker takeover, not an OS colour input. */}
         <button
