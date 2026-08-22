@@ -23,11 +23,11 @@ Exact discrete catalogs used by the UI:
 | V-07 | Viewer | Bookmarks | Add/reorder/jump | Empty; rename clash |
 | V-08 | Viewer | Search text | Find in PDF | No hits; wrap; special chars |
 | V-09 | Viewer | Keyboard shortcuts overlay | `?` lists tools | Escape; focus trap |
-| D-01 | Draw | Pen / ink | Freehand stroke | Zoom mid-stroke; 1-dot tap |
+| D-01 | Draw | Pen / ink | Freehand stroke. **Every Width** live `e2e-pen-width-presets.spec.mjs` (create-time `sourceWidth`) | Zoom mid-stroke; 1-dot tap; highlighter floor 8 |
 | D-02 | Draw | Highlighter | Translucent stroke. **Every swatch** live `e2e-highlighter-colors.spec.mjs` (390 9-chip stroke sheet + desktop CompactColorPicker 16) | Opacity 0; print exclusion vs markup |
 | D-03 | Draw | Eraser (object) | Delete hit annotations | Policy: ink-only vs all; preview |
 | D-04 | Draw | Eraser (ink) | Partial path erase | Race; empty path |
-| D-05 | Draw | Stroke width | Presets + numeric | Min/max; eraser size vs stroke |
+| D-05 | Draw | Stroke width | Presets + numeric. **Every Pen Width** live `e2e-pen-width-presets.spec.mjs` (12 presets 1–50; clamp; Eraser Size isolated) | Min/max; eraser size vs stroke |
 | S-01 | Shapes | Rectangle | Draw + fill/stroke. Style→Cloud **every swatch** live `e2e-cloud-colors.spec.mjs` | Zero size; rotation |
 | S-02 | Shapes | Ellipse | Draw + fill/stroke | Circle vs ellipse |
 | S-03 | Shapes | Line | Draw + dash. Single-click `p1`/`p2`/`midpoint` live `e2e-line-endpoint-midpoint.spec.mjs`. Double-click bbox live `e2e-bbox-edit-mode.spec.mjs`. **Every swatch** live `e2e-line-arrow-colors.spec.mjs` (desktop CompactColorPicker 16 including transparent) | Zero length; 10px snap-to-straight; Pen-armed handle still edits; Pen exits bbox mode |
