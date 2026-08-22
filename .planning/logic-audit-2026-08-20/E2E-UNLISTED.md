@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-21 F3 / counter Delete / cloud bump):** UL-34 every integer 1–20 live on the local Bump field (not leftover-18 persist). UL-35 series-list Delete execute + confirm; pin Delete is keyboard-only (pin menu stays Continue pin). F3/Ctrl+G are unlisted find aliases (not new UL rows). Receipt `fix-logs/f3-counter-delete-bump-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-21 Counter Size + Start):** UL-35 Size catalog every preset 5…64 + clamp 4–76; Start number intended/break/edge (lock after second pin). Not D-05 Width. Receipt `fix-logs/counter-size-start-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-21 F3 / counter Delete / cloud bump):** UL-34 every integer 1–20 live on the local Bump field (not leftover-18 persist). UL-35 series-list Delete execute + confirm; pin Delete is keyboard-only (pin menu stays Continue pin). F3/Ctrl+G are unlisted find aliases (not new UL rows). Receipt `fix-logs/f3-counter-delete-bump-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-21 leftover-18 unblock):** UL-03 web `/` Auth-modal gate live; UL-13/16 previewBlocked save/wipe live; UL-20 trial not clicked; UL-21/22 Connect fail-closed; UL-24 Send fail-closed; UL-45 still needs a second-account tuple. Space CSV / PDF Pages added as save/export inventory (not new UL rows). Receipt `fix-logs/leftover18-unblock-2026-08-21.md`. Goal stays open.
 
@@ -66,7 +68,7 @@ Unblocked catalog follow-up (2026-08-21, not new UL rows): `fix-logs/e2e-unblock
 | UL-32 | Pages panel menu | Cut / Copy / Paste / Duplicate / Rotate / Mirror H+V / Reset / Delete | Page ops live on thumbs, not canvas | 1-page delete; empty clipboard | **pass** (item + **Duplicate execute**: clone annotations, armed/History, first/last undo wipe — `fix-logs/thin-leftovers-2026-08-21.md`) |
 | UL-33 | AppShell toolbar | Style picker Solid / Dashed / Dotted / Cloud | Cloud only on rect | Ellipse has no Cloud | **pass** (Node + live Solid/Cloud/Dashed/Dotted). Completeness: armed Dashed `6,4` + Dotted `2,4`; ellipse omits Cloud (`e2e-catalog-completeness.spec.mjs`) |
 | UL-34 | AppShell toolbar | Cloud bump size 1–20 | Rect + cloud only | Letters / 0 / 99 | **pass** (every integer 1–20 live + 0→1 / 99→20 / letters rejected / empty→1; `e2e-cloud-bump-1-20.spec.mjs`) |
-| UL-35 | AppShell toolbar | Counter series: New Count / Continue / start # / delete series | Series list + context menu | Permission toast on delete | **pass** (wired + live start # / New Count after `c`; this pass: series-list Delete + confirm wipes; keyboard + Select-menu pin Delete **renumbers** — `e2e-counter-series-delete.spec.mjs`) |
+| UL-35 | AppShell toolbar | Counter series: New Count / Continue / start # / Size / delete series | Series list + context menu | Permission toast on delete; Size 3/77 | **pass** (this pass: Size every preset 5…64 + clamp 4–76; Start 10 / letters/0/empty→1 / lock after 2 pins — `e2e-counter-size-start.spec.mjs`; prior: series-list Delete + pin Delete **renumbers**) |
 | UL-36 | AppShell toolbar | Edit text (Aa) | Enter overlay on selected text/callout | Disabled with no selection | **pass** (wired + live disabled) |
 | UL-37 | AppShell toolbar | Forms category + 4 tools | Text field / Checkbox / Radio / Signature | **`{false && (` hidden for first release** | **pass** (hidden live). Tools Node-pass |
 | UL-38 | Form properties | Name / default / tooltip / required / read-only / Delete field | Value hidden for checkbox/radio/signature | Id-less field | **pass** (Node) |
