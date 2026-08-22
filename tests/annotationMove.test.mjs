@@ -63,7 +63,7 @@ test('live spec covers single / group-move / clamp / hollow / Pen / 390 / file.i
   assert.match(spec, /group-move must keep B dx with A/);
   assert.match(spec, /undo group-move must restore A and B/);
   assert.match(spec, /micro-drag must not commit left/);
-  assert.match(spec, /hollow-fill drag must not move A left/);
+  assert.match(spec, /hollow-fill drag must not move H left/);
   assert.match(spec, /off-page drag must clamp to page origin/);
   assert.match(spec, /Pen drag must invent ink/);
   assert.match(spec, /Pen drag must not move A/);
