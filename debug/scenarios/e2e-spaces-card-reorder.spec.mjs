@@ -260,9 +260,9 @@ test('U-02 space-card reorder updates stored + rail order', async ({ page }) => 
   if (await create390.count()) {
     mobileCreate = await create390.count();
     await expect(create390.first()).toBeVisible({ timeout: 8_000 });
-    await create390.first().click();
+    await create390.first().evaluate((el) => el.click());
     await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 1' })).toBeVisible({ timeout: 8_000 });
-    await create390.first().click();
+    await create390.first().evaluate((el) => el.click());
     await expect(mobilePanel.getByRole('textbox', { name: 'Rename Space 2' })).toBeVisible({ timeout: 8_000 });
     await page.evaluate(() => document.activeElement?.blur?.());
     mobileHandles = await mobilePanel.locator('[data-space-drag-handle]').count();
