@@ -70,6 +70,7 @@ test('live spec covers type catalog, skip/delete, E vs Shift+E, 390, hub, file.i
   assert.match(spec, /zoom % INPUT does not steal E/);
   assert.match(spec, /textbox', \{ name: 'Zoom percentage'/);
   assert.match(spec, /data-eraser-caret-popup/);
+  assert.match(spec, /caret flyout must set Partial erase/);
   assert.match(spec, /data-diag-eraser-wrapper/);
   assert.match(spec, /eraseThroughRegion/);
   assert.match(spec, /eraser wrapper geometry/);
