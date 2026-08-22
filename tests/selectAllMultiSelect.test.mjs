@@ -86,7 +86,7 @@ test('live spec covers click / Shift-click / window+crossing / Ctrl+A no-op + 39
   assert.match(spec, /Esc mid-marquee must keep A\+B/);
   assert.match(spec, /Ctrl\+A must not add B/);
   assert.match(spec, /bare A must not change selection/);
-  assert.match(spec, /Arrow-armed window drag must not marquee-select/);
+  assert.match(spec, /Arrow-armed empty click must deselect/);
   assert.match(spec, /Ctrl\+A in zoom INPUT must keep A and B/);
   assert.match(spec, /390 Shift-click must add B/);
   assert.match(spec, /390 window marquee around A must select A/);

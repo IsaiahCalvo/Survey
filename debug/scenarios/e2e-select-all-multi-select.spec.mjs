@@ -350,12 +350,14 @@ test('desktop select / shift-click / marquee intended + break + edge', async ({ 
   await expectSelected(page, [rectA.id], 'Ctrl+A must not add B');
   expect(await userOrder(page), 'Ctrl+A must not invent marks').toEqual([rectA.id, rectB.id]);
 
-  // Break — bare A arms Arrow, not select-all.
+  // Break — bare A arms Arrow, not select-all. Empty click deselects; it
+  // does not invent a multi-select. Do not window-drag here: Arrow-armed
+  // drag creates an arrow (product), which is not this slice.
   await page.keyboard.press('a');
   await expectSelected(page, [rectA.id], 'bare A must not change selection');
-  await dragOnPage(page, { x0: 0.10, y0: 0.16, x1: 0.90, y1: 0.84 });
-  await expectSelected(page, [], 'Arrow-armed window drag must not marquee-select');
-  expect(await userOrder(page), 'Arrow-armed drag must invent 0').toEqual([rectA.id, rectB.id]);
+  await clickEmpty(page);
+  await expectSelected(page, [], 'Arrow-armed empty click must deselect');
+  expect(await userOrder(page), 'Arrow-armed click must invent 0').toEqual([rectA.id, rectB.id]);
 
   await selectMode(page);
   await clickEmpty(page);
