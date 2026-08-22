@@ -484,9 +484,12 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
   }, { timeout: 8_000 }).toBe(true);
 
   // Break: rect already owns single-click bbox — double-click does not invent a second mode.
-  const rect = await createRect(page, { x0: 0.62, y0: 0.72, x1: 0.78, y1: 0.84 });
+  await page.keyboard.press('Escape');
+  const rect = await createRect(page, { x0: 0.70, y0: 0.80, x1: 0.86, y1: 0.90 });
   await selectMode(page);
-  await page.locator('[data-shape-hit-target="rect"]').first().click({ force: true });
+  const rectHit = page.locator(`[data-anno-id="${rect.id}"] [data-shape-hit-target="rect"]`);
+  if (await rectHit.count()) await rectHit.click({ force: true });
+  else await page.locator('[data-shape-hit-target="rect"]').first().click({ force: true });
   await expect(page.locator('[data-resize-handle]').first()).toBeVisible({ timeout: 8_000 });
   const rectResizeBefore = await page.locator('[data-resize-handle]').count();
   await page.waitForTimeout(450);
