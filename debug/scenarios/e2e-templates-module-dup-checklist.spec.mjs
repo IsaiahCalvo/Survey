@@ -280,8 +280,8 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
       mobileAddedModule = await page.getByText('Module 1', { exact: true }).count() > 0
         || await page.locator('input[value="Module 1"]').count() > 0;
     }
-    const camerasToggle = page.getByRole('button', { name: /Expand Cameras|Collapse Cameras/ });
-    if (await camerasToggle.count()) {
+    const camerasToggle = page.locator('.templates-mobile-category-toggle[aria-label*="Cameras"]');
+    if (await camerasToggle.first().isVisible().catch(() => false)) {
       const label = await camerasToggle.first().getAttribute('aria-label');
       if (label?.startsWith('Expand')) await camerasToggle.first().click();
     }
