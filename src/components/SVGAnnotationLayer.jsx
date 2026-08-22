@@ -33,6 +33,7 @@ import {
   renderCounter,
   renderPolygon,
   renderPolyline,
+  renderTextMarkup,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
@@ -2171,7 +2172,12 @@ const SVGAnnotationLayer = memo(({
       const objectType = String(obj.type || '').toLowerCase();
       let element = null;
 
-      if (obj.data && obj.data.type === 'counter') {
+      if (obj.data && obj.data.type === 'text-markup') {
+        element = renderTextMarkup(obj, i);
+        if (obj.data.markupType === 'highlight' && obj.data.overlapMode === 'uniform' && element) {
+          element = cloneElement(element, { opacity: 0, 'data-uniform-hit-source': 'true' });
+        }
+      } else if (obj.data && obj.data.type === 'counter') {
         if (window.__COUNTER_SVG_DIAG) {
           svgAnnotationDebug(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
         }
@@ -3639,7 +3645,9 @@ const SVGAnnotationLayer = memo(({
     if (visualTransform?.previewObjects && visualTransform.previewObjects[i]) {
       renderObj = visualTransform.previewObjects[i];
       const previewType = String(renderObj.type || '').toLowerCase();
-      if (renderObj?.data?.type === 'counter') {
+      if (renderObj?.data?.type === 'text-markup') {
+        renderElement = renderTextMarkup(renderObj, i);
+      } else if (renderObj?.data?.type === 'counter') {
         renderElement = renderCounter(renderObj, i);
       } else if (previewType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
@@ -4638,6 +4646,28 @@ const SVGAnnotationLayer = memo(({
     );
   });
 
+  const uniformTextMarkupElements = useMemo(() => {
+    const groups = new Map();
+    for (const entry of stagedAnnotations) {
+      const obj = entry?.obj;
+      if (obj?.data?.type !== 'text-markup' || obj.data.markupType !== 'highlight' || obj.data.overlapMode !== 'uniform') continue;
+      const key = `${obj.fill || obj.stroke || '#f4d35e'}:${Number(obj.opacity ?? 0.38)}`;
+      if (!groups.has(key)) groups.set(key, { color: obj.fill || obj.stroke || '#f4d35e', opacity: Number(obj.opacity ?? 0.38), quads: [] });
+      groups.get(key).quads.push(...(obj.data.quads || []));
+    }
+    return Array.from(groups.values()).map((group, index) => (
+      <path
+        key={`uniform-text-markup-${index}`}
+        d={group.quads.map((q) => `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`).join(' ')}
+        fill={group.color}
+        fillRule="nonzero"
+        opacity={Math.max(0, Math.min(1, group.opacity))}
+        pointerEvents="none"
+        data-uniform-text-markup-mask="true"
+      />
+    ));
+  }, [stagedAnnotations]);
+
   return (
     <>
     <svg
@@ -4778,6 +4808,7 @@ const SVGAnnotationLayer = memo(({
       // clicking empty space during creation tools doesn't misfire.
       onDoubleClick={isSelectTool ? handleAnnotationDoubleClick : undefined}
     >
+      {uniformTextMarkupElements}
       {wrappedAnnotations}
       {/* Survey markers are stored outside annotations.objects, so this
           path owns their click, move, and resize behavior. */}

@@ -2051,7 +2051,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
                   <>
-                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line') ? (
+                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'text-markup') ? (
                   /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
                      line). Checker pattern shows through low-opacity strokes
                      and a faint hairline ring lifts pure black off the dark
@@ -2480,6 +2480,18 @@ export default function App({ devPreviewReturnTab = null }) {
                     </div>
                   );
                 })()}
+                {bottomToolbarApi.contextTool === 'text-markup' && bottomToolbarApi.setTextMarkupOverlapMode && (
+                  <select
+                    aria-label="Highlight overlap mode"
+                    title="Layered makes overlaps darker. Uniform keeps each saved range at one visual strength. PDF viewers may blend separate native highlight records."
+                    value={bottomToolbarApi.textMarkupOverlapMode || 'layered'}
+                    onChange={(event) => bottomToolbarApi.setTextMarkupOverlapMode(event.target.value)}
+                    style={{ height: 28, border: '1px solid #3a4252', borderRadius: 4, background: '#181b20', color: '#e8e2d4', fontSize: 11 }}
+                  >
+                    <option value="layered">Layered</option>
+                    <option value="uniform">Uniform</option>
+                  </select>
+                )}
                   </>
                 )}
 

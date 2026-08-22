@@ -53,6 +53,12 @@ const TOOL_TO_GROUP = Object.entries(TOOL_GROUPS).reduce((result, [groupId, grou
   return result;
 }, {});
 
+const MOBILE_SELECT_TOOLS = [
+  { id: 'select', label: 'Select', icon: 'cursor' },
+  { id: 'lasso-select', label: 'Lasso Select', icon: 'cursor', disabled: true },
+  { id: 'text-select', label: 'Text Select', icon: 'text' },
+];
+
 const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow', 'text', 'callout', 'counter']);
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'text', 'callout', 'counter']);
 const BORDER_STYLE_TOOLS = new Set(['rect', 'ellipse', 'line', 'arrow', 'text', 'callout']);
@@ -1507,13 +1513,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
             <>
               <div className="mobile-pdf-tools__divider is-short" />
               <div className="mobile-pdf-tools__subtools">
-                {TOOL_GROUPS[openCategory].tools.map((tool) => (
+                {(openCategory === 'select' ? MOBILE_SELECT_TOOLS : TOOL_GROUPS[openCategory].tools).map((tool) => (
                   <RailButton
                     key={tool.id}
                     active={activeTool === tool.id}
                     icon={tool.icon}
                     label={tool.label}
-                    onClick={() => selectTool(tool.id)}
+                    disabled={tool.disabled}
+                    onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
                   />
                 ))}
               </div>

@@ -1398,6 +1398,16 @@ export const isPointOnImage = (point, imageObj, tolerance = DEFAULT_TOLERANCE) =
 
 export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
   if (!obj || !obj.type) return false;
+  if (obj?.data?.type === 'text-markup') {
+    return (obj.data.quads || []).some((quad) => {
+      const xs = [quad.x1, quad.x2, quad.x3, quad.x4];
+      const ys = [quad.y1, quad.y2, quad.y3, quad.y4];
+      return point.x >= Math.min(...xs) - tolerance
+        && point.x <= Math.max(...xs) + tolerance
+        && point.y >= Math.min(...ys) - tolerance
+        && point.y <= Math.max(...ys) + tolerance;
+    });
+  }
   if (obj?.data?.type === 'counter') {
     return isPointOnCounter(point, obj, tolerance);
   }

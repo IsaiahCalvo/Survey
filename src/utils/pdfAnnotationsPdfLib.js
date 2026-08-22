@@ -62,6 +62,12 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
+import {
+  adaptHighlight,
+  adaptSquiggly,
+  adaptStrikeOut,
+  adaptUnderline,
+} from './pdfNativeExport/adapters/textMarkup.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -514,7 +520,8 @@ export function buildPdfExportAnnotationPlan({
       return;
     }
 
-    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
+    const isTextMarkupGroup = item.fabricType === 'group' && obj?.data?.type === 'text-markup';
+    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && !isTextMarkupGroup && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
       recordSkip(diagnostics, item, 'unsupported-type');
       return;
     }
@@ -3264,6 +3271,45 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
 
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }) => {
   if (!obj || typeof obj !== 'object') return 0;
+  if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) {
+    const color = parsePdfDrawColor(obj.fill || obj.stroke || '#f4d35e', '#f4d35e');
+    const opacity = Math.max(0.05, Math.min(1, Number(obj.opacity ?? 1)));
+    const markupType = String(obj.data.markupType || obj.exportType || 'highlight').toLowerCase();
+    let count = 0;
+    obj.data.quads.forEach((quad) => {
+      const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
+      const right = Math.max(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
+      const top = Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
+      const bottom = Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
+      if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return;
+      if (markupType === 'highlight') {
+        page.drawRectangle({ x: left, y: getPdfY(pageHeight, bottom), width: right - left, height: bottom - top, color: color.color, opacity });
+      } else if (markupType === 'squiggly') {
+        const y = bottom - Math.max(0.6, (bottom - top) * 0.08);
+        const step = Math.max(1.5, (bottom - top) * 0.2);
+        for (let x = left; x < right; x += step) {
+          page.drawLine({
+            start: { x, y: getPdfY(pageHeight, y) },
+            end: { x: Math.min(right, x + step), y: getPdfY(pageHeight, y + (Math.floor((x - left) / step) % 2 === 0 ? -step * 0.35 : step * 0.35)) },
+            thickness: Math.max(0.6, (bottom - top) * 0.06),
+            color: color.color,
+            opacity,
+          });
+        }
+      } else {
+        const y = markupType === 'strikeout' ? (top + bottom) / 2 : bottom - Math.max(0.6, (bottom - top) * 0.08);
+        page.drawLine({
+          start: { x: left, y: getPdfY(pageHeight, y) },
+          end: { x: right, y: getPdfY(pageHeight, y) },
+          thickness: Math.max(0.6, (bottom - top) * 0.06),
+          color: color.color,
+          opacity,
+        });
+      }
+      count += 1;
+    });
+    return count;
+  }
   if (Array.isArray(obj.objects)) {
     const parentLeft = Number(obj.left) || 0;
     const parentTop = Number(obj.top) || 0;
@@ -3360,6 +3406,25 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   return 0;
+};
+
+const drawUniformHighlightMask = (page, objects, pageHeight) => {
+  const first = objects?.[0];
+  const quads = (objects || []).flatMap((obj) => (Array.isArray(obj?.data?.quads) ? obj.data.quads : []));
+  if (!first || quads.length === 0) return 0;
+  const color = parsePdfDrawColor(first.fill || first.stroke || '#f4d35e', '#f4d35e');
+  const opacity = Math.max(0.05, Math.min(1, Number(first.opacity ?? 1)));
+  const path = quads.map((quad) => {
+    const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
+    const right = Math.max(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
+    const top = Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
+    const bottom = Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
+    if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return '';
+    return `M ${left} ${top} L ${right} ${top} L ${right} ${bottom} L ${left} ${bottom} Z`;
+  }).filter(Boolean).join(' ');
+  if (!path) return 0;
+  page.drawSvgPath(path, { x: 0, y: pageHeight, color: color.color, opacity });
+  return 1;
 };
 
 const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
@@ -3511,10 +3576,25 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const fallbackSize = page.getSize();
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
+    const uniformHighlightGroups = new Map();
     (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+      const isUniformHighlight = obj?.data?.type === 'text-markup'
+        && obj?.data?.markupType === 'highlight'
+        && obj?.data?.overlapMode === 'uniform';
+      if (isUniformHighlight) {
+        const key = `${String(obj.fill || obj.stroke || '#f4d35e').toLowerCase()}:${Number(obj.opacity ?? 1)}`;
+        if (!uniformHighlightGroups.has(key)) uniformHighlightGroups.set(key, []);
+        uniformHighlightGroups.get(key).push(obj);
+        return;
+      }
       const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts);
       flattenedPrintAnnotationsAdded += drawnCount;
       trackEditedImportDraw(pageNumber, obj, drawnCount);
+    });
+    uniformHighlightGroups.forEach((objects) => {
+      const drawnCount = drawUniformHighlightMask(page, objects, pageHeight);
+      flattenedPrintAnnotationsAdded += drawnCount;
+      objects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
     });
   });
 
@@ -3713,6 +3793,18 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       if (editedImportSubtypeWriter) {
         annotRef = editedImportSubtypeWriter(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
       } else switch (objType) {
+        case 'group': {
+          const markupWriters = {
+            highlight: adaptHighlight,
+            underline: adaptUnderline,
+            squiggly: adaptSquiggly,
+            strikeout: adaptStrikeOut,
+          };
+          const markupType = String(obj?.data?.markupType || obj?.exportType || '').toLowerCase();
+          const writer = obj?.data?.type === 'text-markup' ? markupWriters[markupType] : null;
+          if (writer) annotRef = writer(obj, { pdfDoc, page, pageHeight });
+          break;
+        }
         case 'path':
           annotRef = createInkAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           break;

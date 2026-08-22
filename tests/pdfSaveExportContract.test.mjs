@@ -29,6 +29,7 @@ import {
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import { getCounterLabelLayout } from '../src/utils/counterGeometry.js';
+import { createTextMarkupAnnotation } from '../src/utils/pdfTextMarkup.js';
 
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
   + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
@@ -87,6 +88,59 @@ test('PDF export can generate bytes without writing a local file', async () => {
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test('live PDF export writes all four saved text markup subtypes with stored quads', async () => {
+  const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const objects = types.map((markupType, index) => createTextMarkupAnnotation({
+    id: `text-mark-${markupType}`,
+    pageNumber: 1,
+    selectionGroupId: 'text-group',
+    markupType,
+    selectedText: `selected ${markupType}`,
+    color: '#0080ff',
+    opacity: 0.35,
+    quads: [{
+      x1: 10, y1: 10 + index * 25,
+      x2: 90, y2: 10 + index * 25,
+      x3: 10, y3: 24 + index * 25,
+      x4: 90, y4: 24 + index * 25,
+    }],
+  }));
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-text-markup' },
+  );
+
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Highlight', 'Underline', 'Squiggly', 'StrikeOut']);
+  const dicts = await getPdfAnnotationDicts(bytes);
+  dicts.forEach((dict, index) => {
+    assert.equal(dict.get(PDFName.of('Contents')).decodeText(), `selected ${types[index]}`);
+    assert.equal(dict.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
+    assert.equal(dict.lookup(PDFName.of('CA')).asNumber(), 0.35);
+  });
+});
+
+test('print helper flattens saved text markup into visible page content', async () => {
+  const mark = createTextMarkupAnnotation({
+    id: 'print-highlight',
+    pageNumber: 1,
+    markupType: 'highlight',
+    selectedText: 'printed highlight',
+    color: '#ffff00',
+    opacity: 0.4,
+    quads: [{ x1: 20, y1: 30, x2: 100, y2: 30, x3: 20, y3: 45, x4: 100, y4: 45 }],
+  });
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    await makePdfFile(),
+    { 1: { objects: [mark] } },
+    { 1: { width: 200, height: 200 } },
+  );
+  assert.equal(await pageHasContentStream(bytes), true);
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
 });
 
 test('PDF save helper refuses original-path overwrite unless explicitly allowed', async () => {

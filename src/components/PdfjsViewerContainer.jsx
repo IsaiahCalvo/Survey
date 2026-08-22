@@ -1554,7 +1554,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (isEditableTarget(target)) return true;
       if (target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
       return interactionModeRef.current === 'TextSelection'
-        && Boolean(target?.closest?.('.textLayer, .textLayer span, .annotationLayer'));
+        && Boolean(target?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer'));
     };
 
     const onTouchStart = (event) => {
@@ -2179,6 +2179,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           -webkit-user-select: text !important;
           user-select: text !important;
           -webkit-touch-callout: default !important;
+        }
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive,
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive :is(span, br) {
+          -webkit-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
+          -webkit-user-drag: auto !important;
         }
       `}</style>
       {loading ? (

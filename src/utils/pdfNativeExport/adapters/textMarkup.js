@@ -51,11 +51,21 @@ function buildTextMarkupDict({
   };
   if (bounds.width <= 0 || bounds.height <= 0) return null;
 
-  const quadPoints = buildQuadPointsFromBounds(bounds, pageHeight);
-  const minX = quadPoints[4];
-  const minY = quadPoints[5];
-  const maxX = quadPoints[2];
-  const maxY = quadPoints[1];
+  const storedQuads = Array.isArray(fabricObj?.data?.quads) ? fabricObj.data.quads : [];
+  const quadPoints = storedQuads.length > 0
+    ? storedQuads.flatMap((quad) => [
+        Number(quad.x1), flipY(pageHeight, Number(quad.y1)),
+        Number(quad.x2), flipY(pageHeight, Number(quad.y2)),
+        Number(quad.x3), flipY(pageHeight, Number(quad.y3)),
+        Number(quad.x4), flipY(pageHeight, Number(quad.y4)),
+      ])
+    : buildQuadPointsFromBounds(bounds, pageHeight);
+  const quadXs = quadPoints.filter((_, index) => index % 2 === 0);
+  const quadYs = quadPoints.filter((_, index) => index % 2 === 1);
+  const minX = Math.min(...quadXs);
+  const minY = Math.min(...quadYs);
+  const maxX = Math.max(...quadXs);
+  const maxY = Math.max(...quadYs);
 
   const colorSource = useFill
     ? (getFabricFill(fabricObj) || colorFallback)
@@ -68,7 +78,8 @@ function buildTextMarkupDict({
     Rect: [minX, minY, maxX, maxY],
     QuadPoints: quadPoints,
     C: color,
-    Contents: pdfStringOrEmpty(''),
+    Contents: pdfStringOrEmpty(fabricObj?.data?.selectedText || ''),
+    CA: Math.max(0, Math.min(1, Number(fabricObj?.opacity ?? 1))),
     NM: pdfStringOrEmpty(resolveAnnotationName(fabricObj, fallbackPrefix)),
     P: page.ref,
   };

@@ -82,7 +82,8 @@ function ensureTextLayerStyles() {
     /* UX: the I-beam covers the WHOLE page in text-selection mode, not just the
        glyph boxes, so the mode reads as "you are selecting text here" even in
        the gaps between words. */
-    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; }
+    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; -webkit-user-select: text !important; user-select: text !important; touch-action: pan-x pan-y; }
+    .pdfjsTextLayer.is-interactive :is(span, br) { -webkit-user-select: text !important; user-select: text !important; -webkit-touch-callout: default !important; }
     .pdfjsTextLayer:not(.is-interactive) { pointer-events: none; }
     .pdfjsTextLayer:not(.is-interactive) :is(span, br) { -webkit-user-select: none; user-select: none; }
     .pdfjsTextLayer ::selection { background: rgba(58, 122, 254, 0.45); }
@@ -95,7 +96,7 @@ function ensureTextLayerStyles() {
 // applies user rotation by rewriting the PDF bytes (it always renders at rotation 0,
 // same as the canvas, link, and form layers). So the default of 0 is correct — the
 // glyph viewport already inherits the page's baked orientation via `page.rotate`.
-export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false }) {
+export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, onTextAvailability }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);
 
@@ -121,6 +122,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
         const page = await pdf.getPage(pageNumber);
         if (cancelled || !ref.current) return;
         const textContent = await page.getTextContent();
+        onTextAvailability?.(pageNumber, textContent);
         if (cancelled || !ref.current) return;
         const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
         el.innerHTML = '';
@@ -133,7 +135,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       } catch { /* cancelled or unsupported render — ignore */ }
     })();
     return () => { cancelled = true; try { task?.cancel?.(); } catch { /* noop */ } };
-  }, [pdf, pageNumber, scale, rotation]);
+  }, [pdf, pageNumber, scale, rotation, onTextAvailability]);
 
   return <div ref={ref} className={`pdfjsTextLayer${interactive ? ' is-interactive' : ''}`} />;
 }
