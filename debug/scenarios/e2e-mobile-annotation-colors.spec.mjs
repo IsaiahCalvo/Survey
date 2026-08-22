@@ -307,9 +307,7 @@ test('390 MOBILE_ANNOTATION_COLORS every chip intended + break + edge', async ({
   console.log('MOBILE_ANNOTATION_COLORS_PROOF', JSON.stringify({
     desktopChips,
     fill: fillProof,
-    compactPicker: '#0000FF',
-    firstId: rect.id,
-    secondId: second.id,
+    compactPicker: { id: compactRect.id, stored: '#0000FF' },
     viewBox,
     fileId,
   }));

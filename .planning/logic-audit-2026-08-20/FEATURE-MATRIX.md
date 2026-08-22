@@ -44,7 +44,7 @@ Exact discrete catalogs used by the UI:
 | C-02 | Color | Hex field | `#rgb` / `#rrggbb` / bare | Invalid, rgba(), named, 4/5/7/8 digit |
 | C-03 | Color | Opacity | Slider + % field 0–100 | `minOpacity`; transparentMode restore |
 | C-04 | Color | Spectrum HSV | Drag + keyboard | Out-of-bounds pointer; hue wrap |
-| C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets | Counter number color; armed tool vs selection |
+| C-05 | Color | Fill vs stroke vs font sites | Same picker, different targets. **390 sheet chips** live `e2e-mobile-annotation-colors.spec.mjs` (9 `MOBILE_ANNOTATION_COLORS`, not desktop CompactColorPicker) | Counter number color; armed tool vs selection; 390 default fill opacity 0 |
 | C-06 | Color | Match Fill | Border snapshots fill | Missing fill; opacity lock |
 | E-01 | Edit | Resize | Shape handles + live bounds. Callout corners are T-02 (`textBox-tl/tr/bl/br`). Line `p1`/`p2`/`midpoint` are S-03/S-04. Polygon/polyline `vertex-N` is X-04. Double-click / 390-strip bbox mode live `e2e-bbox-edit-mode.spec.mjs`. Placed survey-marker 8 handles live `e2e-survey-marker-handle-drag.spec.mjs` | Rotated; text wrap height; Pen exits bbox |
 | E-02 | Edit | Rotation | Handle + numeric + Shift 45°. Counter nubbin / Shift-orbit live `e2e-counter-nubbin-orbit.spec.mjs`. Survey-marker `mtr` live `e2e-survey-marker-handle-drag.spec.mjs` | Off-screen handle; 0/90/180/270; Shift-click toggle ≠ orbit |
@@ -70,7 +70,7 @@ Exact discrete catalogs used by the UI:
 | A-06 | Collab | Presence / re-sign-in | Roster + banner | Access removed; outbox retry |
 | A-07 | History | Revisions / activity | Restore / jump | Quarantine stub bbox |
 | P-01 | Mobile | Sheets + chrome | Tool rail + properties | Hook restore; color takeover |
-| P-02 | Mobile | Text formatting | Same 6 fonts + formats | Numeric size 1–200 |
+| P-02 | Mobile | Text formatting | Same 6 fonts + formats. **390 annotation color chips** live `e2e-mobile-annotation-colors.spec.mjs` (not the P-02 harness) | Numeric size 1–200 |
 | P-03 | Desktop | Electron menus | Open / export / print. Desktop TabBar **Close tab** live `e2e-tab-close.spec.mjs` (not Home / `returnToDevHubPreview`; 390 TabBar absent) | No display in headless; page-drop toast stub |
 | P-04 | Desktop | Keyboard tool keys | V ⇧V P H E T Q L A C | Undocumented keys |
 
