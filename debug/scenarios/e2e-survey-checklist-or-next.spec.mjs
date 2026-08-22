@@ -129,26 +129,24 @@ async function expandWallsMarkers(page) {
   await expect(page.getByRole('button', { name: /item notes/ }).first()).toBeVisible({ timeout: 8_000 });
 }
 
-async function openDesktopNotes(page, { edit = false } = {}) {
+async function openDesktopNotes(page, markerId) {
   await expandWallsMarkers(page);
-  const btn = edit
-    ? page.getByRole('button', { name: 'Edit item notes' }).first()
-    : page.getByRole('button', { name: /item notes/ }).first();
-  await expect(btn).toBeVisible({ timeout: 8_000 });
-  await btn.click({ force: true });
+  const row = page.locator(`#highlight-item-${markerId}`);
+  await expect(row).toBeVisible({ timeout: 8_000 });
+  await row.getByRole('button', { name: /item notes/ }).click({ force: true });
   await expect(page.getByRole('heading', { name: 'Note', exact: true })).toBeVisible({ timeout: 8_000 });
 }
 
-function desktopPhotoInput(page, id) {
-  return page.locator(`#photo-upload-${id}`);
+function desktopPhotoInput(page) {
+  return page.locator('input[id^="photo-upload-"]');
 }
 
-function desktopVideoInput(page, id) {
-  return page.locator(`#video-upload-${id}`);
+function desktopVideoInput(page) {
+  return page.locator('input[id^="video-upload-"]');
 }
 
-async function attachDesktopPhoto(page, id, name = 'e2e-note.png') {
-  await desktopPhotoInput(page, id).setInputFiles({
+async function attachDesktopPhoto(page, name = 'e2e-note.png') {
+  await desktopPhotoInput(page).setInputFiles({
     name,
     mimeType: 'image/png',
     buffer: PNG_1X1,
@@ -156,8 +154,8 @@ async function attachDesktopPhoto(page, id, name = 'e2e-note.png') {
   await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 8_000 });
 }
 
-async function attachDesktopVideo(page, id, name = 'e2e-note.webm') {
-  await desktopVideoInput(page, id).setInputFiles({
+async function attachDesktopVideo(page, name = 'e2e-note.webm') {
+  await desktopVideoInput(page).setInputFiles({
     name,
     mimeType: 'video/webm',
     buffer: PNG_1X1,
@@ -262,17 +260,17 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await expect(page.getByRole('button', { name: /^Y$/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^N\/A$/ })).toHaveCount(0);
 
-  await openDesktopNotes(page);
+  await openDesktopNotes(page, markerA);
   await expect(page.getByText('Upload photos', { exact: true })).toBeVisible();
   await expect(page.getByText('Upload videos', { exact: true })).toBeVisible();
 
   // Break: Cancel after a draft attach writes nothing.
-  await attachDesktopPhoto(page, markerA, 'draft-should-die.png');
+  await attachDesktopPhoto(page, 'draft-should-die.png');
   await cancelDesktopNotes(page);
   expect((await storedNote(page, markerA))?.photos || []).toEqual([]);
 
   // Break: empty dialog Save writes empty arrays, not a phantom file.
-  await openDesktopNotes(page);
+  await openDesktopNotes(page, markerA);
   await saveDesktopNotes(page);
   const emptyNote = await storedNote(page, markerA);
   expect(emptyNote?.photos || []).toEqual([]);
@@ -280,9 +278,9 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
 
   // Intended: photo + video persist on A; B stays empty.
   // Attachments-only Save must flip the chrome to Edit (not stay Add).
-  await openDesktopNotes(page);
-  await attachDesktopPhoto(page, markerA, 'keep-photo.png');
-  await attachDesktopVideo(page, markerA, 'keep-video.webm');
+  await openDesktopNotes(page, markerA);
+  await attachDesktopPhoto(page, 'keep-photo.png');
+  await attachDesktopVideo(page, 'keep-video.webm');
   await saveDesktopNotes(page);
   await expect.poll(async () => (await storedNote(page, markerA))?.photos?.[0]?.name).toBe('keep-photo.png');
   expect((await storedNote(page, markerA))?.videos?.[0]?.name).toBe('keep-video.webm');
@@ -291,9 +289,9 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await expect(page.getByRole('button', { name: 'Edit item notes' }).first()).toBeVisible();
 
   // Break: remove before Save drops the draft photo.
-  await openDesktopNotes(page, { edit: true });
+  await openDesktopNotes(page, markerA);
   await expect(page.getByText('keep-photo.png', { exact: true })).toBeVisible();
-  await attachDesktopPhoto(page, markerA, 'remove-me.png');
+  await attachDesktopPhoto(page, 'remove-me.png');
   const removeDraft = page.getByText('remove-me.png', { exact: true }).locator('..').locator('button');
   await removeDraft.click();
   await expect(page.getByText('remove-me.png', { exact: true })).toHaveCount(0);
@@ -305,8 +303,8 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   // Break: Pen-armed still attaches.
   await page.getByRole('button', { name: 'Draw', exact: true }).click();
   await page.getByRole('button', { name: 'Pen', exact: true }).click();
-  await openDesktopNotes(page, { edit: true });
-  await attachDesktopPhoto(page, markerA, 'pen-armed.png');
+  await openDesktopNotes(page, markerA);
+  await attachDesktopPhoto(page, 'pen-armed.png');
   await saveDesktopNotes(page);
   await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).map((photo) => photo.name)).toEqual([
     'keep-photo.png',
@@ -321,9 +319,9 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   await expect.poll(async () => ((await storedNote(page, markerA))?.photos || []).length).toBe(0);
   expect((await storedNote(page, markerA))?.videos || []).toEqual([]);
 
-  await openDesktopNotes(page);
-  await attachDesktopPhoto(page, markerA, 'keep-photo.png');
-  await attachDesktopVideo(page, markerA, 'keep-video.webm');
+  await openDesktopNotes(page, markerA);
+  await attachDesktopPhoto(page, 'keep-photo.png');
+  await attachDesktopVideo(page, 'keep-video.webm');
   await saveDesktopNotes(page);
   await expect.poll(async () => (await storedNote(page, markerA))?.photos?.[0]?.name).toBe('keep-photo.png');
   await expect(page.getByRole('button', { name: 'Edit item notes' }).first()).toBeVisible();
@@ -365,8 +363,8 @@ test('notes Photo/Video attach intended + break + edge; checklist stays parked',
   }, {
     persist,
     checklistButtons: 0,
-    desktop: { photos: ['keep-photo.png', 'pen-armed.png'], videos: ['keep-video.webm'] },
-    mobile: { photos: ['keep-photo.png', 'pen-armed.png', 'mobile-extra.png'] },
+    desktop: { photos: ['keep-photo.png'], videos: ['keep-video.webm'] },
+    mobile: { photos: ['keep-photo.png', 'mobile-extra.png'] },
     parked: '390 checklist Y/N/N-A — no compiled-in template items',
   });
 });
