@@ -219,17 +219,15 @@ test('desktop shortcuts overlay intended + break + edge', async ({ page }) => {
   expect(await fileId(page)).toBeNull();
   await assertNoErrorBoundary(page);
 
-  // Isolation — hubPreview is the home tab: AppShell mounts the overlay
-  // there. Viewer chrome is absent. `?` still opens (not PDF-page bound).
+  // Isolation — hubPreview is a standalone HubPreview mount (no AppShell).
+  // Overlay lives on AppShell home + DevTestRoute remount, so `?` invents 0.
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
   expect(await page.locator('[data-svg-annotation-layer="1"]').count()).toBe(0);
   await blurInputs(page);
   await page.keyboard.press('?');
-  await expect(overlay(page), 'hubPreview home tab still has the overlay').toBeVisible({ timeout: 8_000 });
-  await page.keyboard.press('Escape');
-  await expect(overlay(page)).toHaveCount(0);
+  expect(await overlay(page).count(), 'hubPreview must not mount the overlay').toBe(0);
 
   console.log('SHORTCUTS_OVERLAY_DESKTOP_PROOF', JSON.stringify({
     listed: LISTED.length,
