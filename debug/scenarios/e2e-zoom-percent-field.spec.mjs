@@ -167,6 +167,14 @@ async function commitZoomPercent(page, value) {
   await blurInputs(page);
 }
 
+async function clearAndTypeZoom(page, input, text) {
+  await input.click();
+  await input.press('Control+A');
+  await input.press('Backspace');
+  await expect(input).toHaveValue('');
+  if (text) await input.pressSequentially(text, { delay: 25 });
+}
+
 async function selectDesktopFit(page, name) {
   await page.getByRole('button', { name: 'Fit options', exact: true }).click();
   await page.getByRole('button', { name, exact: true }).click();
@@ -233,8 +241,7 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
   // Break — mid-keystroke 9999 clamps to 4000; Enter keeps 4000.
   // Type, do not fill: Playwright fill retries when onChange rewrites 9999→4000.
   const zoomCeil = await focusZoomInput(page);
-  await zoomCeil.press('Control+A');
-  await page.keyboard.type('9999');
+  await clearAndTypeZoom(page, zoomCeil, '9999');
   await expect(zoomCeil, '9999 must clamp in the field').toHaveValue('4000');
   await zoomCeil.press('Enter');
   await blurInputs(page);
@@ -266,8 +273,7 @@ test('desktop zoom % field intended + break + edge', async ({ page }) => {
   // Break — letters strip to empty, then restore.
   // Type, do not fill: Playwright fill retries when onChange strips abc→''.
   const letterInput = await focusZoomInput(page);
-  await letterInput.press('Control+A');
-  await page.keyboard.type('abc');
+  await clearAndTypeZoom(page, letterInput, 'abc');
   await expect(letterInput, 'letters must strip').toHaveValue('');
   await letterInput.press('Enter');
   await blurInputs(page);
