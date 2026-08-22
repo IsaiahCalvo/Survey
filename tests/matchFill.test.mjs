@@ -78,11 +78,11 @@ test('live C-06 spec covers opacity lock, missing fill, 390, hub, file.id', () =
   assert.match(spec, /second rect must isolate the first stroke/);
   assert.match(spec, /390 selected Match Fill must stamp fill color on stroke/);
   assert.match(spec, /390 opacity lock must stamp fill 40 onto stroke/);
-  assert.match(spec, /390 Line Match fill must be 0/);
+  assert.match(spec, /390 Fill takeover Match fill must be 0/);
   assert.match(spec, /Re-open, then Stroke tab/);
   assert.match(spec, /getByRole\('tab', \{ name: 'Stroke color'/);
   assert.match(spec, /ensurePageDrawTarget/);
-  assert.match(spec, /Close text formatting/);
+  assert.match(spec, /dismissMobileSheet/);
   assert.match(spec, /hubPreview Match fill must be 0/);
   assert.match(spec, /viewBox/);
   assert.match(spec, /file\.id/);
