@@ -168,6 +168,10 @@ test('Templates More menu overflow (template-row + entity)', async ({ page }) =>
   await expect(moreMenu(page)).toHaveCount(0);
 
   await openMore(page, templateRow(page, 'Security Walk-Through'));
+  // First gesture on another More is consumed by DismissBarrier (closes,
+  // does not open the second menu). Second gesture opens entity More.
+  await entityRow(page, 'GC').getByRole('button', { name: 'More', exact: true }).evaluate((button) => button.click());
+  await expect(moreMenu(page)).toHaveCount(0);
   await openMore(page, entityRow(page, 'GC'));
   expect(await moreMenu(page).count()).toBe(1);
   expect(await menuLabels(page)).toEqual(ENT_MORE_ITEMS);
