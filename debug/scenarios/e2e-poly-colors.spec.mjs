@@ -191,10 +191,22 @@ async function selectMode(page) {
 async function vertexHandlesOn(page, id) {
   const handles = page.locator('circle[data-handle^="vertex-"]');
   const count = await handles.count();
-  if (!count) return false;
   const rows = await listPolyGeom(page);
   const geom = rows.find((row) => row.id === id);
-  if (!geom || count < geom.points.length) return false;
+  if (!geom || count !== geom.points.length) return false;
+  const xs = geom.world.map((p) => p.x);
+  const ys = geom.world.map((p) => p.y);
+  const topLeft = await pageToScreen(page, Math.min(...xs), Math.min(...ys));
+  const bottomRight = await pageToScreen(page, Math.max(...xs), Math.max(...ys));
+  const points = await handles.evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }));
+  const near = points.filter((point) => (
+    point.x >= topLeft.x - 28 && point.x <= bottomRight.x + 28
+    && point.y >= topLeft.y - 28 && point.y <= bottomRight.y + 28
+  ));
+  if (near.length < geom.points.length) return false;
   return page.getByRole('button', { name: 'Color', exact: true }).first().isVisible().catch(() => false);
 }
 
