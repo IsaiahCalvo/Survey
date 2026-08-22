@@ -483,20 +483,20 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
     return dR > 1.5 || dScreen > 6;
   }, { timeout: 8_000 }).toBe(true);
 
-  // Break: Pen-armed bbox handle still resizes (stopPropagation).
+  // Break: arming Pen clears bbox edit (PDFViewer setEditingAnnotation(null)).
   await page.keyboard.press('Escape');
   await selectUntilVertexHandles(page, polyA.id, polyA.points.length);
   await enterBboxByDblclick(page, { hitTarget: 'polygon', screen: await clickCentroid(page, await polyGeom(page, polyA.id)) });
+  expect(await page.locator('[data-resize-handle]').count(), 'in bbox before Pen').toBeGreaterThan(0);
   const prePen = await polyGeom(page, polyA.id);
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('p');
-  await expect(page.locator('[data-resize-handle="br"]').first()).toBeVisible({ timeout: 8_000 });
-  await dragResizeHandle(page, 'br', 60, 40);
-  let afterPen = null;
-  await expect.poll(async () => {
-    afterPen = await polyGeom(page, polyA.id);
-    return grew(prePen, afterPen, 4);
-  }, { timeout: 8_000 }).toBe(true);
+  await expect.poll(async () => ({
+    resize: await page.locator('[data-resize-handle]').count(),
+    vertices: await page.locator('circle[data-handle^="vertex-"]').count(),
+  }), { timeout: 8_000 }).toEqual(expect.objectContaining({ resize: 0 }));
+  const afterPen = await polyGeom(page, polyA.id);
+  expect(sameGeom(prePen, afterPen, 5), 'Pen exit does not resize').toBe(true);
   await selectMode(page);
 
   // Break: empty-page drag is a no-op.
@@ -599,7 +599,7 @@ test('bbox edit mode intended + break + edge', async ({ page }) => {
       dR: afterCounter.svgR - preCounter.svgR,
       dScale: afterCounter.scaleX - preCounter.scaleX,
     },
-    penArmedStillGrew: grew(prePen, afterPen, 4),
+    penExitsBbox: sameGeom(prePen, afterPen, 5),
     emptyNoop: sameGeom(preEmpty, afterEmpty),
     undoRestored: sameGeom(preUndo, afterUndo, 5),
     secondDidNotMoveFirst: sameGeom(firstFrozen, firstAfterB),

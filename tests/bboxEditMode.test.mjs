@@ -36,6 +36,8 @@ test('SVG layer swaps type-specific chrome for SVGSelectionOverlay in bbox mode;
   assert.match(layer, /if \(isPolyShape && !polyInBboxMode\)/);
   assert.match(layer, /if \(editIsCounter && !counterInBboxMode\)/);
   assert.match(layer, /if \(e\.key === 'Escape' && typeof onRequestExitEdit === 'function'\)/);
+  assert.match(read('src/PDFViewer.jsx'), /Clear edit state when switching to drawing\/eraser tools/);
+  assert.match(read('src/PDFViewer.jsx'), /if \(activeTool === 'pen' \|\| activeTool === 'highlighter'/);
   assert.match(layer, /if \(selectedIds\.has\(editingAnnotationIndex\)\) return;/);
   assert.ok(layer.includes('viewBox={`0 0 ${width} ${height}`}'));
   assert.doesNotMatch(layer, /data-handle=["']rx["']/);
