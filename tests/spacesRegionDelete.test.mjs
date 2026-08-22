@@ -24,9 +24,10 @@ test('SpacesPanel region-row Delete is distinct from space-card Delete and has n
   assert.doesNotMatch(row, /__e2eSpaces/);
 
   const card = panel.slice(
-    panel.indexOf('className="space-card-delete-button"'),
+    panel.lastIndexOf('onDelete(space.id)', panel.indexOf('className="space-card-delete-button"')),
     panel.indexOf('className="space-add-pages-row"'),
   );
+  assert.match(card, /className="space-card-delete-button"/);
   assert.match(card, /aria-label="Delete"/);
   assert.match(card, /onDelete\(space\.id\)/);
 
