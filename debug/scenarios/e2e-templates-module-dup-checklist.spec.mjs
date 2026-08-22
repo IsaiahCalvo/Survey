@@ -28,6 +28,10 @@ function moduleTabs(page) {
   return page.locator('[data-module-tab-id]');
 }
 
+function moduleTabButton(page, name) {
+  return page.locator('[data-module-tab-id] button', { hasText: name });
+}
+
 function newModulePlus(page) {
   return page.locator('button[title="New module"]');
 }
@@ -99,8 +103,8 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
 
   await openHub(page);
   await expect(page.getByText('Security Walk-Through').first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('button', { name: 'Installation Phase' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Commissioning Phase' })).toBeVisible();
+  await expect(moduleTabButton(page, 'Installation Phase')).toBeVisible();
+  await expect(moduleTabButton(page, 'Commissioning Phase')).toBeVisible();
   const seedMods = await moduleTabNames(page);
   expect(seedMods).toEqual(['Installation Phase', 'Commissioning Phase']);
   await expect(newModulePlus(page)).toBeVisible();
@@ -117,7 +121,7 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   await renameField.fill('   ');
   await renameField.press('Enter');
   expect(await moduleTabNames(page)).toContain('Module 1');
-  await page.getByRole('button', { name: 'Module 1' }).dblclick();
+  await moduleTabButton(page, 'Module 1').dblclick();
   await expect(moduleTabs(page).locator('input.inline-edit')).toBeVisible();
   await moduleTabs(page).locator('input.inline-edit').press('Escape');
   expect(await moduleTabNames(page)).toContain('Module 1');
@@ -167,7 +171,7 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   await editModulesModal(page).getByRole('button', { name: 'Done', exact: true }).click();
   await expect(editModulesModal(page)).toHaveCount(0);
   expect(await moduleTabNames(page)).toContain('Installation Phase copy');
-  await expect(page.getByRole('button', { name: 'E2E Module' })).toBeVisible();
+  await expect(moduleTabButton(page, 'E2E Module')).toBeVisible();
 
   // Break: Cancel discards the module copy.
   await dirtyBar(page).getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -193,7 +197,7 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   expect(await moduleTabNames(page)).toContain('Installation Phase copy');
 
   // --- Add checklist item: intended + break + edge ---
-  await page.getByRole('button', { name: 'Installation Phase' }).click();
+  await moduleTabButton(page, 'Installation Phase').click();
   await expandCategory(page, 'Cameras');
   const camerasBefore = await categoryItemCount(page, 'Cameras');
   expect(camerasBefore).toBe(2);
@@ -239,12 +243,12 @@ test('Templates Add module + module Duplicate + Add checklist item', async ({ pa
   expect(await categoryItemCount(page, 'Doors')).toBe(2);
 
   await page.getByText('MEP As-Built Markup').first().click();
-  await page.getByRole('button', { name: 'Equipment' }).click();
+  await moduleTabButton(page, 'Equipment').click();
   await expandCategory(page, 'AHU Equipment');
   expect(await checklistValues(page)).toContain('Tags updated?');
   expect(await checklistValues(page)).not.toContain('E2E cable labeled?');
   await page.getByText('Security Walk-Through').first().click();
-  await page.getByRole('button', { name: 'Installation Phase' }).click();
+  await moduleTabButton(page, 'Installation Phase').click();
   await expandCategory(page, 'Cameras');
   expect(await checklistValues(page)).toContain('E2E cable labeled?');
 
