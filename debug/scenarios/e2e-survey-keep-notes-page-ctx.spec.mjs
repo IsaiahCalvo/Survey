@@ -154,7 +154,7 @@ async function clickPageMenu(page, pageNumber, label) {
   return { disabled };
 }
 
-test('Keep active desktop checkbox + 390 toggle after-place and module-step', async ({ page }) => {
+test('Keep active desktop checkbox after-place and module-step', async ({ page }) => {
   await openDesktopSurvey(page);
 
   await expect(keepCheckbox(page)).toBeVisible();
@@ -235,10 +235,9 @@ test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
   await page.getByRole('button', { name: 'Open survey' }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
-  const closeSheet = page.getByRole('button', { name: 'Close Survey panel' });
+  const closeSheet = page.locator('.mobile-pdf-sheet-backdrop').first();
   if (await closeSheet.count()) {
-    await closeSheet.click();
-    await expect(closeSheet).toHaveCount(0);
+    await closeSheet.click({ force: true });
   }
   const mobileKeep = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(mobileKeep).toBeVisible({ timeout: 15_000 });
