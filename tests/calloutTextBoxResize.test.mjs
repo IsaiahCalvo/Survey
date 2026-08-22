@@ -64,13 +64,14 @@ test('four corners: opposite anchor stays; 20px min clamp; flip past opposite', 
   assert.ok(Math.abs((bl.textBoxPosition.x + bl.textBoxWidth) - (orig.origLeft + orig.origW)) < 1e-9, 'bl keeps right');
   assert.ok(Math.abs(bl.textBoxPosition.y - orig.origTop) < 1e-9, 'bl keeps top');
 
+  // Same-side inward leftover of 8px — below the 20px floor, no flip.
   const clamp = resizeCorner({
-    ...orig, corner: 'br', dxNorm: -200 / W, dyNorm: -80 / H,
+    ...orig, corner: 'br', dxNorm: -(orig.origW - 8 / W), dyNorm: -(orig.origH - 8 / H),
   });
   assert.ok(Math.abs(clamp.textBoxWidth - minW) < 1e-9, 'width floors at 20/W');
   assert.ok(Math.abs(clamp.textBoxHeight - minH) < 1e-9, 'height floors at 20/H');
-  assert.ok(clamp.textBoxWidth + 1e-12 >= minW);
-  assert.ok(clamp.textBoxHeight + 1e-12 >= minH);
+  assert.ok(Math.abs(clamp.textBoxPosition.x - orig.origLeft) < 1e-9, 'clamp keeps left');
+  assert.ok(Math.abs(clamp.textBoxPosition.y - orig.origTop) < 1e-9, 'clamp keeps top');
 
   const flip = resizeCorner({ ...orig, corner: 'br', dxNorm: -(orig.origW + 40 / W), dyNorm: 0 });
   assert.ok(flip.textBoxPosition.x < orig.origLeft, 'drag past opposite flips left');
