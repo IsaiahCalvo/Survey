@@ -350,11 +350,11 @@ test('Templates template-list reorder + checklist item reorder', async ({ page }
         const before = await page.locator('.templates-mobile-items input.templates-mobile-inline-input').evaluateAll((inputs) => (
           inputs.filter((el) => el.offsetParent).map((el) => el.value)
         ));
-        try {
-          await keyboardMoveHandle(page, firstHandle, { direction: 'down' });
-        } catch {
-          await pointerDragHandleTo(page, firstHandle, secondRow);
-        }
+        // Nested category+item DndContexts: Space/ArrowDown self-drops on i1.
+        // Pointer is the live 390 path (same as the list row).
+        await page.keyboard.press('Escape').catch(() => {});
+        await page.mouse.up().catch(() => {});
+        await pointerDragHandleTo(page, firstHandle, secondRow);
         const after = await page.locator('.templates-mobile-items input.templates-mobile-inline-input').evaluateAll((inputs) => (
           inputs.filter((el) => el.offsetParent).map((el) => el.value)
         ));
