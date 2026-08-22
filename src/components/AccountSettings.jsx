@@ -1187,7 +1187,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           try {
                             await msLogin();
                           } catch (err) {
-                            setError('Failed to connect Microsoft account');
+                            setError(err?.message || 'Failed to connect Microsoft account');
                           }
                         }}
                         disabled={loading}
