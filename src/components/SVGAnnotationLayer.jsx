@@ -5169,6 +5169,7 @@ const SVGAnnotationLayer = memo(({
                 stroke={HANDLE_RING}
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
+                data-counter-nubbin-handle="true"
                 style={{
                   // UX: rotation handle is the only interactive chrome in counter
                   // selection mode (Shottr UX). Cursor 'grab' signals draggability;
@@ -5218,9 +5219,16 @@ const SVGAnnotationLayer = memo(({
                 }}
                 onPointerUp={(e) => {
                   const drag = counterRotateDragRef.current;
+                  const preview = counterHandlePreviewRef.current;
                   counterRotateDragRef.current = null;
                   try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
                   if (!drag || drag.annotationIndex !== selectedIndex) return;
+                  // Comment above this chrome: one undo entry on pointerup.
+                  // Deselect-only commit left stored pointerAngle stale while
+                  // selected — undo/zoom/isolation could not see the new nub.
+                  if (preview && preview.annotationIndex === selectedIndex) {
+                    commitCounterHandlePreview(preview);
+                  }
                 }}
                 onPointerCancel={() => {
                   counterRotateDragRef.current = null;
