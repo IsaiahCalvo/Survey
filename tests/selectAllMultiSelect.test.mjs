@@ -35,7 +35,7 @@ test('window vs crossing + Shift union / Alt subtract; Ctrl+A is not wired', () 
   assert.match(interaction, /Toggle in selection set \(multi-select, Plan 03\)/);
   assert.match(interaction, /shiftHeld: !!e\.shiftKey/);
   assert.match(interaction, /altHeld: !!e\.altKey/);
-  assert.match(interaction, /If both Shift and Alt are held, Alt wins/);
+  assert.match(interaction, /both Shift and Alt are held, Alt wins/);
   assert.match(interaction, /Subtract: remove marquee hits from the existing selection/);
   assert.match(interaction, /Union: add marquee hits to the existing selection/);
   assert.match(interaction, /Replace: marquee hits become the entire selection/);
