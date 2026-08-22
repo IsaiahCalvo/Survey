@@ -37,7 +37,13 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
       const host = document.querySelector(`[data-counter-overlay="${pageNum}"] [data-anno-id="${id}"]`)
         || document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-anno-id="${id}"]`);
       const label = host?.querySelector('text')?.textContent?.trim() || '';
-      const circle = host?.querySelector('circle');
+      // Counters stamp data.id (render identity). __phase35GetAnnotationById
+      // only matches obj.id, so radius must come from the live SVG path
+      // (`A r,r` in renderCounter). Default render fallback is 14.
+      const pathD = host?.querySelector('path')?.getAttribute('d') || '';
+      const arc = /A\s+([\d.]+),([\d.]+)/.exec(pathD);
+      const svgR = arc ? Number(arc[1]) : 0;
+      const found = object && Object.keys(object).length > 0;
       return {
         id,
         type: String(object.type || data.type || (overlayIds.includes(id) ? 'counter' : '')).toLowerCase(),
@@ -47,8 +53,10 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
         seriesId: data.seriesId || null,
         seriesStart: data.seriesStart ?? null,
         createdAt: data.createdAt ?? null,
-        radius: Number(object.radius ?? data.radius ?? 0),
-        svgR: circle ? Number(circle.getAttribute('r') || 0) : 0,
+        radius: Number(object.radius ?? data.radius ?? svgR ?? 0),
+        svgR,
+        foundById: found,
+        objectKeys: found ? Object.keys(object).sort() : [],
         label,
       };
     }).filter((row) => row.imported !== true && !/^\d+R$/i.test(String(row.id || '')));
@@ -160,7 +168,8 @@ async function pickSizePreset(page, preset) {
 
 async function storedRadius(page, id) {
   const rows = await counterSnapshot(page);
-  return rows.find((row) => row.id === id)?.radius;
+  const row = rows.find((item) => item.id === id);
+  return row?.svgR || row?.radius || 0;
 }
 
 async function startField(page) {
