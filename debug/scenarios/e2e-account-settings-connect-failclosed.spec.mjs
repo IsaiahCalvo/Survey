@@ -238,7 +238,7 @@ test('Account Settings Connect fail-closed intended / break / edge', async ({ pa
   const testPdfDialog = settingsDialog(page);
   await expect(testPdfDialog).toBeVisible({ timeout: 15_000 });
   await expect(testPdfDialog.getByText('Isaiah')).toHaveCount(0);
-  await expect(testPdfDialog.getByText('Dev')).toBeVisible();
+  await expect(testPdfDialog.getByText('Dev', { exact: true })).toBeVisible();
   await openConnectedServices(testPdfDialog);
   await clickConnectFailClosed(page, testPdfDialog, watchers, {
     provider: 'microsoft',
