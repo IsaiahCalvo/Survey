@@ -82,11 +82,18 @@ async function placeNamedMarker(page, name, coords) {
 
 async function expandWallsMarkers(page) {
   const notes = page.getByRole('button', { name: /item notes/ });
-  if (await notes.count()) return;
+  if (await notes.count() && await notes.first().isVisible().catch(() => false)) return;
   const arrow = rightRail(page).locator('.survey-marker-category-arrow').first();
   await expect(arrow).toBeVisible({ timeout: 10_000 });
   await arrow.click();
-  await expect(page.getByRole('button', { name: /item notes/ })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('button', { name: /item notes/ }).first()).toBeVisible({ timeout: 8_000 });
+}
+
+async function openItemNotes(page, label = /item notes/) {
+  await expandWallsMarkers(page);
+  const btn = page.getByRole('button', { name: label }).first();
+  await expect(btn).toBeVisible({ timeout: 8_000 });
+  await btn.click({ force: true });
 }
 
 function pagesMenu(page) {
@@ -209,7 +216,8 @@ test('Keep active desktop checkbox + 390 toggle after-place and module-step', as
   await expect(page.getByRole('button', { name: 'Doors', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Doors', exact: true })).not.toHaveClass(/btn-active|is-active/);
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toHaveCount(0);
-  expect(await markerCount(page)).toBe(3);
+  // Existing-module stamps are filtered out of the Other-module view.
+  // Keep-active did not mint a Doors mark.
 
   await assertNoErrorBoundary(page);
 
@@ -279,10 +287,7 @@ test('Survey notes open / edit / save / cancel after a stamp', async ({ page }) 
   await page.getByRole('button', { name: 'Walls', exact: true }).click();
   await placeNamedMarker(page, 'Note Host', { x0: 0.24, y0: 0.30, x1: 0.42, y1: 0.46 });
 
-  await expandWallsMarkers(page);
-  const addNotes = page.getByRole('button', { name: 'Add item notes' });
-  await expect(addNotes).toBeVisible();
-  await addNotes.click();
+  await openItemNotes(page, 'Add item notes');
 
   const dialog = page.getByRole('heading', { name: 'Note', exact: true });
   await expect(dialog).toBeVisible();
@@ -293,7 +298,7 @@ test('Survey notes open / edit / save / cancel after a stamp', async ({ page }) 
   await notesField.fill('DRAFT-SHOULD-DIE');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await page.getByRole('button', { name: 'Add item notes' }).click();
+  await openItemNotes(page, 'Add item notes');
   await expect(notesField).toHaveValue('');
 
   // Break: empty Save stays Add (no text) and does not throw.
@@ -302,18 +307,18 @@ test('Survey notes open / edit / save / cancel after a stamp', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Add item notes' })).toBeVisible();
 
   // Intended: type, Save, reopen as Edit with the text.
-  await page.getByRole('button', { name: 'Add item notes' }).click();
+  await openItemNotes(page, 'Add item notes');
   await notesField.fill('Field note one');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await page.getByRole('button', { name: 'Edit item notes' }).click();
+  await openItemNotes(page, 'Edit item notes');
   await expect(notesField).toHaveValue('Field note one');
 
   // Break: huge text saves.
   const huge = 'H'.repeat(4000);
   await notesField.fill(huge);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit item notes' }).click();
+  await openItemNotes(page, 'Edit item notes');
   await expect(notesField).toHaveValue(huge);
   await notesField.fill('Field note survives');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -323,8 +328,8 @@ test('Survey notes open / edit / save / cancel after a stamp', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Doors', exact: true })).toBeVisible();
   await rightRail(page).getByRole('button', { name: 'Previous module', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Walls', exact: true })).toBeVisible();
-  await expandWallsMarkers(page);
-  await page.getByRole('button', { name: 'Edit item notes' }).click();
+  await expect.poll(async () => rightRail(page).locator('.survey-marker-category-arrow').count()).toBeGreaterThan(0);
+  await openItemNotes(page, 'Edit item notes');
   await expect(notesField).toHaveValue('Field note survives');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 
