@@ -67,6 +67,10 @@ function defineOverlayFirst(page) {
   return page.locator('[aria-label="Define regions first to enable overlay"]');
 }
 
+function enableSpaceForOverlay(page) {
+  return page.locator('[aria-label="Enable space to toggle overlay"]');
+}
+
 async function openSpaces(page) {
   const tab = spacesTab(page);
   await expect(tab).toBeVisible({ timeout: 15_000 });
@@ -156,13 +160,14 @@ test('U-02 Edit region areas + overlay on/off + last space', async ({ page }) =>
 
   await createSpaceWithPage(page, '1');
   await expect(editRegionBtn(page).first()).toBeVisible();
-  await expect(defineOverlayFirst(page).first()).toBeVisible();
+  await expect(enableSpaceForOverlay(page).first()).toBeVisible();
   expect(await hideOverlay(page).count(), 'overlay toggle stays dimmed until a region exists').toBe(0);
 
   // Break: Turn on space with no regions — toast, stay off.
   await page.getByLabel('Turn on space').click();
   await expect(page.getByText(/no regions yet/i).first()).toBeVisible({ timeout: 8_000 });
   await expect(page.getByLabel('Turn on space')).toBeVisible();
+  await expect(enableSpaceForOverlay(page).first()).toBeVisible();
   expect(await overlayRoot(page).count(), 'no overlay before a region').toBe(0);
 
   // Break: Esc/cancel + empty click leave no region.
@@ -172,6 +177,9 @@ test('U-02 Edit region areas + overlay on/off + last space', async ({ page }) =>
   await expect(exitRegionBtn(page)).toHaveCount(0, { timeout: 8_000 });
   await expect(editRegionBtn(page).first()).toBeVisible();
   expect(await overlayRoot(page).count(), 'Esc after empty click writes nothing').toBe(0);
+  // Region-edit entry activates the space even without a drawn region, so the
+  // toggle flips from "Enable space…" to "Define regions first…".
+  await expect(defineOverlayFirst(page).first()).toBeVisible();
 
   await enterRegionEdit(page);
   await emptyClick(page);
