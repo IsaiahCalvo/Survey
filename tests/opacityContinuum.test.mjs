@@ -88,8 +88,9 @@ test('live C-03 spec covers fill + stroke continuum, clamp, restore, isolation',
   assert.match(spec, /STROKE_SLIDER = 33/);
   assert.match(spec, /border minOpacity=1/);
   assert.match(spec, /remembered 40 after transparent/);
-  assert.match(spec, /390 next-draw fill 25/);
-  assert.match(spec, /390 next-draw stroke 40/);
+  assert.match(spec, /390 fill \+ stroke opacity continuum/);
+  assert.match(spec, /setOpacityPercent\(page, 25\)/);
+  assert.match(spec, /setOpacityPercent\(page, 40\)/);
   assert.match(spec, /file\.id/);
   assert.match(spec, /viewBox/);
 });
