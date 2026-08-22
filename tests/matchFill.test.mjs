@@ -82,6 +82,7 @@ test('live C-06 spec covers opacity lock, missing fill, 390, hub, file.id', () =
   assert.match(spec, /Re-open, then Stroke tab/);
   assert.match(spec, /getByRole\('tab', \{ name: 'Stroke color'/);
   assert.match(spec, /ensurePageDrawTarget/);
+  assert.match(spec, /Close text formatting/);
   assert.match(spec, /hubPreview Match fill must be 0/);
   assert.match(spec, /viewBox/);
   assert.match(spec, /file\.id/);

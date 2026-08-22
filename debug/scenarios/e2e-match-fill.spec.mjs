@@ -247,6 +247,17 @@ async function dismissChrome(page) {
   await closePagesOverlay(page);
 }
 
+async function dismissMobileSheet(page) {
+  const close = page.getByRole('button', { name: /Close (annotation settings|text formatting)/i });
+  const count = await close.count();
+  for (let i = 0; i < count; i += 1) {
+    const button = close.nth(i);
+    if (await button.isVisible().catch(() => false)) {
+      await button.click();
+    }
+  }
+}
+
 async function createRect(page, coords = { x0: 0.22, y0: 0.26, x1: 0.42, y1: 0.44 }) {
   const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
   await activateTool(page, 'Shapes', 'Rectangle');
@@ -476,8 +487,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await clickMatchFill(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0);
-  const close = page.getByRole('button', { name: /Close (annotation settings|text formatting)/i });
-  if (await close.first().isVisible().catch(() => false)) await close.first().click();
+  await dismissMobileSheet(page);
   await expect(page.getByRole('button', { name: 'Open fill color picker', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Close text formatting', exact: true })).toHaveCount(0);
   await closePagesOverlay(page);
@@ -500,6 +510,7 @@ test('390 Match Fill intended + break + edge', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible();
   expect(await page.locator('button[title="Match fill"]').count(), '390 Line Match fill must be 0').toBe(0);
   await page.keyboard.press('Escape');
+  await dismissMobileSheet(page);
 
   await activateTool(page, 'Draw', 'Pen');
   expect(await page.locator('button[title="Match fill"]').count(), '390 Pen hides Match fill').toBe(0);
