@@ -296,12 +296,6 @@ test('desktop CompactColorPicker hex lengths intended + break + edge', async ({ 
 
   await page.keyboard.press('Escape');
 
-  // Isolation: a second rect does not inherit the typed magenta.
-  const other = await createRect(page, { x0: 0.50, y0: 0.50, x1: 0.68, y1: 0.66 });
-  expect(other.id).not.toBe(rect.id);
-  expect(await storedFillOf(page, rect.id)).toBe('#FF00FF');
-  expect(await storedFillOf(page, other.id)).not.toBe('#FF00FF');
-
   // Font-color site uses the same hex field.
   const text = await createText(page, 'hex lengths');
   await selectStroke(page, text.id);
@@ -328,14 +322,21 @@ test('desktop CompactColorPicker hex lengths intended + break + edge', async ({ 
   await page.keyboard.press('Escape');
   await page.mouse.click(12, 200);
 
-  // Undo drops the last fill patch; first rect must not stay magenta if history owns it.
-  await selectStroke(page, rect.id);
-  const beforeUndo = await storedFillOf(page, rect.id);
+  // Isolation: a second rect does not inherit the typed magenta.
+  const other = await createRect(page, { x0: 0.50, y0: 0.50, x1: 0.68, y1: 0.66 });
+  expect(other.id).not.toBe(rect.id);
+  expect(await storedFillOf(page, rect.id)).toBe('#FF00FF');
+  expect(await storedFillOf(page, other.id)).not.toBe('#FF00FF');
+
+  // Undo drops the isolation rect; the hex-patched fill stays.
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeVisible();
   await undo.click();
-  await expect.poll(async () => storedFillOf(page, rect.id)).not.toBe(beforeUndo);
-  expect(await storedFillOf(page, other.id), 'second rect stays after undo of first fill').not.toBeNull();
+  await expect.poll(async () => {
+    const rows = await userAnnotationSnapshot(page);
+    return rows.some((row) => row.id === other.id);
+  }).toBe(false);
+  expect(await storedFillOf(page, rect.id)).toBe('#FF00FF');
 
   const viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
   expect(viewBox).toBe('0 0 612 792');
@@ -388,11 +389,13 @@ test('390 CompactColorPicker hex lengths intended + break + edge', async ({ page
   await field.fill('f00');
   await expect.poll(async () => (await field.inputValue()).replace('#', '').toUpperCase()).toBe('FF0000');
 
+  // Invalid typed text stays in the field locally; applyHex does not run.
   await field.fill('red');
   await page.waitForTimeout(80);
+  expect((await field.inputValue()).toLowerCase()).toBe('red');
   await field.fill('FF0000FF');
   await page.waitForTimeout(80);
-  await expect.poll(async () => (await field.inputValue()).replace('#', '').toUpperCase()).not.toBe('FF0000FF');
+  expect((await field.inputValue()).replace('#', '').toUpperCase()).toBe('FF0000FF');
 
   await page.keyboard.press('Escape');
   const close = page.getByRole('button', { name: 'Close annotation settings', exact: true });
