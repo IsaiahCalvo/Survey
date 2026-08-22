@@ -195,6 +195,11 @@ async function dragNubbin(page, dx, dy) {
   return start;
 }
 
+async function clickEmpty(page) {
+  const box = await pageBox(page);
+  await page.mouse.click(box.x + box.width * 0.92, box.y + box.height * 0.08);
+}
+
 async function shiftOrbitBody(page, geom, { dx = 72, dy = -48 } = {}) {
   await page.waitForTimeout(550);
   if (await page.locator('[data-resize-handle]').count()) {
@@ -228,7 +233,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
 
   const preNub = await counterGeom(page, pinA.id);
   await dragNubbin(page, 90, -20);
-  await page.mouse.click(18, 220);
+  await clickEmpty(page);
   let afterNub = null;
   await expect.poll(async () => {
     afterNub = await counterGeom(page, pinA.id);
@@ -239,14 +244,16 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   const nubAngleDelta = angleDelta(preNub.svgAngle, afterNub.svgAngle);
 
   // Intended: Shift-drag orbits the body around the frozen tip.
-  await selectUntilNubbin(page, pinA.id);
-  const preOrbit = await counterGeom(page, pinA.id);
+  const pinOrbit = await createCounter(page, { xf: 0.28, yf: 0.48 });
+  await page.waitForTimeout(550);
+  await selectUntilNubbin(page, pinOrbit.id);
+  const preOrbit = await counterGeom(page, pinOrbit.id);
   const preTip = tipFrom(preOrbit);
-  await shiftOrbitBody(page, preOrbit, { dx: 80, dy: 10 });
-  await page.mouse.click(18, 220);
+  await shiftOrbitBody(page, preOrbit, { dx: 90, dy: 20 });
+  await clickEmpty(page);
   let afterOrbit = null;
   await expect.poll(async () => {
-    afterOrbit = await counterGeom(page, pinA.id);
+    afterOrbit = await counterGeom(page, pinOrbit.id);
     const moved = Math.hypot(afterOrbit.left - preOrbit.left, afterOrbit.top - preOrbit.top);
     return moved > 6 && angleDelta(preOrbit.svgAngle, afterOrbit.svgAngle) > 8;
   }, { timeout: 8_000 }).toBe(true);
@@ -284,7 +291,7 @@ test('counter nubbin + Shift-orbit intended + break + edge', async ({ page }) =>
   await selectMode(page);
 
   // Break: empty-page drag with none selected is a no-op.
-  await page.mouse.click(18, 220);
+  await clickEmpty(page);
   expect(await page.locator('[data-counter-nubbin-handle="true"]').count(), 'deselect hides nubbin').toBe(0);
   const preEmpty = await counterGeom(page, pinA.id);
   const emptyCount = (await listCounterIds(page)).length;
