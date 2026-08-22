@@ -2212,6 +2212,26 @@ const SurveySpacesRail = ({
                                   return updated;
                                 });
 
+                                // Same pending-preview strip as handleSurveyMarkerDeleted.
+                                // Leaving newSurveyMarkersByPage intact keeps the SVG overlay
+                                // after the store row is gone.
+                                setNewSurveyMarkersByPage(prev => {
+                                  const updated = { ...prev };
+                                  let changed = false;
+                                  surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
+                                    const pageNumber = surveyMarker?.pageNumber;
+                                    if (!pageNumber || !Array.isArray(updated[pageNumber])) return;
+                                    const next = updated[pageNumber].filter((preview) => (
+                                      preview?.annotationId !== annotationId
+                                    ));
+                                    if (next.length !== updated[pageNumber].length) {
+                                      updated[pageNumber] = next;
+                                      changed = true;
+                                    }
+                                  });
+                                  return changed ? updated : prev;
+                                });
+
                                 const documentId = pdfFile?.id;
                                 const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
                                 if (documentId && user?.id && documentSyncEnabled && surveyMarkerIdsToDelete.length > 0) {
