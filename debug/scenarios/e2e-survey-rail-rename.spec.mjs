@@ -248,7 +248,11 @@ test('survey-rail Rename intended + break + edge', async ({ page }) => {
   expect((await markerRenameSnapshot(page, 'rail-b')).value, 'B unchanged after notes-blur commit').toBe('rail-b');
 
   // Break: duplicate name is allowed (product does not reject).
-  await commitRenameEnter(page, 'notes-commit', 'rail-b');
+  const dupSource = renameField(page, 'notes-commit');
+  await expect(dupSource).toBeVisible({ timeout: 8_000 });
+  await dupSource.click();
+  await dupSource.fill('rail-b');
+  await dupSource.press('Enter');
   await expect(renameField(page, 'rail-b')).toHaveCount(2, { timeout: 8_000 });
   const dupValues = await renameField(page, 'rail-b').evaluateAll((nodes) => nodes.map((node) => node.value));
   expect(dupValues, 'both rows store rail-b').toEqual(['rail-b', 'rail-b']);
@@ -256,8 +260,11 @@ test('survey-rail Rename intended + break + edge', async ({ page }) => {
   // Edge: undo after a further unique rename. Product has no rename checkpoint
   // in commitSurveyMarkerName — record whether Z restores the name or pops
   // the last place/bounds checkpoint.
-  await commitRenameEnter(page, 'rail-b', 'after-undo');
-  await expect(renameField(page, 'after-undo')).toHaveCount(1);
+  const undoSource = renameField(page, 'rail-b').first();
+  await undoSource.click();
+  await undoSource.fill('after-undo');
+  await undoSource.press('Enter');
+  await expect(renameField(page, 'after-undo')).toHaveCount(1, { timeout: 8_000 });
   await page.evaluate(() => document.activeElement?.blur?.());
   const idsBeforeUndo = await markerIds(page);
   await page.keyboard.press('Control+z');
