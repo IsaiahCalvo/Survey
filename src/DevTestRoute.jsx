@@ -108,6 +108,17 @@ const surveyTransitionE2ETemplates = [{
     { id: 'kal436-entity-complete', name: '100% Complete', color: 'rgba(166,224,122,0.5)' },
   ],
   modules: makeKal436Modules(),
+}, {
+  // Local seed only (not a cloud persist seam). One empty module so the
+  // empty-state "Create category for empty module" start-adding path can
+  // run without deleting the last KAL-436 category (that leftover stands).
+  id: 'kal436-empty-module-template',
+  name: 'Empty Module Template',
+  modules: [{
+    id: 'kal436-empty-module',
+    name: 'Empty Survey Data',
+    categories: [],
+  }],
 }];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';

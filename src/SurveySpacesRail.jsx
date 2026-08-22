@@ -453,9 +453,11 @@ const SurveySpacesRail = ({
   const [mobileNotesEditorOpen, setMobileNotesEditorOpen] = useState(false);
   const [mobileNoteDraft, setMobileNoteDraft] = useState({ text: '', photos: [], videos: [] });
   // Desktop-only Create Category flow: the plus button in the "Categories"
-  // heading row opens CreateCategoryModal (the old route opened a template
-  // editor that has since been removed, leaving the button dead). Persistence
-  // lives in PDFViewer via addCategoryToCurrentTemplate/addCategoryAsNewTemplate.
+  // heading row and the empty-module text button both open CreateCategoryModal
+  // (the old route called onRequestCreateTemplate start-adding, which only
+  // reseeds entities after KAL-82 removed the template-editor modal).
+  // Persistence lives in PDFViewer via addCategoryToCurrentTemplate /
+  // addCategoryAsNewTemplate.
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
   const [railIconHover, setRailIconHover] = useState(null);
   const moduleSelectorRef = useRef(null);
@@ -4115,21 +4117,14 @@ const SurveySpacesRail = ({
                             ) : (
                               <div style={{ color: '#8d96a6', fontSize: '14px', padding: '20px', textAlign: 'center' }}>
                                 <div>No categories available for this space.</div>
-                                {selectedTemplate && selectedModuleId && (
+                                {!mobileMode && selectedTemplate && selectedModuleId && (
                                   <button
                                     type="button"
+                                    className="survey-marker-empty-module-create-button"
+                                    aria-label="Create category for empty module"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (!selectedTemplate?.id || !selectedModuleId) {
-                                        showToast('Please select a template and module before creating a category.', 'warn');
-                                        return;
-                                      }
-                                      onRequestCreateTemplate?.({
-                                        mode: 'edit',
-                                        templateId: selectedTemplate.id,
-                                        moduleId: selectedModuleId,
-                                        startAddingCategory: true
-                                      });
+                                      openCreateCategoryModal();
                                     }}
                                     style={{
                                       marginTop: '12px',
@@ -4364,9 +4359,10 @@ const SurveySpacesRail = ({
               )}
             </div>
             {/* Desktop-only Create Category modal (opened by the heading-row
-                plus button). Duplicate-name data comes straight from props the
-                rail already receives: the selected module's categories and the
-                app template list. */}
+                plus button and the empty-module start-adding button).
+                Duplicate-name data comes straight from props the rail already
+                receives: the selected module's categories and the app
+                template list. */}
             {!mobileMode && (
               <CreateCategoryModal
                 isOpen={isCreateCategoryModalOpen}

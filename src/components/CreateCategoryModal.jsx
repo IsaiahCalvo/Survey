@@ -1,6 +1,7 @@
 /**
  * CreateCategoryModal.jsx — modal opened by the survey rail's create-category
- * plus button (desktop "Categories" heading row).
+ * plus button (desktop "Categories" heading row) and the empty-module
+ * start-adding text button.
  *
  * Default-exports the CreateCategoryModal component. Asks for a category name
  * (required, trimmed, duplicate-checked against the selected module's existing
