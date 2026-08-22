@@ -25,6 +25,9 @@ test('Shift+V arms text-select; layer mounts only then; SVG falls through; form 
   assert.match(layer, /window\.getSelection\?\.\(\)\?\.removeAllRanges\?\.\(\)/);
   assert.match(layer, /\.pdfjsTextLayer\.is-interactive \{ pointer-events: auto; cursor: text; \}/);
   assert.match(layer, /\.pdfjsTextLayer:not\(\.is-interactive\) \{ pointer-events: none; \}/);
+  assert.match(layer, /rangeCount stays 0/);
+  assert.match(layer, /selectNodeContents/);
+  assert.match(layer, /addEventListener\('pointerup'/);
 
   const svg = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(svg, /pointerEvents: \(isInteractive && activeTool !== 'text-select'\) \? 'auto' : 'none'/);

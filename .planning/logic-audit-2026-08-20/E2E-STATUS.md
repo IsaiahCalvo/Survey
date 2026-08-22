@@ -289,7 +289,7 @@ Matrix source: `FEATURE-MATRIX.md`
 |---|---|---|---|
 | V-01 | Pan | **pass** (window + narrow) | At overflow zoom, unlabeled Pan `btn-icon` drag moved `survey-pdfjs-viewer` scroll; annotation count unchanged. Pen drag at 100% created ink and did not change scroll. Fit-width 100% has no overflow (pan no-ops — expected). **Narrow 700×820:** More → Zoom in ×5 overflowed; named Pan moved scroll `284/403` → `565/633`. Receipt `fix-logs/e2e-unblocked-followup.md`. |
 | V-02 | Select annotations | **pass** (dedicated click / Shift / marquee) | Prior window smoke. This pass: stroke-click; Shift-click toggle + group overlay; window vs crossing; Shift-union / Alt-subtract; Esc / tiny / Ctrl+A no-op; 390. Receipt `fix-logs/select-all-multi-select-2026-08-22.md`. |
-| V-03 | Select text | **pass** (window) | On `text-search-glyph-lab.pdf`, Select text ⇧V + drag on `.pdfjsTextLayer.is-interactive` selected `Text Sear`. Measurement `.textLayer` is off-screen (`x=-100000`) — do not target it. |
+| V-03 | Select text | **pass** (dedicated ⇧V / caret / form / 390) | Prior window smoke selected `Text Sear`. This pass: overlay lists Select text; caret menu; desktop drag `ABCDEFGHIJKLMNOPQRSTUV`; `V` clears; form INPUT no-steal + widgets inert; 390 no caret, pointer drag `The quick brown fox…` after product fill-in (`rangeCount` was 0). Receipt `fix-logs/select-text-2026-08-22.md`. |
 | V-04 | Zoom | **pass** (pinch + buttons + Fit height + keyboard / Fit width) | W4-02 pinch stands. Fit height dedicated. This pass: **Ctrl+= / Ctrl+-** 100→125→down; **Fit width** menu 207% fills width ≠ Fit page 100% / Fit height 104%; **Ctrl+1** unlisted restore; floor 100%; 4000 clamp; INPUT / bare +/- no-steal; 390 same. Receipt `fix-logs/zoom-keyboard-fit-width-2026-08-22.md`. |
 | V-05 | Page nav | **pass** (dedicated keyboard) | Prior overlay + window smoke. This pass: ← / → move a page; Home first; End last (120); first ← / Home no-op; last → / End clamp; page + zoom INPUT do not steal; 1-page stay; 390 same. Receipt `fix-logs/page-nav-keyboard-2026-08-22.md`. Thumbnails remain V-06. |
 | V-06 | Pages panel | **pass** (live thumb **click**) | Prior “jump page 3” was page **input**. This pass: desktop thumb 3 left-click → rail page 3 without harness PDF scroll; type 8 then thumb 3; no thumb 121; 1-page stay; Pen-armed. Receipt `fix-logs/thumbnail-click-2026-08-22.md`. |
@@ -357,7 +357,7 @@ Matrix source: `FEATURE-MATRIX.md`
 | E2E-W3-01 Q-tool callout create | **pass** (overlay + type + Bold/Georgia) |
 | V-01 pan | **pass** (overflow only) |
 | V-02 marquee / Shift-click | **pass** — dedicated `e2e-select-all-multi-select.spec.mjs` 2/2 (10.0s) |
-| V-03 ⇧V | **pass** |
+| V-03 ⇧V | **pass** — dedicated `e2e-select-text.spec.mjs` 3/3 (9.7s) |
 | V-04 pinch | **pass** — CDP two-touch; cancel commits preview; lift → pinch-release; mid-ink pinch discards |
 | V-04 zoom keyboard + Fit width | **pass** — dedicated `e2e-zoom-keyboard-fit-width.spec.mjs` 2/2 (11.8s) |
 | V-08 Find wrap | **pass** (Next wave6 + Previous + result-row click) |

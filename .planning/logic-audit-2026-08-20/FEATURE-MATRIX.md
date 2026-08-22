@@ -16,7 +16,7 @@ Exact discrete catalogs used by the UI:
 |---|---|---|---|---|
 | V-01 | Viewer | Pan | Drag the page | Pan while a tool is armed; narrow shell |
 | V-02 | Viewer | Select annotations | Click / Shift-click / window+crossing marquee. **Dedicated** live `e2e-select-all-multi-select.spec.mjs` (stroke-click; Shift toggle; window vs crossing; Shift-union / Alt-subtract; Ctrl+A not wired; 390) | Empty page; locked/imported; remote-deleted. Overlay omits Select all |
-| V-03 | Viewer | Select text (⇧V) | Select PDF glyphs | No text layer; form fields |
+| V-03 | Viewer | Select text (⇧V) | Select PDF glyphs. **Dedicated** live `e2e-select-text.spec.mjs` (overlay ⇧V; caret menu; glyph drag; V clears; form INPUT; no-glyph form; 390 pointerup fill-in) | No text layer; form fields; 390 native rangeCount 0 |
 | V-04 | Viewer | Zoom in/out/fit | Ctrl+/−/0, pinch, toolbar. **Dedicated keyboard + Fit width** live `e2e-zoom-keyboard-fit-width.spec.mjs` (Ctrl+= 1.25×; Ctrl+-; Fit width fills; Ctrl+1 unlisted restore; floor/4000 clamp; INPUT no-steal; 390) | Floor 10%; Electron zoom factor; `zoomGeneration` auto-commit. **Fit height** is its own mode (not Fit page); live `e2e-fit-height.spec.mjs` |
 | V-05 | Viewer | Page nav | ←/→ Home/End. **Dedicated keyboard** live `e2e-page-nav-keyboard.spec.mjs` (←/→ move; Home first; End last; first/last clamp; INPUT no-steal; 390). Thumbnails are V-06 | 1-page stay; missing page; fit-width |
 | V-06 | Viewer | Pages panel | Jump via thumbnail **left-click** (not the page-number field). UL-32 Mirror V / Reset / Cut / Copy / Paste execute `e2e-survey-keep-notes-page-ctx.spec.mjs` | Collapse; long docs; no thumb 121; Extract **zero callers** (2026-08-22 compile-hidden hunt; no handler / no button) |
