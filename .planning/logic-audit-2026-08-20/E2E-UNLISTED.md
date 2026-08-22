@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Survey Previous/Next module):** U-01 live module **Next/Prev** (not a new UL row). Walls stays the category **stamp**. Receipt `fix-logs/survey-module-nav-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Keep active / notes / page-ctx):** Keep active is U-01 chrome (not a new UL row). Survey notes is marker chrome (not create-Note). UL-32 execute leftovers: Mirror V / Reset / Cut / Copy / Paste. Extract **missing-handler**. Receipt `fix-logs/survey-keep-notes-page-ctx-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Survey Previous/Next module):** U-01 live module **Next/Prev** (not a new UL row). Walls stays the category **stamp**. Receipt `fix-logs/survey-module-nav-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 thumbnail click):** V-06 live thumb **left-click** (not a new UL row). UL-07 stays the page-number **input**. Receipt `fix-logs/thumbnail-click-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
@@ -75,7 +77,7 @@ Unblocked catalog follow-up (2026-08-21, not new UL rows): `fix-logs/e2e-unblock
 | UL-29 | Context menu | Paste | Empty page = Paste only; gray if empty clipboard | Callout vs shape clipboard | **pass** (live). Empty page is Paste-only; desktop grays via `#5a6473` + `cursor:default` (not opacity). Chrome right-click shows no menu |
 | UL-30 | Context menu | Bring to front / forward / backward / back | Overlap-aware z-order | **Omitted on callouts** (own SVG layer) | **pass** (live). Bring to front moved id to last SVG sibling; Send to back to first |
 | UL-31 | Context menu | Continue pin (counter) | Keep series + re-arm Counter | Missing series | **pass** (live). Was a log-only stub; now switches series and leaves `[data-counter-overlay]` armed |
-| UL-32 | Pages panel menu | Cut / Copy / Paste / Duplicate / Rotate / Mirror H+V / Reset / Delete | Page ops live on thumbs, not canvas | 1-page delete; empty clipboard | **pass** (item + **Duplicate execute**: clone annotations, armed/History, first/last undo wipe — `fix-logs/thin-leftovers-2026-08-21.md`) |
+| UL-32 | Pages panel menu | Cut / Copy / Paste / Duplicate / Rotate / Mirror H+V / Reset / Delete | Page ops live on thumbs, not canvas | 1-page delete; empty clipboard | **pass** (this pass: **Mirror V / Reset / Cut / Copy / Paste execute** — `fix-logs/survey-keep-notes-page-ctx-2026-08-22.md`; prior Duplicate execute). **Extract missing-handler** |
 | UL-33 | AppShell toolbar | Style picker Solid / Dashed / Dotted / Cloud | Cloud only on rect | Ellipse has no Cloud | **pass** (Node + live Solid/Cloud/Dashed/Dotted). Completeness: armed Dashed `6,4` + Dotted `2,4`; ellipse omits Cloud (`e2e-catalog-completeness.spec.mjs`) |
 | UL-34 | AppShell toolbar | Cloud bump size 1–20 | Rect + cloud only | Letters / 0 / 99 | **pass** (every integer 1–20 live + 0→1 / 99→20 / letters rejected / empty→1; `e2e-cloud-bump-1-20.spec.mjs`) |
 | UL-35 | AppShell toolbar | Counter series: New Count / Continue / start # / Size / delete series | Series list + context menu | Permission toast on delete; Size 3/77 | **pass** (this pass: Size every preset 5…64 + clamp 4–76; Start 10 / letters/0/empty→1 / lock after 2 pins — `e2e-counter-size-start.spec.mjs`; prior: series-list Delete + pin Delete **renumbers**) |

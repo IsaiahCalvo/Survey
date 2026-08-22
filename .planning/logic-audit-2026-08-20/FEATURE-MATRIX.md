@@ -19,7 +19,7 @@ Exact discrete catalogs used by the UI:
 | V-03 | Viewer | Select text (⇧V) | Select PDF glyphs | No text layer; form fields |
 | V-04 | Viewer | Zoom in/out/fit | Ctrl+/−/0, pinch, toolbar | Floor 10%; Electron zoom factor; `zoomGeneration` auto-commit. **Fit height** is its own mode (not Fit page); live `e2e-fit-height.spec.mjs` |
 | V-05 | Viewer | Page nav | ←/→ Home/End, thumbnails | 1-page; missing page; fit-width |
-| V-06 | Viewer | Pages panel | Jump via thumbnail **left-click** (not the page-number field) | Collapse; long docs; no thumb 121. Live `e2e-thumbnail-click.spec.mjs` |
+| V-06 | Viewer | Pages panel | Jump via thumbnail **left-click** (not the page-number field). UL-32 Mirror V / Reset / Cut / Copy / Paste execute `e2e-survey-keep-notes-page-ctx.spec.mjs` | Collapse; long docs; no thumb 121; Extract missing |
 | V-07 | Viewer | Bookmarks | Add/reorder/jump | Empty; rename clash |
 | V-08 | Viewer | Search text | Find in PDF | No hits; wrap; special chars |
 | V-09 | Viewer | Keyboard shortcuts overlay | `?` lists tools | Escape; focus trap |
@@ -58,7 +58,7 @@ Exact discrete catalogs used by the UI:
 | X-04 | Import | PDF annotations | Open foreign PDF | Unsupported types; rotated page |
 | X-05 | Forms | Form field values | Export/print filled fields | Hidden Forms category |
 | X-06 | Excel | Export / apply changeset | Sheet sync | Identity SQL; CORS `*` intentional |
-| U-01 | Survey | Survey rail / modules | Stamp + filter. **Previous/Next module** is its own navigator (not Walls). Live `e2e-survey-module-nav.spec.mjs` | Empty template; KAL-436; first/last disabled |
+| U-01 | Survey | Survey rail / modules | Stamp + filter. **Previous/Next module** is its own navigator (not Walls). **Keep active** + **Survey notes** live `e2e-survey-keep-notes-page-ctx.spec.mjs` | Empty template; KAL-436; first/last disabled; Keep off clears category |
 | U-02 | Survey | Spaces / regions | Overlay + stamp | Region off; last space |
 | U-03 | Survey | Templates | Editor + overwrite warn | Color on entities |
 | U-04 | Survey | Checklists | Archive / complete | Empty |
