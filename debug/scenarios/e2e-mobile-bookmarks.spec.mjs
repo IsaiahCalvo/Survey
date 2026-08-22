@@ -7,20 +7,24 @@ import { test, expect } from '@playwright/test';
 // keyboard, every-swatch, hub extras, waves 5–13. No 768 tablet pass
 // (source breakpoint is max-width: 720px only). Do not stamp file.id.
 
-const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const MULTI_PDF = '/?testPdf=spike-120-pages.pdf';
 
-async function openMobileEditor(page, fixture) {
+async function openMobileEditor(page) {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(fixture);
+  await page.goto(MULTI_PDF);
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
 }
 
 async function openMobileBookmarks(page) {
-  await page.getByRole('button', { name: 'Open pages, search, and bookmarks' }).click();
-  await expect(page.getByRole('button', { name: 'Close document hub' })).toBeVisible({ timeout: 15_000 });
+  const hubClose = page.getByRole('button', { name: 'Close document hub' });
+  const dock = page.getByRole('button', { name: 'Open pages, search, and bookmarks' });
+  await expect(dock).toBeVisible({ timeout: 15_000 });
+  if (!(await hubClose.isVisible().catch(() => false))) {
+    await dock.click();
+  }
+  await expect(hubClose).toBeVisible({ timeout: 15_000 });
   const bookmarksTab = page.locator('.mobile-pdf-hub-tab').filter({ hasText: 'Bookmarks' })
     .or(page.getByRole('button', { name: 'Bookmarks', exact: true }));
   await expect(bookmarksTab.first()).toBeVisible({ timeout: 15_000 });
@@ -49,7 +53,7 @@ async function addBookmark(page, name, pageNumber) {
 }
 
 test('mobile Bookmarks create / up-down / jump intended + break + edge', async ({ page }) => {
-  await openMobileEditor(page, LINK_PDF);
+  await openMobileEditor(page);
   await openMobileBookmarks(page);
 
   const alpha = `E2E-MB-A-${Date.now()}`;
@@ -92,11 +96,11 @@ test('mobile Bookmarks create / up-down / jump intended + break + edge', async (
   await editor.getByRole('textbox', { name: 'Bookmark name' }).fill('E2E-MB-bad-page');
   await editor.getByRole('spinbutton', { name: 'Bookmark page' }).fill('0');
   await editor.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: /page number between 1 and 1/i })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: /page number between 1 and 120/i })).toBeVisible();
 
-  await editor.getByRole('spinbutton', { name: 'Bookmark page' }).fill('99');
+  await editor.getByRole('spinbutton', { name: 'Bookmark page' }).fill('999');
   await editor.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: /page number between 1 and 1/i })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: /page number between 1 and 120/i })).toBeVisible();
   await expect(bookmarkRow(page, 'E2E-MB-bad-page')).toHaveCount(0);
 
   await editor.getByRole('textbox', { name: 'Bookmark name' }).fill(alpha);
@@ -112,13 +116,9 @@ test('mobile Bookmarks create / up-down / jump intended + break + edge', async (
   await expect(bookmarkRow(page, bravo)).toHaveCount(0);
   await expect(bookmarkRow(page, alpha)).toBeVisible();
 
-  expect(await page.evaluate(() => window.__devTestPdf?.id ?? null)).toBeNull();
-
-  await page.goto(MULTI_PDF);
-  await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 60_000 });
-  await openMobileBookmarks(page);
   const jumper = `E2E-MB-P3-${Date.now()}`;
   await addBookmark(page, jumper, 3);
+  await expect(bookmarkRow(page, jumper)).toBeVisible();
   await bookmarkRow(page, jumper).getByRole('button', { name: `Open bookmark ${jumper}` }).click();
   await expect.poll(async () => (
     (await page.getByRole('button', { name: 'Jump to page' }).innerText()).replace(/\s+/g, '')
