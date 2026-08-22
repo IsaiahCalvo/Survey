@@ -86,6 +86,7 @@ test('live spec covers intended + clamp + Escape + 390 absent + file.id', () => 
   assert.match(spec, /50 must lift to the same engine min as 0/);
   assert.match(spec, /9999 must clamp in the field/);
   assert.match(spec, /4000% ceiling must apply/);
+  assert.match(spec, /Fit page must leave the 4000% ceiling/);
   assert.match(spec, /empty Enter must restore 200%/);
   assert.match(spec, /letters must restore 200%/);
   assert.match(spec, /Escape must restore 200% and not commit 333/);
