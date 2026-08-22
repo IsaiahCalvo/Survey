@@ -26,7 +26,7 @@ test('Eraser Size catalog is 11 discrete presets, 1–100, not Width or Counter'
 
   const shell = read('src/AppShell.jsx');
   assert.match(shell, /ANNOTATION_SIZE_PRESETS\.eraser/);
-  assert.match(shell, /activeTool === 'eraser' \? 100/);
+  assert.match(shell, /activeTool === 'eraser'\s*\n\s*\? 100/);
   assert.match(shell, /contextTool === 'counter' \|\| bottomToolbarApi\.activeTool === 'eraser' \? 'Size' : 'Width'/);
   assert.match(shell, /activeTool === 'eraser' \? bottomToolbarApi\.eraserSizeInputValue : bottomToolbarApi\.strokeWidthInputValue/);
   assert.match(shell, /handleEraserSizeInputChange/);

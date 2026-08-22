@@ -82,9 +82,10 @@ async function pickSizePreset(page, preset) {
   const option = popover.getByRole('option', { name: String(preset), exact: true });
   if (await option.count()) {
     await option.click();
-    return;
+  } else {
+    await popover.getByText(String(preset), { exact: true }).click();
   }
-  await popover.getByText(String(preset), { exact: true }).click();
+  await expect(popover).toHaveCount(0);
 }
 
 async function listSizePresets(page) {
@@ -246,15 +247,42 @@ async function measureCursor(page, expectedDiameter) {
   return { ...cursor, ...scale, expected };
 }
 
-async function eraseBite(page, { xf = 0.45 } = {}) {
-  const host = page.locator('[data-svg-annotation-layer="1"] > g[data-anno-id]').first();
-  await expect(host).toBeVisible({ timeout: 8_000 });
-  const box = await host.boundingBox();
-  expect(box, 'ink bbox').toBeTruthy();
-  const x = box.x + box.width * xf;
-  await page.mouse.move(x, box.y - 10);
+async function currentStrokeId(page) {
+  const metric = await userInkMetric(page);
+  expect(metric.ids.length, 'a user pen stroke must remain').toBeGreaterThan(0);
+  return metric.ids[0];
+}
+
+async function eraseAlongStroke(page, id, { startFrac = 0.32, endFrac = 0.48 } = {}) {
+  const points = await page.evaluate(({ annotationId, startFrac: start, endFrac: end }) => {
+    const object = window.__phase35GetAnnotationById?.(annotationId);
+    const wrapper = document.querySelector('[data-diag-eraser-wrapper="1"]');
+    const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+    const rect = wrapper?.getBoundingClientRect();
+    const viewBox = svg?.viewBox?.baseVal;
+    if (!object || !rect || !viewBox?.width || !viewBox?.height) return [];
+    const pts = [];
+    for (const cmd of object.path || []) {
+      const x = Number(cmd[cmd.length - 2]);
+      const y = Number(cmd[cmd.length - 1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        pts.push({
+          x: rect.left + (x / viewBox.width) * rect.width,
+          y: rect.top + (y / viewBox.height) * rect.height,
+        });
+      }
+    }
+    if (pts.length < 2) return pts;
+    const i0 = Math.floor((pts.length - 1) * start);
+    const i1 = Math.max(i0 + 1, Math.floor((pts.length - 1) * end));
+    return pts.slice(i0, i1 + 1);
+  }, { annotationId: id, startFrac, endFrac });
+  expect(points.length, `path samples for ${id}`).toBeGreaterThanOrEqual(2);
+  await page.mouse.move(points[0].x, points[0].y);
   await page.mouse.down();
-  await page.mouse.move(x, box.y + box.height + 10, { steps: 6 });
+  for (const point of points.slice(1)) {
+    await page.mouse.move(point.x, point.y, { steps: 3 });
+  }
   await page.mouse.up();
 }
 
@@ -320,8 +348,9 @@ test('eraser Size every preset + custom field intended + break + edge', async ({
     if (preset === 1) cursorAtOne = cursor.width;
     if (preset === 100) cursorAtHundred = cursor.width;
 
+    const strokeId = await currentStrokeId(page);
     const before = await userInkMetric(page);
-    await eraseBite(page, { xf: 0.42 });
+    await eraseAlongStroke(page, strokeId);
     let after = before;
     await expect.poll(async () => {
       after = await userInkMetric(page);
@@ -376,7 +405,7 @@ test('eraser Size every preset + custom field intended + break + edge', async ({
     Math.max(2, customCursor.expected * 0.08),
   );
   const beforeCustom = await userInkMetric(page);
-  await eraseBite(page, { xf: 0.55 });
+  await eraseAlongStroke(page, await currentStrokeId(page), { startFrac: 0.50, endFrac: 0.64 });
   await expect.poll(async () => inkChanged(beforeCustom, await userInkMetric(page)), {
     message: 'custom Size 40 must cut geometry',
   }).toBe(true);
@@ -458,7 +487,7 @@ test('eraser Size every preset + custom field intended + break + edge', async ({
   await activateEraser(page);
   await pickSizePreset(page, 1);
   const beforeMin = await userInkMetric(page);
-  await eraseBite(page, { xf: 0.38 });
+  await eraseAlongStroke(page, await currentStrokeId(page), { startFrac: 0.28, endFrac: 0.44 });
   let afterMin = beforeMin;
   await expect.poll(async () => {
     afterMin = await userInkMetric(page);
@@ -474,7 +503,7 @@ test('eraser Size every preset + custom field intended + break + edge', async ({
 
   await pickSizePreset(page, 100);
   const beforeMax = await userInkMetric(page);
-  await eraseBite(page, { xf: 0.38 });
+  await eraseAlongStroke(page, await currentStrokeId(page), { startFrac: 0.28, endFrac: 0.44 });
   let afterMax = beforeMax;
   await expect.poll(async () => {
     afterMax = await userInkMetric(page);
@@ -507,7 +536,7 @@ test('eraser Size every preset + custom field intended + break + edge', async ({
     `zoomed cursor ${zoomCursor.width} must match 32 × offsetWidth/pageWidth ${zoomCursor.effectiveScale}`,
   ).toBeLessThanOrEqual(Math.max(2, zoomCursor.expected * 0.08));
   const beforeZoomErase = await userInkMetric(page);
-  await eraseBite(page, { xf: 0.50 });
+  await eraseAlongStroke(page, await currentStrokeId(page), { startFrac: 0.40, endFrac: 0.58 });
   await expect.poll(async () => inkChanged(beforeZoomErase, await userInkMetric(page)), {
     message: 'zoom then erase at Size 32 must cut',
   }).toBe(true);

@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-21 Counter Size + Start):** UL-35 Size catalog every preset 5…64 + clamp 4–76; Start number intended/break/edge (lock after second pin). Not D-05 Width. Receipt `fix-logs/counter-size-start-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-21 Eraser Size every preset):** D-04 Size catalog every discrete **1…100** + custom 40 (default 20). Not a new UL row; not D-05 Width and not UL-35 Counter Size. Receipt `fix-logs/eraser-size-presets-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-21 Counter Size + Start):** UL-35 Size catalog every preset 5…64 + clamp 4–76; Start number intended/break/edge (lock after second pin). Not D-05 Width. Receipt `fix-logs/counter-size-start-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-21 F3 / counter Delete / cloud bump):** UL-34 every integer 1–20 live on the local Bump field (not leftover-18 persist). UL-35 series-list Delete execute + confirm; pin Delete is keyboard-only (pin menu stays Continue pin). F3/Ctrl+G are unlisted find aliases (not new UL rows). Receipt `fix-logs/f3-counter-delete-bump-2026-08-21.md`. Leftover **18** stay parked. Goal stays open.
 
