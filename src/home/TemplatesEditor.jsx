@@ -1715,7 +1715,7 @@ export default function TemplatesEditor({
           <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl ? 'modules' : 'templates'}
         </span>
         {mobileTemplateOpen && dirty ? (
-          <span className="templates-mobile-save-row">
+          <span className="templates-mobile-save-row" data-entity-editor-actions>
             <button type="button" onClick={handleCancelEdits}>Cancel</button>
             <button type="button" className="primary" onClick={handleSaveTemplates}>Save</button>
           </span>
@@ -2331,7 +2331,7 @@ export default function TemplatesEditor({
                     the whole template set (modules, categories, checklist and
                     entities + their colours) back to the host for persistence. */}
                 {dirty && (
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+                  <div data-entity-editor-actions style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
                     <button
                       onClick={handleCancelEdits}
                       style={{ background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 7px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink-soft)', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' }}
@@ -2497,6 +2497,7 @@ export default function TemplatesEditor({
                                   onChange={applyColor}
                                   onClose={() => setOpenColor(null)}
                                   dismissInsideSelector="[data-entity-color-panel]"
+                                  passthroughSelector="[data-entity-editor-actions] button"
                                 />
                               </div>
                             </div>
@@ -2936,7 +2937,7 @@ export default function TemplatesEditor({
                                       </label>
                                     ) : null}
                                     <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" />
+                                      <CompactColorPicker color={activeData.color} opacity={activeData.opacity} onChange={applyColor} onClose={() => setOpenColor(null)} dismissInsideSelector="[data-entity-color-panel]" passthroughSelector="[data-entity-editor-actions] button" />
                                     </div>
                                   </div>
                                 );

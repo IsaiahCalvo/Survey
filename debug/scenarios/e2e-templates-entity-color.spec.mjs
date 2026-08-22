@@ -85,8 +85,8 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
   await pickPreset(page, '#00FF00');
   expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe('#00ff00');
   expect((await findEntitySwatch(page, 'Subcontractor'))?.hex.toLowerCase()).not.toBe('#00ff00');
-  await page.getByRole('button', { name: 'Cancel', exact: true }).first().click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await entitiesRail(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(entitiesRail(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe(GC_HEX);
 
   await clickEditColor(page, 'GC');
@@ -104,8 +104,8 @@ test('Templates entity color intended + break + edge', async ({ page }) => {
   expect((await findEntitySwatch(page, 'GC'))?.hex.toLowerCase()).toBe('#ff0000');
   expect((await findEntitySwatch(page, 'Subcontractor'))?.hex.toLowerCase()).toBe(subBefore);
 
-  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await entitiesRail(page).getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(entitiesRail(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await page.getByText('MEP As-Built Markup').first().click();
   await expect(page.getByRole('textbox', { name: 'Entity name' }).first()).toHaveValue('MEP');
   await page.getByText('Security Walk-Through').first().click();

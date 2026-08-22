@@ -26,6 +26,8 @@ test('TemplatesEditor Edit color writes fill via setEntityColor', () => {
   assert.match(editor, /data-entity-color-panel/);
   assert.match(editor, /setEntityColor\(r\.id, color\)/);
   assert.match(editor, /<CompactColorPicker/);
+  assert.match(editor, /passthroughSelector="\[data-entity-editor-actions\] button"/);
+  assert.match(editor, /data-entity-editor-actions/);
   assert.doesNotMatch(editor, /onExportSpaceCSV/);
   assert.doesNotMatch(editor, /Copy to Spaces/);
 });
