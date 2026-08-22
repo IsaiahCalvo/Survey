@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 callout text-box corner resize):** T-02 `textBox-tl/tr/bl/br` (not a new UL row; not E-01 shape handles). Receipt `fix-logs/callout-textbox-resize-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 callout text-box flip + knee-rollback leftovers):** T-02 leftovers (not a new UL row). Live flip past opposite + resize-into-knee rollback. Receipt `fix-logs/callout-textbox-resize-leftovers-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 callout text-box corner resize):** T-02 `textBox-tl/tr/bl/br` (not a new UL row; not E-01 shape handles). Receipt `fix-logs/callout-textbox-resize-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 callout knee / leader / arrowTip drag):** T-02 edit handles (not a new UL row). Not clipboard paste (T-02 / thin leftovers). Receipt `fix-logs/callout-knee-drag-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
