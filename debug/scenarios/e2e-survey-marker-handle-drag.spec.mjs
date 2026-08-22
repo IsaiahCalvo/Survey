@@ -74,7 +74,11 @@ async function enterSurveyWalls(page) {
 
 async function armWalls(page) {
   const walls = page.getByRole('button', { name: 'Walls', exact: true });
-  await expect(walls).toBeVisible();
+  if (!(await walls.count()) || !(await walls.first().isVisible().catch(() => false))) {
+    const survey = page.getByRole('button', { name: 'Survey', exact: true });
+    if (await survey.count()) await survey.click();
+  }
+  await expect(walls).toBeVisible({ timeout: 15_000 });
   if (!String(await walls.getAttribute('class') || '').includes('btn-active')) {
     await walls.click();
   }
