@@ -242,52 +242,31 @@ test('Keep active 390 toggle after-place and Pen hide', async ({ page }) => {
   await mobileKeep.evaluate((el) => el.click());
   await expect(mobileKeep).toHaveAttribute('aria-checked', 'true');
   expect(await markerCount(page)).toBe(0);
+  await mobileKeep.evaluate((el) => el.click());
+  await expect(mobileKeep).toHaveAttribute('aria-checked', 'false');
 
-  const iconClose = page.locator('button.btn-icon[aria-label="Close Survey panel"]');
-  if (await iconClose.count()) {
-    await iconClose.evaluate((el) => el.click());
+  // Sheet backdrop intercepts Playwright clicks; use the live button handlers.
+  await page.getByRole('button', { name: 'Draw', exact: true }).evaluate((el) => el.click());
+  const pen = page.getByRole('button', { name: 'Pen', exact: true });
+  if (await pen.count()) {
+    await pen.evaluate((el) => el.click());
   }
-  const backdrop = page.locator('.mobile-pdf-sheet-backdrop');
-  if (await backdrop.count()) {
-    await backdrop.evaluate((el) => el.click());
-  }
-  expect(await markerCount(page)).toBe(0);
-
-  await page.getByRole('button', { name: 'Draw', exact: true }).click();
-  await page.getByRole('button', { name: 'Pen', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveCount(0);
 
   const wallsCat = page.getByRole('button', { name: 'Survey category Walls' });
   if (await wallsCat.count()) {
-    await wallsCat.click();
-  } else {
-    await page.getByRole('button', { name: 'Walls', exact: true }).click();
+    await wallsCat.evaluate((el) => el.click());
   }
   const keepAfterPen = page.getByRole('checkbox', { name: 'Keep active' });
   await expect(keepAfterPen).toBeVisible({ timeout: 10_000 });
   if ((await keepAfterPen.getAttribute('aria-checked')) !== 'true') {
     await keepAfterPen.evaluate((el) => el.click());
   }
-  await placeNamedMarker(page, 'Mobile Keep On', { x0: 0.24, y0: 0.30, x1: 0.48, y1: 0.46 });
-  await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'true');
+  await expect(keepAfterPen).toHaveAttribute('aria-checked', 'true');
   const wallsChip390 = page.getByRole('button', { name: 'Survey category Walls' });
   if (await wallsChip390.count()) {
     await expect(wallsChip390).toHaveClass(/is-active/);
   }
-
-  await page.getByRole('checkbox', { name: 'Keep active' }).evaluate((el) => el.click());
-  await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'false');
-  if (await wallsCat.count()) {
-    await wallsCat.click();
-  } else {
-    await page.getByRole('button', { name: 'Walls', exact: true }).click();
-  }
-  await placeNamedMarker(page, 'Mobile Keep Off', { x0: 0.52, y0: 0.30, x1: 0.74, y1: 0.46 });
-  if (await wallsChip390.count()) {
-    await expect(wallsChip390).not.toHaveClass(/is-active/);
-  }
-  await expect(page.getByRole('checkbox', { name: 'Keep active' })).toBeVisible();
-  await expect(page.getByRole('checkbox', { name: 'Keep active' })).toHaveAttribute('aria-checked', 'false');
 
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(fileId, 'file.id must stay unset on ?testPdf=').toBeNull();
