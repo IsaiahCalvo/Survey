@@ -95,39 +95,28 @@ async function activateTool(page, categoryName, toolName) {
   }
 }
 
-async function dragOnPage(page, {
-  pageNumber = 1,
-  x0 = 0.55,
-  y0 = 0.40,
-  x1 = 0.58,
-  y1 = 0.43,
-} = {}) {
-  const box = await pageBox(page, pageNumber);
-  const start = { x: box.x + box.width * x0, y: box.y + box.height * y0 };
-  const end = { x: box.x + box.width * x1, y: box.y + box.height * y1 };
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 4 });
-  await page.mouse.up();
-}
-
 async function activateCounter(page) {
   await activateTool(page, 'Shapes', 'Counter');
   await expect(page.locator('[data-counter-overlay="1"]')).toBeVisible({ timeout: 8_000 });
 }
 
+// Proven 3-pin path from e2e-adversarial-wave8: overlay bbox + settle + short drag.
+async function dropCounterPin(page, { xf = 0.40, yf = 0.36 } = {}) {
+  const overlay = page.locator('[data-counter-overlay="1"]');
+  await expect(overlay).toBeVisible();
+  await page.waitForTimeout(280);
+  const box = await overlay.boundingBox();
+  expect(box, 'counter overlay geometry').toBeTruthy();
+  const start = { x: box.x + box.width * xf, y: box.y + box.height * yf };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 10, start.y + 8, { steps: 4 });
+  await page.mouse.up();
+}
+
 async function dropPin(page, coords) {
   const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
-  await activateTool(page, 'Shapes', 'Counter');
-  const overlay = page.locator('[data-counter-overlay="1"]');
-  if (!(await overlay.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
-    const counter = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Counter', exact: true });
-    await expect(counter).toBeVisible({ timeout: 8_000 });
-    await counter.click();
-  }
-  await expect(overlay).toBeVisible({ timeout: 8_000 });
-  await dragOnPage(page, coords);
+  await dropCounterPin(page, coords);
   let created = null;
   await expect.poll(async () => {
     const rows = await userAnnotationSnapshot(page);
@@ -172,9 +161,10 @@ test('counter-series Delete execute: keyboard pin + series menu', async ({ page 
   const hunts = [];
   await openEditor(page);
 
-  const pin1 = await dropPin(page, { x0: 0.55, y0: 0.40, x1: 0.58, y1: 0.43 });
-  const pin2 = await dropPin(page, { x0: 0.38, y0: 0.55, x1: 0.41, y1: 0.58 });
-  const pin3 = await dropPin(page, { x0: 0.72, y0: 0.55, x1: 0.75, y1: 0.58 });
+  await activateCounter(page);
+  const pin1 = await dropPin(page, { xf: 0.34, yf: 0.32 });
+  const pin2 = await dropPin(page, { xf: 0.50, yf: 0.32 });
+  const pin3 = await dropPin(page, { xf: 0.66, yf: 0.32 });
   const series = await waitForPinCount(page, 3);
   expect(new Set(series.map((row) => row.seriesId)).size, 'one series').toBe(1);
   expect(numbers(series)).toEqual([1, 2, 3]);
