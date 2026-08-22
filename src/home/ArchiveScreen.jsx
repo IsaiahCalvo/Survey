@@ -362,7 +362,13 @@ export default function ArchiveScreen({
   );
 
   const searchField = (width) => (
-    <Search placeholder="Search archive..." value={search} onChange={setSearch} width={width} />
+    <Search
+      placeholder="Search archive..."
+      value={search}
+      onChange={setSearch}
+      width={width}
+      dismissActionSelector=".archive-filter-button"
+    />
   );
 
   const headerActions = (

@@ -87,6 +87,7 @@ test('seeded Archive Search / filter / sort is the model, not leftover-18 Restor
 
   const screen = read('src/home/ArchiveScreen.jsx');
   assert.match(screen, /placeholder="Search archive\.\.\."/);
+  assert.match(screen, /dismissActionSelector="\.archive-filter-button"/);
   assert.match(screen, /visibleArchiveItems\(items, \{ filter, sortKey, sortDir, search \}\)/);
   assert.match(screen, /ARCHIVE_FILTERS\.map/);
   assert.match(screen, /ARCHIVE_SORT_OPTIONS\.map/);

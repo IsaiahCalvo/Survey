@@ -788,7 +788,7 @@ test('the header is built on the Documents / Projects structure', () => {
   assert.doesNotMatch(CSS, /\.archive-filter-row/);
 
   // Search is a real Search field wired to the row list.
-  assert.match(SCREEN, /<Search placeholder="Search archive\.\.\." value=\{search\} onChange=\{setSearch\} width=\{width\} \/>/);
+  assert.match(SCREEN, /<Search[\s\S]*?placeholder="Search archive\.\.\."[\s\S]*?dismissActionSelector="\.archive-filter-button"/);
   assert.match(SCREEN, /visibleArchiveItems\(items, \{ filter, sortKey, sortDir, search \}\)/);
   assert.match(SCREEN, /\[items, filter, sortKey, sortDir, search\]/, 'search is in the memo deps');
   // Empty-result copy names the reason, mirroring Documents' wording.
