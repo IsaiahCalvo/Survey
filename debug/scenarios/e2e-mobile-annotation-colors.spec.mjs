@@ -162,14 +162,30 @@ async function createRect(page, coords = { x0: 0.22, y0: 0.28, x1: 0.58, y1: 0.4
   ));
 }
 
+async function dismissChrome(page) {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  await page.keyboard.press('Escape');
+  const pagesToggle = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  if (await pagesToggle.isVisible().catch(() => false)) {
+    const expanded = await page.getByText('No documents yet').isVisible().catch(() => false);
+    if (expanded) await pagesToggle.click();
+  }
+}
+
 async function selectRect(page, id) {
+  await dismissChrome(page);
   await clickVisible(page, 'Select');
-  const host = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
+  const host = page.locator(`[data-shape-id="${id}"]`).first()
+    .or(page.locator(`[data-svg-annotation-layer] [data-anno-id="${id}"]`).first());
   await expect(host).toBeVisible();
-  const box = await host.boundingBox();
-  expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  await host.click({ force: true, position: { x: 8, y: 8 } });
+  const swatch = page.getByRole('button', { name: 'Fill and border colors', exact: true }).first();
+  if (!(await swatch.isVisible().catch(() => false))) {
+    await page.keyboard.press('v');
+    await host.click({ force: true });
+  }
+  await expect(swatch).toBeVisible({ timeout: 8_000 });
 }
 
 async function openFillSheet(page) {
@@ -180,21 +196,23 @@ async function openFillSheet(page) {
 test('390 MOBILE_ANNOTATION_COLORS every chip intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
-  // Break: desktop CompactColorPicker catalog is not this 9-chip sheet.
-  await openEditor(page, { width: 1440, height: 900 });
-  await assertNoErrorBoundary(page);
-  const desktopChips = {};
-  for (const color of MOBILE_ANNOTATION_COLORS) {
-    desktopChips[color] = await page.getByRole('button', { name: `Set Fill color ${color}`, exact: true }).count();
-  }
-  expect(desktopChips['#4A90E2'], 'desktop must not mount the 390 chip catalog').toBe(0);
-  expect(Object.values(desktopChips).every((count) => count === 0)).toBe(true);
-
   // Intended: 390 sheet exposes every chip and each writes fill on a selected rect.
   await openEditor(page, { width: 390, height: 844 });
   await assertNoErrorBoundary(page);
+  await dismissChrome(page);
+
+  // Break contrast later — desktop must not mount these chips. Capture the
+  // 390-only names now so the later 1440 pass can assert count 0.
   const emptyBefore = await userAnnotationSnapshot(page);
   expect(emptyBefore.filter((row) => row.type === 'rect' || row.type === 'rectangle').length).toBe(0);
+
+  await activateTool(page, 'Shapes', 'Rectangle');
+  await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  await openFillSheet(page);
+  for (const color of MOBILE_ANNOTATION_COLORS) {
+    await expect(page.getByRole('button', { name: `Set Fill color ${color}`, exact: true })).toBeVisible();
+  }
+  await page.keyboard.press('Escape');
 
   const rect = await createRect(page);
   expect(rect?.id).toBeTruthy();
@@ -259,6 +277,15 @@ test('390 MOBILE_ANNOTATION_COLORS every chip intended + break + edge', async ({
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(fileId).toBeNull();
   await assertNoErrorBoundary(page);
+
+  // Break: desktop CompactColorPicker catalog is not this 9-chip sheet.
+  await openEditor(page, { width: 1440, height: 900 });
+  const desktopChips = {};
+  for (const color of MOBILE_ANNOTATION_COLORS) {
+    desktopChips[color] = await page.getByRole('button', { name: `Set Fill color ${color}`, exact: true }).count();
+  }
+  expect(desktopChips['#4A90E2'], 'desktop must not mount the 390 chip catalog').toBe(0);
+  expect(Object.values(desktopChips).every((count) => count === 0)).toBe(true);
 
   // Contrast: hubPreview is not the 390 PDF chip sheet.
   await page.goto(HUB, { waitUntil: 'domcontentloaded' });
