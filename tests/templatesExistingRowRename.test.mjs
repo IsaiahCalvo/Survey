@@ -70,6 +70,8 @@ test('existing-row rename chrome uses seed Cameras / Installation Phase / GC / i
   assert.match(editor, /commitRequiredRow\(e\.currentTarget, r\.role, ENTITY_BLANK_HINT, \(v\) => renameEntity\(r\.id, v\)\)/);
   assert.match(editor, /commitRequiredRow\(e\.currentTarget, it\.text, CHECKLIST_BLANK_HINT, \(v\) => renameItem\(i, it\.id, v\)\)/);
   assert.match(editor, /commitRequiredRow\(e\.currentTarget, it\.text, CHECKLIST_BLANK_HINT, \(v\) => renameItem\(ci, it\.id, v\)\)/);
+  assert.match(editor, /key=\{it\.id \+ ':' \+ it\.text\}/);
+  assert.match(editor, /key=\{`mobile-item-\$\{it\.id\}:\$\{it\.text\}`\}/);
   assert.doesNotMatch(editor, /PRINT_PANEL_ENABLED/);
   assert.doesNotMatch(editor, /stampTool/);
   assert.doesNotMatch(editor, /Note-Link/);

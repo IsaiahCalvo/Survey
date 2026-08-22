@@ -2263,6 +2263,7 @@ export default function TemplatesEditor({
                                 <input
                                   className="inline-edit"
                                   defaultValue={it.text}
+                                  key={it.id + ':' + it.text}
                                   placeholder="Add checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v))}
@@ -2822,6 +2823,7 @@ export default function TemplatesEditor({
                                             <input
                                               className="templates-mobile-inline-input"
                                               defaultValue={it.text}
+                                              key={`mobile-item-${it.id}:${it.text}`}
                                               placeholder="Add checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
