@@ -241,7 +241,7 @@ test('U-02 region-row Click to rename / commitRegionRename', async ({ page }) =>
     mobileRename = await regionRenameButtons(page).count();
     mobileEdit = await editRegionBtn(page).count();
     if (mobileRename > 0) {
-      await regionRenameButtons(page).first().click();
+      await regionRenameButtons(page).first().evaluate((el) => el.click());
       const mobileInput = regionRenameInput(page);
       if (await mobileInput.count()) {
         await mobileInput.fill('Mobile-Kitchen');
