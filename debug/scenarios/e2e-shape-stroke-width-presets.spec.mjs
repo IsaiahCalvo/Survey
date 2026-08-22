@@ -377,6 +377,11 @@ async function selectStroke(page, id) {
   if (isLineLike) {
     await expect.poll(async () => {
       await clickLineStroke(page, id);
+      const mid = await page.locator('circle[data-handle="midpoint"]').count();
+      if (mid > 0) return mid;
+      const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
+      const box = await target.boundingBox();
+      if (box) await page.mouse.click(box.x + box.width * 0.38, box.y + box.height * 0.5);
       return page.locator('circle[data-handle="midpoint"]').count();
     }, { timeout: 12_000, message: `line/arrow midpoint handle for ${id}` }).toBeGreaterThan(0);
     return;
@@ -442,6 +447,7 @@ test('Line/Arrow/shape Width every preset + selected-patch intended + break + ed
   await openEditor(page);
   await assertNoErrorBoundary(page);
   await dismissChrome(page);
+  await ensurePageDrawTarget(page);
   await activateTool(page, 'Shapes', 'Line');
   const field = await widthField(page);
   await expect(field).toBeVisible({ timeout: 8_000 });
