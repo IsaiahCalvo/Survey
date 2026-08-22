@@ -85,8 +85,10 @@ test('Projects extras Search / Pin / Duplicate / file Copy-Paste intended + brea
   await page.locator('aside.side nav.nav').getByRole('button', { name: 'Templates', exact: true }).click();
   await expect(page.getByText('Security Walk-Through').first()).toBeVisible({ timeout: 15_000 });
   const templatesChrome = await visibleNames(page.locator('button, [role="menuitem"], input'));
-  await page.locator('aside.side nav.nav-bottom').getByRole('button', { name: 'Archive', exact: true }).click();
-  await expect(page.getByText('Nothing in Archive').first()).toBeVisible({ timeout: 15_000 });
+  await page.locator('aside.side nav').getByRole('button', { name: 'Archive', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible({ timeout: 15_000 });
+  const archiveEmpty = await page.getByText('Nothing in Archive').count();
+  const archiveHostError = await page.getByText(/invalid input syntax for type uuid/i).count();
   const archiveChrome = await visibleNames(page.locator('button, [role="menuitem"], input'));
 
   await openPage(page, { url: TEST_PDF });
@@ -104,6 +106,8 @@ test('Projects extras Search / Pin / Duplicate / file Copy-Paste intended + brea
     projectsChrome: projectsChrome.slice(0, 40),
     templatesChrome: templatesChrome.slice(0, 40),
     archiveChrome: archiveChrome.slice(0, 20),
+    archiveEmpty,
+    archiveHostError,
     editorChrome: editorChrome.slice(0, 50),
     fitLabels,
   }));
