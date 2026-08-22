@@ -934,6 +934,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pdfjsMountedPages, setPdfjsMountedPages] = useState(new Set());
   const pageInputRef = useRef(null);
   const zoomInputRef = useRef(null);
+  const skipZoomInputCommitRef = useRef(false);
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
@@ -23179,13 +23180,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, []);
 
-  const commitZoomInput = useCallback(() => {
-    if (!zoomInputValue) {
+  const commitZoomInput = useCallback((liveValue) => {
+    // Prefer the live input value. Playwright fill / last keystroke can commit
+    // in the same tick as onChange, so zoomInputValue may still be the old %.
+    const raw = liveValue != null ? liveValue : zoomInputValue;
+    if (!raw) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;
     }
 
-    const parsed = parseInt(zoomInputValue, 10);
+    const parsed = parseInt(raw, 10);
     if (isNaN(parsed)) {
       setZoomInputValue(String(Math.round(scale * 100)));
       return;
@@ -23206,16 +23210,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleZoomInputKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commitZoomInput();
+      commitZoomInput(e.currentTarget?.value);
       e.currentTarget.blur();
     } else if (e.key === 'Escape') {
+      // Restore the live scale. Blur must not commit the typed draft
+      // (setState is async, so commitZoomInput would still see the draft).
       setZoomInputValue(String(Math.round(scale * 100)));
+      skipZoomInputCommitRef.current = true;
       e.currentTarget.blur();
     }
   }, [commitZoomInput, scale]);
 
-  const handleZoomInputBlur = useCallback(() => {
-    commitZoomInput();
+  const handleZoomInputBlur = useCallback((e) => {
+    if (skipZoomInputCommitRef.current) {
+      skipZoomInputCommitRef.current = false;
+      return;
+    }
+    commitZoomInput(e?.target?.value);
   }, [commitZoomInput]);
 
   const mobileSurveyModules = useMemo(
