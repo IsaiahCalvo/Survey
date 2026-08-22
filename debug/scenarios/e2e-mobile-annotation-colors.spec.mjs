@@ -206,18 +206,19 @@ test('390 MOBILE_ANNOTATION_COLORS every chip intended + break + edge', async ({
   const emptyBefore = await userAnnotationSnapshot(page);
   expect(emptyBefore.filter((row) => row.type === 'rect' || row.type === 'rectangle').length).toBe(0);
 
-  await activateTool(page, 'Shapes', 'Rectangle');
-  await expect(page.getByRole('button', { name: 'Fill and border colors', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  const closePages = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  if (await page.getByText('No documents yet').isVisible().catch(() => false) && await closePages.isVisible().catch(() => false)) {
+    await closePages.click();
+    await expect(page.getByText('No documents yet')).toHaveCount(0);
+  }
+
+  const rect = await createRect(page, { x0: 0.34, y0: 0.36, x1: 0.78, y1: 0.58 });
+  expect(rect?.id).toBeTruthy();
+  await selectRect(page, rect.id);
   await openFillSheet(page);
   for (const color of MOBILE_ANNOTATION_COLORS) {
     await expect(page.getByRole('button', { name: `Set Fill color ${color}`, exact: true })).toBeVisible();
   }
-  await page.keyboard.press('Escape');
-
-  const rect = await createRect(page);
-  expect(rect?.id).toBeTruthy();
-  await selectRect(page, rect.id);
-  await openFillSheet(page);
 
   const fillProof = [];
   for (const color of MOBILE_ANNOTATION_COLORS) {
