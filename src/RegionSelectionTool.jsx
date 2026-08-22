@@ -2459,6 +2459,13 @@ const RegionSelectionTool = ({
         undoLastRegionEdit();
         return;
       }
+      // Sibling of Cancel / click-outside: Escape ends the session without
+      // committing. Editable targets (rename, rotation pill) keep native Esc.
+      if (key === 'escape' && !inEditableTarget) {
+        stopRegionKeyboardShortcut(event);
+        handleCancel();
+        return;
+      }
       if (
         key === 'v' &&
         !event.metaKey &&
@@ -2520,7 +2527,7 @@ const RegionSelectionTool = ({
       setIsCmdCtrlPressed(false);
       setIsSpacePressed(false);
     };
-  }, [active, undoLastRegionEdit, redoLastRegionEdit]);
+  }, [active, undoLastRegionEdit, redoLastRegionEdit, handleCancel]);
 
   useEffect(() => {
     if (!active || !targetElement) return;
