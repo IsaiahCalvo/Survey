@@ -880,12 +880,14 @@
     display: contents;
   }
 
-  /* Generic tab subtitles (Projects / Templates). Without an explicit order
-     they defaulted to 0 and rendered BEFORE the title, jumbling the mobile
-     header. Sit them inline after the title, one line, ellipsized — same
-     placement as the Documents file count below. (Documents' own subtitle is
-     the flattened .documents-mobile-summary and is excluded here.) */
-  .survey-hub .header-subtitle > span:not(.documents-mobile-summary):not(.projects-mobile-summary):not(.templates-mobile-summary) {
+  /* Generic leftover subtitles. Without an explicit order they defaulted
+     to 0 and rendered BEFORE the title, jumbling the mobile header. Sit
+     them inline after the title, one line, ellipsized — same placement as
+     the Documents file count. Documents / Projects / Templates / Archive
+     flatten via *-mobile-summary and are excluded here so Select actions
+     can occupy the full-width .mobile-header-select-row (order 4) instead
+     of sitting under the absolutely-positioned account chip. */
+  .survey-hub .header-subtitle > span:not(.documents-mobile-summary):not(.projects-mobile-summary):not(.templates-mobile-summary):not(.archive-mobile-summary) {
     order: 1;
     flex: 1 1 0;
     min-width: 0;
@@ -909,6 +911,10 @@
     display: contents !important;
   }
 
+  .survey-hub .archive-mobile-summary {
+    display: contents !important;
+  }
+
   .survey-hub .projects-desktop-summary {
     display: none !important;
   }
@@ -919,7 +925,8 @@
 
   .survey-hub .documents-file-count,
   .survey-hub .projects-mobile-count,
-  .survey-hub .templates-mobile-count {
+  .survey-hub .templates-mobile-count,
+  .survey-hub .archive-item-count {
     order: 1;
     flex: 0 1 auto;
     min-width: 0;

@@ -258,10 +258,11 @@ export default function ArchiveScreen({
      ledger itself stays a pure list — and, like Documents, they only appear
      once the user has turned selection on. */
   const subtitle = (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
-      <span><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="archive-item-count"><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
+      <span className="archive-select-row mobile-header-select-row">
         <button
+          className="mobile-header-select-button"
           onClick={() => {
             const next = !selectMode;
             setSelectMode(next);
@@ -270,7 +271,7 @@ export default function ArchiveScreen({
           style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
         >{selectMode ? 'Done' : 'Select'}</button>
         {selectMode && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+          <span className="archive-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
             <button
               onClick={() => setSelectedIds((prev) => nextSelectAll(prev, rows))}
               style={{ ...miniButtonStyle(), color: 'var(--bone-100)' }}
