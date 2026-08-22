@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-21 leftover-18 legal unblock + save/export/import inventory.
+**Evidence refresh:** 2026-08-22 requirement-by-requirement completion audit (`fix-logs/completion-audit-2026-08-22.md`). 96 unique IDs still **proved**. Stomp one-liners P1-12 / P1-38 / P1-53 still live. Leftover-18 still **18** fail-closed local + **18** host-gated. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-21 leftover-18 legal unblock + save/export/import inventory.
 
 Sources: `REPORT.md` + `known-bugs-deep-dive.json` (103 headline / **96 unique IDs**)
 

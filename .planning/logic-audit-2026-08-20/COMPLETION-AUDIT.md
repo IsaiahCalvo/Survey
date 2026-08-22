@@ -1,3 +1,10 @@
+# Completion audit — 2026-08-22 (requirement-by-requirement)
+
+**Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
+**Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
+
+**This-pass (2026-08-22 completion audit):** treated prior “96 proved / leftover-18 fail-closed done / hosts missing” as unproven. Re-read REPORT + known-bugs JSON + ISSUE-INVENTORY + COMPLETION-AUDIT + E2E-STATUS + FEATURE-MATRIX. Stomp one-liners P1-12 / P1-38 / P1-53 still live. Citation-only inventory rows have Node tests (re-ran leftover-18 + undo/stomp Node **50 / 50**). Color/font/format catalogs match `e2e-pickers-every-swatch.spec.mjs`. No weak/missing unblocked unique ID. Leftover-18 **18** fail-closed local + **18** host-gated. Receipt `fix-logs/completion-audit-2026-08-22.md`. Next leftover: leftover-18 live hosts (first **X-01** identity-churn / `.env.local` missing). Goal stays open.
+
 # Completion audit — 2026-08-21 (leftover-18 legal unblock)
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  

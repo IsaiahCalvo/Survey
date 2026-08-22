@@ -133,11 +133,12 @@ test('Hub Documents Upload fail-closed intended + break + edge', async ({ page }
 
   // --- Edge: 390 empty Upload PDF + header Upload ---
   await openHub(page, { width: 390, height: 844, url: HUB_EMPTY });
-  await expect(page.getByText('No documents yet').first()).toBeVisible({ timeout: 15_000 });
+  const mobileEmpty = page.locator('.documents-mobile-list');
+  await expect(mobileEmpty.getByText('No documents yet')).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('.documents-desktop-upload')).toBeHidden();
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
-  await clickAndExpectUploadLog(page, page.getByRole('button', { name: 'Upload PDF' }).first(), logs, choosers);
-  await expect(page.getByText('No documents yet').first()).toBeVisible();
+  await clickAndExpectUploadLog(page, mobileEmpty.getByRole('button', { name: 'Upload PDF' }), logs, choosers);
+  await expect(mobileEmpty.getByText('No documents yet')).toBeVisible();
   await clickAndExpectUploadLog(page, page.locator('.hub-mobile-primary-action'), logs, choosers);
   await expect(page.locator('.mobile-doc-card')).toHaveCount(0);
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
