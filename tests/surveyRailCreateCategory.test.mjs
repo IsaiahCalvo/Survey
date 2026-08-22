@@ -39,8 +39,10 @@ test('CreateCategoryModal rejects empty and duplicate names and requires a save 
   assert.match(modal, /A category with this name already exists in this module/);
   assert.match(modal, /String\(existingName\)\.toLowerCase\(\) === trimmedName/);
   assert.match(modal, /if \(!selectedOption\)/);
-  assert.match(modal, />Cancel</);
+  assert.match(modal, /Cancel/);
   assert.match(modal, /onClick=\{onClose\}/);
+  assert.match(modal, /Reset on the closed→open edge during render/);
+  assert.match(modal, /if \(isOpen !== wasOpen\)/);
   assert.doesNotMatch(modal, /addHistoryCheckpoint/);
   assert.doesNotMatch(modal, /data-counter-nubbin-handle/);
 });

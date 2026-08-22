@@ -61,7 +61,10 @@ function categorySelectToggle(page) {
 }
 
 function railCategory(page, name) {
-  return rightRail(page).getByRole('button', { name, exact: true });
+  // Rail row accessible name is `${name} ${count}` (e.g. "Walls 0").
+  return rightRail(page).locator('.survey-marker-category-main').filter({
+    has: page.locator('.survey-marker-category-main-label', { hasText: new RegExp(`^${name}$`) }),
+  });
 }
 
 async function enterSurveyTemplate(page) {

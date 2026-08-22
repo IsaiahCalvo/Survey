@@ -35,14 +35,18 @@ const CreateCategoryModal = ({
   const [nameError, setNameError] = useState('');
   const [otherSurveys, setOtherSurveys] = useState([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
+  const [wasOpen, setWasOpen] = useState(isOpen);
   const dialogRef = useRef(null);
 
   // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
   // it on Escape, and returns focus to whatever opened it.
   useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
-  // Reset state when modal opens
-  useEffect(() => {
+  // Reset on the closed→open edge during render so a post-paint effect cannot
+  // wipe a name the user (or a test) already typed. templateName / templateId
+  // flicker must not rewind an in-progress create.
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
       setCategoryName('');
       setCategoryError('');
@@ -50,13 +54,13 @@ const CreateCategoryModal = ({
       setNewTemplateName(`${templateName} (Updated)`);
       setNameError('');
       setOtherSurveys([]);
-
-      // Check if other surveys are using this template
-      if (templateId) {
-        checkTemplateUsage();
-      }
     }
-  }, [isOpen, templateName, templateId]);
+  }
+
+  useEffect(() => {
+    if (!isOpen || !templateId) return;
+    checkTemplateUsage();
+  }, [isOpen, templateId, currentSurveyId]);
 
   // Check template usage
   const checkTemplateUsage = async () => {
