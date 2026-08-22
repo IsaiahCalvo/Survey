@@ -1,6 +1,8 @@
 # E2E unlisted controls — not in the 59-row matrix
 
-**This-pass (2026-08-22 Spaces card Expand/Collapse):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Expand"` / `"Collapse"` / `onToggleExpand`. Distinct from Turn on/off and leftover-18 Space CSV / PDF Pages. Receipt `fix-logs/spaces-card-expand-collapse-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+**This-pass (2026-08-22 Spaces card Turn on/off):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Turn on space"` / `"Turn off space"` / `onToggleSpace` / `handleToggleSpace`. Distinct from Expand/Collapse and leftover-18 Space CSV / PDF Pages. Last-space off/on was Edit-region contrast only. Receipt `fix-logs/spaces-card-turn-on-off-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
+
+**Prior-pass (2026-08-22 Spaces card Expand/Collapse):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Expand"` / `"Collapse"` / `onToggleExpand`. Distinct from Turn on/off and leftover-18 Space CSV / PDF Pages. Receipt `fix-logs/spaces-card-expand-collapse-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
 **Prior-pass (2026-08-22 Spaces region-row Go to page):** U-02 leftover (not a new UL row). Live desktop + 390 `aria-label="Go to page N"` / `onNavigateToPage` / `handleNavigateToSpacePage`. Distinct from thumbnail click and the page-number input. Space CSV / PDF Pages stay leftover-18. Receipt `fix-logs/spaces-region-goto-page-2026-08-22.md`. Leftover **18** stay parked. Goal stays open.
 
