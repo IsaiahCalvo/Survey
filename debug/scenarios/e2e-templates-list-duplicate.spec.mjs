@@ -85,7 +85,7 @@ async function exitListSelect(page) {
   if (await done.count()) await done.click();
 }
 
-async function listDuplicate(page) {
+function listDuplicate(page) {
   return templatesList(page).getByRole('button', { name: 'Duplicate', exact: true });
 }
 
