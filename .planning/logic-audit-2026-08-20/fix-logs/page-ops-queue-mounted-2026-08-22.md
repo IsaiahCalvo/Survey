@@ -30,6 +30,10 @@ ok 1 — rapid queued page operations chain both PDF bytes and page-addressed st
 # tests 1 / pass 1 / fail 0
 ```
 
+Focused official subset after the rewrite (queue + `pageContextOps` + leftover18FailClosed + continueCountToolbar + hubDismissBarrierContracts): **24 / 24**.
+
+Official `npm test` now **proceeds past** `pageOperationsQueueMounted` (file ran; no `/tmp/utils/pageContextOps.js`). **exit 1** on the next standing file `surveyEmptyCreateTemplate` (`doesNotMatch /name: 'Walls'/` — slice now includes the later two-category local seed). Isolated 8448 still not reached. Cap **8448** not loosened. That stale contract is **not** this leftover and was **not** skipped.
+
 ## Product
 
 No product diff. CORS `*` / `zoomGeneration` / SVG viewBox / canvas sizing / Fabric fontFamily untouched.
