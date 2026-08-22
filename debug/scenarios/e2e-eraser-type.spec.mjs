@@ -259,11 +259,15 @@ async function eraseAcrossId(page, id) {
       x: rect.left + (x / viewBox.width) * rect.width,
       y: rect.top + (y / viewBox.height) * rect.height,
     });
+    const type = String(object.type || object.data?.type || '').toLowerCase();
+    const tool = String(object.tool || object.data?.tool || '').toLowerCase();
     const samples = [];
-    for (const cmd of object.path || []) {
-      const x = Number(cmd[cmd.length - 2]);
-      const y = Number(cmd[cmd.length - 1]);
-      if (Number.isFinite(x) && Number.isFinite(y)) samples.push(toClient(x, y));
+    if (type === 'path' || tool === 'pen' || tool === 'highlighter') {
+      for (const cmd of object.path || []) {
+        const x = Number(cmd[cmd.length - 2]);
+        const y = Number(cmd[cmd.length - 1]);
+        if (Number.isFinite(x) && Number.isFinite(y)) samples.push(toClient(x, y));
+      }
     }
     if (samples.length >= 2) {
       const i0 = Math.floor((samples.length - 1) * 0.35);
@@ -363,7 +367,7 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   // Intended — Full stroke erase deletes the hit object, not its sibling.
   await setEraserType(page, 'Full stroke erase');
   expect(await page.evaluate(() => localStorage.getItem('eraserMode'))).toBe('entire');
-  await eraseThroughRegion(page, { x0: 0.20, y0: 0.27, x1: 0.34, y1: 0.27 });
+  await eraseAcrossId(page, rectA.id);
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rectA.id)
   ), { message: 'full stroke must delete rect A' }).toBe(false);
@@ -476,7 +480,7 @@ test('390 Eraser mode intended + break + edge', async ({ page }) => {
   await expect(mode).toHaveAttribute('aria-label', /Eraser mode: Full Stroke/);
   expect(await page.evaluate(() => localStorage.getItem('eraserMode'))).toBe('entire');
 
-  await eraseThroughRegion(page, { x0: 0.28, y0: 0.32, x1: 0.46, y1: 0.32 });
+  await eraseAcrossId(page, rect.id);
   await expect.poll(async () => (
     (await userAnnotationSnapshot(page)).some((row) => row.id === rect.id)
   ), { message: '390 full stroke must delete the rect' }).toBe(false);
