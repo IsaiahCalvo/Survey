@@ -13182,49 +13182,63 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
+    const liveSpace = (spacesRef.current || []).find((entry) => entry?.id === spaceId);
+    const assignedPages = liveSpace?.assignedPages || [];
+    const defaultLabel = `Region ${pageId}`;
+    const candidateLabel = trimmedLabel.length > 0 ? trimmedLabel : defaultLabel;
+    const getExistingLabel = (page) => (
+      typeof page.label === 'string' && page.label.trim().length > 0
+        ? page.label.trim()
+        : `Region ${page.pageId}`
+    );
+
+    if (hasNameConflict(assignedPages, candidateLabel, {
+      getName: getExistingLabel,
+      getId: (page) => page?.pageId,
+      ignoreId: pageId
+    })) {
+      showToast('A region with this name already exists in this space. Please choose a different name.', 'error');
+      return;
+    }
+
+    const currentPage = assignedPages.find((page) => page.pageId === pageId);
+    if (!currentPage || getExistingLabel(currentPage) === candidateLabel) {
+      return;
+    }
+
+    // Sibling of handleSpaceUpdate: region-row rename was setSpaces-only, so
+    // Ctrl+Z after a commit rewound the last space:update (drawn region)
+    // instead of the label. Checkpoint only on a real label change.
+    addHistoryCheckpoint('space:update', {
+      spaceId,
+      pageId,
+      updateKeys: ['assignedPages']
+    });
+
     setSpaces(prev => prev.map(space => {
       if (space.id !== spaceId) {
         return space;
       }
 
-      const assignedPages = space.assignedPages || [];
-      const defaultLabel = `Region ${pageId}`;
-      const candidateLabel = trimmedLabel.length > 0 ? trimmedLabel : defaultLabel;
-      const getExistingLabel = (page) => (
-        typeof page.label === 'string' && page.label.trim().length > 0
-          ? page.label.trim()
-          : `Region ${page.pageId}`
-      );
-
-      if (hasNameConflict(assignedPages, candidateLabel, {
-        getName: getExistingLabel,
-        getId: (page) => page?.pageId,
-        ignoreId: pageId
-      })) {
-        showToast('A region with this name already exists in this space. Please choose a different name.', 'error');
-        return space;
-      }
-
-      const updatedPages = assignedPages.map(page => {
-        if (page.pageId !== pageId) {
-          return {
-            ...page,
-            label: getExistingLabel(page)
-          };
-        }
-
-        return {
-          ...page,
-          label: candidateLabel
-        };
-      });
-
+      const pages = space.assignedPages || [];
       return {
         ...space,
-        assignedPages: updatedPages
+        assignedPages: pages.map(page => {
+          if (page.pageId !== pageId) {
+            return {
+              ...page,
+              label: getExistingLabel(page)
+            };
+          }
+
+          return {
+            ...page,
+            label: candidateLabel
+          };
+        })
       };
     }));
-  }, [requireSpaceManagement]);
+  }, [addHistoryCheckpoint, requireSpaceManagement]);
 
   const handleSpaceClearRegions = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
