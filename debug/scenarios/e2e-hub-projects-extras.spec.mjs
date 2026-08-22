@@ -142,6 +142,8 @@ test('Projects extras Search / Pin / Duplicate / file Copy-Paste intended + brea
   await search.fill('');
   await expect(page.getByText(LAB).first()).toBeVisible();
   await expect(page.getByText(MEP).first()).toBeVisible();
+  await page.locator('h1.title').click();
+  await expect(search).not.toBeFocused();
 
   const orderBeforePin = await projectOrder(page);
   expect(orderBeforePin[0]).toContain('Tower 5');
