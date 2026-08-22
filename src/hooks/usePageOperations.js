@@ -10,6 +10,7 @@ import { mergeLivePagePresentation, slicePagePresentation, transformPageState } 
 // delete / rotate / reorder is a deliberate user action, so the module is
 // imported dynamically at the call site below instead of at first viewer paint.
 import { persistThenCommitPageMutation } from '../utils/pageMutationTransaction.js';
+import { resetPageTransform, resolvePagePaste, togglePageMirror } from '../utils/pageContextOps.js';
 
 export function usePageOperations({
   pdfFile,
@@ -129,23 +130,15 @@ export function usePageOperations({
   }, [setClipboardPage, setClipboardType]);
 
   const handlePastePage = useCallback(async (targetPageNumber, sourcePageNumber, pasteType) => {
-    if (!sourcePageNumber || !pasteType) return false;
-    if (pasteType === 'cut' && sourcePageNumber === targetPageNumber) {
+    const resolved = resolvePagePaste({ sourcePageNumber, targetPageNumber, pasteType });
+    if (resolved.kind === 'ignore') return false;
+    if (resolved.kind === 'clear-clipboard') {
       setClipboardPage(null);
       setClipboardType(null);
       return true;
     }
-    const operation = pasteType === 'cut'
-      ? {
-        type: 'move',
-        from: sourcePageNumber,
-        // Paste means "after target". Removing a source that was before the
-        // target shifts that insertion slot back by one.
-        to: sourcePageNumber <= targetPageNumber ? targetPageNumber : targetPageNumber + 1,
-      }
-      : { type: 'copy', source: sourcePageNumber, afterPage: targetPageNumber };
-    const succeeded = await runMutation(operation, 'pasting');
-    if (succeeded && pasteType === 'cut') {
+    const succeeded = await runMutation(resolved.operation, 'pasting');
+    if (succeeded && resolved.clearClipboard) {
       setClipboardPage(null);
       setClipboardType(null);
     }
@@ -169,25 +162,11 @@ export function usePageOperations({
   ), [runMutation]);
 
   const handleMirrorPage = useCallback((pageNumber, direction) => {
-    setPageTransformations((prev) => {
-      const current = prev[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
-      return {
-        ...prev,
-        [pageNumber]: {
-          ...current,
-          [direction === 'horizontal' ? 'mirrorH' : 'mirrorV']:
-            !current[direction === 'horizontal' ? 'mirrorH' : 'mirrorV'],
-        },
-      };
-    });
+    setPageTransformations((prev) => togglePageMirror(prev, pageNumber, direction));
   }, [setPageTransformations]);
 
   const handleResetPage = useCallback((pageNumber) => {
-    setPageTransformations((prev) => {
-      const next = { ...prev };
-      delete next[pageNumber];
-      return next;
-    });
+    setPageTransformations((prev) => resetPageTransform(prev, pageNumber));
   }, [setPageTransformations]);
 
   const handleRotatePageCW = useCallback((pageNumber) => (
