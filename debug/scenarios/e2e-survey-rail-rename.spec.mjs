@@ -214,10 +214,14 @@ test('survey-rail Rename intended + break + edge', async ({ page }) => {
   await emptyField.press('Enter');
   let emptyFallback = null;
   await expect.poll(async () => {
-    const values = await desktopRenameInputs(page).evaluateAll((nodes) => nodes.map((node) => node.value));
-    emptyFallback = values.find((value) => /^Walls \d+$/.test(value)) || null;
+    const rows = await desktopRenameInputs(page).evaluateAll((nodes) => nodes.map((node) => ({
+      aria: node.getAttribute('aria-label') || '',
+      value: node.value,
+    })));
+    const hit = rows.find((row) => /^Rename Walls \d+$/.test(row.aria));
+    emptyFallback = hit?.value || null;
     return emptyFallback;
-  }, { message: 'empty name falls back to Walls N' }).toBeTruthy();
+  }, { message: 'empty name remounts as Rename Walls N' }).toBeTruthy();
   const emptySnap = await markerRenameSnapshot(page, emptyFallback);
   expect(emptySnap.present, `empty commits fallback ${emptyFallback}`).toBe(true);
   expect(emptySnap.value).toBe(emptyFallback);
