@@ -479,6 +479,10 @@ test('desktop rotate remapper then local cache + export re-import of live callou
   expect(await fileId(page), 're-import must not stamp file.id').toBeNull();
   expect(await pageViewBox(page), 're-import must keep swapped viewBox').toBe('0 0 792 612');
 
+  await expect.poll(async () => (await calloutSnapshot(page)).length, {
+    timeout: 20_000,
+    message: 're-import must paint the exported callout',
+  }).toBeGreaterThanOrEqual(1);
   const imported = await calloutSnapshot(page);
   expect(imported.length, 're-import must paint the exported callout').toBeGreaterThanOrEqual(1);
   const importedCallout = imported.find((row) => (
