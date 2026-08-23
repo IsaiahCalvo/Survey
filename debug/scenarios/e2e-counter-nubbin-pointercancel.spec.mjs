@@ -218,6 +218,10 @@ async function proveNubbinPointercancel(page, { xf, yf }) {
   expect(almostEq(afterCancel.left, pre.left, 2.5), 'pointercancel keeps left').toBe(true);
   expect(almostEq(afterCancel.top, pre.top, 2.5), 'pointercancel keeps top').toBe(true);
 
+  // Drop selection so the live preview cannot mask the stored undo restore
+  // (same deselect-before-undo as e2e-counter-nubbin-orbit).
+  const empty = await pageBox(page);
+  await page.mouse.click(empty.x + empty.width * 0.92, empty.y + empty.height * 0.08);
   await page.keyboard.press('Control+z');
   let afterUndo = null;
   await expect.poll(async () => {
