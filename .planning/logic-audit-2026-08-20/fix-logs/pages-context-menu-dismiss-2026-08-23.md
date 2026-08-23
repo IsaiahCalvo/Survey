@@ -2,6 +2,7 @@
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Tip before this pass:** `27ea9639` Style/Width dismiss.  
+**This-pass SHA:** `5c01eecc` (capture pointerdown + consume).  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
 Unique leftover after Style/Width dismiss (`39da34c8` / `27ea9639`). Pages apply (Rotate / Insert / Delete / Duplicate / Move) already dedicated. This leftover is Pages **thumbnail context dismiss** on a page click while a creation tool is armed. Overlay lists Esc as Close dialogs/cancel. Distinct from leftover-18 / X-01 / remapped-after-CW / Fit apply / Fit dismiss / Style/Width dismiss / Select caret / Home / Close tab.
