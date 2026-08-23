@@ -410,6 +410,110 @@ function rebuildCalloutChildren(objects, callout, pageWidth, pageHeight) {
   });
 }
 
+function rotatePathCommands(commands, pageWidth, pageHeight, delta) {
+  return (Array.isArray(commands) ? commands : []).map((command) => {
+    if (!Array.isArray(command) || command[0] === 'Z' || command[0] === 'z') return command;
+    const next = [command[0]];
+    for (let i = 1; i + 1 < command.length; i += 2) {
+      const rotated = rotateDisplayedPoint(command[i], command[i + 1], pageWidth, pageHeight, delta);
+      next.push(rotated.x, rotated.y);
+    }
+    return next;
+  });
+}
+
+function rotatePointList(points, pageWidth, pageHeight, delta) {
+  return (Array.isArray(points) ? points : []).map((pt) => {
+    if (Array.isArray(pt) && pt.length >= 2 && Number.isFinite(Number(pt[0])) && Number.isFinite(Number(pt[1]))) {
+      const rotated = rotateDisplayedPoint(pt[0], pt[1], pageWidth, pageHeight, delta);
+      return [rotated.x, rotated.y, ...pt.slice(2)];
+    }
+    if (pt && typeof pt === 'object' && !Array.isArray(pt) && ('x' in pt || 'y' in pt)) {
+      const rotated = rotateDisplayedPoint(pt.x, pt.y, pageWidth, pageHeight, delta);
+      return { ...pt, x: rotated.x, y: rotated.y };
+    }
+    return pt;
+  });
+}
+
+function rotateNestedPoints(value, pageWidth, pageHeight, delta) {
+  if (!Array.isArray(value)) return value;
+  if (value.length >= 2 && Number.isFinite(Number(value[0])) && Number.isFinite(Number(value[1]))
+    && !Array.isArray(value[0])) {
+    const rotated = rotateDisplayedPoint(value[0], value[1], pageWidth, pageHeight, delta);
+    return [rotated.x, rotated.y, ...value.slice(2)];
+  }
+  return value.map((entry) => rotateNestedPoints(entry, pageWidth, pageHeight, delta));
+}
+
+function boundsFromInk(obj) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const visit = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+  for (const command of obj.path || []) {
+    if (!Array.isArray(command)) continue;
+    for (let i = 1; i + 1 < command.length; i += 2) visit(command[i], command[i + 1]);
+  }
+  for (const pt of obj.paperCenterline || []) {
+    if (Array.isArray(pt)) visit(Number(pt[0]), Number(pt[1]));
+    else if (pt && typeof pt === 'object') visit(Number(pt.x), Number(pt.y));
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+function isPageSpaceInk(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const type = String(obj.type || '').toLowerCase();
+  const tool = String(obj.tool || obj.data?.tool || '').toLowerCase();
+  const isInk = type === 'path' || tool === 'pen' || tool === 'highlighter' || tool === 'freedraw';
+  if (!isInk) return false;
+  const leftZero = obj.left == null || Number(obj.left) === 0;
+  const topZero = obj.top == null || Number(obj.top) === 0;
+  const offset = obj.pathOffset;
+  const noOffset = !offset || (Number(offset.x || 0) === 0 && Number(offset.y || 0) === 0);
+  const hasGeom = (Array.isArray(obj.path) && obj.path.length > 0)
+    || (Array.isArray(obj.paperCenterline) && obj.paperCenterline.length > 0);
+  return leftZero && topZero && noOffset && hasGeom;
+}
+
+/**
+ * Live pen/highlighter stores path + paperCenterline in page space
+ * (left=0, top=0). Remap each point through the same displayed-space
+ * contract as rect; do not invent an object angle.
+ */
+export function rotatePageSpaceInk(obj, pageWidth, pageHeight, delta) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (normalizeRotationDelta(delta) === 0) return obj;
+  const next = { ...obj };
+  if (Array.isArray(next.path)) {
+    next.path = rotatePathCommands(next.path, pageWidth, pageHeight, delta);
+  }
+  if (Array.isArray(next.paperCenterline)) {
+    next.paperCenterline = rotatePointList(next.paperCenterline, pageWidth, pageHeight, delta);
+  }
+  if (Array.isArray(next.polygons)) {
+    next.polygons = rotateNestedPoints(next.polygons, pageWidth, pageHeight, delta);
+  }
+  const bounds = boundsFromInk(next);
+  if (bounds) {
+    if ('width' in obj) next.width = bounds.w;
+    if ('height' in obj) next.height = bounds.h;
+  }
+  if ('left' in obj) next.left = 0;
+  if ('top' in obj) next.top = 0;
+  if ('angle' in obj) next.angle = Number(obj.angle) || 0;
+  return next;
+}
+
 function rotateCalloutObject(obj, pageWidth, pageHeight, delta) {
   const nextSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
   let next = { ...obj };
@@ -454,6 +558,7 @@ function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
   const turns = normalizeRotationDelta(delta);
   if (turns === 0) return obj;
   if (isCalloutLike(obj)) return rotateCalloutObject(obj, pageWidth, pageHeight, delta);
+  if (isPageSpaceInk(obj)) return rotatePageSpaceInk(obj, pageWidth, pageHeight, delta);
   const next = { ...obj };
   const hasBox = ['left', 'top', 'width', 'height', 'x', 'y'].some((key) => (
     Number.isFinite(Number(obj[key]))
