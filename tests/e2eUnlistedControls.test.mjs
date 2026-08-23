@@ -51,6 +51,7 @@ const appShellSrc = read('src/AppShell.jsx');
 const formPropsSrc = read('src/components/FormFieldPropertiesPanel.jsx');
 const syncSrc = read('src/components/SyncStatusChip.jsx');
 const mobileSrc = read('src/mobile/MobilePdfViewerChrome.jsx');
+const counterStartSrc = read('src/components/CounterStartNumberField.jsx');
 
 test('UL: shortcuts overlay lists B, Open, Fit page, tools, and owns Escape', () => {
   for (const needle of [
@@ -209,7 +210,16 @@ test('UL: form tools + properties fields + style/arrowhead/fit catalogs', () => 
   assert.match(appShellSrc, /aria-label="Cloud bump size"/);
   assert.match(appShellSrc, /aria-label="Edit text"/);
   assert.match(appShellSrc, /\+ New Count/);
-  assert.match(appShellSrc, /aria-label="Counter start number"/);
+  // Counter Start extracted to CounterStartNumberField (c3e4a7c1 / 03f5f2b4).
+  // Desktop + 390 share the field. Do not move the aria-label back into AppShell.
+  assert.match(counterStartSrc, /aria-label="Counter start number"/);
+  assert.match(counterStartSrc, /disabled=\{locked\}/);
+  assert.match(appShellSrc, /<CounterStartNumberField/);
+  assert.match(appShellSrc, /locked=\{startLocked\}/);
+  assert.doesNotMatch(appShellSrc, /aria-label="Counter start number"/);
+  assert.match(mobileSrc, /<CounterStartNumberField/);
+  assert.match(mobileSrc, /className="mobile-pdf-properties__start"/);
+  assert.match(mobileSrc, /locked=\{startLocked\}/);
   assert.match(appShellSrc, /aria-label="Fit options"/);
   assert.deepEqual(Object.values(ARROWHEAD_STYLE_LABELS), [
     'None',
