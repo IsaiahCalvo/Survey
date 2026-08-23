@@ -2503,6 +2503,7 @@ export default function TemplatesEditor({
                           key={r.id + ':' + r.role}
                           data-entity-id={r.id}
                           placeholder="Entity name"
+                          aria-label="Entity name"
                           onDoubleClick={(e) => e.currentTarget.select()}
                           onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
@@ -3000,6 +3001,7 @@ export default function TemplatesEditor({
                                   key={`mobile-entity-${r.id}:${r.role}`}
                                   data-entity-id={r.id}
                                   placeholder="Entity name"
+                                  aria-label="Entity name"
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, r.role, ENTITY_BLANK_HINT, (v) => renameEntity(r.id, v))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
                                 />
