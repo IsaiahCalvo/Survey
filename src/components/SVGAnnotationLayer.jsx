@@ -547,11 +547,6 @@ const SVGAnnotationLayer = memo(({
     onRequestBulkDelete,
     zoomGeneration,
   });
-  // renderCalloutHitTargets stays a stable [] callback; read the live
-  // handlePointerUp so captured knee / corner cancel commits the preview
-  // the user already saw (same class as selected bbox / vertex knobs).
-  const handlePointerUpRef = useRef(handlePointerUp);
-  handlePointerUpRef.current = handlePointerUp;
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
   // this layer's pageNumber, then calls the hook's selectAnnotation. The
@@ -3079,7 +3074,6 @@ const SVGAnnotationLayer = memo(({
           r={calloutHandleR}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
-          onPointerCancel={(e) => handlePointerUpRef.current(e)}
         />
         {/* UX: Phase 15 UAT-3 (2026-04-18) — knee hit target tracks the
             AUTO-ROUTED midpoint (effectiveKnee) when idle so users grab
@@ -3097,7 +3091,6 @@ const SVGAnnotationLayer = memo(({
           r={calloutHandleR}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
-          onPointerCancel={(e) => handlePointerUpRef.current(e)}
         />
         {/* UX: Phase 15 UAT-3 (2026-04-17) — visible drag chrome when the
             callout is selected. Knee + arrow tip use combined-tools'
@@ -3302,7 +3295,6 @@ const SVGAnnotationLayer = memo(({
                   cursor: p.cursor,
                   pointerEvents: 'all',
                 }}
-                onPointerCancel={(e) => handlePointerUpRef.current(e)}
               />
             ))}
           </>
@@ -5615,7 +5607,6 @@ const SVGAnnotationLayer = memo(({
                     e.stopPropagation();
                     handleHandlePointerDown(e, `vertex-${i}`);
                   }}
-                  onPointerCancel={handlePointerUp}
                 />
               ))}
             </g>
