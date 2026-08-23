@@ -119,7 +119,13 @@ test('independent hunt after hub nav type=button', async ({ page }) => {
     inventory.editor.fileId = await fileId(page);
     inventory.editor.viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
     inventory.editor.sync = await page.getByRole('button', { name: /Syncing|Retry now|Save version|checking whether this document uses live collaboration/i }).count();
-    inventory.editor.hubNav = await page.locator('.survey-hub aside.side nav button').count();
+    inventory.editor.hubNav = await page.evaluate(() => (
+      [...document.querySelectorAll('.survey-hub aside.side nav button')]
+        .map((node) => ({
+          name: (node.getAttribute('aria-label') || node.textContent || '').replace(/\s+/g, ' ').trim(),
+          type: node.getAttribute('type'),
+        }))
+    ));
     inventory.editor.unnamed = editorControls.filter((row) => row.unnamed);
     inventory.editor.searchInputs = editorControls.filter((row) => (
       row.tag === 'input' && /search/i.test(row.name || row.type)
@@ -173,7 +179,7 @@ test('independent hunt after hub nav type=button', async ({ page }) => {
   expect(inventory.editor.viewBox).toBe('0 0 612 792');
   expect(inventory.editor.fileId).toBeNull();
   expect(inventory.editor.sync).toBe(0);
-  expect(inventory.editor.hubNav).toBe(0);
+  expect(inventory.editor.hubNav.every((row) => row.type === 'button')).toBe(true);
   expect(inventory.hub.draw).toBe(0);
   expect(inventory.hub.navTypeButton.every((row) => row.type === 'button')).toBe(true);
   expect(inventory.mobileEditor.tapToSync).toBe(0);

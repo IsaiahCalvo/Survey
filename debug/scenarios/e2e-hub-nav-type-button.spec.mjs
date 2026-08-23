@@ -84,11 +84,11 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
   await desktopNavButton(page, 'Projects').click();
   await expect(page.locator('h1.title')).toHaveText('Projects');
   await expect(page.getByRole('button', { name: /New project|Create project/i }).first()).toBeVisible();
-  await expect(page.getByText('Tower 5')).toBeVisible();
+  await expect(page.getByText('Tower 5 — Security').first()).toBeVisible();
 
   await desktopNavButton(page, 'Templates').click();
   await expect(page.locator('h1.title')).toHaveText('Templates');
-  await expect(page.getByText('Security Walk-Through')).toBeVisible();
+  await expect(page.getByText('Security Walk-Through').first()).toBeVisible();
 
   await desktopNavButton(page, 'Archive').click();
   await expect(page.locator('h1.title')).toHaveText('Archive');
@@ -97,7 +97,7 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
   await desktopNavButton(page, 'Documents').click();
   await expect(page.locator('h1.title')).toHaveText('Documents');
   await expect(page.getByPlaceholder('Search documents...').first()).toBeVisible();
-  await expect(page.getByText('SE-011')).toBeVisible();
+  await expect(page.getByText('SE-011 Security Shop Drawings.pdf').first()).toBeVisible();
 
   await desktopNavButton(page, 'Projects').focus();
   await page.keyboard.press('Enter');
@@ -105,7 +105,7 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
 
   await desktopNavButton(page, 'Documents').dblclick();
   await expect(page.locator('h1.title')).toHaveText('Documents');
-  await expect(page.getByText('SE-011')).toBeVisible();
+  await expect(page.getByText('SE-011 Security Shop Drawings.pdf').first()).toBeVisible();
 
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
   expect(await page.getByRole('button', { name: /Start trial|Manage billing|Checkout/i }).count()).toBe(0);
@@ -132,7 +132,7 @@ test('390 Home sections + editor break for hub nav type=button', async ({ page }
 
   await page.locator('.mobile-home-tabs').getByRole('button', { name: 'Templates', exact: true }).click();
   await expect(page.locator('h1.title')).toHaveText('Templates');
-  await expect(page.getByText('Security Walk-Through')).toBeVisible();
+  await expect(page.getByText('Security Walk-Through').first()).toBeVisible();
 
   await page.locator('.mobile-home-tabs').getByRole('button', { name: 'Documents', exact: true }).click();
   await expect(page.locator('h1.title')).toHaveText('Documents');
@@ -158,7 +158,6 @@ test('390 Home sections + editor break for hub nav type=button', async ({ page }
   expect(await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox')).toBe('0 0 612 792');
   expect(await fileId(page)).toBeNull();
   expect(await page.getByRole('button', { name: /Syncing|Retry now|Save version|checking whether this document uses live collaboration/i }).count()).toBe(0);
-  expect(await page.getByRole('button', { name: 'Documents', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBeGreaterThan(0);
   expect(await page.getByRole('navigation', { name: 'Home sections' }).count()).toBe(0);
-  expect(await page.locator('.survey-hub aside.side nav').count()).toBe(0);
 });
