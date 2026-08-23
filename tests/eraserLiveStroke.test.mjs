@@ -85,6 +85,8 @@ test('live spec covers preview / commit / cancel-commit / zoom flush / 390 / fil
   assert.match(spec, /Full-stroke live preview must paint before pointerup/);
   assert.match(spec, /Full-stroke pointerup must drop the preview/);
   assert.match(spec, /Full-stroke pointerup must delete rect A/);
+  assert.match(spec, /setEraserType/);
+  assert.match(spec, /setMobileEraserMode/);
   assert.match(spec, /Pen hides eraser wrapper/);
   assert.match(spec, /390 Partial live drag must not commit yet/);
   assert.match(spec, /390 Partial live preview must paint before pointerup/);

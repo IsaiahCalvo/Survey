@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-23 D-01 leftover selected Pen / Highlighter bbox resize + canvas `mtr`):** named leftover after Cloud bbox resize + canvas `mtr`. Live `e2e-ink-resize-rotate.spec.mjs` **2 / 2 (22.7s)**. Node **15 / 15**. No product bug. Counter / keyboard nudge / insert image have no unique unblocked chrome. Receipt `fix-logs/ink-resize-rotate-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-23 D-03 / D-04 leftover live Partial / Full eraser stroke then commit):** named leftover after selected ink bbox resize + canvas `mtr`. Live `e2e-eraser-live-stroke.spec.mjs` **2 / 2 (14.0s)**. Node **15 / 15**. No product bug. Line `mtr` **0** skipped; no create-poly. Receipt `fix-logs/eraser-live-stroke-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-23 D-01 leftover selected Pen / Highlighter bbox resize + canvas `mtr`):** named leftover after Cloud bbox resize + canvas `mtr`. Live `e2e-ink-resize-rotate.spec.mjs` **2 / 2 (22.7s)**. Node **15 / 15**. No product bug. Counter / keyboard nudge / insert image have no unique unblocked chrome. Receipt `fix-logs/ink-resize-rotate-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-23 E-01 single-click rect bbox resize):** named leftover after E-03 selected-annotation move. Live `e2e-annotation-resize.spec.mjs` **2 / 2 (12.7s)**. Node **15 / 15**. No product bug. Receipt `fix-logs/annotation-resize-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
