@@ -15,9 +15,9 @@ function almostEq(a, b, eps = PLACE_EPS) {
   return Math.abs(Number(a) - Number(b)) < eps;
 }
 
-function originHeld(a, b) {
+function centerHeld(a, b) {
   if (!a || !b) return false;
-  return almostEq(a.left, b.left) && almostEq(a.top, b.top);
+  return almostEq(a.cx, b.cx, 8) && almostEq(a.cy, b.cy, 8);
 }
 
 async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
@@ -422,14 +422,14 @@ test('desktop remapped Counter Size after page CW intended + break + edge', asyn
     afterSize = await geom(page, pin.id);
     return Number(afterSize.svgR || afterSize.radius);
   }, { timeout: 8_000, message: 'remapped Counter Size 32 must stick' }).toBe(32);
-  expect(originHeld(afterSize, remapped), 'Size must not jump remapped origin').toBe(true);
+  expect(centerHeld(afterSize, remapped), 'Size must not jump remapped origin').toBe(true);
   expect(afterSize.cx > 40 && afterSize.cx < 752 && afterSize.cy > 20 && afterSize.cy < 592, 'Size stays landscape').toBe(true);
 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+z');
   await expect.poll(async () => {
     const now = await geom(page, pin.id);
-    return Number(now.svgR || now.radius) === priorRadius && originHeld(now, remapped);
+    return Number(now.svgR || now.radius) === priorRadius && centerHeld(now, remapped);
   }, { timeout: 12_000, message: 'undo restores remapped counter + prior Size' }).toBeTruthy();
 
   expect(await selectAnno(page, pin.id)).toBe(true);
@@ -440,11 +440,11 @@ test('desktop remapped Counter Size after page CW intended + break + edge', asyn
   await field.press('Enter');
   expect(await field.inputValue(), 'letters rejected').toBe(String(priorRadius));
   expect(Number((await geom(page, pin.id)).svgR || (await geom(page, pin.id)).radius), 'letters do not apply').toBe(priorRadius);
-  expect(originHeld(await geom(page, pin.id), remapped), 'letters do not jump remapped origin').toBe(true);
+  expect(centerHeld(await geom(page, pin.id), remapped), 'letters do not jump remapped origin').toBe(true);
 
   await setSizeTyped(page, 3);
   await expect.poll(async () => Number((await geom(page, pin.id))?.svgR || 0)).toBe(4);
-  expect(originHeld(await geom(page, pin.id), remapped), '3→4 clamp holds remapped origin').toBe(true);
+  expect(centerHeld(await geom(page, pin.id), remapped), '3→4 clamp holds remapped origin').toBe(true);
 
   await setSizeTyped(page, 32);
   await expect.poll(async () => Number((await geom(page, pin.id))?.svgR || 0)).toBe(32);
@@ -455,7 +455,7 @@ test('desktop remapped Counter Size after page CW intended + break + edge', asyn
     timeout: 8_000,
     message: 'Escape skip-commit does not apply Size',
   }).toBe(32);
-  expect(originHeld(await geom(page, pin.id), remapped), 'Escape Size does not jump remapped origin').toBe(true);
+  expect(centerHeld(await geom(page, pin.id), remapped), 'Escape Size does not jump remapped origin').toBe(true);
 
   await activateShapeTool(page, 'Counter');
   await page.keyboard.press('e');
