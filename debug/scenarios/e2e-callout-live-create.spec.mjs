@@ -295,6 +295,26 @@ async function persistOpenCalloutText(page, text = 'A') {
   await blurInputs(page);
 }
 
+async function undoUntilGone(page, id) {
+  await blurInputs(page);
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  await expect(undo).toBeVisible();
+  for (let i = 0; i < 6; i += 1) {
+    if (!(await calloutIds(page)).includes(id)) return;
+    await undo.click();
+  }
+}
+
+async function redoUntilPresent(page, id) {
+  await blurInputs(page);
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  await expect(redo).toBeVisible();
+  for (let i = 0; i < 6; i += 1) {
+    if ((await calloutIds(page)).includes(id)) return;
+    await redo.click();
+  }
+}
+
 test('desktop callout live create intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
@@ -335,14 +355,18 @@ test('desktop callout live create intended + break + edge', async ({ page }) => 
   expect(calloutA.visualBoxDash, 'CREATE-01 commit restores solid box').toBeNull();
   expect(calloutA.fontFamily, 'create stamps a single-name fontFamily').toBe('Arial');
   await persistOpenCalloutText(page, 'A');
+  await selectMode(page);
   const a0 = await geom(page, calloutA.id);
   expect(a0, 'persisted Callout A must still exist').toBeTruthy();
 
-  await page.keyboard.press('Control+z');
+  // Persist types a keep-alive glyph (T-01 auto-edit already receipted),
+  // so chrome Undo may walk text-then-create. Click until the live-created
+  // callout drops, then Redo until it returns.
+  await undoUntilGone(page, calloutA.id);
   await expect.poll(async () => (await calloutIds(page)).includes(calloutA.id), {
     message: 'undo must restore by dropping Callout',
   }).toBe(false);
-  await page.keyboard.press('Control+Shift+z');
+  await redoUntilPresent(page, calloutA.id);
   await expect.poll(async () => (await calloutIds(page)).includes(calloutA.id), {
     message: 'redo must restore Callout',
   }).toBe(true);
