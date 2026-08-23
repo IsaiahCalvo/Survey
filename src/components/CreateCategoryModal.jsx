@@ -188,18 +188,22 @@ const CreateCategoryModal = ({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="create-category-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div style={{ marginBottom: '16px' }}>
-          <h3 style={{
-            margin: 0,
-            fontSize: TYPOGRAPHY.fontSize['2xl'],
-            fontWeight: TYPOGRAPHY.fontWeight.semibold,
-            color: COLORS.text.secondary,
-            fontFamily: TYPOGRAPHY.fontFamily.default,
-            marginBottom: '8px',
-          }}>
+          <h3
+            id="create-category-modal-title"
+            style={{
+              margin: 0,
+              fontSize: TYPOGRAPHY.fontSize['2xl'],
+              fontWeight: TYPOGRAPHY.fontWeight.semibold,
+              color: COLORS.text.secondary,
+              fontFamily: TYPOGRAPHY.fontFamily.default,
+              marginBottom: '8px',
+            }}
+          >
             Create category
           </h3>
           <p style={{
