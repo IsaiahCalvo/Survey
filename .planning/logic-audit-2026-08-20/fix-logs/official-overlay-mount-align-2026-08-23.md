@@ -28,7 +28,7 @@ Axis this turn: official tests that FAIL or assert stale live strings. Not a fix
 
 ## Live-proved
 
-Focused Node before align: `keyboardShortcutMatrix` + `mobileChromeHitTargets` + `shortcutsOverlay` + `homeShortcutsOverlaySingleton` + `e2eUnlistedControls` + leftover18 **36 / 38** (2 stale-mount fails). After align: those files + `officialOverlayMountAlign` + leftover18.
+Focused Node before align: `keyboardShortcutMatrix` + `mobileChromeHitTargets` + `shortcutsOverlay` + `homeShortcutsOverlaySingleton` + `e2eUnlistedControls` + leftover18 **36 / 38** (2 stale-mount fails). After align: those files + `officialOverlayMountAlign` + leftover18 **40 / 40**.
 
 | Slice | Intended / break / edge |
 |---|---|
