@@ -96,7 +96,7 @@ test('desktop Home `?` is one overlay after testPdf Home', async ({ page }) => {
   await page.keyboard.press('?');
   await expect(overlay(page), 'second `?` toggles closed').toHaveCount(0);
 
-  const pdfTab = page.getByRole('tab', { name: /clickable-link-test/i }).first();
+  const pdfTab = page.locator('[data-pdf-tab-id]').first();
   await expect(pdfTab).toBeVisible();
   await pdfTab.click();
   await waitEditor(page);
