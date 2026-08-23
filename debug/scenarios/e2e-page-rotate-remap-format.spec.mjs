@@ -270,14 +270,18 @@ async function createRect(page) {
 
 async function createTextbox(page) {
   const before = new Set((await snapshot(page)).map((row) => row.id));
+  await dismissChrome(page);
+  await page.waitForTimeout(350);
   await activateTool(page, 'Text', 'Text');
   await expect(page.locator('[data-text-overlay="1"]').first()).toBeVisible({ timeout: 8_000 });
-  await page.waitForTimeout(350);
+  await page.waitForTimeout(120);
   await dragOnPage(page, TEXT_BOX);
-  const created = await waitForNew(page, before, (row) => (
-    row.type === 'textbox' || row.type === 'text' || row.tool === 'text'
-  ));
+  await expect(page.locator('[data-text-edit-overlay] [contenteditable]').first()).toBeVisible({ timeout: 10_000 });
   await persistOpenText(page, 'A');
+  const created = await waitForNew(page, before, (row) => (
+    !row.callout
+    && (row.type === 'textbox' || row.type === 'text' || row.type === 'i-text' || row.tool === 'text')
+  ));
   await selectMode(page);
   return geom(page, created.id);
 }
