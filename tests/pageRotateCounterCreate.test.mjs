@@ -69,7 +69,7 @@ test('counter create on swapped 792×612 lands in displayed space; stale 612×79
   const nub = getCounterRenderGeometry(live.cx, live.cy, live.radius, live.pointerAngle, 1);
   assert.ok(Number.isFinite(nub.tip.x) && Number.isFinite(nub.tip.y));
   assert.ok(Math.hypot(nub.tip.x - live.cx, nub.tip.y - live.cy) > live.radius);
-  assert.ok(nub.tip.x < live.cx && nub.tip.y > live.cy, '225° nub aims southwest');
+  assert.ok(nub.tip.x < live.cx && nub.tip.y < live.cy, '225° nub aims left-up in SVG y-down');
 });
 
 test('empty click away invents 0; empty rotate peeks swapped displayed size', async () => {
