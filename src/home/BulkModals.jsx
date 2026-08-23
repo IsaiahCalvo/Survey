@@ -177,10 +177,10 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
 
   return (
     <div onClick={submitting ? undefined : onClose} style={overlay}>
-      <div ref={cardRef} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden' }}>
         <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
+            <div id="confirm-modal-title" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
             {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
           </div>
           <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
