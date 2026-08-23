@@ -2104,6 +2104,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      and a faint hairline ring lifts pure black off the dark
                      toolbar — both behaviours come from .ctx-color-swatch. */
                   <button
+                    type="button"
                     data-annotation-color-trigger
                     onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -2121,6 +2122,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     }}
                     {...chromeTip('Color', 'below')}
                     aria-label="Color"
+                    aria-haspopup="dialog"
+                    aria-expanded={!!bottomToolbarApi.showAnnotationColorPicker}
                   >
                     <span
                       className="ctx-color-fill"
@@ -2136,6 +2139,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      user picks colours so they always see what the next pin
                      will look like, instead of an abstract ring + disc. */
                   <button
+                    type="button"
                     data-annotation-color-trigger
                     onClick={() => {
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
@@ -2158,6 +2162,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     }}
                     {...chromeTip('Counter colors', 'below')}
                     aria-label="Counter colors"
+                    aria-haspopup="dialog"
+                    aria-expanded={!!bottomToolbarApi.showAnnotationColorPicker}
                   >
                     <span
                       className="ctx-color-fill"
@@ -2180,6 +2186,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* 2026-05-25: Fill + border swatch. Checker shows through
                      low-opacity fills, faint hairline lifts black borders. */
                   <button
+                    type="button"
                     data-annotation-color-trigger
                     onClick={() => {
                       bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
@@ -2199,6 +2206,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     }}
                     {...chromeTip('Color', 'below')}
                     aria-label="Color"
+                    aria-haspopup="dialog"
+                    aria-expanded={!!bottomToolbarApi.showAnnotationColorPicker}
                   >
                     <span
                       className="ctx-color-fill"

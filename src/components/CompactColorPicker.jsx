@@ -255,6 +255,8 @@ const CompactColorPicker = ({
         />
         <div
             ref={containerRef}
+            role="dialog"
+            aria-label="Color"
             data-modal-focus-layer="true"
             data-testid="compact-color-picker"
             data-font-color-picker="true"
