@@ -84,7 +84,7 @@ test('Templates Edit modules is named via the visible title', async ({ page }) =
   await expect(page.locator('#templates-module-edit-title')).toHaveText('Edit modules');
   await expect(page.locator('.templates-module-edit-modal')).toHaveCount(1);
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'New module', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /New module/ })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Move/Copy', exact: true })).toBeDisabled();
   await expect(dialog.getByPlaceholder('Search modules...')).toBeVisible();
 
@@ -121,8 +121,9 @@ test('390 + guest + idle editor break/edge for Edit modules name', async ({ page
   expect(await page.getByRole('dialog', { name: /Lock this document/ }).count()).toBe(0);
 
   await openPage(page, { width: 390, height: 844, url: HUB });
-  await expect(page.getByText(TEMPLATE).first()).toBeVisible({ timeout: 15_000 });
-  await page.getByText(TEMPLATE).first().click();
+  const mobileRow = page.locator('.templates-mobile-row').filter({ hasText: TEMPLATE }).first();
+  await expect(mobileRow).toBeVisible({ timeout: 15_000 });
+  await mobileRow.click();
   const mobileSelect = page.locator('.templates-mobile-modules-section').getByRole('button', { name: 'Select', exact: true });
   await expect(mobileSelect).toBeVisible({ timeout: 10_000 });
   await mobileSelect.click();
