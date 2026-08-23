@@ -1816,6 +1816,7 @@ const SearchTextPanel = ({
               gap: '4px'
             }}>
               <button
+                type="button"
                 onClick={goToPrevMatch}
                 disabled={searchResults.length === 0}
                 {...tip('Previous match (Shift+Enter)', 'below')}
@@ -1843,6 +1844,7 @@ const SearchTextPanel = ({
                 <Icon name="chevronUp" size={14} color="#e8e2d4" />
               </button>
               <button
+                type="button"
                 onClick={goToNextMatch}
                 disabled={searchResults.length === 0}
                 {...tip('Next match (Enter)', 'below')}
