@@ -96,8 +96,8 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
 
   await desktopNavButton(page, 'Documents').click();
   await expect(page.locator('h1.title')).toHaveText('Documents');
-  await expect(page.getByPlaceholder('Search documents...').first()).toBeVisible();
-  await expect(page.getByText('SE-011 Security Shop Drawings.pdf').first()).toBeVisible();
+  await expect(page.locator('.documents-desktop-search').getByPlaceholder('Search documents...')).toBeVisible();
+  await expect(page.getByText('SE-011 Security Shop Drawings.pdf').filter({ visible: true }).first()).toBeVisible();
 
   await desktopNavButton(page, 'Projects').focus();
   await page.keyboard.press('Enter');
@@ -105,7 +105,7 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
 
   await desktopNavButton(page, 'Documents').dblclick();
   await expect(page.locator('h1.title')).toHaveText('Documents');
-  await expect(page.getByText('SE-011 Security Shop Drawings.pdf').first()).toBeVisible();
+  await expect(page.getByText('SE-011 Security Shop Drawings.pdf').filter({ visible: true }).first()).toBeVisible();
 
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
   expect(await page.getByRole('button', { name: /Start trial|Manage billing|Checkout/i }).count()).toBe(0);
