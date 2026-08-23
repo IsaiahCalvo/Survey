@@ -82,5 +82,6 @@ test('layer emits remapped handles; Pen intercepts before callout-part drag', ()
   const spec = read('debug/scenarios/e2e-page-rotate-callout-handle-drag.spec.mjs');
   assert.match(spec, /must not stamp file\.id/);
   assert.match(spec, /0 0 792 612/);
+  assert.match(spec, /new PointerEvent/);
   assert.doesNotMatch(spec, /file\.id\s*=\s*['"]/);
 });
