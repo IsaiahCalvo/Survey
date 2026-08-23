@@ -496,7 +496,7 @@ function SortableModuleTabs({
    pins its top-right corner just under the trigger, then flips
    above / leftwards if it would overflow the viewport.
    ============================================================ */
-function MoreMenu({ anchorRect, items, onClose }) {
+function MoreMenu({ anchorRect, items, onClose, ariaLabel = 'Template actions' }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
@@ -532,6 +532,7 @@ function MoreMenu({ anchorRect, items, onClose }) {
         ref={ref}
         className="ed-tpl-menu"
         role="menu"
+        aria-label={ariaLabel}
         style={{
           minWidth: 150,
           left: pos ? pos.left : -9999,
@@ -3080,6 +3081,7 @@ export default function TemplatesEditor({
         <MoreMenu
           anchorRect={tplMenu.rect}
           onClose={() => setTplMenu(null)}
+          ariaLabel={`${t.name || 'Template'} actions`}
           items={[
             { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
             { label: 'Rename', onClick: () => beginTemplateRename(t.id) },
@@ -3096,6 +3098,7 @@ export default function TemplatesEditor({
         <MoreMenu
           anchorRect={entityMenu.rect}
           onClose={() => setEntityMenu(null)}
+          ariaLabel={`${ent.role || 'Entity'} actions`}
           items={[
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
             { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
