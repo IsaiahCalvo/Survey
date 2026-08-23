@@ -89,7 +89,9 @@ const SVGSelectionOverlay = memo(({
     pageWidth,
     pageHeight,
   });
-  const pageClamp = { pageWidth, pageHeight };
+  // Resize knobs only need a few units of inset (they sit on the box).
+  // mtr uses 16 so the stem stays off the pills after both clamp.
+  const pageClamp = { pageWidth, pageHeight, inset: 8 };
   const handles = {
     tl: clampHandleToPage(baseHandles.tl, bbox, pageClamp),
     tr: clampHandleToPage(baseHandles.tr, bbox, pageClamp),
@@ -105,12 +107,14 @@ const SVGSelectionOverlay = memo(({
     },
   };
   // Stem hit used to start on mt, so the ~16px stroke ate the whole top
-  // pill and mt resize never fired. Leave a gap above the visible handle.
-  const stemAttachY = handles.mt.y - (
-    !hideResizeHandles && visibleResizeHandles.has('mt')
-      ? handleMetrics.hPillH / 2 + rotationHit.stemHitWidth / 2 + handleMetrics.minGap
-      : 0
-  );
+  // pill and mt resize never fired. Leave a gap on the mtr side of the
+  // pill. After page CW remap both knobs clamp inward, so mtr can sit
+  // below local-top — attach that way instead of always "above".
+  const mtStemGap = !hideResizeHandles && visibleResizeHandles.has('mt')
+    ? handleMetrics.hPillH / 2 + rotationHit.stemHitWidth / 2 + handleMetrics.minGap
+    : 0;
+  const stemSign = (handles.mtr.y - handles.mt.y) >= 0 ? 1 : -1;
+  const stemAttachY = handles.mt.y + stemSign * mtStemGap;
 
   // Center of the bounding box for rotation transform. `rotationCenter`
   // (when supplied) overrides the geometric center so the rotation

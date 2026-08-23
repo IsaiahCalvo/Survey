@@ -803,19 +803,43 @@ test('desktop remapped-page mt after CW rotate', async ({ page }) => {
   console.log('REMAP_MT_ON_PAGE', JSON.stringify({ mt: mtRow, offPage }));
 
   // Intended — remapped mt (local-top → world-right at 90°) is hittable
-  // after clamp. Radial grow may leave the page; SVG-root capture keeps it.
+  // after clamp. Prefer the mt pill, not the overlapping mtr knob.
+  const mtHandle = await handleScreenCenter(page, 'data-resize-handle="mt"');
+  const mtHitEl = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return {
+      tag: el?.tagName || null,
+      resize: el?.getAttribute?.('data-resize-handle')
+        || el?.closest?.('[data-resize-handle]')?.getAttribute('data-resize-handle') || null,
+      rotate: el?.getAttribute?.('data-rotation-handle')
+        || el?.closest?.('[data-rotation-handle]')?.getAttribute('data-rotation-handle') || null,
+    };
+  }, { x: mtHandle.x, y: mtHandle.y });
+  console.log('MT_HIT', JSON.stringify({ handle: mtHandle, mtHitEl }));
+  expect(mtHitEl.resize, 'elementFromPoint on remapped mt must be the mt pill').toBe('mt');
+
   const preMt = await geom(page, created.id);
   await dragHandleRadial(page, created.id, 'data-resize-handle="mt"', { mode: 'grow', extraPx: 80 });
-  const afterMtAttempt = await geom(page, created.id);
+  let afterMtAttempt = await geom(page, created.id);
+  const grew = afterMtAttempt
+    && (afterMtAttempt.vw > preMt.vw + 2 || afterMtAttempt.vh > preMt.vh + 2);
+  if (!grew) {
+    await dragHandleRadial(page, created.id, 'data-resize-handle="mt"', { mode: 'collapse', extraPx: 80 });
+    afterMtAttempt = await geom(page, created.id);
+  }
   console.log('POST_ROTATE_MT_DELTA', JSON.stringify({
     before: preMt,
     after: afterMtAttempt,
+    grew,
     dvw: afterMtAttempt ? afterMtAttempt.vw - preMt.vw : null,
     dvh: afterMtAttempt ? afterMtAttempt.vh - preMt.vh : null,
   }));
   await expect.poll(async () => {
     const now = await geom(page, created.id);
-    return now && (now.vw > preMt.vw + 2 || now.vh > preMt.vh + 2);
+    return now && (
+      now.vw > preMt.vw + 2 || now.vh > preMt.vh + 2
+      || now.vw < preMt.vw - 2 || now.vh < preMt.vh - 2
+    );
   }, { timeout: 8_000, message: 'post-rotate mt must grow size in swapped viewBox' }).toBeTruthy();
   const postMt = await geom(page, created.id);
   expect(onPage(postMt, 792, 612), 'post-rotate mt must stay on-page').toBe(true);
