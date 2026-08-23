@@ -491,13 +491,20 @@ const BookmarksPanel = ({
   const [addToGroupBookmarks, setAddToGroupBookmarks] = useState([]);
   const menuRef = useRef(null);
   const createGroupDialogRef = useRef(null);
+  const addToGroupDialogRef = useRef(null);
   const createMenuInsideRefs = useMemo(() => [menuRef], []);
   const closeCreateGroupModal = useCallback(() => {
     setShowBookmarkGroupModal(false);
     setGroupName('');
     setGroupBookmarks([]);
   }, []);
+  const closeAddToGroupModal = useCallback(() => {
+    setShowAddToGroupModal(false);
+    setTargetGroupId(null);
+    setAddToGroupBookmarks([]);
+  }, []);
   useFocusTrap(createGroupDialogRef, showBookmarkGroupModal, { onEscape: closeCreateGroupModal });
+  useFocusTrap(addToGroupDialogRef, showAddToGroupModal, { onEscape: closeAddToGroupModal });
 
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
@@ -1326,10 +1333,11 @@ const BookmarksPanel = ({
     setGroupBookmarks(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleOpenAddToGroup = useCallback((groupId) => {
-    setTargetGroupId(groupId);
+  const handleOpenAddToGroup = useCallback((groupId = null) => {
+    setTargetGroupId(groupId || null);
     setAddToGroupBookmarks([]);
     setShowAddToGroupModal(true);
+    setShowCreateMenu(false);
   }, []);
 
   const handleAddExistingBookmarkToGroup = useCallback((bookmarkId) => {
@@ -1434,10 +1442,8 @@ const BookmarksPanel = ({
 
     expandFolderOnly(targetGroupId);
 
-    setShowAddToGroupModal(false);
-    setTargetGroupId(null);
-    setAddToGroupBookmarks([]);
-  }, [addToGroupBookmarks, bookmarks, expandFolderOnly, numPages, onBookmarkCreate, onBookmarkUpdate, targetGroupId]);
+    closeAddToGroupModal();
+  }, [addToGroupBookmarks, bookmarks, closeAddToGroupModal, expandFolderOnly, numPages, onBookmarkCreate, onBookmarkUpdate, targetGroupId]);
 
   if (mobileMode) {
     // UX 2026-07-12 — Mobile bookmark list. Flat, touch-sized rows that mirror the
@@ -1832,6 +1838,29 @@ const BookmarksPanel = ({
               >
                 <Icon name="folder" size={14} color="#8d96a6" />
                 New bookmark group
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenAddToGroup(null)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: '#e8e2d4',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#181c24'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <Icon name="bookmark" size={14} color="#8d96a6" />
+                Add bookmarks to group
               </button>
               <div style={{ padding: '8px 12px', borderTop: '1px solid #2a3140' }}>
                 <input
@@ -2328,7 +2357,7 @@ const BookmarksPanel = ({
       )}
 
       {/* Add Bookmarks to Existing Group Modal */}
-      {showAddToGroupModal && targetGroupId && (
+      {showAddToGroupModal && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -2345,12 +2374,13 @@ const BookmarksPanel = ({
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 10000
-        }} onClick={() => {
-          setShowAddToGroupModal(false);
-          setTargetGroupId(null);
-          setAddToGroupBookmarks([]);
-        }}>
-          <div style={{
+        }} onClick={closeAddToGroupModal}>
+          <div
+            ref={addToGroupDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-bookmarks-to-group-title"
+            style={{
             background: '#12151c',
             borderRadius: '12px',
             padding: '24px',
@@ -2367,7 +2397,9 @@ const BookmarksPanel = ({
               alignItems: 'center',
               marginBottom: '20px'
             }}>
-              <h3 style={{
+              <h3
+                id="add-bookmarks-to-group-title"
+                style={{
                 margin: 0,
                 fontSize: '18px',
                 fontWeight: '600',
@@ -2376,11 +2408,9 @@ const BookmarksPanel = ({
                 Add bookmarks to group
               </h3>
               <button
-                onClick={() => {
-                  setShowAddToGroupModal(false);
-                  setTargetGroupId(null);
-                  setAddToGroupBookmarks([]);
-                }}
+                type="button"
+                aria-label="Close"
+                onClick={closeAddToGroupModal}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -2682,11 +2712,8 @@ const BookmarksPanel = ({
               justifyContent: 'flex-end'
             }}>
               <button
-                onClick={() => {
-                  setShowAddToGroupModal(false);
-                  setTargetGroupId(null);
-                  setAddToGroupBookmarks([]);
-                }}
+                type="button"
+                onClick={closeAddToGroupModal}
                 style={{
                   padding: '8px 16px',
                   background: '#2a3140',
