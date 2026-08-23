@@ -5,6 +5,10 @@ import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 
 import { mutatePdfPages, peekDisplayedPageSize } from '../src/utils/pdfPageMutation.js';
+import {
+  resolveTextLayerRotation,
+  resolveTextLayerScale,
+} from '../src/utils/pdfjsTextLayerViewport.js';
 
 // Source contracts: Select text AFTER page CW (viewBox 0 0 792 612).
 // Unrotated V-03 is e2e-select-text (portrait 0 0 612 792).
@@ -26,12 +30,20 @@ test('CW rewrite peeks swapped 792×612; text layer viewport uses page.rotate', 
   const displayed = await peekDisplayedPageSize(rotatedBytes, 1);
   assert.deepEqual(displayed, { width: 792, height: 612 });
 
+  assert.equal(resolveTextLayerRotation(0, 0, 1012, 782, 612, 792), 90);
+  assert.equal(resolveTextLayerRotation(90, 0, 1012, 782, 792, 612), 90);
+  assert.equal(resolveTextLayerRotation(0, 0, 782, 1012, 612, 792), 0);
+  assert.ok(Math.abs(resolveTextLayerScale(1012, 792, 1) - (1012 / 792)) < 1e-9);
+  assert.equal(resolveTextLayerScale(0, 792, 1.25), 1.25);
+
   const layer = read('src/components/PdfjsTextLayer.jsx');
-  assert.match(layer, /const viewport = page\.getViewport\(\{ scale, rotation: page\.rotate \+ rotation \}\)/);
-  assert.match(layer, /el\.style\.setProperty\('--scale-factor', String\(scale\)\)/);
+  assert.match(layer, /closest\('\.survey-pdfjs-page-div'\)/);
+  assert.match(layer, /resolveTextLayerRotation/);
+  assert.match(layer, /resolveTextLayerScale/);
+  assert.match(layer, /el\.style\.setProperty\('--scale-factor', String\(viewport\.scale\)\)/);
   assert.match(layer, /el\.style\.width = `\$\{Math\.floor\(viewport\.width\)\}px`/);
   assert.match(layer, /el\.style\.height = `\$\{Math\.floor\(viewport\.height\)\}px`/);
-  assert.match(layer, /glyph viewport already inherits the page's baked orientation via `page\.rotate`/);
+  assert.match(layer, /never pageSize \* scale/);
   assert.match(layer, /\[pdf, pageNumber, scale, rotation\]/);
   assert.match(layer, /user-select: text/);
   assert.match(layer, /pdfjsTextLayer\$\{interactive \? ' is-interactive' : ''\}/);
@@ -77,6 +89,7 @@ test('live spec covers Select text after CW + offset + empty click + 390 lift; s
   assert.match(spec, /page rotate must keep swapped viewBox/);
   assert.match(spec, /text-layer viewport must be landscape, not leftover portrait/);
   assert.match(spec, /text-layer viewport width must match swapped host/);
+  assert.match(spec, /layerOffsetW/);
   assert.match(spec, /visible glyphs must sit on the swapped page, not the pre-rotate portrait/);
   assert.match(spec, /elementFromPoint at the visible glyph must hit the text layer, not a pre-rotate offset/);
   assert.match(spec, /drag must select PDF glyphs on the swapped page/);

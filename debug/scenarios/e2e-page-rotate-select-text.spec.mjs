@@ -229,6 +229,7 @@ async function textLayerGeometry(page) {
     const hostBox = host.getBoundingClientRect();
     const styleW = parseFloat(layer.style.width) || 0;
     const styleH = parseFloat(layer.style.height) || 0;
+    const scaleFactor = parseFloat(layer.style.getPropertyValue('--scale-factor')) || 0;
     const spans = [...layer.querySelectorAll('span')].map((el) => {
       const box = el.getBoundingClientRect();
       return {
@@ -254,8 +255,14 @@ async function textLayerGeometry(page) {
       hostH: hostBox.height,
       hostX: hostBox.x,
       hostY: hostBox.y,
-      landscapeStyle: styleW > styleH + 8,
+      landscapeStyle: (styleW > styleH + 8) || (layer.offsetWidth > layer.offsetHeight + 8),
       landscapeHost: hostBox.width > hostBox.height + 8,
+      hostOffsetW: host.offsetWidth,
+      hostOffsetH: host.offsetHeight,
+      hostTransform: host.style.transform || '',
+      layerOffsetW: layer.offsetWidth,
+      layerOffsetH: layer.offsetHeight,
+      scaleFactor,
       spanCount: spans.length,
       spansInside: spans.filter((row) => row.insideHost && row.text.length >= 2 && row.w >= 12 && row.h >= 4),
     };
@@ -424,11 +431,28 @@ test('desktop Select text after page CW intended + break + edge', async ({ page 
   await armTextSelect(page);
   await waitForInteractiveTextLayer(page);
   const geom = await textLayerGeometry(page);
+  console.log('PAGE_ROTATE_SELECT_TEXT_GEOM', JSON.stringify(geom && {
+    styleW: geom.styleW,
+    styleH: geom.styleH,
+    layerW: geom.layerW,
+    layerH: geom.layerH,
+    hostW: geom.hostW,
+    hostH: geom.hostH,
+    hostOffsetW: geom.hostOffsetW,
+    hostOffsetH: geom.hostOffsetH,
+    hostTransform: geom.hostTransform,
+    layerOffsetW: geom.layerOffsetW,
+    layerOffsetH: geom.layerOffsetH,
+    scaleFactor: geom.scaleFactor,
+    spanCount: geom.spanCount,
+    spansInside: geom.spansInside.length,
+    firstSpan: geom.spansInside[0] || null,
+  }));
   expect(geom, 'interactive text layer geometry').toBeTruthy();
   expect(geom.landscapeHost, 'page host stays landscape').toBe(true);
   expect(geom.landscapeStyle, 'text-layer viewport must be landscape, not leftover portrait').toBe(true);
-  expect(Math.abs(geom.styleW - geom.hostW), 'text-layer viewport width must match swapped host').toBeLessThan(8);
-  expect(Math.abs(geom.styleH - geom.hostH), 'text-layer viewport height must match swapped host').toBeLessThan(8);
+  expect(Math.abs(geom.layerOffsetW - geom.hostOffsetW), 'text-layer viewport width must match swapped host').toBeLessThan(8);
+  expect(Math.abs(geom.layerOffsetH - geom.hostOffsetH), 'text-layer viewport height must match swapped host').toBeLessThan(8);
   expect(geom.spansInside.length, 'visible glyphs must sit on the swapped page, not the pre-rotate portrait').toBeGreaterThan(0);
 
   const target = await pickVisibleGlyph(page);

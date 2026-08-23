@@ -13,6 +13,7 @@
 // ----------------------------------------------------------------------------
 import { useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { resolveTextLayerRotation, resolveTextLayerScale } from '../utils/pdfjsTextLayerViewport.js';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 let stylesInjected = false;
@@ -95,6 +96,9 @@ function ensureTextLayerStyles() {
 // applies user rotation by rewriting the PDF bytes (it always renders at rotation 0,
 // same as the canvas, link, and form layers). So the default of 0 is correct — the
 // glyph viewport already inherits the page's baked orientation via `page.rotate`.
+// After Pages CW the raster host is landscape (792×612). Size from the page
+// host (container-aware), never pageSize * scale; add 90 when host aspect
+// disagrees with the proxy viewport (stale rotate 0 / leftover portrait).
 export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);
@@ -172,10 +176,24 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
         if (cancelled || !ref.current) return;
         const textContent = await page.getTextContent();
         if (cancelled || !ref.current) return;
-        const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
+        const host = el.closest('.survey-pdfjs-page-div');
+        const hostWidth = Number(host?.offsetWidth) || 0;
+        const hostHeight = Number(host?.offsetHeight) || 0;
+        const intrinsic = page.getViewport({ scale: 1, rotation: page.rotate + rotation });
+        const displayRotation = resolveTextLayerRotation(
+          page.rotate,
+          rotation,
+          hostWidth,
+          hostHeight,
+          intrinsic.width,
+          intrinsic.height,
+        );
+        const fitted = page.getViewport({ scale: 1, rotation: displayRotation });
+        const effectiveScale = resolveTextLayerScale(hostWidth, fitted.width, scale);
+        const viewport = page.getViewport({ scale: effectiveScale, rotation: displayRotation });
         el.innerHTML = '';
         // pdf.js positions glyphs using this CSS var; it must equal viewport.scale.
-        el.style.setProperty('--scale-factor', String(scale));
+        el.style.setProperty('--scale-factor', String(viewport.scale));
         el.style.width = `${Math.floor(viewport.width)}px`;
         el.style.height = `${Math.floor(viewport.height)}px`;
         task = new pdfjsLib.TextLayer({ textContentSource: textContent, container: el, viewport });
