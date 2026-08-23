@@ -86,9 +86,10 @@ test('shape export-after-rotate spec covers ellipse / cloud-rect / highlighter; 
 
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /leftover-18 \/ X-01/);
-  assert.match(spec, /desktop rotate remapper then export re-import of ellipse/);
-  assert.match(spec, /desktop rotate remapper then export re-import of cloud-rect/);
-  assert.match(spec, /desktop rotate remapper then export re-import of highlighter/);
+  assert.match(spec, /desktop rotate remapper then export re-import of \$\{kind\}/);
+  assert.match(spec, /\['ellipse', createEllipse, isEllipse\]/);
+  assert.match(spec, /\['cloud-rect', createCloudRect, isCloudRect\]/);
+  assert.match(spec, /\['highlighter', createHighlighter, isHighlighter\]/);
   assert.match(spec, /390 shape-export-reimport edge/);
   assert.match(spec, /re-import must keep swapped viewBox/);
   assert.match(spec, /strip-on-import/);

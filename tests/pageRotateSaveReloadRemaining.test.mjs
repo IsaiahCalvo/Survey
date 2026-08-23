@@ -97,6 +97,7 @@ test('local cache round-trips remapped leftover types without inventing file.id'
 test('save/reload remaining after remap uses local cache; remount cannot bake /Rotate', () => {
   const spec = read('debug/scenarios/e2e-page-rotate-save-reload-remaining.spec.mjs');
   const viewer = read('src/PDFViewer.jsx');
+  const pageOps = read('src/hooks/usePageOperations.js');
   const reindex = read('src/utils/pageAnnotationReindex.js');
   const pdfjs = read('src/components/PdfjsViewerContainer.jsx');
   const dev = read('src/DevTestRoute.jsx');
@@ -118,7 +119,7 @@ test('save/reload remaining after remap uses local cache; remount cannot bake /R
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
 
   assert.match(viewer, /localStorage\.setItem\(`pdfSidebar_\$\{pdfId\}`/);
-  assert.match(viewer, /newFile\.id = currentPdfFile\.id/);
+  assert.match(pageOps, /newFile\.id = currentPdfFile\.id/);
   assert.match(pdfjs, /app handles rotation by rewriting bytes/);
   assert.match(reindex, /rotatePageSpaceCounter/);
   assert.match(reindex, /rotateCalloutFractions/);
