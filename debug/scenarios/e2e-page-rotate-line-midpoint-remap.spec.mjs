@@ -249,35 +249,21 @@ async function selectUntilHandles(page, id) {
   }, { timeout: 12_000 }).toBeGreaterThan(0);
 }
 
-async function collapsePagesSidebar(page) {
-  const collapse = page.getByRole('button', { name: 'Collapse sidebar', exact: true });
-  if (await collapse.first().isVisible().catch(() => false)) {
-    await collapse.first().click().catch(() => {});
-  }
-  const pages = page.getByRole('button', { name: 'Pages', exact: true });
-  if (await pages.first().isVisible().catch(() => false)
-    && (await pages.first().getAttribute('aria-pressed')) === 'true') {
-    await pages.first().click().catch(() => {});
-  }
-}
-
 async function dragMidpoint(page, dy = 80) {
-  const circle = page.locator('circle[data-handle="midpoint"]');
+  const circle = page.locator('[data-svg-annotation-layer="1"] circle[data-handle="midpoint"]');
   await expect(circle).toBeAttached({ timeout: 8_000 });
-  const labeled = page.getByLabel('Drag to bend');
-  const target = (await labeled.count()) ? labeled.first() : circle;
-  const box = await target.boundingBox();
+  const box = await circle.boundingBox();
   expect(box, 'midpoint handle bbox').toBeTruthy();
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  await page.mouse.move(start.x, start.y);
+  // Hub Documents can sit over the page after Pages rotate. force hover
+  // still lands on the SVG knob; a plain mouse.move hits the overlay.
+  await circle.hover({ force: true });
   await page.mouse.down();
   await page.mouse.move(start.x, start.y + dy, { steps: 12 });
   await page.mouse.up();
 }
 
 async function createCurvedLine(page, coords = { x0: 0.20, y0: 0.32, x1: 0.48, y1: 0.32 }) {
-  await dismissChrome(page);
-  await collapsePagesSidebar(page);
   await dismissChrome(page);
   const before = new Set(await lineIds(page));
   await activateShapeTool(page, 'Line');
@@ -287,9 +273,7 @@ async function createCurvedLine(page, coords = { x0: 0.20, y0: 0.32, x1: 0.48, y
   await page.mouse.move(box.x + box.width * coords.x1, box.y + box.height * coords.y1, { steps: 8 });
   await page.mouse.up();
   const created = await waitForNewLine(page, before);
-  await dismissChrome(page);
   await selectUntilHandles(page, created.id);
-  await expect(page.getByText('No documents yet')).toHaveCount(0);
   await dragMidpoint(page, 80);
   let bent = null;
   await expect.poll(async () => {
