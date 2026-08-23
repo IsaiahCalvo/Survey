@@ -664,7 +664,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 )}
               </div>
             )}
-            <button data-manage-team-edit onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
+            <button type="button" data-manage-team-edit onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
           </div>
 
           {/* Column headers */}
