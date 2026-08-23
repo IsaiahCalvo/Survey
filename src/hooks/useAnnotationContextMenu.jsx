@@ -213,7 +213,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
   const canPlanForeignDelete = (obj) => {
     if (!obj || typeof requestBulkDelete !== 'function') return false;
     if (!viewerId || !documentOwnerId) return false;
-    if (obj.id == null) return false;
+    if (obj.id == null && obj.data?.id == null) return false;
     return canDelete({ annotation: obj, viewerId, documentOwnerId });
   };
 
@@ -452,9 +452,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
               tick: Date.now(),
             });
           };
-          if (typeof requestBulkDelete === 'function' && obj.id != null) {
+          const candidateId = obj.data?.id || obj.id;
+          if (typeof requestBulkDelete === 'function' && candidateId != null) {
             requestBulkDelete({
-              candidateIds: [obj.id],
+              candidateIds: [candidateId],
               snapshotObjects: [deepClone(obj)],
               pageNumber: ctx.pageNumber,
               runDelete,
@@ -664,7 +665,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             });
           };
           const candidateIds = deletable
-            .map(({ obj }) => obj?.id)
+            .map(({ obj }) => obj?.data?.id || obj?.id)
             .filter((id) => id != null);
           if (typeof requestBulkDelete === 'function' && candidateIds.length > 0) {
             requestBulkDelete({

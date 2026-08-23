@@ -106,6 +106,35 @@ test('buildAnnotationDeleteHistoryRow produces a valid restore-capable row', () 
   assert.equal(row.payload.deletedBy, USER_ID);
 });
 
+test('buildAnnotationDeleteHistoryRow labels a counter (circle + data.type) and keeps Restore', () => {
+  const counter = {
+    type: 'circle',
+    left: 380.16,
+    top: 171.36,
+    radius: 14,
+    data: { id: 'ctr-1', type: 'counter', pointerAngle: 315 },
+  };
+  const row = buildAnnotationDeleteHistoryRow({
+    deleteAction: {
+      type: 'fabric:delete',
+      pageNumber: 1,
+      annotationId: 'ctr-1',
+      annotation: counter,
+      index: 0,
+    },
+    documentId: DOC_ID,
+    userId: USER_ID,
+    actorName: 'Alice',
+    deletedAt: TS,
+  });
+  assert.ok(row, 'row is produced');
+  assert.match(row.summary, /Alice.*deleted a counter.*page 1/i);
+  assert.doesNotMatch(row.summary, /circle/);
+  assert.ok(row.payload.restoreAction, 'restoreAction present');
+  assert.equal(row.payload.restoreAction.type, 'fabric:create');
+  assert.equal(row.payload.restoreAction.annotation.data.pointerAngle, 315);
+});
+
 test('buildAnnotationDeleteHistoryRow returns null for non-delete action', () => {
   assert.equal(
     buildAnnotationDeleteHistoryRow({ deleteAction: { type: 'fabric:create' }, documentId: DOC_ID, deletedAt: TS }),

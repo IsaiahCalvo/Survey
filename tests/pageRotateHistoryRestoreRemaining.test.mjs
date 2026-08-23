@@ -311,6 +311,7 @@ test('History restore remaining after remap uses live activity Restore; no file.
   const spec = read('debug/scenarios/e2e-page-rotate-history-restore-remaining.spec.mjs');
   const panel = read('src/components/revisions/RevisionsPanel.jsx');
   const viewer = read('src/PDFViewer.jsx');
+  const interaction = read('src/hooks/useSVGInteraction.js');
   const reindex = read('src/utils/pageAnnotationReindex.js');
   const history = read('src/utils/annotationLocalHistory.js');
   const trash = read('src/services/annotationTrashHistory.js');
@@ -329,7 +330,7 @@ test('History restore remaining after remap uses live activity Restore; no file.
   assert.match(spec, /390 History restore remaining after remap edge/);
   assert.match(spec, /desktop History restore after CW — callout/);
   assert.match(spec, /desktop History restore after CW — counter/);
-  assert.match(spec, /COUNTER_UNREACHABLE|no History deleted row after remapped delete/);
+  assert.match(spec, /counter History deleted row must exist/);
   assert.match(spec, /desktop History restore after CW — line/);
   assert.match(spec, /desktop History restore after CW — textbox/);
   assert.match(spec, /desktop History restore after CW — survey-marker/);
@@ -339,6 +340,9 @@ test('History restore remaining after remap uses live activity Restore; no file.
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
   assert.doesNotMatch(spec, /createRevision\(|restoreRevision\(/);
 
+  assert.match(interaction, /o\?\.data\?\.id \|\| o\?\.id/);
+  assert.match(interaction, /obj\.id != null \|\| obj\.data\?\.id != null/);
+  assert.match(trash, /data\?\.type === 'counter'\) return 'counter'/);
   assert.match(panel, /onRestoreHistoryActivity\(event\)/);
   assert.match(panel, /Only the document owner can save or restore versions/);
   assert.match(viewer, /source: 'history:restore-deleted-annotation'/);

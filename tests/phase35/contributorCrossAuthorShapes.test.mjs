@@ -126,7 +126,7 @@ test('useSVGInteraction: deleteSelected admits foreign ids ONLY through the plan
   match(body, /if \(canModify\(\{ annotation: obj, viewerId, documentOwnerId \}\)\) return true;/);
   // Foreign marks require the planner AND a stable id, then pass canDelete —
   // guaranteeing the collaborator-cross-author confirm modal is unavoidable.
-  match(body, /return plannerAvailable\s*&& obj\.id != null\s*&& canDelete\(\{ annotation: obj, viewerId, documentOwnerId \}\);/);
+  match(body, /return plannerAvailable\s*&& \(obj\.id != null \|\| obj\.data\?\.id != null\)\s*&& canDelete\(\{ annotation: obj, viewerId, documentOwnerId \}\);/);
   // The planner routing itself must still exist.
   match(body, /onRequestBulkDelete\(\{\s*candidateIds,\s*snapshotObjects,\s*pageNumber,\s*runDelete,\s*\}\)/);
 });
@@ -140,7 +140,8 @@ test('context menu: shape Delete items route through the bulk-delete planner bri
   // with the candidate/snapshot/runDelete contract.
   const calls = MENU_SOURCE.match(/requestBulkDelete\(\{/g) || [];
   ok(calls.length >= 2, `expected both shape Delete items to route through requestBulkDelete (found ${calls.length})`);
-  match(MENU_SOURCE, /candidateIds: \[obj\.id\]/);
+  match(MENU_SOURCE, /candidateIds: \[candidateId\]/);
+  match(MENU_SOURCE, /obj\?\.data\?\.id \|\| obj\?\.id/);
   // Foreign marks can never fall through to the ungated splice.
   match(MENU_SOURCE, /if \(!own && !canPlanForeignDelete\(obj\)\) return;/);
 });

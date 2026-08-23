@@ -38,6 +38,9 @@ function labelFromAnnotation(annotation) {
   // group object, type 'group' + data.type 'callout') through the shared bulk
   // path — keep the human summary saying "callout", not "annotation".
   if (annotation?.data?.type === 'callout') return 'callout';
+  // Counters serialize as Fabric circle + data.type 'counter' — keep the
+  // History summary saying "counter", not "circle".
+  if (annotation?.data?.type === 'counter') return 'counter';
   const fabricType = annotation?.type || annotation?.data?.type || '';
   return labelFabricType(fabricType);
 }

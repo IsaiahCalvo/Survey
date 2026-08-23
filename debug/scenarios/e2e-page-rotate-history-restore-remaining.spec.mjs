@@ -993,16 +993,7 @@ test('desktop History restore after CW — callout intended + break', async ({ p
 test('desktop History restore after CW — counter intended + break', async ({ page }) => {
   test.setTimeout(180_000);
   const proof = await proveType(page, 'counter', createCounter);
-  // Counter delete journals "made an edit" with no Restore — no History
-  // deleted row. Reachable remainder: remapped pin, Delete removes it,
-  // swapped viewBox, create-event omits Restore, file.id null.
-  if (proof.unreachable) {
-    expect(proof.kind).toBe('counter');
-    expect(proof.id).toBeTruthy();
-    expect(proof.remapped, 'CW must remap the live counter before Delete').toBeTruthy();
-    console.log('PAGE_ROTATE_HISTORY_RESTORE_REMAINING_COUNTER_UNREACHABLE', JSON.stringify(proof));
-    return;
-  }
+  expect(proof.unreachable, 'counter History deleted row must exist').toBeFalsy();
   console.log('PAGE_ROTATE_HISTORY_RESTORE_REMAINING_COUNTER', JSON.stringify(proof));
 });
 

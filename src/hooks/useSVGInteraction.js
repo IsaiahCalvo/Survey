@@ -4542,8 +4542,10 @@ export function useSVGInteraction({
         if (!viewerId || !documentOwnerId) return true;
         if (canModify({ annotation: obj, viewerId, documentOwnerId })) return true;
         // Foreign-author: only deletable behind the planner's confirm modal.
+        // Counters stamp data.id only (no top-level id) — same fallback the
+        // planner / emitBulkTrashRows already use.
         return plannerAvailable
-          && obj.id != null
+          && (obj.id != null || obj.data?.id != null)
           && canDelete({ annotation: obj, viewerId, documentOwnerId });
       })
       .sort((a, b) => b - a);
@@ -4597,7 +4599,10 @@ export function useSVGInteraction({
     // what runDelete will actually remove). Parent owns viewerId +
     // documentOwnerId — it builds the BulkDeletePlan and decides modal vs
     // direct-fire.
-    const candidateIds = snapshotObjects.map((o) => o?.id).filter(Boolean);
+    // Counters (and projected callout groups) stamp data.id only. Using
+    // top-level id alone made Delete fall through to runDelete without
+    // emitBulkTrashRows — History showed "made an edit" with no Restore.
+    const candidateIds = snapshotObjects.map((o) => o?.data?.id || o?.id).filter(Boolean);
     // Phase 35 regression fix 2026-05-01: the bulk-delete planner is keyed
     // by stable annotation id, but legacy / freshly-loaded / not-yet-synced
     // annotations have no id locally (data.id is stamped only on the first
@@ -4605,8 +4610,9 @@ export function useSVGInteraction({
     // lacks an id the planner returns mode='no-op' and Delete becomes a
     // silent dead key. Safe to fall through here because the delete-time
     // partition above only admits id-less objects when they pass canModify
-    // (own/boot) — a foreign-author mark requires obj.id, so an all-id-less
-    // set is structurally own-only and may direct-fire without the modal.
+    // (own/boot) — a foreign-author mark requires a stable id, so an
+    // all-id-less set is structurally own-only and may direct-fire without
+    // the modal.
     if (candidateIds.length === 0) {
       runDelete();
       return;
