@@ -57,10 +57,10 @@ const CompactColorPicker = ({
     firstPreset = 'transparent',
     minOpacity = 0,
     dismissInsideSelector,
-    // Sibling chrome (Font / Font size / other toolbar triggers) should
-    // dismiss this picker and still receive their own click. Without
-    // passthrough, DismissBarrier consumes the gesture and the user has to
-    // click Font twice after typing a hex value.
+    // Sibling chrome (Width / Style / Font / Font size / other toolbar
+    // triggers) should dismiss this picker and still receive their own
+    // click. Without passthrough, DismissBarrier consumes the gesture and
+    // the user has to click Width or Font twice after typing a hex value.
     passthroughSelector = '',
 }) => {
     const hideTransparentCell = firstPreset === 'none';

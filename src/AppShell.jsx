@@ -60,6 +60,20 @@ const PDFViewer = lazy(() => loadPDFViewerModule().then((m) => ({ default: m.PDF
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
+/* Sibling formatting chrome must receive the same click that dismisses an
+   open CompactColorPicker. Without passthrough, DismissBarrier consumes the
+   gesture and Width / Style / Font need a second click after typing hex.
+   Canvas clicks stay consumed so dismiss does not start a stroke. */
+const COLOR_PICKER_SIBLING_PASSTHROUGH = [
+  '.annotation-dropdown__trigger',
+  '[data-font-family-menu]',
+  '[data-font-size-menu]',
+  '[data-annotation-size-control]',
+  '[data-style-menu]',
+  '[data-arrowhead-menu]',
+  '[data-eraser-type-menu]',
+  '[data-align-grid]',
+].join(', ');
 
 /* Dev build stamp (git hash · dev-server start time, injected by vite.config's
    __BUILD_STAMP__ define). It used to render as a fixed chip in the bottom-left
@@ -1923,7 +1937,7 @@ export default function App({ devPreviewReturnTab = null }) {
                               }}
                               onClose={() => setShowFontColorPicker(false)}
                               firstPreset="none"
-                              passthroughSelector=".annotation-dropdown__trigger, [data-font-family-menu], [data-font-size-menu]"
+                              passthroughSelector={COLOR_PICKER_SIBLING_PASSTHROUGH}
                             />
                           </Suspense>
                         </div>
@@ -2540,6 +2554,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
                             : 'transparent'}
                           minOpacity={(shapeOneVisibleRule && !onFillTab) ? 1 : 0}
+                          passthroughSelector={COLOR_PICKER_SIBLING_PASSTHROUGH}
                         />
                       </Suspense>
                     </div>

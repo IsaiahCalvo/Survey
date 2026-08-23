@@ -44,7 +44,11 @@ test('desktop sync details dismiss without moving or activating the surface unde
 
 test('legacy color, bookmark, and print picker popovers use the same first-tap barrier', () => {
   assert.match(colorPicker, /active=\{typeof onClose === 'function'\}[\s\S]*insideRefs=\{dismissInsideRefs\}[\s\S]*passthroughSelector=\{passthroughSelector\}/);
-  assert.match(appShell, /passthroughSelector="\.annotation-dropdown__trigger, \[data-font-family-menu\], \[data-font-size-menu\]"/);
+  assert.match(appShell, /COLOR_PICKER_SIBLING_PASSTHROUGH/);
+  assert.match(appShell, /passthroughSelector=\{COLOR_PICKER_SIBLING_PASSTHROUGH\}/);
+  assert.match(appShell, /\[data-annotation-size-control\]/);
+  assert.match(appShell, /\[data-style-menu\]/);
+  assert.match(appShell, /\[data-font-family-menu\]/);
   assert.match(bookmarks, /active=\{showCreateMenu\}[\s\S]*insideRefs=\{createMenuInsideRefs\}/);
   assert.match(printPanel, /active=\{menuOpen\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
 
