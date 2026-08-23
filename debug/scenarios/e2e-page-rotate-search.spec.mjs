@@ -398,6 +398,19 @@ test('desktop Search after page CW intended + break + edge', async ({ page }) =>
     message: 'Search after CW must land highlight marks on the swapped page',
   }).toBeTruthy();
   expect(hits, 'Search after CW must expose index + overlay geometry').toBeTruthy();
+  console.log('PAGE_ROTATE_SEARCH_GEOM', JSON.stringify({
+    index: hits.index,
+    viewBox: hits.geom.viewBox,
+    layerW: hits.geom.layerW,
+    layerH: hits.geom.layerH,
+    hostW: hits.geom.hostW,
+    hostH: hits.geom.hostH,
+    layerOffsetW: hits.geom.layerOffsetW,
+    hostOffsetW: hits.geom.hostOffsetW,
+    leftoverPortraitLayer: hits.geom.leftoverPortraitLayer,
+    rectsInside: hits.geom.rectsInside.length,
+    firstRect: hits.geom.firstRect,
+  }));
   expect(hits.index.total, 'unique alphabet prefix must hit').toBeGreaterThan(0);
   expect(hits.geom.viewBox, 'search overlay viewBox must follow swapped page').toBe('0 0 792 612');
   expect(hits.geom.landscapeHost, 'page host stays landscape').toBe(true);
