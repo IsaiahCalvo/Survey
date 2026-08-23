@@ -32,6 +32,8 @@ test('desktop Fit options is a named popup trigger, not an unimplemented listbox
   assert.match(zoomMenuSlice, /if \(event\.key === 'Escape'\)/);
   assert.match(zoomMenuSlice, /setIsZoomMenuOpen\(false\)/);
   assert.match(zoomMenuSlice, /handleClickOutside/);
+  assert.match(zoomMenuSlice, /addEventListener\('pointerdown', handleClickOutside, true\)/);
+  assert.doesNotMatch(zoomMenuSlice, /addEventListener\('mousedown', handleClickOutside\)/);
 
   const container = read('src/components/PdfjsViewerContainer.jsx');
   assert.match(container, /Space is the global temporary-pan chord|isSpaceKey/);

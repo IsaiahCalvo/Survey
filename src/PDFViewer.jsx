@@ -8143,10 +8143,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    // Capture pointerdown: the page layer preventDefaults pointerdown, which
+    // suppresses the bubbling mousedown this menu used to wait on — so a
+    // click on the PDF never closed Fit options.
+    document.addEventListener('pointerdown', handleClickOutside, true);
     document.addEventListener('keydown', handleEscape);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('pointerdown', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [isZoomMenuOpen]);
