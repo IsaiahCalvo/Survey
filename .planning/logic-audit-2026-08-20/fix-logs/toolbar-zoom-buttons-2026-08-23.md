@@ -25,15 +25,15 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `debug/scenarios/e2e-toolbar-zoom-buttons.spec.mjs` + hunt `e2e-after-exclusive-layer-independent-hunt.spec.mjs`. Focused Node `toolbarZoomButtons` + leftover18.
+Playwright `e2e-toolbar-zoom-buttons.spec.mjs` **2 / 2 (13.6s)** + hunt `e2e-after-exclusive-layer-independent-hunt.spec.mjs` **1 / 1 (8.1s)** on Playwright Vite `http://127.0.0.1:5173` (**3 / 3 (15.0s)**). Focused Node `toolbarZoomButtons` + leftover18 **15 / 15**.
 
 | Slice | Intended / break / edge |
 |---|---|
-| Intended desktop | `?testPdf=clickable-link-test.pdf` 1400×900. Zoom in click raises %; leaves Fit page (`data-active=false`); Zoom out lowers. viewBox **`0 0 612 792`**. `file.id` null. |
-| Break desktop | Floor extra Zoom out no-op; 4000% Zoom in clamps; Zoom % INPUT focused still applies the **click** (keyboard Ctrl+= is stolen); hubPreview Zoom in/out **0**. Hidden tools **0**. |
+| Intended desktop | `?testPdf=clickable-link-test.pdf` 1400×900. Fit page **100%** → Zoom in **125%** (1.25 step); leaves Fit page; Zoom out lowers. viewBox **`0 0 612 792`**. `file.id` null. Rect `3c4e4568-…`. |
+| Break desktop | Floor extra Zoom out stays **100%**; 4000% Zoom in clamps; Zoom % INPUT focused still applies the **click**; hubPreview Zoom in/out **0**. Hidden tools **0**. |
 | Edge desktop | Page-1 rect survives; Pen-armed Zoom in invents **0**; 120-page Zoom in stays page **1**. Overlay lists keyboard Zoom in, not a rail-click row. |
-| Edge 390 | More document options → Zoom in grows pageW; Zoom out shrinks. Rail Zoom in **0** until More. viewBox **`0 0 612 792`**. |
-| Hunt | Goes beyond `e2e-after-select-caret-independent-hunt`: Zoom ± counts, 390 More, hub Copy-to-Spaces, form widgets, right-rail width. |
+| Edge 390 | More document options → Zoom in **318→398**; Zoom out shrinks. Rail Zoom in **0** until More. viewBox **`0 0 612 792`**. |
+| Hunt | Zoom in/out **1**; 390 More **1** then Zoom in **1**; hub Copy-to-Spaces **0**; right rail **48** (`Expand Survey panel` observed, not this leftover); kal441 Forms create **0**. |
 
 Product edit: none. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. High-risk files not edited; official `npm test` not required this pass. Cap **8448** / 75/250 not loosened. Isolated 8448 standing. `graphify` CLI checked.
 
