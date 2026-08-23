@@ -256,34 +256,62 @@ async function liveErasePreviewInfo(page) {
   });
 }
 
+async function setEraserType(page, label) {
+  const typeBtn = page.getByRole('button', { name: 'Eraser type', exact: true });
+  await expect(typeBtn).toBeVisible({ timeout: 8_000 });
+  const current = (await typeBtn.innerText()).replace(/\s+/g, ' ').trim();
+  if (current.includes(label)) return;
+  await typeBtn.click();
+  const pop = page.locator('[data-annotation-dropdown-popover="true"]');
+  await expect(pop).toBeVisible({ timeout: 5_000 });
+  await pop.getByRole('option', { name: label, exact: true }).click();
+  await expect(pop).toHaveCount(0);
+  await expect.poll(async () => (
+    (await typeBtn.innerText()).replace(/\s+/g, ' ').trim()
+  ), { message: `Eraser type must read ${label}` }).toContain(label);
+}
+
+async function setMobileEraserMode(page, label) {
+  const modeBtn = page.getByRole('button', { name: /Eraser mode:/ });
+  await expect(modeBtn).toBeVisible({ timeout: 8_000 });
+  const current = await modeBtn.getAttribute('aria-label') || '';
+  if (current.includes(label)) return;
+  await modeBtn.click();
+  const list = page.getByRole('listbox', { name: 'Eraser mode' });
+  await expect(list).toBeVisible({ timeout: 5_000 });
+  await list.getByRole('option', { name: label, exact: true }).click();
+  await expect(list).toHaveCount(0);
+}
+
 async function activateEraser(page, { mode = 'partial' } = {}) {
-  await activateTool(page, 'Draw', mode === 'entire' ? 'Full stroke erase' : 'Partial erase');
+  const wrapper = page.locator('[data-diag-eraser-wrapper="1"]');
+  if (!(await wrapper.isVisible().catch(() => false))) {
+    const named = [
+      page.getByRole('button', { name: 'Eraser', exact: true }),
+      page.getByRole('button', { name: 'Partial erase', exact: true }),
+      page.getByRole('button', { name: 'Full stroke erase', exact: true }),
+    ];
+    let armed = false;
+    for (const buttons of named) {
+      const count = await buttons.count();
+      for (let i = 0; i < count; i += 1) {
+        if (await buttons.nth(i).isVisible().catch(() => false)) {
+          await buttons.nth(i).click();
+          armed = true;
+          break;
+        }
+      }
+      if (armed) break;
+    }
+    if (!armed) await activateTool(page, 'Draw', 'Eraser');
+  }
   const typeBtn = page.getByRole('button', { name: 'Eraser type', exact: true });
   if (await typeBtn.isVisible().catch(() => false)) {
-    const current = (await typeBtn.innerText()).replace(/\s+/g, ' ').trim();
-    const wanted = mode === 'entire' ? 'Full stroke erase' : 'Partial erase';
-    if (!current.includes(wanted)) {
-      await typeBtn.click();
-      const pop = page.locator('[data-annotation-dropdown-popover="true"]');
-      await expect(pop).toBeVisible({ timeout: 5_000 });
-      await pop.getByRole('option', { name: wanted, exact: true }).click();
-      await expect(pop).toHaveCount(0);
-    }
+    await setEraserType(page, mode === 'entire' ? 'Full stroke erase' : 'Partial erase');
   } else {
-    const modeBtn = page.getByRole('button', { name: /Eraser mode:/ });
-    if (await modeBtn.isVisible().catch(() => false)) {
-      const wanted = mode === 'entire' ? 'Full Stroke' : 'Partial Erase';
-      const label = await modeBtn.getAttribute('aria-label') || '';
-      if (!label.includes(wanted)) {
-        await modeBtn.click();
-        const list = page.getByRole('listbox', { name: 'Eraser mode' });
-        await expect(list).toBeVisible({ timeout: 5_000 });
-        await list.getByRole('option', { name: wanted, exact: true }).click();
-        await expect(list).toHaveCount(0);
-      }
-    }
+    await setMobileEraserMode(page, mode === 'entire' ? 'Full Stroke' : 'Partial Erase');
   }
-  await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toBeVisible({ timeout: 8_000 });
+  await expect(wrapper).toBeVisible({ timeout: 8_000 });
 }
 
 async function setEraserSize(page, raw) {
