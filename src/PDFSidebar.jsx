@@ -458,7 +458,7 @@ const PDFSidebar = React.forwardRef(({
                       }));
                       return;
                     }
-                    setActiveTab(tab.id);
+                    openPanel(tab.id);
                   }}
                   style={{
                     flex: '1 1 0',
@@ -723,8 +723,7 @@ const PDFSidebar = React.forwardRef(({
                     }));
                     return;
                   }
-                  setIsCollapsed(false);
-                  setActiveTab(tab.id);
+                  openPanel(tab.id);
                 }}
                 style={{
                   background: 'transparent',
