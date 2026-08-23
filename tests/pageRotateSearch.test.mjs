@@ -40,7 +40,7 @@ test('CW rewrite peeks swapped 792×612; search overlay fills the live host', as
   assert.match(layer, /viewBox=\{`0 0 \$\{width\} \$\{height\}`\}/);
   assert.match(layer, /width: fillContainer \? '100%' : `\$\{layerWidth\}px`/);
   assert.match(layer, /height: fillContainer \? '100%' : `\$\{layerHeight\}px`/);
-  assert.match(layer, /closest\?\('\.survey-pdfjs-page-div'\)/);
+  assert.match(layer, /closest\?\.?\('\.survey-pdfjs-page-div'\)/);
   assert.match(layer, /pointerEvents: 'none'/);
 
   const viewer = read('src/PDFViewer.jsx');
