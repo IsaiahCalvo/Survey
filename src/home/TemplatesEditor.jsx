@@ -3191,11 +3191,14 @@ export default function TemplatesEditor({
         >
           <div
             className="templates-module-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="templates-module-edit-title"
             onClick={(e) => e.stopPropagation()}
             style={{ width: 400, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#181c24', border: '1px solid #2a3140', borderRadius: 10 }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid #2a3140', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: '#f4f1ea', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
+              <h3 id="templates-module-edit-title" style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0.025em', flex: 'none', color: '#f4f1ea', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>Edit modules</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0d0f14', border: '1px solid #2a3140', borderRadius: 6, padding: '4px 8px', height: 26, boxSizing: 'border-box', flex: 1, maxWidth: 220 }}>
                 <Icon name="search" size={12} color="#8d96a6" />
                 <input
