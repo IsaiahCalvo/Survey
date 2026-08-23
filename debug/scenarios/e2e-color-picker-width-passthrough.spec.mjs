@@ -143,9 +143,14 @@ test('desktop hex then Width / Style receive the dismiss click', async ({ page }
   await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.40);
   await expect(page.getByRole('textbox', { name: 'Hex color', exact: true })).toHaveCount(0);
   expect(await userInkCount(page)).toBe(before);
+  // DismissBarrier keeps a same-gesture click blocker briefly after outside
+  // pointerdown. Wait it out before the next chrome click.
+  await page.waitForTimeout(1000);
 
-  // Break — color swatch is not passthrough: one click closes, does not reopen.
+  // Break — color swatch is not passthrough: the same click that dismisses
+  // does not toggle the picker back open.
   await openColorPicker(page);
+  await expect(page.getByRole('textbox', { name: 'Hex color', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Color', exact: true }).first().click();
   await expect(page.getByRole('textbox', { name: 'Hex color', exact: true })).toHaveCount(0);
 
@@ -166,9 +171,14 @@ test('color picker Width passthrough edge: 390 takeover + hub + testPdf', async 
   const mobileSwatch = page.getByRole('button', { name: 'Stroke color', exact: true }).first();
   if (await mobileSwatch.isVisible().catch(() => false)) {
     await mobileSwatch.click();
+    const openPicker = page.getByRole('button', { name: 'Open stroke color picker', exact: true });
+    await expect(openPicker).toBeVisible({ timeout: 8_000 });
+    await openPicker.click();
     const hex = page.getByRole('textbox', { name: 'Hex color', exact: true });
     await expect(hex).toBeVisible({ timeout: 8_000 });
     await hex.fill('0000FF');
+    // 390 uses a modal takeover + backdrop. The first Width tap closes the
+    // picker; presets must not open on that same gesture.
     const width = page.getByRole('button', { name: 'Width presets', exact: true }).first();
     if (await width.isVisible().catch(() => false)) {
       await width.click();
