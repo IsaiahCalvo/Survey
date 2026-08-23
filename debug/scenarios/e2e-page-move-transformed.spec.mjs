@@ -137,7 +137,7 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
         type: String(object.type || data.type || '').toLowerCase(),
         tool: String(data.tool || object.tool || data.type || '').toLowerCase(),
         imported: object.isPdfImported === true,
-        pageNumber: Number(object.pageNumber ?? data.pageNumber ?? pageNum || 0),
+        pageNumber: Number(object.pageNumber ?? data.pageNumber ?? pageNum ?? 0),
         left,
         top,
         width,
