@@ -31,13 +31,13 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-templates-module-edit-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-templates-module-edit-independent-hunt.spec.mjs` **1 / 1** (**3 / 3**, 7.8s) on Playwright Vite `http://127.0.0.1:5173`. Focused Node `templatesModuleEditDialogName` + hunt + leftover18 **17 / 17**.
+Playwright `e2e-templates-module-edit-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-templates-module-edit-independent-hunt.spec.mjs` **1 / 1** (**3 / 3**, 8.3s) on Playwright Vite `http://127.0.0.1:5173`. Focused Node `templatesModuleEditDialogName` + hunt + leftover18 **17 / 17**.
 
 | Slice | Intended / break / edge |
 |---|---|
-| Intended desktop | `/?hubPreview=1&tab=templates`. Security Walk-Through → Module Select opens one named **Edit modules** dialog via `aria-labelledby`. Search no-match / Done / scrim click dismiss. Move/Copy stays **disabled** (leftover-18 apply not invented). |
+| Intended desktop | `/?hubPreview=1&tab=templates`. Security Walk-Through → Module Select opens one named **Edit modules** dialog via `aria-labelledby`. Search no-match / Done dismiss. Search-owned Escape does **not** dismiss (existing search spec). Backdrop / scrim click dismiss. MEP As-Built Markup also names the dialog. Move/Copy stays **disabled** (leftover-18 apply not invented). |
 | Break | Idle named Edit modules **0**. Empty hub Module Select **0**. Guest Sign in; named Edit modules **0** (Auth overlay leftover-18 A-01 not submitted). Hidden tools **0**. Start trial / Turnstile **0**. `file.id` null. Isolated 8448 standing. |
-| Edge | 390 mobile row → Modules Select names the dialog (host **1**). Idle `?testPdf=` Edit modules **0**. Access / Shortcuts stay named when opened as contrast; not replayed. Keep-mount stays inert. viewBox **`0 0 612 792`**. |
+| Edge | 390 mobile row → Modules Select names the dialog (host **1**). Idle `?testPdf=` Edit modules **0**. Shortcuts `?` still named. Documents More → Share still names **Document Access**. Keep-mount stays inert. viewBox **`0 0 612 792`**. |
 | Lease | Process auto-login / service-role **absent**. No lease token. `file.id` not invented. |
 
 No high-risk file edit. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` 8448 / 75/250 not loosened. Isolated 8448 standing. `graphify` CLI absent.
@@ -46,7 +46,7 @@ No high-risk file edit. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric 
 
 Still **18** fail-closed local + **18** host-gated. Next live host remains **X-01** (coordinator lease via `scripts/test-account-lease.mjs` + real saved `file.id`). Do **not** re-claim unblocked GAP = 0.
 
-PromptModal remains lock-gated leftover-18 / X-01. NewColumnsModal is still unnamed in source but was not opened (Excel / X-06). Hunt after the name: idle editor unnamed text+checkbox remain Forms / X-05; Manage Team button is compile-visible on Projects but Activity dialog was **0** (A-06 roster adjacent — not taken). Goal stays open.
+PromptModal remains lock-gated leftover-18 / X-01. NewColumnsModal is still unnamed in source but was not opened (Excel / X-06). Hunt after the name: idle editor unnamed text+checkbox remain Forms / X-05; Manage Team / Invite User already named; Activity card is `role="dialog"` with a visible **Activity** heading but no `aria-labelledby` (A-06 roster adjacent — not taken; not leftover-18 list). Close preview is already labelled. Goal stays open.
 
 ## Files
 
