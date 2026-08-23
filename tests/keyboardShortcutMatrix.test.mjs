@@ -24,7 +24,10 @@ test('overlay catalogs tools/Esc/search and omits Delete/Duplicate/z-order', () 
 test('AppShell hides overlay on viewer; DevTestRoute remounts it; z-order/Delete/tool keys stay live', () => {
   const shell = read('src/AppShell.jsx');
   assert.match(shell, /KeyboardShortcutsOverlay only renders on the home tab/);
-  assert.match(shell, /!isViewerVisible && <KeyboardShortcutsOverlay/);
+  assert.match(shell, /isDevTestPdfRoute/);
+  assert.match(shell, /has\('testPdf'\)/);
+  assert.match(shell, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
+  assert.doesNotMatch(shell, /!isViewerVisible && <KeyboardShortcutsOverlay \/>/);
 
   const dev = read('src/DevTestRoute.jsx');
   assert.match(dev, /<KeyboardShortcutsOverlay \/>/);

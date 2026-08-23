@@ -28,7 +28,10 @@ test('mobile viewer More / history / sync / dock are distinct 390 hit targets', 
   assert.match(shell, /window\.matchMedia\('\(max-width: 720px\)'\)/);
   assert.match(shell, /isMobileViewer \? \(\s*<MobilePdfViewerHeader/);
   assert.match(shell, /KeyboardShortcutsOverlay only renders on the home tab/);
-  assert.match(shell, /!isViewerVisible && <KeyboardShortcutsOverlay/);
+  assert.match(shell, /isDevTestPdfRoute/);
+  assert.match(shell, /has\('testPdf'\)/);
+  assert.match(shell, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
+  assert.doesNotMatch(shell, /!isViewerVisible && <KeyboardShortcutsOverlay \/>/);
 
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /commitPageInput\(e\.target\?\.value\)/);

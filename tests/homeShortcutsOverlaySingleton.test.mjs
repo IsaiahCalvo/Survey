@@ -21,6 +21,14 @@ test('AppShell skips the Home overlay when DevTestRoute already remounts one', (
   assert.match(official, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
   assert.match(official, /has\\\('testPdf'\\\)/);
 
+  // Leftover official files after `afac0655` still required the pre-gate mount.
+  const matrix = read('tests/keyboardShortcutMatrix.test.mjs');
+  assert.match(matrix, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
+  assert.match(matrix, /doesNotMatch\(shell, \/!isViewerVisible && <KeyboardShortcutsOverlay/);
+  const mobile = read('tests/mobileChromeHitTargets.test.mjs');
+  assert.match(mobile, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
+  assert.match(mobile, /doesNotMatch\(shell, \/!isViewerVisible && <KeyboardShortcutsOverlay/);
+
   const dev = read('src/DevTestRoute.jsx');
   assert.match(dev, /<KeyboardShortcutsOverlay \/>/);
   assert.doesNotMatch(dev, /file\.id\s*=/);
