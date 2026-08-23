@@ -8,7 +8,7 @@ import {
   rotateDisplayedPoint,
   transformPageState,
 } from '../src/utils/pageAnnotationReindex.js';
-import { displayedBoxOrigin, displayedAngle, placeRotationHandle, clampHandleToPage, getHandlePositions, separateRotationHandle } from '../src/utils/svgBoundingBox.js';
+import { displayedBoxOrigin, displayedAngle, placeRotationHandle, clampHandleToPage, getHandlePositions, separateRotationHandle, getAnnotationBBox } from '../src/utils/svgBoundingBox.js';
 
 // Source contracts for selected bbox resize / mtr on a remapped page
 // after CW rotate (viewBox 0 0 792 612, angle 90). Distinct from
@@ -82,6 +82,20 @@ test('displayedBoxOrigin prefers remapped data.left when Fabric left is 0', () =
     top: 205.9,
   });
   assert.deepEqual(displayedBoxOrigin({ left: 0, top: 0, data: {} }), { left: 0, top: 0 });
+});
+
+test('displayedBoxOrigin prefers remapped data when Fabric origin is a 180deg flip', () => {
+  // Live remapped-page mtr 90→180 rewrote Fabric left/top around (0,0):
+  // 648.17 / −8.41 → −648.17 / 8.41. Overlay rotate(180, −580, 85) then
+  // parked the stem at screen x≈−516. Keep the remapped origin.
+  assert.deepEqual(displayedBoxOrigin({
+    left: -648.17,
+    top: 8.41,
+    data: { left: 648.17, top: -8.41 },
+  }), {
+    left: 648.17,
+    top: -8.41,
+  });
 });
 
 test('displayedAngle prefers remapped data.angle when Fabric angle is 0', () => {
@@ -183,6 +197,31 @@ test('placeRotationHandle at 180deg keeps world mtr on the 612 page without flip
   assert.ok(world.y >= 16 - 1e-6 && world.y <= 612 - 16 + 1e-6, 'clamped 180deg mtr y on-page');
   assert.ok(world.y > cy + 4, 'clamped 180deg mtr must stay on the +y ray — no flip');
   assert.ok(Math.abs(world.x - cx) < 1, 'clamped 180deg mtr must not leave the 180deg ray');
+
+  const flipped = getAnnotationBBox({
+    type: 'rect',
+    left: -648.17,
+    top: 8.41,
+    width: 135.42,
+    height: 152.24,
+    scaleX: 1,
+    scaleY: 1,
+    angle: 180,
+    data: { left: 648.17, top: -8.41, angle: 180 },
+  });
+  assert.ok(Math.abs(flipped.left - 648.17) < 1e-6, 'bbox origin must use remapped data, not the 180deg Fabric flip');
+  assert.ok(Math.abs(flipped.top - (-8.41)) < 1e-6);
+  const flippedPlaced = placeRotationHandle(flipped, {
+    padding: 2,
+    rotationOffset: 36,
+    pageWidth: 792,
+    pageHeight: 612,
+    inset: 16,
+  });
+  const flippedWorld = worldOf(flippedPlaced, flipped);
+  assert.ok(flippedWorld.x >= 16 && flippedWorld.x <= 776, 'flipped-origin 180deg mtr x on-page');
+  assert.ok(flippedWorld.y >= 16 && flippedWorld.y <= 596, 'flipped-origin 180deg mtr y on-page');
+  assert.ok(flippedWorld.y > (flipped.top + flipped.height / 2) + 4, 'flipped-origin stem stays on the +y ray');
 });
 
 test('separateRotationHandle keeps remapped mtr off the mt pill', () => {

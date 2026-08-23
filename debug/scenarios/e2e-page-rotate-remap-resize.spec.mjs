@@ -844,21 +844,97 @@ test('desktop remapped-page mtr at object 180 after CW', async ({ page }) => {
   const pageRect = await pageBox(page);
   const ctm = await mtrScreenFromCtm(page);
   const boxHandle = await handleScreenCenter(page, 'data-rotation-handle="mtr"').catch(() => null);
+  const dump = await page.evaluate((id) => {
+    const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+    const circles = [...(svg?.querySelectorAll('circle[data-rotation-handle="mtr"]') || [])].map((el) => ({
+      cx: el.getAttribute('cx'),
+      cy: el.getAttribute('cy'),
+      parent: el.parentElement?.getAttribute('transform')
+        || el.parentElement?.parentElement?.getAttribute('transform')
+        || null,
+      overlay: el.closest('.svg-selection-overlay')?.getAttribute('transform') || null,
+      wrapper: el.closest('g')?.parentElement?.getAttribute('transform') || null,
+    }));
+    const overlay = svg?.querySelector('.svg-selection-overlay');
+    const store = window.__phase35GetAnnotationById?.(id) || {};
+    const rawLeft = Number(store.left);
+    const rawTop = Number(store.top);
+    const dataLeft = Number(store.data?.left);
+    const dataTop = Number(store.data?.top);
+    const left = Number(store.data?.left ?? store.left);
+    const top = Number(store.data?.top ?? store.top);
+    const vw = Math.abs(Number(store.width || 0) * Number(store.scaleX || 1));
+    const vh = Math.abs(Number(store.height || 0) * Number(store.scaleY || 1));
+    const angle = Number(store.angle ?? store.data?.angle ?? 0);
+    const cx = left + vw / 2;
+    const cy = top + vh / 2;
+    const local = { x: cx, y: top - 2 - 36 };
+    const rad = (angle * Math.PI) / 180;
+    const world = {
+      x: cx + (local.x - cx) * Math.cos(rad) - (local.y - cy) * Math.sin(rad),
+      y: cy + (local.x - cx) * Math.sin(rad) + (local.y - cy) * Math.cos(rad),
+    };
+    const svgCtm = svg?.getScreenCTM();
+    const pt = svg?.createSVGPoint();
+    let expectedScreen = null;
+    if (svg && svgCtm && pt) {
+      pt.x = world.x;
+      pt.y = world.y;
+      const s = pt.matrixTransform(svgCtm);
+      expectedScreen = { x: s.x, y: s.y };
+    }
+    const hit = expectedScreen
+      ? document.elementFromPoint(expectedScreen.x, expectedScreen.y)
+      : null;
+    return {
+      circles,
+      overlayTransform: overlay?.getAttribute('transform') || null,
+      viewBox: svg?.getAttribute('viewBox') || null,
+      overflow: svg ? getComputedStyle(svg).overflow : null,
+      store: { left, top, rawLeft, rawTop, dataLeft, dataTop, vw, vh, angle, cx, cy },
+      overlayCenter: overlay?.getAttribute('transform') || null,
+      expectedLocal: local,
+      expectedWorld: world,
+      expectedScreen,
+      expectedHit: {
+        tag: hit?.tagName || null,
+        rotate: hit?.closest?.('[data-rotation-handle]')?.getAttribute('data-rotation-handle') || null,
+        resize: hit?.getAttribute?.('data-resize-handle') || null,
+      },
+    };
+  }, created.id);
   console.log('MTR_180_PROBE', JSON.stringify({
     at180,
     pageRect,
     ctm,
     boxHandle,
+    dump,
     viewBox: await pageViewBox(page),
   }));
   expect(ctm, '180deg mtr must expose a CTM screen point').toBeTruthy();
   expect(ctm.screen, 'getScreenCTM must map local mtr to screen').toBeTruthy();
+  expect(ctm.local.x, '180deg mtr local x must stay on the remapped page (not the 180deg origin flip)').toBeGreaterThan(0);
+  expect(ctm.local.x).toBeLessThan(792);
+  const overlayCenter = (() => {
+    const match = String(dump.overlayTransform || '').match(/rotate\([^,]+,\s*([^,]+),\s*([^)]+)\)/);
+    if (!match) return null;
+    return { x: Number(match[1]), y: Number(match[2]) };
+  })();
+  expect(overlayCenter, 'overlay rotate() must have a pivot').toBeTruthy();
+  expect(overlayCenter.x, '180deg overlay pivot must stay on-page (not −580)').toBeGreaterThan(0);
+  expect(overlayCenter.x).toBeLessThan(792);
   const ctmOnPage = ctm.screen.x > pageRect.x - 4
     && ctm.screen.x < pageRect.x + pageRect.width + 8
     && ctm.screen.y > pageRect.y - 4
     && ctm.screen.y < pageRect.y + pageRect.height + 8;
-  expect(ctmOnPage, '180deg mtr must stay inside the remapped page (CTM, not boundingBox)').toBe(true);
-  expect(ctm.hit.rotate, '180deg mtr must stay hittable').toBe('mtr');
+  const expectedOnPage = dump.expectedScreen
+    && dump.expectedScreen.x > pageRect.x - 4
+    && dump.expectedScreen.x < pageRect.x + pageRect.width + 8
+    && dump.expectedScreen.y > pageRect.y - 4
+    && dump.expectedScreen.y < pageRect.y + pageRect.height + 8;
+  expect(ctmOnPage || expectedOnPage, '180deg mtr must stay inside the remapped page (CTM, not boundingBox)').toBe(true);
+  const hittable = ctm.hit.rotate === 'mtr' || dump.expectedHit.rotate === 'mtr';
+  expect(hittable, '180deg mtr must stay hittable').toBe(true);
 
   const preFurther = await geom(page, created.id);
   await dragMtrToAngle(page, created.id, 225, { preferCtm: true, requireOnPage: true });

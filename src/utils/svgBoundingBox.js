@@ -23,14 +23,22 @@ const stableSum = (...values) => {
 
 const safeMidpoint = (low, high) => stableSum(low / 2, high / 2);
 
-/** Prefer remapped data.left/top when Fabric left/top is a 0 placeholder. */
+/** Prefer remapped data.left/top when Fabric left/top is a 0 placeholder
+ *  or a 180°-around-origin flip (own ≈ −data). After remapped-page mtr
+ *  90→180 Fabric can rewrite left/top around (0,0); overlay rotate()
+ *  then parks the stem at screen x≈−516. Do not flip the stem to the
+ *  opposite side — that jumps rotate math by 180. */
 export function displayedBoxOrigin(obj) {
   const pick = (own, data) => {
     const ownN = Number(own);
     const dataN = Number(data);
-    if (Number.isFinite(dataN) && (!Number.isFinite(ownN) || (ownN === 0 && Math.abs(dataN) > 1))) {
-      return dataN;
-    }
+    const dataWinsPlaceholder = Number.isFinite(dataN)
+      && (!Number.isFinite(ownN) || (ownN === 0 && Math.abs(dataN) > 1));
+    const dataWinsOriginFlip = Number.isFinite(dataN)
+      && Number.isFinite(ownN)
+      && Math.abs(dataN) > 1
+      && Math.abs(ownN + dataN) < 1.5;
+    if (dataWinsPlaceholder || dataWinsOriginFlip) return dataN;
     return Number.isFinite(ownN) ? ownN : 0;
   };
   return {
