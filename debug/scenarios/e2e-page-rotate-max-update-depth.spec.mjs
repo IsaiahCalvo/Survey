@@ -352,11 +352,24 @@ test('single-page empty rotate invents 0 and does not exceed update depth', asyn
   await dismissChrome(page);
   expect((await userOwned(page, 1)).length, 'fresh single-page invents 0').toBe(0);
   expect(hits, 'single-page load must not trip max update depth').toEqual([]);
+  expect(await pageViewBox(page, 1)).toBe('0 0 612 792');
+
+  const beforeBox = await pageViewBox(page, 1);
+  await openPageMenu(page, 1);
+  await page.keyboard.press('Escape');
+  await expect(pagesMenu(page)).toHaveCount(0, { timeout: 8_000 });
+  await closeDocumentPanel(page);
+  expect(await pageViewBox(page, 1), 'cancel rotate keeps viewBox').toBe(beforeBox);
+  expect((await userOwned(page, 1)).length, 'cancel rotate invents 0').toBe(0);
+  expect(hits, 'cancel must not trip max update depth').toEqual([]);
 
   await rotatePage(page, 1);
   await dismissChrome(page);
   expect((await userOwned(page, 1)).length, 'empty rotate invents 0').toBe(0);
-  expect(await pageViewBox(page, 1)).toBe('0 0 792 612');
+  await expect.poll(async () => pageViewBox(page, 1), {
+    timeout: 20_000,
+    message: 'empty CW must swap single-page viewBox',
+  }).toBe('0 0 792 612');
   expect(hits, 'empty single-page rotate must not trip max update depth').toEqual([]);
   expect(await fileId(page)).toBeNull();
 });

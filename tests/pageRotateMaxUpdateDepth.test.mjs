@@ -39,6 +39,7 @@ test('live spec traps max-update-depth on 120-page rotate + single-page break + 
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /Maximum update depth exceeded/);
   assert.match(spec, /empty rotate invents 0/);
+  assert.match(spec, /cancel rotate invents 0/);
   assert.match(spec, /390/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
