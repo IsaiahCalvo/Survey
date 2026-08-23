@@ -39,7 +39,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-create-bookmark-group-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-create-bookmark-group-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3**. Focused Node `createBookmarkGroupDialogName` + hunt + leftover18 **17 / 17**.
+Playwright `e2e-create-bookmark-group-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-create-bookmark-group-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3 (10.1s)** on Playwright Vite `http://127.0.0.1:5340`. Focused Node `createBookmarkGroupDialogName` + hunt + leftover18 **17 / 17**. Live spec does not count `dialog` named Activity (leftover18 Node contract); hunt still checks `/activity/i` after Manage Team without opening Activity.
 
 | Slice | Intended / break / edge |
 |---|---|

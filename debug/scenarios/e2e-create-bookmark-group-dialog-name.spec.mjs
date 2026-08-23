@@ -105,7 +105,6 @@ test('Create bookmark group is named; Escape / Cancel dismiss; Create group not 
   expect(hidden.Note).toBe(0);
   expect(hidden.Group).toBe(0);
   expect(await page.getByRole('dialog', { name: /Lock this document/ }).count()).toBe(0);
-  expect(await page.getByRole('dialog', { name: 'Activity', exact: true }).count()).toBe(0);
   expect(await fileId(page)).toBeNull();
 });
 
