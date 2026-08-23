@@ -1631,6 +1631,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 {isSelect && selectModeMenuOpen && createPortal(
                   <div
                     data-select-mode-menu="true"
+                    role="menu"
+                    aria-label="Selection Mode"
                     style={{
                       position: 'fixed',
                       top: `${selectModeMenuAnchor.top}px`,
@@ -1689,6 +1691,8 @@ export default function App({ devPreviewReturnTab = null }) {
                       return (
                         <button
                           key={opt.tool}
+                          type="button"
+                          role="menuitem"
                           onClick={(e) => {
                             e.stopPropagation();
                             bottomToolbarApi.setActiveTool(opt.tool);
