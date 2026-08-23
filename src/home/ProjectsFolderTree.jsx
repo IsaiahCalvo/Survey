@@ -1982,6 +1982,7 @@ export default function ProjectsFolderTree({
             trigger={fileMenu.trigger}
             onClose={() => setFileMenu(null)}
             minWidth={168}
+            ariaLabel={`${f.name || 'Document'} actions`}
             items={[
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
