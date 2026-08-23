@@ -183,6 +183,7 @@ test('History restore after remap ink uses live activity Restore; no file.id sta
   assert.match(spec, /before-rotate checkpoint keeps portrait viewBox/);
   assert.match(spec, /page rotate must keep the live ink/);
   assert.match(spec, /after-rotate Restore must keep remapped centerline/);
+  assert.match(spec, /after-rotate Restore must keep remapped path commands/);
   assert.match(spec, /after-rotate Restore must not rewind to pre-rotate centerline/);
   assert.match(spec, /after-rotate Restore must keep swapped viewBox/);
   assert.match(spec, /after-rotate Restore must not invent extra ids/);

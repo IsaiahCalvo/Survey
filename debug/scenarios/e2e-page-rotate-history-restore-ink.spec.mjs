@@ -535,6 +535,7 @@ test('desktop History restore after page CW remaps ink intended + break + edge',
     restoredAfter,
   }));
   expect(restoredAfter.dataLeft, 'Restore must not invent data.left').toBeNull();
+  expect(restoredAfter.path0, 'after-rotate Restore must keep remapped path commands').toEqual(remapped.path0);
   expect(Math.abs(restoredAfter.clx - remapped.clx), 'after-rotate Restore must keep remapped centerline').toBeLessThan(8);
   expect(Math.abs(restoredAfter.cly - remapped.cly)).toBeLessThan(8);
   // Page-space ink left 0 is normal. A restore that only localizes Fabric
