@@ -2419,6 +2419,7 @@ export default function TemplatesEditor({
               </div>
               <div style={{ padding: '6px 8px 4px', display: 'flex', alignItems: 'center', gap: 2, height: 28, flexWrap: 'nowrap', flex: 'none' }}>
               <button
+                type="button"
                 onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
                 style={{ ...miniSelectButtonStyle({ color: 'var(--accent)' }), padding: '0 4px 0 0', flex: 'none' }}
               >
@@ -2956,6 +2957,7 @@ export default function TemplatesEditor({
                 </div>
                 <div className="templates-mobile-select-inline">
                   <button
+                    type="button"
                     style={selectLinkStyle}
                     onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
                   >
