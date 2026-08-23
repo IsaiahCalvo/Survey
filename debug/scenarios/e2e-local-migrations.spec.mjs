@@ -41,7 +41,7 @@ async function openSettings(page) {
         await trigger.click({ timeout: 8_000, force: true });
       }
       await menu.waitFor({ state: 'visible', timeout: 4_000 });
-      await menu.getByRole('button', { name: 'Settings', exact: true }).click({ timeout: 4_000 });
+      await menu.getByRole('menuitem', { name: 'Settings', exact: true }).click({ timeout: 4_000 });
       return true;
     } catch {
       if (await menu.count()) {

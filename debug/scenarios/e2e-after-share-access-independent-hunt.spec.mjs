@@ -171,7 +171,7 @@ test('independent hunt after Documents Share Access', async ({ page }) => {
   await page.goto(`${HUB}&tab=documents`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await page.getByRole('button', { name: 'Open account menu' }).click();
   inventory.account.menu = await visibleNames(page.getByRole('menu', { name: 'Account menu' }).locator('button'));
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const dialog = page.locator('.account-settings-modal');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   inventory.settings.tabs = await visibleNames(dialog.locator('.account-sidebar-btn'));

@@ -13,7 +13,7 @@ async function openSettings(page) {
   await page.goto(HUB);
   await expect(page.getByRole('button', { name: 'Open account menu' })).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Open account menu' }).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings' }).click();
   const dialog = page.locator('.account-settings-modal');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   return dialog;
@@ -118,7 +118,7 @@ test('edge: profile-menu Sign out toasts and stays signed in', async ({ page }) 
   await page.goto(HUB);
   await expect(page.getByRole('button', { name: 'Open account menu' })).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Open account menu' }).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Sign out' }).click();
   await page.locator('.profile-signout-confirm .danger').click();
 
   await expect(page.getByRole('status')).toContainText(/Preview cannot sign out/i);

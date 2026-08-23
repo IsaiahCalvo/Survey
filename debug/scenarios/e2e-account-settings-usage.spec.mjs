@@ -35,7 +35,7 @@ async function openSettingsFromHub(page, { width = 1440, height = 900, url = HUB
     : accountChip(page);
   await expect(chip).toBeVisible({ timeout: 15_000 });
   await chip.click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const dialog = settingsDialog(page);
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   return dialog;
@@ -72,7 +72,7 @@ test('Account Settings Usage local empty chrome intended / break / edge', async 
   await openPage(page, { url: HUB_EMPTY });
   await expect(page.getByText('No documents yet').first()).toBeVisible({ timeout: 15_000 });
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const emptyDialog = settingsDialog(page);
   await expect(emptyDialog).toBeVisible({ timeout: 15_000 });
   await openUsageTab(emptyDialog);
@@ -117,7 +117,7 @@ test('Account Settings Usage local empty chrome intended / break / edge', async 
   await expect(page.getByText('Package 2 — Rev 4 — IC.pdf').first()).toBeVisible();
 
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(settingsDialog(page).locator('.account-sidebar-btn.active')).toHaveText('General');
   await expect(settingsDialog(page).getByText('0 B / 100.0 GB')).toHaveCount(0);
   await settingsDialog(page).locator('.account-settings-close').click();
@@ -134,7 +134,7 @@ test('Account Settings Usage local empty chrome intended / break / edge', async 
   await page.locator('.tab-bar').getByText('Home', { exact: true }).click();
   await expect(accountChip(page)).toBeVisible({ timeout: 30_000 });
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const testPdfDialog = settingsDialog(page);
   await expect(testPdfDialog).toBeVisible({ timeout: 15_000 });
   await expect(testPdfDialog.getByText('Isaiah')).toHaveCount(0);

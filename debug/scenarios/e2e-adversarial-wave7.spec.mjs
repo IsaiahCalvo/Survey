@@ -158,7 +158,7 @@ test('HubPreview delete-account wrong confirm then DELETE stays fail-closed', as
   await page.goto(HUB);
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Open account menu' }).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings' }).click();
   const dialog = page.locator('.account-settings-modal');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
 

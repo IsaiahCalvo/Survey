@@ -97,7 +97,7 @@ async function openSettingsFromHub(page, { width = 1440, height = 900, url = HUB
     : accountChip(page);
   await expect(chip).toBeVisible({ timeout: 15_000 });
   await chip.click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const dialog = settingsDialog(page);
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   return dialog;
@@ -201,7 +201,7 @@ test('Account Settings Connect fail-closed intended / break / edge', async ({ pa
   await expect(page.getByText(OWNER).first()).toBeVisible();
 
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(settingsDialog(page).locator('.account-sidebar-btn.active')).toHaveText('General');
   await expect(settingsDialog(page).locator('.account-error')).toHaveCount(0);
   await settingsDialog(page).locator('.account-settings-close').click();
@@ -234,7 +234,7 @@ test('Account Settings Connect fail-closed intended / break / edge', async ({ pa
   await page.locator('.tab-bar').getByText('Home', { exact: true }).click();
   await expect(accountChip(page)).toBeVisible({ timeout: 30_000 });
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const testPdfDialog = settingsDialog(page);
   await expect(testPdfDialog).toBeVisible({ timeout: 15_000 });
   await expect(testPdfDialog.getByText('Isaiah')).toHaveCount(0);

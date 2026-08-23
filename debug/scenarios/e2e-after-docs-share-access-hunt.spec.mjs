@@ -69,7 +69,7 @@ test('independent hunt after Documents Share / Document Access', async ({ page }
   await page.getByRole('button', { name: 'Close preview' }).click();
 
   await page.getByRole('button', { name: 'Open account menu' }).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const dialog = page.locator('.account-settings-modal');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   inventory.settings.tabs = await visibleNames(dialog.locator('.account-sidebar-btn'));

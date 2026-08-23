@@ -24,7 +24,7 @@ async function goHomeFromTestPdf(page) {
 async function openSettings(page) {
   await goHomeFromTestPdf(page);
   await page.getByRole('button', { name: 'Open account menu' }).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings' }).click();
   const dialog = page.locator('.account-settings-modal');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   return dialog;
@@ -109,7 +109,7 @@ test('break: Settings Sign out double-click stays fail-closed', async ({ page })
 test('edge: profile-menu Sign out toasts and stays signed in', async ({ page }) => {
   await goHomeFromTestPdf(page);
   await page.getByRole('button', { name: 'Open account menu' }).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Sign out' }).click();
   await page.locator('.profile-signout-confirm .danger').click();
 
   await expect(page.getByRole('status', { name: 'Dismiss' })).toContainText(/Test PDF cannot sign out/i);

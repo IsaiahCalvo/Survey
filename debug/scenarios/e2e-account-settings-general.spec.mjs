@@ -32,7 +32,7 @@ async function openSettingsFromHub(page, { width = 1440, height = 900, url = HUB
     : accountChip(page);
   await expect(chip).toBeVisible({ timeout: 15_000 });
   await chip.click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const dialog = settingsDialog(page);
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -180,7 +180,7 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
   await expect(page.getByText('Package 2 — Rev 4 — IC.pdf').first()).toBeVisible();
 
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(settingsDialog(page)).toBeVisible({ timeout: 15_000 });
   await expect(settingsDialog(page).locator('.account-sidebar-btn.active')).toHaveText('General');
   await settingsDialog(page).getByRole('button', { name: 'Subscription', exact: true }).click();
@@ -188,7 +188,7 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
   await expect(settingsDialog(page)).toHaveCount(0);
 
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(settingsDialog(page).locator('.account-sidebar-btn.active')).toHaveText('General');
   await page.locator('.account-settings-overlay').click({ position: { x: 8, y: 8 } });
   await expect(settingsDialog(page)).toHaveCount(0);
@@ -208,7 +208,7 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
   await page.locator('.tab-bar').getByText('Home', { exact: true }).click();
   await expect(accountChip(page)).toBeVisible({ timeout: 30_000 });
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const testPdfDialog = settingsDialog(page);
   await expect(testPdfDialog).toBeVisible({ timeout: 15_000 });
   await expect(testPdfDialog.locator('.account-sidebar-btn.active')).toHaveText('General');

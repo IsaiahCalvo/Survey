@@ -277,6 +277,8 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
             <div className="profile-menu-actions" style={{ padding: 4 }}>
               {showArchive && (
                 <button
+                  type="button"
+                  role="menuitem"
                   className={tab === 'archive' ? 'active' : ''}
                   style={{ ...itemStyle, color: tab === 'archive' ? 'var(--gold)' : itemStyle.color }}
                   onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
@@ -284,7 +286,12 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                   <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
                 </button>
               )}
-              <button style={itemStyle} onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
+              <button
+                type="button"
+                role="menuitem"
+                style={itemStyle}
+                onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}
+              >
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
               {confirmSignOut ? (
@@ -296,7 +303,13 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, tab, onNav }) =>
                   </div>
                 </div>
               ) : (
-                <button className="profile-menu-signout" style={{ ...itemStyle, color: '#d95a56' }} onClick={() => setConfirmSignOut(true)}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="profile-menu-signout"
+                  style={{ ...itemStyle, color: '#d95a56' }}
+                  onClick={() => setConfirmSignOut(true)}
+                >
                   <Icon name="signout" size={15} color="#d95a56" />Sign out
                 </button>
               )}

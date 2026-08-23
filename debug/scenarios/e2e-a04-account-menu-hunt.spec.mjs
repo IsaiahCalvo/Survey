@@ -48,13 +48,13 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   await expect(menu).toBeVisible();
   const menuItems = await visibleNames(menu.locator('button, [role="menuitem"]'));
   const menuText = await menu.innerText();
-  const desktopArchiveInMenu = await menu.getByRole('button', { name: 'Archive', exact: true }).count();
-  const settingsInMenu = await menu.getByRole('button', { name: 'Settings', exact: true }).count();
-  const signOutInMenu = await menu.getByRole('button', { name: 'Sign out', exact: true }).count();
+  const desktopArchiveInMenu = await menu.getByRole('menuitem', { name: 'Archive', exact: true }).count();
+  const settingsInMenu = await menu.getByRole('menuitem', { name: 'Settings', exact: true }).count();
+  const signOutInMenu = await menu.getByRole('menuitem', { name: 'Sign out', exact: true }).count();
 
   // Local chrome: Settings opens AccountSettings (SurveyHub.setSettingsOpen).
   // HubPreview onSettings is an observer console.log — not the open path.
-  await menu.getByRole('button', { name: 'Settings', exact: true }).click();
+  await menu.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const dialog = page.locator('.account-settings-modal');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -65,7 +65,7 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
 
   // Local chrome: Sign out confirm / Cancel. Do not invent session teardown.
   await accountChip(page).click();
-  await page.getByRole('menu', { name: 'Account menu' }).getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.getByRole('menu', { name: 'Account menu' }).getByRole('menuitem', { name: 'Sign out', exact: true }).click();
   await expect(page.locator('.profile-signout-copy')).toContainText('Sign out of Survey?');
   await page.locator('.profile-signout-buttons button', { hasText: 'Cancel' }).click();
   await expect(page.locator('.profile-signout-copy')).toHaveCount(0);
@@ -112,7 +112,7 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   const testPdfMenu = page.getByRole('menu', { name: 'Account menu' });
   await expect(testPdfMenu).toBeVisible();
   const testPdfMenuItems = await visibleNames(testPdfMenu.locator('button, [role="menuitem"]'));
-  await testPdfMenu.getByRole('button', { name: 'Settings', exact: true }).click();
+  await testPdfMenu.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.account-settings-modal')).toBeVisible({ timeout: 15_000 });
   await page.locator('.account-settings-close').click();
 
@@ -125,10 +125,10 @@ test('independent hunt: classify A-04 account menu vs leftover-18', async ({ pag
   const mobileMenu = page.getByRole('menu', { name: 'Account menu' });
   await expect(mobileMenu).toBeVisible();
   const mobileMenuItems = await visibleNames(mobileMenu.locator('button, [role="menuitem"]'));
-  await expect(mobileMenu.getByRole('button', { name: 'Archive', exact: true })).toBeVisible();
-  await expect(mobileMenu.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(mobileMenu.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
-  await mobileMenu.getByRole('button', { name: 'Archive', exact: true }).click();
+  await expect(mobileMenu.getByRole('menuitem', { name: 'Archive', exact: true })).toBeVisible();
+  await expect(mobileMenu.getByRole('menuitem', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(mobileMenu.getByRole('menuitem', { name: 'Sign out', exact: true })).toBeVisible();
+  await mobileMenu.getByRole('menuitem', { name: 'Archive', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Archive' })).toBeVisible();
   await expect(page.getByRole('menu', { name: 'Account menu' })).toHaveCount(0);
 
