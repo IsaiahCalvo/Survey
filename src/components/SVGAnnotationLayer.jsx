@@ -1803,6 +1803,19 @@ const SVGAnnotationLayer = memo(({
     setCounterHandlePreview(null);
   }, [commitCounterHandlePreview, selectedIds]);
 
+  // zoomGeneration contract: an in-flight nubbin rotate must persist before
+  // the page re-lays out. pointerup already commits; pointercancel used to
+  // drop only the drag ref and leave the live preview + stored angle stale.
+  useEffect(() => {
+    if (zoomGeneration === initialZoomGenRef.current) return;
+    const drag = counterRotateDragRef.current;
+    const preview = counterHandlePreviewRef.current;
+    if (!drag || !preview) return;
+    if (preview.annotationIndex !== drag.annotationIndex) return;
+    commitCounterHandlePreview(preview);
+    counterRotateDragRef.current = null;
+  }, [zoomGeneration, commitCounterHandlePreview]);
+
   // Issue 4 flicker fix: handleRotationInputHoverChange is a child callback,
   // so its identity matters — every reference change invalidates the child's
   // useCallback chains that depend on onHoverChange. Read rotInputVisible
@@ -5231,7 +5244,19 @@ const SVGAnnotationLayer = memo(({
                   }
                 }}
                 onPointerCancel={() => {
+                  const drag = counterRotateDragRef.current;
+                  const preview = counterHandlePreviewRef.current;
                   counterRotateDragRef.current = null;
+                  // OS cancel (palm / scroll / pinch takeover): persist the
+                  // angle the user already saw. Dropping only the drag ref
+                  // left the live preview armed and the stored pointerAngle
+                  // stale — undo / zoom / isolation could not see the nub.
+                  if (drag && preview && preview.annotationIndex === drag.annotationIndex) {
+                    commitCounterHandlePreview(preview);
+                  } else {
+                    counterHandlePreviewRef.current = null;
+                    setCounterHandlePreview(null);
+                  }
                 }}
               />
             </g>

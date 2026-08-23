@@ -17,6 +17,8 @@ test('selection nubbin sits on the tip and commits pointerAngle on pointerup', (
   assert.match(layer, /const commitCounterHandlePreview = useCallback/);
   assert.match(layer, /source: 'counter:rotate-commit'/);
   assert.match(layer, /if \(preview && preview\.annotationIndex === selectedIndex\) \{\s*commitCounterHandlePreview\(preview\);/);
+  assert.match(layer, /onPointerCancel=\{\(\) => \{[\s\S]*if \(drag && preview && preview\.annotationIndex === drag\.annotationIndex\) \{\s*commitCounterHandlePreview\(preview\);/);
+  assert.match(layer, /if \(!drag \|\| !preview\) return;\s*if \(preview\.annotationIndex !== drag\.annotationIndex\) return;\s*commitCounterHandlePreview\(preview\);\s*counterRotateDragRef\.current = null;/);
   assert.match(layer, /const newAngleDeg = Math\.atan2\(py - drag\.centerY, px - drag\.centerX\) \* 180 \/ Math\.PI/);
   assert.doesNotMatch(layer, /data-handle=["']nubbin["']/);
   assert.doesNotMatch(layer, /data-handle=["']vertex-N["']/);
