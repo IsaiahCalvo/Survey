@@ -39,7 +39,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-width-picker-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-width-picker-independent-hunt.spec.mjs` **1 / 1**. Pair times recorded after the live Vite run. Focused Node `widthPickerDialogName` + hunt + leftover18. Live spec does not count `dialog` named Activity (leftover18 Node contract); hunt still checks `/activity/i` after Manage Team without opening Activity.
+Playwright `e2e-width-picker-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-width-picker-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3 (10.7s)** on Playwright Vite `http://127.0.0.1:5417`. Focused Node `widthPickerDialogName` + hunt + leftover18 **17 / 17**. Live spec does not count `dialog` named Activity (leftover18 Node contract); hunt still checks `/activity/i` after Manage Team without opening Activity.
 
 | Slice | Intended / break / edge |
 |---|---|
