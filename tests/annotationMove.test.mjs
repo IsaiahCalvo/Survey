@@ -69,6 +69,7 @@ test('live spec covers single / group-move / clamp / hollow / Pen / 390 / file.i
   assert.match(spec, /Pen drag must invent ink/);
   assert.match(spec, /Pen drag must not move A/);
   assert.match(spec, /390 single move must change A left\/top/);
+  assert.match(spec, /390 window marquee must select A\+B/);
   assert.match(spec, /390 group-move must translate A and B/);
   assert.match(spec, /390 off-page drag must clamp to page origin/);
   assert.match(spec, /viewBox/);
