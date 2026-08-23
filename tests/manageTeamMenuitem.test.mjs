@@ -47,6 +47,7 @@ test('live spec covers named menuitem actions intended + break + edge; skip left
   assert.match(spec, /getByRole\('menuitem', \{ name: 'Copy email', exact: true \}\)/);
   assert.match(spec, /getByRole\('menuitem', \{ name: 'Invite user', exact: true \}\)/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
+  assert.match(spec, /projects-mobile-folder-row/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
