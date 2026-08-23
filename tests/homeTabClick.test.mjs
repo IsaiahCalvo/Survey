@@ -18,7 +18,8 @@ test('TabBar Home is a named keyboard-activable tab; Close stays on PDF tabs', (
   assert.match(tabBar, /aria-label=\{isHome \? 'Home' : undefined\}/);
   assert.match(tabBar, /aria-selected=\{isHome \? isActive : undefined\}/);
   assert.match(tabBar, /tabIndex=\{isHome \? 0 : undefined\}/);
-  assert.match(tabBar, /if \(e\.key === 'Enter' \|\| e\.key === ' '\)/);
+  assert.match(tabBar, /if \(e\.key === 'Enter'\)/);
+  assert.match(tabBar, /Space is the global temporary-pan chord/);
   assert.match(tabBar, /onTabClick\(tab\.id\)/);
   assert.match(tabBar, /aria-label="Close tab"/);
   assert.match(tabBar, /\{!isHome && \(/);
@@ -59,7 +60,7 @@ test('live spec covers Home click intended + break + edge; skip leftover-18 and 
   assert.match(spec, /Home click does not navigate away from testPdf/);
   assert.match(spec, /Home click without returnTab does not assign hubPreview/);
   assert.match(spec, /Home keep-mounted restores the same mark/);
-  assert.match(spec, /Enter\/Space Home do not assign hubPreview/);
+  assert.match(spec, /Enter Home does not assign hubPreview/);
   assert.match(spec, /hubPreview has no Home tab/);
   assert.match(spec, /390 has no Home tab/);
   assert.match(spec, /file\.id must stay null/);

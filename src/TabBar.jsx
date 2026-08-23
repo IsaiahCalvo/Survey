@@ -138,7 +138,9 @@ function TabItem({
       onClick={() => onTabClick(tab.id)}
       onKeyDown={(e) => {
         if (!isHome) return;
-        if (e.key === 'Enter' || e.key === ' ') {
+        // Space is the global temporary-pan chord (PdfjsViewerContainer
+        // capture). Enter is the Home-tab activator.
+        if (e.key === 'Enter') {
           e.preventDefault();
           onTabClick(tab.id);
         }

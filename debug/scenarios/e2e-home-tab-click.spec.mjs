@@ -161,17 +161,13 @@ test('desktop Home tab click intended + break + edge', async ({ page }) => {
   expect(await userAnnotationIds(page, 1), 'Home round-trip invents 0').toEqual(createdIds);
   expect(await page.getByRole('button', { name: 'Close tab', exact: true }).count(), 'Close tab stays on the PDF tab').toBe(1);
 
-  // Break: Enter / Space on focused Home also leave the viewer.
+  // Break: Enter on focused Home leaves the viewer. Space stays the
+  // dedicated temporary-pan chord (e2e-spacebar-pan) — not this leftover.
   await homeTab(page).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeHidden({ timeout: 15_000 });
-  await page.locator('[data-pdf-tab-id]').first().click();
-  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 20_000 });
-  await homeTab(page).focus();
-  await page.keyboard.press(' ');
-  await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeHidden({ timeout: 15_000 });
   const afterKeys = viewerParams(page);
-  expect(afterKeys.hubPreview, 'Enter/Space Home do not assign hubPreview').toBeNull();
+  expect(afterKeys.hubPreview, 'Enter Home does not assign hubPreview').toBeNull();
   expect(afterKeys.testPdf).toBe('clickable-link-test.pdf');
 
   // Break: hubPreview has no AppShell TabBar / Home tab.

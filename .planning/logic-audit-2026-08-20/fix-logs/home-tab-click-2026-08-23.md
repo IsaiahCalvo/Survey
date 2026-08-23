@@ -6,7 +6,7 @@
 
 Unique leftover after toolbar / category-strip click-to-arm. Close tab (`e2e-tab-close`) removes the PDF tab. Open-file Home uses `returnToDevHubPreview` when `returnTab` is set. Create-path clicks then draw stay each tool's live-create spec. This leftover is desktop **Home click** on `?testPdf=` (`handleTabClick` → `setCurrentView('dashboard')`, keep `selectedPDF` mounted).
 
-**Product:** Home was a clickable `<div>` with visible text but no `role` / `tabIndex` / keyboard. Close tab already had a named button. Home now exposes `role="tab"`, `aria-label="Home"`, `aria-selected`, `tabIndex={0}`, and Enter/Space.
+**Product:** Home was a clickable `<div>` with visible text but no `role` / `tabIndex` / keyboard. Close tab already had a named button. Home now exposes `role="tab"`, `aria-label="Home"`, `aria-selected`, `tabIndex={0}`, and Enter. Space stays the dedicated temporary-pan chord.
 
 Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another X-01 parking note. Did **not** pad FEATURE-MATRIX. Did **not** write a 103-ID refresh. Did **not** replay remapped-after-CW, Ctrl+2 / Ctrl+M, rail Previous/Next, keyboard letters, toolbar click-to-arm, or Close tab. Did **not** invent measure / Note-Link / Forms / stamp.
 
@@ -39,7 +39,7 @@ Playwright `debug/scenarios/e2e-home-tab-click.spec.mjs` (desktop + 390). Focuse
 |---|---|
 | Intended click | `?testPdf=clickable-link-test.pdf` 1400×900. Home hides Draw + page layer; PDF tab + Close tab stay **1**; URL stays `testPdf`; hubPreview **null**. Rect survives Home → PDF-tab return. viewBox **`0 0 612 792`**. |
 | Break invent / Close contrast | Home has **0** Close. Round-trip invents **0**. hubPreview TabBar / Home / Draw **0**. |
-| Break keyboard | Focused Home Enter / Space hide Draw and do not assign hubPreview. |
+| Break keyboard | Focused Home Enter hides Draw and does not assign hubPreview. Space stays pan (`e2e-spacebar-pan`). |
 | Edge search fixture | `text-search-glyph-lab.pdf` Home keeps `testPdf`; `file.id` null; return keeps viewBox **`0 0 612 792`**. |
 | Edge 390 | TabBar / Home / Close **0**; Back is handleBack. viewBox **`0 0 612 792`**. `file.id` null. |
 
@@ -53,7 +53,7 @@ Still **18** fail-closed local + **18** host-gated. Next live host remains **X-0
 
 ## Files
 
-- `src/TabBar.jsx` (Home `role="tab"` + named + Enter/Space)
+- `src/TabBar.jsx` (Home `role="tab"` + named + Enter; Space stays pan)
 - `debug/scenarios/e2e-home-tab-click.spec.mjs`
 - `tests/homeTabClick.test.mjs`
 - `.planning/logic-audit-2026-08-20/E2E-STATUS.md` (this-pass only)
