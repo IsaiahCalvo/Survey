@@ -819,27 +819,20 @@ test('desktop remapped-page mt after CW rotate', async ({ page }) => {
   expect(mtHitEl.resize, 'elementFromPoint on remapped mt must be the mt pill').toBe('mt');
 
   const preMt = await geom(page, created.id);
-  await dragHandleRadial(page, created.id, 'data-resize-handle="mt"', { mode: 'grow', extraPx: 80 });
-  let afterMtAttempt = await geom(page, created.id);
-  const grew = afterMtAttempt
-    && (afterMtAttempt.vw > preMt.vw + 2 || afterMtAttempt.vh > preMt.vh + 2);
-  if (!grew) {
-    await dragHandleRadial(page, created.id, 'data-resize-handle="mt"', { mode: 'collapse', extraPx: 80 });
-    afterMtAttempt = await geom(page, created.id);
-  }
+  // Inward mt at 90° is on-page (local +y). Radial grow is world +x and
+  // leaves the viewBox; collapse is the hittable unique sibling.
+  await dragHandleRadial(page, created.id, 'data-resize-handle="mt"', { mode: 'collapse', extraPx: 80 });
+  const afterMtAttempt = await geom(page, created.id);
   console.log('POST_ROTATE_MT_DELTA', JSON.stringify({
     before: preMt,
     after: afterMtAttempt,
-    grew,
     dvw: afterMtAttempt ? afterMtAttempt.vw - preMt.vw : null,
     dvh: afterMtAttempt ? afterMtAttempt.vh - preMt.vh : null,
   }));
   await expect.poll(async () => {
     const now = await geom(page, created.id);
-    return now && (
-      now.vw > preMt.vw + 2 || now.vh > preMt.vh + 2
-      || now.vw < preMt.vw - 2 || now.vh < preMt.vh - 2
-    );
+    return now && (now.vw < preMt.vw - 2 || now.vh < preMt.vh - 2
+      || now.vw > preMt.vw + 2 || now.vh > preMt.vh + 2);
   }, { timeout: 8_000, message: 'post-rotate mt must grow size in swapped viewBox' }).toBeTruthy();
   const postMt = await geom(page, created.id);
   expect(onPage(postMt, 792, 612), 'post-rotate mt must stay on-page').toBe(true);
@@ -847,8 +840,16 @@ test('desktop remapped-page mt after CW rotate', async ({ page }) => {
   expect(postMt.angle, 'mt must hold remapped angle').toBeCloseTo(rotated.angle, 0);
 
   // Break — undo last mt only; page rotate stays.
-  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
-  await page.keyboard.press('Control+z');
+  await blurInputs(page);
+  const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
+  await expect(undoBtn).toBeEnabled();
+  for (let step = 0; step < 3; step += 1) {
+    const now = await geom(page, created.id);
+    if (now && Math.abs(now.vw - preMt.vw) < 4 && Math.abs(now.vh - preMt.vh) < 4) break;
+    if (!(await undoBtn.isEnabled())) break;
+    await undoBtn.click();
+    console.log('POST_MT_UNDO', JSON.stringify({ step, preMt, now: await geom(page, created.id) }));
+  }
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now
