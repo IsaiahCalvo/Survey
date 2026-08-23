@@ -69,7 +69,6 @@ test('live spec covers named Edit modules intended + break + edge; skip leftover
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
   assert.doesNotMatch(spec, /doDeleteForever|deleteAccount/);
   assert.doesNotMatch(spec, /setMoveModal/);
-  assert.match(spec, /Document Access/);
-  assert.match(spec, /Keyboard shortcuts/);
+  assert.doesNotMatch(spec, /openDesktopMoreShare|menuitem.*Share/);
   assert.doesNotMatch(spec, /Home `\?` must be one overlay, not two/);
 });
