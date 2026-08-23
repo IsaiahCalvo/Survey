@@ -249,11 +249,17 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="access-management-modal-title"
+          onClick={(e) => e.stopPropagation()}
+          style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 10, boxShadow: '0 24px 60px rgba(0,0,0,0.55)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}
+        >
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none', marginRight: 10 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>{labelForKind(kind)}</div>
+              <div id="access-management-modal-title" style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>{labelForKind(kind)}</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" style={{ flex: 'none', background: C.gold, color: '#15110a', border: 0, borderRadius: 6, padding: '5px 11px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Invite</button>
