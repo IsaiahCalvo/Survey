@@ -569,6 +569,53 @@ export function rotatePageSpaceCounter(obj, pageWidth, pageHeight, delta) {
   return next;
 }
 
+function isSurveyMarkerBounds(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const bounds = obj.bounds;
+  if (!bounds || typeof bounds !== 'object' || Array.isArray(bounds)) return false;
+  return ['x', 'y', 'left', 'top', 'width', 'height'].some((key) => (
+    Number.isFinite(Number(bounds[key]))
+  ));
+}
+
+function normalizeMarkerAngle(value) {
+  const raw = Number(value);
+  const base = Number.isFinite(raw) ? raw : 0;
+  return ((base % 360) + 360) % 360;
+}
+
+/**
+ * Live survey markers store geometry only in bounds {x,y,width,height,angle}.
+ * Remap the displayed visual center through the same contract as rect and
+ * add delta to bounds.angle. Do not invent Fabric left/top on the marker.
+ */
+export function rotateSurveyMarkerBounds(obj, pageWidth, pageHeight, delta) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (normalizeRotationDelta(delta) === 0) return obj;
+  if (!isSurveyMarkerBounds(obj)) return obj;
+  const bounds = obj.bounds;
+  const left = Number(bounds.x ?? bounds.left) || 0;
+  const top = Number(bounds.y ?? bounds.top) || 0;
+  const width = Number(bounds.width) || 0;
+  const height = Number(bounds.height) || 0;
+  const vw = Math.abs(width) || 0;
+  const vh = Math.abs(height) || 0;
+  const rotated = rotateDisplayedPoint(left + vw / 2, top + vh / 2, pageWidth, pageHeight, delta);
+  const nextLeft = rotated.x - vw / 2;
+  const nextTop = rotated.y - vh / 2;
+  const nextBounds = {
+    ...bounds,
+    x: nextLeft,
+    y: nextTop,
+    width,
+    height,
+    angle: normalizeMarkerAngle((Number(bounds.angle) || 0) + Number(delta || 0)),
+  };
+  if ('left' in bounds) nextBounds.left = nextLeft;
+  if ('top' in bounds) nextBounds.top = nextTop;
+  return { ...obj, bounds: nextBounds };
+}
+
 function rotateCalloutObject(obj, pageWidth, pageHeight, delta) {
   const nextSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
   let next = { ...obj };
@@ -615,6 +662,7 @@ function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
   if (isCalloutLike(obj)) return rotateCalloutObject(obj, pageWidth, pageHeight, delta);
   if (isPageSpaceInk(obj)) return rotatePageSpaceInk(obj, pageWidth, pageHeight, delta);
   if (isCounterPin(obj)) return rotatePageSpaceCounter(obj, pageWidth, pageHeight, delta);
+  if (isSurveyMarkerBounds(obj)) return rotateSurveyMarkerBounds(obj, pageWidth, pageHeight, delta);
   const next = { ...obj };
   const hasBox = ['left', 'top', 'width', 'height', 'x', 'y'].some((key) => (
     Number.isFinite(Number(obj[key]))
