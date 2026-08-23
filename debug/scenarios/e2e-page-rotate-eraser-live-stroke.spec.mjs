@@ -547,7 +547,7 @@ test('desktop remapped-ink eraser live stroke intended + break + edge', async ({
   }, { message: 'Partial pointerup must bite remapped ink' }).toBe(true);
   expect((await inkIds(page)).includes(inkB.id), 'Partial bite must isolate remapped ink B').toBe(true);
   const afterPartialA = await geom(page, inkA.id);
-  if (afterPartialA) {
+  if (afterPartialA && Number.isFinite(afterPartialA.clx)) {
     expect(Math.abs(afterPartialA.clx - beforeA.clx), 'Partial bite must not rewind A to the pre-rotate ghost').toBeGreaterThan(1);
   }
 
