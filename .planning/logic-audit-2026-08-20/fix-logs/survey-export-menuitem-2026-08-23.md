@@ -13,7 +13,7 @@ Last hunt named Spaces export **menuitem** + menu name. Did **not** take leftove
 
 Unique leftover: last hunt counted Survey export menus **0** (not opened). Desktop Excel actions was `role="menu"` of already-named menuitems with **no** `aria-label`. `getByRole('menu', { name: 'Excel actions' })` was **0** while Open linked / Update existing were visible as menuitems. 390 Export survey data was the same nameless host. Same a11y *name* class as Spaces export / Documents More / Archive Show and sort, but a new compile-visible host (`SurveySpacesRail` `.survey-marker-export-compact-menu` + `.mobile-survey-sheet-export-menu`). Distinct from leftover-18 Survey EXPORT / Push / Sync apply / Space CSV / PDF Pages apply / X-01 / Activity dialog name / Excel actions fail-closed apply / Survey/Spaces menu dismiss / Spaces export menuitem / nameless-menu hosts already proved / unnamed-dialog family already proved / remapped-after-CW / dismiss / rail-toggle.
 
-**Product:** min-viable-diff in `SurveySpacesRail.jsx` — desktop export menu `aria-label="Excel actions"` + mobile export menu `aria-label="Export survey data"`. Isolated 8448 standing. Cap **8448** / 75/250 not loosened. No high-risk file edit.
+**Product:** min-viable-diff in `SurveySpacesRail.jsx` — desktop export menu `aria-label="Excel actions"` + mobile export menu `aria-label="Export survey data"` + capture Escape dismiss (desktop `setShowExportMenu(false)` / 390 `setIsMobileExportMenuOpen(false)`). Isolated 8448 standing. Cap **8448** / 75/250 not loosened. No high-risk file edit.
 
 Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another X-01 parking note. Did **not** pad FEATURE-MATRIX. Did **not** write a 103-ID refresh. Did **not** name Activity. Did **not** click EXPORT / Open linked / Update existing / Export Excel / Sync / CSV / PDF Pages apply.
 
@@ -36,7 +36,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-survey-export-menuitem.spec.mjs` **2 / 2** + hunt `e2e-after-survey-export-menuitem-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3** on Playwright Vite (port filled after live run). Focused Node `surveyExportMenuitem` + hunt + leftover18 **17 / 17**.
+Playwright `e2e-survey-export-menuitem.spec.mjs` **2 / 2** + hunt `e2e-after-survey-export-menuitem-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3 (14.7s)** on Playwright Vite `http://127.0.0.1:5347`. Focused Node `surveyExportMenuitem` + hunt + leftover18 **17 / 17**.
 
 | Slice | Intended / break / edge |
 |---|---|
