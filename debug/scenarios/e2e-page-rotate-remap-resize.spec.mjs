@@ -360,8 +360,6 @@ async function assertHandlesNearHit(page, id) {
 }
 
 async function dragHandleRadial(page, id, attr, { mode = 'grow', extraPx = 90 } = {}) {
-  const handleEl = page.locator(`[data-svg-annotation-layer="1"] [${attr}]`).first();
-  await handleEl.scrollIntoViewIfNeeded();
   const hit = await annoHitBox(page, id);
   const cx = hit.x + hit.width / 2;
   const cy = hit.y + hit.height / 2;
@@ -380,10 +378,17 @@ async function dragHandleRadial(page, id, attr, { mode = 'grow', extraPx = 90 } 
     end = { x: cx - ux * (len + extraPx), y: cy - uy * (len + extraPx) };
   }
   await page.mouse.move(handle.x, handle.y);
-  await handleEl.hover();
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 16 });
   await page.mouse.up();
+}
+
+async function closePagesPanel(page) {
+  const pages = page.getByRole('button', { name: 'Pages', exact: true });
+  if (await pages.first().isVisible().catch(() => false)
+    && (await pages.first().getAttribute('aria-pressed')) === 'true') {
+    await pages.first().click().catch(() => {});
+  }
 }
 
 async function dragMtrToAngle(page, id, deg) {
@@ -473,6 +478,7 @@ async function rotatePage(page, pageNumber, direction = 'cw') {
     return wasPortrait ? nowLandscape : nowPortrait;
   }, { timeout: 45_000, message: `page ${pageNumber} should flip aspect after ${direction} rotate` }).toBeTruthy();
   await closeDocumentPanel(page);
+  await closePagesPanel(page);
   await assertNoErrorBoundary(page);
 }
 
