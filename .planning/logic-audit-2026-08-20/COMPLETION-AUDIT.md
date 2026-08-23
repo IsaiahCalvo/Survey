@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-23 T-02 leftover live Callout rubber-band then commit):** named leftover after S-03 / S-04 live Line/Arrow rubber-band. Live `e2e-callout-live-create.spec.mjs` **2 / 2 (10.7s)**. Node **15 / 15**. No product bug. Prior T-02 knee / corners / arrowhead catalogs not replayed. Receipt `fix-logs/callout-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-23 T-01 leftover live Textbox rubber-band then auto-edit mount):** named leftover after T-02 live Callout rubber-band. Live `e2e-textbox-live-create.spec.mjs` **2 / 2 (12.6s)**. Node **15 / 15**. No product bug. Prior T-01 auto-edit / selected resize not replayed. Cloud has no dedicated tool. Counter window pin already receipted. Receipt `fix-logs/textbox-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-23 T-02 leftover live Callout rubber-band then commit):** named leftover after S-03 / S-04 live Line/Arrow rubber-band. Live `e2e-callout-live-create.spec.mjs` **2 / 2 (10.7s)**. Node **15 / 15**. No product bug. Prior T-02 knee / corners / arrowhead catalogs not replayed. Receipt `fix-logs/callout-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-23 S-03 / S-04 leftover live Line/Arrow rubber-band then commit):** named leftover after S-01 / S-02 live rect/ellipse rubber-band. Live `e2e-line-arrow-live-create.spec.mjs` **2 / 2 (8.4s)**. Node **15 / 15**. No product bug. Callout `.callout-preview` skipped (different path). Receipt `fix-logs/line-arrow-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
@@ -281,7 +283,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | V-01…V-09 | **proven** | `E2E-STATUS.md` live window receipts |
 | D-01…D-05 | **proven** | live stroke / tap / entire / partial / presets |
 | S-01…S-05 | **proven** | live drag; S-01 Cloud; S-04 6 heads; S-05 pin |
-| T-01…T-07 | **proven** | live overlay / fonts / 18 sizes / B/I/U/S / 9-cell / opaque font color |
+| T-01…T-07 | **proven** | live overlay / **live rubber-band** / fonts / 18 sizes / B/I/U/S / 9-cell / opaque font color |
 | C-01…C-06 | **proven** | live swatches / hex / 55%+slider / HSV leave-reenter / fill-stroke / Match Fill |
 | E-01…E-06 | **proven** | live resize / rotate / move / delete / undo / UL-27–31 |
 | X-01 | **host-blocked** | outbox view-model proven; live identity-churn needs a signed-in identity change |
