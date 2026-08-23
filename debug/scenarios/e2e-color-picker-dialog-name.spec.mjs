@@ -51,15 +51,19 @@ function namedColor(page) {
 
 async function armRectangle(page) {
   // Rectangle lives on the Shapes sub-row, not the default Draw strip.
+  // Live toolbar uses btn-active / is-active, not aria-pressed.
   const rectangle = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Rectangle', exact: true });
   if (!(await rectangle.isVisible().catch(() => false))) {
     await page.getByRole('button', { name: 'Shapes', exact: true }).click();
   }
   await expect(rectangle).toBeVisible({ timeout: 15_000 });
-  if ((await rectangle.getAttribute('aria-pressed')) !== 'true') {
+  const pressed = await rectangle.getAttribute('aria-pressed');
+  const cls = String(await rectangle.getAttribute('class') || '');
+  const active = cls.includes('is-active') || cls.includes('btn-active');
+  if (pressed !== 'true' && !active) {
     await rectangle.click();
   }
-  await expect(rectangle).toHaveAttribute('aria-pressed', 'true');
+  await expect(rectangle).toHaveClass(/btn-active|is-active/);
 }
 
 async function openColorDialog(page) {

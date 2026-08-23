@@ -71,6 +71,7 @@ test('live spec covers named Color picker intended + break + edge; skip leftover
   assert.match(spec, /getByRole\('dialog', \{ name: 'Color', exact: true \}\)/);
   assert.match(spec, /name: 'Shapes'/);
   assert.match(spec, /#chrome-sub-toolbar-host/);
+  assert.match(spec, /btn-active\|is-active/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /390/);
   assert.match(spec, /file\.id/);
