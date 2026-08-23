@@ -4390,7 +4390,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRightRailExpandRequestKey((key) => key + 1);
   }, []);
   const handleRightRailCollapseChange = useCallback((isCollapsed) => {
-    setRightRailCollapsed(isCollapsed);
+    setRightRailCollapsed((prev) => (prev === isCollapsed ? prev : isCollapsed));
   }, []);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
 
@@ -12380,11 +12380,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!isActive || typeof onTopToolbarApiChange !== 'function') return;
     const useRegionHistory = showRegionSelection && regionHistoryApi;
-    onTopToolbarApiChange({
+    const nextTopToolbarApi = {
       canUndo: useRegionHistory ? regionHistoryApi.canUndo : canUndo,
       canRedo: useRegionHistory ? regionHistoryApi.canRedo : canRedo,
       onUndo: useRegionHistory ? regionHistoryApi.undo : handleUndo,
       onRedo: useRegionHistory ? regionHistoryApi.redo : handleRedo
+    };
+    // CLAUDE.md 2026-05-13: compare before publish. Function-only identity
+    // churn (handleUndo / handleRedo) must not setState App shell every render.
+    onTopToolbarApiChange((prev) => {
+      if (prev) {
+        const keys = Object.keys(nextTopToolbarApi);
+        if (keys.length === Object.keys(prev).length && keys.every((key) => {
+          const previousValue = prev[key];
+          const nextValue = nextTopToolbarApi[key];
+          if (typeof previousValue === 'function' && typeof nextValue === 'function') {
+            return true;
+          }
+          return previousValue === nextValue;
+        })) {
+          return prev;
+        }
+      }
+      return nextTopToolbarApi;
     });
   }, [isActive, canUndo, canRedo, handleUndo, handleRedo, onTopToolbarApiChange, showRegionSelection, regionHistoryApi]);
 
@@ -23463,7 +23481,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const counterToolFillOpacity = activeTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
       : fillOpacity;
-    onBottomToolbarApiChange({
+    const nextBottomToolbarApi = {
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
       // effect below). Non-enumerated field the toolbar never reads.
@@ -23581,6 +23599,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Browser-visible entry point for File → Export Annotated PDF… (the
       // Electron menu drives the same handler on desktop).
       exportAnnotatedPdf: handleExportAnnotatedPDF
+    };
+    // CLAUDE.md 2026-05-13: compare before publish. Function-only callback
+    // identity must not setState App shell every render (120-page rotate loop).
+    onBottomToolbarApiChange((prev) => {
+      if (prev) {
+        const keys = Object.keys(nextBottomToolbarApi);
+        if (keys.length === Object.keys(prev).length && keys.every((key) => {
+          const previousValue = prev[key];
+          const nextValue = nextBottomToolbarApi[key];
+          if (typeof previousValue === 'function' && typeof nextValue === 'function') {
+            return true;
+          }
+          return previousValue === nextValue;
+        })) {
+          return prev;
+        }
+      }
+      return nextBottomToolbarApi;
     });
   }, [
     isActive,
