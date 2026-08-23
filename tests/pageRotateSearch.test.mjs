@@ -60,6 +60,10 @@ test('Search after CW remounts against the new pdfDoc; SVG falls through; no JS 
   const panel = read('src/sidebar/SearchTextPanel.jsx');
   assert.match(panel, /resolveSearchPageViewport\(page, pageNumber\)/);
   assert.match(panel, /viewportMatchesLiveHost\(cached\?\.viewport, pageNumber\)/);
+  assert.match(panel, /ensureTextLayerStyles/);
+  assert.match(panel, /pdfjsTextLayer textLayer search-text-measurement-layer/);
+  assert.match(panel, /rectsLookLeftoverPortraitOrigin/);
+  assert.match(panel, /pdfjs-estimate-after-leftover/);
   assert.match(panel, /document_key_changed_clear_search/);
   assert.match(panel, /setSearchResults\(\[\], 'empty-query'\)/);
   assert.match(panel, /onClearTextSearch\?\.\(\)/);

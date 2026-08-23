@@ -17,7 +17,7 @@ import { resolveTextLayerRotation, resolveTextLayerScale } from '../utils/pdfjsT
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 let stylesInjected = false;
-function ensureTextLayerStyles() {
+export function ensureTextLayerStyles() {
   if (stylesInjected || typeof document === 'undefined') return;
   stylesInjected = true;
   const style = document.createElement('style');

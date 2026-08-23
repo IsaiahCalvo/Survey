@@ -12,6 +12,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
 import { resolveSearchPageViewport, viewportMatchesLiveHost } from '../utils/pdfjsTextLayerViewport';
+import { ensureTextLayerStyles } from '../components/PdfjsTextLayer';
 import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -99,11 +100,26 @@ const resolveTextHighlightPad = (fontHeight, ratio, minimum) => {
   return Math.min(Math.max(minimum, fontHeight * ratio), maxSidePad);
 };
 
+const rectsLookLeftoverPortraitOrigin = (rects, viewport) => {
+  if (!Array.isArray(rects) || rects.length === 0 || !viewport) return false;
+  const viewportLandscape = Number(viewport.width) > Number(viewport.height) + 8;
+  if (!viewportLandscape) return false;
+  return rects.every((rect) => (
+    Number(rect?.x) <= 2
+    && Number(rect?.y) < 40
+    && Number(rect?.width) > 8
+  ));
+};
+
 const createSearchTextMeasureLayer = (viewport) => {
   if (typeof document === 'undefined') return null;
 
+  ensureTextLayerStyles();
   const container = document.createElement('div');
-  container.className = 'textLayer search-text-measurement-layer';
+  // Same glyph-positioning contract as the live text layer. Without these
+  // pdf.js CSS vars, TextLayer.render() stacks spans at the origin and Search
+  // paints leftover portrait marks (x=0,y≈20) into the swapped viewBox.
+  container.className = 'pdfjsTextLayer textLayer search-text-measurement-layer';
   container.setAttribute('aria-hidden', 'true');
   Object.assign(container.style, {
     position: 'fixed',
@@ -115,7 +131,8 @@ const createSearchTextMeasureLayer = (viewport) => {
     pointerEvents: 'none',
     zIndex: '-1',
     contain: 'layout style paint',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    inset: 'auto'
   });
   container.style.setProperty('--scale-factor', String(viewport.scale || 1));
   document.body.appendChild(container);
@@ -1461,17 +1478,21 @@ const SearchTextPanel = ({
           const textLayerRectangles = nativeMatch?.rectangles?.length
             ? []
             : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length, pageNumber);
+          const estimatedRectangles = buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
+          const leftoverMeasured = rectsLookLeftoverPortraitOrigin(textLayerRectangles, pageData.viewport);
           const rectangles = nativeMatch?.rectangles?.length
             ? nativeMatch.rectangles
-            : (textLayerRectangles.length
+            : ((textLayerRectangles.length && !leftoverMeasured)
               ? textLayerRectangles
-              : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length));
+              : estimatedRectangles);
           const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
           const geometrySource = nativeMatch?.rectangles?.length
             ? 'native'
-            : (textLayerRectangles.some((rect) => rect.geometryMethod === 'text-layer-image-ink')
-              ? 'pdfjs-text-layer-ink'
-              : (textLayerRectangles.length ? 'pdfjs-text-layer' : 'pdfjs-estimate'));
+            : (leftoverMeasured
+              ? 'pdfjs-estimate-after-leftover'
+              : (textLayerRectangles.some((rect) => rect.geometryMethod === 'text-layer-image-ink')
+                ? 'pdfjs-text-layer-ink'
+                : (textLayerRectangles.length ? 'pdfjs-text-layer' : 'pdfjs-estimate')));
 
           results.push({
             id: createResultId(),
