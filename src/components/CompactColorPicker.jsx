@@ -499,6 +499,7 @@ const CompactColorPicker = ({
                     <span style={{ color: '#8d96a6', fontSize: '10px', width: '40px' }}>OPACITY</span>
                     <input
                         type="range"
+                        aria-label="Opacity"
                         min={Math.round(minOpacity * 100)}
                         max="100"
                         value={localOpacity}
