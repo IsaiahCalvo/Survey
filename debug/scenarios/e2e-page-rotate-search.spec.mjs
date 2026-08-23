@@ -384,14 +384,20 @@ test('desktop Search after page CW intended + break + edge', async ({ page }) =>
   expect(await userAnnotationIds(page), 'no-match invents 0 annotations').toEqual([]);
 
   await fillQuery(page, search, MATCH_QUERY);
-  const hits = await expect.poll(async () => {
+  let hits = null;
+  await expect.poll(async () => {
     const index = await readIndex(page);
     const geom = await highlightGeometry(page);
-    return index.total > 0 && geom.rectCount > 0 ? { index, geom } : null;
+    if (index.total > 0 && geom.rectCount > 0) {
+      hits = { index, geom };
+      return true;
+    }
+    return false;
   }, {
     timeout: 20_000,
     message: 'Search after CW must land highlight marks on the swapped page',
   }).toBeTruthy();
+  expect(hits, 'Search after CW must expose index + overlay geometry').toBeTruthy();
   expect(hits.index.total, 'unique alphabet prefix must hit').toBeGreaterThan(0);
   expect(hits.geom.viewBox, 'search overlay viewBox must follow swapped page').toBe('0 0 792 612');
   expect(hits.geom.landscapeHost, 'page host stays landscape').toBe(true);
