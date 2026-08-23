@@ -35,6 +35,11 @@ test('CW rewrite peeks swapped 792×612; search overlay fills the live host', as
   assert.equal(resolveTextLayerRotation(90, 0, 1012, 782, 792, 612), 90);
   assert.ok(Math.abs(resolveTextLayerScale(1012, 792, 1) - (1012 / 792)) < 1e-9);
 
+  const viewportUtil = read('src/utils/pdfjsTextLayerViewport.js');
+  assert.match(viewportUtil, /export function resolveSearchPageViewport/);
+  assert.match(viewportUtil, /export function viewportMatchesLiveHost/);
+  assert.match(viewportUtil, /survey-pdfjs-page-div\[data-page-number=/);
+
   const layer = read('src/components/SearchHighlightLayer.jsx');
   assert.match(layer, /data-search-highlight-layer=\{pageNumber\}/);
   assert.match(layer, /viewBox=\{`0 0 \$\{width\} \$\{height\}`\}/);
@@ -53,7 +58,8 @@ test('CW rewrite peeks swapped 792×612; search overlay fills the live host', as
 
 test('Search after CW remounts against the new pdfDoc; SVG falls through; no JS zoom', () => {
   const panel = read('src/sidebar/SearchTextPanel.jsx');
-  assert.match(panel, /page\.getViewport\(\{ scale: 1 \}\)/);
+  assert.match(panel, /resolveSearchPageViewport\(page, pageNumber\)/);
+  assert.match(panel, /viewportMatchesLiveHost\(cached\?\.viewport, pageNumber\)/);
   assert.match(panel, /document_key_changed_clear_search/);
   assert.match(panel, /setSearchResults\(\[\], 'empty-query'\)/);
   assert.match(panel, /onClearTextSearch\?\.\(\)/);
@@ -83,6 +89,7 @@ test('live spec covers Search after CW + leftover box + empty/no-match + 390; sk
   assert.match(spec, /search overlay width must match swapped host/);
   assert.match(spec, /search hits must sit on the swapped page, not the pre-rotate portrait/);
   assert.match(spec, /search hit must land on the visible glyph, not the leftover portrait box/);
+  assert.match(spec, /search hit center must sit on the visible span, not the leftover portrait offset/);
   assert.match(spec, /empty query invents 0 marks/);
   assert.match(spec, /no-match invents 0 marks/);
   assert.match(spec, /dismiss does not invent annotations/);

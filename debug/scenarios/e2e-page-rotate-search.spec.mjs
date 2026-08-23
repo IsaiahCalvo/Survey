@@ -428,8 +428,22 @@ test('desktop Search after page CW intended + break + edge', async ({ page }) =>
   const glyph = await matchingGlyph(page, MATCH_QUERY);
   expect(glyph, 'visible glyph span for the query on the swapped page').toBeTruthy();
   const afterSelect = await highlightGeometry(page);
-  const overlap = afterSelect.rectsInside.some((rect) => rectsOverlap(rect, glyph));
-  expect(overlap, 'search hit must land on the visible glyph, not the leftover portrait box').toBe(true);
+  expect(afterSelect.firstRect, 'active search hit must still be mounted').toBeTruthy();
+  expect(
+    rectsOverlap(afterSelect.firstRect, glyph),
+    'search hit must land on the visible glyph, not the leftover portrait box',
+  ).toBe(true);
+  const hitCenter = {
+    x: afterSelect.firstRect.x + afterSelect.firstRect.w / 2,
+    y: afterSelect.firstRect.y + afterSelect.firstRect.h / 2,
+  };
+  expect(
+    hitCenter.x >= glyph.x - 8
+    && hitCenter.x <= glyph.x + glyph.w + 8
+    && hitCenter.y >= glyph.y - 8
+    && hitCenter.y <= glyph.y + glyph.h + 8,
+    'search hit center must sit on the visible span, not the leftover portrait offset',
+  ).toBe(true);
 
   await blurInputs(page);
   await page.keyboard.press('v');

@@ -11,6 +11,7 @@ import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
+import { resolveSearchPageViewport, viewportMatchesLiveHost } from '../utils/pdfjsTextLayerViewport';
 import { useTooltip } from '../components/Tooltip';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -1291,15 +1292,22 @@ const SearchTextPanel = ({
   const loadPageData = useCallback(async (pageNumber) => {
     if (!pdfDoc) return null;
 
-    // Check cache first
+    // Check cache first. After CW the overlay viewBox flips before pdf.js
+    // always rebakes /Rotate; drop leftover portrait viewports so marks
+    // are remade against the live landscape host.
     if (pageDataCacheRef.current.has(pageNumber)) {
-      return pageDataCacheRef.current.get(pageNumber);
+      const cached = pageDataCacheRef.current.get(pageNumber);
+      if (viewportMatchesLiveHost(cached?.viewport, pageNumber)) {
+        return cached;
+      }
+      cleanupTextLayerMeasurement(cached);
+      pageDataCacheRef.current.delete(pageNumber);
     }
 
     try {
       const page = await pdfDoc.getPage(pageNumber);
       const textContent = await page.getTextContent();
-      const viewport = page.getViewport({ scale: 1 });
+      const viewport = resolveSearchPageViewport(page, pageNumber);
 
       let fullText = '';
       const ranges = [];
