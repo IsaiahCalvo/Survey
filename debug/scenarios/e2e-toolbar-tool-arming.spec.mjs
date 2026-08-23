@@ -79,25 +79,41 @@ function isActiveClass(className) {
   return value.includes('btn-active') || value.includes('is-active');
 }
 
-async function clickNamed(page, name, root = page) {
-  const buttons = root.getByRole('button', { name, exact: true });
-  const count = await buttons.count();
-  for (let i = 0; i < count; i += 1) {
-    const button = buttons.nth(i);
-    if (!(await button.isVisible().catch(() => false))) continue;
-    await button.click();
-    return true;
+function toolRoots(page) {
+  return [
+    page.locator('[data-tool-toolbar="true"]'),
+    page.locator('#chrome-sub-toolbar-host'),
+    page.locator('[aria-label="Document tools"]'),
+    page.locator('.mobile-pdf-tools__subtools'),
+  ];
+}
+
+async function clickNamed(page, name, root = null) {
+  const roots = root ? [root] : toolRoots(page);
+  for (const scope of roots) {
+    if (!(await scope.count())) continue;
+    const buttons = scope.getByRole('button', { name, exact: true });
+    const count = await buttons.count();
+    for (let i = 0; i < count; i += 1) {
+      const button = buttons.nth(i);
+      if (!(await button.isVisible().catch(() => false))) continue;
+      await button.click();
+      return true;
+    }
   }
   return false;
 }
 
 async function categoryActive(page, name) {
-  const buttons = page.getByRole('button', { name, exact: true });
-  const count = await buttons.count();
-  for (let i = 0; i < count; i += 1) {
-    const button = buttons.nth(i);
-    if (!(await button.isVisible().catch(() => false))) continue;
-    if (isActiveClass(await button.getAttribute('class'))) return true;
+  for (const scope of toolRoots(page)) {
+    if (!(await scope.count())) continue;
+    const buttons = scope.getByRole('button', { name, exact: true });
+    const count = await buttons.count();
+    for (let i = 0; i < count; i += 1) {
+      const button = buttons.nth(i);
+      if (!(await button.isVisible().catch(() => false))) continue;
+      if (isActiveClass(await button.getAttribute('class'))) return true;
+    }
   }
   return false;
 }
