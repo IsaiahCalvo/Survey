@@ -59,6 +59,7 @@ test('live spec covers Search rail toggle intended + break + edge; skip leftover
   assert.match(spec, /390 Open pages\/search\/bookmarks Search tab edge/);
   assert.match(spec, /collapsed rail Search text must be live/);
   assert.match(spec, /Expand sidebar must not show Search field/);
+  assert.match(spec, /overlay lists Ctrl\+F Search text/);
   assert.match(spec, /Search text tab must focus the field/);
   assert.match(spec, /Escape must not collapse Search/);
   assert.match(spec, /Space must not collapse Search/);
