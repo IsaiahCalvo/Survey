@@ -2,6 +2,7 @@
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Tip before this pass:** `3431364f` Home-tab click.  
+**This-pass SHAs:** `51be3b65` (haspopup honesty) · `6c93f944` (capture pointerdown) · `969162b9` (Space spec) · receipt update after live.  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
 Unique leftover after Home-tab click (`3431364f`). Menu Fit height / Fit page / Fit width **apply** modes already dedicated. Ctrl+2 / Ctrl+M / Ctrl+0 / Ctrl+1 apply modes. V-09 is the shortcuts overlay Esc. This leftover is the Fit options **popup dismiss** (open / Escape / click-outside / Enter). Overlay lists Esc as Close dialogs/cancel.
