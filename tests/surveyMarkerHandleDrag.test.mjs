@@ -22,8 +22,12 @@ test('placed survey-marker chrome is body-move + 8 resize + mtr rotate', () => {
   assert.match(overlay, /data-resize-handle=\{id\}/);
   assert.match(overlay, /data-rotation-handle="mtr"/);
   assert.match(overlay, /const cornerHandles = \['tl', 'tr', 'bl', 'br'\]/);
-  assert.match(overlay, /const stemAttachY = handles\.mt\.y -/);
+  // Live stem follows the mtr side (placeRotationHandle / clamp). The
+  // pre-remap overlay always attached above (`handles.mt.y - …`).
+  assert.match(overlay, /const stemSign = \(handles\.mtr\.y - handles\.mt\.y\) >= 0 \? 1 : -1/);
+  assert.match(overlay, /const stemAttachY = handles\.mt\.y \+ stemSign \* mtStemGap/);
   assert.match(overlay, /y1=\{stemAttachY\}/);
+  assert.doesNotMatch(overlay, /const stemAttachY = handles\.mt\.y -/);
   const surveyChrome = layer.slice(
     layer.indexOf('const handleSurveyMarkerPointerDown'),
     layer.indexOf('const selectedSurveyMarkerEntry'),
