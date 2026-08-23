@@ -140,6 +140,7 @@ test('390 + testPdf Home + guest break/edge for Settings dialog name', async ({ 
   await expect(settingsDialog(page).locator('.account-sidebar-btn.active')).toHaveText('General');
   await page.keyboard.press('Escape');
   await expect(settingsDialog(page)).toHaveCount(0);
-  expect(await page.locator('[data-svg-annotation-layer="1"]').count()).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeHidden();
+  await expect(page.locator('.documents-desktop-search').getByPlaceholder('Search documents...')).toBeVisible();
   expect(await fileId(page)).toBeNull();
 });
