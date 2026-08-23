@@ -33,11 +33,11 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `debug/scenarios/e2e-home-tab-click.spec.mjs` (desktop + 390). Focused Node `homeTabClick` + leftover18.
+Playwright `debug/scenarios/e2e-home-tab-click.spec.mjs` **2 / 2 (8.1s)** on Playwright Vite `http://127.0.0.1:5173`. Focused Node `homeTabClick` + leftover18 **15 / 15**.
 
 | Slice | Intended / break / edge |
 |---|---|
-| Intended click | `?testPdf=clickable-link-test.pdf` 1400×900. Home hides Draw + page layer; PDF tab + Close tab stay **1**; URL stays `testPdf`; hubPreview **null**. Rect survives Home → PDF-tab return. viewBox **`0 0 612 792`**. |
+| Intended click | `?testPdf=clickable-link-test.pdf` 1400×900. Home hides Draw + page layer; PDF tab + Close tab stay **1**; URL stays `testPdf`; hubPreview **null**. Rect `5120a5d8-…` survives Home → PDF-tab return. viewBox **`0 0 612 792`**. |
 | Break invent / Close contrast | Home has **0** Close. Round-trip invents **0**. hubPreview TabBar / Home / Draw **0**. |
 | Break keyboard | Focused Home Enter hides Draw and does not assign hubPreview. Space stays pan (`e2e-spacebar-pan`). |
 | Edge search fixture | `text-search-glyph-lab.pdf` Home keeps `testPdf`; `file.id` null; return keeps viewBox **`0 0 612 792`**. |
