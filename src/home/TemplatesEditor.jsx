@@ -2162,7 +2162,7 @@ export default function TemplatesEditor({
                     })()}
                   </div>
                 </div>
-                <button onClick={addCategory} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
+                <button type="button" onClick={addCategory} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
                   <Icon name="plus" size={11} />New category
                 </button>
               </div>
