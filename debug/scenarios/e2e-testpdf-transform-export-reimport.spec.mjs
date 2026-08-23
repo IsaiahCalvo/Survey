@@ -98,19 +98,24 @@ async function dismissChrome(page) {
     await page.getByRole('button', { name: 'Search text', exact: true }).click().catch(() => {});
     await blurInputs(page);
   }
-  const hubCopy = page.getByText('No documents yet');
-  if (await hubCopy.isVisible().catch(() => false) || await pageCoveredByHub(page)) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const hubCopy = page.getByText('No documents yet');
+    if (!(await hubCopy.isVisible().catch(() => false)) && !(await pageCoveredByHub(page))) break;
     const rail = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
     if (await rail.first().isVisible().catch(() => false)) {
       await rail.first().click().catch(() => {});
     } else {
-      const tab = page.getByRole('button', { name: /\.pdf/ }).first();
+      const tab = page.getByRole('button', { name: /clickable-link-test\.pdf|_e2e-transform-export-reimport\.pdf/ }).first();
       if (await tab.isVisible().catch(() => false)) {
         await tab.click({ position: { x: 24, y: 8 } }).catch(() => {});
       }
     }
     await expect(hubCopy).toHaveCount(0, { timeout: 8_000 });
   }
+  await expect.poll(async () => pageCoveredByHub(page), {
+    timeout: 8_000,
+    message: 'hub Documents must not cover the page',
+  }).toBe(false);
   await blurInputs(page);
 }
 
@@ -331,6 +336,7 @@ async function selectUntilHandles(page, id, clicker, min = 4) {
 }
 
 async function dragResizeHandle(page, handleId, dx, dy) {
+  await dismissChrome(page);
   const handle = page.locator(`[data-svg-annotation-layer="1"] [data-resize-handle="${handleId}"]`).first();
   await expect(handle, `${handleId} handle`).toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
@@ -483,23 +489,6 @@ test('desktop create/transform then local save/reload + export re-import', async
   expect(await pageViewBox(page)).toBe('0 0 612 792');
   expect((await userOwned(page)).length, 'fresh fixture starts empty').toBe(0);
 
-  // Break — empty export still downloads; cancel does not invent marks.
-  const emptyExport = page.getByRole('button', { name: 'Export annotated PDF', exact: true });
-  await expect(emptyExport).toBeVisible();
-  const [emptyDownload] = await Promise.all([
-    page.waitForEvent('download', { timeout: 45_000 }),
-    emptyExport.click(),
-  ]);
-  expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
-  await emptyDownload.cancel();
-  expect((await userOwned(page)).length, 'cancel download invents 0').toBe(0);
-  expect(await fileId(page)).toBeNull();
-
-  // Break — reload without a save invents 0.
-  await reloadEditor(page);
-  await dismissChrome(page);
-  expect((await userOwned(page)).length, 'reload without save invents 0').toBe(0);
-
   const created = await createRect(page, RECT_BOX);
   await dismissChrome(page);
   expect(created?.id).toBeTruthy();
@@ -614,6 +603,35 @@ test('desktop create/transform then local save/reload + export re-import', async
 
   try { await unlink(dest); } catch { /* leftover fixture is fine */ }
 
+  // Break — wipe the local cache; reload invents 0 of the transformed ids.
+  await keepLocalSave(page);
+  await openEditor(page, { keepOnReload: true });
+  await dismissChrome(page);
+  await page.evaluate(() => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('annotationsByPage_')) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  });
+  await reloadEditor(page);
+  await dismissChrome(page);
+  const wiped = await userOwned(page);
+  expect(wiped.some((row) => row.id === created.id || row.id === pen.id), 'reload without save invents 0').toBe(false);
+
+  // Break — empty export still downloads; cancel does not invent marks.
+  const emptyExport = page.getByRole('button', { name: 'Export annotated PDF', exact: true });
+  await expect(emptyExport).toBeVisible();
+  const [emptyDownload] = await Promise.all([
+    page.waitForEvent('download', { timeout: 45_000 }),
+    emptyExport.click(),
+  ]);
+  expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
+  await emptyDownload.cancel();
+  expect((await userOwned(page)).some((row) => row.id === created.id || row.id === pen.id)).toBe(false);
+  expect(await fileId(page)).toBeNull();
+
   console.log('TESTPDF_TRANSFORM_EXPORT_REIMPORT', JSON.stringify({
     rectId: created.id,
     penId: pen.id,
@@ -631,6 +649,8 @@ test('desktop create/transform then local save/reload + export re-import', async
     importedPenId: importedPen.id,
     importedPenVw: importedPen.vw,
     exportName: filename,
+    emptyExport: emptyDownload.suggestedFilename(),
+    wipedInvented: wiped.length,
     viewBox: viewBoxBefore,
     fileId: await fileId(page),
     leftover18CloudSave: 'unchanged',
