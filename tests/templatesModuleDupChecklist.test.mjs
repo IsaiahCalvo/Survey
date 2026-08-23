@@ -45,7 +45,7 @@ test('Duplicate leftover is module duplicateModules, not leftover-18 export', ()
   assert.doesNotMatch(block, /Copy to Spaces/);
 
   assert.match(editor, /onClick=\{\(\) => duplicateModules\(selMods\)\}/);
-  assert.match(editor, /<h3 style=\{\{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0\.025em', flex: 'none', color: '#f4f1ea', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' \}\}>Edit modules<\/h3>/);
+  assert.match(editor, /<h3 id="templates-module-edit-title" style=\{\{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '-0\.025em', flex: 'none', color: '#f4f1ea', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' \}\}>Edit modules<\/h3>/);
 
   const tplDup = editor.indexOf('const duplicateTemplates = (ids) => {');
   assert.ok(tplDup > 0, 'duplicateTemplates exists as a distinct list action');

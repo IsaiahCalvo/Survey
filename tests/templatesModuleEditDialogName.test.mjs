@@ -60,6 +60,7 @@ test('live spec covers named Edit modules intended + break + edge; skip leftover
   assert.match(spec, /getByRole\('dialog', \{ name: 'Edit modules', exact: true \}\)/);
   assert.match(spec, /templates-module-edit-title/);
   assert.match(spec, /Security Walk-Through/);
+  assert.match(spec, /MEP As-Built Markup/);
   assert.match(spec, /guest=1/);
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /file\.id/);
@@ -68,6 +69,7 @@ test('live spec covers named Edit modules intended + break + edge; skip leftover
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
   assert.doesNotMatch(spec, /doDeleteForever|deleteAccount/);
   assert.doesNotMatch(spec, /setMoveModal/);
-  assert.doesNotMatch(spec, /openDesktopMoreShare|menuitem.*Share/);
+  assert.match(spec, /Document Access/);
+  assert.match(spec, /Keyboard shortcuts/);
   assert.doesNotMatch(spec, /Home `\?` must be one overlay, not two/);
 });

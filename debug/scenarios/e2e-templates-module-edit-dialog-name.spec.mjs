@@ -13,6 +13,7 @@ const HUB_EMPTY = '/?hubPreview=1&empty=1&tab=templates';
 const HUB_GUEST = '/?hubPreview=1&guest=1&tab=templates';
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const TEMPLATE = 'Security Walk-Through';
+const OTHER = 'MEP As-Built Markup';
 const HIDDEN = [
   'Match case', 'Whole word', 'Comments', 'Forms', 'Print',
   'Actual size', 'Measure', 'Group', 'Extract Pages', 'Note',
@@ -97,7 +98,18 @@ test('Templates Edit modules is named via the visible title', async ({ page }) =
 
   await openDesktopEditModules(page);
   await expect(namedEdit(page)).toBeVisible({ timeout: 8_000 });
+  // Search owns Escape (does not dismiss). Done / backdrop dismiss.
+  await namedEdit(page).getByPlaceholder('Search modules...').click();
+  await page.keyboard.press('Escape');
+  await expect(namedEdit(page)).toBeVisible();
   await page.locator('.templates-module-edit-modal').locator('xpath=..').click({ position: { x: 4, y: 4 } });
+  await expect(namedEdit(page)).toHaveCount(0);
+
+  await page.getByText(OTHER).first().click();
+  await desktopModuleSelect(page).click();
+  await expect(namedEdit(page)).toBeVisible({ timeout: 8_000 });
+  await expect(namedEdit(page)).toHaveAttribute('aria-labelledby', 'templates-module-edit-title');
+  await namedEdit(page).getByRole('button', { name: 'Done', exact: true }).click();
   await expect(namedEdit(page)).toHaveCount(0);
 
   expect(await page.getByRole('dialog', { name: /Lock this document/ }).count()).toBe(0);
@@ -138,7 +150,15 @@ test('390 + guest + idle editor break/edge for Edit modules name', async ({ page
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toHaveAttribute('viewBox', '0 0 612 792');
   expect(await namedEdit(page).count()).toBe(0);
-  expect(await page.getByRole('dialog', { name: 'Keyboard shortcuts', exact: true }).count()).toBe(0);
+  await page.evaluate(() => {
+    const el = document.activeElement;
+    if (el && typeof el.blur === 'function') el.blur();
+    if (document.body) document.body.focus();
+  });
+  await page.keyboard.press('?');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts', exact: true })).toBeVisible({ timeout: 8_000 });
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts', exact: true })).toHaveCount(0);
   const hidden = await hiddenCounts(page);
   expect(hidden['Match case']).toBe(0);
   expect(hidden.Forms).toBe(0);
@@ -147,5 +167,17 @@ test('390 + guest + idle editor break/edge for Edit modules name', async ({ page
   expect(await page.locator('[data-hub-keep-mount]').evaluate((host) => (
     host.hasAttribute('inert') || host.inert === true
   ))).toBe(true);
+
+  await openPage(page, { url: '/?hubPreview=1&tab=documents' });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  const ownerMore = page.locator('.documents-desktop-card [data-document-id]')
+    .filter({ hasText: 'SE-011 Security Shop Drawings.pdf' })
+    .getByRole('button', { name: 'More' })
+    .first();
+  await ownerMore.click();
+  await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Document Access', exact: true })).toBeVisible({ timeout: 10_000 });
+  expect(await namedEdit(page).count()).toBe(0);
+  await page.keyboard.press('Escape');
   expect(await fileId(page)).toBeNull();
 });
