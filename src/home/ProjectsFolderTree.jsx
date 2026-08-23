@@ -123,7 +123,7 @@ const handleProjectRenameKeyDown = (event, currentName) => {
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
    overflow clipping. `align` decides which corner of the anchor it hangs from. */
-function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160, trigger = null }) {
+function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160, trigger = null, ariaLabel }) {
   const ref = useRef(null);
 
   if (!anchorRect) return null;
@@ -145,6 +145,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
       <div
         ref={ref}
         role="menu"
+        aria-label={ariaLabel}
         style={{
           position: 'fixed', top, left, zIndex: 4000,
           background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
@@ -1946,6 +1947,7 @@ export default function ProjectsFolderTree({
             trigger={teamMenu.trigger}
             onClose={() => setTeamMenu(null)}
             minWidth={184}
+            ariaLabel={`${proj.name || 'Project'} actions`}
             items={[
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
