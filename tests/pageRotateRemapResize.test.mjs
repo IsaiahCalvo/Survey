@@ -338,6 +338,8 @@ test('live spec covers remapped-page br\/mtr, remapped mt, collapse, flip, undo-
   assert.match(spec, /desktop remapped-page mtr at object 180 after CW/);
   assert.match(spec, /mtr knob must stay inside the remapped page/);
   assert.match(spec, /180deg mtr must stay hittable/);
+  assert.match(spec, /further mtr at object 180 must move angle/);
+  assert.match(spec, /Math\.abs\(own \+ dataN\) < 1\.5/);
   assert.match(spec, /getScreenCTM/);
   assert.match(spec, /post-rotate mt must grow size in swapped viewBox/);
   assert.match(spec, /mt knob must stay inside the remapped page/);

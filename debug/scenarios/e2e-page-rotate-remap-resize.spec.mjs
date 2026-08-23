@@ -148,12 +148,15 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
       const rawTop = Number(object.top);
       const dataLeft = Number(data.left);
       const dataTop = Number(data.top);
-      const left = (Number.isFinite(dataLeft) && (!Number.isFinite(rawLeft) || (rawLeft === 0 && Math.abs(dataLeft) > 1)))
-        ? dataLeft
-        : (Number.isFinite(rawLeft) ? rawLeft : 0);
-      const top = (Number.isFinite(dataTop) && (!Number.isFinite(rawTop) || (rawTop === 0 && Math.abs(dataTop) > 1)))
-        ? dataTop
-        : (Number.isFinite(rawTop) ? rawTop : 0);
+      const pickOrigin = (own, dataN) => {
+        if (Number.isFinite(dataN) && (
+          !Number.isFinite(own) || (own === 0 && Math.abs(dataN) > 1)
+          || (Math.abs(dataN) > 1 && Math.abs(own + dataN) < 1.5)
+        )) return dataN;
+        return Number.isFinite(own) ? own : 0;
+      };
+      const left = pickOrigin(rawLeft, dataLeft);
+      const top = pickOrigin(rawTop, dataTop);
       const vw = width * Math.abs(scaleX);
       const vh = height * Math.abs(scaleY);
       return {
@@ -945,6 +948,7 @@ test('desktop remapped-page mtr at object 180 after CW', async ({ page }) => {
     return Math.abs(angle - 225) < 30 || Math.abs(now.angle - preFurther.angle) > 8;
   }, { timeout: 8_000, message: 'further mtr at object 180 must move angle' }).toBeTruthy();
   const postFurther = await geom(page, created.id);
+  console.log('POST_180_FURTHER', JSON.stringify({ preFurther, postFurther }));
   expect(Math.abs(postFurther.vw - preFurther.vw), 'further mtr must hold width').toBeLessThan(6);
   expect(Math.abs(postFurther.vh - preFurther.vh), 'further mtr must hold height').toBeLessThan(6);
   expect(onPage(postFurther, 792, 612), 'further mtr must stay on-page').toBe(true);
