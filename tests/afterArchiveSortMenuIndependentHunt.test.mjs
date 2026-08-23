@@ -99,5 +99,5 @@ test('hunt after Archive sort menu name looks past Documents More name and lefto
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
   assert.doesNotMatch(spec, /getByRole\('dialog', \{ name: 'Activity'/);
-  assert.doesNotMatch(spec, /getByRole\('button', \{ name: 'Delete forever'[\s\S]*?\.click\(/);
+  assert.doesNotMatch(spec, /name: 'Delete forever'[^\n]*\.click\(/);
 });

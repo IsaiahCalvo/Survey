@@ -46,8 +46,8 @@ test('live spec covers named Archive Show and sort intended + break + edge; skip
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
   assert.doesNotMatch(spec, /doDeleteForever|deleteAccount/);
-  assert.doesNotMatch(spec, /getByRole\('button', \{ name: 'Delete forever'[\s\S]*?\.click\(/);
-  assert.doesNotMatch(spec, /getByRole\('button', \{ name: 'Restore'[\s\S]*?\.click\(/);
+  assert.doesNotMatch(spec, /name: 'Delete forever'[^\n]*\.click\(/);
+  assert.doesNotMatch(spec, /name: 'Restore'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /aria-labelledby="activity/);
   assert.doesNotMatch(spec, /getByRole\('dialog', \{ name: 'Activity'/);
   assert.doesNotMatch(spec, /click-outside must close Selection Mode after P/);
