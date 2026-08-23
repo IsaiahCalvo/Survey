@@ -30,6 +30,23 @@ import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
+// Capture pointerdown: the page layer preventDefaults pointerdown while a
+// creation tool is armed, which suppresses the compatibility mousedown these
+// rail menus used to wait on. Consume page-surface dismiss so it does not
+// start a rubber-band (same contract as Pages context / AppShell exclusive layer).
+const dismissOnOutsidePageAwarePointerDown = (event, isInside, close) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  if (isInside(target)) return;
+  close();
+  const onPageSurface = target?.closest?.('[data-svg-annotation-layer]')
+    || target?.closest?.('.survey-pdfjs-page-div')
+    || target?.closest?.('.textLayer');
+  if (onPageSurface) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+};
+
 const getElementCenterY = (element) => {
   const rect = element?.getBoundingClientRect?.();
   return rect ? rect.top + rect.height / 2 : null;
@@ -668,22 +685,36 @@ const SurveySpacesRail = ({
     if (!isModuleSelectorOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (!moduleSelectorRef.current?.contains(event.target)) {
-        setIsModuleSelectorOpen(false);
-      }
+      dismissOnOutsidePageAwarePointerDown(
+        event,
+        (target) => !!moduleSelectorRef.current?.contains(target),
+        () => setIsModuleSelectorOpen(false),
+      );
+    };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setIsModuleSelectorOpen(false);
     };
 
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [isModuleSelectorOpen]);
 
   useEffect(() => {
     if (!isTemplateSelectorOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (!templateSelectorRef.current?.contains(event.target)) {
-        setIsTemplateSelectorOpen(false);
-      }
+      dismissOnOutsidePageAwarePointerDown(
+        event,
+        (target) => !!templateSelectorRef.current?.contains(target),
+        () => setIsTemplateSelectorOpen(false),
+      );
     };
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape') return;
@@ -692,10 +723,10 @@ const SurveySpacesRail = ({
       setIsTemplateSelectorOpen(false);
     };
 
-    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [isTemplateSelectorOpen]);
@@ -704,13 +735,15 @@ const SurveySpacesRail = ({
     if (!isMobileExportMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (!mobileExportMenuRef.current?.contains(event.target)) {
-        setIsMobileExportMenuOpen(false);
-      }
+      dismissOnOutsidePageAwarePointerDown(
+        event,
+        (target) => !!mobileExportMenuRef.current?.contains(target),
+        () => setIsMobileExportMenuOpen(false),
+      );
     };
 
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
   }, [isMobileExportMenuOpen]);
 
   useEffect(() => {
@@ -741,9 +774,11 @@ const SurveySpacesRail = ({
   useEffect(() => {
     if (!mobileDetailDropdown) return undefined;
     const handlePointerDown = (event) => {
-      if (!event.target?.closest?.('.mobile-survey-detail-dropdown-wrap')) {
-        setMobileDetailDropdown(null);
-      }
+      dismissOnOutsidePageAwarePointerDown(
+        event,
+        (target) => !!target?.closest?.('.mobile-survey-detail-dropdown-wrap'),
+        () => setMobileDetailDropdown(null),
+      );
     };
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape') return;
@@ -751,10 +786,10 @@ const SurveySpacesRail = ({
       event.stopPropagation();
       setMobileDetailDropdown(null);
     };
-    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [mobileDetailDropdown]);
@@ -768,16 +803,19 @@ const SurveySpacesRail = ({
   useEffect(() => {
     if (!openEntityDropdownId) return undefined;
     const closeEntityDropdown = (event) => {
-      if (event.target?.closest?.('.survey-marker-entity-select-wrap')) return;
-      setOpenEntityDropdownId(null);
+      dismissOnOutsidePageAwarePointerDown(
+        event,
+        (target) => !!target?.closest?.('.survey-marker-entity-select-wrap'),
+        () => setOpenEntityDropdownId(null),
+      );
     };
     const closeEntityDropdownOnEscape = (event) => {
       if (event.key === 'Escape') setOpenEntityDropdownId(null);
     };
-    document.addEventListener('mousedown', closeEntityDropdown, true);
+    document.addEventListener('pointerdown', closeEntityDropdown, true);
     document.addEventListener('keydown', closeEntityDropdownOnEscape, true);
     return () => {
-      document.removeEventListener('mousedown', closeEntityDropdown, true);
+      document.removeEventListener('pointerdown', closeEntityDropdown, true);
       document.removeEventListener('keydown', closeEntityDropdownOnEscape, true);
     };
   }, [openEntityDropdownId]);
@@ -1918,6 +1956,7 @@ const SurveySpacesRail = ({
                         {isModuleSelectorOpen && (
                           <div
                             role="listbox"
+                            aria-label="Choose survey module"
                             style={{
                               position: 'absolute',
                               top: '36px',

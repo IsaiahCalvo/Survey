@@ -43,7 +43,9 @@ test('same-template re-pick is a no-op; Escape / click-outside cancel the picker
     rail.indexOf('if (!isTemplateSelectorOpen) return undefined;'),
     rail.indexOf('if (!isMobileExportMenuOpen) return undefined;'),
   );
-  assert.match(effect, /templateSelectorRef\.current\?\.contains\(event\.target\)/);
+  assert.match(effect, /templateSelectorRef\.current\?\.contains\(target\)/);
+  assert.match(effect, /addEventListener\('pointerdown', handlePointerDown, true\)/);
+  assert.doesNotMatch(effect, /addEventListener\('mousedown'/);
   assert.match(effect, /setIsTemplateSelectorOpen\(false\)/);
   assert.match(effect, /event\.key !== 'Escape'/);
   assert.match(effect, /addEventListener\('keydown', handleKeyDown, true\)/);

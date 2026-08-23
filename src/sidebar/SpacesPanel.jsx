@@ -905,21 +905,35 @@ const SpacesPanel = ({
   const spacesExportAnchorRef = useRef(null);
 
   React.useEffect(() => {
-    if (!isSpacesExportMenuOpen) return;
+    if (!isSpacesExportMenuOpen) return undefined;
 
+    // Capture pointerdown: the page layer preventDefaults pointerdown while a
+    // creation tool is armed, which suppresses the compatibility mousedown this
+    // menu used to wait on. Consume page-surface dismiss so it does not start a
+    // rubber-band. Do not apply CSV / PDF Pages here — those stay leftover-18.
     const handleOutsideClick = (event) => {
+      const target = event.target instanceof Element ? event.target : event.target?.parentElement;
       if (!spacesExportAnchorRef.current) return;
-      if (!spacesExportAnchorRef.current.contains(event.target)) {
-        setIsSpacesExportMenuOpen(false);
+      if (spacesExportAnchorRef.current.contains(target)) return;
+      setIsSpacesExportMenuOpen(false);
+      const onPageSurface = target?.closest?.('[data-svg-annotation-layer]')
+        || target?.closest?.('.survey-pdfjs-page-div')
+        || target?.closest?.('.textLayer');
+      if (onPageSurface) {
+        event.preventDefault();
+        event.stopPropagation();
       }
     };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsSpacesExportMenuOpen(false);
+    };
 
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+    document.addEventListener('keydown', handleEscape);
 
     return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
+      document.removeEventListener('pointerdown', handleOutsideClick, true);
+      document.removeEventListener('keydown', handleEscape);
     };
   }, [isSpacesExportMenuOpen]);
 
