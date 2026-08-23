@@ -320,6 +320,7 @@ function SortableModuleTab({
       {...(!isRenaming ? attributes : {})}
       {...(!isRenaming ? listeners : {})}
       data-module-tab-id={mod.id}
+      aria-label={showCount ? `${mod.name} ${catCount}` : mod.name}
       style={{
         transform: CSS.Transform.toString(transform),
         transition: tabTransition || undefined,
