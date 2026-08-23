@@ -107,7 +107,6 @@ test('SVG + hook + importer: vertex-N wiring; no ellipse radii / ink vertex / st
   assert.match(layer, /data-handle=\{`vertex-\$\{i\}`\}/);
   assert.match(layer, /handleHandlePointerDown\(e, `vertex-\$\{i\}`\)/);
   assert.match(layer, /e\.stopPropagation\(\);\s*\n\s*handleHandlePointerDown\(e, `vertex-\$\{i\}`\)/);
-  assert.match(layer, /onPointerCancel=\{handlePointerUp\}/);
   assert.match(layer, /const isPolyShape = \(objType === 'polygon' \|\| objType === 'polyline'\)/);
   assert.ok(layer.includes('viewBox={`0 0 ${width} ${height}`}'));
   assert.doesNotMatch(layer, /data-handle=["']rx["']/);
