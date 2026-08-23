@@ -80,6 +80,8 @@ export default function AnnotationDropdown({
             title={label}
             disabled={disabled}
             {...triggerProps}
+            aria-haspopup="dialog"
+            aria-expanded={open}
             onMouseDown={(event) => {
               triggerProps.onMouseDown?.(event);
               if (preserveFocus) {
@@ -101,6 +103,8 @@ export default function AnnotationDropdown({
         <Popover.Content
           className={`annotation-dropdown__popover ${contentClassName}`.trim()}
           data-annotation-dropdown-popover="true"
+          role="dialog"
+          aria-label={label}
           {...markerProps}
           align={align}
           sideOffset={6}
