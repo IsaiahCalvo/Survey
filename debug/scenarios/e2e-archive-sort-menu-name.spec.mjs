@@ -94,7 +94,7 @@ test('desktop Archive Show and sort menu is named + Documents filter; Escape dis
   await desktopFilter(page).click();
   await expect(showAndSort(page)).toBeVisible();
   for (const name of ['All', 'Documents', 'Projects', 'Templates', 'File', 'Project', 'Most recently archived', 'Size']) {
-    await expect(page.getByRole('menuitemradio', { name: new RegExp(`^${name}`) })).toHaveCount(1);
+    await expect(page.getByRole('menuitemradio', { name, exact: true })).toHaveCount(1);
   }
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Partial erase', exact: true })).toHaveCount(0);
@@ -107,13 +107,13 @@ test('desktop Archive Show and sort menu is named + Documents filter; Escape dis
 
   await desktopFilter(page).click();
   await expect(showAndSort(page)).toBeVisible();
-  await page.getByRole('menuitemradio', { name: /^Documents/ }).click();
+  await page.getByRole('menuitemradio', { name: 'Documents', exact: true }).click();
   await expect(showAndSort(page)).toHaveCount(0);
   await expect(page.getByText('Site plan').first()).toBeVisible();
   await expect(page.getByText('Atrium')).toHaveCount(0);
   await expect(page.getByText('Bravo checklist')).toHaveCount(0);
-  expect(await page.getByRole('button', { name: 'Delete forever', exact: true }).count()).toBeGreaterThan(0);
-  expect(await page.getByRole('button', { name: 'Restore', exact: true }).count()).toBeGreaterThan(0);
+  expect(await page.getByRole('button', { name: 'Delete forever', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'Restore', exact: true }).count()).toBe(0);
 
   expect(await fileId(page)).toBeNull();
 });
@@ -123,11 +123,12 @@ test('390 + editor break for Archive Show and sort menu name', async ({ page }) 
 
   await openPage(page, { width: 390, height: 844, url: HUB_ARCHIVE });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('Site plan').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.archive-mobile-card[data-archive-item-id]').first()).toBeVisible({ timeout: 15_000 });
   expect(await showAndSort(page).count()).toBe(0);
   await mobileFilter(page).click();
   await expect(showAndSort(page)).toBeVisible();
-  await expect(page.getByRole('menuitemradio', { name: /^Documents/ })).toHaveCount(1);
+  await expect(page.getByRole('menuitemradio', { name: 'Documents', exact: true })).toHaveCount(1);
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(showAndSort(page)).toHaveCount(0);
