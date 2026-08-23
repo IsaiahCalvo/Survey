@@ -31,11 +31,11 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `debug/scenarios/e2e-toolbar-tool-arming.spec.mjs` pending this pass. Focused Node `toolbarToolArming` + leftover18 pending.
+Playwright `debug/scenarios/e2e-toolbar-tool-arming.spec.mjs` **2 / 2 (9.2s)** on reused Vite `http://localhost:5173`. Focused Node `toolbarToolArming` + leftover18 **15 / 15**.
 
 | Slice | Intended / break / edge |
 |---|---|
-| Intended clicks | `?testPdf=clickable-link-test.pdf` 1400×900. Select; Draw+Pen; Highlighter; Eraser; Pen; Shapes Rectangle (re-click stays); Ellipse; Line; Arrow; Counter overlay; Text omits Note; Callout; Text tool; Pan dismisses overlay; Select. Clicks invent **0**. |
+| Intended clicks | `?testPdf=clickable-link-test.pdf` 1400×900. Select (center/caret) leaves **Pan**; Draw+Pen; Highlighter; Eraser; Pen; Shapes Rectangle (re-click stays); Ellipse; Line; Arrow; Counter overlay; Text omits Note; Callout; Text tool; Pan dismisses overlay; Select. Clicks invent **0**. |
 | Break invent / key contrast | `R` stays Select; Rectangle strip **0**. Note / Forms **0**. |
 | Break hubPreview | `/?hubPreview=1` Draw / Rectangle **0**; clicks invent **0**; Counter overlay **0**. |
 | Edge 390 | Document tools: Shapes→Rectangle/Ellipse; Draw→Pen; Select. Invent **0**. viewBox **`0 0 612 792`**. `file.id` null. |
