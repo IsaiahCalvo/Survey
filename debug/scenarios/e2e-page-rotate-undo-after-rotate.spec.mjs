@@ -444,6 +444,8 @@ test('desktop undo/redo after page CW wipe — intended + break + tool-switch', 
   expect((await userIds(page)).filter((id) => id === created.id).length, 'redo no-op must not invent extra ids').toBe(1);
 
   // After wipe, a new create re-arms the local lane. Undo removes only that create.
+  await dismissChrome(page);
+  await clickVisible(page, 'Shapes').catch(() => {});
   const second = await createRect(page, { x0: 0.58, y0: 0.22, x1: 0.74, y1: 0.36 });
   await dismissChrome(page);
   expect(second?.id).toBeTruthy();

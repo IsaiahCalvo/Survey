@@ -167,10 +167,10 @@ async function annotationSnapshot(page, pageNumber = 1) {
       const dataLeft = Number(data.left);
       const ownTop = Number(object.top);
       const dataTop = Number(data.top);
-      const left = Number.isFinite(dataLeft) && (!Number.isFinite(ownLeft) || (ownLeft === 0 && Math.abs(dataLeft) > 1))
+      const left = Number.isFinite(dataLeft) && (!Number.isFinite(ownLeft) || (Math.abs(ownLeft) < 1 && Math.abs(dataLeft) > 1))
         ? dataLeft
         : (Number.isFinite(ownLeft) ? ownLeft : 0);
-      const top = Number.isFinite(dataTop) && (!Number.isFinite(ownTop) || (ownTop === 0 && Math.abs(dataTop) > 1))
+      const top = Number.isFinite(dataTop) && (!Number.isFinite(ownTop) || (Math.abs(ownTop) < 1 && Math.abs(dataTop) > 1))
         ? dataTop
         : (Number.isFinite(ownTop) ? ownTop : 0);
       const width = Number(object.width ?? data.width ?? 0);
@@ -655,6 +655,17 @@ async function deleteSelected(page, kind, id) {
       await page.keyboard.press('Delete');
       if (await hasId(page, kind, id)) await page.keyboard.press('Backspace');
     }
+  } else if (kind === 'counter') {
+    const target = page.locator(
+      `[data-counter-overlay="1"] [data-anno-id="${id}"], [data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`,
+    ).first();
+    await expect(target).toBeVisible({ timeout: 8_000 });
+    const box = await target.boundingBox();
+    expect(box, `counter bbox for ${id}`).toBeTruthy();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await blurInputs(page);
+    await page.keyboard.press('Delete');
+    if (await hasId(page, kind, id)) await page.keyboard.press('Backspace');
   } else {
     await clickAnno(page, id);
     await expect.poll(async () => (await selectedIds(page)).includes(id), {

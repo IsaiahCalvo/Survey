@@ -184,6 +184,22 @@ test('History restore after CW remap keeps remapped line endpoints + swapped pag
   );
   assert.ok(Math.abs(fromZero[1].objects[0].left - remapped.left) < 1e-6, 'Restore must not keep Fabric left 0');
   assert.ok(Math.abs(fromZero[1].objects[0].top - remapped.top) < 1e-6);
+
+  const fabricNearZero = {
+    ...remapped,
+    left: -0.000024,
+    top: 0.000001,
+    angle: remapped.angle,
+    data: { ...remapped.data, left: remapped.left, top: remapped.top, angle: remapped.angle },
+  };
+  const stampedNear = stampDisplayedPlacement(fabricNearZero);
+  assert.ok(Math.abs(stampedNear.left - remapped.left) < 1e-6, 'near-zero Fabric left must yield remapped data.left');
+  assert.ok(Math.abs(stampedNear.top - remapped.top) < 1e-6);
+  const fromNearZero = applyAnnotationHistoryAction(
+    { 1: { width: 792, height: 612, objects: [] } },
+    buildAnnotationRestoreAction(deleteAction(fabricNearZero)),
+  );
+  assert.ok(Math.abs(fromNearZero[1].objects[0].left - remapped.left) < 1e-6, 'Restore must not keep Fabric near-zero left');
 });
 
 test('History restore after CW remap keeps remapped textbox + single-name Helvetica', () => {

@@ -59,11 +59,11 @@ export function stampDisplayedPlacement(annotation) {
   const dataTop = Number(annotation.data?.top);
   const dataAngle = Number(annotation.data?.angle);
   const leftPlaceholder = Number.isFinite(dataLeft) && Math.abs(dataLeft) > 1
-    && (!Number.isFinite(ownLeft) || ownLeft === 0 || Math.abs(ownLeft + dataLeft) < 1.5);
+    && (!Number.isFinite(ownLeft) || Math.abs(ownLeft) < 1 || Math.abs(ownLeft + dataLeft) < 1.5);
   const topPlaceholder = Number.isFinite(dataTop) && Math.abs(dataTop) > 1
-    && (!Number.isFinite(ownTop) || ownTop === 0 || Math.abs(ownTop + dataTop) < 1.5);
+    && (!Number.isFinite(ownTop) || Math.abs(ownTop) < 1 || Math.abs(ownTop + dataTop) < 1.5);
   const anglePlaceholder = Number.isFinite(dataAngle) && Math.abs(dataAngle) > 1
-    && (!Number.isFinite(ownAngle) || ownAngle === 0);
+    && (!Number.isFinite(ownAngle) || Math.abs(ownAngle) < 1);
   if (!leftPlaceholder && !topPlaceholder && !anglePlaceholder) return annotation;
   return {
     ...annotation,

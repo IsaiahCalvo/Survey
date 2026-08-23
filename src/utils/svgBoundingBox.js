@@ -33,7 +33,7 @@ export function displayedBoxOrigin(obj) {
     const ownN = Number(own);
     const dataN = Number(data);
     const dataWinsPlaceholder = Number.isFinite(dataN)
-      && (!Number.isFinite(ownN) || (ownN === 0 && Math.abs(dataN) > 1));
+      && (!Number.isFinite(ownN) || (Math.abs(ownN) < 1 && Math.abs(dataN) > 1));
     const dataWinsOriginFlip = Number.isFinite(dataN)
       && Number.isFinite(ownN)
       && Math.abs(dataN) > 1
@@ -51,7 +51,7 @@ export function displayedBoxOrigin(obj) {
 export function displayedAngle(obj) {
   const ownN = Number(obj?.angle);
   const dataN = Number(obj?.data?.angle);
-  if (Number.isFinite(dataN) && (!Number.isFinite(ownN) || (ownN === 0 && Math.abs(dataN) > 1))) {
+  if (Number.isFinite(dataN) && (!Number.isFinite(ownN) || (Math.abs(ownN) < 1 && Math.abs(dataN) > 1))) {
     return dataN;
   }
   return Number.isFinite(ownN) ? ownN : 0;
