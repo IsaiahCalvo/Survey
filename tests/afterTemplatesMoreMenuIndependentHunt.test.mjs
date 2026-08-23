@@ -93,7 +93,7 @@ test('hunt after Templates More menu name looks past Archive sort name and lefto
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /AFTER_TEMPLATES_MORE_MENU_INDEPENDENT_HUNT/);
-  assert.match(spec, /Security Walk-Through actions/);
+  assert.match(spec, /\$\{TEMPLATE\} actions/);
   assert.match(spec, /documents-mobile-sort-menu/);
   assert.match(spec, /ed-tpl-menu/);
   assert.match(spec, /data-counter-caret-popup/);
