@@ -336,7 +336,6 @@ async function selectUntilHandles(page, id, clicker, min = 4) {
 }
 
 async function dragResizeHandle(page, handleId, dx, dy) {
-  await dismissChrome(page);
   const handle = page.locator(`[data-svg-annotation-layer="1"] [data-resize-handle="${handleId}"]`).first();
   await expect(handle, `${handleId} handle`).toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
@@ -497,11 +496,11 @@ test('desktop create/transform then local save/reload + export re-import', async
   expect(createdGeom.vw).toBeGreaterThan(20);
 
   await selectUntilHandles(page, created.id, strokeClickRect, 8);
-  await dragResizeHandle(page, 'br', 120, 90);
+  await dragResizeHandle(page, 'br', 56, 40);
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
-  }, { message: 'br must grow the live rect' }).toBeTruthy();
+  }, { timeout: 8_000, message: `br must grow the live rect from ${createdGeom.vw}x${createdGeom.vh}` }).toBeTruthy();
   const resized = await geom(page, created.id);
   expect(resized.left, 'br pins left').toBeCloseTo(createdGeom.left, 1);
   expect(resized.top, 'br pins top').toBeCloseTo(createdGeom.top, 1);
@@ -523,7 +522,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   const pen0 = await geom(page, pen.id);
   expect(pen0.vw).toBeGreaterThan(8);
   await selectUntilHandles(page, pen.id, strokeClickInk, 8);
-  await dragResizeHandle(page, 'br', 80, 48);
+  await dragResizeHandle(page, 'br', 56, 40);
   await expect.poll(async () => {
     const now = await geom(page, pen.id);
     return now && now.vw > pen0.vw + 8 && now.vh > pen0.vh + 6;
