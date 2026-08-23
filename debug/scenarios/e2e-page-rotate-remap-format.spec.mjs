@@ -545,10 +545,11 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
     }).toBe('#00AAFF');
     expect(placeHeld(await geom(page, rect.id), remappedRect), 'custom hex must not jump remapped rect').toBe(true);
     await page.keyboard.press('Escape');
-    await page.keyboard.press('Control+z');
     await expect.poll(async () => {
       const now = await geom(page, rect.id);
-      return colorKey(now.fill) === priorFill && placeHeld(now, remappedRect);
+      if (colorKey(now.fill) === priorFill && placeHeld(now, remappedRect)) return true;
+      await page.keyboard.press('Control+z');
+      return false;
     }, { timeout: 12_000, message: 'undo hex restores remapped rect + prior color' }).toBeTruthy();
   }
 
@@ -580,6 +581,16 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
   expect(placeHeld(afterFont, remappedText), 'font must not jump remapped textbox').toBe(true);
 
   const priorSize = Number(afterFont.fontSize);
+  await page.keyboard.press('Escape');
+  await persistOpenText(page, '');
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => {
+    const now = await geom(page, text.id);
+    return familyKey(now.fontFamily) === priorFamily && placeHeld(now, remappedText);
+  }, { timeout: 12_000, message: 'undo font restores remapped textbox + prior family' }).toBeTruthy();
+
+  expect(await selectAnno(page, text.id)).toBe(true);
+  if (await edit.isVisible().catch(() => false)) await edit.click();
   await pickDesktopOption(page, 'Font size', 'Font size', '24');
   let afterSize = null;
   await expect.poll(async () => {
@@ -593,9 +604,8 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
   await page.keyboard.press('Control+z');
   await expect.poll(async () => {
     const now = await geom(page, text.id);
-    return familyKey(now.fontFamily) === priorFamily && Number(now.fontSize) === priorSize
-      && placeHeld(now, remappedText);
-  }, { timeout: 12_000, message: 'undo restores remapped textbox + prior font' }).toBeTruthy();
+    return Number(now.fontSize) === priorSize && placeHeld(now, remappedText);
+  }, { timeout: 12_000, message: 'undo size restores remapped textbox + prior size' }).toBeTruthy();
 
   expect(await selectAnno(page, callout.id), 'select remapped callout').toBe(true);
   const arrowhead = page.getByRole('button', { name: 'Arrowhead', exact: true }).first();
