@@ -24,6 +24,7 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import CounterStartNumberField from './components/CounterStartNumberField';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
@@ -84,91 +85,6 @@ const COLOR_PICKER_SIBLING_PASSTHROUGH = [
    module load instead of occupying screen space. */
 if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__) {
   console.info(`[build] ${__BUILD_STAMP__}`);
-}
-
-/**
- * Lone-series Counter Start field. Draft stays in the input until Enter/blur.
- * Escape restores the pre-edit value and skips the blur commit — same contract
- * as Width/Size, Zoom %, page #, and rotation. Typing must not persist.
- */
-function CounterStartNumberField({
-  seriesId,
-  start,
-  locked,
-  onCommit,
-  tipProps,
-}) {
-  const skipCommitRef = useRef(false);
-  const valueAtFocusRef = useRef('');
-  const committed = String(start ?? 1);
-
-  return (
-    <label
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '4px',
-        color: locked ? '#5a6473' : '#8d96a6',
-        fontSize: '11px',
-        fontFamily: FONT_FAMILY,
-      }}
-      {...tipProps}
-    >
-      Start
-      <input
-        key={`${seriesId}:${committed}`}
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        className="no-spin-buttons"
-        defaultValue={committed}
-        disabled={locked}
-        onFocus={() => {
-          skipCommitRef.current = false;
-          valueAtFocusRef.current = committed;
-        }}
-        onInput={(event) => {
-          event.currentTarget.value = event.currentTarget.value.replace(/[^0-9]/g, '');
-        }}
-        onBlur={(event) => {
-          if (skipCommitRef.current) {
-            skipCommitRef.current = false;
-            return;
-          }
-          const next = Math.max(1, Math.floor(Number(event.currentTarget.value) || 1));
-          event.currentTarget.value = String(next);
-          onCommit(next);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.currentTarget.blur();
-            return;
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            skipCommitRef.current = true;
-            event.currentTarget.value = valueAtFocusRef.current || committed;
-            event.currentTarget.blur();
-          }
-        }}
-        aria-label="Counter start number"
-        style={{
-          width: '42px',
-          height: '20px',
-          padding: '4px',
-          background: '#3a4252',
-          color: '#e8e2d4',
-          border: '1px solid transparent',
-          borderRadius: '5px',
-          fontSize: '12px',
-          fontFamily: FONT_FAMILY,
-          textAlign: 'center',
-          opacity: locked ? 0.55 : 1,
-        }}
-      />
-    </label>
-  );
 }
 
 export default function App({ devPreviewReturnTab = null }) {

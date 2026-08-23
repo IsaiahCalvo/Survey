@@ -11,29 +11,30 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 test('AppShell Counter Size uses COUNTER_SIZE 4–76 and Start locks after a second pin', () => {
   const shell = read('src/AppShell.jsx');
+  assert.match(shell, /import CounterStartNumberField from '\.\/components\/CounterStartNumberField'/);
   assert.match(shell, /ANNOTATION_SIZE_PRESETS\.counter/);
   assert.match(shell, /contextTool === 'counter' \? COUNTER_SIZE_MIN/);
   assert.match(shell, /COUNTER_SIZE_MAX/);
-  assert.match(shell, /aria-label="Counter start number"/);
   assert.match(shell, /Start number is set after a second counter is added/);
   assert.match(shell, /selectedCounterSeriesSize !== 1/);
-  assert.match(shell, /Math\.max\(1, Math\.floor\(Number\(event\.currentTarget\.value\) \|\| 1\)\)/);
-  assert.match(shell, /replace\(\/\[\^0-9\]\/g, ''\)/);
 });
 
 test('Counter Start Escape restores the pre-edit value and skips blur commit', () => {
-  const shell = read('src/AppShell.jsx');
-  assert.match(shell, /function CounterStartNumberField/);
-  assert.match(shell, /skipCommitRef/);
-  assert.match(shell, /valueAtFocusRef/);
-  assert.match(shell, /if \(event\.key === 'Escape'\)/);
-  assert.match(shell, /skipCommitRef\.current = true/);
-  assert.match(shell, /event\.currentTarget\.value = valueAtFocusRef\.current \|\| committed/);
+  const field = read('src/components/CounterStartNumberField.jsx');
+  assert.match(field, /export default function CounterStartNumberField/);
+  assert.match(field, /aria-label="Counter start number"/);
+  assert.match(field, /skipCommitRef/);
+  assert.match(field, /valueAtFocusRef/);
+  assert.match(field, /if \(event\.key === 'Escape'\)/);
+  assert.match(field, /skipCommitRef\.current = true/);
+  assert.match(field, /event\.currentTarget\.value = valueAtFocusRef\.current \|\| committed/);
   assert.match(
-    shell,
+    field,
     /if \(skipCommitRef\.current\) \{\s*skipCommitRef\.current = false;\s*return;/s,
   );
-  assert.match(shell, /if \(event\.key === 'Enter'\)/);
+  assert.match(field, /if \(event\.key === 'Enter'\)/);
+  assert.match(field, /Math\.max\(1, Math\.floor\(Number\(event\.currentTarget\.value\) \|\| 1\)\)/);
+  assert.match(field, /replace\(\/\[\^0-9\]\/g, ''\)/);
 });
 
 test('viewer patches selected counter radius + seriesStart; size catalog is not Width', () => {
@@ -51,6 +52,10 @@ test('viewer patches selected counter radius + seriesStart; size catalog is not 
   assert.match(size, /width: \[1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 32, 50\]/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
+  assert.match(mobile, /import CounterStartNumberField from '\.\.\/components\/CounterStartNumberField'/);
   assert.match(mobile, /tool === 'counter' \? COUNTER_SIZE_MIN/);
   assert.match(mobile, /ANNOTATION_SIZE_PRESETS\.counter/);
+  assert.match(mobile, /className="mobile-pdf-properties__start"/);
+  assert.match(mobile, /selectedCounterSeriesSize !== 1/);
+  assert.match(mobile, /onCommit=\{api\.onSelectedCounterSeriesStartChange\}/);
 });

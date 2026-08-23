@@ -850,6 +850,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 700;
 }
 
+/* Lone-series Counter Start — same control as desktop, on the 390 strip. */
+.mobile-pdf-properties__start {
+  flex: 0 0 auto;
+}
+
 .mobile-pdf-properties__width {
   height: 27px;
   padding-left: 6px;

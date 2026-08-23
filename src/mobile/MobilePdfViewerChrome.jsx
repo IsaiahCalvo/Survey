@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
+import CounterStartNumberField from '../components/CounterStartNumberField';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from '../utils/annotationSize';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DismissBarrier from '../components/DismissBarrier';
@@ -999,6 +1000,20 @@ export function MobileToolProperties({ api }) {
           onFocusChange={handleSizeFocus}
         />
       )}
+      {tool === 'counter'
+        && api.selectedCounterSeriesId
+        && api.onSelectedCounterSeriesStartChange && (() => {
+          const startLocked = api.selectedCounterSeriesSize !== 1;
+          return (
+            <CounterStartNumberField
+              className="mobile-pdf-properties__start"
+              seriesId={api.selectedCounterSeriesId}
+              start={api.selectedCounterSeriesStart}
+              locked={startLocked}
+              onCommit={api.onSelectedCounterSeriesStartChange}
+            />
+          );
+        })()}
       {showBorderStyle && (
         <MobileStyledSelect
           ariaLabel="Border style"

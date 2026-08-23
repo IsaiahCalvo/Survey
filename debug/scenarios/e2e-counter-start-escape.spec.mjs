@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 // Product bug leftover the Width/Size Escape inspect missed: Counter Start
 // commits on Enter/blur but had no Escape skip-commit. Zoom % / page # /
 // rotation / Width / Size / bookmark rename already restore. Opacity / hex /
-// Cloud bump apply live (no blur-commit draft). Distinct from Size catalog
-// and leftover-18 / X-01. Do not stamp file.id.
+// Cloud bump apply live (no blur-commit draft). 390 now mounts the same
+// Start field (was Size-only). Distinct from Size catalog and leftover-18
+// / X-01. Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -225,29 +226,82 @@ test('Counter Start Escape skip-commit intended + break + edge', async ({ page }
 
 test('Counter Start Escape skip-commit 390 + hubPreview', async ({ page }) => {
   test.setTimeout(180_000);
+  const hunts = [];
 
-  // 390 uses mobile chrome. Size is there; Start is desktop-only
-  // (MobilePdfViewerChrome has no Counter Start field).
   await openEditor(page, { width: 390, height: 844 });
+  const closePages = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+  if (await page.getByText('No documents yet').isVisible().catch(() => false) && await closePages.isVisible().catch(() => false)) {
+    await closePages.click();
+    await expect(page.getByText('No documents yet')).toHaveCount(0);
+  }
+
   await activateCounter(page);
-  await dropPin(page, { xf: 0.40, yf: 0.36 });
-  await expect(page.getByRole('textbox', { name: 'Counter start number', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Size', exact: true }).first()).toBeVisible({ timeout: 8_000 });
+  const pin = await dropPin(page, { xf: 0.40, yf: 0.36 });
+  await selectPin(page, pin.id);
+
+  const field = await startField(page);
+  await expect(field).toBeVisible({ timeout: 8_000 });
+  await expect(field).toBeEnabled();
+  expect(await field.inputValue()).toBe('1');
+  await expect(page.getByRole('textbox', { name: 'Size', exact: true }).first()).toBeVisible();
+  hunts.push({ hunt: 'intended — 390 selected pin reveals Start + Size', pass: true, id: pin.id });
+
+  await typeDraft(field, '10');
+  await field.press('Escape');
+  await expect(field).toHaveValue('1');
+  await expect.poll(async () => pinNumber(page, pin.id), {
+    message: '390 Escape must not persist Start 10',
+  }).toBe(1);
+  hunts.push({ hunt: 'intended — 390 type 10 + Escape restores 1', pass: true });
+
+  await typeDraft(field, '10');
+  await field.press('Enter');
+  await expect(field).toHaveValue('10');
+  await expect.poll(async () => pinNumber(page, pin.id), {
+    message: '390 Enter still commits Start 10',
+  }).toBe(10);
+  hunts.push({ hunt: 'intended — 390 Enter commits Start 10', pass: true });
+
+  await typeDraft(field, '99');
+  await field.press('Escape');
+  await expect(field).toHaveValue('10');
+  await expect.poll(async () => pinNumber(page, pin.id)).toBe(10);
+  hunts.push({ hunt: 'break — 390 99 + Escape restores 10', pass: true });
+
+  await typeDraft(field, 'abc');
+  await expect(field).toHaveValue('');
+  await field.press('Escape');
+  await expect(field).toHaveValue('10');
+  await expect.poll(async () => pinNumber(page, pin.id)).toBe(10);
+  hunts.push({ hunt: 'break — 390 letters + Escape restores 10', pass: true });
+
+  await activateCounter(page);
+  const pin2 = await dropPin(page, { xf: 0.58, yf: 0.36 });
+  const two = (await userAnnotationSnapshot(page)).filter(isCounterRow);
+  expect(two.map((row) => row.displayNumber).sort((a, b) => a - b)).toEqual([10, 11]);
+  await selectPin(page, pin.id);
+  await expect(await startField(page)).toBeDisabled();
+  hunts.push({ hunt: 'break — 390 Start locks after a second pin', pass: true, pin2: pin2.id });
+
+  await page.getByRole('button', { name: 'Draw', exact: true }).first().click();
+  await expect(await startField(page)).toHaveCount(0);
+  hunts.push({ hunt: 'edge — 390 Pen hides Start', pass: true });
 
   const viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
   expect(viewBox).toBe('0 0 612 792');
   const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
   expect(fileId).toBeNull();
+  hunts.push({ hunt: 'edge — viewBox 0 0 612 792; file.id null', pass: true, viewBox, fileId });
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('textbox', { name: 'Counter start number', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Draw', exact: true })).toHaveCount(0);
+  hunts.push({ hunt: 'edge — hubPreview Start 0', pass: true });
 
   await assertNoErrorBoundary(page);
-  console.log('COUNTER_START_ESCAPE_EDGE', JSON.stringify({
-    mobileStart: 0,
-    hubStart: 0,
+  console.log('COUNTER_START_390_PROOF', JSON.stringify({
+    hunts,
     viewBox,
     fileId,
   }));
