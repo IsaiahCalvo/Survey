@@ -3843,6 +3843,18 @@ export function useSVGInteraction({
     });
   }, [zoomGeneration, handlePointerUp, svgRef]);
 
+  // Handles setPointerCapture on the knob, so OS pointercancel lands on the
+  // capture target — not the SVG root. Window listener matches the
+  // shape-creation cancel path and commits the live preview.
+  useEffect(() => {
+    const onCancel = (e) => {
+      if (!dragStateRef.current?.active) return;
+      handlePointerUp(e);
+    };
+    window.addEventListener('pointercancel', onCancel);
+    return () => window.removeEventListener('pointercancel', onCancel);
+  }, [handlePointerUp]);
+
   /**
    * Handle pointer down on a selection handle (resize/rotate).
    * Sets up drag state for resize (corner/edge handles) or rotation (mtr handle).
