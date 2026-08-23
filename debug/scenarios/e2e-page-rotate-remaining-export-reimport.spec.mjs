@@ -758,6 +758,7 @@ test('desktop rotate remapper then export re-import of counter, survey-marker, l
   expect(wipedMarkers.includes(createdMarker.id), 'reload without save invents 0 survey-markers').toBe(false);
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
+  // Break — empty export still downloads; cancel does not invent marks.
   const emptyExport = page.getByRole('button', { name: 'Export annotated PDF', exact: true });
   await expect(emptyExport).toBeVisible();
   const [emptyDownload] = await Promise.all([
