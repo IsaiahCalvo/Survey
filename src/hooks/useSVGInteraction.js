@@ -3866,7 +3866,14 @@ export function useSVGInteraction({
         return;
       }
     }
-    e.target.setPointerCapture(e.pointerId);
+    // Capture on the SVG root, not the knob. Overlay remounts on the first
+    // rotate/resize visualTransform frame and would drop capture on e.target,
+    // leaving remapped-page mtr stuck near the start angle.
+    try {
+      (svgRef.current || e.target).setPointerCapture(e.pointerId);
+    } catch {
+      e.target.setPointerCapture(e.pointerId);
+    }
 
     // UX: 2026-04-20 — Group transform branch. When 2+ items are selected
     // (annotations + callouts combined), the multi-selection's outer dashed

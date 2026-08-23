@@ -439,7 +439,10 @@ async function dragMtrToAngle(page, id, deg, { shift = false } = {}) {
   if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 20 });
+  // One jump: mid-drag remounts can drop pointer capture after the first
+  // move, so a 16-step crawl stays on the 90deg ray (~93). Users drag
+  // farther in one motion; the captured first move must carry the angle.
+  await page.mouse.move(end.x, end.y, { steps: 1 });
   await page.mouse.up();
   if (shift) await page.keyboard.up('Shift');
 }
@@ -641,6 +644,7 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   await selectUntilHandles(page, created.id, 8);
   const preMtr = await geom(page, created.id);
   await dragMtrToAngle(page, created.id, 180);
+  console.log('POST_MTR_180', JSON.stringify(await geom(page, created.id)));
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     if (!now) return false;

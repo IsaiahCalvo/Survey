@@ -150,6 +150,7 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   assert.match(bbox, /export function displayedAngle/);
   assert.match(interaction, /displayedAngle\(obj\)/);
   assert.match(interaction, /data = \{ \.\.\.rotObj\.data, angle: ds\.currentAngle \}/);
+  assert.match(interaction, /svgRef\.current \|\| e\.target\)\.setPointerCapture/);
   assert.match(layer, /pageWidth=\{width\}/);
   assert.match(interaction, /rotation-aware resize/);
   assert.match(interaction, /Un-rotate the pointer around the shape's original center/);
