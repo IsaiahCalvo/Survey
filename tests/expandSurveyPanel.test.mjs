@@ -18,19 +18,25 @@ test('SurveySpacesRail Expand/Collapse are type=button; Collapse ignores dblclic
   assert.match(rail, /const \[isSurveyPanelCollapsed, setIsSurveyPanelCollapsed\] = useState\(true\)/);
 
   const expandIdx = rail.indexOf('aria-label="Expand Survey panel"');
-  const expandWindow = rail.slice(Math.max(0, expandIdx - 240), expandIdx + 80);
+  const expandWindow = rail.slice(rail.lastIndexOf('<button', expandIdx), expandIdx + 40);
   assert.match(expandWindow, /type="button"/);
   assert.match(expandWindow, /setIsSurveyPanelCollapsed\(false\)/);
 
   const collapseIdx = rail.indexOf('aria-label="Collapse Survey panel"');
-  const collapseWindow = rail.slice(Math.max(0, collapseIdx - 520), collapseIdx + 80);
+  const collapseWindow = rail.slice(rail.lastIndexOf('<button', collapseIdx), collapseIdx + 40);
   assert.match(collapseWindow, /type="button"/);
   assert.match(collapseWindow, /if \(event\.detail > 1\) return/);
   assert.match(collapseWindow, /dismissSurveySheet\(\)/);
 
   const surveyIdx = rail.indexOf('aria-label="Survey"');
-  const surveyWindow = rail.slice(Math.max(0, surveyIdx - 360), surveyIdx + 40);
+  const surveyWindow = rail.slice(rail.lastIndexOf('<button', surveyIdx), surveyIdx + 40);
   assert.match(surveyWindow, /type="button"/);
+  assert.match(rail, /Only the survey-mode flag should expand/);
+  assert.match(rail, /Only the key should re-open/);
+  assert.match(rail, /\}, \[showSurveyPanel\]\);/);
+  assert.match(rail, /\}, \[expandRequestKey\]\);/);
+  assert.doesNotMatch(rail, /\[markSurveySheetOpen, showSurveyPanel\]/);
+  assert.doesNotMatch(rail, /\[expandRequestKey, markSurveySheetOpen\]/);
 
   const sidebar = read('src/PDFSidebar.jsx');
   assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);

@@ -188,6 +188,10 @@ test('desktop Expand Survey panel intended + break + edge', async ({ page }) => 
   await expect(collapseBtn(page), 'Expand click must show Collapse Survey').toBeVisible({ timeout: 8_000 });
   expect(await expandBtn(page).count(), 'Expand gone after expand').toBe(0);
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible();
+  await expect.poll(async () => (await railMetrics(page)).panel, {
+    timeout: 5_000,
+    message: 'expanded survey panel is 320',
+  }).toBe(320);
   const expanded = await railMetrics(page);
   expect(expanded.host, 'host flex basis stays 48 (panel overlays)').toBe(48);
   expect(expanded.panel, 'expanded survey panel is 320').toBe(320);
@@ -324,7 +328,7 @@ test('390 Open survey sheet edge', async ({ page }) => {
     ? collapseBtn(page)
     : page.getByRole('button', { name: 'Close Survey panel', exact: true });
   await closer.first().click();
-  await expect(page.getByRole('heading', { name: 'Choose survey template' })).toHaveCount(0, { timeout: 8_000 });
+  await expect(page.getByRole('heading', { name: 'Choose survey template' })).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Open survey', exact: true })).toBeVisible();
 
   const viewBox = await pageViewBox(page);

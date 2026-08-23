@@ -665,14 +665,20 @@ const SurveySpacesRail = ({
       markSurveySheetOpen();
       setIsSurveyPanelCollapsed(false);
     }
-  }, [markSurveySheetOpen, showSurveyPanel]);
+    // Only the survey-mode flag should expand. markSurveySheetOpen identity
+    // churn (mobile closing=true) must not re-expand or arm ignoreNextSurveyHide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSurveyPanel]);
 
   useEffect(() => {
     if (expandRequestKey > 0) {
       markSurveySheetOpen();
       setIsSurveyPanelCollapsed(false);
     }
-  }, [expandRequestKey, markSurveySheetOpen]);
+    // Only the key should re-open. markSurveySheetOpen identity churn
+    // (mobile closing=true) must not re-expand or arm ignoreNextSurveyHide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandRequestKey]);
 
   useEffect(() => {
     if (collapseRequestKey > 0) dismissSurveySheet();
