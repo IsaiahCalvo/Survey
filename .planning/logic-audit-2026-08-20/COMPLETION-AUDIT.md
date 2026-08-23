@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-23 T-01 leftover live Textbox rubber-band then auto-edit mount):** named leftover after T-02 live Callout rubber-band. Live `e2e-textbox-live-create.spec.mjs` **2 / 2 (12.6s)**. Node **15 / 15**. No product bug. Prior T-01 auto-edit / selected resize not replayed. Cloud has no dedicated tool. Counter window pin already receipted. Receipt `fix-logs/textbox-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-23 completion-audit refresh):** treated `fix-logs/completion-audit-refresh-2026-08-22.md` as stale. Reclassified all 96 unique IDs + leftover-18 against the current tree after the live-create family (S-01…T-01 / D-01…D-04) + selected-transform family (rect/ellipse/textbox/cloud/ink + E-02 + E-03 + V-04). Tree inspect found **no** unique unblocked leftover (survey-marker rubber-band / callout auto-edit / Cloud create / Counter pin / Line `mtr` / Duplicate are replay, compile-hidden, or already dedicated). **96 proved / 0 stomped / 0 weak / 0 missing / leftover-18 18 fail-closed + 18 host-gated.** Counts unchanged. Focused Node **110 / 110**. Citation drift: P1-09 `:24087` / `:24122`; P1-15 `:32520`; P1-16 `:28696`; P2-34(b) `:23863`. Receipt `fix-logs/completion-audit-refresh-2026-08-23.md`. Next leftover: leftover-18 live hosts (first **X-01** — names in `.env.local`; still need lease + `file.id`). Goal stays open.
+
+**Prior-pass (2026-08-23 T-01 leftover live Textbox rubber-band then auto-edit mount):** named leftover after T-02 live Callout rubber-band. Live `e2e-textbox-live-create.spec.mjs` **2 / 2 (12.6s)**. Node **15 / 15**. No product bug. Prior T-01 auto-edit / selected resize not replayed. Cloud has no dedicated tool. Counter window pin already receipted. Receipt `fix-logs/textbox-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-23 T-02 leftover live Callout rubber-band then commit):** named leftover after S-03 / S-04 live Line/Arrow rubber-band. Live `e2e-callout-live-create.spec.mjs` **2 / 2 (10.7s)**. Node **15 / 15**. No product bug. Prior T-02 knee / corners / arrowhead catalogs not replayed. Receipt `fix-logs/callout-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
@@ -181,14 +183,14 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | P1-06 | Transform commit by stale index | **proven** | **Restored** `84f21370`: `useSVGInteraction.js:110` `resolveAnnotationIndexById` at pointermove (`:1293`) / pointerup (`:2971`); capture `annotationId` at drag start. Live `fix-logs/e2e-00fda232-thirteen-live.md` (stale id → `-1`; remap `b` `1→0`; gone id clears). Node `tests/svgInteractionFixes.test.mjs`. |
 | P1-07 | Text-edit commit by stale index | **proven** | `TextEditOverlay.jsx:81` `replaceTextInPageJson`; `:343` caller passes `originalRef.current`. `tests/pdfViewerStaleIdCommits.test.mjs` |
 | P1-08 | Undo retargets selection | **proven** | **Restored** `84f21370`: `useSVGInteraction.js:121` `captureSelectionStableIds` / `:131` `remapSelectionByStableIds`. Live `fix-logs/e2e-00fda232-thirteen-live.md` + wave8 cluster 3 (delete B → index `-1`; Undo restores B). Node `tests/svgInteractionFixes.test.mjs`. |
-| P1-09 | Redo resurrects old snapshot | **proven** | `PDFViewer.jsx:23904` `pushLocalAnnotationHistoryAction`; `:23939` `redoHistoryRef.current = []` |
+| P1-09 | Redo resurrects old snapshot | **proven** | `PDFViewer.jsx:24087` `pushLocalAnnotationHistoryAction`; `:24122` `redoHistoryRef.current = []` |
 | P1-10 | Own undo wipes teammate edits | **proven** | `src/utils/crdtHistoryScope.js:7` `scopeHistoryStateForCrdtRestore` |
 | P1-11 | Own undo reverts teammate same-object | **proven** | `src/utils/annotationLocalHistory.js:580` `mergeAnnotationHistoryUpdate` |
 | P1-12 | Excel auto-sync jams undo | **proven** | **Restored** `8efdbb4e`: `historyHelpers.js:124` `startsWith('excel:')` in `isLegacyAnnotationHistoryMeta`. Producer still `PDFViewer.jsx:17157` `addHistoryCheckpoint('excel:auto-sync', …)`. Live `fix-logs/e2e-p1-12-38-53-live.md` **3 / 3** (toolbar Undo pops `excel:auto-sync`; `zoom:fit` / empty ineligible; `excel:manual-sync` edge). Node `tests/historyStacks.test.mjs`. |
 | P1-13 | First undo after import deletes imports | **proven** | `PDFViewer.jsx:10139` `previewBaselineByPageRef`; delete after import skip-save `:25079`. Live `?testPdf=` import `fix-logs/e2e-testpdf-import.md` **1 / 1** (imported ids survive a new draw). |
 | P1-14 | Cross-page counter renumber never saves | **proven** | **Restored** `84f21370`: `counterNumbering.js:26` `renumberCounters` replaces changed page buckets (clone objects); unchanged pages keep `===`. Live `fix-logs/e2e-00fda232-thirteen-live.md` + wave8 cluster 4 (pins 1–3; delete #1 → `[1, 2]`; drop page 2 becomes `#3`). Node `tests/counterNumberingPageRefs.test.mjs` + `tests/counterRenumberSavePolicy.test.mjs`. |
-| P1-15 | Callout text clobbers teammate | **proven** | `PDFViewer.jsx:32360-32373` callout `onEditCommit` merges only `text` + text-box bounds onto the live callout |
-| P1-16 | Reopen hides all survey markers | **proven** | `PDFViewer.jsx:28501` `matchesSelectedModule` (no early-return on null module) |
+| P1-15 | Callout text clobbers teammate | **proven** | `PDFViewer.jsx:32520` callout `onEditCommit` + `resolveCommittedCalloutText` (merges text + text-box bounds onto the live callout) |
+| P1-16 | Reopen hides all survey markers | **proven** | `PDFViewer.jsx:28696` `matchesSelectedModule` (no early-return on null module) |
 | P1-17 | Page ops revert concurrent edits | **proven** | `src/utils/pageAnnotationReindex.js:353` `mergeLivePagePresentation` |
 | P1-18 | clipboardPage never remapped | **proven** | `pageAnnotationReindex.js:324` `remapClipboardPage`; `PDFViewer.jsx:12379` |
 | P1-19 | Whole-PDF upsert no version check | **proven** | `documentVersionCheck.js:1` `DocumentVersionConflictError`; `:10` `assertDocumentVersionMatch`; `AppShell.jsx` `expectedUpdatedAt` |
@@ -265,7 +267,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 | P2-31 | Profile save reports total failure | **proven** | `accountPlatform.js:142` `describeProfileSaveOutcome`; `AccountSettings.jsx:321` |
 | P2-32 | Google-only Change Password form | **proven** | `AccountSettings.jsx` “Set a password” / `canUnlinkProvider` |
 | P2-33 | Invite → sign-in abandons invite | **proven** | `pendingInviteResume.js:68` `resumePendingInviteAfterAuth`; `main.jsx:360` |
-| P2-34 | Shortcut overlay lies + nav + `B` | **proven** | `KeyboardShortcutsOverlay.jsx:45-47` Home/End; `:73` `B`; no Ctrl+W / Ctrl+Tab. `PDFViewer.jsx:23680` `B`. Live UL-02 |
+| P2-34 | Shortcut overlay lies + nav + `B` | **proven** | `KeyboardShortcutsOverlay.jsx:45-47` Home/End; `:75` `B`; no Ctrl+W / Ctrl+Tab. `PDFViewer.jsx:23863` `B`. Live UL-02 |
 | P2-35 | Mobile sheets race / hard-hide / touchcancel | **proven** | `PDFSidebar.jsx` `onTouchCancel` + hook restore |
 | P2-36 | Second Electron instance races MS cache | **proven** | `electron-main.js:21` `app.requestSingleInstanceLock()` |
 | P2-37 | Export Infinity/NaN | **proven** | `pdfAnnotationsPdfLib.js:3372` flatten skip non-finite box; `:351` / `:1773` / `:1839` export writers. Wave9 empty-page export matched native fixture annots (no invented NaN geometry). Node `tests/printFlattenOnPage.test.mjs` + `tests/exportScaleLeftovers.test.mjs`. |
@@ -363,7 +365,7 @@ Host-blocked remaining paths (chrome/self often already proven): `X-01`, `X-05` 
 
 | Invariant | Holds? | Proof |
 |---|---|---|
-| `zoomGeneration` | **yes** | `PDFViewer.jsx:3244` `useState(0)`; `setZoomGeneration` `:1956` zoom-start + `:1992` `gesture-start` |
+| `zoomGeneration` | **yes** | `PDFViewer.jsx:3247` `useState(0)`; `setZoomGeneration` `:1959` zoom-start + `:1995` `gesture-start` |
 | SVG `viewBox` owns zoom | **yes** | `SVGAnnotationLayer.jsx:4666` `viewBox={\`0 0 ${width} ${height}\`}` |
 | Container-aware canvas | **yes** | `PageAnnotationLayer.jsx:7747-7751` `containerW / width` → `effectiveScale` |
 | Single-name `fontFamily` | **yes** | `FONT_FAMILIES` six single names (`annotationStyleCatalog.js:10,34`) |
@@ -427,7 +429,7 @@ Pass-1 also merged Line+Arrow into #1 and Rectangle+Move/Resize/Rotate into #6 *
 |---|---|---|
 | Folded z-order persistence | **proven** (same as KB-2) | `annotationZOrder.js:124`; `annotationDocStore.js` `docToByPage` sort |
 | P2-34(a) Home/End / ←→ in continuous | **proven** | Overlay `:45-47`; `PDFViewer.jsx` page-nav (Home/End listed + wired) |
-| P2-34(b) `B` sidebar | **proven** | `PDFViewer.jsx:23680`; overlay `:73`; `tests/sidebarToggleHotkey.test.mjs` |
+| P2-34(b) `B` sidebar | **proven** | `PDFViewer.jsx:23863`; overlay `:75`; `tests/sidebarToggleHotkey.test.mjs` |
 | P2-34(c) Ctrl+W / Ctrl+Tab overlay lies | **proven** | Overlay no longer lists them (`KeyboardShortcutsOverlay.jsx` Navigation/Actions/Interface) |
 | P2-35(a) dismiss-then-reopen race | **proven** | `src/mobile/useMobileSheetMotion.js:58-79,119-149` generation-guard + `resetMotion`; close tests |
 | P2-35(b) hard-hide survey exits | **proven** | `requestClose` / `fix-logs/mobile-sheets-p2-35b.md` + `kal436-survey-rail.md` |
@@ -473,5 +475,7 @@ E2E catalog remaining host-blocked paths listed above (**18** — unchanged; not
 **This-pass (2026-08-21 status refresh):** original **96 unique IDs** still **96 proven / 0 stomped / 0 weak / 0 missing**. Leftover **18** still parked (not retried). Zero product restores. `ISSUE-INVENTORY.md` statuses refreshed from current `file:line` greps. Receipt `fix-logs/audit-status-refresh-2026-08-21.md`.
 
 **This-pass (2026-08-21 unblocked catalog + mobile Bookmarks):** last unique unblocked cluster (390 Bookmarks sheet) live-proven. Unique unblocked GAP **0**. Leftover **18** still parked. Receipts `fix-logs/mobile-bookmarks-2026-08-21.md` + `fix-logs/unblocked-catalog-exhausted-2026-08-21.md`.
+
+**This-pass (2026-08-23 completion-audit refresh):** original **96 unique IDs** still **96 proven / 0 stomped / 0 weak / 0 missing**. Leftover **18** still parked (18 fail-closed local + 18 host-gated; not retried). Tree exhausted of unique live leftovers that are not leftover-18 and not a replay. Receipt `fix-logs/completion-audit-refresh-2026-08-23.md`.
 
 **Goal stays open.** Leftover-18 still blocks `/goal` complete.

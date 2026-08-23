@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-23 T-01 live Textbox rubber-band then auto-edit mount intended+break+edge (`fix-logs/textbox-live-create-2026-08-23.md`). In-drag `[data-text-preview]` (10px dashed gate) + pointerup `isNewText` + zoom keep-track on `?testPdf=` (no `file.id`). Prior T-01 auto-edit / selected resize not replayed. Cloud has no dedicated tool. Counter window pin already receipted. No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-23 completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-23.md`). Reclassified all 96 unique IDs + leftover-18 against tip `4ab0be92` after the live-create + selected-transform families. Tree inspect found **no** unique unblocked leftover. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. X-01 names **PRESENT** in `.env.local`; process env absent; no lease + no `file.id`. Focused Node **110 / 110**. Citation drift: P1-09 `:24087` / `:24122`; P1-15 `:32520`; P1-16 `:28696`; P2-34(b) `:23863`. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-23 T-01 live Textbox rubber-band then auto-edit mount intended+break+edge (`fix-logs/textbox-live-create-2026-08-23.md`). In-drag `[data-text-preview]` (10px dashed gate) + pointerup `isNewText` + zoom keep-track on `?testPdf=` (no `file.id`). Prior T-01 auto-edit / selected resize not replayed. Cloud has no dedicated tool. Counter window pin already receipted. No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-23 T-02 live Callout rubber-band then commit intended+break+edge (`fix-logs/callout-live-create-2026-08-23.md`). In-drag `.callout-preview` (CREATE-01 dashed `5,5`) + pointerup 4px gate + zoom keep-track on `?testPdf=` (no `file.id`). Prior T-02 knee / corners / arrowhead catalogs not replayed. No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
@@ -159,14 +161,14 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | P1-06 | Resize/rotate/move commits by stale index | **proven** | `useSVGInteraction.js:110` `resolveAnnotationIndexById` at pointermove `:1293` / pointerup `:2971`. `tests/svgInteractionFixes.test.mjs` |
 | P1-07 | Text-edit commit by stale index | **proven** | `TextEditOverlay.jsx:81` `replaceTextInPageJson`; `:343` uses `originalRef.current`. `tests/pdfViewerStaleIdCommits.test.mjs` |
 | P1-08 | Undo retargets selection to a different shape | **proven** | `useSVGInteraction.js:121` `captureSelectionStableIds` / `:131` `remapSelectionByStableIds`. `tests/svgInteractionFixes.test.mjs` |
-| P1-09 | Redo resurrects old page snapshot | **proven** | `PDFViewer.jsx:23904` `pushLocalAnnotationHistoryAction`; `:23939` `redoHistoryRef.current = []` |
+| P1-09 | Redo resurrects old page snapshot | **proven** | `PDFViewer.jsx:24087` `pushLocalAnnotationHistoryAction`; `:24122` `redoHistoryRef.current = []` |
 | P1-10 | Own undo wipes teammate edits | **proven** | `src/utils/crdtHistoryScope.js:7` `scopeHistoryStateForCrdtRestore`; wired `PDFViewer.jsx:11880` / `:12153` |
 | P1-11 | Own undo reverts teammate’s concurrent edit | **proven** | `annotationLocalHistory.js:580` `mergeAnnotationHistoryUpdate` |
 | P1-12 | Excel auto-sync permanently jams undo | **proven** | **Stomp one-liner still live:** `historyHelpers.js:124` `reason.startsWith('excel:')`. Producer `PDFViewer.jsx` `addHistoryCheckpoint('excel:auto-sync')`. `tests/historyStacks.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
 | P1-13 | First edit-and-undo after import deletes imports | **proven** | `PDFViewer.jsx:10139` `previewBaselineByPageRef`; import skip-save deletes baseline `:25079`. `fix-logs/e2e-testpdf-import.md` |
 | P1-14 | Cross-page counter renumber never saves | **proven** | `counterNumbering.js` `renumberCounters` replaces changed page buckets. `tests/counterNumberingPageRefs.test.mjs`; `tests/counterRenumberSavePolicy.test.mjs` |
-| P1-15 | Callout text edit clobbers teammate move/restyle | **proven** | `PDFViewer.jsx:32360-32373` `onEditCommit` merges only `text` + text-box bounds onto the live callout |
-| P1-16 | Reopened documents hide all survey markers | **proven** | `PDFViewer.jsx:28501` `matchesSelectedModule` (no early-return on null module) |
+| P1-15 | Callout text edit clobbers teammate move/restyle | **proven** | `PDFViewer.jsx:32520` `onEditCommit` + `resolveCommittedCalloutText` (merges text + text-box bounds onto the live callout) |
+| P1-16 | Reopened documents hide all survey markers | **proven** | `PDFViewer.jsx:28696` `matchesSelectedModule` (no early-return on null module) |
 | P1-17 | Page ops revert other edits during upload | **proven** | `pageAnnotationReindex.js:353` `mergeLivePagePresentation`; `usePageOperations.js:83`. `src/utils/__tests__/pageAnnotationReindex.test.mjs` |
 | P1-18 | Cut/copy page clipboard goes stale | **proven** | `pageAnnotationReindex.js:324` `remapClipboardPage`; `PDFViewer.jsx:12379`. Same test file |
 | P1-19 | Two people doing page ops silently overwrite | **proven** | `documentVersionCheck.js:1` `DocumentVersionConflictError`; `AppShell.jsx` `expectedUpdatedAt` |
@@ -253,7 +255,7 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | P2-31 | Profile save reports total failure even when name already saved | **proven** | `accountPlatform.js:142` `describeProfileSaveOutcome`; `AccountSettings.jsx:321` |
 | P2-32 | Google-only accounts see a Change Password form that can never succeed | **proven** | `accountPlatform.js:73` `canUnlinkProvider`; `AccountSettings.jsx:1230` |
 | P2-33 | Invite link → sign-in → dashboard; invite abandoned | **proven** | `pendingInviteResume.js:68` `resumePendingInviteAfterAuth`; `main.jsx:360` |
-| P2-34 | Eight documented keyboard shortcuts do nothing (3 merged) | **proven** | Overlay `KeyboardShortcutsOverlay.jsx:45-47` Home/End; `:73` `B`; no Ctrl+W / Ctrl+Tab. `PDFViewer.jsx:23680` `B`; `:23761` family page-nav. `tests/sidebarToggleHotkey.test.mjs` |
+| P2-34 | Eight documented keyboard shortcuts do nothing (3 merged) | **proven** | Overlay `KeyboardShortcutsOverlay.jsx:45-47` Home/End; `:75` `B`; no Ctrl+W / Ctrl+Tab. `PDFViewer.jsx:23863` `B`. `tests/sidebarToggleHotkey.test.mjs` |
 | P2-35 | Mobile bottom sheets: reopen race, missing exits, stuck mid-drag | **proven** | `src/mobile/useMobileSheetMotion.js:226` `onTouchCancel`; hosts bind `PDFSidebar.jsx:375`. `useMobileSheetMotion.touchcancel.test.mjs`; `fix-logs/mobile-sheets-p2-35b.md` |
 | P2-36 | Launching desktop twice races the Microsoft token cache | **proven** | `electron-main.js:21` `app.requestSingleInstanceLock()` |
 | P2-37 | Export/print can serialize literal `Infinity`/`NaN` | **proven** | `pdfAnnotationsPdfLib.js:3372` flatten skip non-finite box. `tests/printFlattenOnPage.test.mjs` |
@@ -265,7 +267,7 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | Sub | Status | Evidence |
 |---|---|---|
 | P2-34(a) Home/End / ←→ in continuous | **proven** | Overlay `:45-47`; `PDFViewer.jsx` page-nav |
-| P2-34(b) `B` sidebar | **proven** | `PDFViewer.jsx:23680`; overlay `:73` |
+| P2-34(b) `B` sidebar | **proven** | `PDFViewer.jsx:23863`; overlay `:75` |
 | P2-34(c) Ctrl+W / Ctrl+Tab overlay lies | **proven** | Overlay no longer lists them (Navigation/Actions/Interface only) |
 | P2-35(a) dismiss-then-reopen race | **proven** | `useMobileSheetMotion.js` generation-guard + `resetMotion` |
 | P2-35(b) hard-hide survey exits | **proven** | `requestClose`; `fix-logs/mobile-sheets-p2-35b.md` |
