@@ -526,6 +526,16 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
   }, { timeout: 8_000, message: 'remapped rect fill chip must stick' }).toBe('#FF0000');
   expect(placeHeld(afterChip, remappedRect), 'fill chip must not jump remapped rect').toBe(true);
 
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => {
+    const now = await geom(page, rect.id);
+    return colorKey(now.fill) === priorFill && placeHeld(now, remappedRect);
+  }, { timeout: 12_000, message: 'undo chip restores remapped rect + prior color' }).toBeTruthy();
+
+  expect(await selectAnno(page, rect.id)).toBe(true);
+  await openColorPicker(page, 'Color');
+  if (await fillTab.count()) await fillTab.click();
   const hex = page.getByRole('textbox', { name: 'Hex color', exact: true }).first();
   if (await hex.isVisible().catch(() => false)) {
     await hex.fill('00AAFF');
@@ -534,14 +544,13 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
       message: 'custom hex must stick on remapped rect',
     }).toBe('#00AAFF');
     expect(placeHeld(await geom(page, rect.id), remappedRect), 'custom hex must not jump remapped rect').toBe(true);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => {
+      const now = await geom(page, rect.id);
+      return colorKey(now.fill) === priorFill && placeHeld(now, remappedRect);
+    }, { timeout: 12_000, message: 'undo hex restores remapped rect + prior color' }).toBeTruthy();
   }
-
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Control+z');
-  await expect.poll(async () => {
-    const now = await geom(page, rect.id);
-    return colorKey(now.fill) === priorFill && placeHeld(now, remappedRect);
-  }, { timeout: 12_000, message: 'undo restores remapped rect + prior color' }).toBeTruthy();
 
   expect(await selectAnno(page, rect.id)).toBe(true);
   await openColorPicker(page, 'Color');
