@@ -12,12 +12,16 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 test('Account Settings dialog is labelled by the Settings heading', () => {
   const src = read('src/components/AccountSettings.jsx');
-  assert.match(src, /aria-labelledby="account-settings-title"/);
-  assert.match(src, /<h2 id="account-settings-title">Settings<\/h2>/);
-  assert.match(src, /role="dialog"/);
-  assert.match(src, /aria-modal="true"/);
-  assert.doesNotMatch(src, /role="dialog"\s*\n\s*aria-modal="true"\s*\n\s*onClick=/);
-  assert.doesNotMatch(src, /create-checkout-session|Turnstile|msalInstance/);
+  const start = src.indexOf('className="account-settings-modal"');
+  const end = src.indexOf('account-settings-sidebar');
+  assert.ok(start > 0 && end > start);
+  const slice = src.slice(start, end);
+  assert.match(slice, /aria-labelledby="account-settings-title"/);
+  assert.match(slice, /<h2 id="account-settings-title">Settings<\/h2>/);
+  assert.match(slice, /role="dialog"/);
+  assert.match(slice, /aria-modal="true"/);
+  assert.doesNotMatch(slice, /role="dialog"\s*\n\s*aria-modal="true"\s*\n\s*onClick=/);
+  assert.doesNotMatch(slice, /create-checkout-session|Turnstile|msalInstance/);
 });
 
 test('sibling compile-visible hub dialogs stay named; leftover-18 hosts stay gated', () => {

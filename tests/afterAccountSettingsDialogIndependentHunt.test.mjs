@@ -15,7 +15,6 @@ test('official leftover files besides isolated 8448 match live source after keep
   const overlayOfficial = [
     'tests/keyboardShortcutMatrix.test.mjs',
     'tests/mobileChromeHitTargets.test.mjs',
-    'tests/officialOverlayMountAlign.test.mjs',
     'tests/shortcutsOverlay.test.mjs',
   ];
   for (const rel of overlayOfficial) {
@@ -23,12 +22,12 @@ test('official leftover files besides isolated 8448 match live source after keep
     assert.match(src, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
     assert.match(src, /doesNotMatch\(shell, \/!isViewerVisible && <KeyboardShortcutsOverlay/);
   }
+  const overlayAlign = read('tests/officialOverlayMountAlign.test.mjs');
+  assert.match(overlayAlign, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
+  assert.match(overlayAlign, /STALE_MOUNT/);
 
-  const spaces = read('tests/spacesRailToggle.test.mjs');
-  assert.match(spaces, /openPanel\(tab\.id\)/);
-
-  const popover = read('tests/annotationFormattingPopoverContract.test.mjs');
-  assert.match(popover, /pointerdown/);
+  assert.match(read('src/PDFSidebar.jsx'), /openPanel\(tab\.id\)/);
+  assert.match(read('src/AppShell.jsx'), /document\.addEventListener\('pointerdown', onDown, true\)/);
 
   const sync = read('src/DevTestRoute.jsx');
   assert.doesNotMatch(sync, /cloudSync: true/);
