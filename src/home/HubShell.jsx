@@ -443,6 +443,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
   const navBtn = (key, icon, label, disabled = false) => (
     <button
       key={key}
+      type="button"
       className={tab === key ? 'active' : ''}
       disabled={disabled}
       onClick={() => !disabled && onNav && onNav(key)}
