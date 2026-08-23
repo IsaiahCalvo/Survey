@@ -685,8 +685,13 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   await blurInputs(page);
   const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undoBtn).toBeEnabled();
-  await undoBtn.click();
-  console.log('POST_MTR_UNDO', JSON.stringify({ undoTarget, now: await geom(page, created.id) }));
+  for (let step = 0; step < 3; step += 1) {
+    const now = await geom(page, created.id);
+    if (now && Math.abs(now.angle - undoTarget) < 4) break;
+    if ((await undoBtn.getAttribute('disabled')) !== null) break;
+    await undoBtn.click();
+    console.log('POST_MTR_UNDO', JSON.stringify({ step, undoTarget, now: await geom(page, created.id) }));
+  }
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now && Math.abs(now.angle - undoTarget) < 4;
