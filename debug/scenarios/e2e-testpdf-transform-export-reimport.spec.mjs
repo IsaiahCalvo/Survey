@@ -79,6 +79,41 @@ async function blurInputs(page) {
   });
 }
 
+async function pageCoveredByHub(page) {
+  const pageEl = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
+  const box = await pageEl.boundingBox();
+  if (!box) return false;
+  return page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    const text = el?.textContent || '';
+    return /No documents yet|Upload your first PDF|Search documents/.test(text);
+  }, { x: box.x + box.width * 0.45, y: box.y + box.height * 0.40 });
+}
+
+async function dismissChrome(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const search = page.getByPlaceholder('Search text in PDF...');
+  if (await search.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Search text', exact: true }).click().catch(() => {});
+    await blurInputs(page);
+  }
+  const hubCopy = page.getByText('No documents yet');
+  if (await hubCopy.isVisible().catch(() => false) || await pageCoveredByHub(page)) {
+    const rail = page.getByRole('button', { name: /Open pages, search, and bookmarks/i });
+    if (await rail.first().isVisible().catch(() => false)) {
+      await rail.first().click().catch(() => {});
+    } else {
+      const tab = page.getByRole('button', { name: /\.pdf/ }).first();
+      if (await tab.isVisible().catch(() => false)) {
+        await tab.click({ position: { x: 24, y: 8 } }).catch(() => {});
+      }
+    }
+    await expect(hubCopy).toHaveCount(0, { timeout: 8_000 });
+  }
+  await blurInputs(page);
+}
+
 async function pageBox(page, pageNumber = 1) {
   const box = await page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).boundingBox();
   expect(box, `page ${pageNumber} geometry`).toBeTruthy();
@@ -227,14 +262,20 @@ async function strokeClickRect(page, id) {
   const hit = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"] [data-shape-hit-target="rect"]`).first();
   await expect(hit).toBeVisible();
   const box = await hit.boundingBox();
+  expect(box, `hit bbox for ${id}`).toBeTruthy();
+  const before = (await selectedIds(page)).includes(id);
   const points = [
     { x: box.x + box.width * 0.35, y: box.y + box.height * 0.35 },
     { x: box.x + box.width * 0.65, y: box.y + box.height * 0.40 },
+    { x: box.x + 6, y: box.y + box.height * 0.30 },
+    { x: box.x + box.width * 0.30, y: box.y + 6 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
     try {
-      await expect.poll(async () => (await selectedIds(page)).includes(id), { timeout: 800 }).toBe(true);
+      await expect.poll(async () => (await selectedIds(page)).includes(id), {
+        timeout: 800,
+      }).not.toBe(before);
       return;
     } catch { /* try next */ }
   }
@@ -278,18 +319,19 @@ async function strokeClickInk(page, id) {
 }
 
 async function selectUntilHandles(page, id, clicker, min = 4) {
+  await dismissChrome(page);
   await selectMode(page);
   await clickEmpty(page);
   await clicker(page, id);
   await expect.poll(async () => (await selectedIds(page)).includes(id), { timeout: 8_000 }).toBe(true);
-  await expect.poll(async () => page.locator('[data-resize-handle]').count(), {
+  await expect.poll(async () => page.locator('[data-svg-annotation-layer="1"] [data-resize-handle]').count(), {
     timeout: 8_000,
     message: `selected ${id} must show resize handles`,
   }).toBeGreaterThanOrEqual(min);
 }
 
 async function dragResizeHandle(page, handleId, dx, dy) {
-  const handle = page.locator(`[data-resize-handle="${handleId}"]`).first();
+  const handle = page.locator(`[data-svg-annotation-layer="1"] [data-resize-handle="${handleId}"]`).first();
   await expect(handle, `${handleId} handle`).toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -416,6 +458,7 @@ test('desktop create/transform then local save/reload + export re-import', async
 
   await openEditor(page, { keepOnReload: true });
   await assertNoErrorBoundary(page);
+  await dismissChrome(page);
   expect(page.url()).toContain('testPdf=clickable-link-test.pdf');
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
   expect(await pageViewBox(page)).toBe('0 0 612 792');
@@ -435,9 +478,11 @@ test('desktop create/transform then local save/reload + export re-import', async
 
   // Break — reload without a save invents 0.
   await reloadEditor(page);
+  await dismissChrome(page);
   expect((await userOwned(page)).length, 'reload without save invents 0').toBe(0);
 
   const created = await createRect(page, RECT_BOX);
+  await dismissChrome(page);
   expect(created?.id).toBeTruthy();
   const createdGeom = await geom(page, created.id);
   expect(createdGeom.angle).toBeCloseTo(0, 1);
@@ -465,6 +510,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   expect(rotated.vh, 'mtr holds resized height').toBeCloseTo(resized.vh, 1);
 
   const pen = await createPen(page, PEN_BOX);
+  await dismissChrome(page);
   expect(pen?.id).toBeTruthy();
   const pen0 = await geom(page, pen.id);
   expect(pen0.vw).toBeGreaterThan(8);
@@ -486,6 +532,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   // Intended — reload restores the transformed live objects, not the create-time size.
   const viewBoxBefore = await pageViewBox(page);
   await reloadEditor(page);
+  await dismissChrome(page);
   await expect.poll(async () => {
     const rows = await userOwned(page);
     return rows.some((row) => row.id === created.id) && rows.some((row) => row.id === pen.id);
@@ -528,6 +575,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   });
   await openEditor(page, { url: `/?testPdf=${REIMPORT_NAME}`, keepOnReload: false });
   await assertNoErrorBoundary(page);
+  await dismissChrome(page);
   expect(await fileId(page), 're-import must not stamp file.id').toBeNull();
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
@@ -578,7 +626,9 @@ test('390 create/transform then local reload', async ({ page }) => {
 
   await openEditor(page, { width: 390, height: 844, keepOnReload: true });
   await assertNoErrorBoundary(page);
+  await dismissChrome(page);
   const rect = await createRect(page, { x0: 0.18, y0: 0.30, x1: 0.52, y1: 0.48 });
+  await dismissChrome(page);
   const before = await geom(page, rect.id);
   await selectUntilHandles(page, rect.id, strokeClickRect, 4);
   await dragResizeHandle(page, 'br', 36, 28);
@@ -589,6 +639,7 @@ test('390 create/transform then local reload', async ({ page }) => {
   const resized = await geom(page, rect.id);
   await waitForCacheIds(page, [rect.id]);
   await reloadEditor(page);
+  await dismissChrome(page);
   await expect.poll(async () => Boolean(await geom(page, rect.id)), { timeout: 20_000 }).toBe(true);
   const restored = await geom(page, rect.id);
   expect(Math.abs(restored.vw - resized.vw)).toBeLessThan(4);
