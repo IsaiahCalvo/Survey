@@ -286,12 +286,14 @@ test('Manage Team Search first Invite click + 390 Templates Save', async ({ page
 
   await teamSearch.click();
   await expect(teamSearch).toBeFocused();
-  await team.getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(team.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+  const editToggle = team.locator('[data-manage-team-edit]');
+  await editToggle.click();
+  await expect(editToggle).toHaveText('Done');
   await expect(teamSearch).not.toBeFocused();
 
   // Break — a member row click still only blurs search (does not open More).
-  await team.getByRole('button', { name: 'Done', exact: true }).click();
+  await editToggle.click();
+  await expect(editToggle).toHaveText('Edit');
   await teamSearch.click();
   await expect(teamSearch).toBeFocused();
   const memberRow = team.locator('[data-kal31-project-member]').first();
@@ -301,7 +303,7 @@ test('Manage Team Search first Invite click + 390 Templates Save', async ({ page
   await expect(team.locator('[data-manage-team-dismiss-surface="true"]')).toHaveCount(0);
   await expect(team.getByText('View activity')).toHaveCount(0);
   await expect(invite).toHaveCount(0);
-  await team.getByRole('button', { name: 'Done', exact: true }).click();
+  await team.locator('button', { hasText: 'Done' }).last().click();
   await expect(team).toHaveCount(0);
 
   // 390 Templates — first Save tap while content Search is focused lands.
