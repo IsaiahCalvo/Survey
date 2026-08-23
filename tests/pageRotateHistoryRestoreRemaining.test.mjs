@@ -362,6 +362,7 @@ test('History restore remaining after remap uses live activity Restore; no file.
   assert.match(viewer, /source: 'history:restore-deleted-annotation'/);
   assert.match(viewer, /setZoomGeneration\(prev => prev \+ 1\)/);
   assert.match(reindex, /rotatePageSpaceCounter/);
+  assert.match(reindex, /Always persist displayed origin/);
   assert.match(reindex, /rotateSurveyMarkerBounds/);
   assert.match(reindex, /rotateCalloutFractions/);
   assert.match(history, /export function stampDisplayedPlacement/);
