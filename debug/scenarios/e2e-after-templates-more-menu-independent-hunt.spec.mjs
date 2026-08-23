@@ -272,8 +272,10 @@ test('independent hunt after Templates More menu name', async ({ page }) => {
     }).locator('[data-drag-rearrange-row]').filter({ hasText: TEMPLATE })
       .getByRole('button', { name: 'More', exact: true });
     await tplMore.click();
+    const namedTpl = page.getByRole('menu', { name: `${TEMPLATE} actions`, exact: true });
+    await expect(namedTpl).toBeVisible({ timeout: 8_000 });
     inventory.templates.openMenus = await namelessOpenMenus(page);
-    inventory.templates.namedActions = await page.getByRole('menu', { name: `${TEMPLATE} actions`, exact: true }).count();
+    inventory.templates.namedActions = await namedTpl.count();
     inventory.templates.share = await page.getByRole('menuitem', { name: 'Share', exact: true }).count();
     await page.keyboard.press('Escape');
 

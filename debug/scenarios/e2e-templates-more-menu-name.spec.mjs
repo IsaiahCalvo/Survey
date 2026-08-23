@@ -147,17 +147,10 @@ test('390 + editor break for Templates More menu name', async ({ page }) => {
 
   await openPage(page, { width: 390, height: 844, url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(TEMPLATE).first()).toBeVisible({ timeout: 15_000 });
+  const mobileRow = page.locator('.templates-mobile-row').filter({ hasText: TEMPLATE }).first();
+  await expect(mobileRow).toBeVisible({ timeout: 15_000 });
   expect(await templateMenu(page).count()).toBe(0);
-  const more = page.locator('.templates-mobile-copy').filter({ hasText: TEMPLATE })
-    .locator('xpath=ancestor::*[@data-drag-rearrange-row][1]')
-    .getByRole('button', { name: 'More' })
-    .first();
-  if ((await more.count()) === 0) {
-    await page.getByRole('button', { name: 'More' }).first().click();
-  } else {
-    await more.click();
-  }
+  await mobileRow.getByRole('button', { name: 'More', exact: true }).click();
   await expect(templateMenu(page)).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toHaveCount(1);
   await expect(page.getByRole('menuitem', { name: 'Partial erase', exact: true })).toHaveCount(0);
