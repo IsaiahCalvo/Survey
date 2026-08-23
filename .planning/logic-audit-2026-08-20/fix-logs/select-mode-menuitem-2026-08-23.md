@@ -29,7 +29,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 | Manage Team role picker | hubPreview creator-only seed — trigger **0**. Not taken. |
 | Exhausted nameless-menu hosts | Home tab / annotation / Pages / hub Account / Manage Team More — do not replay. |
 | Select Mode create-tool dismiss | Already dedicated (open / Escape / P+L page click). This pass is the *name*, not dismiss. |
-| Eraser / Highlighter / Counter caret | Nameless sibling popups live in `PDFViewer.jsx` (high-risk). Not taken. |
+| Eraser / Highlighter / Counter caret | Live hunt opened Eraser Type: popup **1**, menuitem **0**, nameless `ERASER TYPE Partial erase Full stroke erase`. Lives in `PDFViewer.jsx` (high-risk). Not taken. |
 | **Selection Mode *actions*** | **This pass.** Menu open **1**; before fix `getByRole('menuitem')` **0**. After fix: Select annotations + Select text. |
 
 ## Live-proved
