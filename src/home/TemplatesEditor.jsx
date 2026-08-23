@@ -2146,6 +2146,7 @@ export default function TemplatesEditor({
                   <p className="micro" style={{ margin: 0 }}>Categories</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 20, overflow: 'hidden', flexWrap: 'nowrap' }}>
                   <button
+                    type="button"
                     onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
                     style={{ ...miniSelectButtonStyle({ color: 'var(--accent)' }), flex: 'none' }}
                   >
@@ -2789,6 +2790,7 @@ export default function TemplatesEditor({
                 </div>
                 <div className="templates-mobile-select-inline">
                   <button
+                    type="button"
                     style={selectLinkStyle}
                     onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
                   >
