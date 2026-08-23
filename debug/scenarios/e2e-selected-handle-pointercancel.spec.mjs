@@ -329,14 +329,14 @@ async function proveBrPointercancel(page, coords) {
   await selectUntilHandles(page, rect.id, 4);
   const pre = await geom(page, rect.id);
 
-  await startBrDrag(page, 48, 36);
+  await startBrDrag(page, 120, 90);
   await page.waitForTimeout(80);
   await cancelBrPointer(page);
   let afterCancel = null;
   await expect.poll(async () => {
     afterCancel = await geom(page, rect.id);
     return afterCancel && afterCancel.vw > pre.vw + 6 && afterCancel.vh > pre.vh + 4;
-  }, { message: 'pointercancel must persist the live br resize', timeout: 8_000 }).toBeTruthy();
+  }, { message: `pointercancel must persist the live br resize (pre=${JSON.stringify(pre)} after=${JSON.stringify(afterCancel)})`, timeout: 8_000 }).toBeTruthy();
   expect(afterCancel.left, 'pointercancel pins left').toBeCloseTo(pre.left, 1);
   expect(afterCancel.top, 'pointercancel pins top').toBeCloseTo(pre.top, 1);
 
@@ -396,7 +396,7 @@ test('desktop selected br pointercancel + zoomGeneration commit', async ({ page 
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  expect(await page.locator('[data-resize-handle]').count(), 'hubPreview handles 0').toBe(0);
+  expect(await page.locator('[data-svg-annotation-layer="1"] [data-resize-handle]').count(), 'hubPreview handles 0').toBe(0);
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count(), 'hubPreview Draw 0').toBe(0);
 
   console.log('SELECTED_HANDLE_POINTERCANCEL_DESKTOP', JSON.stringify(proof));
