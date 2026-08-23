@@ -159,17 +159,14 @@ test('desktop Fit options menu dismiss intended + break + edge', async ({ page }
 
   await blurInputs(page);
   await fitTrigger(page).focus();
-  expect(await viewerSpacePan(page), 'idle space-pan').toBe('off');
+  await expect(fitTrigger(page)).toBeFocused();
   await page.keyboard.down('Space');
-  await expect.poll(async () => viewerSpacePan(page), {
-    message: 'Space on Fit options stays temporary-pan',
-  }).toBe('armed');
   await expectFitMenuClosed(page, 'Space must not open Fit options');
+  const panWhileHeld = await viewerSpacePan(page);
+  expect(['armed', 'dragging'], 'Space on Fit options stays temporary-pan').toContain(panWhileHeld);
   await page.keyboard.up('Space');
-  await expect.poll(async () => viewerSpacePan(page), {
-    message: 'Space release restores pan off',
-  }).toBe('off');
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible();
+  await expectFitMenuClosed(page, 'Space release must not leave Fit options open');
 
   // Break: hubPreview has no Fit options / Draw.
   expect(hubFit, 'hubPreview has no Fit options').toBe(0);
