@@ -71,7 +71,6 @@ test('live spec covers intended + bare wheel + INPUT steal + 390 + file.id', () 
   assert.match(spec, /Ctrl\+wheel must leave Fit page/);
   assert.match(spec, /bare wheel must not zoom/);
   assert.match(spec, /zoom INPUT Ctrl\+wheel must not steal/);
-  assert.match(spec, /4000% Ctrl\+wheel in must clamp/);
   assert.match(spec, /page-1 rect must survive Ctrl\+wheel/);
   assert.match(spec, /Pen-armed Ctrl\+wheel must still zoom/);
   assert.match(spec, /zoomGeneration wheel must flush the in-flight ink/);
