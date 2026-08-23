@@ -350,7 +350,10 @@ async function annoHitBox(page, id) {
 }
 
 async function handleScreenCenter(page, attr) {
-  const handle = page.locator(`[data-svg-annotation-layer="1"] [${attr}]`).first();
+  const selector = attr === 'data-rotation-handle="mtr"'
+    ? '[data-svg-annotation-layer="1"] circle[data-rotation-handle="mtr"]'
+    : `[data-svg-annotation-layer="1"] [${attr}]`;
+  const handle = page.locator(selector).first();
   await expect(handle, attr).toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
   expect(box, `${attr} box`).toBeTruthy();
@@ -424,10 +427,19 @@ async function dragMtrToAngle(page, id, deg, { shift = false } = {}) {
     x: Math.min(pageRect.x + pageRect.width - 8, Math.max(pageRect.x + 8, cx + radius * Math.sin((deg * Math.PI) / 180))),
     y: Math.min(pageRect.y + pageRect.height - 8, Math.max(pageRect.y + 8, cy - radius * Math.cos((deg * Math.PI) / 180))),
   };
+  const hitEl = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return {
+      tag: el?.tagName || null,
+      handle: el?.getAttribute?.('data-rotation-handle') || el?.closest?.('[data-rotation-handle]')?.getAttribute('data-rotation-handle') || null,
+      resize: el?.getAttribute?.('data-resize-handle') || null,
+    };
+  }, { x: handle.x, y: handle.y });
+  console.log('MTR_HIT', JSON.stringify({ handle, end, shift, hitEl }));
   if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 16 });
+  await page.mouse.move(end.x, end.y, { steps: 20 });
   await page.mouse.up();
   if (shift) await page.keyboard.up('Shift');
 }
