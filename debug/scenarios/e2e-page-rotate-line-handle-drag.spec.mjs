@@ -196,36 +196,33 @@ function toolButtons(page, name) {
   );
 }
 
-async function clickVisible(page, name) {
-  const buttons = toolButtons(page, name);
-  const count = await buttons.count();
-  for (let i = 0; i < count; i += 1) {
-    const button = buttons.nth(i);
-    if (!(await button.isVisible().catch(() => false))) continue;
-    await button.click();
-    return button;
+async function activateShapeTool(page, toolName) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const category = page.getByRole('button', { name: 'Shapes', exact: true }).first();
+  await expect(category).toBeVisible({ timeout: 8_000 });
+  if (!String(await category.getAttribute('class') || '').includes('btn-active')) {
+    await category.click();
   }
-  const fallback = page.getByRole('button', { name, exact: true });
-  await expect(fallback.first(), `visible ${name}`).toBeVisible();
-  await fallback.first().click();
-  return fallback.first();
+  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
+  await expect(sub).toBeVisible({ timeout: 8_000 });
+  if (!String(await sub.getAttribute('class') || '').includes('btn-active')) {
+    await sub.click();
+  }
 }
 
-async function activateTool(page, categoryName, toolName) {
-  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
-  if (await sub.count()) {
-    if ((await sub.first().getAttribute('aria-pressed')) !== 'true') await sub.first().click();
-    return;
+async function activateDrawPen(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const category = page.getByRole('button', { name: 'Draw', exact: true }).first();
+  await expect(category).toBeVisible({ timeout: 8_000 });
+  if (!String(await category.getAttribute('class') || '').includes('btn-active')) {
+    await category.click();
   }
-  const visible = page.getByRole('button', { name: toolName, exact: true });
-  if (await visible.count() && await visible.first().isVisible().catch(() => false)) {
-    if ((await visible.first().getAttribute('aria-pressed')) !== 'true') await visible.first().click();
-    return;
+  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Pen', exact: true });
+  if (await sub.count() && !String(await sub.first().getAttribute('class') || '').includes('btn-active')) {
+    await sub.first().click();
   }
-  await clickVisible(page, categoryName);
-  const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
-  const target = (await again.count()) ? again.first() : page.getByRole('button', { name: toolName, exact: true }).first();
-  if ((await target.getAttribute('aria-pressed')) !== 'true') await target.click();
 }
 
 async function selectMode(page) {
@@ -242,7 +239,7 @@ async function selectMode(page) {
 
 async function createLine(page, coords, toolName = 'Line') {
   const before = new Set(await lineIds(page));
-  await activateTool(page, 'Shapes', toolName);
+  await activateShapeTool(page, toolName);
   await blurInputs(page);
   const box = await pageBox(page);
   await page.mouse.move(box.x + box.width * coords.x0, box.y + box.height * coords.y0);
@@ -590,7 +587,7 @@ test('desktop remapped line/arrow handle drag after page CW + hit-test verdict',
 
   const frozen = await geom(page, line.id);
   const frozenEnds = worldEnds(frozen);
-  await activateTool(page, 'Draw', 'Pen');
+  await activateDrawPen(page);
   const pageEl = await pageBox(page);
   await page.mouse.click(pageEl.x + pageEl.width * 0.88, pageEl.y + pageEl.height * 0.12);
   const penArmed = worldEnds(await geom(page, line.id));
