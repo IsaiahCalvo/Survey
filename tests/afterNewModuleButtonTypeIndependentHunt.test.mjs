@@ -254,7 +254,7 @@ test('hunt after New module type looks past Module count chrome and leftover-18'
   assert.match(spec, /editColorType/);
   assert.match(spec, /newModuleType/);
   assert.match(spec, /newModuleTitle/);
-  assert.match(spec, /newModuleNamed/);
+  assert.match(spec, /newModuleAccname/);
   assert.match(spec, /dragTitleLabel/);
   assert.match(spec, /dragTitleTitle/);
   assert.match(spec, /dragTitleNamed/);
@@ -267,6 +267,7 @@ test('hunt after New module type looks past Module count chrome and leftover-18'
   assert.match(spec, /editColorType\)\.toBe\('button'\)/);
   assert.match(spec, /newModuleType\)\.toBe\('button'\)/);
   assert.match(spec, /newModuleTitle\)\.toBe\('New module'\)/);
+  assert.match(spec, /newModuleAccname\)\.toBe\(0\)/);
   assert.match(spec, /dragTitleLabel\)\.toBe\('Installation Phase · drag to reorder · double-click to rename'\)/);
   assert.match(spec, /countChromeLabel\)\.toBe\('Installation Phase 2'\)/);
   assert.match(spec, /tapRename390/);

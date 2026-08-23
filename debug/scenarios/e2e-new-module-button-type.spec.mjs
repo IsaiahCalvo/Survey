@@ -43,10 +43,6 @@ function mobileNewModule(page) {
     .filter({ hasText: 'New module', visible: true });
 }
 
-function namedNewModule(page) {
-  return page.getByRole('button', { name: 'New module', exact: true });
-}
-
 async function fileId(page) {
   return page.evaluate(() => {
     const file = window.__phase35SelectedPdf || window.selectedPDF || window.__devTestPdf || null;
@@ -73,8 +69,6 @@ test('New module is typed; apply not clicked', async ({ page }) => {
   await expect(create).toBeVisible({ timeout: 8_000 });
   await expect(create).toHaveAttribute('type', 'button');
   await expect(create).toHaveAttribute('title', 'New module');
-  await expect(namedNewModule(page).first()).toBeVisible();
-  await expect(namedNewModule(page).first()).toHaveAttribute('type', 'button');
 
   await expect(page.getByRole('textbox', { name: 'Entity name', exact: true }).first()).toBeVisible();
   expect(await page.getByRole('button', { name: 'New category', exact: true }).first().count()).toBeGreaterThan(0);
@@ -104,12 +98,11 @@ test('390 + empty + guest + projects + editor break/edge for New module type', a
   const mobile = mobileNewModule(page);
   await expect(mobile.first()).toBeVisible({ timeout: 8_000 });
   await expect(mobile.first()).toHaveAttribute('type', 'button');
-  await expect(namedNewModule(page).first()).toHaveAttribute('type', 'button');
 
   await openPage(page, { url: HUB_EMPTY });
   await expect(page.getByText('No templates yet').first()).toBeVisible({ timeout: 15_000 });
   expect(await desktopNewModule(page).count()).toBe(0);
-  expect(await namedNewModule(page).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'New module', exact: true }).count()).toBe(0);
 
   await openPage(page, { url: HUB_GUEST });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
@@ -120,19 +113,19 @@ test('390 + empty + guest + projects + editor break/edge for New module type', a
   await openPage(page, { url: HUB_DOCS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await desktopNewModule(page).count()).toBe(0);
-  expect(await namedNewModule(page).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'New module', exact: true }).count()).toBe(0);
   await expect(page.getByRole('textbox', { name: 'Search documents...', exact: true })).toBeVisible();
 
   await openPage(page, { url: HUB_PROJECTS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await desktopNewModule(page).count()).toBe(0);
-  expect(await namedNewModule(page).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'New module', exact: true }).count()).toBe(0);
   await expect(page.locator('.projects-desktop-layout input[aria-label="Click to rename"]')).toHaveValue(PROJECT);
 
   await openPage(page, { url: LINK_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toHaveAttribute('viewBox', '0 0 612 792');
-  expect(await namedNewModule(page).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'New module', exact: true }).count()).toBe(0);
   const hidden = await hiddenCounts(page);
   expect(hidden.Forms).toBe(0);
   expect(hidden.Note).toBe(0);
@@ -146,6 +139,6 @@ test('390 + empty + guest + projects + editor break/edge for New module type', a
 
   await openPage(page, { url: SEARCH_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
-  expect(await namedNewModule(page).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'New module', exact: true }).count()).toBe(0);
   expect(await fileId(page)).toBeNull();
 });

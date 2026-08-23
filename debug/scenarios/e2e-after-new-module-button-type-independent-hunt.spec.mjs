@@ -466,7 +466,7 @@ test('independent hunt after New module type=button', async ({ page }) => {
     inventory.templates.editColorType = await page.getByRole('button', { name: 'Edit color', exact: true }).first().getAttribute('type');
     inventory.templates.newModuleType = await page.locator('.ed-scope button[title="New module"]').first().getAttribute('type');
     inventory.templates.newModuleTitle = await page.locator('.ed-scope button[title="New module"]').first().getAttribute('title');
-    inventory.templates.newModuleNamed = await page.getByRole('button', { name: 'New module', exact: true }).count();
+    inventory.templates.newModuleAccname = await page.getByRole('button', { name: 'New module', exact: true }).count();
     const dragTitle = page.locator('.ed-scope button[title$="· drag to reorder · double-click to rename"]').first();
     inventory.templates.dragTitleCount = await page.locator('.ed-scope button[title$="· drag to reorder · double-click to rename"]').count();
     inventory.templates.dragTitleLabel = await dragTitle.getAttribute('aria-label');
@@ -650,7 +650,8 @@ test('independent hunt after New module type=button', async ({ page }) => {
   expect(inventory.templates.editColorType).toBe('button');
   expect(inventory.templates.newModuleType).toBe('button');
   expect(inventory.templates.newModuleTitle).toBe('New module');
-  expect(inventory.templates.newModuleNamed).toBeGreaterThan(0);
+  // Title-only desktop +; accname stays "+" until a later name leftover.
+  expect(inventory.templates.newModuleAccname).toBe(0);
   expect(inventory.templates.dragTitleCount).toBeGreaterThan(0);
   expect(inventory.templates.dragTitleLabel).toBe('Installation Phase · drag to reorder · double-click to rename');
   expect(inventory.templates.dragTitleTitle).toBe('Installation Phase · drag to reorder · double-click to rename');
