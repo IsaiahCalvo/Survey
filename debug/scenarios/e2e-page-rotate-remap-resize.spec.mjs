@@ -508,11 +508,6 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   await rotatePage(page, 1, 'cw');
   await waitForEditorReady(page);
   await dismissChrome(page);
-  const tab = page.getByRole('button', { name: /clickable-link-test\.pdf/ }).first();
-  if (await tab.isVisible().catch(() => false)) {
-    await tab.click({ position: { x: 24, y: 8 } }).catch(() => {});
-  }
-  await dismissChrome(page);
   await expect.poll(async () => geom(page, created.id), {
     timeout: 20_000,
     message: 'page rotate must keep the resized rect',
