@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-23 completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-23.md`). Reclassified all 96 unique IDs + leftover-18 against tip `4ab0be92` after the live-create + selected-transform families. Tree inspect found **no** unique unblocked leftover. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. X-01 names **PRESENT** in `.env.local`; process env absent; no lease + no `file.id`. Focused Node **110 / 110**. Citation drift: P1-09 `:24087` / `:24122`; P1-15 `:32520`; P1-16 `:28696`; P2-34(b) `:23863`. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-23b completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-23b.md`). Reclassified all 96 unique IDs + leftover-18 against tip `372988cd` after the remapper / leftover-portrait / History-restore / form-widget campaign. Prior `43cefd4f` / `4ab0be92` refresh is stale. Tree inspect: X-01 names **PRESENT**; process env absent; no lease + no `file.id`. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. Headline extras P2-34/P2-35 stay **6 proved**. Stomps P1-12 / P1-38 / P1-53 still live. Focused Node **116 / 116**. Citation drift: P1-15 `:32545`; P1-38 `:338`; P1-49 `:7370`; viewBox `:4681`. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim leftover-18 GAP = 0.
+
+**Prior evidence refresh:** 2026-08-23 completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-23.md`, `43cefd4f` / `4ab0be92`). Reclassified all 96 unique IDs + leftover-18 after the live-create + selected-transform families. **Stale** after the remapper / leftover-portrait / History-restore / form-widget campaign. **96 proved / leftover-18 18 host-gated.** Focused Node **110 / 110**.
 
 **Prior evidence refresh:** 2026-08-23 T-01 live Textbox rubber-band then auto-edit mount intended+break+edge (`fix-logs/textbox-live-create-2026-08-23.md`). In-drag `[data-text-preview]` (10px dashed gate) + pointerup `isNewText` + zoom keep-track on `?testPdf=` (no `file.id`). Prior T-01 auto-edit / selected resize not replayed. Cloud has no dedicated tool. Counter window pin already receipted. No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
@@ -123,7 +125,7 @@ This-pass leftover-18 (still parked; legal slices in `fix-logs/leftover18-unbloc
 
 | ID | Verdict | Still-parked host |
 |---|---|---|
-| X-01 | **partial** — no `file.id`; Save version owner-gated; **local `?testPdf=` reload-restore live** (`e2e-testpdf-local-save-reload.spec.mjs`) | identity-churn (`.env.local` missing) |
+| X-01 | **partial** — no `file.id`; Save version owner-gated; **local `?testPdf=` reload-restore live** (`e2e-testpdf-local-save-reload.spec.mjs`) | identity-churn (`.env.local` names PRESENT; still need lease + `file.id`) |
 | X-05 persist | **partial** — widgets + local fill | saved `file.id` cloud persist |
 | X-06 writeback | **partial** — flag off + xlsx | live sheet host |
 | U-04 cloud | **partial** — hubPreview `i1: 3` seed | Dashboard + Supabase meter |
@@ -167,7 +169,7 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | P1-12 | Excel auto-sync permanently jams undo | **proven** | **Stomp one-liner still live:** `historyHelpers.js:124` `reason.startsWith('excel:')`. Producer `PDFViewer.jsx` `addHistoryCheckpoint('excel:auto-sync')`. `tests/historyStacks.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
 | P1-13 | First edit-and-undo after import deletes imports | **proven** | `PDFViewer.jsx:10139` `previewBaselineByPageRef`; import skip-save deletes baseline `:25079`. `fix-logs/e2e-testpdf-import.md` |
 | P1-14 | Cross-page counter renumber never saves | **proven** | `counterNumbering.js` `renumberCounters` replaces changed page buckets. `tests/counterNumberingPageRefs.test.mjs`; `tests/counterRenumberSavePolicy.test.mjs` |
-| P1-15 | Callout text edit clobbers teammate move/restyle | **proven** | `PDFViewer.jsx:32520` `onEditCommit` + `resolveCommittedCalloutText` (merges text + text-box bounds onto the live callout) |
+| P1-15 | Callout text edit clobbers teammate move/restyle | **proven** | `PDFViewer.jsx:32545` `resolveCommittedCalloutText` (merges text + text-box bounds onto the live callout) |
 | P1-16 | Reopened documents hide all survey markers | **proven** | `PDFViewer.jsx:28696` `matchesSelectedModule` (no early-return on null module) |
 | P1-17 | Page ops revert other edits during upload | **proven** | `pageAnnotationReindex.js:353` `mergeLivePagePresentation`; `usePageOperations.js:83`. `src/utils/__tests__/pageAnnotationReindex.test.mjs` |
 | P1-18 | Cut/copy page clipboard goes stale | **proven** | `pageAnnotationReindex.js:324` `remapClipboardPage`; `PDFViewer.jsx:12379`. Same test file |
@@ -195,7 +197,7 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | P1-35 | Repeat-paste offset hardcodes US-Letter | **proven** | `PDFViewer.jsx:4043` / `:7890` `pageSizesRef` (612/792 is fallback only) |
 | P1-36 | Owner-scoping silently drops undo for contributor edits | **proven** | `annotationLocalHistory.js:30` `isOwnAnnotation` |
 | P1-37 | Font color opacity slider is dead on desktop | **proven** | `AppShell.jsx:1833` `showOpacity={false}` |
-| P1-38 | “Match Fill” swatch never shows selected when fill is translucent | **proven** | **Stomp one-liner still live:** `CompactColorPicker.jsx:336` `Math.abs(localOpacity - matchOpacityPct) <= 1`. `tests/compactColorPickerLayout.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
+| P1-38 | “Match Fill” swatch never shows selected when fill is translucent | **proven** | **Stomp one-liner still live:** `CompactColorPicker.jsx:338` `Math.abs(localOpacity - matchOpacityPct) <= 1`. `tests/compactColorPickerLayout.test.mjs`; `fix-logs/e2e-p1-12-38-53-live.md` |
 | P1-39 | Hex field accepts invalid colors like `zzzzzz` | **proven** | `annotationStyleCatalog.js:65` `normalizeHexColor` / `:79` `isValidHexColor` |
 | P1-40 / P1-41 | Cmd+0/1/2 silently degrade fit / keyboard fit % disagrees | **proven** | `PDFViewer.jsx:7880` `handleZoomModeSelectRef`; `:6818` / `:23706-23716` FIT_PAGE / WIDTH / HEIGHT |
 | P1-42 | Sidebar thumbnails never use IndexedDB cache | **proven** | `pagesPanelUtils.js:25` `getPdfDocumentCacheStamp`; `PagesPanel.jsx:403` `thumbnailStore`. `tests/pagesPanelUtils.test.mjs` |
@@ -205,7 +207,7 @@ Columns: id · title · status · evidence (current `file:line` + test / fix-log
 | P1-46 | Bookmarks/page names/spaces metadata localStorage-only | **proven** | `sidebarPersistence.js:57` `mergeSidebarWrite`; `PDFViewer.jsx:9993`. Guest / no-Y.Doc still localStorage-only (accepted leftover, not leftover-18) |
 | P1-47 | Bookmark drag-reorder is O(n²) | **proven** | `bookmarkReorderUtils.js:138` `collectBookmarkTreePersistUpdates`. `tests/bookmarkReorderUtils.test.mjs` |
 | P1-48 | Rejected duplicate-name bookmark rename keeps showing unsaved name | **proven** | `BookmarksPanel.jsx` `commitName` → `prepareAtomicBookmarkEdit`. `tests/bookmarkAtomicEdit.test.mjs` |
-| P1-49 | Search results go stale after page reorder/rotate | **proven** | `PDFViewer.jsx:7343-7346` `pageMutationRevision` in search key |
+| P1-49 | Search results go stale after page reorder/rotate | **proven** | `PDFViewer.jsx:7370` `pageMutationRevision` in search key |
 | P1-50 | Concurrent Spaces edits are whole-array LWW | **proven** | `annotationDocStore.js:601` `SPACES_MAP = 'spacesById'` |
 | P1-51 | Activating an empty Space blanks the canvas | **proven** | `spaceRegionOrphans.js:19` `spaceHasActivatableRegions`; `PDFViewer.jsx:19595` |
 | P1-52 | Deleting a region while a teammate draws inside it orphans their annotation | **proven** | `spaceRegionOrphans.js:25` `unscopeOrphanedRegionAnnotations` |
