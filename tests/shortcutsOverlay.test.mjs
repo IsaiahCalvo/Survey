@@ -76,7 +76,10 @@ test('useKeyPress ignores INPUT / TEXTAREA / contentEditable; AppShell hides ove
 
   const shell = read('src/AppShell.jsx');
   assert.match(shell, /KeyboardShortcutsOverlay only renders on the home tab/);
-  assert.match(shell, /!isViewerVisible && <KeyboardShortcutsOverlay/);
+  assert.match(shell, /isDevTestPdfRoute/);
+  assert.match(shell, /has\('testPdf'\)/);
+  assert.match(shell, /!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay/);
+  assert.doesNotMatch(shell, /!isViewerVisible && <KeyboardShortcutsOverlay \/>/);
 
   const dev = read('src/DevTestRoute.jsx');
   assert.match(dev, /<KeyboardShortcutsOverlay \/>/);

@@ -1214,6 +1214,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // conditional return because hooks below depend on it.
   const activeTab = tabs.find(t => t.id === activeTabId);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  // DEV `?testPdf=` already mounts KeyboardShortcutsOverlay in DevTestRoute
+  // so `?` works on the viewer. AppShell must not also mount it on Home —
+  // that stacked two `?` listeners and two modals (2026-08-23).
+  const isDevTestPdfRoute = Boolean(
+    import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('testPdf'),
+  );
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   const mobileViewerPanelOpen = Boolean(
     mobileDocumentPanelState.isOpen
@@ -3228,8 +3236,10 @@ export default function App({ devPreviewReturnTab = null }) {
       {/* UX 2026-05-13: KeyboardShortcutsOverlay only renders on the home tab.
           On the PDF viewer it was covering the zoom / page-fit controls in the
           bottom-right after the status bar was removed. The '?' modal still
-          works on the home tab; on the viewer the screen stays clean. */}
-      {!isViewerVisible && <KeyboardShortcutsOverlay />}
+          works on the home tab; on the viewer the screen stays clean.
+          DEV `?testPdf=` is the exception: DevTestRoute already remounts one
+          instance for the viewer, so skip the Home mount there. */}
+      {!isViewerVisible && !isDevTestPdfRoute && <KeyboardShortcutsOverlay />}
     </TooltipContext.Provider>
   );
 }
