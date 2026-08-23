@@ -253,6 +253,12 @@ export function useSVGInteraction({
   // App.jsx's mount), deleteSelected falls through to runDelete unconditionally
   // — preserves legacy behavior byte-identical.
   onRequestBulkDelete,
+  // Zoom-start signal (CLAUDE.md invariant): selected-handle drags (bbox
+  // resize / mtr rotate / line endpoint-midpoint / callout knee) already
+  // commit on pointerup. pointercancel used to leave the live preview
+  // armed and the stored geometry stale — same class as the Counter
+  // nubbin flush. Default 0 keeps legacy mounts byte-identical.
+  zoomGeneration = 0,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -1285,6 +1291,8 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    ds.lastClientX = e.clientX;
+    ds.lastClientY = e.clientY;
 
     // P1-06: a teammate delete mid-drag must not preview-transform the
     // object that now occupies the frozen index. Re-resolve by captured
@@ -3816,6 +3824,24 @@ export function useSVGInteraction({
     setVisualTransform(null);
     setInteractionState('idle');
   }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+
+  // zoomGeneration contract: an in-flight selected-handle drag must persist
+  // before the page re-lays out. pointerup already commits from stored
+  // currentResize / currentAngle / currentEndpoint / currentMidpoint /
+  // currentCalloutPatch. pointercancel and Ctrl+= used to leave the live
+  // preview up and the stored value stale (nubbin sibling).
+  const initialZoomGenRef = useRef(zoomGeneration);
+  useEffect(() => {
+    if (zoomGeneration === initialZoomGenRef.current) return;
+    const ds = dragStateRef.current;
+    if (!ds?.active) return;
+    handlePointerUp({
+      clientX: Number.isFinite(ds.lastClientX) ? ds.lastClientX : 0,
+      clientY: Number.isFinite(ds.lastClientY) ? ds.lastClientY : 0,
+      pointerId: ds.pointerId,
+      target: svgRef.current,
+    });
+  }, [zoomGeneration, handlePointerUp, svgRef]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).

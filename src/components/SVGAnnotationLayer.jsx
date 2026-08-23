@@ -545,6 +545,7 @@ const SVGAnnotationLayer = memo(({
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
     onRequestBulkDelete,
+    zoomGeneration,
   });
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches
@@ -4787,11 +4788,18 @@ const SVGAnnotationLayer = memo(({
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, true)) return;
         handlePointerUp(e);
       } : undefined}
-      onPointerCancel={isInteractive ? () => {
+      onPointerCancel={isInteractive ? (e) => {
         if (surveyMarkerDragRef.current) {
+          // Survey-marker cancel is discard (preview snap-back). Distinct
+          // from selected-handle commit below and from the nubbin rotate.
           surveyMarkerDragRef.current = null;
           setSurveyMarkerPreviewBounds(null);
+          return;
         }
+        // Selected bbox / mtr / endpoint / midpoint / knee: persist the
+        // live preview the user already saw. Dropping the event left
+        // visualTransform armed and stored geometry stale.
+        handlePointerUp(e);
       } : undefined}
       // UX: Phase 15 UAT #1 — double-click anywhere inside a callout (text
       // foreignObject, connector segments, arrowTip, knee) must enter edit
