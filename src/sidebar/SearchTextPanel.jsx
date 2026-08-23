@@ -1758,7 +1758,9 @@ const SearchTextPanel = ({
           />
           {internalSearchQuery && (
             <button
+              type="button"
               onClick={clearSearch}
+              aria-label="Clear search"
               style={{
                 position: 'absolute',
                 right: '8px',
