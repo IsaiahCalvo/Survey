@@ -681,11 +681,16 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
     }));
   }
 
-  await page.keyboard.press('Control+z');
+  const undoTarget = shiftOnPage ? preShift.angle : preMtr.angle;
+  await blurInputs(page);
+  const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
+  await expect(undoBtn).toBeEnabled();
+  await undoBtn.click();
+  console.log('POST_MTR_UNDO', JSON.stringify({ undoTarget, now: await geom(page, created.id) }));
   await expect.poll(async () => {
     const now = await geom(page, created.id);
-    return now && Math.abs(now.angle - preMtr.angle) < 4;
-  }, { timeout: 8_000, message: 'undo last mtr must restore remapped 90, not the page rotate' }).toBeTruthy();
+    return now && Math.abs(now.angle - undoTarget) < 4;
+  }, { timeout: 8_000, message: 'undo last mtr must restore prior remapped angle, not the page rotate' }).toBeTruthy();
   expect(await pageViewBox(page)).toBe('0 0 792 612');
 
   // Break — collapse floor / flip. Live inward or past-opposite br at
