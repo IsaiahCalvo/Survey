@@ -177,6 +177,8 @@ async function annotationSnapshot(page, pageNumber = 1) {
       const y2 = Number(object.y2 ?? 0);
       const cx = left + width / 2;
       const cy = top + height / 2;
+      const angle = Number(object.angle ?? data.angle ?? 0);
+      const rad = (angle * Math.PI) / 180;
       const kind = String(data.type || data.annotationType || object.type || '').toLowerCase();
       return {
         id,
@@ -193,13 +195,13 @@ async function annotationSnapshot(page, pageNumber = 1) {
         radius,
         cx: kind === 'counter' ? left + radius : cx,
         cy: kind === 'counter' ? top + radius : cy,
-        angle: Number(object.angle ?? data.angle ?? 0),
+        angle,
         pointerAngle: Number.isFinite(Number(data.pointerAngle)) ? Number(data.pointerAngle) : null,
         fontFamily: String(object.fontFamily || data.fontFamily || ''),
-        px1: cx + x1,
-        py1: cy + y1,
-        px2: cx + x2,
-        py2: cy + y2,
+        px1: cx + x1 * Math.cos(rad) - y1 * Math.sin(rad),
+        py1: cy + x1 * Math.sin(rad) + y1 * Math.cos(rad),
+        px2: cx + x2 * Math.cos(rad) - y2 * Math.sin(rad),
+        py2: cy + x2 * Math.sin(rad) + y2 * Math.cos(rad),
       };
     }).filter((row) => !/^\d+R$/i.test(String(row.id || '')));
   }, pageNumber);
@@ -695,9 +697,18 @@ async function proveType(page, kind) {
   const { dest, filename } = await exportAndSave(page, destName);
   await page.evaluate(() => { sessionStorage.removeItem('e2e-keep-local-save'); });
   await wipeAnnotationKeys(page);
-  await openEditor(page, { url: `/?testPdf=${destName}`, keepOnReload: false });
+  const reimportUrl = kind === 'survey-marker'
+    ? `/?testPdf=${destName}&surveyTransitionE2E=1`
+    : `/?testPdf=${destName}`;
+  await openEditor(page, { url: reimportUrl, keepOnReload: false });
   await assertNoErrorBoundary(page);
   await dismissChrome(page);
+  if (kind === 'survey-marker') {
+    // Hidden-layer markers restore into surveyMarkers state; Walls makes the
+    // SVG rects paint so the remapped bounds are observable.
+    await armWalls(page);
+    await dismissChrome(page);
+  }
   expect(await fileId(page), 're-import must not stamp file.id').toBeNull();
   expect(await pageViewBox(page), 're-import must keep swapped viewBox').toBe('0 0 792 612');
 
