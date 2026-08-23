@@ -99,6 +99,9 @@ const KeyboardShortcutsOverlay = () => {
     >
       <div
         ref={modalContentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-shortcuts-title"
         style={{
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.xl,
@@ -131,6 +134,7 @@ const KeyboardShortcutsOverlay = () => {
           }}
         >
           <h2
+            id="keyboard-shortcuts-title"
             style={{
               margin: 0,
               fontSize: TYPOGRAPHY.fontSize['2xl'],
