@@ -107,13 +107,13 @@ test('placeRotationHandle shortens the 90deg stem so mtr stays on the 792 page',
     rotationOffset: 36,
     pageWidth: 792,
     pageHeight: 612,
-    inset: 10,
+    inset: 16,
   });
   const world = {
     x: cx + (placed.x - cx) * Math.cos(rad) - (placed.y - cy) * Math.sin(rad),
     y: cy + (placed.x - cx) * Math.sin(rad) + (placed.y - cy) * Math.cos(rad),
   };
-  assert.ok(world.x <= 792 - 10 + 1e-6, 'clamped mtr must stay inside viewBox');
+  assert.ok(world.x <= 792 - 16 + 1e-6, 'clamped mtr must stay inside viewBox');
   assert.ok(world.x > cx + 4, 'clamped mtr must stay on the +x (90deg) ray');
   assert.ok(Math.abs(world.y - cy) < 1, 'clamped mtr must not leave the 90deg ray');
 });

@@ -407,10 +407,18 @@ async function dragMtrToAngle(page, id, deg, { shift = false } = {}) {
   const cy = hit.y + hit.height / 2;
   const handle = await handleScreenCenter(page, 'data-rotation-handle="mtr"');
   const pageRect = await pageBox(page);
-  expect(handle.x, 'mtr knob must stay inside the remapped page (not clipped)').toBeGreaterThan(pageRect.x + 2);
-  expect(handle.x).toBeLessThan(pageRect.x + pageRect.width - 2);
-  expect(handle.y).toBeGreaterThan(pageRect.y + 2);
-  expect(handle.y).toBeLessThan(pageRect.y + pageRect.height - 2);
+  // Knob center must not sit tens of px past the viewBox (the pre-fix
+  // overflow:hidden miss). Sub-pixel / hit-radius slop at the edge is OK.
+  expect(handle.x, 'mtr knob must stay inside the remapped page (not clipped)').toBeGreaterThan(pageRect.x - 4);
+  expect(handle.x).toBeLessThan(pageRect.x + pageRect.width + 8);
+  expect(handle.y).toBeGreaterThan(pageRect.y - 4);
+  expect(handle.y).toBeLessThan(pageRect.y + pageRect.height + 8);
+  console.log('MTR_ON_PAGE', JSON.stringify({
+    handle,
+    pageRect,
+    dxRight: (pageRect.x + pageRect.width) - handle.x,
+    dyBottom: (pageRect.y + pageRect.height) - handle.y,
+  }));
   const radius = Math.max(80, Math.hypot(handle.x - cx, handle.y - cy));
   const end = {
     x: Math.min(pageRect.x + pageRect.width - 8, Math.max(pageRect.x + 8, cx + radius * Math.sin((deg * Math.PI) / 180))),

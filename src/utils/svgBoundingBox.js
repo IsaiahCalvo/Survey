@@ -87,7 +87,7 @@ export function placeRotationHandle(bbox, {
   rotationOffset = 36,
   pageWidth,
   pageHeight,
-  inset = 10,
+  inset = 16,
 } = {}) {
   const left = Number(bbox?.left) || 0;
   const top = Number(bbox?.top) || 0;
