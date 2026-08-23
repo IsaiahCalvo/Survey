@@ -32906,6 +32906,8 @@ ${pageBlocks}
                           ref={isHighlighter ? highlighterCaretPopupRef : eraserCaretPopupRef}
                           data-highlighter-caret-popup={isHighlighterSplitMenu ? 'true' : undefined}
                           data-eraser-caret-popup={isEraser ? 'true' : undefined}
+                          role="menu"
+                          aria-label={isHighlighterSplitMenu ? 'SurveyMarker Type' : 'Eraser Type'}
                           style={{
                             position: 'fixed',
                             top: `${popupFixedTop}px`,
@@ -32942,6 +32944,8 @@ ${pageBlocks}
                           {isHighlighterSplitMenu ? (
                             <>
                               <button
+                                type="button"
+                                role="menuitem"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveTool('highlighter');
@@ -32954,6 +32958,8 @@ ${pageBlocks}
                                 Freehand highlight
                               </button>
                               <button
+                                type="button"
+                                role="menuitem"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveTool('text-highlight');
@@ -32969,6 +32975,8 @@ ${pageBlocks}
                           ) : (
                             <>
                               <button
+                                type="button"
+                                role="menuitem"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveTool('eraser');
@@ -32982,6 +32990,8 @@ ${pageBlocks}
                                 Partial erase
                               </button>
                               <button
+                                type="button"
+                                role="menuitem"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveTool('eraser');

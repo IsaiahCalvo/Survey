@@ -429,7 +429,7 @@ test('desktop Eraser type intended + break + edge', async ({ page }) => {
   await caret.click();
   const flyout = page.locator('[data-eraser-caret-popup="true"]');
   await expect(flyout).toBeVisible({ timeout: 5_000 });
-  await flyout.getByRole('button', { name: 'Partial erase', exact: true }).click();
+  await flyout.getByRole('menuitem', { name: 'Partial erase', exact: true }).click();
   await expect(flyout).toHaveCount(0);
   await expect.poll(async () => (
     (await page.getByRole('button', { name: 'Eraser type', exact: true }).innerText()).trim()
