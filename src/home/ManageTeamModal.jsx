@@ -722,7 +722,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     )}
                   </div>
                   {!editMode && openMenu === m.id && (
-                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+                    <div
+                      role="menu"
+                      aria-label={`${m.name || m.email || 'Member'} actions`}
+                      data-manage-team-dismiss-surface="true"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}
+                    >
                       {[
                         { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
                         ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
@@ -735,7 +741,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         } },
                         ...(m.isCreator ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
                       ].map(it => (
-                        <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
+                        <button key={it.label} type="button" role="menuitem" disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
                       ))}
                     </div>
                   )}
@@ -762,7 +768,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       style={moreButtonStyle({ color: INK_200 })}><Icon name="more" size={14} /></button>
                   </div>
                   {openInviteMenu === inv.id && (
-                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+                    <div
+                      role="menu"
+                      aria-label={`${inv.target_email || 'Invite'} actions`}
+                      data-manage-team-dismiss-surface="true"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}
+                    >
                       {[
                         { label: "Copy invite link", onClick: async () => {
                           setOpenInviteMenu(null);
@@ -773,7 +785,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         ...(isLink ? [] : [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }]),
                         { label: "Revoke invite", danger: true, onClick: () => { setOpenInviteMenu(null); revokeInvite(inv); } },
                       ].map(it => (
-                        <button key={it.label} disabled={busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : BONE_100, padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
+                        <button key={it.label} type="button" role="menuitem" disabled={busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? DANGER : BONE_100, padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
                       ))}
                     </div>
                   )}
