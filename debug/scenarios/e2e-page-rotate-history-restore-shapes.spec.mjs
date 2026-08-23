@@ -273,20 +273,29 @@ async function createHighlighter(page) {
   return waitCreated(page, isHighlighter, before);
 }
 
-async function selectMode(page) {
-  await activateTool(page, 'Select', 'Select');
-}
-
 async function selectedIds(page) {
-  return page.evaluate(() => {
-    const selected = [...document.querySelectorAll('[data-svg-annotation-layer="1"] [data-selected="true"], [data-svg-selection-overlay] [data-anno-id]')];
-    return selected.map((el) => el.getAttribute('data-anno-id')).filter(Boolean);
-  });
+  return page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
 }
 
-async function clickEmpty(page) {
+async function selectMode(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const scoped = toolButtons(page, 'Select');
+  if (await scoped.count() && await scoped.first().isVisible().catch(() => false)) {
+    await scoped.first().click();
+  }
+  await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) await page.keyboard.press('Escape');
+  await expect.poll(async () => {
+    const cls = String(await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('class') || '');
+    return !cls.includes('tool-crosshair');
+  }, { timeout: 8_000 }).toBeTruthy();
+}
+
+async function clickEmpty(page, { xf = 0.08, yf = 0.08 } = {}) {
   const box = await pageBox(page);
-  await page.mouse.click(box.x + 8, box.y + 8);
+  await page.mouse.click(box.x + box.width * xf, box.y + box.height * yf);
 }
 
 async function clickAnno(page, id) {
