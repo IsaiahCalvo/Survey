@@ -73,7 +73,8 @@ test('live spec covers Home click intended + break + edge; skip leftover-18 and 
   assert.doesNotMatch(spec, /Rectangle button must arm Rectangle/);
   assert.doesNotMatch(spec, /viewBox `0 0 792 612`/);
   assert.doesNotMatch(spec, /rotatePageSpaceInk|page-rotate-remap/);
-  assert.doesNotMatch(spec, /handleTabClose/);
+  assert.match(spec, /Distinct from Close tab/);
+  assert.doesNotMatch(spec, /getByRole\('button', \{ name: 'Close tab'[\s\S]*\}\)\.click\(\)/);
 
   const close = read('debug/scenarios/e2e-tab-close.spec.mjs');
   assert.match(close, /Close tab leaves the viewer/);
