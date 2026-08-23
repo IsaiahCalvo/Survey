@@ -81,6 +81,8 @@ test('undo/redo after page CW uses wipe remainder; no remapper invert; no file.i
   assert.match(spec, /Ctrl\+Z after wipe must not rewind to portrait viewBox/);
   assert.match(spec, /Ctrl\+Z must not invent pre-rotate placement/);
   assert.match(spec, /tool-switch mid-rotate must invent 0 extra ids/);
+  assert.match(spec, /tool-switch mid-rotate dismisses the rotate menu/);
+  assert.match(spec, /tool-switch mid-rotate must not apply CW/);
   assert.match(spec, /empty stack: Undo disabled/);
   assert.match(spec, /new create after wipe must re-arm Undo/);
   assert.match(spec, /undo after wipe must drop only the post-rotate create/);
