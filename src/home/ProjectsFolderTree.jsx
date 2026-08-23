@@ -1051,6 +1051,7 @@ export default function ProjectsFolderTree({
                     key={open.id}
                     defaultValue={open.name}
                     title="Click to rename"
+                    aria-label="Click to rename"
                     onDoubleClick={(e) => e.currentTarget.select()}
                     style={{
                       background: 'transparent', color: 'var(--bone-100)',
@@ -1785,6 +1786,7 @@ export default function ProjectsFolderTree({
                 key={`mobile-${open.id}`}
                 defaultValue={open.name}
                 title="Click to rename"
+                aria-label="Click to rename"
                 style={{
                   background: 'transparent',
                   color: 'var(--bone-100)',
