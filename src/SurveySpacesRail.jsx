@@ -1810,7 +1810,7 @@ const SurveySpacesRail = ({
                               : <Icon name="upload" size={17} color="currentColor" />}
                           </button>
                           {isMobileExportMenuOpen && (
-                            <div className="mobile-survey-sheet-export-menu" role="menu">
+                            <div className="mobile-survey-sheet-export-menu" role="menu" aria-label="Export survey data">
                               <button
                                 type="button"
                                 role="menuitem"
@@ -2617,7 +2617,7 @@ const SurveySpacesRail = ({
                                     </button>
 
                                     {showExportMenu && (
-                                      <div className="survey-marker-export-compact-menu" role="menu">
+                                      <div className="survey-marker-export-compact-menu" role="menu" aria-label="Excel actions">
                           <div
                             role="menuitem"
                             aria-label="Open linked"
