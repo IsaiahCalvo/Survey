@@ -50,16 +50,21 @@ export function usePageOperations({
         queueBaselineRef.current = slicePagePresentation(liveState);
       }
       const sourceState = queuedState || liveState;
-      const nextState = sourceState ? transformPageState(sourceState, operation) : null;
-      const pdfOperation = operation?.type === 'rotate'
-        ? {
+      const sourceBytes = await currentPdfFile.arrayBuffer();
+      const { mutatePdfPages, peekDisplayedPageSize } = await import('../utils/pdfPageMutation.js');
+      let annotatedOp = operation;
+      if (operation?.type === 'rotate') {
+        const displayed = await peekDisplayedPageSize(sourceBytes, operation.page);
+        annotatedOp = {
           ...operation,
           delta: Number(operation.delta || 0)
             + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
-        }
-        : operation;
-      const { mutatePdfPages } = await import('../utils/pdfPageMutation.js');
-      const pdfBytes = await mutatePdfPages(await currentPdfFile.arrayBuffer(), pdfOperation);
+          pageWidth: displayed.width,
+          pageHeight: displayed.height,
+        };
+      }
+      const nextState = sourceState ? transformPageState(sourceState, annotatedOp) : null;
+      const pdfBytes = await mutatePdfPages(sourceBytes, annotatedOp);
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
       // round-trips so the per-user delete authority gate keeps resolving

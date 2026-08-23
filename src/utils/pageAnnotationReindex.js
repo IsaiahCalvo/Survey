@@ -267,6 +267,102 @@ function addPageClone(next, source, sourcePage, targetPage, createId) {
   return next;
 }
 
+export function normalizeRotationDelta(delta) {
+  return (((Number(delta) || 0) % 360) + 360) % 360;
+}
+
+/** Map a displayed-space point through a baked page rotate (origin top-left). */
+export function rotateDisplayedPoint(x, y, pageWidth, pageHeight, delta) {
+  const turns = normalizeRotationDelta(delta);
+  const px = Number(x) || 0;
+  const py = Number(y) || 0;
+  if (turns === 90) return { x: pageHeight - py, y: px };
+  if (turns === 180) return { x: pageWidth - px, y: pageHeight - py };
+  if (turns === 270) return { x: py, y: pageWidth - px };
+  return { x: px, y: py };
+}
+
+export function rotateDisplayedPageSize(pageWidth, pageHeight, delta) {
+  const turns = normalizeRotationDelta(delta);
+  if (turns === 90 || turns === 270) return { width: pageHeight, height: pageWidth };
+  return { width: pageWidth, height: pageHeight };
+}
+
+function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const turns = normalizeRotationDelta(delta);
+  if (turns === 0) return obj;
+  const next = { ...obj };
+  const hasBox = ['left', 'top', 'width', 'height', 'x', 'y'].some((key) => (
+    Number.isFinite(Number(obj[key]))
+  ));
+  if (hasBox) {
+    const left = Number(obj.left ?? obj.x) || 0;
+    const top = Number(obj.top ?? obj.y) || 0;
+    const width = Number(obj.width) || 0;
+    const height = Number(obj.height) || 0;
+    const scaleX = Number(obj.scaleX ?? 1) || 1;
+    const scaleY = Number(obj.scaleY ?? 1) || 1;
+    const vw = Math.abs(width * scaleX) || 0;
+    const vh = Math.abs(height * scaleY) || 0;
+    const cx = left + vw / 2;
+    const cy = top + vh / 2;
+    const rotated = rotateDisplayedPoint(cx, cy, pageWidth, pageHeight, delta);
+    const nextLeft = rotated.x - vw / 2;
+    const nextTop = rotated.y - vh / 2;
+    if ('left' in obj || Number.isFinite(Number(obj.left))) next.left = nextLeft;
+    if ('top' in obj || Number.isFinite(Number(obj.top))) next.top = nextTop;
+    if ('x' in obj) next.x = nextLeft;
+    if ('y' in obj) next.y = nextTop;
+    if ('angle' in obj || Number.isFinite(Number(obj.angle))) {
+      next.angle = (Number(obj.angle) || 0) + Number(delta || 0);
+    } else if (hasBox) {
+      next.angle = Number(delta || 0);
+    }
+    if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
+      const data = { ...next.data };
+      if ('left' in data) data.left = next.left;
+      if ('top' in data) data.top = next.top;
+      if ('x' in data) data.x = next.x ?? next.left;
+      if ('y' in data) data.y = next.y ?? next.top;
+      if ('angle' in data || 'angle' in next) data.angle = next.angle;
+      next.data = data;
+    }
+  }
+  return next;
+}
+
+function rotatePageGeometry(next, page, pageWidth, pageHeight, delta) {
+  if (!(pageWidth > 0) || !(pageHeight > 0) || normalizeRotationDelta(delta) === 0) return next;
+  const pageData = next.annotationsByPage?.[page];
+  if (pageData) {
+    const rotatedSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
+    next.annotationsByPage[page] = {
+      ...pageData,
+      ...(pageData.width != null ? { width: rotatedSize.width } : {}),
+      ...(pageData.height != null ? { height: rotatedSize.height } : {}),
+      objects: (Array.isArray(pageData.objects) ? pageData.objects : [])
+        .map((object) => rotateFabricLikeObject(object, pageWidth, pageHeight, delta)),
+    };
+  }
+  for (const [id, marker] of Object.entries(next.surveyMarkers || {})) {
+    if (asPage(marker?.pageNumber) !== page) continue;
+    next.surveyMarkers[id] = rotateFabricLikeObject(marker, pageWidth, pageHeight, delta);
+  }
+  for (const [id, annotation] of Object.entries(next.annotations || {})) {
+    if (asPage(annotation?.pageNumber ?? annotation?.pageId ?? annotation?.page) !== page) continue;
+    next.annotations[id] = rotateFabricLikeObject(annotation, pageWidth, pageHeight, delta);
+  }
+  if (next.pageSizes?.[page]) {
+    const rotatedSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
+    next.pageSizes = {
+      ...next.pageSizes,
+      [page]: { ...next.pageSizes[page], width: rotatedSize.width, height: rotatedSize.height },
+    };
+  }
+  return next;
+}
+
 export function transformPageState(model = {}, op, { createId = fallbackId } = {}) {
   const type = op?.type;
   if (type === 'rotate') {
@@ -277,6 +373,15 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
       const cleared = { ...previous, rotation: 0 };
       if (!cleared.mirrorH && !cleared.mirrorV) delete next.pageTransformations[page];
       else next.pageTransformations[page] = cleared;
+    }
+    const pageWidth = Number(op.pageWidth) > 0
+      ? Number(op.pageWidth)
+      : Number(next.annotationsByPage?.[page]?.width);
+    const pageHeight = Number(op.pageHeight) > 0
+      ? Number(op.pageHeight)
+      : Number(next.annotationsByPage?.[page]?.height);
+    if (page != null) {
+      rotatePageGeometry(next, page, pageWidth, pageHeight, Number(op.delta ?? 90));
     }
     return next;
   }

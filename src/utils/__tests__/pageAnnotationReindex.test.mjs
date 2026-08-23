@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   mergeLivePagePresentation,
   remapClipboardPage,
+  rotateDisplayedPageSize,
+  rotateDisplayedPoint,
   transformPageState,
 } from '../pageAnnotationReindex.js';
 
@@ -124,6 +126,65 @@ test('rotate leaves every page association on the same physical page', () => {
   assert.deepEqual(out.spaces, input.spaces);
   assert.equal(out.pageTransformations[2], undefined, 'baked rotation clears the old visual rotation');
   assert.deepEqual(out.pageTransformations[3], { rotation: 180 });
+});
+
+test('rotate remaps a transformed rect through displayed-space +90 and restores on -90', () => {
+  const input = {
+    annotationsByPage: {
+      1: {
+        width: 612,
+        height: 792,
+        objects: [{
+          type: 'rect',
+          left: 120,
+          top: 200,
+          width: 80,
+          height: 40,
+          scaleX: 1,
+          scaleY: 1,
+          angle: 0,
+          data: { id: 'xf-rect', type: 'rect', pageNumber: 1, left: 120, top: 200 },
+        }],
+      },
+    },
+    surveyMarkers: {},
+    annotations: {},
+    pageNames: {},
+    pageTransformations: {},
+    bookmarks: [],
+    spaces: [],
+  };
+  const cw = transformPageState(input, {
+    type: 'rotate', page: 1, delta: 90, pageWidth: 612, pageHeight: 792,
+  });
+  const rect = cw.annotationsByPage[1].objects[0];
+  const expected = rotateDisplayedPoint(120 + 40, 200 + 20, 612, 792, 90);
+  assert.equal(rect.data.id, 'xf-rect');
+  assert.equal(rect.data.pageNumber, 1);
+  assert.equal(cw.annotationsByPage[1].width, 792);
+  assert.equal(cw.annotationsByPage[1].height, 612);
+  assert.ok(Math.abs(rect.left - (expected.x - 40)) < 1e-6);
+  assert.ok(Math.abs(rect.top - (expected.y - 20)) < 1e-6);
+  assert.equal(rect.angle, 90);
+  assert.equal(rect.width, 80);
+  assert.equal(rect.height, 40);
+
+  const empty = transformPageState({
+    ...input,
+    annotationsByPage: { 1: { width: 612, height: 792, objects: [] } },
+  }, { type: 'rotate', page: 1, delta: 90, pageWidth: 612, pageHeight: 792 });
+  assert.equal(empty.annotationsByPage[1].objects.length, 0);
+
+  const restored = transformPageState(cw, {
+    type: 'rotate', page: 1, delta: -90, pageWidth: 792, pageHeight: 612,
+  });
+  const back = restored.annotationsByPage[1].objects[0];
+  assert.ok(Math.abs(back.left - 120) < 1e-6);
+  assert.ok(Math.abs(back.top - 200) < 1e-6);
+  assert.equal(back.angle, 0);
+  assert.equal(restored.annotationsByPage[1].width, 612);
+  assert.equal(restored.annotationsByPage[1].height, 792);
+  assert.deepEqual(rotateDisplayedPageSize(612, 792, 90), { width: 792, height: 612 });
 });
 
 test('serialized hard reopen retains the transformed page identity graph', () => {

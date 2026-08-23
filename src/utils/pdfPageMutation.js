@@ -52,3 +52,16 @@ export async function mutatePdfPages(inputBytes, operation) {
 
   return pdf.save();
 }
+
+export function displayedPageSizeFromPdfPage(page) {
+  const { width, height } = page.getSize();
+  const rot = ((Number(page.getRotation()?.angle) % 360) + 360) % 360;
+  if (rot === 90 || rot === 270) return { width: height, height: width };
+  return { width, height };
+}
+
+export async function peekDisplayedPageSize(inputBytes, page) {
+  const pdf = await PDFDocument.load(inputBytes);
+  const count = pdf.getPageCount();
+  return displayedPageSizeFromPdfPage(pdf.getPage(pageNumber(page, count, 'page') - 1));
+}
