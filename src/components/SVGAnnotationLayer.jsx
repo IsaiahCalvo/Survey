@@ -71,7 +71,7 @@ import {
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
-import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
+import { displayedBoxOrigin, getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
@@ -4434,8 +4434,9 @@ const SVGAnnotationLayer = memo(({
             // rects the rect renders with its own rotate transform).
             const rectW = Math.abs((renderObj.width || 0) * (renderObj.scaleX || 1));
             const rectH = Math.abs((renderObj.height || 0) * (renderObj.scaleY || 1));
-            const rectL = renderObj.left || 0;
-            const rectT = renderObj.top || 0;
+            const rectOrigin = displayedBoxOrigin(renderObj);
+            const rectL = rectOrigin.left;
+            const rectT = rectOrigin.top;
             const rectCX = rectL + rectW / 2;
             const rectCY = rectT + rectH / 2;
             const sw = renderObj.strokeWidth || 1;

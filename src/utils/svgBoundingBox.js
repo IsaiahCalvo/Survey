@@ -23,6 +23,22 @@ const stableSum = (...values) => {
 
 const safeMidpoint = (low, high) => stableSum(low / 2, high / 2);
 
+/** Prefer remapped data.left/top when Fabric left/top is a 0 placeholder. */
+export function displayedBoxOrigin(obj) {
+  const pick = (own, data) => {
+    const ownN = Number(own);
+    const dataN = Number(data);
+    if (Number.isFinite(dataN) && (!Number.isFinite(ownN) || (ownN === 0 && Math.abs(dataN) > 1))) {
+      return dataN;
+    }
+    return Number.isFinite(ownN) ? ownN : 0;
+  };
+  return {
+    left: pick(obj?.left, obj?.data?.left),
+    top: pick(obj?.top, obj?.data?.top),
+  };
+}
+
 const degreesToRadians = (degrees) => {
   const numeric = Number(degrees) || 0;
   return (numeric % 360) * Math.PI / 180;
@@ -390,9 +406,10 @@ function getPathBBox(obj) {
 }
 
 function getRectBBox(obj) {
+  const origin = displayedBoxOrigin(obj);
   return {
-    left: obj.left ?? obj.data?.left ?? 0,
-    top: obj.top ?? obj.data?.top ?? 0,
+    left: origin.left,
+    top: origin.top,
     width: Math.abs((obj.width ?? 0) * (obj.scaleX ?? 1)),
     height: Math.abs((obj.height ?? 0) * (obj.scaleY ?? 1)),
     angle: obj.angle ?? obj.data?.angle ?? 0,

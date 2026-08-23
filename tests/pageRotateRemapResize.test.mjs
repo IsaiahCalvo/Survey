@@ -8,6 +8,7 @@ import {
   rotateDisplayedPoint,
   transformPageState,
 } from '../src/utils/pageAnnotationReindex.js';
+import { displayedBoxOrigin } from '../src/utils/svgBoundingBox.js';
 
 // Source contracts for selected bbox resize / mtr on a remapped page
 // after CW rotate (viewBox 0 0 792 612, angle 90). Distinct from
@@ -71,6 +72,18 @@ test('remapper hands resize a 90deg object on a swapped 792x612 page', () => {
   assert.equal(after.data.angle, 90);
 });
 
+test('displayedBoxOrigin prefers remapped data.left when Fabric left is 0', () => {
+  assert.deepEqual(displayedBoxOrigin({ left: 0, top: 0, data: { left: 648.17, top: -8.4 } }), {
+    left: 648.17,
+    top: -8.4,
+  });
+  assert.deepEqual(displayedBoxOrigin({ left: 122.4, top: 205.9, data: { left: 122.4, top: 205.9 } }), {
+    left: 122.4,
+    top: 205.9,
+  });
+  assert.deepEqual(displayedBoxOrigin({ left: 0, top: 0, data: {} }), { left: 0, top: 0 });
+});
+
 test('90deg local projection: screen +y grows local width; screen -x grows local height', () => {
   // Matches useSVGInteraction resize: un-rotate pointer around the world
   // anchor by -angle before signed scale. After remapper angle=90:
@@ -90,6 +103,8 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   const interaction = read('src/hooks/useSVGInteraction.js');
   const viewer = read('src/PDFViewer.jsx');
   const reindex = read('src/utils/pageAnnotationReindex.js');
+  const bbox = read('src/utils/svgBoundingBox.js');
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
   const dev = read('src/DevTestRoute.jsx');
 
   assert.match(overlay, /transform=\{angle \? `rotate\(\$\{angle\}, \$\{cx\}, \$\{cy\}\)` : undefined\}/);
@@ -102,6 +117,11 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   assert.match(interaction, /typeForFlip === 'rect'/);
   assert.match(viewer, /setUndoHistory\(\[\]\);\s*\n\s*setRedoHistory\(\[\]\);\s*\n\s*undoHistoryRef\.current = \[\];[\s\S]*Page mutations remap annotation addresses/);
   assert.match(reindex, /rotateDisplayedPoint/);
+  assert.match(reindex, /data\.left = next\.left/);
+  assert.match(reindex, /next\.left = nextLeft/);
+  assert.match(bbox, /export function displayedBoxOrigin/);
+  assert.match(layer, /displayedBoxOrigin\(renderObj\)/);
+  assert.match(viewer, /pageMutationRevision/);
   assert.match(dev, /Do NOT set file\.id/);
   assert.doesNotMatch(dev, /file\.id\s*=/);
 });

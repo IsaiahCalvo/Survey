@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
+import { displayedBoxOrigin, getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
   commitInkObjectMove,
@@ -3499,6 +3499,9 @@ export function useSVGInteraction({
           obj.scaleY = Math.abs(newScaleY);
           obj.left = newLeft;
           obj.top = newTop;
+          if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
+            obj.data = { ...obj.data, left: newLeft, top: newTop };
+          }
         }
       }
 
@@ -4406,8 +4409,8 @@ export function useSVGInteraction({
         // has a matching reference point. Commit branch translates back to
         // object-space for polygon/polyline. For line, commit rewrites
         // endpoints directly, so visible-bbox left/top is what we want.
-        left: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? obj.data?.left ?? 0),
-        top: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? obj.data?.top ?? 0),
+        left: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : displayedBoxOrigin(obj).left,
+        top: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : displayedBoxOrigin(obj).top,
         scaleX: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleX ?? 1),
         scaleY: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleY ?? 1),
         angle: isCounterPin ? (bbox.angle ?? 0) : (obj.angle ?? 0),
