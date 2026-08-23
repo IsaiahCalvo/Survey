@@ -30,7 +30,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-account-settings-dialog-name.spec.mjs` + hunt `e2e-after-settings-dialog-independent-hunt.spec.mjs` on Playwright Vite. Focused Node `accountSettingsDialogName` + hunt + leftover18.
+Playwright `e2e-account-settings-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-settings-dialog-independent-hunt.spec.mjs` **1 / 1** (**3 / 3**, 8.2s) on Playwright Vite `http://127.0.0.1:5319`. Focused Node `accountSettingsDialogName` + hunt + leftover18 **17 / 17**.
 
 | Slice | Intended / break / edge |
 |---|---|
