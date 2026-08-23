@@ -432,15 +432,29 @@ export default function App({ devPreviewReturnTab = null }) {
       const r = el.getBoundingClientRect();
       setSelectModeMenuAnchor({ top: r.bottom + 6, left: r.left + r.width / 2 });
     }
+    // Capture pointerdown: keyboard-arming Pen/Line while this menu is open
+    // leaves a creation tool armed. The page layer then preventDefaults
+    // pointerdown, which suppresses the compatibility mousedown this used
+    // to wait on — so a page click never closed Selection Mode (and started
+    // a stroke). Consume page-surface dismiss so it does not start a
+    // rubber-band (same contract as Style / Width / Survey / Spaces).
     const onDown = (e) => {
-      if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-caret]'))) return;
+      const target = e.target instanceof Element ? e.target : e.target?.parentElement;
+      if (target?.closest?.('[data-select-mode-menu]') || target?.closest?.('[data-select-mode-caret]')) return;
       setSelectModeMenuOpen(false);
+      const onPageSurface = target?.closest?.('[data-svg-annotation-layer]')
+        || target?.closest?.('.survey-pdfjs-page-div')
+        || target?.closest?.('.textLayer');
+      if (onPageSurface) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     };
     const onKeyDown = (e) => { if (e.key === 'Escape') setSelectModeMenuOpen(false); };
-    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [selectModeMenuOpen]);
