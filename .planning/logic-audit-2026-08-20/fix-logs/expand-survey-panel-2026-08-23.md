@@ -6,7 +6,7 @@
 
 Unique leftover after rail / 390-More Zoom in/out click (`64b2241a` / `fc0a99ce`). Last hunt observed right rail **48** (`Expand Survey panel`) and deferred it. Left-rail Collapse/Expand sidebar is already dedicated on History (`e2e-history-sidebar-click-restore`). This leftover is the collapsed right-rail **Expand Survey panel** chevron (48 → 320 overlay; host flex stays 48) + Collapse Survey. Distinct from leftover-18 / X-01 / survey Y/N/N-A / X-06 writeback / remapped-after-CW / dismiss-family / Zoom buttons / Home / Close tab / tool-key / toolbar arm.
 
-**Product:** Expand / Collapse / collapsed `Survey` icon are `type="button"` (left-rail already had this). Collapse ignores `event.detail > 1` so a double-click on Expand — same 35px header slot — does not immediately re-collapse. Isolated 8448 standing. Cap **8448** / 75/250 not loosened.
+**Product:** Expand / Collapse / collapsed `Survey` icon are `type="button"` (left-rail already had this). Collapse ignores `event.detail > 1` so a double-click on Expand — same 35px header slot — does not immediately re-collapse. Mobile Open-survey close was a live bug: `markSurveySheetOpen` identity churn (`closing=true`) re-ran the `showSurveyPanel` / `expandRequestKey` effects, armed `ignoreNextSurveyHide`, and the 170ms close no-op'd — sheet stayed open. Those effects now depend only on the flag/key, matching `collapseRequestKey`. Isolated 8448 standing. Cap **8448** / 75/250 not loosened.
 
 Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another X-01 parking note. Did **not** pad FEATURE-MATRIX. Did **not** write a 103-ID refresh. Did **not** invent survey Y/N/N-A seed or leftover-18 writeback. Did **not** replay Zoom buttons.
 
@@ -23,7 +23,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-expand-survey-panel.spec.mjs` + hunt `e2e-after-zoom-buttons-independent-hunt.spec.mjs` on Playwright Vite (times filled after the live run). Focused Node `expandSurveyPanel` + leftover18.
+Playwright `e2e-expand-survey-panel.spec.mjs` **2 / 2** + hunt `e2e-after-zoom-buttons-independent-hunt.spec.mjs` **1 / 1** on Playwright Vite `http://127.0.0.1:5190` (**3 / 3 (13.6s)**). Focused Node `expandSurveyPanel` + leftover18 **16 / 16**.
 
 | Slice | Intended / break / edge |
 |---|---|
