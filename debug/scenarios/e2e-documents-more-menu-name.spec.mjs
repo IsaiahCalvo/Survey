@@ -44,8 +44,8 @@ function desktopRow(page, name) {
   return page.locator('.documents-desktop-card [data-document-id]').filter({ hasText: name }).first();
 }
 
-function mobileRow(page, name) {
-  return page.locator('.documents-mobile-list [data-document-id], .documents-mobile-list').filter({ hasText: name }).first();
+function mobileCard(page, name) {
+  return page.locator('.mobile-doc-card').filter({ hasText: name }).first();
 }
 
 async function fileId(page) {
@@ -93,7 +93,7 @@ test('desktop Documents More menu is named + Share; Escape dismisses', async ({ 
   await expect(page.getByRole('menuitem', { name: 'Paste', exact: true })).toBeDisabled();
   await expect(page.getByRole('menuitem', { name: 'Partial erase', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Copy email', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: /activity/i }).count()).toBe(0);
+  expect(await page.getByRole('dialog', { name: /activity/i }).count()).toBe(0);
 
   await page.keyboard.press('Escape');
   await expect(ownerMenu(page)).toHaveCount(0);
@@ -118,9 +118,10 @@ test('390 + editor break for Documents More menu name', async ({ page }) => {
 
   await openPage(page, { width: 390, height: 844, url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(OWNER).first()).toBeVisible({ timeout: 20_000 });
+  const card = mobileCard(page, OWNER);
+  await expect(card).toBeVisible({ timeout: 15_000 });
   expect(await ownerMenu(page).count()).toBe(0);
-  const more = mobileRow(page, OWNER).getByRole('button', { name: 'More' }).first();
+  const more = card.getByRole('button', { name: 'More' }).first();
   await expect(more).toBeVisible();
   await more.click();
   await expect(ownerMenu(page)).toBeVisible();
