@@ -34,6 +34,7 @@ import {
   swapBookmarkSiblingOrder,
 } from './bookmarkReorderUtils.js';
 import { useTooltip } from '../components/Tooltip';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const BOOKMARK_TREE_CONTENT_WIDTH = 252;
@@ -489,7 +490,14 @@ const BookmarksPanel = ({
   const [targetGroupId, setTargetGroupId] = useState(null);
   const [addToGroupBookmarks, setAddToGroupBookmarks] = useState([]);
   const menuRef = useRef(null);
+  const createGroupDialogRef = useRef(null);
   const createMenuInsideRefs = useMemo(() => [menuRef], []);
+  const closeCreateGroupModal = useCallback(() => {
+    setShowBookmarkGroupModal(false);
+    setGroupName('');
+    setGroupBookmarks([]);
+  }, []);
+  useFocusTrap(createGroupDialogRef, showBookmarkGroupModal, { onEscape: closeCreateGroupModal });
 
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
@@ -1942,8 +1950,13 @@ const BookmarksPanel = ({
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 10000
-        }} onClick={() => setShowBookmarkGroupModal(false)}>
-          <div style={{
+        }} onClick={closeCreateGroupModal}>
+          <div
+            ref={createGroupDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-bookmark-group-title"
+            style={{
             background: '#12151c',
             borderRadius: '12px',
             padding: '24px',
@@ -1960,7 +1973,9 @@ const BookmarksPanel = ({
               alignItems: 'center',
               marginBottom: '20px'
             }}>
-              <h3 style={{
+              <h3
+                id="create-bookmark-group-title"
+                style={{
                 margin: 0,
                 fontSize: '18px',
                 fontWeight: '600',
@@ -1969,11 +1984,9 @@ const BookmarksPanel = ({
                 Create bookmark group
               </h3>
               <button
-                onClick={() => {
-                  setShowBookmarkGroupModal(false);
-                  setGroupName('');
-                  setGroupBookmarks([]);
-                }}
+                type="button"
+                aria-label="Close"
+                onClick={closeCreateGroupModal}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -2273,11 +2286,8 @@ const BookmarksPanel = ({
               justifyContent: 'flex-end'
             }}>
               <button
-                onClick={() => {
-                  setShowBookmarkGroupModal(false);
-                  setGroupName('');
-                  setGroupBookmarks([]);
-                }}
+                type="button"
+                onClick={closeCreateGroupModal}
                 style={{
                   padding: '8px 16px',
                   background: '#2a3140',
