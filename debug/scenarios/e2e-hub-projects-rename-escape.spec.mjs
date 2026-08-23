@@ -128,8 +128,9 @@ test('Projects rename Escape edge: 390 drill title + empty + testPdf', async ({ 
   test.setTimeout(180_000);
 
   await openHub(page, { width: 390, height: 844 });
-  await expect(page.locator('[data-project-id="p1"]').first()).toBeVisible({ timeout: 15_000 });
-  await page.locator('[data-project-id="p1"]').first().click();
+  const mobileRow = page.locator('.projects-mobile-folder-row[data-project-id="p1"]');
+  await expect(mobileRow).toBeVisible({ timeout: 15_000 });
+  await mobileRow.click();
   const mobileTitle = page.locator('.projects-mobile-title-input');
   await expect(mobileTitle).toBeVisible({ timeout: 8_000 });
   await expect(mobileTitle).toHaveValue(TOWER);
