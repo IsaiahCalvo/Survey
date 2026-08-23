@@ -23,15 +23,15 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-spaces-rail-toggle.spec.mjs` + hunt `e2e-after-expand-survey-independent-hunt.spec.mjs` on Playwright Vite `http://localhost:5173`. Focused Node `spacesRailToggle` + leftover18. Times filled after the run.
+Playwright `e2e-spaces-rail-toggle.spec.mjs` **2 / 2** + hunt `e2e-after-expand-survey-independent-hunt.spec.mjs` **1 / 1** on Playwright Vite `http://localhost:5173` (**3 / 3 (16.3s)**). Focused Node `spacesRailToggle` + leftover18 **16 / 16**.
 
 | Slice | Intended / break / edge |
 |---|---|
-| Intended desktop | `?testPdf=clickable-link-test.pdf` 1400×900. Left host **48**; Spaces live; panel **0**. Expand sidebar contrast opens Pages (No spaces yet **0**). Spaces click → heading Spaces + No spaces yet + Create space; host **272**. Y/N **0**. Collapse sidebar restores Spaces icon + host **48**. viewBox **`0 0 612 792`**. `file.id` null. |
-| Break desktop | Escape / Space do not collapse. Already-open Spaces re-click stays **272**. Double-click Spaces stays expanded and invents **0** cards. hubPreview viewer Spaces panel / Create space **0**. Hidden tools **0**. |
-| Edge desktop | Page-1 rect survives; Pen-armed Spaces invents **0**; 120-page Spaces stays page **1**. Overlay lists B Toggle sidebar, not a Spaces chord. |
+| Intended desktop | `?testPdf=clickable-link-test.pdf` 1400×900. Collapse **0**; Spaces live; host **48** / panel **48** → Expand sidebar contrast hides Spaces heading; Spaces click → heading Spaces + No spaces yet + Create space; host **48** / panel **272**; Y/N **0**. Collapse sidebar restores Spaces icon. viewBox **`0 0 612 792`**. `file.id` null. |
+| Break desktop | Escape / Space do not collapse. Already-open Spaces re-click stays panel **272**. Double-click Spaces stays expanded and invents **0** cards. hubPreview viewer Spaces panel / Create space **0**. Hidden tools **0**. |
+| Edge desktop | Page-1 rect `6bb92936-…` survives; Pen-armed Spaces invents **0**; 120-page Spaces stays page **1**. Overlay lists B Toggle sidebar, not a Spaces chord. |
 | Edge 390 | Open spaces (dock) opens No spaces yet + Create space; closer hides panel. viewBox **`0 0 612 792`**. |
-| Hunt | Spaces live; after click No spaces yet + Create space; Y/N **0**; Expand Survey counted not replayed; hub viewer Spaces panel **0**; 390 Open spaces live; kal441 Forms create **0**. |
+| Hunt | Spaces live; after click panel **272** / host **48** + No spaces yet + Create space; Y/N **0**; Expand Survey counted not replayed; hub viewer Spaces panel **0**; 390 Open spaces live; kal441 Forms create **0**. |
 
 Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. High-risk files not edited; official `npm test` not required this pass. Cap **8448** / 75/250 not loosened. Isolated 8448 standing. `graphify` CLI absent.
 
