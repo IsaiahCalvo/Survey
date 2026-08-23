@@ -227,9 +227,13 @@ test('390 Documents sort first Upload / Search click lands', async ({ page }) =>
   await expect(mobileSearch).toBeFocused();
   await mobileSearch.fill('test');
 
-  // Break — a document row click still only dismisses (does not open).
+  // Complementary intended — first sort tap while Search is focused
+  // dismisses the field and still opens the menu.
   await sort.click();
+  await expect(mobileSearch).not.toBeFocused();
   await expect(sortMenu).toBeVisible();
+
+  // Break — a document row click still only dismisses (does not open).
   const row = page.locator('.documents-mobile-list [data-document-id]').first();
   await expect(row).toBeVisible();
   await row.click();

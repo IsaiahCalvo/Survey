@@ -350,7 +350,7 @@ export default function DocumentsLedger({
           value={search}
           onChange={setSearch}
           width="100%"
-          dismissActionSelector=".hub-mobile-primary-action, .documents-desktop-upload"
+          dismissActionSelector=".hub-mobile-primary-action, .documents-desktop-upload, .documents-mobile-filter"
         />
         <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       </div>
@@ -359,7 +359,7 @@ export default function DocumentsLedger({
           placeholder="Search documents..."
           value={search}
           onChange={setSearch}
-          dismissActionSelector=".documents-desktop-upload, .hub-mobile-primary-action"
+          dismissActionSelector=".documents-desktop-upload, .hub-mobile-primary-action, .documents-mobile-filter"
         />
       </div>
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>

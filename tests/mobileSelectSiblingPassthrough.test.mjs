@@ -17,8 +17,8 @@ test('390 Style / Arrowhead / Font selects passthrough Width and strip chrome', 
 });
 
 test('Documents and Projects search passthrough header Upload / New project', () => {
-  assert.match(documents, /dismissActionSelector="\.hub-mobile-primary-action, \.documents-desktop-upload"/);
-  assert.match(documents, /dismissActionSelector="\.documents-desktop-upload, \.hub-mobile-primary-action"/);
+  assert.match(documents, /dismissActionSelector="\.hub-mobile-primary-action, \.documents-desktop-upload, \.documents-mobile-filter"/);
+  assert.match(documents, /dismissActionSelector="\.documents-desktop-upload, \.hub-mobile-primary-action, \.documents-mobile-filter"/);
   assert.match(projects, /dismissActionSelector="\.projects-mobile-create-button, \.projects-desktop-create-button, \.projects-mobile-back-button"/);
   assert.match(projects, /dismissActionSelector="\.projects-desktop-create-button, \.projects-mobile-create-button"/);
   assert.match(projects, /className="btn primary projects-desktop-create-button"/);
