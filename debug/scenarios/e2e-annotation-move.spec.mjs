@@ -223,14 +223,19 @@ async function createRect(page, coords) {
 
 async function selectMode(page) {
   await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
   const scoped = toolButtons(page, 'Select');
-  if (await scoped.count()) {
+  if (await scoped.count() && await scoped.first().isVisible().catch(() => false)) {
     await scoped.first().click();
-  } else {
-    await page.keyboard.press('v');
   }
+  await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
+  await expect.poll(async () => {
+    const layer = page.locator('[data-svg-annotation-layer="1"]').first();
+    const cls = String(await layer.getAttribute('class') || '');
+    return !cls.includes('tool-crosshair');
+  }, { timeout: 8_000, message: 'Select must drop the creation crosshair' }).toBeTruthy();
 }
 
 async function setNextDrawFill(page, hex = '#00FFFF') {
@@ -238,13 +243,24 @@ async function setNextDrawFill(page, hex = '#00FFFF') {
   if (!(await color.isVisible().catch(() => false))) return false;
   await color.click();
   const picker = page.locator('[data-annotation-color-picker]');
-  await expect(picker).toBeVisible({ timeout: 5_000 });
-  const fillTab = picker.getByRole('button', { name: 'Fill', exact: true });
-  if (await fillTab.count()) await fillTab.click();
+  const sheet = page.getByRole('button', { name: /Set (Fill|Stroke) color/i });
   const title = /^transparent$/i.test(hex) ? 'Transparent' : hex;
-  await picker.locator(`button[title="${title}"]`).first().click();
+  if (await picker.isVisible().catch(() => false)) {
+    const fillTab = picker.getByRole('button', { name: 'Fill', exact: true });
+    if (await fillTab.count()) await fillTab.click();
+    await picker.locator(`button[title="${title}"]`).first().click();
+    await page.keyboard.press('Escape').catch(() => {});
+    return true;
+  }
+  if (await sheet.first().isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: new RegExp(`Set Fill color ${title === 'Transparent' ? '.*' : title}`, 'i') }).first().click().catch(async () => {
+      await page.locator(`button[title="${title}"]`).first().click();
+    });
+    await page.keyboard.press('Escape').catch(() => {});
+    return true;
+  }
   await page.keyboard.press('Escape').catch(() => {});
-  return true;
+  return false;
 }
 
 async function hitTarget(page, id) {
@@ -260,21 +276,21 @@ async function annoBox(page, id) {
 }
 
 async function strokeClick(page, id, { modifiers = [] } = {}) {
-  const hit = await hitTarget(page, id);
   const box = await annoBox(page, id);
   const before = (await selectedIds(page)).includes(id);
-  // Interior of a filled hit-target (pointer-events: all). Avoid handle
-  // corners/midpoints. Transparent leftover uses the fat stroke band.
+  // Mouse coords — locator.click dies when the SVG root still has
+  // tool-crosshair (creation tools set child pointer-events:none).
+  // Interior of a filled hit-target; 25% edge if fill is none.
   const points = [
-    { x: Math.max(8, box.width * 0.35), y: Math.max(8, box.height * 0.35) },
-    { x: Math.max(6, box.width * 0.65), y: Math.max(8, box.height * 0.40) },
-    { x: 4, y: Math.max(8, box.height * 0.30) },
-    { x: Math.max(8, box.width * 0.30), y: 4 },
+    { x: box.x + box.width * 0.35, y: box.y + box.height * 0.35 },
+    { x: box.x + box.width * 0.65, y: box.y + box.height * 0.40 },
+    { x: box.x + 6, y: box.y + box.height * 0.30 },
+    { x: box.x + box.width * 0.30, y: box.y + 6 },
   ];
   for (const key of modifiers) await page.keyboard.down(key);
   try {
     for (const point of points) {
-      await hit.click({ position: point });
+      await page.mouse.click(point.x, point.y);
       try {
         await expect.poll(async () => (await selectedIds(page)).includes(id), {
           timeout: 800,
@@ -294,8 +310,8 @@ async function strokeDrag(page, id, dxPx, dyPx) {
   const box = await annoBox(page, id);
   // Interior grab — selected mid-edge is a resize handle, not move.
   const start = {
-    x: box.x + Math.max(10, box.width * 0.35),
-    y: box.y + Math.max(10, box.height * 0.35),
+    x: box.x + box.width * 0.35,
+    y: box.y + box.height * 0.35,
   };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
