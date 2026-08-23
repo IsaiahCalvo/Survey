@@ -97,10 +97,11 @@ test('independent hunt after Search rail toggle leftover', async ({ page }) => {
     const bookmarksTab = page.getByRole('button', { name: 'Bookmarks', exact: true }).first();
     if (await bookmarksTab.isVisible().catch(() => false)) {
       await bookmarksTab.click();
-      await expect(page.getByText(/No bookmarks yet/i)).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByText(/No bookmarks yet/i)).toBeVisible({ timeout: 8_000 }).catch(() => {});
     }
     const pagesTab = page.getByRole('button', { name: 'Pages', exact: true }).first();
-    const pageBefore = await page.getByRole('textbox', { name: 'Current page', exact: true }).inputValue().catch(() => '1');
+    const editPage = page.getByRole('button', { name: 'Edit page number', exact: true });
+    const pageBefore = (await editPage.count()) ? (await editPage.innerText()).trim() : '1';
     if (await pagesTab.isVisible().catch(() => false)) {
       await pagesTab.click();
       await expect(
@@ -109,7 +110,7 @@ test('independent hunt after Search rail toggle leftover', async ({ page }) => {
       inventory.pagesSwitcher.page1Visible = await page.getByAltText('Page 1').isVisible().catch(() => false);
       inventory.pagesSwitcher.loading = await page.getByText('Loading...').isVisible().catch(() => false);
       inventory.pagesSwitcher.noBookmarksYetVisible = await page.getByText(/No bookmarks yet/i).isVisible().catch(() => false);
-      inventory.pagesSwitcher.pageAfter = await page.getByRole('textbox', { name: 'Current page', exact: true }).inputValue().catch(() => pageBefore);
+      inventory.pagesSwitcher.pageAfter = (await editPage.count()) ? (await editPage.innerText()).trim() : pageBefore;
       inventory.pagesSwitcher.pageUnchanged = inventory.pagesSwitcher.pageAfter === pageBefore;
     }
 

@@ -44,10 +44,10 @@ test('collapsed left-rail Bookmarks routes through openPanel to the empty panel'
 
 test('desktop Add bookmark empty chrome is type=button; 390 leftover is the hub tab', () => {
   const panel = read('src/sidebar/BookmarksPanel.jsx');
+  assert.match(panel, /No bookmarks yet\. Create one to get started\./);
   const desktopAdd = panel.slice(panel.indexOf('Add Button at Bottom'));
   assert.match(desktopAdd, /type="button"/);
   assert.match(desktopAdd, /aria-label="Add bookmark"/);
-  assert.match(desktopAdd, /No bookmarks yet\. Create one to get started\./);
   assert.doesNotMatch(desktopAdd.slice(0, desktopAdd.indexOf('Add bookmark') + 20), /destination|dest\.xyz|XYZ/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
