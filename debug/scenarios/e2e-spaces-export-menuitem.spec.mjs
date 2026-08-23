@@ -185,6 +185,7 @@ test('390 + hub/search break for Spaces export menuitem', async ({ page }) => {
   expect(await exportMenu(page).count()).toBe(0);
   await openSpaces(page);
   await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await page.waitForTimeout(360);
   await expect(page.getByRole('button', { name: 'Export Space 1', exact: true })).toBeEnabled({ timeout: 8_000 });
   await page.getByRole('button', { name: 'Export Space 1', exact: true }).click();
   await expect(exportMenu(page)).toBeVisible();
