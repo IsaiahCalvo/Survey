@@ -1,6 +1,8 @@
 // Pages-panel click contract. Extracted so Node can prove jump vs mobile
 // multi-select without mounting the thumbnail rail.
 
+import { resolveTextLayerRotation } from '../utils/pdfjsTextLayerViewport.js';
+
 export function resolvePageThumbnailClick({
   pageNumber,
   numPages,
@@ -30,16 +32,38 @@ export function getPdfDocumentCacheStamp(pdfDoc) {
   return null;
 }
 
+// Same host-aspect contract as the text layer / Search marks. After Pages CW
+// the live `.survey-pdfjs-page-div` is landscape while a leftover pdf.js
+// proxy (or rotate-blind IDB thumb) can still be 612×792.
+export function resolvePagesPanelThumbRotation({
+  pageRotate = 0,
+  hostWidth = 0,
+  hostHeight = 0,
+  intrinsicWidth = 0,
+  intrinsicHeight = 0,
+} = {}) {
+  return resolveTextLayerRotation(
+    pageRotate,
+    0,
+    hostWidth,
+    hostHeight,
+    intrinsicWidth,
+    intrinsicHeight,
+  );
+}
+
 export function buildPagesPanelThumbKey({
   stamp,
   pageNumber,
   quality = 'fast',
   revision = 0,
+  rotate = 0,
 } = {}) {
   if (!stamp || !Number.isFinite(pageNumber) || pageNumber < 1) return null;
   const q = quality === 'crisp' ? 'crisp' : 'fast';
   const rev = Number.isFinite(Number(revision)) ? Number(revision) : 0;
-  return `pages-panel::${stamp}::${pageNumber}::${q}::r${rev}`;
+  const rot = ((Number(rotate) % 360) + 360) % 360;
+  return `pages-panel::${stamp}::${pageNumber}::${q}::rot${rot}::r${rev}`;
 }
 
 export function isLikelyBlackThumbnailPixels(data, width, height) {

@@ -9,16 +9,25 @@ import {
   canReorderVisiblePages,
   getPdfDocumentCacheStamp,
   isLikelyBlackThumbnailPixels,
+  resolvePagesPanelThumbRotation,
 } from '../src/sidebar/pagesPanelUtils.js';
 
-test('pages-panel cache key includes doc stamp, page, quality, and revision', () => {
+test('pages-panel cache key includes doc stamp, page, quality, rotate, and revision', () => {
   assert.equal(
     buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 3, quality: 'crisp', revision: 2 }),
-    'pages-panel::abc::3::crisp::r2',
+    'pages-panel::abc::3::crisp::rot0::r2',
   );
   assert.equal(
     buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 3, quality: 'fast' }),
-    'pages-panel::abc::3::fast::r0',
+    'pages-panel::abc::3::fast::rot0::r0',
+  );
+  assert.equal(
+    buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 1, quality: 'fast', rotate: 90 }),
+    'pages-panel::abc::1::fast::rot90::r0',
+  );
+  assert.notEqual(
+    buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 1, quality: 'fast', rotate: 0 }),
+    buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 1, quality: 'fast', rotate: 90 }),
   );
   assert.notEqual(
     buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 1, quality: 'fast', revision: 0 }),
@@ -26,6 +35,30 @@ test('pages-panel cache key includes doc stamp, page, quality, and revision', ()
   );
   assert.equal(buildPagesPanelThumbKey({ stamp: null, pageNumber: 1 }), null);
   assert.equal(buildPagesPanelThumbKey({ stamp: 'abc', pageNumber: 0 }), null);
+});
+
+test('thumb rotation follows the live host when the proxy is leftover portrait', () => {
+  assert.equal(resolvePagesPanelThumbRotation({
+    pageRotate: 0,
+    hostWidth: 1012,
+    hostHeight: 782,
+    intrinsicWidth: 612,
+    intrinsicHeight: 792,
+  }), 90);
+  assert.equal(resolvePagesPanelThumbRotation({
+    pageRotate: 90,
+    hostWidth: 1012,
+    hostHeight: 782,
+    intrinsicWidth: 792,
+    intrinsicHeight: 612,
+  }), 90);
+  assert.equal(resolvePagesPanelThumbRotation({
+    pageRotate: 0,
+    hostWidth: 611,
+    hostHeight: 791,
+    intrinsicWidth: 612,
+    intrinsicHeight: 792,
+  }), 0);
 });
 
 test('pdf.js fingerprints are used as the durable cache stamp', () => {
@@ -94,4 +127,6 @@ test('PagesPanel wires IndexedDB cache, black-frame reject, and space-filter reo
   assert.match(panel, /!canReorderPages/);
   assert.match(panel, /event\.key === 'Escape'/);
   assert.match(panel, /data-pages-context-menu="true"/);
+  assert.match(panel, /resolvePagesPanelThumbRotation/);
+  assert.match(panel, /leftoverPortraitCache/);
 });

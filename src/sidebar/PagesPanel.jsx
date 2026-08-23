@@ -17,6 +17,7 @@ import {
   getPdfDocumentCacheStamp,
   isLikelyBlackThumbnailPixels,
   resolvePageThumbnailClick,
+  resolvePagesPanelThumbRotation,
 } from './pagesPanelUtils.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -233,7 +234,18 @@ const PagesPanel = ({
       for (let i = 1; i <= numPages; i++) {
         try {
           const page = await pdfDoc.getPage(i);
-          const viewport = page.getViewport({ scale: 1 });
+          const host = typeof document !== 'undefined'
+            ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${i}"]`)
+            : null;
+          const intrinsic = page.getViewport({ scale: 1, rotation: page.rotate });
+          const displayRotation = resolvePagesPanelThumbRotation({
+            pageRotate: page.rotate,
+            hostWidth: Number(host?.offsetWidth) || 0,
+            hostHeight: Number(host?.offsetHeight) || 0,
+            intrinsicWidth: intrinsic.width,
+            intrinsicHeight: intrinsic.height,
+          });
+          const viewport = page.getViewport({ scale: 1, rotation: displayRotation });
           ratios[i] = (viewport.height / viewport.width) * 100; // percentage for paddingBottom
         } catch (error) {
           console.error(`Error getting aspect ratio for page ${i}:`, error);
@@ -323,14 +335,15 @@ const PagesPanel = ({
     });
   }, [commitThumbnailResult, isLikelyBlackThumbnailSrc]);
 
-  const renderPdfJsThumbnail = useCallback(async (pageNumber, quality = 'fast', onCancel) => {
+  const renderPdfJsThumbnail = useCallback(async (pageNumber, quality = 'fast', onCancel, displayRotation) => {
     if (!pdfDoc) return null;
     const page = await pdfDoc.getPage(pageNumber);
 
     const scale = quality === 'crisp' ? CRISP_THUMBNAIL_SCALE : FAST_THUMBNAIL_SCALE;
     const dprCap = quality === 'crisp' ? CRISP_DPR_CAP : THUMBNAIL_DPR_CAP;
 
-    const viewport = page.getViewport({ scale });
+    const rotation = Number.isFinite(displayRotation) ? displayRotation : page.rotate;
+    const viewport = page.getViewport({ scale, rotation });
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) return null;
@@ -399,21 +412,48 @@ const PagesPanel = ({
 
     try {
       let thumbnailResult = null;
+      const page = pdfDoc ? await pdfDoc.getPage(pageNumber) : null;
+      const host = typeof document !== 'undefined'
+        ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
+        : null;
+      const intrinsic = page ? page.getViewport({ scale: 1, rotation: page.rotate }) : null;
+      const displayRotation = page
+        ? resolvePagesPanelThumbRotation({
+          pageRotate: page.rotate,
+          hostWidth: Number(host?.offsetWidth) || 0,
+          hostHeight: Number(host?.offsetHeight) || 0,
+          intrinsicWidth: intrinsic.width,
+          intrinsicHeight: intrinsic.height,
+        })
+        : 0;
       const cacheKey = buildPagesPanelThumbKey({
         stamp: getPdfDocumentCacheStamp(pdfDoc),
         pageNumber,
         quality: type,
         revision: thumbnailCacheRevision,
+        rotate: displayRotation,
       });
 
       if (cacheKey) {
         const stored = await thumbnailStore().get(cacheKey);
         if (stored?.url) {
-          thumbnailResult = {
-            src: stored.url,
-            source: 'idb',
-            quality: type,
-          };
+          const storedAspect = Number(stored.aspect);
+          const hostW = Number(host?.offsetWidth) || 0;
+          const hostH = Number(host?.offsetHeight) || 0;
+          const hostReady = hostW > 8 && hostH > 8;
+          const hostLandscape = hostW > hostH + 8;
+          const storedPortrait = storedAspect > 1;
+          const leftoverPortraitCache = hostReady
+            && Number.isFinite(storedAspect)
+            && storedAspect > 0
+            && hostLandscape === storedPortrait;
+          if (!leftoverPortraitCache) {
+            thumbnailResult = {
+              src: stored.url,
+              source: 'idb',
+              quality: type,
+            };
+          }
         }
       }
 
@@ -425,7 +465,7 @@ const PagesPanel = ({
       if (!thumbnailResult && pdfDoc) {
         thumbnailResult = await renderPdfJsThumbnail(pageNumber, type, (cancelFn) => {
           cancelRender = cancelFn;
-        });
+        }, displayRotation);
       }
 
       if (isMountedRef.current && thumbnailResult) {
@@ -476,13 +516,17 @@ const PagesPanel = ({
     }
   }, [pdfDoc, getThumbnail, applyThumbnailResult, renderPdfJsThumbnail, normalizeThumbnailResult, thumbnailCacheRevision]);
 
-  const scheduleThumbnail = useCallback((pageNumber, priority = 'fast') => {
+  const scheduleThumbnail = useCallback((pageNumber, priority = 'fast', { force = false } = {}) => {
     if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
 
     // Check if already has a better or equal thumbnail
     const existing = thumbnailsRef.current[pageNumber];
-    if (existing?.quality === 'crisp') return;
-    if (priority === 'fast' && existing?.quality === 'fast') {
+    if (force) {
+      delete thumbnailsRef.current[pageNumber];
+    } else if (existing?.quality === 'crisp') {
+      return;
+    }
+    if (!force && priority === 'fast' && existing?.quality === 'fast') {
       if (queueRef.current.crisp.find(j => j.pageNumber === pageNumber)) return;
       queueRef.current.crisp.push({ pageNumber });
       processQueue();
@@ -507,8 +551,33 @@ const PagesPanel = ({
 
   // Public entry point (replacing generateThumbnail)
   const generateThumbnail = useCallback((pageNumber, { force = false } = {}) => {
-    scheduleThumbnail(pageNumber, 'fast');
+    scheduleThumbnail(pageNumber, 'fast', { force });
   }, [scheduleThumbnail]);
+
+  // After Pages CW the page host can flip before the rotate-blind IDB thumb
+  // is dropped. If the live host aspect disagrees with the cached preview,
+  // force a host-aware re-render (container-aware, never pageSize * scale).
+  useEffect(() => {
+    if (!pdfDoc || typeof document === 'undefined') return;
+    allowedPages.forEach((pageNumber) => {
+      const host = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+      const hostW = Number(host?.offsetWidth) || 0;
+      const hostH = Number(host?.offsetHeight) || 0;
+      if (hostW <= 8 || hostH <= 8) return;
+      const hostLandscape = hostW > hostH + 8;
+      const ratio = pageAspectRatios[pageNumber];
+      if (!thumbnailsRef.current[pageNumber] || !Number.isFinite(ratio) || ratio <= 0) return;
+      const thumbLandscape = ratio < 100;
+      if (hostLandscape === thumbLandscape) return;
+      setThumbnails((prev) => {
+        if (!prev[pageNumber]) return prev;
+        const next = { ...prev };
+        delete next[pageNumber];
+        return next;
+      });
+      generateThumbnail(pageNumber, { force: true });
+    });
+  }, [pdfDoc, allowedPages, pageAspectRatios, generateThumbnail]);
 
   // Cancel thumbnail (when scrolling away)
   const cancelThumbnail = useCallback((pageNumber) => {
