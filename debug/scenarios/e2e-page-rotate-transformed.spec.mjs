@@ -72,9 +72,18 @@ async function pageCoveredByHub(page) {
   }, { x: box.x + box.width * 0.45, y: box.y + box.height * 0.40 });
 }
 
+async function closeDocumentPanel(page) {
+  const backdrop = page.getByRole('button', { name: 'Close document panel' });
+  if (await backdrop.first().isVisible().catch(() => false)) {
+    await backdrop.first().click().catch(() => {});
+  }
+  await page.keyboard.press('Escape').catch(() => {});
+}
+
 async function dismissChrome(page) {
   await blurInputs(page);
   await page.keyboard.press('Escape').catch(() => {});
+  await closeDocumentPanel(page);
   const search = page.getByPlaceholder('Search text in PDF...');
   if (await search.isVisible().catch(() => false)) {
     await page.getByRole('button', { name: 'Search text', exact: true }).click().catch(() => {});
@@ -384,6 +393,7 @@ async function rotatePage(page, pageNumber, direction = 'cw') {
     const nowPortrait = box.height > box.width + 8;
     return wasPortrait ? nowLandscape : nowPortrait;
   }, { timeout: 45_000, message: `page ${pageNumber} should flip aspect after ${direction} rotate` }).toBeTruthy();
+  await closeDocumentPanel(page);
   await assertNoErrorBoundary(page);
 }
 
