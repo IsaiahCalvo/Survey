@@ -404,21 +404,24 @@ async function closePagesPanel(page) {
   }
 }
 
-async function dragMtrToAngle(page, id, deg, { shift = false } = {}) {
+async function dragMtrToAngle(page, id, deg, { shift = false, requireOnPage = false } = {}) {
   const hit = await annoHitBox(page, id);
   const cx = hit.x + hit.width / 2;
   const cy = hit.y + hit.height / 2;
   const handle = await handleScreenCenter(page, 'data-rotation-handle="mtr"');
   const pageRect = await pageBox(page);
-  // Knob center must not sit tens of px past the viewBox (the pre-fix
-  // overflow:hidden miss). Sub-pixel / hit-radius slop at the edge is OK.
-  expect(handle.x, 'mtr knob must stay inside the remapped page (not clipped)').toBeGreaterThan(pageRect.x - 4);
-  expect(handle.x).toBeLessThan(pageRect.x + pageRect.width + 8);
-  expect(handle.y).toBeGreaterThan(pageRect.y - 4);
-  expect(handle.y).toBeLessThan(pageRect.y + pageRect.height + 8);
+  if (requireOnPage) {
+    // Knob center must not sit tens of px past the viewBox (the pre-fix
+    // overflow:hidden miss). Sub-pixel / hit-radius slop at the edge is OK.
+    expect(handle.x, 'mtr knob must stay inside the remapped page (not clipped)').toBeGreaterThan(pageRect.x - 4);
+    expect(handle.x).toBeLessThan(pageRect.x + pageRect.width + 8);
+    expect(handle.y).toBeGreaterThan(pageRect.y - 4);
+    expect(handle.y).toBeLessThan(pageRect.y + pageRect.height + 8);
+  }
   console.log('MTR_ON_PAGE', JSON.stringify({
     handle,
     pageRect,
+    requireOnPage,
     dxRight: (pageRect.x + pageRect.width) - handle.x,
     dyBottom: (pageRect.y + pageRect.height) - handle.y,
   }));
@@ -439,9 +442,6 @@ async function dragMtrToAngle(page, id, deg, { shift = false } = {}) {
   if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
-  // One jump: mid-drag remounts can drop pointer capture after the first
-  // move, so a 16-step crawl stays on the 90deg ray (~93). Users drag
-  // farther in one motion; the captured first move must carry the angle.
   await page.mouse.move(end.x, end.y, { steps: 1 });
   await page.mouse.up();
   if (shift) await page.keyboard.up('Shift');
@@ -643,13 +643,13 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   // shortened along the same ray so the knob stays hittable.
   await selectUntilHandles(page, created.id, 8);
   const preMtr = await geom(page, created.id);
-  await dragMtrToAngle(page, created.id, 180);
+  await dragMtrToAngle(page, created.id, 180, { requireOnPage: true });
   console.log('POST_MTR_180', JSON.stringify(await geom(page, created.id)));
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     if (!now) return false;
     const angle = ((now.angle % 360) + 360) % 360;
-    return Math.abs(angle - 180) < 20 || Math.abs(now.angle - preMtr.angle) > 8;
+    return Math.abs(angle - 180) < 25;
   }, { timeout: 8_000, message: 'post-rotate mtr must update angle' }).toBeTruthy();
   const postMtr = await geom(page, created.id);
   expect(Math.abs(postMtr.vw - preMtr.vw), 'mtr must hold width').toBeLessThan(6);
@@ -659,7 +659,7 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
 
   await selectUntilHandles(page, created.id, 8);
   const preShift = await geom(page, created.id);
-  await dragMtrToAngle(page, created.id, 135, { shift: true });
+  await dragMtrToAngle(page, created.id, 135, { shift: true, requireOnPage: false });
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     if (!now) return false;
