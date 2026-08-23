@@ -276,23 +276,27 @@ async function startMtrDrag(page, id, deg) {
   return start;
 }
 
+async function liveRotatePreview(page, id) {
+  return page.evaluate((annoId) => {
+    const group = document.querySelector(`[data-svg-annotation-layer="1"] > g[data-anno-id="${annoId}"]`);
+    const transform = group?.getAttribute?.('transform') || '';
+    const object = window.__phase35GetAnnotationById?.(annoId) || {};
+    return {
+      transform,
+      storedAngle: Number(object.angle ?? 0),
+    };
+  }, id);
+}
+
 async function cancelMtrPointer(page) {
-  const handle = page.locator('[data-rotation-handle="mtr"]').first();
-  await handle.dispatchEvent('pointercancel', {
+  await page.locator('[data-rotation-handle="mtr"]').first().dispatchEvent('pointercancel', {
     pointerId: 1,
     pointerType: 'mouse',
     bubbles: true,
     cancelable: true,
+    clientX: 400,
+    clientY: 300,
   });
-  await page.evaluate(() => {
-    window.dispatchEvent(new PointerEvent('pointercancel', {
-      bubbles: true,
-      cancelable: true,
-      pointerId: 1,
-      pointerType: 'mouse',
-    }));
-  });
-  await page.mouse.up().catch(() => {});
 }
 
 async function proveMtrPointercancel(page, coords) {

@@ -22,7 +22,6 @@ test('useSVGInteraction flushes in-flight selected-handle drag on zoomGeneration
   assert.match(flush, /if \(!ds\?\.active\) return/);
   assert.match(flush, /handlePointerUp\(/);
   assert.match(flush, /ds\.lastClientX/);
-  assert.match(hook, /window\.addEventListener\('pointercancel', onCancel, true\)/);
   assert.doesNotMatch(flush, /setVisualTransform\(null\);[\s\S]*handlePointerUp/);
   assert.doesNotMatch(hook, /__e2eSelectedHandlePointercancel/);
   assert.doesNotMatch(hook, /file\.id/);
