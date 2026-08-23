@@ -5496,6 +5496,7 @@ const SVGAnnotationLayer = memo(({
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p1'); }}
+                onPointerCancel={handlePointerUp}
               />
               {/* End handle — same style as start handle, centered on arrowhead */}
               <circle
@@ -5507,6 +5508,7 @@ const SVGAnnotationLayer = memo(({
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
+                onPointerCancel={handlePointerUp}
               />
               {/* Phase 15 midpoint curvature handle — Phase 15 LINE-01/ARROW-01.
                   Smaller r than endpoints (HANDLE_RADIUS_SECONDARY vs
@@ -5526,6 +5528,7 @@ const SVGAnnotationLayer = memo(({
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'midpoint'); }}
+                onPointerCancel={handlePointerUp}
               >
                 {/* Browser-native tooltip per 15-UI-SPEC §Copywriting. */}
                 <title>Drag to bend</title>
@@ -5720,6 +5723,7 @@ const SVGAnnotationLayer = memo(({
               bbox={bbox}
               inverseScale={inverseScale}
               onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
+              onHandleCancel={handlePointerUp}
               // UX 2026-04-19: only mask the overlay handles when the edit
               // surface is a Fabric canvas (which would render its own
               // handles). In bbox edit mode the SVG layer IS the edit

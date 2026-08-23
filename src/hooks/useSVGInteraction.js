@@ -3851,8 +3851,8 @@ export function useSVGInteraction({
       if (!dragStateRef.current?.active) return;
       handlePointerUp(e);
     };
-    window.addEventListener('pointercancel', onCancel);
-    return () => window.removeEventListener('pointercancel', onCancel);
+    window.addEventListener('pointercancel', onCancel, true);
+    return () => window.removeEventListener('pointercancel', onCancel, true);
   }, [handlePointerUp]);
 
   /**

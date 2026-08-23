@@ -28,6 +28,7 @@ const SVGSelectionOverlay = memo(({
   bbox,             // { left, top, width, height, angle }
   inverseScale,     // number -- for constant-size handles
   onHandleDrag,     // (e, handleId) => void
+  onHandleCancel,   // (e) => void — pointercancel on the captured knob
   isGroupSelection, // boolean -- true for multi-select (hides individual handles)
   strokeOpacity = 1.0, // number -- opacity for bounding box stroke (Plan 03: group union box uses 0.6)
   hideBoundingBox = false, // boolean -- hide the blue dashed rect (border-flush types)
@@ -187,6 +188,10 @@ const SVGSelectionOverlay = memo(({
                   e.stopPropagation();
                   onHandleDrag?.(e, id);
                 }}
+                onPointerCancel={onHandleCancel ? (e) => {
+                  e.stopPropagation();
+                  onHandleCancel(e);
+                } : undefined}
               />
             );
           })}
@@ -215,6 +220,10 @@ const SVGSelectionOverlay = memo(({
                   e.stopPropagation();
                   onHandleDrag?.(e, id);
                 }}
+                onPointerCancel={onHandleCancel ? (e) => {
+                  e.stopPropagation();
+                  onHandleCancel(e);
+                } : undefined}
               />
             );
           })}
@@ -243,6 +252,10 @@ const SVGSelectionOverlay = memo(({
                   e.stopPropagation();
                   onHandleDrag?.(e, id);
                 }}
+                onPointerCancel={onHandleCancel ? (e) => {
+                  e.stopPropagation();
+                  onHandleCancel(e);
+                } : undefined}
               />
             );
           })}
@@ -260,6 +273,10 @@ const SVGSelectionOverlay = memo(({
               e.stopPropagation();
               onHandleDrag?.(e, 'mtr');
             }}
+            onPointerCancel={onHandleCancel ? (e) => {
+              e.stopPropagation();
+              onHandleCancel(e);
+            } : undefined}
           >
             <line
               x1={handles.mt.x}

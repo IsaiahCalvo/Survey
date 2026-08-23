@@ -277,17 +277,27 @@ async function startMtrDrag(page, id, deg) {
 }
 
 async function cancelMtrPointer(page) {
-  await page.locator('[data-rotation-handle="mtr"]').first().dispatchEvent('pointercancel', {
+  const handle = page.locator('[data-rotation-handle="mtr"]').first();
+  await handle.dispatchEvent('pointercancel', {
     pointerId: 1,
     pointerType: 'mouse',
     bubbles: true,
     cancelable: true,
+  });
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: 'mouse',
+    }));
   });
   await page.mouse.up().catch(() => {});
 }
 
 async function proveMtrPointercancel(page, coords) {
   const rect = await createRect(page, coords);
+  await dismissChrome(page);
   await selectUntilMtr(page, rect.id);
   const pre = await geom(page, rect.id);
 

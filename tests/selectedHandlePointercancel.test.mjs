@@ -22,7 +22,7 @@ test('useSVGInteraction flushes in-flight selected-handle drag on zoomGeneration
   assert.match(flush, /if \(!ds\?\.active\) return/);
   assert.match(flush, /handlePointerUp\(/);
   assert.match(flush, /ds\.lastClientX/);
-  assert.match(hook, /window\.addEventListener\('pointercancel', onCancel\)/);
+  assert.match(hook, /window\.addEventListener\('pointercancel', onCancel, true\)/);
   assert.doesNotMatch(flush, /setVisualTransform\(null\);[\s\S]*handlePointerUp/);
   assert.doesNotMatch(hook, /__e2eSelectedHandlePointercancel/);
   assert.doesNotMatch(hook, /file\.id/);
@@ -38,6 +38,10 @@ test('SVGAnnotationLayer pointercancel commits selected-handle preview, discards
   assert.match(cancel, /setSurveyMarkerPreviewBounds\(null\)/);
   assert.match(cancel, /handlePointerUp\(e\)/);
   assert.match(cancel, /return;/);
+  assert.match(layer, /onHandleCancel=\{handlePointerUp\}/);
+  const overlay = read('src/components/SVGSelectionOverlay.jsx');
+  assert.match(overlay, /onHandleCancel/);
+  assert.match(overlay, /onPointerCancel=\{onHandleCancel \? \(e\) => \{/);
   const nubbinAt = layer.indexOf('onPointerCancel={() => {');
   assert.ok(nubbinAt > cancelAt, 'nubbin cancel stays its own path');
   const nubbin = layer.slice(nubbinAt, layer.indexOf('</g>', nubbinAt));
