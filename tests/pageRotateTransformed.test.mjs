@@ -107,7 +107,8 @@ test('live spec covers create\/resize then page rotate, empty invent, restore, 3
   assert.match(spec, /opposite page rotate must restore placement/);
   assert.match(spec, /viewBox/);
   assert.match(spec, /file\.id/);
-  assert.match(spec, /390/);
+  assert.match(spec, /390 page-rotate edge/);
+  assert.match(spec, /390 Pages rotate is not cheap/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
 });
