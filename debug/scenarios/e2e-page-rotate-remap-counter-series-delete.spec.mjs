@@ -396,6 +396,7 @@ test('desktop remapped Counter series Delete after page CW intended + break + ed
   expect(await geom(page, pin1.id), 'pin1 gone').toBeNull();
   expect(await geom(page, pin2.id), 'pin2 gone').toBeNull();
 
+  await selectMode(page);
   await page.mouse.click(pageEl.x + pageEl.width * 0.88, pageEl.y + pageEl.height * 0.12);
   expect(await userCount(page), 'empty remapped-page click invents 0').toBe(0);
 
