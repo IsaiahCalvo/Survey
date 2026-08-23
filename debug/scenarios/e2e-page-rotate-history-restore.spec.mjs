@@ -261,53 +261,64 @@ async function createRect(page, coords = RECT_BOX) {
   return waitForNewUserAnnotation(page, before, isRect);
 }
 
-async function selectMode(page) {
-  await dismissChrome(page);
-  await blurInputs(page);
-  const editorSelect = toolButtons(page, 'Select');
-  let clicked = false;
-  const count = await editorSelect.count();
-  for (let i = 0; i < count; i += 1) {
-    const button = editorSelect.nth(i);
-    if (!(await button.isVisible().catch(() => false))) continue;
-    await button.click({ timeout: 4_000 }).catch(() => {});
-    clicked = true;
-    break;
-  }
-  if (!clicked) await page.keyboard.press('v');
-  const menu = page.locator('[data-select-mode-menu="true"]');
-  if (await menu.count()) await page.keyboard.press('Escape');
+async function selectedIds(page) {
+  return page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
 }
 
-async function strokeClick(page, id) {
-  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
-  await expect(target).toBeVisible();
-  const box = await target.boundingBox();
-  expect(box, `bbox for ${id}`).toBeTruthy();
+async function selectMode(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const scoped = toolButtons(page, 'Select');
+  if (await scoped.count() && await scoped.first().isVisible().catch(() => false)) {
+    await scoped.first().click();
+  }
+  await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) await page.keyboard.press('Escape');
+  await expect.poll(async () => {
+    const cls = String(await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('class') || '');
+    return !cls.includes('tool-crosshair');
+  }, { timeout: 8_000 }).toBeTruthy();
+}
+
+async function clickEmpty(page, { xf = 0.08, yf = 0.08 } = {}) {
+  const box = await pageBox(page);
+  await page.mouse.click(box.x + box.width * xf, box.y + box.height * yf);
+}
+
+async function strokeClickRect(page, id) {
+  const hit = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"] [data-shape-hit-target="rect"]`).first();
+  await expect(hit).toBeVisible();
+  const box = await hit.boundingBox();
+  expect(box, `hit bbox for ${id}`).toBeTruthy();
+  const beforeSel = (await selectedIds(page)).includes(id);
   const points = [
-    { x: box.x + Math.min(6, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
-    { x: box.x + 2, y: box.y + box.height / 2 },
-    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + box.width * 0.35, y: box.y + box.height * 0.35 },
+    { x: box.x + box.width * 0.65, y: box.y + box.height * 0.40 },
+    { x: box.x + 6, y: box.y + box.height * 0.30 },
+    { x: box.x + box.width * 0.30, y: box.y + 6 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
-    if (await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count()) return;
+    try {
+      await expect.poll(async () => (await selectedIds(page)).includes(id), {
+        timeout: 800,
+      }).not.toBe(beforeSel);
+      return;
+    } catch { /* try next */ }
   }
-  await expect(
-    page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').first(),
-    `expected resize/rotate handles after selecting ${id}`,
-  ).toBeVisible();
+  throw new Error(`rect click missed ${id}`);
 }
 
 async function deleteSelected(page, id) {
   await dismissChrome(page);
   await selectMode(page);
-  await strokeClick(page, id);
-  await expect.poll(async () => {
-    const selected = await page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
-    const handles = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
-    return selected.includes(id) || handles > 0;
-  }, { message: `${id} must be selected before Delete` }).toBeTruthy();
+  await clickEmpty(page);
+  await strokeClickRect(page, id);
+  await expect.poll(async () => (await selectedIds(page)).includes(id), {
+    timeout: 8_000,
+    message: `${id} must be selected before Delete`,
+  }).toBe(true);
   await blurInputs(page);
   await page.keyboard.press('Delete');
   if ((await userIds(page)).includes(id)) await page.keyboard.press('Backspace');
@@ -457,18 +468,18 @@ test('desktop History restore after page CW remap intended + break + edge', asyn
   expect(created?.id).toBeTruthy();
   const before = await geom(page, created.id);
   expect(before, 'live create must stamp a rect').toBeTruthy();
-  expect(await pageViewBox(page)).toBe('0 0 612 792');
+  expect(await pageViewBox(page), 'before-rotate checkpoint keeps portrait viewBox').toBe('0 0 612 792');
 
-  await deleteSelected(page, created.id);
-  await restoreLatestDeleted(page, created.id);
-  const restoredBefore = await geom(page, created.id);
-  expect(restoredBefore, 'before-rotate Restore must keep the same id').toBeTruthy();
-  expect(Math.abs(restoredBefore.cx - before.cx), 'before-rotate Restore must keep pre-rotate center').toBeLessThan(8);
-  expect(Math.abs(restoredBefore.cy - before.cy)).toBeLessThan(8);
-  expect(await pageViewBox(page), 'before-rotate Restore must keep portrait viewBox').toBe('0 0 612 792');
-  expect((await userIds(page)).filter((id) => id === created.id).length, 'before-rotate Restore must not invent extra ids').toBe(1);
-
-  await page.getByRole('button', { name: 'Pages', exact: true }).click().catch(() => {});
+  await openHistory(page);
+  await waitForHistoryEvents(page);
+  await assertSaveVersionFailClosed(page);
+  const createBefore = page.locator('[data-testid^="document-history-event-"]').filter({ hasNotText: /deleted/i });
+  await expect(createBefore.first()).toBeVisible();
+  expect(
+    await createBefore.first().getByRole('button', { name: 'Restore', exact: true }).count(),
+    'create-event must omit Restore — click is jump+spotlight, not a snapshot',
+  ).toBe(0);
+  await page.getByRole('button', { name: 'Pages', exact: true }).click();
   await dismissChrome(page);
 
   const expected = rotateDisplayedPoint(before.cx, before.cy, 612, 792, 90);

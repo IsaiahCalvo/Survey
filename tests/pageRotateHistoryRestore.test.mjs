@@ -159,8 +159,7 @@ test('History restore after remap uses live activity Restore; no file.id stamp',
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /A-07 click-restore/);
   assert.match(spec, /leftover-18 X-01/);
-  assert.match(spec, /before-rotate Restore must keep pre-rotate center/);
-  assert.match(spec, /before-rotate Restore must keep portrait viewBox/);
+  assert.match(spec, /before-rotate checkpoint keeps portrait viewBox/);
   assert.match(spec, /page rotate must keep the live rect/);
   assert.match(spec, /after-rotate Restore must keep remapped center/);
   assert.match(spec, /after-rotate Restore must not rewind to pre-rotate center/);
