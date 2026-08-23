@@ -23,11 +23,11 @@ test('Color picker is labelled dialog; Color trigger is type=button haspopup=dia
   assert.doesNotMatch(picker, /pageSize\.width \* .*scale|pageSize \* scale/);
 
   const shell = read('src/AppShell.jsx');
-  const colorStart = shell.indexOf('data-annotation-color-trigger');
-  const colorEnd = shell.indexOf('data-eraser-type-menu');
+  const colorStart = shell.indexOf('/* 2026-05-25: Stroke-only swatch');
+  const colorEnd = shell.indexOf('dataMarker="data-eraser-type-menu"');
   assert.ok(colorStart >= 0);
   assert.ok(colorEnd > colorStart);
-  const colorSlice = shell.slice(Math.max(0, colorStart - 120), colorEnd);
+  const colorSlice = shell.slice(colorStart, colorEnd);
   assert.equal([...colorSlice.matchAll(/data-annotation-color-trigger/g)].length, 3);
   assert.equal([...colorSlice.matchAll(/aria-haspopup="dialog"/g)].length, 3);
   assert.match(colorSlice, /type="button"/);
