@@ -55,8 +55,13 @@ function dismissNamed(page, name) {
   return page.getByRole('button', { name: `Dismiss ${name}`, exact: true });
 }
 
-async function enterSurveyWalls(page) {
-  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+async function enterSurveyWalls(page, { mobile = false } = {}) {
+  if (mobile) {
+    await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'Open survey' }).click();
+  } else {
+    await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  }
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await expect(unplacedSection(page), 'choose-template screen must not show unplaced rows').toHaveCount(0);
   await page.getByRole('button', { name: KAL436 }).click();
@@ -173,7 +178,7 @@ test('390 unplaced mixed dismiss + hubPreview isolation', async ({ page }) => {
   await expect(unplacedSection(page)).toHaveCount(0);
 
   await openEditor(page, { width: 390, height: 844, url: MIXED });
-  await enterSurveyWalls(page);
+  await enterSurveyWalls(page, { mobile: true });
   await expect(unplacedSection(page)).toBeVisible({ timeout: 15_000 });
   await expect(unplacedSection(page).getByText('Door D-114')).toBeVisible();
   await expect(unplacedSection(page).locator('.survey-unplaced-row')).toHaveCount(5);
