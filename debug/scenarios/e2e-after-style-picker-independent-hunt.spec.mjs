@@ -258,6 +258,7 @@ test('independent hunt after Style picker dialog name', async ({ page }) => {
     inventory.style.haspopup = await styleTrigger.getAttribute('aria-haspopup');
     inventory.style.unnamedDialogs = await unnamedDialogs(page);
     await page.keyboard.press('Escape');
+    await expect(styleDialog).toHaveCount(0, { timeout: 8_000 });
     inventory.style.afterEscape = await styleDialog.count();
 
     const widthTrigger = page.getByRole('button', { name: 'Width presets', exact: true });
@@ -268,6 +269,7 @@ test('independent hunt after Style picker dialog name', async ({ page }) => {
     inventory.width.namedDialog = await widthDialog.count();
     inventory.width.unnamedDialogs = await unnamedDialogs(page);
     await page.keyboard.press('Escape');
+    await expect(widthDialog).toHaveCount(0, { timeout: 8_000 });
     inventory.width.afterEscape = await widthDialog.count();
 
     const colorTrigger = page.locator('[data-annotation-color-trigger]').first();
@@ -277,6 +279,7 @@ test('independent hunt after Style picker dialog name', async ({ page }) => {
     await expect(colorDialog).toBeVisible({ timeout: 8_000 });
     inventory.color.namedDialog = await colorDialog.count();
     await page.keyboard.press('Escape');
+    await expect(colorDialog).toHaveCount(0, { timeout: 8_000 });
     inventory.color.afterEscape = await colorDialog.count();
 
     const historyBtn = page.getByRole('button', { name: 'Version history', exact: true }).first();
