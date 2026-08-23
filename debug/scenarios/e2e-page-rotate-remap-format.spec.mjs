@@ -291,8 +291,8 @@ async function createCallout(page) {
   await activateTool(page, 'Text', 'Callout');
   await blurInputs(page);
   await dragOnPage(page, CALLOUT_BOX);
-  const created = await waitForNew(page, before, (row) => row.callout === true || row.type === 'callout');
   await persistOpenText(page, 'A');
+  const created = await waitForNew(page, before, (row) => row.callout === true || row.type === 'callout');
   await selectMode(page);
   return geom(page, created.id);
 }
@@ -330,18 +330,35 @@ async function pointerClickHost(page, selector) {
   }, selector);
 }
 
+async function selectionChromeUp(page) {
+  const color = page.getByRole('button', { name: 'Color', exact: true }).first();
+  const font = page.getByRole('button', { name: 'Font', exact: true }).first();
+  const arrowhead = page.getByRole('button', { name: 'Arrowhead', exact: true }).first();
+  const handles = page.locator('[data-resize-handle], [data-handle], [data-callout-part="knee"]');
+  return (await color.isVisible().catch(() => false))
+    || (await font.isVisible().catch(() => false))
+    || (await arrowhead.isVisible().catch(() => false))
+    || (await handles.count()) > 0;
+}
+
 async function selectAnno(page, id) {
   await selectMode(page);
   const selectors = [
+    `[data-svg-annotation-layer="1"] [data-anno-id="${id}"] [data-shape-hit-target]`,
     `[data-svg-annotation-layer="1"] [data-anno-id="${id}"]`,
     `[data-svg-annotation-layer="1"] [data-callout-id="${id}"] [data-callout-part="textBox"]`,
     `[data-svg-annotation-layer="1"] [data-callout-id="${id}"]`,
   ];
-  for (const selector of selectors) {
-    if (await clickHost(page, selector)) return true;
-    if (await pointerClickHost(page, selector)) return true;
-  }
-  return false;
+  await expect.poll(async () => {
+    for (const selector of selectors) {
+      await pointerClickHost(page, selector);
+      if (await selectionChromeUp(page)) return true;
+      await clickHost(page, selector);
+      if (await selectionChromeUp(page)) return true;
+    }
+    return false;
+  }, { timeout: 12_000, message: `select remapped ${id}` }).toBe(true);
+  return true;
 }
 
 async function openColorPicker(page, triggerName = 'Color') {
