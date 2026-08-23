@@ -2,6 +2,7 @@
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Tip before this pass:** `7a1f2b56` Select caret create-tool dismiss.  
+**This-pass SHA:** `cfde5d64` (official contract → `pointerdown`).  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
 Unique leftover after Select caret create-tool dismiss (`37397a53` / `7a1f2b56`). Dismiss-family product SHAs already switched the exclusive Style / Width layer to capture `pointerdown`. Official `tests/annotationFormattingPopoverContract.test.mjs` still required `document.addEventListener('mousedown', onDown, true)` in that slice — official fail **1 / 2** (`ERR_ASSERTION` “dismissal must run in capture phase before toolbar triggers stop propagation”). Distinct from leftover-18 / X-01 / remapped-after-CW / Fit/Style/Width/Pages/Survey/Spaces/Select dismiss replay / Home tab / Close tab.
@@ -28,7 +29,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Focused Node `annotationFormattingPopoverContract` + `annotationFormattingPopoverAlign` + leftover18 **16 / 16**. Playwright hunt `debug/scenarios/e2e-after-select-caret-independent-hunt.spec.mjs` on Playwright Vite `http://127.0.0.1:5173`.
+Focused Node `annotationFormattingPopoverContract` + `annotationFormattingPopoverAlign` + leftover18 **16 / 16**. Playwright hunt `debug/scenarios/e2e-after-select-caret-independent-hunt.spec.mjs` **1 / 1 (7.2s)** on Playwright Vite `http://127.0.0.1:5173`.
 
 | Slice | Intended / break / edge |
 |---|---|
