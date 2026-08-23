@@ -1767,6 +1767,7 @@ export default function TemplatesEditor({
   const mobileTemplateSelectRow = (
     <div className="templates-mobile-select-row mobile-header-select-row">
       <button
+        type="button"
         className="mobile-header-select-button"
         onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
       >
@@ -1931,6 +1932,7 @@ export default function TemplatesEditor({
               </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
                 <button
+                  type="button"
                   onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
                   style={miniSelectButtonStyle({ color: 'var(--accent)' })}
                 >
