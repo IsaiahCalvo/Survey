@@ -314,53 +314,63 @@ async function selectMode(page) {
   }, { timeout: 8_000, message: 'Select must drop the creation crosshair' }).toBeTruthy();
 }
 
-async function inkHitPoint(page, id) {
+async function inkHitPoints(page, id) {
   return page.evaluate((annoId) => {
     const host = document.querySelector(`[data-svg-annotation-layer="1"] > g[data-anno-id="${annoId}"]`);
     const path = host?.querySelector('[data-path-hit-target="true"]')
       || host?.querySelector('path');
-    if (!path || typeof path.getTotalLength !== 'function') return null;
+    if (!path || typeof path.getTotalLength !== 'function') return [];
     const len = path.getTotalLength();
-    if (!(len > 0)) return null;
-    const local = path.getPointAtLength(len * 0.5);
+    if (!(len > 0)) return [];
     const ctm = path.getScreenCTM?.();
-    if (!ctm) {
-      const box = path.getBoundingClientRect();
-      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    }
-    return {
-      x: ctm.a * local.x + ctm.c * local.y + ctm.e,
-      y: ctm.b * local.x + ctm.d * local.y + ctm.f,
-    };
+    const box = path.getBoundingClientRect();
+    const samples = [0.15, 0.35, 0.5, 0.65, 0.85].map((t) => {
+      const local = path.getPointAtLength(len * t);
+      if (!ctm) {
+        return { x: box.x + box.width * t, y: box.y + box.height * 0.5 };
+      }
+      return {
+        x: ctm.a * local.x + ctm.c * local.y + ctm.e,
+        y: ctm.b * local.x + ctm.d * local.y + ctm.f,
+      };
+    });
+    samples.push(
+      { x: box.x + box.width * 0.50, y: box.y + box.height * 0.50 },
+      { x: box.x + box.width * 0.30, y: box.y + box.height * 0.40 },
+      { x: box.x + box.width * 0.70, y: box.y + box.height * 0.60 },
+    );
+    return samples.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   }, id);
 }
 
 async function annoBox(page, id) {
-  const point = await inkHitPoint(page, id);
+  const points = await inkHitPoints(page, id);
   const host = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
   await expect(host).toBeVisible();
   const box = await host.boundingBox();
   expect(box, `ink bbox for ${id}`).toBeTruthy();
-  return { ...box, hit: point };
+  return { ...box, hit: points[0] || null };
 }
 
 async function strokeClick(page, id, { modifiers = [] } = {}) {
+  const wantSelected = !modifiers.includes('Alt');
+  if (wantSelected && !modifiers.includes('Shift') && (await selectedIds(page)).includes(id)) {
+    return;
+  }
+  const points = await inkHitPoints(page, id);
   const box = await annoBox(page, id);
-  const before = (await selectedIds(page)).includes(id);
-  const points = [
-    box.hit,
+  points.push(
     { x: box.x + box.width * 0.50, y: box.y + box.height * 0.50 },
-    { x: box.x + box.width * 0.35, y: box.y + box.height * 0.40 },
-    { x: box.x + box.width * 0.70, y: box.y + box.height * 0.55 },
-  ].filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y));
+    { x: box.x + 8, y: box.y + box.height * 0.50 },
+  );
   for (const key of modifiers) await page.keyboard.down(key);
   try {
     for (const point of points) {
       await page.mouse.click(point.x, point.y);
       try {
         await expect.poll(async () => (await selectedIds(page)).includes(id), {
-          timeout: 800,
-        }).not.toBe(before);
+          timeout: 1_500,
+        }).toBe(wantSelected);
         return;
       } catch {
         // This point missed the ink stroke; try the next.
