@@ -2,7 +2,7 @@
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Tip before this pass:** `4f194d3e` Manage Team More menuitem after `52fdd26a`.  
-**Product SHA:** pending commit  
+**Product SHA:** `97d102a0`  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
 Last hunt named Manage Team **More** menuitems. Did **not** take leftover-18 or exhausted slices. Different axis:
@@ -34,7 +34,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `e2e-select-mode-menuitem.spec.mjs` **2 / 2** + hunt `e2e-after-select-mode-menuitem-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3** on Playwright Vite. Focused Node `selectModeMenuitem` + hunt + leftover18 **17 / 17**.
+Playwright `e2e-select-mode-menuitem.spec.mjs` **2 / 2** + hunt `e2e-after-select-mode-menuitem-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3 (10.1s)** on Playwright Vite `http://127.0.0.1:5173`. Focused Node `selectModeMenuitem` + hunt + leftover18 **17 / 17**.
 
 | Slice | Intended / break / edge |
 |---|---|
