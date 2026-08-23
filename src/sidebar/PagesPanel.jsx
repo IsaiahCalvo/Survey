@@ -1223,6 +1223,8 @@ const PagesPanel = ({
           )}
         <div
           ref={contextMenuRef}
+          role="menu"
+          aria-label={`Page ${contextMenu.pageNumber} actions`}
           data-pages-context-menu="true"
           style={mobileMode ? {
             // UX: demo page context-menu chrome (188px, radius 9, #181B20 /
@@ -1265,6 +1267,7 @@ const PagesPanel = ({
           )}
           <button
             type="button"
+            role="menuitem"
             disabled={!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) <= 0}
             onClick={() => movePageByOffset(contextMenu.pageNumber, -1)}
             style={{
@@ -1296,6 +1299,7 @@ const PagesPanel = ({
           </button>
           <button
             type="button"
+            role="menuitem"
             disabled={!canReorderPages || allowedPages.indexOf(contextMenu.pageNumber) >= allowedPages.length - 1}
             onClick={() => movePageByOffset(contextMenu.pageNumber, 1)}
             style={{
@@ -1327,6 +1331,8 @@ const PagesPanel = ({
           </button>
           <div style={{ height: 1, margin: '3px 5px', background: '#3a4252' }} />
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleCut(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1349,6 +1355,8 @@ const PagesPanel = ({
             Cut
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleCopy(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1371,6 +1379,8 @@ const PagesPanel = ({
             Copy
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handlePaste(contextMenu.pageNumber)}
             disabled={!clipboardPage}
             style={{
@@ -1401,6 +1411,8 @@ const PagesPanel = ({
             Paste
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleDuplicate(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1423,6 +1435,8 @@ const PagesPanel = ({
             Duplicate
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleInsertBlank(contextMenu.pageNumber)}
             disabled={!onInsertBlankPage}
             style={{
@@ -1456,6 +1470,8 @@ const PagesPanel = ({
             margin: '4px 0'
           }} />
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleRotate(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1478,6 +1494,8 @@ const PagesPanel = ({
             Rotate
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleRotateCCW(contextMenu.pageNumber)}
             disabled={!onRotatePageCCW}
             style={{
@@ -1506,6 +1524,8 @@ const PagesPanel = ({
             Rotate counter-clockwise
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleMirrorHorizontal(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1528,6 +1548,8 @@ const PagesPanel = ({
             Mirror horizontally
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleMirrorVertical(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1550,6 +1572,8 @@ const PagesPanel = ({
             Mirror vertically
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleReset(contextMenu.pageNumber)}
             style={{
               width: '100%',
@@ -1577,6 +1601,8 @@ const PagesPanel = ({
             margin: '4px 0'
           }} />
           <button
+            type="button"
+            role="menuitem"
             onClick={() => handleDelete(contextMenu.pageNumber)}
             style={{
               width: '100%',
