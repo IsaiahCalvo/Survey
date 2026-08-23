@@ -14,7 +14,7 @@
  */
 import { memo } from 'react';
 import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath';
-import { getHandlePositions } from '../utils/svgBoundingBox';
+import { getHandlePositions, placeRotationHandle } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
   getRotationHandleHitMetrics,
@@ -53,6 +53,8 @@ const SVGSelectionOverlay = memo(({
   hideResizeHandles = false,
   hideRotationHandle = false,
   selectionGlowOnly = false,
+  pageWidth,
+  pageHeight,
 }) => {
   if (!bbox) return null;
 
@@ -81,11 +83,17 @@ const SVGSelectionOverlay = memo(({
   });
   const rotationHit = getRotationHandleHitMetrics(visualInverseScale);
   const baseHandles = getHandlePositions(bbox, padding);
+  const rotationHandle = placeRotationHandle(bbox, {
+    padding,
+    rotationOffset: handleSpec.rotationOffset,
+    pageWidth,
+    pageHeight,
+  });
   const handles = {
     ...baseHandles,
     mtr: {
-      x: baseHandles.mt.x,
-      y: baseHandles.mt.y - handleSpec.rotationOffset,
+      x: rotationHandle.x,
+      y: rotationHandle.y,
     },
   };
   // Stem hit used to start on mt, so the ~16px stroke ate the whole top

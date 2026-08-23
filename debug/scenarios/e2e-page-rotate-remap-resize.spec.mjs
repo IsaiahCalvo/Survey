@@ -401,20 +401,27 @@ async function closePagesPanel(page) {
   }
 }
 
-async function dragMtrToAngle(page, id, deg) {
+async function dragMtrToAngle(page, id, deg, { shift = false } = {}) {
   const hit = await annoHitBox(page, id);
   const cx = hit.x + hit.width / 2;
   const cy = hit.y + hit.height / 2;
   const handle = await handleScreenCenter(page, 'data-rotation-handle="mtr"');
+  const pageRect = await pageBox(page);
+  expect(handle.x, 'mtr knob must stay inside the remapped page (not clipped)').toBeGreaterThan(pageRect.x + 2);
+  expect(handle.x).toBeLessThan(pageRect.x + pageRect.width - 2);
+  expect(handle.y).toBeGreaterThan(pageRect.y + 2);
+  expect(handle.y).toBeLessThan(pageRect.y + pageRect.height - 2);
   const radius = Math.max(80, Math.hypot(handle.x - cx, handle.y - cy));
   const end = {
-    x: cx + radius * Math.sin((deg * Math.PI) / 180),
-    y: cy - radius * Math.cos((deg * Math.PI) / 180),
+    x: Math.min(pageRect.x + pageRect.width - 8, Math.max(pageRect.x + 8, cx + radius * Math.sin((deg * Math.PI) / 180))),
+    y: Math.min(pageRect.y + pageRect.height - 8, Math.max(pageRect.y + 8, cy - radius * Math.cos((deg * Math.PI) / 180))),
   };
+  if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 16 });
   await page.mouse.up();
+  if (shift) await page.keyboard.up('Shift');
 }
 
 function pagesMenu(page) {
@@ -609,44 +616,39 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   }, { timeout: 8_000, message: 'redo must restore remapped-page br' }).toBeTruthy();
 
   // Intended — mtr on the remapped page updates angle; size holds; stays on-page.
-  // br already proved remapped-page transform. mtr is and/or: if the handle
-  // drag does not change angle (intercept / off-page), skip remaining mtr asserts.
+  // Product: overflow:hidden clipped the 90° stem past viewBox 792. Stem is
+  // shortened along the same ray so the knob stays hittable.
   await selectUntilHandles(page, created.id, 8);
   const preMtr = await geom(page, created.id);
-  await dragMtrToAngle(page, created.id, 135);
-  let postMtr = await geom(page, created.id);
-  const angleMoved = (now) => {
+  await dragMtrToAngle(page, created.id, 180);
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
     if (!now) return false;
     const angle = ((now.angle % 360) + 360) % 360;
-    return Math.abs(angle - 135) < 20 || Math.abs(now.angle - preMtr.angle) > 8;
-  };
-  let mtrMoved = angleMoved(postMtr);
-  if (!mtrMoved) {
-    console.log('MTR_RETRY_180', JSON.stringify({ pre: preMtr.angle, after135: postMtr?.angle }));
-    await dragMtrToAngle(page, created.id, 180);
-    postMtr = await geom(page, created.id);
-    mtrMoved = angleMoved(postMtr) || (postMtr && Math.abs(postMtr.angle - preMtr.angle) > 8);
-  }
-  if (mtrMoved) {
-    expect(Math.abs(postMtr.vw - preMtr.vw), 'mtr must hold width').toBeLessThan(6);
-    expect(Math.abs(postMtr.vh - preMtr.vh), 'mtr must hold height').toBeLessThan(6);
-    expect(onPage(postMtr, 792, 612), 'mtr must stay on-page').toBe(true);
-    expect(await pageViewBox(page)).toBe('0 0 792 612');
+    return Math.abs(angle - 180) < 20 || Math.abs(now.angle - preMtr.angle) > 8;
+  }, { timeout: 8_000, message: 'post-rotate mtr must update angle' }).toBeTruthy();
+  const postMtr = await geom(page, created.id);
+  expect(Math.abs(postMtr.vw - preMtr.vw), 'mtr must hold width').toBeLessThan(6);
+  expect(Math.abs(postMtr.vh - preMtr.vh), 'mtr must hold height').toBeLessThan(6);
+  expect(onPage(postMtr, 792, 612), 'mtr must stay on-page').toBe(true);
+  expect(await pageViewBox(page)).toBe('0 0 792 612');
 
-    await page.keyboard.press('Control+z');
-    await expect.poll(async () => {
-      const now = await geom(page, created.id);
-      return now && Math.abs(now.angle - preMtr.angle) < 4;
-    }, { timeout: 8_000, message: 'undo mtr must restore remapped angle, not the page rotate' }).toBeTruthy();
-    expect(await pageViewBox(page)).toBe('0 0 792 612');
-  } else {
-    console.log('MTR_OPTIONAL_SKIP', JSON.stringify({
-      reason: 'post-rotate mtr did not update angle; br already proved remapped-page transform',
-      pre: preMtr,
-      post: postMtr,
-    }));
-    postMtr = preMtr;
-  }
+  await selectUntilHandles(page, created.id, 8);
+  const preShift = await geom(page, created.id);
+  await dragMtrToAngle(page, created.id, 135, { shift: true });
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    if (!now) return false;
+    const angle = ((now.angle % 360) + 360) % 360;
+    return Math.abs(angle - 135) < 4 || Math.abs(now.angle - preShift.angle) > 8;
+  }, { timeout: 8_000, message: 'Shift+mtr on remapped page must move angle' }).toBeTruthy();
+
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now && Math.abs(now.angle - preShift.angle) < 4;
+  }, { timeout: 8_000, message: 'undo last mtr must restore prior remapped angle, not the page rotate' }).toBeTruthy();
+  expect(await pageViewBox(page)).toBe('0 0 792 612');
 
   // Break — collapse floor / flip. Live inward or past-opposite br at
   // angle 90 is not applicable in this harness: AABB-center drag is a

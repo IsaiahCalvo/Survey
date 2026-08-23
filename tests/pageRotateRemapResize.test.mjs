@@ -8,7 +8,7 @@ import {
   rotateDisplayedPoint,
   transformPageState,
 } from '../src/utils/pageAnnotationReindex.js';
-import { displayedBoxOrigin } from '../src/utils/svgBoundingBox.js';
+import { displayedBoxOrigin, displayedAngle, placeRotationHandle } from '../src/utils/svgBoundingBox.js';
 
 // Source contracts for selected bbox resize / mtr on a remapped page
 // after CW rotate (viewBox 0 0 792 612, angle 90). Distinct from
@@ -84,6 +84,40 @@ test('displayedBoxOrigin prefers remapped data.left when Fabric left is 0', () =
   assert.deepEqual(displayedBoxOrigin({ left: 0, top: 0, data: {} }), { left: 0, top: 0 });
 });
 
+test('displayedAngle prefers remapped data.angle when Fabric angle is 0', () => {
+  assert.equal(displayedAngle({ angle: 0, data: { angle: 90 } }), 90);
+  assert.equal(displayedAngle({ angle: 90, data: { angle: 90 } }), 90);
+  assert.equal(displayedAngle({ angle: 0, data: {} }), 0);
+});
+
+test('placeRotationHandle shortens the 90deg stem so mtr stays on the 792 page', () => {
+  const bbox = { left: 648.17, top: -8.41, width: 135.42, height: 152.24, angle: 90 };
+  const cx = bbox.left + bbox.width / 2;
+  const cy = bbox.top + bbox.height / 2;
+  const unclamped = placeRotationHandle(bbox, { padding: 2, rotationOffset: 36 });
+  const rad = 90 * Math.PI / 180;
+  const worldUnclamped = {
+    x: cx + (unclamped.x - cx) * Math.cos(rad) - (unclamped.y - cy) * Math.sin(rad),
+    y: cy + (unclamped.x - cx) * Math.sin(rad) + (unclamped.y - cy) * Math.cos(rad),
+  };
+  assert.ok(worldUnclamped.x > 792, 'default 90deg stem must overshoot the remapped right edge');
+
+  const placed = placeRotationHandle(bbox, {
+    padding: 2,
+    rotationOffset: 36,
+    pageWidth: 792,
+    pageHeight: 612,
+    inset: 10,
+  });
+  const world = {
+    x: cx + (placed.x - cx) * Math.cos(rad) - (placed.y - cy) * Math.sin(rad),
+    y: cy + (placed.x - cx) * Math.sin(rad) + (placed.y - cy) * Math.cos(rad),
+  };
+  assert.ok(world.x <= 792 - 10 + 1e-6, 'clamped mtr must stay inside viewBox');
+  assert.ok(world.x > cx + 4, 'clamped mtr must stay on the +x (90deg) ray');
+  assert.ok(Math.abs(world.y - cy) < 1, 'clamped mtr must not leave the 90deg ray');
+});
+
 test('90deg local projection: screen +y grows local width; screen -x grows local height', () => {
   // Matches useSVGInteraction resize: un-rotate pointer around the world
   // anchor by -angle before signed scale. After remapper angle=90:
@@ -110,6 +144,13 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   assert.match(overlay, /transform=\{angle \? `rotate\(\$\{angle\}, \$\{cx\}, \$\{cy\}\)` : undefined\}/);
   assert.match(overlay, /data-resize-handle=\{id\}/);
   assert.match(overlay, /data-rotation-handle/);
+  assert.match(overlay, /placeRotationHandle/);
+  assert.match(overlay, /pageWidth/);
+  assert.match(bbox, /export function placeRotationHandle/);
+  assert.match(bbox, /export function displayedAngle/);
+  assert.match(interaction, /displayedAngle\(obj\)/);
+  assert.match(interaction, /data = \{ \.\.\.rotObj\.data, angle: ds\.currentAngle \}/);
+  assert.match(layer, /pageWidth=\{width\}/);
   assert.match(interaction, /rotation-aware resize/);
   assert.match(interaction, /Un-rotate the pointer around the shape's original center/);
   assert.match(interaction, /ptrDxLocal = ptrDxWorld \* cosA \+ ptrDyWorld \* sinA/);
@@ -132,7 +173,9 @@ test('live spec covers remapped-page br\/mtr, collapse, flip, undo-last-resize, 
   assert.match(spec, /remapper must swap viewBox/);
   assert.match(spec, /post-rotate br must grow size in swapped viewBox/);
   assert.match(spec, /mtr on the remapped page updates angle/);
-  assert.match(spec, /MTR_OPTIONAL_SKIP|post-rotate mtr must update angle/);
+  assert.match(spec, /post-rotate mtr must update angle/);
+  assert.match(spec, /mtr knob must stay inside the remapped page/);
+  assert.doesNotMatch(spec, /MTR_OPTIONAL_SKIP/);
   assert.match(spec, /undo must restore post-rotate size, not the page rotate/);
   assert.match(spec, /undo must not invert page rotate/);
   assert.match(spec, /collapse must keep a visible width/);

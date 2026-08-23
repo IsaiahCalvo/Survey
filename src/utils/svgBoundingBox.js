@@ -39,6 +39,83 @@ export function displayedBoxOrigin(obj) {
   };
 }
 
+/** Prefer remapped data.angle when Fabric angle is a 0 placeholder. */
+export function displayedAngle(obj) {
+  const ownN = Number(obj?.angle);
+  const dataN = Number(obj?.data?.angle);
+  if (Number.isFinite(dataN) && (!Number.isFinite(ownN) || (ownN === 0 && Math.abs(dataN) > 1))) {
+    return dataN;
+  }
+  return Number.isFinite(ownN) ? ownN : 0;
+}
+
+function rotatePointAround(x, y, cx, cy, angleDeg) {
+  const rad = (Number(angleDeg) || 0) * Math.PI / 180;
+  const cosA = Math.cos(rad);
+  const sinA = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return {
+    x: cx + dx * cosA - dy * sinA,
+    y: cy + dx * sinA + dy * cosA,
+  };
+}
+
+function pointOnPage(x, y, pageWidth, pageHeight, inset) {
+  return x >= inset && x <= pageWidth - inset && y >= inset && y <= pageHeight - inset;
+}
+
+function rayToInsetRect(cx, cy, ux, uy, pageWidth, pageHeight, inset) {
+  let tMax = Infinity;
+  if (ux > 1e-9) tMax = Math.min(tMax, (pageWidth - inset - cx) / ux);
+  else if (ux < -1e-9) tMax = Math.min(tMax, (inset - cx) / ux);
+  if (uy > 1e-9) tMax = Math.min(tMax, (pageHeight - inset - cy) / uy);
+  else if (uy < -1e-9) tMax = Math.min(tMax, (inset - cy) / uy);
+  return Number.isFinite(tMax) ? tMax : 0;
+}
+
+/**
+ * Local-space mtr knob. Overlay rotate() maps local-top to the object's
+ * angle ray (absolute rotate math: pointer on that ray = current angle).
+ * After page CW remap the remapped box often sits on the new right edge,
+ * so the 90° ray would put mtr past viewBox + overflow:hidden. Shorten
+ * the stem along the SAME ray so the knob stays hittable without flipping
+ * to the opposite side (that would jump angle by 180 on pointerdown).
+ */
+export function placeRotationHandle(bbox, {
+  padding = 2,
+  rotationOffset = 36,
+  pageWidth,
+  pageHeight,
+  inset = 10,
+} = {}) {
+  const left = Number(bbox?.left) || 0;
+  const top = Number(bbox?.top) || 0;
+  const width = Number(bbox?.width) || 0;
+  const height = Number(bbox?.height) || 0;
+  const angle = Number(bbox?.angle) || 0;
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  const defaultLocal = { x: cx, y: top - padding - rotationOffset };
+  if (!(pageWidth > 0 && pageHeight > 0)) {
+    return { ...defaultLocal, attach: 'mt' };
+  }
+  const world = rotatePointAround(defaultLocal.x, defaultLocal.y, cx, cy, angle);
+  if (pointOnPage(world.x, world.y, pageWidth, pageHeight, inset)) {
+    return { ...defaultLocal, attach: 'mt' };
+  }
+  const dx = world.x - cx;
+  const dy = world.y - cy;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const tMax = rayToInsetRect(cx, cy, ux, uy, pageWidth, pageHeight, inset);
+  const useT = tMax > 4 ? Math.min(len, tMax) : 4;
+  const clamped = { x: cx + ux * useT, y: cy + uy * useT };
+  const local = rotatePointAround(clamped.x, clamped.y, cx, cy, -angle);
+  return { x: local.x, y: local.y, attach: 'mt' };
+}
+
 const degreesToRadians = (degrees) => {
   const numeric = Number(degrees) || 0;
   return (numeric % 360) * Math.PI / 180;
@@ -412,7 +489,7 @@ function getRectBBox(obj) {
     top: origin.top,
     width: Math.abs((obj.width ?? 0) * (obj.scaleX ?? 1)),
     height: Math.abs((obj.height ?? 0) * (obj.scaleY ?? 1)),
-    angle: obj.angle ?? obj.data?.angle ?? 0,
+    angle: displayedAngle(obj),
   };
 }
 

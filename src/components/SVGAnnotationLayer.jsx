@@ -5735,6 +5735,8 @@ const SVGAnnotationLayer = memo(({
               padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
+              pageWidth={width}
+              pageHeight={height}
             />
           </g>
         );

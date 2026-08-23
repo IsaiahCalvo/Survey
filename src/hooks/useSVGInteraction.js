@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45, clampInverseScale } from '../utils/svgTransformMath';
-import { displayedBoxOrigin, getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
+import { displayedBoxOrigin, displayedAngle, getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
   commitInkObjectMove,
@@ -3565,6 +3565,9 @@ export function useSVGInteraction({
       // that used to live here was reverted on 2026-04-20 after the user
       // called out that it snapped the selection frame back to vertical.
       rotObj.angle = ds.currentAngle;
+      if (rotObj.data && typeof rotObj.data === 'object' && !Array.isArray(rotObj.data)) {
+        rotObj.data = { ...rotObj.data, angle: ds.currentAngle };
+      }
 
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
@@ -4413,7 +4416,7 @@ export function useSVGInteraction({
         top: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : displayedBoxOrigin(obj).top,
         scaleX: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleX ?? 1),
         scaleY: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleY ?? 1),
-        angle: isCounterPin ? (bbox.angle ?? 0) : (obj.angle ?? 0),
+        angle: isCounterPin ? (bbox.angle ?? 0) : displayedAngle(obj),
         width: rawWidth,
         height: rawHeight,
         isCounterPin,
