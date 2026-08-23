@@ -720,7 +720,7 @@ export default function ProjectsFolderTree({
           dismissActionSelector=".projects-mobile-create-button, .projects-desktop-create-button, .projects-mobile-back-button"
         />
         {!mobileDrillProject ? (
-          <button className="btn primary projects-mobile-create-button hub-mobile-primary-action" onClick={handleNewProject}>
+          <button type="button" className="btn primary projects-mobile-create-button hub-mobile-primary-action" onClick={handleNewProject}>
             <Icon name="plus" size={12} />New project
           </button>
         ) : null}
@@ -826,7 +826,7 @@ export default function ProjectsFolderTree({
   ) : null;
   const mobileFileActions = open ? (
     <div className="projects-mobile-action-row two">
-      <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+      <button type="button" className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
       {canManageProjectTeam(open) && (
         <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
       )}
@@ -901,6 +901,7 @@ export default function ProjectsFolderTree({
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button
+              type="button"
               className="btn primary projects-desktop-create-button"
               style={{ padding: '4px 8px', fontSize: 11, gap: 4, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
               onClick={handleNewProject}
@@ -1072,7 +1073,7 @@ export default function ProjectsFolderTree({
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
                   {/* Add files — opens the OS file picker; picked PDFs are
                       added to this project's document list. */}
-                  <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+                  <button type="button" className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
                   {canManageProjectTeam(open) && (
                     <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
                   )}
@@ -1310,7 +1311,7 @@ export default function ProjectsFolderTree({
                     />
                     <span>{mobileDrillAllFiles.length} files · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
-                  <button className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
+                  <button type="button" className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
                   {canManageProjectTeam(mobileDrillProject) && (
                     <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
                   )}
@@ -1805,7 +1806,7 @@ export default function ProjectsFolderTree({
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-              <button className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+              <button type="button" className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
               {canManageProjectTeam(open) && (
                 <button className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
               )}

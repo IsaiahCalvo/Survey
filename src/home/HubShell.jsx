@@ -130,6 +130,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
+          aria-label={placeholder}
           style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0 }}
         />
         <span className="kbd">⌘K</span>
