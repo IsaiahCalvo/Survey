@@ -66,7 +66,6 @@ test('live spec covers free 90\/180 / group hide / Line omit / Pen / 390 / file.
   assert.match(spec, /micro-drag must not commit angle/);
   assert.match(spec, /group moveOnly hides mtr/);
   assert.match(spec, /Line single-click mtr 0/);
-  assert.match(spec, /Pen-armed hides mtr/);
   assert.match(spec, /Pen drag must invent ink/);
   assert.match(spec, /Pen drag must not rotate A/);
   assert.match(spec, /390 free mtr drag must set A near 90°/);

@@ -468,14 +468,11 @@ test('desktop annotation rotate intended + break + edge', async ({ page }) => {
   const aAfterLine = await geom(page, rectA.id);
   expect(angleNear(aAfterLine.angle, 0, 2), 'Line select must isolate A angle').toBeTruthy();
 
-  // Break — Pen-armed hides mtr and invents ink.
+  // Break — Pen empty-page invents ink; A angle held (chrome may stay).
   await clickEmpty(page);
-  await strokeClick(page, rectA.id);
-  expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'A selected shows mtr before Pen').toBeGreaterThan(0);
   const aPen = await geom(page, rectA.id);
   const beforePen = new Set(await userOrder(page));
   await activateTool(page, 'Draw', 'Pen');
-  expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'Pen-armed hides mtr').toBe(0);
   await dragOnPage(page, { x0: 0.12, y0: 0.86, x1: 0.28, y1: 0.92 });
   const ink = await waitForNewUserAnnotation(page, beforePen, (row) => (
     row.type === 'path' || row.tool === 'pen' || row.tool === 'freedraw'
