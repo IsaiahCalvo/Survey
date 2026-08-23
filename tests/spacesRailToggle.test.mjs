@@ -67,7 +67,8 @@ test('live spec covers Spaces rail toggle intended + break + edge; skip leftover
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
-  assert.doesNotMatch(spec, /Expand Survey panel/);
+  assert.doesNotMatch(spec, /collapsed rail Expand Survey must be live/);
+  assert.doesNotMatch(spec, /Expand click must show Collapse Survey/);
   assert.doesNotMatch(spec, /Control\+=/);
   assert.doesNotMatch(spec, /viewBox `0 0 792 612`/);
   assert.doesNotMatch(spec, /rotatePageSpaceInk|page-rotate-remap/);
