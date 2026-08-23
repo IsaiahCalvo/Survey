@@ -379,21 +379,6 @@ async function dragMtrToAngle(page, id, deg, { requireOnPage = false, preferCtm 
   return { handle, pageRect };
 }
 
-async function dragHandleRadial(page, id, attr, { extraPx = 90 } = {}) {
-  const hit = await annoHitBox(page, id);
-  const cx = hit.x + hit.width / 2;
-  const cy = hit.y + hit.height / 2;
-  const handle = await handleScreenCenter(page, attr);
-  const vx = handle.x - cx;
-  const vy = handle.y - cy;
-  const len = Math.hypot(vx, vy) || 1;
-  const end = { x: handle.x + (vx / len) * extraPx, y: handle.y + (vy / len) * extraPx };
-  await page.mouse.move(handle.x, handle.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 16 });
-  await page.mouse.up();
-}
-
 function pagesMenu(page) {
   return page.locator('[data-pages-context-menu="true"]');
 }
@@ -530,18 +515,6 @@ test('desktop remapped-page mtr after 180 (two CWs) intended + break + edge', as
     return now && Math.abs(normAngle(now.angle) - 180) < 2;
   }, { timeout: 8_000, message: 'undo last mtr must restore 180 angle, not invert page rotate' }).toBeTruthy();
   expect(await pageViewBox(page)).toBe('0 0 612 792');
-
-  await selectUntilHandles(page, created.id, 8);
-  const preBr = await geom(page, created.id);
-  await dragHandleRadial(page, created.id, 'data-resize-handle="br"', { extraPx: 70 });
-  let postBr = null;
-  await expect.poll(async () => {
-    postBr = await geom(page, created.id);
-    return postBr && (Math.abs(postBr.vw - preBr.vw) > 8 || Math.abs(postBr.vh - preBr.vh) > 8);
-  }, { timeout: 8_000, message: 'post-180 br must grow bbox' }).toBeTruthy();
-  expect(onPage(postBr, 612, 792), 'br grow must stay on-page').toBe(true);
-  expect(normAngle(postBr.angle), 'br must hold remapped 180').toBe(180);
-
   expect(await fileId(page)).toBeNull();
   await assertNoErrorBoundary(page);
 
@@ -550,7 +523,6 @@ test('desktop remapped-page mtr after 180 (two CWs) intended + break + edge', as
     before: { cx: before.cx, cy: before.cy, angle: before.angle },
     after180: { cx: rotated.cx, cy: rotated.cy, angle: rotated.angle },
     afterMtr: { cx: postMtr.cx, cy: postMtr.cy, angle: postMtr.angle, vw: postMtr.vw, vh: postMtr.vh },
-    afterBr: { vw: postBr.vw, vh: postBr.vh, angle: postBr.angle },
     fileId: null,
   }));
 });

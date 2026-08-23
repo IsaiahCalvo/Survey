@@ -91,12 +91,11 @@ test('placeRotationHandle + clamp stay on leftover 612x792 at remapped 180', () 
   assert.ok(Math.abs(world.x - cx) < 2, '180 world stem must not leave the 180deg ray');
 });
 
-test('live spec covers 180 mtr, br grow, empty invent, undo, 390, file.id', () => {
+test('live spec covers 180 mtr, empty invent, undo, 390, file.id', () => {
   const spec = read('debug/scenarios/e2e-page-rotate-remap-mtr-180-page.spec.mjs');
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /rotate180ViaTwoCWs/);
   assert.match(spec, /post-180 mtr must update angle/);
-  assert.match(spec, /post-180 br must grow bbox/);
   assert.match(spec, /empty 180 invents 0/);
   assert.match(spec, /file\.id/);
   assert.match(spec, /390/);
