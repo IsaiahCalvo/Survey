@@ -30,6 +30,10 @@ test('toolbar strip lists Rectangle / Ellipse click-to-arm; overlay omits those 
   const shared = read('src/viewerShared.js');
   assert.match(shared, /REVIEW_TOOL_IDS = \['text', 'callout'\]/);
 
+  const shell = read('src/AppShell.jsx');
+  assert.match(shell, /data-select-mode-caret="true"/);
+  assert.match(shell, /bottomToolbarApi\.setActiveTool\(isTextSelect \? 'text-select' : 'select'\)/);
+
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /description: 'Pen'/);
   assert.doesNotMatch(overlay, /description: 'Rectangle'/);
@@ -65,6 +69,8 @@ test('live spec covers toolbar click-to-arm intended + break + edge; skip leftov
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /desktop toolbar click-to-arm intended \+ break \+ edge/);
   assert.match(spec, /390 toolbar click-to-arm edge/);
+  assert.match(spec, /Select button must arm Select/);
+  assert.match(spec, /Select click must leave Pan/);
   assert.match(spec, /Rectangle button must arm Rectangle/);
   assert.match(spec, /Ellipse button must arm Ellipse/);
   assert.match(spec, /Highlighter button must arm Highlighter/);

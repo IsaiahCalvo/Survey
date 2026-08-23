@@ -4,7 +4,9 @@
 **Tip before this pass:** `f19910c2` overlay-listed P-04 tool-key arming.  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
-Unique leftover after keyboard V/P/H/E/T/Q/L/A/C. Overlay omits Rectangle/Ellipse; `R`/`O` stay Select. Create-path clicks then draw are each tool's live-create spec. This leftover is category + sub-row **click-to-arm** only (invent-0 / hubPreview 0 / 390 rail). Prefer-live-bug hunt found no product defect.
+Unique leftover after keyboard V/P/H/E/T/Q/L/A/C. Overlay omits Rectangle/Ellipse; `R`/`O` stay Select. Create-path clicks then draw are each tool's live-create spec. This leftover is category + sub-row **click-to-arm**.
+
+**Product bug:** desktop Select caret sits on the 34×28 button center. A normal click opened the Selection mode menu (`stopPropagation`) and left **Pan** sticky. Keyboard `V` still armed Select. Eraser caret already called `setActiveTool` before toggling. Fix: Select caret arms `select` / `text-select` and closes the category dropdown, then toggles the menu.
 
 Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another X-01 parking note. Did **not** pad FEATURE-MATRIX. Did **not** write a 103-ID refresh (no new product SHA). Did **not** replay remapped-after-CW, Ctrl+2 / Ctrl+M, rail Previous/Next, or keyboard letters. Did **not** invent measure / Note-Link / Forms / stamp / Group.
 
@@ -41,7 +43,7 @@ Playwright `debug/scenarios/e2e-toolbar-tool-arming.spec.mjs` pending this pass.
 
 Hunt live counts: Match case / Whole word / Comments / Forms / Print / Actual size / Measure / Group / Extract / Note / Marquee zoom / Layers / Attachments **0**. `file.id` null.
 
-No product edit. High-risk files untouched. Official `npm test` not re-run (no high-risk touch). Cap **8448** / 75/250 not loosened. Isolated `partialEraserComplexity` 8448 standing. `chromeE2EContracts` `.ts` loader standing.
+Product edit: `src/AppShell.jsx` Select caret only (not a high-risk file). Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` not re-run (no high-risk touch). Cap **8448** / 75/250 not loosened. Isolated `partialEraserComplexity` 8448 standing. `chromeE2EContracts` `.ts` loader standing.
 
 ## Leftover-18
 
@@ -49,6 +51,7 @@ Still **18** fail-closed local + **18** host-gated. Next live host remains **X-0
 
 ## Files
 
+- `src/AppShell.jsx` (Select caret arms tool; Eraser parity)
 - `debug/scenarios/e2e-toolbar-tool-arming.spec.mjs`
 - `tests/toolbarToolArming.test.mjs`
 - `.planning/logic-audit-2026-08-20/E2E-STATUS.md` (this-pass only)

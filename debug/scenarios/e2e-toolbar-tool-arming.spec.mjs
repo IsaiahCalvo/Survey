@@ -245,8 +245,14 @@ test('desktop toolbar click-to-arm intended + break + edge', async ({ page }) =>
   await blurInputs(page);
 
   // Intended — category + sub-row click-to-arm, including no-key Rectangle/Ellipse.
+  // Select's caret overlaps the button center; click must still arm Select
+  // (was: Pan stayed sticky and only the mode menu opened).
   expect(await clickNamed(page, 'Select')).toBe(true);
   await expect.poll(() => categoryActive(page, 'Select'), { message: 'Select button must arm Select' }).toBe(true);
+  expect(await categoryActive(page, 'Pan'), 'Select click must leave Pan').toBe(false);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-select-mode-menu="true"]')).toHaveCount(0);
+  await blurInputs(page);
 
   expect(await clickNamed(page, 'Draw')).toBe(true);
   await expect.poll(() => categoryActive(page, 'Draw'), { message: 'Draw category click must open Draw' }).toBe(true);

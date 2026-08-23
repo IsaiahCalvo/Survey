@@ -1560,6 +1560,12 @@ export default function App({ devPreviewReturnTab = null }) {
                       aria-label="Selection mode"
                       onClick={(e) => {
                         e.stopPropagation();
+                        // Caret sits on the 34px button center. Eraser's
+                        // caret already arms its tool before toggling;
+                        // Select must do the same or a center click
+                        // leaves Pan sticky and only opens the menu.
+                        bottomToolbarApi.setActiveTool(isTextSelect ? 'text-select' : 'select');
+                        bottomToolbarApi.setActiveCategoryDropdown(null);
                         setSelectModeMenuOpen((open) => !open);
                       }}
                       style={{
