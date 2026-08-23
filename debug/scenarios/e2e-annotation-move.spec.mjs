@@ -435,9 +435,9 @@ test('desktop annotation move intended + break + edge', async ({ page }) => {
   expect(aMicroAfter.top, 'micro-drag must not commit top').toBeCloseTo(aMicro.top, 1);
 
   // Break — hollow interior is inert (default transparent fill).
-  // Center-drag is not body-move (pointer-events: stroke).
+  // Center-drag is not body-move (pointer-events: stroke). Do not
+  // require a prior stroke-select — the interior never hits.
   await clickEmpty(page);
-  await strokeClick(page, rectH.id);
   const h0 = await geom(page, rectH.id);
   const hollowBox = await annoBox(page, rectH.id);
   await page.mouse.move(hollowBox.x + hollowBox.width / 2, hollowBox.y + hollowBox.height / 2);
@@ -500,6 +500,7 @@ test('desktop annotation move intended + break + edge', async ({ page }) => {
   expect(await page.locator('[data-svg-annotation-layer="1"]').count()).toBe(0);
 
   console.log('ANNOTATION_MOVE_DESKTOP_PROOF', JSON.stringify({
+    rectH: rectH.id,
     rectA: rectA.id,
     rectB: rectB.id,
     rectC: rectC.id,
@@ -552,9 +553,9 @@ test('390 annotation move intended + break + edge', async ({ page }) => {
     return now && Math.abs(now.left - a0.left) < 2;
   }, { message: '390 undo must restore A' }).toBeTruthy();
 
-  await strokeClick(page, rectA.id);
-  await strokeClick(page, rectB.id, { modifiers: ['Shift'] });
-  await expectSelected(page, [rectA.id, rectB.id], '390 Shift-click must add B');
+  await clickEmpty(page);
+  await dragOnPage(page, { x0: 0.16, y0: 0.22, x1: 0.82, y1: 0.76 });
+  await expectSelected(page, [rectA.id, rectB.id], '390 window marquee must select A+B');
   const aPre = await geom(page, rectA.id);
   const bPre = await geom(page, rectB.id);
   await strokeDrag(page, rectA.id, 30, 22, { interior: false });
