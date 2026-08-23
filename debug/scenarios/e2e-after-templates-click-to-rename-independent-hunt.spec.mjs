@@ -434,9 +434,14 @@ test('independent hunt after Templates Click to rename name', async ({ page }) =
     inventory.templates.renameValue = await tplRename.inputValue();
     inventory.templates.renameNamed = await page.getByRole('textbox', { name: 'Click to rename', exact: true }).count();
     inventory.templates.newTemplateType = await page.getByRole('button', { name: 'New template', exact: true }).first().getAttribute('type');
-    const expand = page.locator('.ed-scope button[title="Expand"]').first();
-    inventory.templates.expandTitle = await expand.getAttribute('title').catch(() => null);
-    inventory.templates.expandLabel = await expand.getAttribute('aria-label').catch(() => null);
+    const expand = page.locator('.ed-scope button[title="Expand"]');
+    inventory.templates.expandCount = await expand.count();
+    inventory.templates.expandTitle = inventory.templates.expandCount
+      ? await expand.first().getAttribute('title')
+      : null;
+    inventory.templates.expandLabel = inventory.templates.expandCount
+      ? await expand.first().getAttribute('aria-label')
+      : null;
     const templatesControls = await visibleControls(page);
     inventory.novel.templatesOpen = novelNames(templatesControls);
 
@@ -451,8 +456,11 @@ test('independent hunt after Templates Click to rename name', async ({ page }) =
     await expect(namedProject).toBeVisible({ timeout: 8_000 });
     inventory.projects.openMenus = await namelessOpenMenus(page);
     inventory.projects.namedActions = await namedProject.count();
-    inventory.projects.tapRename = await page.locator('input[title="Tap to rename"]').count();
-    inventory.projects.tapRenameLabel = await page.locator('input[title="Tap to rename"]').first().getAttribute('aria-label').catch(() => null);
+    const tapRename = page.locator('input[title="Tap to rename"]');
+    inventory.projects.tapRename = await tapRename.count();
+    inventory.projects.tapRenameLabel = inventory.projects.tapRename
+      ? await tapRename.first().getAttribute('aria-label')
+      : null;
     await page.getByRole('menuitem', { name: 'Get link to project', exact: true }).click();
     const shareDialog = page.getByRole('dialog', { name: 'Share project', exact: true });
     await expect(shareDialog).toBeVisible({ timeout: 10_000 });
