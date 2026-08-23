@@ -40,7 +40,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright pair pending on this commit. Focused Node pending. Live spec does not count `dialog` named Activity (leftover18 Node contract); hunt still checks `/activity/i` after Manage Team without opening Activity.
+Playwright `e2e-add-bookmarks-to-group-dialog-name.spec.mjs` **2 / 2** + hunt `e2e-after-add-bookmarks-to-group-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3 (10.3s)** on Playwright Vite `http://127.0.0.1:5355`. Focused Node `addBookmarksToGroupDialogName` + hunt + leftover18 **17 / 17**. Live spec does not count `dialog` named Activity (leftover18 Node contract); hunt still checks `/activity/i` after Manage Team without opening Activity.
 
 | Slice | Intended / break / edge |
 |---|---|
@@ -49,13 +49,13 @@ Playwright pair pending on this commit. Focused Node pending. Live spec does not
 | Edge | Search fixture names Add bookmarks to group. Create bookmark group stays named. Documents More still names Share. Survey export still names Excel actions. viewBox **`0 0 612 792`**. |
 | Lease | Process auto-login / service-role **absent**. No lease token. `file.id` not invented. |
 
-No high-risk file edit. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` not required this pass. Isolated 8448 still standing. Cap **8448** / 75/250 not loosened. `graphify` CLI absent unless found after code.
+No high-risk file edit. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` not required this pass. Isolated 8448 still standing. Cap **8448** / 75/250 not loosened. `graphify` CLI absent.
 
 ## Leftover-18
 
 Still **18** fail-closed local + **18** host-gated. Next live host remains **X-01** (coordinator lease via `scripts/test-account-lease.mjs` + real saved `file.id`). Do **not** re-claim unblocked GAP = 0.
 
-Goal stays open.
+Hunt after the name: idle editor unnamed text+checkbox remain Forms / X-05; Activity card stays unnamed (A-06 roster adjacent — not taken); Highlighter caret stays compile-hidden; Counter caret stays **0** on a fresh `?testPdf=` (no series); official spec Enter stays spec-only; hub novel Close preview already labelled. Goal stays open.
 
 ## Files
 

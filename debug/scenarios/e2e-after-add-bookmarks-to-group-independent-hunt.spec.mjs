@@ -254,7 +254,9 @@ test('independent hunt after Add bookmarks to group dialog name', async ({ page 
     const excelChevron = page.getByRole('button', { name: 'Excel actions', exact: true });
     await expect(excelChevron).toBeVisible({ timeout: 15_000 });
     await excelChevron.click();
-    inventory.survey.namedMenu = await page.getByRole('menu', { name: 'Excel actions', exact: true }).count();
+    const namedExcel = page.getByRole('menu', { name: 'Excel actions', exact: true });
+    await expect(namedExcel).toBeVisible({ timeout: 8_000 });
+    inventory.survey.namedMenu = await namedExcel.count();
     inventory.survey.nameless = await namelessOpenMenus(page);
     await page.keyboard.press('Escape');
 
