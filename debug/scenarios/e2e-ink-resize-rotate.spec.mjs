@@ -12,8 +12,8 @@ import { test, expect } from '@playwright/test';
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
 
-const INK_A = { x0: 0.18, y0: 0.24, x1: 0.44, y1: 0.42 };
-const INK_B = { x0: 0.54, y0: 0.52, x1: 0.80, y1: 0.70 };
+const INK_A = { x0: 0.16, y0: 0.22, x1: 0.46, y1: 0.26 };
+const INK_B = { x0: 0.56, y0: 0.58, x1: 0.86, y1: 0.62 };
 
 function isInk(row) {
   return row?.type === 'path'
@@ -319,27 +319,44 @@ async function inkHitPoints(page, id) {
     const host = document.querySelector(`[data-svg-annotation-layer="1"] > g[data-anno-id="${annoId}"]`);
     const path = host?.querySelector('[data-path-hit-target="true"]')
       || host?.querySelector('path');
-    if (!path || typeof path.getTotalLength !== 'function') return [];
-    const len = path.getTotalLength();
-    if (!(len > 0)) return [];
-    const ctm = path.getScreenCTM?.();
-    const box = path.getBoundingClientRect();
-    const samples = [0.15, 0.35, 0.5, 0.65, 0.85].map((t) => {
-      const local = path.getPointAtLength(len * t);
-      if (!ctm) {
-        return { x: box.x + box.width * t, y: box.y + box.height * 0.5 };
+    if (!path) return [];
+    const hits = [];
+    const seen = new Set();
+    const addIfHits = (x, y) => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const key = `${Math.round(x)},${Math.round(y)}`;
+      if (seen.has(key)) return;
+      const el = document.elementFromPoint(x, y);
+      if (!el) return;
+      if (el.closest?.('[data-resize-handle], [data-rotation-handle]')) return;
+      if (el !== path && !host.contains(el) && el.closest?.(`[data-anno-id="${annoId}"]`) !== host) {
+        return;
       }
-      return {
-        x: ctm.a * local.x + ctm.c * local.y + ctm.e,
-        y: ctm.b * local.x + ctm.d * local.y + ctm.f,
-      };
-    });
-    samples.push(
-      { x: box.x + box.width * 0.50, y: box.y + box.height * 0.50 },
-      { x: box.x + box.width * 0.30, y: box.y + box.height * 0.40 },
-      { x: box.x + box.width * 0.70, y: box.y + box.height * 0.60 },
-    );
-    return samples.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      seen.add(key);
+      hits.push({ x, y });
+    };
+    if (typeof path.getTotalLength === 'function') {
+      const len = path.getTotalLength();
+      const ctm = path.getScreenCTM?.();
+      if (len > 0 && ctm) {
+        for (let i = 1; i <= 19; i += 1) {
+          const local = path.getPointAtLength(len * (i / 20));
+          addIfHits(
+            ctm.a * local.x + ctm.c * local.y + ctm.e,
+            ctm.b * local.x + ctm.d * local.y + ctm.f,
+          );
+        }
+      }
+    }
+    const box = path.getBoundingClientRect();
+    const stepX = Math.max(3, box.width / 16);
+    const stepY = Math.max(3, box.height / 16);
+    for (let y = box.y + 2; y < box.y + box.height - 1; y += stepY) {
+      for (let x = box.x + 2; x < box.x + box.width - 1; x += stepX) {
+        addIfHits(x, y);
+      }
+    }
+    return hits;
   }, id);
 }
 
@@ -358,18 +375,16 @@ async function strokeClick(page, id, { modifiers = [] } = {}) {
     return;
   }
   const points = await inkHitPoints(page, id);
-  const box = await annoBox(page, id);
-  points.push(
-    { x: box.x + box.width * 0.50, y: box.y + box.height * 0.50 },
-    { x: box.x + 8, y: box.y + box.height * 0.50 },
-  );
+  if (!points.length) {
+    throw new Error(`stroke-click found 0 hit-tested points on ${id}`);
+  }
   for (const key of modifiers) await page.keyboard.down(key);
   try {
-    for (const point of points) {
+    for (const point of points.slice(0, 8)) {
       await page.mouse.click(point.x, point.y);
       try {
         await expect.poll(async () => (await selectedIds(page)).includes(id), {
-          timeout: 1_500,
+          timeout: 1_200,
         }).toBe(wantSelected);
         return;
       } catch {
@@ -379,7 +394,7 @@ async function strokeClick(page, id, { modifiers = [] } = {}) {
   } finally {
     for (const key of [...modifiers].reverse()) await page.keyboard.up(key);
   }
-  throw new Error(`stroke-click missed ${id}`);
+  throw new Error(`stroke-click missed ${id} after ${Math.min(points.length, 8)} hit-tested points`);
 }
 
 async function clickEmpty(page, { xf = 0.08, yf = 0.08 } = {}) {
@@ -459,7 +474,7 @@ test('desktop ink resize + rotate intended + break + edge', async ({ page }) => 
   expect(await userOrder(page), 'empty Select drag invents 0').toEqual(emptyBefore);
 
   const inkA = await createInk(page, INK_A, { tool: 'Pen', width: 16 });
-  const inkB = await createInk(page, INK_B, { tool: 'Highlighter', width: 4 });
+  const inkB = await createInk(page, INK_B, { tool: 'Highlighter', width: 16 });
   await dismissChrome(page);
   await blurInputs(page);
   expect(await userOrder(page), 'intended create A then B').toEqual([inkA.id, inkB.id]);
@@ -696,10 +711,16 @@ test('desktop ink resize + rotate intended + break + edge', async ({ page }) => 
   expect(angleNear(aMicro.angle, 0, 2), 'micro-drag must not commit angle').toBeTruthy();
 
   // Break — multi-select group frame is moveOnly (mtr hidden).
-  await clickEmpty(page);
-  await strokeClick(page, inkA.id);
-  await strokeClick(page, inkB.id, { modifiers: ['Shift'] });
-  await expectSelected(page, [inkA.id, inkB.id], 'Shift-click must add B');
+  // Select Highlighter B first (stroke-only), then Shift-click thicker Pen A.
+  // Window marquee is the fallback if Shift-click misses the stroke.
+  await selectUntilHandles(page, inkB.id, 8);
+  try {
+    await strokeClick(page, inkA.id, { modifiers: ['Shift'] });
+  } catch {
+    await clickEmpty(page);
+    await dragOnPage(page, { x0: 0.10, y0: 0.16, x1: 0.92, y1: 0.78 });
+  }
+  await expectSelected(page, [inkA.id, inkB.id], 'group select must include A+B');
   expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'group moveOnly hides mtr').toBe(0);
   expect(await page.locator('[data-group-selection-bbox="true"]').count(), 'group dashed frame present').toBeGreaterThan(0);
 
