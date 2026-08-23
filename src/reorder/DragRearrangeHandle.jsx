@@ -42,6 +42,7 @@ export default function DragRearrangeHandle({
       draggable={nativeDraggable}
       data-drag-rearrange-handle
       title={title}
+      aria-label={title}
       onClick={(event) => {
         event.stopPropagation();
         onClick?.(event);
