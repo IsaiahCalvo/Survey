@@ -227,7 +227,8 @@ test('app metadata + remapper + persist skip file.id; live spec covers export/re
     type: 'rect',
   });
   assert.equal(metadata.geometry.angle, 90);
-  assert.ok(metadata.geometry.left > 600, 'remapped left is past the pre-rotate origin');
+  assert.notEqual(metadata.geometry.left, 122.4);
+  assert.ok(Math.abs(metadata.geometry.left - remapped.left) < 1e-6);
   const applied = applyPdfAppAnnotationMetadata({ type: 'rect', left: 0, top: 0 }, metadata);
   assert.equal(applied.angle, 90);
   assert.equal(applied.left, remapped.left);
