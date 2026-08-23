@@ -498,7 +498,7 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   expect(createdGeom.vw).toBeGreaterThan(20);
 
   await selectUntilHandles(page, created.id, 8);
-  await dragResizeHandle(page, 'br', 80, 60);
+  await dragResizeHandle(page, 'br', 180, 140);
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
