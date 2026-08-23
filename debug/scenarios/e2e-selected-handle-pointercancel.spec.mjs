@@ -10,7 +10,6 @@ import { test, expect } from '@playwright/test';
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
-const RECT_A = { x0: 0.22, y0: 0.28, x1: 0.42, y1: 0.46 };
 
 async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
   await page.addInitScript(() => {
@@ -294,14 +293,14 @@ async function selectUntilHandles(page, id, min = 4) {
   await selectMode(page);
   await clickEmpty(page);
   await strokeClick(page, id);
-  await expect.poll(async () => page.locator('[data-resize-handle]').count(), {
+  await expect.poll(async () => page.locator('[data-svg-annotation-layer="1"] [data-resize-handle]').count(), {
     timeout: 8_000,
     message: `selected ${id} must show resize handles`,
   }).toBeGreaterThanOrEqual(min);
 }
 
 async function startBrDrag(page, dx, dy) {
-  const handle = page.locator('[data-resize-handle="br"]').first();
+  const handle = page.locator('[data-svg-annotation-layer="1"] [data-resize-handle="br"]').first();
   await expect(handle, 'br handle').toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
   expect(box, 'br handle box').toBeTruthy();
@@ -313,7 +312,7 @@ async function startBrDrag(page, dx, dy) {
 }
 
 async function cancelBrPointer(page) {
-  await page.locator('[data-resize-handle="br"]').first().dispatchEvent('pointercancel', {
+  await page.locator('[data-svg-annotation-layer="1"] [data-resize-handle="br"]').first().dispatchEvent('pointercancel', {
     pointerId: 1,
     pointerType: 'mouse',
     bubbles: true,
@@ -351,7 +350,7 @@ async function proveBrPointercancel(page, coords) {
 
   await selectUntilHandles(page, rect.id, 4);
   const preNoop = await geom(page, rect.id);
-  const handle = page.locator('[data-resize-handle="br"]').first();
+  const handle = page.locator('[data-svg-annotation-layer="1"] [data-resize-handle="br"]').first();
   const box = await handle.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
