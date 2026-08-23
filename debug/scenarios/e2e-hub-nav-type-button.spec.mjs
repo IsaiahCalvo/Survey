@@ -92,7 +92,7 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
 
   await desktopNavButton(page, 'Archive').click();
   await expect(page.locator('h1.title')).toHaveText('Archive');
-  await expect(page.getByPlaceholder('Search archive...').first()).toBeVisible();
+  await expect(page.locator('.archive-desktop-search').getByPlaceholder('Search archive...')).toBeVisible();
 
   await desktopNavButton(page, 'Documents').click();
   await expect(page.locator('h1.title')).toHaveText('Documents');
@@ -150,7 +150,7 @@ test('390 Home sections + editor break for hub nav type=button', async ({ page }
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   const emptyTypes = await navTypes(page, '.survey-hub aside.side nav button');
   expect(emptyTypes.every((row) => row.type === 'button')).toBe(true);
-  await expect(page.getByText('No documents yet')).toBeVisible();
+  await expect(page.getByText('No documents yet').first()).toBeVisible();
 
   await openPage(page, { url: LINK_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });

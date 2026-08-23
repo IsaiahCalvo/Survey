@@ -38,6 +38,7 @@ test('live spec covers hub nav type=button intended + break + edge; skip leftove
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /desktop hub nav is type=button/);
   assert.match(spec, /390 Home sections/);
+  assert.match(spec, /archive-desktop-search/);
   assert.match(spec, /Search archive/);
   assert.match(spec, /getByRole\('button', \{ name: \/Security Walk-Through\/ \}\)/);
   assert.match(spec, /keyboard\.press\('Enter'\)/);
