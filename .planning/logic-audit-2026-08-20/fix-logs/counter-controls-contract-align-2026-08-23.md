@@ -31,6 +31,8 @@ The pre-extract inline AppShell input used `disabled={startLocked}`. After extra
 
 `tests/counterControlsContract.test.mjs` now asserts the live mount (`locked={startLocked}`) and that the shared field maps `locked` → native `disabled`. Viewer series-start publish + one-pin gate unchanged.
 
+Focused Node `counterControlsContract` **4 / 4** + `counterSizeStartNumber` **3 / 3** + leftover18 **12 / 12** (**19 / 19**). Official `npm test` is sequential and too heavy to finish here; this contract is no longer the fail-stop. Cap **8448** / 75/250 not loosened.
+
 CORS `*` / `zoomGeneration` / SVG viewBox zoom / container-aware canvas sizing / Fabric `fontFamily` untouched.
 
 ## Leftover-18
