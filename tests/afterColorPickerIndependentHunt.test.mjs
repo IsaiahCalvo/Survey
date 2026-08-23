@@ -93,6 +93,8 @@ test('hunt after Color picker name looks past Search clear and leftover-18', () 
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /AFTER_COLOR_PICKER_INDEPENDENT_HUNT/);
   assert.match(spec, /Color/);
+  assert.match(spec, /name: 'Shapes'/);
+  assert.match(spec, /#chrome-sub-toolbar-host/);
   assert.match(spec, /Clear search/);
   assert.match(spec, /Add bookmark/);
   assert.match(spec, /Version history/);

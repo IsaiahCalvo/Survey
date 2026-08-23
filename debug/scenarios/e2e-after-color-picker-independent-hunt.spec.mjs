@@ -224,7 +224,11 @@ test('independent hunt after Color picker dialog name', async ({ page }) => {
     inventory.editor.unnamed = editorControls.filter((row) => row.unnamed);
     inventory.novel.editor = novelNames(editorControls);
 
-    const rectangle = page.getByRole('button', { name: 'Rectangle', exact: true }).first();
+    const shapes = page.getByRole('button', { name: 'Shapes', exact: true });
+    await expect(shapes).toBeVisible({ timeout: 15_000 });
+    await shapes.click();
+    const rectangle = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Rectangle', exact: true });
+    await expect(rectangle).toBeVisible({ timeout: 8_000 });
     await rectangle.click();
     const colorTrigger = page.locator('[data-annotation-color-trigger]').first();
     await expect(colorTrigger).toBeVisible({ timeout: 8_000 });

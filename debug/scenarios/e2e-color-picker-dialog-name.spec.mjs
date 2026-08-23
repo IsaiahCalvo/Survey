@@ -50,7 +50,11 @@ function namedColor(page) {
 }
 
 async function armRectangle(page) {
-  const rectangle = page.getByRole('button', { name: 'Rectangle', exact: true }).first();
+  // Rectangle lives on the Shapes sub-row, not the default Draw strip.
+  const rectangle = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Rectangle', exact: true });
+  if (!(await rectangle.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+  }
   await expect(rectangle).toBeVisible({ timeout: 15_000 });
   if ((await rectangle.getAttribute('aria-pressed')) !== 'true') {
     await rectangle.click();
