@@ -2785,6 +2785,14 @@ export default function App({ devPreviewReturnTab = null }) {
               }}
             />
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            {/* Keep-mounted hub stays under the viewer so Home can return
+                without remount. While the viewer is up, inert + aria-hidden
+                take it out of Tab / AT. Home / Back lift both. */}
+            <div
+              data-hub-keep-mount=""
+              style={{ height: '100%' }}
+              {...(isViewerVisible ? { inert: '', 'aria-hidden': 'true' } : {})}
+            >
             <Dashboard
               ref={dashboardRef}
               onDocumentSelect={handleDocumentSelect}
@@ -2797,6 +2805,7 @@ export default function App({ devPreviewReturnTab = null }) {
               entities={entities}
               setEntities={setEntities}
             />
+            </div>
             {tabs.map(tab => {
               if (tab.isHome) return null;
 
