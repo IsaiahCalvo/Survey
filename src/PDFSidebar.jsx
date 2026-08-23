@@ -706,6 +706,7 @@ const PDFSidebar = React.forwardRef(({
               }}
             >
               <button
+                type="button"
                 {...tabTip}
                 aria-label={tab.label}
                 onClick={() => {
