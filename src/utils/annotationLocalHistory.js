@@ -8,6 +8,7 @@
  * (explicit changed/created/deleted ids) and full-diff builders.
  */
 import { deepClone } from './deepClone.js';
+import { displayedAngle, displayedBoxOrigin } from './svgBoundingBox.js';
 
 export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
@@ -39,6 +40,37 @@ function isOwnAnnotation(annotation, userId, documentOwnerId = null) {
 
 function cloneJson(value) {
   return deepClone(value);
+}
+
+/** After page CW remap, Fabric snapshots often store left/top 0 while
+ *  remapped data.left/top hold the displayed origin. History Restore must
+ *  put the object back at that displayed origin, not the placeholder.
+ *  Leave already-correct left/top/angle untouched so undo diffs stay exact. */
+export function stampDisplayedPlacement(annotation) {
+  if (!annotation || typeof annotation !== 'object' || Array.isArray(annotation)) {
+    return annotation;
+  }
+  const origin = displayedBoxOrigin(annotation);
+  const angle = displayedAngle(annotation);
+  const ownLeft = Number(annotation.left);
+  const ownTop = Number(annotation.top);
+  const ownAngle = Number(annotation.angle);
+  const dataLeft = Number(annotation.data?.left);
+  const dataTop = Number(annotation.data?.top);
+  const dataAngle = Number(annotation.data?.angle);
+  const leftPlaceholder = Number.isFinite(dataLeft) && Math.abs(dataLeft) > 1
+    && (!Number.isFinite(ownLeft) || ownLeft === 0 || Math.abs(ownLeft + dataLeft) < 1.5);
+  const topPlaceholder = Number.isFinite(dataTop) && Math.abs(dataTop) > 1
+    && (!Number.isFinite(ownTop) || ownTop === 0 || Math.abs(ownTop + dataTop) < 1.5);
+  const anglePlaceholder = Number.isFinite(dataAngle) && Math.abs(dataAngle) > 1
+    && (!Number.isFinite(ownAngle) || ownAngle === 0);
+  if (!leftPlaceholder && !topPlaceholder && !anglePlaceholder) return annotation;
+  return {
+    ...annotation,
+    ...(leftPlaceholder ? { left: origin.left } : {}),
+    ...(topPlaceholder ? { top: origin.top } : {}),
+    ...(anglePlaceholder ? { angle } : {}),
+  };
 }
 
 function cloneWithStorageKey(value, storageKey) {
@@ -397,7 +429,7 @@ export function invertAnnotationHistoryAction(action) {
       pageNumber: action.pageNumber,
       annotationId: action.annotationId,
       storageKey: action.storageKey,
-      annotation: cloneJson(action.annotation),
+      annotation: stampDisplayedPlacement(cloneJson(action.annotation)),
       index: action.index ?? null,
     };
   }
@@ -628,12 +660,13 @@ export function applyAnnotationHistoryAction(annotationsByPage, action) {
 
   let nextObjects = objects;
   if (action.type === 'fabric:create') {
-    const existingIndex = findEntryObjectIndex(objects, action, action.annotation);
+    const annotation = stampDisplayedPlacement(action.annotation);
+    const existingIndex = findEntryObjectIndex(objects, action, annotation);
     if (existingIndex >= 0) {
       nextObjects = replaceAtStorageIndex(
         objects,
         existingIndex,
-        action.annotation,
+        annotation,
         action.storageKey,
       );
     } else {
@@ -641,7 +674,7 @@ export function applyAnnotationHistoryAction(annotationsByPage, action) {
       const index = Number.isInteger(action.index)
         ? Math.max(0, Math.min(action.index, nextObjects.length))
         : nextObjects.length;
-      nextObjects.splice(index, 0, cloneWithStorageKey(action.annotation, action.storageKey));
+      nextObjects.splice(index, 0, cloneWithStorageKey(annotation, action.storageKey));
     }
   } else if (action.type === 'fabric:delete') {
     const targetIndex = findEntryObjectIndex(objects, action, action.annotation);

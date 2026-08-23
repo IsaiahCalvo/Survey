@@ -144,8 +144,16 @@ async function userAnnotationSnapshot(page, pageNumber = 1) {
       const height = Number(object.height ?? data.height ?? 0);
       const scaleX = Number(object.scaleX ?? data.scaleX ?? 1) || 1;
       const scaleY = Number(object.scaleY ?? data.scaleY ?? 1) || 1;
-      const left = Number(object.left ?? data.left ?? 0);
-      const top = Number(object.top ?? data.top ?? 0);
+      const ownLeft = Number(object.left);
+      const dataLeft = Number(data.left);
+      const ownTop = Number(object.top);
+      const dataTop = Number(data.top);
+      const left = Number.isFinite(dataLeft) && (!Number.isFinite(ownLeft) || (ownLeft === 0 && Math.abs(dataLeft) > 1))
+        ? dataLeft
+        : (Number.isFinite(ownLeft) ? ownLeft : 0);
+      const top = Number.isFinite(dataTop) && (!Number.isFinite(ownTop) || (ownTop === 0 && Math.abs(dataTop) > 1))
+        ? dataTop
+        : (Number.isFinite(ownTop) ? ownTop : 0);
       const vw = width * Math.abs(scaleX);
       const vh = height * Math.abs(scaleY);
       return {

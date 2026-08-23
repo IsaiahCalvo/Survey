@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   applyAnnotationHistoryAction,
   invertAnnotationHistoryAction,
+  stampDisplayedPlacement,
 } from '../src/utils/annotationLocalHistory.js';
 import { buildAnnotationRestoreAction } from '../src/services/annotationTrashHistory.js';
 import {
@@ -116,6 +117,25 @@ test('History restore after CW remap keeps remapped placement + swapped page siz
   const second = applyAnnotationHistoryAction(restored, restoreAction);
   assert.equal(second[1].objects.length, 1, 'second Restore must not invent an extra id');
   assert.equal(second[1].objects[0].data.id, 'xf-hist-restore');
+
+  const fabricZero = {
+    ...remapped,
+    left: 0,
+    top: 0,
+    angle: 0,
+    data: { ...remapped.data, left: remapped.left, top: remapped.top, angle: remapped.angle },
+  };
+  const stamped = stampDisplayedPlacement(fabricZero);
+  assert.ok(Math.abs(stamped.left - remapped.left) < 1e-6, 'placeholder left 0 must yield remapped data.left');
+  assert.ok(Math.abs(stamped.top - remapped.top) < 1e-6);
+  assert.equal(stamped.angle, remapped.angle);
+  const fromZero = applyAnnotationHistoryAction(
+    { 1: { width: 792, height: 612, objects: [] } },
+    buildAnnotationRestoreAction(deleteAction(fabricZero)),
+  );
+  assert.ok(Math.abs(fromZero[1].objects[0].left - remapped.left) < 1e-6, 'Restore must not keep Fabric left 0');
+  assert.ok(Math.abs(fromZero[1].objects[0].top - remapped.top) < 1e-6);
+  assert.equal(fromZero[1].width, 792);
 });
 
 test('empty rotate invents 0; dismiss without Restore leaves the remapped page empty', () => {
@@ -185,6 +205,8 @@ test('History restore after remap uses live activity Restore; no file.id stamp',
   assert.match(viewer, /setZoomGeneration\(prev => prev \+ 1\)/);
   assert.match(reindex, /rotateDisplayedPoint/);
   assert.match(history, /export function applyAnnotationHistoryAction/);
+  assert.match(history, /export function stampDisplayedPlacement/);
+  assert.match(history, /After page CW remap, Fabric snapshots often store left\/top 0/);
   assert.match(trash, /export function buildAnnotationRestoreAction/);
   assert.match(dev, /Do NOT set file\.id/);
   assert.doesNotMatch(dev, /file\.id\s*=/);
