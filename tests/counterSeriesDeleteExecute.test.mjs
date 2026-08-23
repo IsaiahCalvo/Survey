@@ -78,4 +78,10 @@ test('pin context menu is Continue pin only; series menu Delete is whole-series 
   const modal = read('src/components/collab/ConfirmDeleteModal.jsx');
   assert.match(modal, /Delete \$\{plan\.seriesLabel \|\| 'this count'\}/);
   assert.match(modal, /Delete count/);
+
+  const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
+  assert.match(mobile, /data-counter-series-delete/);
+  assert.match(mobile, /aria-label=\{`Delete \$\{series\.label\}`\}/);
+  assert.match(mobile, /api\.onDeleteCounterSeries\(series\.seriesId\)/);
+  assert.match(mobile, /This count could not be deleted/);
 });

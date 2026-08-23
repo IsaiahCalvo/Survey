@@ -162,7 +162,10 @@ async function seriesMenuRows(page, { dismiss = true } = {}) {
         label: (node.getAttribute('aria-label') || node.textContent || '').replace(/\s+/g, ' ').trim(),
         active: node.classList.contains('is-active'),
       }))
-      .filter((row) => /\d+\s+pins?/i.test(row.label) || /Count\s+\d+/i.test(row.label))
+      .filter((row) => (
+        !/^Delete\b/i.test(row.label)
+        && (/\d+\s+pins?/i.test(row.label) || /Count\s+\d+/i.test(row.label))
+      ))
   ));
   const continueCount = await menu.getByText('Continue Count', { exact: true }).count();
   const newCount = await menu.getByRole('button', { name: '+ New Count', exact: true }).count();
@@ -175,7 +178,7 @@ async function seriesMenuRows(page, { dismiss = true } = {}) {
 
 async function clickContinueCountRow(page, matcher) {
   const menu = await openSeriesMenu(page);
-  const row = menu.locator('button').filter({ hasText: matcher }).first();
+  const row = menu.locator('button:not([data-counter-series-delete])').filter({ hasText: matcher }).first();
   await expect(row).toBeVisible({ timeout: 8_000 });
   await row.click();
   await expect(menu).toHaveCount(0);

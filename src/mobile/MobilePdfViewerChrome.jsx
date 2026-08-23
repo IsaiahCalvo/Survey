@@ -11,6 +11,7 @@ import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { FONT_FAMILIES } from '../utils/annotationStyleCatalog.js';
 import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
+import { showToast } from '../utils/toast';
 import './mobilePdfViewer.css';
 
 const TOOL_GROUPS = {
@@ -972,16 +973,34 @@ export function MobileToolProperties({ api }) {
               <button type="button" onClick={() => { api.onNewCounterSeries?.(); setCounterMenuOpen(false); }}>+ New Count</button>
               {!!api.counterSeriesList?.length && <span>Continue Count</span>}
               {(api.counterSeriesList || []).map((series) => (
-                <button
-                  type="button"
-                  key={series.seriesId}
-                  className={series.seriesId === api.activeCounterSeriesId ? 'is-active' : ''}
-                  onClick={() => { api.onSwitchCounterSeries?.(series.seriesId); setCounterMenuOpen(false); }}
-                >
-                  <i style={{ background: series.color }} />
-                  <b>{series.label}</b>
-                  <em>{series.count}</em>
-                </button>
+                <div key={series.seriesId} className="mobile-pdf-properties__series-row">
+                  <button
+                    type="button"
+                    className={series.seriesId === api.activeCounterSeriesId ? 'is-active' : ''}
+                    onClick={() => { api.onSwitchCounterSeries?.(series.seriesId); setCounterMenuOpen(false); }}
+                  >
+                    <i style={{ background: series.color }} />
+                    <b>{series.label}</b>
+                    <em>{series.count}</em>
+                  </button>
+                  {typeof api.onDeleteCounterSeries === 'function' && (
+                    <button
+                      type="button"
+                      className="mobile-pdf-properties__series-delete"
+                      data-counter-series-delete
+                      aria-label={`Delete ${series.label}`}
+                      onClick={() => {
+                        const result = api.onDeleteCounterSeries(series.seriesId);
+                        setCounterMenuOpen(false);
+                        if (result?.ok === false) {
+                          showToast('This count could not be deleted. Check your permission and try again.', 'error');
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
