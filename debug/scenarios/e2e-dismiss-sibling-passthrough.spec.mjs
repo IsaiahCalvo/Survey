@@ -303,7 +303,7 @@ test('Manage Team Search first Invite click + 390 Templates Save', async ({ page
   await expect(team.locator('[data-manage-team-dismiss-surface="true"]')).toHaveCount(0);
   await expect(team.getByText('View activity')).toHaveCount(0);
   await expect(invite).toHaveCount(0);
-  await team.locator('button', { hasText: 'Done' }).last().click();
+  await team.getByRole('button', { name: 'Done', exact: true }).last().click();
   await expect(team).toHaveCount(0);
 
   // 390 Templates — first Save tap while content Search is focused lands.
@@ -313,10 +313,8 @@ test('Manage Team Search first Invite click + 390 Templates Save', async ({ page
   const firstRow = page.locator('.templates-mobile-browser .templates-mobile-row').first();
   await expect(firstRow).toBeVisible();
   await firstRow.click();
-  const nameInput = page.locator('.templates-mobile-inline-input').first();
-  await expect(nameInput).toBeVisible();
-  await nameInput.click();
-  await nameInput.fill('Dirty name');
+  await expect(page.getByRole('button', { name: 'New category', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'New category', exact: true }).click();
   const save = page.locator('.templates-mobile-save-row button.primary');
   await expect(save).toBeVisible();
   const contentSearch = page.locator('.templates-mobile-search-actions input[placeholder="Search template..."]');
