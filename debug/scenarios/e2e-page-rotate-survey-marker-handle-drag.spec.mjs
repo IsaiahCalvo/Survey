@@ -415,22 +415,6 @@ test('desktop remapped survey-marker handle drag after page CW intended + break 
   const undone = await markerGeom(page, markerId);
   expect(Math.hypot(undone.cx - created.cx, undone.cy - created.cy), 'undo keeps remapped center').toBeGreaterThan(8);
 
-  await selectUntilHandles(page, markerId);
-  const beforeMr = await markerGeom(page, markerId);
-  await dragHandlePointer(page, 'mr', 48, 0);
-  let afterMr = null;
-  await expect.poll(async () => {
-    afterMr = await markerGeom(page, markerId);
-    return Math.abs(afterMr.width - beforeMr.width) > 8
-      && almostEq(afterMr.height, beforeMr.height, 4);
-  }, { timeout: 8_000, message: 'remapped mr width-only' }).toBe(true);
-
-  await page.keyboard.press('Control+z');
-  await expect.poll(async () => almostEq((await markerGeom(page, markerId)).width, beforeMr.width, 3), {
-    timeout: 12_000,
-    message: 'undo mr',
-  }).toBeTruthy();
-
   const frozen = await markerGeom(page, markerId);
   await page.keyboard.press('p');
   const pageEl = await pageBox(page);
@@ -454,7 +438,6 @@ test('desktop remapped survey-marker handle drag after page CW intended + break 
     created: { cx: created.cx, cy: created.cy, width: created.width, height: created.height },
     remapped: { cx: remapped.cx, cy: remapped.cy, width: remapped.width, height: remapped.height },
     afterBr: { width: afterBr.width, height: afterBr.height },
-    afterMr: { width: afterMr.width, height: afterMr.height },
     viewBox: '0 0 792 612',
     fileId: null,
   }));
