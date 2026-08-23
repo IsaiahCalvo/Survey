@@ -44,7 +44,7 @@ No high-risk file edit. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric 
 
 Still **18** fail-closed local + **18** host-gated. Next live host remains **X-01** (coordinator lease via `scripts/test-account-lease.mjs` + real saved `file.id`). Do **not** re-claim unblocked GAP = 0.
 
-PromptModal remains lock-gated leftover-18 / X-01. Goal stays open.
+PromptModal remains lock-gated leftover-18 / X-01. Hunt after the name found no other unique compile-visible leftover on the idle `?testPdf=` / hubPreview walk (unnamed editor text+checkbox remain leftover-18 Forms / X-05; hub novel `Close preview` is already `aria-label`d DocumentsLedger chrome). NewColumnsModal is still unnamed in source but was not opened (Excel / X-06). Goal stays open.
 
 ## Files
 
