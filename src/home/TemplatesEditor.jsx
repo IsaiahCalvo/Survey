@@ -2120,6 +2120,7 @@ export default function TemplatesEditor({
                   onReorderModules={reorderMods}
                 >
                   <button
+                    type="button"
                     onClick={addModule}
                     title="New module"
                     style={{
