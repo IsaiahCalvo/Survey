@@ -9,7 +9,9 @@ import { test, expect } from '@playwright/test';
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
-const RECT_BOX = { x0: 0.20, y0: 0.26, x1: 0.40, y1: 0.44 };
+// Stay near page center so CW remap (x,y)→(pageH-y, x) does not pin
+// the rect under the right-rail / top-right clip of the landscape page.
+const RECT_BOX = { x0: 0.36, y0: 0.40, x1: 0.52, y1: 0.54 };
 
 function isRect(row) {
   return row.type === 'rect' || row.type === 'rectangle' || row.tool === 'rect';
@@ -357,7 +359,9 @@ async function assertHandlesNearHit(page, id) {
   expect(br.y).toBeLessThan(hit.y + hit.height + pad);
 }
 
-async function dragHandleRadial(page, id, attr, { mode = 'grow', extraPx = 70 } = {}) {
+async function dragHandleRadial(page, id, attr, { mode = 'grow', extraPx = 90 } = {}) {
+  const handleEl = page.locator(`[data-svg-annotation-layer="1"] [${attr}]`).first();
+  await handleEl.scrollIntoViewIfNeeded();
   const hit = await annoHitBox(page, id);
   const cx = hit.x + hit.width / 2;
   const cy = hit.y + hit.height / 2;
@@ -376,8 +380,9 @@ async function dragHandleRadial(page, id, attr, { mode = 'grow', extraPx = 70 } 
     end = { x: cx - ux * (len + extraPx), y: cy - uy * (len + extraPx) };
   }
   await page.mouse.move(handle.x, handle.y);
+  await handleEl.hover();
   await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 14 });
+  await page.mouse.move(end.x, end.y, { steps: 16 });
   await page.mouse.up();
 }
 
@@ -493,7 +498,7 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   expect(createdGeom.vw).toBeGreaterThan(20);
 
   await selectUntilHandles(page, created.id, 8);
-  await dragResizeHandle(page, 'br', 180, 140);
+  await dragResizeHandle(page, 'br', 80, 60);
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
@@ -533,7 +538,18 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   await assertHandlesNearHit(page, created.id);
 
   // Intended — another br on the remapped page grows size; object stays on-page.
-  await dragHandleRadial(page, created.id, 'data-resize-handle="br"', { mode: 'grow', extraPx: 70 });
+  await dismissChrome(page);
+  await selectUntilHandles(page, created.id, 8);
+  await dragHandleRadial(page, created.id, 'data-resize-handle="br"', { mode: 'grow', extraPx: 100 });
+  const afterBrAttempt = await geom(page, created.id);
+  console.log('POST_ROTATE_BR_DELTA', JSON.stringify({
+    before: { vw: rotated.vw, vh: rotated.vh, left: rotated.left, top: rotated.top, cx: rotated.cx, cy: rotated.cy, angle: rotated.angle },
+    after: afterBrAttempt,
+    dvw: afterBrAttempt ? afterBrAttempt.vw - rotated.vw : null,
+    dvh: afterBrAttempt ? afterBrAttempt.vh - rotated.vh : null,
+    dleft: afterBrAttempt ? afterBrAttempt.left - rotated.left : null,
+    dtop: afterBrAttempt ? afterBrAttempt.top - rotated.top : null,
+  }));
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now && (now.vw > rotated.vw + 8 || now.vh > rotated.vh + 8);
