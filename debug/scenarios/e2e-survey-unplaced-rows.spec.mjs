@@ -65,7 +65,11 @@ async function enterSurveyWalls(page, { mobile = false } = {}) {
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await expect(unplacedSection(page), 'choose-template screen must not show unplaced rows').toHaveCount(0);
   await page.getByRole('button', { name: KAL436 }).click();
-  await expect(page.getByRole('button', { name: 'Walls', exact: true })).toBeVisible({ timeout: 15_000 });
+  if (mobile) {
+    await expect(page.getByRole('button', { name: 'Export survey data' })).toBeVisible({ timeout: 15_000 });
+  } else {
+    await expect(page.getByRole('button', { name: 'Walls', exact: true })).toBeVisible({ timeout: 15_000 });
+  }
 }
 
 async function persistId(page) {
