@@ -1491,6 +1491,7 @@ const SurveySpacesRail = ({
                     flexShrink: 0
                   }}>
                     <button
+                      type="button"
                       onClick={() => {
                         markSurveySheetOpen();
                         setIsSurveyPanelCollapsed(false);
@@ -1515,6 +1516,7 @@ const SurveySpacesRail = ({
                   }}>
                     <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
                       <button
+                        type="button"
                         onClick={() => {
                           setRailIconHover(null);
                           markSurveySheetOpen();
@@ -1590,9 +1592,16 @@ const SurveySpacesRail = ({
                     }}
                   >
                     <button
-                      onClick={() => {
+                      type="button"
+                      onClick={(event) => {
                         // Phase F: mobile collapse slides the sheet down first;
                         // desktop collapses immediately (no bottom-sheet motion).
+                        // Expand and Collapse share the same 35px header slot.
+                        // The second click of a double-click on Expand lands on
+                        // this button (detail === 2) and would immediately
+                        // re-collapse — ignore that rebound, keep a later
+                        // single click as Collapse.
+                        if (event.detail > 1) return;
                         dismissSurveySheet();
                       }}
                       aria-label="Collapse Survey panel"
