@@ -314,7 +314,7 @@ export default function ArchiveScreen({
     || 'Sort';
 
   const filterMenu = (
-    <div className="archive-sort-menu" role="menu">
+    <div className="archive-sort-menu" role="menu" aria-label="Show and sort">
       {/* Type — Archive's own axis. Kept inside the one menu rather than a
           separate chip row so the actions slot holds what the other screens
           hold: a search field. */}
