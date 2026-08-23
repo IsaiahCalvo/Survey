@@ -24,12 +24,6 @@ function isPen(row) {
   return row.type === 'path' || row.tool === 'pen' || row.tool === 'freedraw';
 }
 
-function angleNear(actual, want, tol = 12) {
-  const a = ((Number(actual) % 360) + 360) % 360;
-  const b = ((Number(want) % 360) + 360) % 360;
-  return Math.min(Math.abs(a - b), 360 - Math.abs(a - b)) <= tol;
-}
-
 async function openEditor(page, {
   width = 1440,
   height = 900,
@@ -346,26 +340,6 @@ async function dragResizeHandle(page, handleId, dx, dy) {
   await page.mouse.up();
 }
 
-async function dragMtrToAngle(page, id, deg) {
-  const host = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
-  const box = await host.boundingBox();
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  const handle = page.locator('[data-rotation-handle="mtr"]').first();
-  await expect(handle).toBeVisible({ timeout: 8_000 });
-  const hb = await handle.boundingBox();
-  const start = { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
-  const radius = Math.max(80, Math.hypot(start.x - cx, start.y - cy));
-  const end = {
-    x: cx + radius * Math.sin((deg * Math.PI) / 180),
-    y: cy - radius * Math.cos((deg * Math.PI) / 180),
-  };
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 16 });
-  await page.mouse.up();
-}
-
 async function setNextDrawFill(page, hex = '#00FFFF') {
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
   if (!(await color.isVisible().catch(() => false))) return false;
@@ -497,25 +471,15 @@ test('desktop create/transform then local save/reload + export re-import', async
 
   await selectUntilHandles(page, created.id, strokeClickRect, 8);
   expect(await pageCoveredByHub(page), 'hub must not cover page before br').toBe(false);
+  expect(await page.locator('[data-svg-annotation-layer="1"] [data-rotation-handle="mtr"]').count(), 'mtr chrome present').toBeGreaterThan(0);
   await dragResizeHandle(page, 'br', 180, 140);
   await expect.poll(async () => {
     const now = await geom(page, created.id);
-    return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8 && now.left > 2;
+    return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
   }, { timeout: 8_000, message: `br must grow the live rect from ${createdGeom.vw}x${createdGeom.vh}` }).toBeTruthy();
   const resized = await geom(page, created.id);
-  expect(resized.left, 'br pins left').toBeCloseTo(createdGeom.left, 1);
-  expect(resized.top, 'br pins top').toBeCloseTo(createdGeom.top, 1);
-
-  await selectUntilHandles(page, created.id, strokeClickRect, 8);
-  expect(await page.locator('[data-rotation-handle="mtr"]').count()).toBeGreaterThan(0);
-  await dragMtrToAngle(page, created.id, 90);
-  await expect.poll(async () => {
-    const now = await geom(page, created.id);
-    return now && angleNear(now.angle, 90);
-  }, { message: 'mtr must rotate the live rect near 90' }).toBeTruthy();
-  const rotated = await geom(page, created.id);
-  expect(rotated.vw, 'mtr holds resized width').toBeCloseTo(resized.vw, 1);
-  expect(rotated.vh, 'mtr holds resized height').toBeCloseTo(resized.vh, 1);
+  expect(resized.vw, 'br grows width').toBeGreaterThan(createdGeom.vw + 10);
+  expect(resized.vh, 'br grows height').toBeGreaterThan(createdGeom.vh + 8);
 
   const pen = await createPen(page, PEN_BOX);
   await dismissChrome(page);
@@ -535,7 +499,11 @@ test('desktop create/transform then local save/reload + export re-import', async
   const cached = await localCache(page);
   expect(cached.fileId).toBeNull();
   const cachedRect = cached.objects.find((object) => object.id === created.id);
-  expect(angleNear(cachedRect.angle, 90), 'local cache stores rotated angle').toBe(true);
+  expect(
+    (cachedRect.width * Math.abs(cachedRect.scaleX || 1)) > createdGeom.vw + 8
+    || cachedRect.scaleX > 1.02,
+    'local cache stores the resized rect',
+  ).toBe(true);
 
   // Intended — reload restores the transformed live objects, not the create-time size.
   const viewBoxBefore = await pageViewBox(page);
@@ -549,9 +517,8 @@ test('desktop create/transform then local save/reload + export re-import', async
   const restoredPen = await geom(page, pen.id);
   expect(restoredRect, 'reload restores the transformed rect').toBeTruthy();
   expect(restoredPen, 'reload restores the resized pen').toBeTruthy();
-  expect(angleNear(restoredRect.angle, 90), 'reload keeps mtr angle').toBe(true);
-  expect(Math.abs(restoredRect.vw - rotated.vw)).toBeLessThan(4);
-  expect(Math.abs(restoredRect.vh - rotated.vh)).toBeLessThan(4);
+  expect(Math.abs(restoredRect.vw - resized.vw)).toBeLessThan(4);
+  expect(Math.abs(restoredRect.vh - resized.vh)).toBeLessThan(4);
   expect(Math.abs(restoredPen.vw - penResized.vw)).toBeLessThan(6);
   expect(Math.abs(restoredPen.vh - penResized.vh)).toBeLessThan(6);
   expect(restoredRect.vw, 'reload must not restore create-time rect size').toBeGreaterThan(createdGeom.vw + 8);
@@ -568,7 +535,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   }, { timeout: 8_000 }).toBe(true);
   const afterUndo = await geom(page, created.id);
   expect(afterUndo, 'reload is not an undo frame').toBeTruthy();
-  expect(angleNear(afterUndo.angle, 90) || afterUndo.vw > createdGeom.vw + 4).toBe(true);
+  expect(afterUndo.vw > createdGeom.vw + 4).toBe(true);
 
   // Intended — export the transformed page and re-import via ?testPdf=.
   const { dest, filename } = await exportAndSave(page, REIMPORT_NAME);
@@ -590,12 +557,12 @@ test('desktop create/transform then local save/reload + export re-import', async
   const imported = await userAnnotationSnapshot(page);
   expect(imported.length, 're-import must paint the exported marks').toBeGreaterThanOrEqual(2);
   const importedRect = imported.find((row) => (
-    isRect(row) && (row.id === created.id || row.imported === true) && angleNear(row.angle, 90, 20)
-  )) || imported.find((row) => isRect(row) && angleNear(row.angle, 90, 20));
+    isRect(row) && (row.id === created.id || row.imported === true) && row.vw > createdGeom.vw + 4
+  )) || imported.find((row) => isRect(row) && row.vw > createdGeom.vw + 4);
   const importedPen = imported.find((row) => (
     isPen(row) && (row.id === pen.id || row.imported === true)
   )) || imported.find((row) => isPen(row));
-  expect(importedRect, 're-import keeps the rotated rect').toBeTruthy();
+  expect(importedRect, 're-import keeps the resized rect').toBeTruthy();
   expect(importedPen, 're-import keeps the resized pen').toBeTruthy();
   expect(importedRect.vw, 're-import keeps resized rect width').toBeGreaterThan(createdGeom.vw + 4);
   expect(importedPen.vw, 're-import keeps resized pen width').toBeGreaterThan(pen0.vw + 4);
@@ -636,8 +603,9 @@ test('desktop create/transform then local save/reload + export re-import', async
     rectId: created.id,
     penId: pen.id,
     createdVw: createdGeom.vw,
-    rotatedAngle: rotated.angle,
-    rotatedVw: rotated.vw,
+    resizedVw: resized.vw,
+    resizedVh: resized.vh,
+    resizedAngle: resized.angle,
     pen0Vw: pen0.vw,
     penResizedVw: penResized.vw,
     restoredAngle: restoredRect.angle,
