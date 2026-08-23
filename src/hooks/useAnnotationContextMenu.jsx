@@ -733,6 +733,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
     const panel = (
       <div
+        role="menu"
+        aria-label={mobileTitle}
         data-annotation-context-menu="true"
         ref={(el) => {
           // UX: keep the menu inside the PDF page the user right-clicked
@@ -848,7 +850,17 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             : (
               <div
                 key={it.key}
+                role="menuitem"
+                tabIndex={it.disabled ? -1 : 0}
+                aria-disabled={it.disabled ? 'true' : undefined}
                 onClick={it.disabled ? undefined : it.onClick}
+                onKeyDown={(e) => {
+                  if (it.disabled) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    it.onClick?.();
+                  }
+                }}
                 // UX: disabled items (e.g. Paste when the clipboard is
                 // empty) render in muted gray with a default cursor and no
                 // hover surveyMarker — the user can see the option exists but
