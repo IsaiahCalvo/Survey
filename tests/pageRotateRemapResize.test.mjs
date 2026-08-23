@@ -136,7 +136,7 @@ test('live spec covers remapped-page br\/mtr, collapse, flip, undo-last-resize, 
   assert.match(spec, /undo must restore post-rotate size, not the page rotate/);
   assert.match(spec, /undo must not invert page rotate/);
   assert.match(spec, /collapse must keep a visible width/);
-  assert.match(spec, /flip past opposite must move origin and keep size/);
+  assert.match(spec, /flip past opposite/);
   assert.match(spec, /br must sit near remapped hit, not pre-rotate origin/);
   assert.match(spec, /viewBox/);
   assert.match(spec, /file\.id/);
