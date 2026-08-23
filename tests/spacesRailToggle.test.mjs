@@ -22,16 +22,20 @@ test('collapsed left-rail Spaces is type=button and expands to the Spaces panel'
   assert.notEqual(spacesLabel, -1, 'collapsed rail must label Pages/Search/Bookmarks/Spaces');
   const collapsedButton = collapsed.slice(collapsed.lastIndexOf('<button', spacesLabel), spacesLabel + 40);
   assert.match(collapsedButton, /type="button"/);
-  assert.match(collapsed, /setIsCollapsed\(false\)/);
-  assert.match(collapsed, /setActiveTab\(tab\.id\)/);
+  assert.match(collapsed, /openPanel\(tab\.id\)/);
+  assert.doesNotMatch(
+    collapsed.slice(collapsed.indexOf('onClick={() => {'), collapsed.indexOf('style={{')),
+    /setIsCollapsed\(false\);\s*setActiveTab\(tab\.id\)/,
+    'collapsed Spaces must use openPanel after the Search focus-token SHA',
+  );
 
   const expanded = sidebar.slice(sidebar.indexOf('Tab Navigation'), sidebar.indexOf('Collapsed State'));
   assert.match(expanded, /type="button"/);
-  assert.match(expanded, /setActiveTab\(tab\.id\)/);
+  assert.match(expanded, /openPanel\(tab\.id\)/);
   assert.doesNotMatch(
     expanded.slice(expanded.indexOf('onClick={() => {'), expanded.indexOf('style={{')),
-    /setIsCollapsed\(true\)/,
-    'expanded Spaces tab must not collapse the rail',
+    /setActiveTab\(tab\.id\);/,
+    'expanded Spaces tab must also route through openPanel',
   );
 
   assert.match(sidebar, /aria-label=\{isCollapsed \? 'Expand sidebar' : 'Collapse sidebar'\}/);
