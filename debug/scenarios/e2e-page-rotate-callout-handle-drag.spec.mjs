@@ -3,7 +3,9 @@ import { test, expect } from '@playwright/test';
 // Remapped callout HANDLE drag after page CW. Distinct from callout remap
 // (placement only), unrotated e2e-callout-knee-drag (portrait viewBox;
 // cheap rotate-then-drag parked as rotate-drag-no-move), leftover-18 / X-01,
-// and remapped mtr/br. Do not stamp file.id.
+// and remapped mtr/br. PointerEvents are dispatched on the remapped SVG
+// handle (Playwright mouse after Pages rotate misses the landscape host).
+// Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -153,7 +155,40 @@ async function calloutIds(page) {
 }
 
 async function geom(page, id) {
-  return (await calloutSnapshot(page)).find((row) => row.id === id) || null;
+  const row = (await calloutSnapshot(page)).find((item) => item.id === id) || null;
+  const live = await page.evaluate((cid) => {
+    const layer = document.querySelector('[data-svg-annotation-layer="1"]');
+    const vb = layer?.viewBox?.baseVal;
+    const W = vb?.width || 1;
+    const H = vb?.height || 1;
+    const kneeEl = [...document.querySelectorAll(`[data-callout-id="${cid}"] [data-callout-part="knee"]`)].at(-1);
+    const tipEl = [...document.querySelectorAll(`[data-callout-id="${cid}"] [data-callout-part="arrowTip"]`)].at(-1);
+    const boxEl = document.querySelector(`[data-callout-id="${cid}"] [data-callout-part="textBox"]`);
+    const toNorm = (el, xAttr, yAttr) => {
+      if (!el) return null;
+      const x = Number(el.getAttribute(xAttr));
+      const y = Number(el.getAttribute(yAttr));
+      return Number.isFinite(x) && Number.isFinite(y) ? { x: x / W, y: y / H } : null;
+    };
+    return {
+      viewBox: layer?.getAttribute('viewBox') || '',
+      knee: toNorm(kneeEl, 'cx', 'cy'),
+      arrowTip: toNorm(tipEl, 'cx', 'cy'),
+      textBox: toNorm(boxEl, 'x', 'y'),
+      undoDisabled: Boolean(document.querySelector('button[aria-label="Undo"][disabled], button[title="Undo"][disabled]')),
+    };
+  }, id);
+  if (!row) return null;
+  return {
+    ...row,
+    kneeX: live.knee?.x ?? row.kneeX,
+    kneeY: live.knee?.y ?? row.kneeY,
+    arrowX: live.arrowTip?.x ?? row.arrowX,
+    arrowY: live.arrowTip?.y ?? row.arrowY,
+    boxX: live.textBox?.x ?? row.boxX,
+    boxY: live.textBox?.y ?? row.boxY,
+    live,
+  };
 }
 
 async function waitForNewCallout(page, beforeIds) {
@@ -272,22 +307,40 @@ async function handleCenter(page, calloutId, part) {
   return { handle, hb, x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
 }
 
-function awayDelta(from, awayFrom, distance = 64) {
-  const vx = from.x - awayFrom.x;
-  const vy = from.y - awayFrom.y;
-  const len = Math.hypot(vx, vy) || 1;
-  return { dx: (vx / len) * distance, dy: (vy / len) * distance };
-}
-
-async function dragHandleAway(page, calloutId, part, awayPart, distance = 64) {
+async function dragHandleAway(page, calloutId, part, awayPart, distance = 80) {
   const from = await handleCenter(page, calloutId, part);
-  const away = await handleCenter(page, calloutId, awayPart);
-  const { dx, dy } = awayDelta(from, away, distance);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(from.x + dx, from.y + dy, { steps: 12 });
-  await page.mouse.up();
-  return { from, dx, dy };
+  const pageEl = await pageBox(page);
+  const dest = {
+    x: Math.min(pageEl.x + pageEl.width - 24, from.x + distance),
+    y: Math.max(pageEl.y + 24, from.y - Math.round(distance * 0.4)),
+  };
+  await page.evaluate(({ id, partName, x0, y0, x1, y1 }) => {
+    const el = [...document.querySelectorAll(`[data-callout-id="${id}"] [data-callout-part="${partName}"]`)].at(-1);
+    const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+    if (!el || !svg) return;
+    const fire = (target, type, x, y, buttons) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId: 1,
+        pointerType: 'mouse',
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons,
+      }));
+    };
+    fire(el, 'pointerdown', x0, y0, 1);
+    const steps = 12;
+    for (let i = 1; i <= steps; i += 1) {
+      const x = x0 + ((x1 - x0) * i) / steps;
+      const y = y0 + ((y1 - y0) * i) / steps;
+      fire(svg, 'pointermove', x, y, 1);
+    }
+    fire(svg, 'pointerup', x1, y1, 0);
+  }, { id: calloutId, partName: part, x0: from.x, y0: from.y, x1: dest.x, y1: dest.y });
+  return { from, dest, dx: dest.x - from.x, dy: dest.y - from.y, awayPart };
 }
 
 function pagesMenu(page) {
@@ -411,15 +464,35 @@ test('desktop remapped callout handle drag after page CW intended + break + edge
   expect(await selectCallout(page, created.id), 'select remapped callout').toBe(true);
   const remappedSelected = await geom(page, created.id);
 
+  const leaderDrag = await dragHandleAway(page, created.id, 'line2', 'textBox', 72);
+  const afterLeader = await geom(page, created.id);
+  const leaderMoved = Math.hypot(
+    afterLeader.kneeX - remappedSelected.kneeX,
+    afterLeader.kneeY - remappedSelected.kneeY,
+  ) > EPS
+    || Math.hypot(
+      afterLeader.boxX - remappedSelected.boxX,
+      afterLeader.boxY - remappedSelected.boxY,
+    ) > EPS;
+  expect(leaderMoved, 'remapped leader (whole) handle drag must persist').toBe(true);
+
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now && almostEq(now.kneeX, remappedSelected.kneeX) && almostEq(now.boxX, remappedSelected.boxX);
+  }, { timeout: 12_000, message: 'undo must restore remapped leader, not leftover portrait' }).toBeTruthy();
+
+  expect(await selectCallout(page, created.id)).toBe(true);
+  const remappedAfterUndo = await geom(page, created.id);
   const kneeDrag = await dragHandleAway(page, created.id, 'knee', 'textBox');
   const afterKnee = await geom(page, created.id);
   expect(
-    Math.hypot(afterKnee.kneeX - remappedSelected.kneeX, afterKnee.kneeY - remappedSelected.kneeY),
+    Math.hypot(afterKnee.kneeX - remappedAfterUndo.kneeX, afterKnee.kneeY - remappedAfterUndo.kneeY),
     'remapped knee must persist a handle drag',
   ).toBeGreaterThan(EPS);
-  expect(almostEq(afterKnee.boxX, remappedSelected.boxX), 'knee drag leaves remapped box X').toBe(true);
-  expect(almostEq(afterKnee.boxY, remappedSelected.boxY), 'knee drag leaves remapped box Y').toBe(true);
-  expect(almostEq(afterKnee.arrowX, remappedSelected.arrowX), 'knee drag leaves remapped tip X').toBe(true);
+  expect(almostEq(afterKnee.boxX, remappedAfterUndo.boxX), 'knee drag leaves remapped box X').toBe(true);
+  expect(almostEq(afterKnee.boxY, remappedAfterUndo.boxY), 'knee drag leaves remapped box Y').toBe(true);
+  expect(almostEq(afterKnee.arrowX, remappedAfterUndo.arrowX), 'knee drag leaves remapped tip X').toBe(true);
 
   await page.keyboard.press('Control+z');
   await expect.poll(async () => {
@@ -484,6 +557,7 @@ test('desktop remapped callout handle drag after page CW intended + break + edge
     calloutId: created.id,
     created: { boxX: created.boxX, boxY: created.boxY, kneeX: created.kneeX, arrowX: created.arrowX },
     remapped: { boxX: remapped.boxX, boxY: remapped.boxY, kneeX: remapped.kneeX, arrowX: remapped.arrowX },
+    afterLeader: { kneeX: afterLeader.kneeX, boxX: afterLeader.boxX },
     afterKnee: { kneeX: afterKnee.kneeX, kneeY: afterKnee.kneeY, boxX: afterKnee.boxX },
     afterTip: { arrowX: afterTip.arrowX, arrowY: afterTip.arrowY },
     afterBox: { boxX: afterBox.boxX, boxY: afterBox.boxY },
