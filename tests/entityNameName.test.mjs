@@ -17,10 +17,12 @@ test('Entity name fields are named; rename apply stays parked', () => {
   const editor = read('src/home/TemplatesEditor.jsx');
   const named = editor.match(/placeholder="Entity name"[\s\S]{0,80}aria-label="Entity name"|aria-label="Entity name"[\s\S]{0,80}placeholder="Entity name"/g) || [];
   assert.ok(named.length >= 2, 'desktop + mobile Entity name both named');
-  assert.equal(
-    (editor.match(/placeholder="Entity name"/g) || []).length,
-    (editor.match(/aria-label="Entity name"/g) || []).length,
-  );
+  const inputs = editor.match(/<input[\s\S]{0,400}placeholder="Entity name"[\s\S]{0,120}>/g) || [];
+  assert.ok(inputs.length >= 2, 'desktop + mobile Entity name inputs');
+  for (const tag of inputs) {
+    assert.match(tag, /aria-label="Entity name"/);
+  }
+  assert.equal((editor.match(/aria-label="Entity name"/g) || []).length, inputs.length);
   assert.match(editor, /title="Click to rename"[\s\S]{0,80}aria-label="Click to rename"|aria-label="Click to rename"[\s\S]{0,80}title="Click to rename"/);
   assert.match(editor, /title="Tap to rename"[\s\S]{0,80}aria-label="Tap to rename"|aria-label="Tap to rename"[\s\S]{0,80}title="Tap to rename"/);
   assert.doesNotMatch(editor, /pageSize\.width \* .*scale|pageSize \* scale/);

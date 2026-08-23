@@ -95,10 +95,12 @@ test('official leftover files besides isolated 8448 match live source after Enti
   assert.match(editor, /aria-label=\{open \? 'Collapse' : 'Expand'\}/);
   assert.equal(editor.match(/<button(?![^>]*type="button")[^>]*>[\s\S]{0,80}New template/), null);
   assert.match(editor, /placeholder="Entity name"[\s\S]{0,80}aria-label="Entity name"|aria-label="Entity name"[\s\S]{0,80}placeholder="Entity name"/);
-  assert.equal(
-    (editor.match(/placeholder="Entity name"/g) || []).length,
-    (editor.match(/aria-label="Entity name"/g) || []).length,
-  );
+  const entityInputs = editor.match(/<input[\s\S]{0,400}placeholder="Entity name"[\s\S]{0,120}>/g) || [];
+  assert.ok(entityInputs.length >= 2, 'desktop + mobile Entity name inputs');
+  for (const tag of entityInputs) {
+    assert.match(tag, /aria-label="Entity name"/);
+  }
+  assert.equal((editor.match(/aria-label="Entity name"/g) || []).length, entityInputs.length);
 
   const rail = read('src/SurveySpacesRail.jsx');
   assert.match(rail, /className="survey-marker-export-compact-menu" role="menu" aria-label="Excel actions"/);
