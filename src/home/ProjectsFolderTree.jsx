@@ -1303,6 +1303,7 @@ export default function ProjectsFolderTree({
                       className="projects-mobile-title-input"
                       defaultValue={mobileDrillProject.name}
                       title="Tap to rename"
+                      aria-label="Tap to rename"
                       onKeyDown={(e) => handleProjectRenameKeyDown(e, mobileDrillProject.name)}
                       onBlur={(e) => {
                         const name = e.currentTarget.value.trim();
