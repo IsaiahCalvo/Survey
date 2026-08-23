@@ -149,7 +149,7 @@ function addBookmarkBtn(page) {
 }
 
 function pageThumb(page, n = 1) {
-  return page.getByAltText(`Page ${n}`).or(page.getByText('Loading...')).or(page.getByText('Loading pages…'));
+  return page.getByAltText(`Page ${n}`).first();
 }
 
 async function hiddenCounts(page) {
@@ -188,7 +188,14 @@ async function waitForBookmarksPanel(page) {
 }
 
 async function waitForPagesPanel(page, { pageNumber = 1 } = {}) {
-  await expect(pageThumb(page, pageNumber), 'Pages switcher must show thumbnails').toBeVisible({ timeout: 8_000 });
+  await expect.poll(async () => {
+    const thumb = await pageThumb(page, pageNumber).isVisible().catch(() => false);
+    const loading = await page.getByText('Loading pages…').first().isVisible().catch(() => false);
+    return thumb || loading;
+  }, {
+    timeout: 8_000,
+    message: 'Pages switcher must show thumbnails',
+  }).toBe(true);
   await expect(emptyBookmarksCopy(page), 'Pages switcher must hide Bookmarks empty chrome').toBeHidden();
   expect(await addBookmarkBtn(page).count(), 'Pages switcher must hide Add bookmark').toBe(0);
   expect(
