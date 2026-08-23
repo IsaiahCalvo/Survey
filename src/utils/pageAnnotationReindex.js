@@ -514,6 +514,61 @@ export function rotatePageSpaceInk(obj, pageWidth, pageHeight, delta) {
   return next;
 }
 
+function isCounterPin(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const kind = String(obj.data?.type || obj.data?.annotationType || obj.type || '').toLowerCase();
+  return kind === 'counter';
+}
+
+function displayedCounterRadius(obj) {
+  const scaleX = Math.abs(Number(obj?.scaleX ?? 1) || 1);
+  const radius = Number(obj?.radius);
+  if (Number.isFinite(radius) && radius > 0) return radius * scaleX;
+  const width = Number(obj?.width);
+  if (Number.isFinite(width) && width > 0) return (Math.abs(width) * scaleX) / 2;
+  return 14 * scaleX;
+}
+
+function normalizePointerAngle(value, fallback = 225) {
+  const raw = Number(value);
+  const base = Number.isFinite(raw) ? raw : fallback;
+  return ((base % 360) + 360) % 360;
+}
+
+/**
+ * Live counter pins store left/top as the circle top-left and omit
+ * width/height. Remap the displayed visual center (left+r, top+r) and
+ * add delta to data.pointerAngle so the nub still aims after viewBox
+ * swap. Do not invent an object angle — the bubble stays circular.
+ */
+export function rotatePageSpaceCounter(obj, pageWidth, pageHeight, delta) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (normalizeRotationDelta(delta) === 0) return obj;
+  if (!isCounterPin(obj) && obj.radius == null && obj.data?.pointerAngle == null) return obj;
+  const radius = displayedCounterRadius(obj);
+  const left = Number(obj.left ?? obj.x) || 0;
+  const top = Number(obj.top ?? obj.y) || 0;
+  const rotated = rotateDisplayedPoint(left + radius, top + radius, pageWidth, pageHeight, delta);
+  const nextLeft = rotated.x - radius;
+  const nextTop = rotated.y - radius;
+  const next = { ...obj, left: nextLeft, top: nextTop };
+  if ('x' in obj) next.x = nextLeft;
+  if ('y' in obj) next.y = nextTop;
+  if ('angle' in obj) next.angle = Number(obj.angle) || 0;
+  const data = (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data))
+    ? { ...obj.data }
+    : {};
+  data.pointerAngle = normalizePointerAngle(
+    (data.pointerAngle != null ? Number(data.pointerAngle) : 225) + Number(delta || 0),
+  );
+  if ('left' in data) data.left = nextLeft;
+  if ('top' in data) data.top = nextTop;
+  if ('x' in data) data.x = next.x ?? nextLeft;
+  if ('y' in data) data.y = next.y ?? nextTop;
+  next.data = data;
+  return next;
+}
+
 function rotateCalloutObject(obj, pageWidth, pageHeight, delta) {
   const nextSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
   let next = { ...obj };
@@ -559,6 +614,7 @@ function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
   if (turns === 0) return obj;
   if (isCalloutLike(obj)) return rotateCalloutObject(obj, pageWidth, pageHeight, delta);
   if (isPageSpaceInk(obj)) return rotatePageSpaceInk(obj, pageWidth, pageHeight, delta);
+  if (isCounterPin(obj)) return rotatePageSpaceCounter(obj, pageWidth, pageHeight, delta);
   const next = { ...obj };
   const hasBox = ['left', 'top', 'width', 'height', 'x', 'y'].some((key) => (
     Number.isFinite(Number(obj[key]))
