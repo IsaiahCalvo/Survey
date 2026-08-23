@@ -202,8 +202,8 @@ test('desktop Survey / Spaces menu dismiss intended + break + edge', async ({ pa
   await armRectangle(page);
   await exportBtn.click();
   await expect(spacesExportMenu(page)).toBeVisible({ timeout: 5_000 });
-  await expect(spacesExportMenu(page).getByRole('button', { name: 'CSV', exact: true })).toBeVisible();
-  await expect(spacesExportMenu(page).getByRole('button', { name: 'PDF Pages', exact: true })).toBeVisible();
+  await expect(spacesExportMenu(page).getByRole('menuitem', { name: 'CSV', exact: true })).toBeVisible();
+  await expect(spacesExportMenu(page).getByRole('menuitem', { name: 'PDF Pages', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(spacesExportMenu(page), 'Escape must close Spaces export').toHaveCount(0);
   await exportBtn.click();

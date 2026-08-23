@@ -1442,6 +1442,7 @@ const SpacesPanel = ({
               className={`spaces-header-export-button${isSpacesExportActive ? ' is-active' : ''}`}
               {...tip(spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export', 'below')}
               aria-label={spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export'}
+              aria-haspopup="menu"
               aria-expanded={isSpacesExportMenuOpen}
               disabled={!spacesExportTarget}
               onClick={() => {
@@ -1464,9 +1465,14 @@ const SpacesPanel = ({
               <Icon name="upload" size={14} />
             </button>
             {isSpacesExportMenuOpen && spacesExportTarget && (
-              <div className="spaces-header-export-menu" role="menu">
+              <div
+                className="spaces-header-export-menu"
+                role="menu"
+                aria-label={`Export ${spacesExportTarget.name || 'space'}`}
+              >
                 <button
                   type="button"
+                  role="menuitem"
                   className="spaces-header-export-menu-button"
                   onClick={() => {
                     setIsSpacesExportMenuOpen(false);
@@ -1477,6 +1483,7 @@ const SpacesPanel = ({
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className="spaces-header-export-menu-button"
                   {...tip('Exports base PDF pages only; app annotations are not embedded.', 'below')}
                   onClick={() => {
