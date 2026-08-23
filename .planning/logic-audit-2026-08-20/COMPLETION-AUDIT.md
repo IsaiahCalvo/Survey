@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-22 E-03 selected-annotation move):** named leftover after V-01 named toolbar Pan. Live `e2e-annotation-move.spec.mjs` **2 / 2 (13.1s)**. Node **15 / 15**. No product bug. Receipt `fix-logs/annotation-move-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-23 E-01 single-click rect bbox resize):** named leftover after E-03 selected-annotation move. Live `e2e-annotation-resize.spec.mjs` **2 / 2 (12.7s)**. Node **15 / 15**. No product bug. Receipt `fix-logs/annotation-resize-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-22 E-03 selected-annotation move):** named leftover after V-01 named toolbar Pan. Live `e2e-annotation-move.spec.mjs` **2 / 2 (13.1s)**. Node **15 / 15**. No product bug. Receipt `fix-logs/annotation-move-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-22 V-01 named toolbar Pan):** named leftover after Spacebar temporary pan. Live `e2e-named-toolbar-pan.spec.mjs` **2 / 2 (9.1s)**. Node **15 / 15**. No product bug. Receipt `fix-logs/named-toolbar-pan-2026-08-22.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
