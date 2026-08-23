@@ -27,7 +27,7 @@ test('DEV unplacedRows fixture seeds mixed + batch without stamping file.id', ()
   assert.match(fixture, /import\.meta\.env\.DEV/);
   assert.match(fixture, /unplacedRows/);
   assert.match(fixture, /mode === 'mixed'/);
-  assert.match(fixture, /mode === 'batch'/);
+  assert.match(fixture, /mode !== 'mixed' && mode !== 'batch'/);
   assert.match(fixture, /itemName: 'Door D-114'/);
   assert.match(fixture, /reason: 'ambiguous-identity'/);
   assert.match(fixture, /Array\.from\(\{ length: 12 \}/);
