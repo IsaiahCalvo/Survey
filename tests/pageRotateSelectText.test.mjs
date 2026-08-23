@@ -37,12 +37,13 @@ test('CW rewrite peeks swapped 792×612; text layer viewport uses page.rotate', 
   assert.equal(resolveTextLayerScale(0, 792, 1.25), 1.25);
 
   const layer = read('src/components/PdfjsTextLayer.jsx');
-  assert.match(layer, /closest\('\.survey-pdfjs-page-div'\)/);
+  assert.match(layer, /survey-pdfjs-page-div\[data-page-number=/);
+  assert.match(layer, /inset = 'auto'/);
   assert.match(layer, /resolveTextLayerRotation/);
   assert.match(layer, /resolveTextLayerScale/);
   assert.match(layer, /el\.style\.setProperty\('--scale-factor', String\(viewport\.scale\)\)/);
-  assert.match(layer, /el\.style\.width = `\$\{Math\.floor\(viewport\.width\)\}px`/);
-  assert.match(layer, /el\.style\.height = `\$\{Math\.floor\(viewport\.height\)\}px`/);
+  assert.match(layer, /el\.style\.width = `\$\{Math\.floor\(hostWidth \|\| viewport\.width\)\}px`/);
+  assert.match(layer, /el\.style\.height = `\$\{Math\.floor\(hostHeight \|\| viewport\.height\)\}px`/);
   assert.match(layer, /never pageSize \* scale/);
   assert.match(layer, /\[pdf, pageNumber, scale, rotation\]/);
   assert.match(layer, /user-select: text/);

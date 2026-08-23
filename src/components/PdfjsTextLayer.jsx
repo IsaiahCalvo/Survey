@@ -176,7 +176,8 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
         if (cancelled || !ref.current) return;
         const textContent = await page.getTextContent();
         if (cancelled || !ref.current) return;
-        const host = el.closest('.survey-pdfjs-page-div');
+        const host = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
+          || el.closest('.survey-pdfjs-page-div');
         const hostWidth = Number(host?.offsetWidth) || 0;
         const hostHeight = Number(host?.offsetHeight) || 0;
         const intrinsic = page.getViewport({ scale: 1, rotation: page.rotate + rotation });
@@ -194,10 +195,22 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
         el.innerHTML = '';
         // pdf.js positions glyphs using this CSS var; it must equal viewport.scale.
         el.style.setProperty('--scale-factor', String(viewport.scale));
-        el.style.width = `${Math.floor(viewport.width)}px`;
-        el.style.height = `${Math.floor(viewport.height)}px`;
+        // inset:0 would lock the layer to a leftover portrait overlay parent
+        // after CW. Pin top-left and use the live host box instead.
+        el.style.inset = 'auto';
+        el.style.top = '0';
+        el.style.left = '0';
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+        el.style.width = `${Math.floor(hostWidth || viewport.width)}px`;
+        el.style.height = `${Math.floor(hostHeight || viewport.height)}px`;
         task = new pdfjsLib.TextLayer({ textContentSource: textContent, container: el, viewport });
         await task.render();
+        if (hostWidth > 8 && hostHeight > 8) {
+          el.style.inset = 'auto';
+          el.style.width = `${Math.floor(hostWidth)}px`;
+          el.style.height = `${Math.floor(hostHeight)}px`;
+        }
       } catch { /* cancelled or unsupported render — ignore */ }
     })();
     return () => { cancelled = true; try { task?.cancel?.(); } catch { /* noop */ } };
