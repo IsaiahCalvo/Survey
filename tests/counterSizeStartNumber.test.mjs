@@ -21,6 +21,21 @@ test('AppShell Counter Size uses COUNTER_SIZE 4–76 and Start locks after a sec
   assert.match(shell, /replace\(\/\[\^0-9\]\/g, ''\)/);
 });
 
+test('Counter Start Escape restores the pre-edit value and skips blur commit', () => {
+  const shell = read('src/AppShell.jsx');
+  assert.match(shell, /function CounterStartNumberField/);
+  assert.match(shell, /skipCommitRef/);
+  assert.match(shell, /valueAtFocusRef/);
+  assert.match(shell, /if \(event\.key === 'Escape'\)/);
+  assert.match(shell, /skipCommitRef\.current = true/);
+  assert.match(shell, /event\.currentTarget\.value = valueAtFocusRef\.current \|\| committed/);
+  assert.match(
+    shell,
+    /if \(skipCommitRef\.current\) \{\s*skipCommitRef\.current = false;\s*return;/s,
+  );
+  assert.match(shell, /if \(event\.key === 'Enter'\)/);
+});
+
 test('viewer patches selected counter radius + seriesStart; size catalog is not Width', () => {
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /const handleSelectedCounterSeriesStartChange = useCallback\(\(value\) => \{/);
