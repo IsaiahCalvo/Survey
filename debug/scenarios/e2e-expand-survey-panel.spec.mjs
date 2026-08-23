@@ -209,6 +209,10 @@ test('desktop Expand Survey panel intended + break + edge', async ({ page }) => 
   await expect(expandBtn(page), 'Collapse click must restore Expand Survey').toBeVisible({ timeout: 8_000 });
   expect(await collapseBtn(page).count(), 'Collapse gone after collapse').toBe(0);
   expect(await page.getByRole('heading', { name: 'Choose survey template' }).count()).toBe(0);
+  await expect.poll(async () => (await railMetrics(page)).panel, {
+    timeout: 5_000,
+    message: 'collapsed survey panel is 48 again',
+  }).toBe(48);
   const collapsedAgain = await railMetrics(page);
   expect(collapsedAgain.panel, 'collapsed survey panel is 48 again').toBe(48);
 
