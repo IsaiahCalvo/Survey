@@ -2123,6 +2123,7 @@ export default function TemplatesEditor({
                     type="button"
                     onClick={addModule}
                     title="New module"
+                    aria-label="New module"
                     style={{
                       marginLeft: 4, marginBottom: 2,
                       background: 'transparent',
