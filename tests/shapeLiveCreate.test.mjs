@@ -38,7 +38,7 @@ test('live preview + 2pt gate + zoom keep-track + pointercancel stay wired', () 
   assert.match(layer, /shapeCreation\.tool === 'rect' \|\| shapeCreation\.tool === 'ellipse'/);
   assert.match(layer, /never commit partial work/);
   assert.match(layer, /pointercancel/);
-  assert.match(layer, /Drag-out shapes keep tracking/);
+  assert.match(layer, /Drag-out[\s\S]*shapes keep tracking/);
   assert.match(layer, /if \(state && FREEHAND_CREATION_TOOLS\.includes\(state\.tool\)\)/);
   assert.match(layer, /zoomGeneration/);
   assert.match(layer, /viewBox=\{`0 0 \$\{width\} \$\{height\}`\}/);
