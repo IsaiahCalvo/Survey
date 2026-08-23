@@ -17,11 +17,12 @@ test('Projects Add files / New project are type=button; Search projects is named
   const shell = read('src/home/HubShell.jsx');
   assert.match(tree, /type="button"[\s\S]*className="btn primary projects-desktop-create-button"/);
   assert.match(tree, /type="button"[\s\S]*className="btn primary projects-mobile-create-button/);
-  const addFiles = [...tree.matchAll(/<button([^>]*)>[\s\S]*?Add files/g)].map((m) => m[1]);
+  const addFiles = tree.match(/<button[^>]*>[\s\S]{0,80}Add files<\/button>/g) || [];
   assert.ok(addFiles.length >= 4);
-  for (const attrs of addFiles) {
-    assert.match(attrs, /type="button"/);
+  for (const tag of addFiles) {
+    assert.match(tag, /type="button"/);
   }
+  assert.equal(tree.match(/<button(?![^>]*type="button")[^>]*>[\s\S]{0,80}Add files/), null);
   const search = shell.slice(shell.indexOf('export const Search'), shell.indexOf('export const EmptyState'));
   assert.match(search, /placeholder=\{placeholder\}/);
   assert.match(search, /aria-label=\{placeholder\}/);
