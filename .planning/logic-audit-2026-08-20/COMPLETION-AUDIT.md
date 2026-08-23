@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-23 E-02 leftover Shift+45° `mtr` snap):** named leftover after V-04 Ctrl+wheel. Live `e2e-rotation-shift-snap.spec.mjs` **2 / 2 (12.8s)**. Node **15 / 15**. No product bug. Followup-2 only sampled 44→45 / far 23°. Group-rotate 15° not live. Receipt `fix-logs/rotation-shift-snap-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-23 E-02 leftover pill Arrow ±1 / Shift+Arrow ±45):** named leftover after Shift+45° `mtr` snap. Live `e2e-rotation-input-arrow.spec.mjs` **2 / 2 (10.0s)**. Node **15 / 15**. No product bug. Followup-2 only sampled 0→1 / 1→46. P1-32 hold-arrow coalescing not replayed. Receipt `fix-logs/rotation-input-arrow-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-23 E-02 leftover Shift+45° `mtr` snap):** named leftover after V-04 Ctrl+wheel. Live `e2e-rotation-shift-snap.spec.mjs` **2 / 2 (12.8s)**. Node **15 / 15**. No product bug. Followup-2 only sampled 44→45 / far 23°. Group-rotate 15° not live. Receipt `fix-logs/rotation-shift-snap-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-23 V-04 leftover Ctrl+wheel cursor zoom):** named leftover after Fit page + Ctrl+0. Live `e2e-ctrl-wheel-zoom.spec.mjs` **2 / 2 (14.1s)**. Node **15 / 15**. No product bug. Tab reorder has no real two-PDF-tab path (HubPreview `location.assign`; Dashboard Upload stamps `file.id`). Receipt `fix-logs/ctrl-wheel-zoom-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
