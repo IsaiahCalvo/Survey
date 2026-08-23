@@ -651,18 +651,30 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   }, [bottomToolbarApi?.activeTool]);
 
-  // Formatting popovers share one exclusive layer. Capture-phase dismissal
-  // runs before trigger buttons stop propagation, so opening one control
-  // reliably closes every peer and clicking the page closes them all.
+  // Formatting popovers share one exclusive layer. Capture-phase pointerdown
+  // runs before trigger buttons stop propagation AND before the page layer
+  // preventDefaults pointerdown (which suppresses the compatibility mousedown
+  // this used to wait on — Style / Width stayed open after a page click while
+  // Rectangle was armed). Opening one control still closes every peer; a page
+  // click closes them all. Consume page-surface dismiss so it does not start a
+  // rubber-band (same contract as CompactColorPicker's DismissBarrier).
   useEffect(() => {
     const onDown = (event) => {
       const target = event.target;
       const inside = (selector) => !!target?.closest?.(selector);
       const insideDropdown = inside('[data-annotation-size-control], [data-annotation-size-popover], .annotation-dropdown, [data-annotation-dropdown-popover], [data-counter-series-context-menu]');
+      const insideColor = inside('[data-annotation-color-trigger], [data-annotation-color-picker]');
+      const insideFontColor = inside('[data-font-color-picker]');
+      const onPageSurface = inside('[data-svg-annotation-layer]')
+        || inside('.survey-pdfjs-page-div')
+        || inside('.textLayer');
+      const closedDropdown = !insideDropdown && !!openAnnotationDropdown;
+      const closedColor = !insideColor && !!bottomToolbarApi?.showAnnotationColorPicker;
+      const closedFontColor = !insideFontColor && showFontColorPicker;
       if (!insideDropdown) {
         setOpenAnnotationDropdown(null);
       }
-      if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker]')) {
+      if (!insideColor) {
         bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
       }
       if (!insideDropdown && !inside('[data-counter-series-menu], [data-counter-series-context-menu]')) {
@@ -672,14 +684,23 @@ export default function App({ devPreviewReturnTab = null }) {
       if (!insideDropdown && !inside('[data-style-menu]')) setShowStyleMenu(false);
       if (!insideDropdown && !inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
       if (!insideDropdown && !inside('[data-eraser-type-menu]')) setShowEraserTypeMenu(false);
-      if (!inside('[data-font-color-picker]')) setShowFontColorPicker(false);
+      if (!insideFontColor) setShowFontColorPicker(false);
       if (!insideDropdown && !inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
       if (!insideDropdown && !inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
       if (!insideDropdown && !inside('[data-align-grid]')) setShowAlignGrid(false);
+      if (onPageSurface && (closedDropdown || closedColor || closedFontColor)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     };
-    document.addEventListener('mousedown', onDown, true);
-    return () => document.removeEventListener('mousedown', onDown, true);
-  }, [bottomToolbarApi?.setShowAnnotationColorPicker]);
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [
+    bottomToolbarApi?.setShowAnnotationColorPicker,
+    bottomToolbarApi?.showAnnotationColorPicker,
+    openAnnotationDropdown,
+    showFontColorPicker,
+  ]);
 
   // Keyboard/tool-driven selection changes do not necessarily produce a page
   // click. Treat any context change as leaving the previous popover layer.
