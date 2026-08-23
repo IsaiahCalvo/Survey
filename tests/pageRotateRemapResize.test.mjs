@@ -156,6 +156,35 @@ test('clampHandleToPage pulls remapped 90deg mt/tl/tr/ml/bl onto the 792 page', 
   }
 });
 
+test('placeRotationHandle at 180deg keeps world mtr on the 612 page without flipping', () => {
+  // After first remapped mtr 90→180 the stem is local-above (y < 0) while
+  // overlay rotate(180) maps that to world-below. World is already on the
+  // 612 page — Playwright boundingBox can still report x≈−516. Do not flip
+  // to the opposite side (that jumps rotate math by 180).
+  const bbox = { left: 648.17, top: -8.41, width: 135.42, height: 152.24, angle: 180 };
+  const cx = bbox.left + bbox.width / 2;
+  const cy = bbox.top + bbox.height / 2;
+  const unclamped = placeRotationHandle(bbox, { padding: 2, rotationOffset: 36 });
+  const worldUnclamped = worldOf(unclamped, bbox);
+  assert.ok(unclamped.y < 0, 'default 180deg stem must sit local-above the viewBox');
+  assert.ok(worldUnclamped.y > 16 && worldUnclamped.y < 612 - 16, '180deg world stem is already on the 612 page');
+  assert.ok(worldUnclamped.y > cy + 4, '180deg world stem must sit on the +y (180deg) ray');
+  assert.ok(Math.abs(worldUnclamped.x - cx) < 1);
+
+  const placed = placeRotationHandle(bbox, {
+    padding: 2,
+    rotationOffset: 36,
+    pageWidth: 792,
+    pageHeight: 612,
+    inset: 16,
+  });
+  const world = worldOf(placed, bbox);
+  assert.ok(world.x >= 16 - 1e-6 && world.x <= 792 - 16 + 1e-6, 'clamped 180deg mtr x on-page');
+  assert.ok(world.y >= 16 - 1e-6 && world.y <= 612 - 16 + 1e-6, 'clamped 180deg mtr y on-page');
+  assert.ok(world.y > cy + 4, 'clamped 180deg mtr must stay on the +y ray — no flip');
+  assert.ok(Math.abs(world.x - cx) < 1, 'clamped 180deg mtr must not leave the 180deg ray');
+});
+
 test('separateRotationHandle keeps remapped mtr off the mt pill', () => {
   const bbox = { left: 648.17, top: -8.41, width: 135.42, height: 152.24, angle: 90 };
   const raw = getHandlePositions(bbox, 2);
@@ -267,7 +296,10 @@ test('live spec covers remapped-page br\/mtr, remapped mt, collapse, flip, undo-
   assert.match(spec, /post-rotate br must grow size in swapped viewBox/);
   assert.match(spec, /mtr on the remapped page updates angle/);
   assert.match(spec, /post-rotate mtr must update angle/);
+  assert.match(spec, /desktop remapped-page mtr at object 180 after CW/);
   assert.match(spec, /mtr knob must stay inside the remapped page/);
+  assert.match(spec, /180deg mtr must stay hittable/);
+  assert.match(spec, /getScreenCTM/);
   assert.match(spec, /post-rotate mt must grow size in swapped viewBox/);
   assert.match(spec, /mt knob must stay inside the remapped page/);
   assert.doesNotMatch(spec, /MTR_OPTIONAL_SKIP/);

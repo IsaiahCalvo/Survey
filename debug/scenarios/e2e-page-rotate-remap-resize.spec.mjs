@@ -360,6 +360,33 @@ async function handleScreenCenter(page, attr) {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2, box };
 }
 
+async function mtrScreenFromCtm(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('[data-svg-annotation-layer="1"]');
+    const el = svg?.querySelector('circle[data-rotation-handle="mtr"]');
+    if (!svg || !el) return null;
+    const ctm = el.getScreenCTM();
+    const pt = svg.createSVGPoint();
+    pt.x = Number(el.getAttribute('cx'));
+    pt.y = Number(el.getAttribute('cy'));
+    const screen = ctm ? pt.matrixTransform(ctm) : null;
+    const box = el.getBoundingClientRect();
+    const hitX = screen?.x ?? (box.x + box.width / 2);
+    const hitY = screen?.y ?? (box.y + box.height / 2);
+    const hit = document.elementFromPoint(hitX, hitY);
+    return {
+      local: { x: pt.x, y: pt.y },
+      screen: screen ? { x: screen.x, y: screen.y } : null,
+      box: { x: box.x, y: box.y, width: box.width, height: box.height },
+      hit: {
+        tag: hit?.tagName || null,
+        rotate: hit?.closest?.('[data-rotation-handle]')?.getAttribute('data-rotation-handle') || null,
+        resize: hit?.getAttribute?.('data-resize-handle') || null,
+      },
+    };
+  });
+}
+
 function handleOnPage(handle, pageRect, slop = 8) {
   return handle
     && handle.x > pageRect.x - 4
@@ -430,11 +457,14 @@ async function closePagesPanel(page) {
   }
 }
 
-async function dragMtrToAngle(page, id, deg, { shift = false, requireOnPage = false } = {}) {
+async function dragMtrToAngle(page, id, deg, { shift = false, requireOnPage = false, preferCtm = false } = {}) {
   const hit = await annoHitBox(page, id);
   const cx = hit.x + hit.width / 2;
   const cy = hit.y + hit.height / 2;
-  const handle = await handleScreenCenter(page, 'data-rotation-handle="mtr"');
+  const ctm = preferCtm ? await mtrScreenFromCtm(page) : null;
+  const handle = (ctm?.screen)
+    ? { x: ctm.screen.x, y: ctm.screen.y, box: ctm.box, local: ctm.local, ctmHit: ctm.hit }
+    : await handleScreenCenter(page, 'data-rotation-handle="mtr"');
   const pageRect = await pageBox(page);
   if (requireOnPage) {
     // Knob center must not sit tens of px past the viewBox (the pre-fix
@@ -448,6 +478,7 @@ async function dragMtrToAngle(page, id, deg, { shift = false, requireOnPage = fa
     handle,
     pageRect,
     requireOnPage,
+    preferCtm,
     dxRight: (pageRect.x + pageRect.width) - handle.x,
     dyBottom: (pageRect.y + pageRect.height) - handle.y,
   }));
@@ -464,13 +495,14 @@ async function dragMtrToAngle(page, id, deg, { shift = false, requireOnPage = fa
       resize: el?.getAttribute?.('data-resize-handle') || null,
     };
   }, { x: handle.x, y: handle.y });
-  console.log('MTR_HIT', JSON.stringify({ handle, end, shift, hitEl }));
+  console.log('MTR_HIT', JSON.stringify({ handle, end, shift, hitEl, ctm }));
   if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 1 });
   await page.mouse.up();
   if (shift) await page.keyboard.up('Shift');
+  return { handle, hitEl, ctm, pageRect };
 }
 
 function pagesMenu(page) {
@@ -758,6 +790,115 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
     collapseVw: postBr.vw,
     collapseVh: postBr.vh,
     flip: { left: postBr.left, top: postBr.top, vw: postBr.vw },
+    viewBox: '0 0 792 612',
+    fileId: null,
+  }));
+});
+
+test('desktop remapped-page mtr at object 180 after CW', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openEditor(page);
+  await dismissChrome(page);
+  await assertNoErrorBoundary(page);
+
+  expect((await userOwned(page)).length, 'fresh editor must have 0 user marks').toBe(0);
+  expect(await pageViewBox(page)).toBe('0 0 612 792');
+
+  const created = await createRect(page, RECT_BOX);
+  await dismissChrome(page);
+  expect(created?.id).toBeTruthy();
+  const createdGeom = await geom(page, created.id);
+  await selectUntilHandles(page, created.id, 8);
+  await dragResizeHandle(page, 'br', 180, 140);
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
+  }, { timeout: 8_000, message: `pre-rotate br must grow from ${createdGeom.vw}x${createdGeom.vh}` }).toBeTruthy();
+
+  await rotatePage(page, 1, 'cw');
+  await waitForEditorReady(page);
+  await dismissChrome(page);
+  await expect.poll(async () => geom(page, created.id), {
+    timeout: 20_000,
+    message: 'page rotate must keep the resized rect',
+  }).not.toBeNull();
+  const rotated = await geom(page, created.id);
+  expect(await pageViewBox(page), 'remapper must swap viewBox').toBe('0 0 792 612');
+  expect(Math.abs(rotated.angle - 90), 'remapper must set angle 90').toBeLessThan(1);
+
+  // Setup — first remapped mtr 90→180 (already receipted). This leftover is
+  // the 180° stem after that commit.
+  await selectUntilHandles(page, created.id, 8);
+  await dragMtrToAngle(page, created.id, 180, { requireOnPage: true });
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    if (!now) return false;
+    const angle = ((now.angle % 360) + 360) % 360;
+    return Math.abs(angle - 180) < 25;
+  }, { timeout: 8_000, message: 'setup mtr must reach ~180' }).toBeTruthy();
+  const at180 = await geom(page, created.id);
+  expect(onPage(at180, 792, 612), '180deg object must stay on-page').toBe(true);
+  expect(await pageViewBox(page)).toBe('0 0 792 612');
+
+  await selectUntilHandles(page, created.id, 8);
+  const pageRect = await pageBox(page);
+  const ctm = await mtrScreenFromCtm(page);
+  const boxHandle = await handleScreenCenter(page, 'data-rotation-handle="mtr"').catch(() => null);
+  console.log('MTR_180_PROBE', JSON.stringify({
+    at180,
+    pageRect,
+    ctm,
+    boxHandle,
+    viewBox: await pageViewBox(page),
+  }));
+  expect(ctm, '180deg mtr must expose a CTM screen point').toBeTruthy();
+  expect(ctm.screen, 'getScreenCTM must map local mtr to screen').toBeTruthy();
+  const ctmOnPage = ctm.screen.x > pageRect.x - 4
+    && ctm.screen.x < pageRect.x + pageRect.width + 8
+    && ctm.screen.y > pageRect.y - 4
+    && ctm.screen.y < pageRect.y + pageRect.height + 8;
+  expect(ctmOnPage, '180deg mtr must stay inside the remapped page (CTM, not boundingBox)').toBe(true);
+  expect(ctm.hit.rotate, '180deg mtr must stay hittable').toBe('mtr');
+
+  const preFurther = await geom(page, created.id);
+  await dragMtrToAngle(page, created.id, 225, { preferCtm: true, requireOnPage: true });
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    if (!now) return false;
+    const angle = ((now.angle % 360) + 360) % 360;
+    return Math.abs(angle - 225) < 30 || Math.abs(now.angle - preFurther.angle) > 8;
+  }, { timeout: 8_000, message: 'further mtr at object 180 must move angle' }).toBeTruthy();
+  const postFurther = await geom(page, created.id);
+  expect(Math.abs(postFurther.vw - preFurther.vw), 'further mtr must hold width').toBeLessThan(6);
+  expect(Math.abs(postFurther.vh - preFurther.vh), 'further mtr must hold height').toBeLessThan(6);
+  expect(onPage(postFurther, 792, 612), 'further mtr must stay on-page').toBe(true);
+  expect(await pageViewBox(page)).toBe('0 0 792 612');
+
+  await blurInputs(page);
+  const undoBtn = page.getByRole('button', { name: 'Undo', exact: true });
+  await expect(undoBtn).toBeEnabled();
+  for (let step = 0; step < 3; step += 1) {
+    const now = await geom(page, created.id);
+    if (now && Math.abs(now.angle - preFurther.angle) < 4) break;
+    if (!(await undoBtn.isEnabled())) break;
+    await undoBtn.click();
+    console.log('POST_180_MTR_UNDO', JSON.stringify({ step, preFurther, now: await geom(page, created.id) }));
+  }
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now && Math.abs(now.angle - preFurther.angle) < 4;
+  }, { timeout: 8_000, message: 'undo last 180deg mtr must restore 180, not the page rotate' }).toBeTruthy();
+  expect(await pageViewBox(page)).toBe('0 0 792 612');
+  expect(await fileId(page), 'must not stamp file.id').toBeNull();
+  await assertNoErrorBoundary(page);
+
+  console.log('PAGE_ROTATE_REMAP_MTR_180_PROOF', JSON.stringify({
+    rectId: created.id,
+    rotated: { left: rotated.left, top: rotated.top, angle: rotated.angle },
+    at180: { angle: at180.angle, vw: at180.vw, vh: at180.vh, local: ctm.local },
+    postFurther: { angle: postFurther.angle, vw: postFurther.vw, vh: postFurther.vh },
+    ctmOnPage,
+    boxX: boxHandle?.x ?? null,
     viewBox: '0 0 792 612',
     fileId: null,
   }));
