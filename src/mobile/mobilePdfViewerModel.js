@@ -15,7 +15,7 @@ const initialsOf = (value) => {
 };
 
 export const getMobileSyncPresentation = (status, queueSize = 0, enabled = true) => {
-  if (!enabled) return { state: 'unavailable', label: 'Cloud sync unavailable', color: '#687180' };
+  if (!enabled) return { state: 'unavailable', label: 'Cloud sync unavailable', compactMessage: '', color: '#687180' };
   const view = getSyncStatusViewModel(status, queueSize, false);
   return {
     ...view,

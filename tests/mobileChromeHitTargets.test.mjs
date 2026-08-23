@@ -15,7 +15,8 @@ test('mobile viewer More / history / sync / dock are distinct 390 hit targets', 
   assert.match(chrome, /Zoom out/);
   assert.match(chrome, /Zoom in/);
   assert.match(chrome, /disabled=\{!leftRailApi\?\.documentId\}/);
-  assert.match(chrome, /disabled=\{leftRailApi\?\.cloudSyncEnabled === false\}/);
+  assert.match(chrome, /leftRailApi\?\.cloudSyncEnabled === true/);
+  assert.match(chrome, /disabled=\{!leftRailApi\?\.cloudSyncEnabled\}/);
   assert.match(chrome, /aria-label="Open spaces"/);
   assert.match(chrome, /aria-label="Open pages, search, and bookmarks"/);
   assert.match(chrome, /aria-label="Open survey"/);

@@ -50,7 +50,11 @@ const mockAuthValue = {
   plan: 'developer',
   tier: 'developer',
   features: {
-    cloudSync: true,
+    // Entitlement-only chip visibility (`cloudSyncEnabled`) would otherwise
+    // mount a perpetual "Syncing… checking live collaboration" footer on a
+    // fixture with no file.id. Sidebar chip stays hidden (UL-44 / X-01).
+    // DevSyncChipPreview remains the explicit DEV host.
+    cloudSync: false,
     advancedSurvey: true,
     excelExport: true,
     sso: true,

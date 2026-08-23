@@ -339,6 +339,7 @@ test('UL-44/45: sync + presence hide when cloud off; offline shows Retry', () =>
   assert.equal(getSyncStatusViewModel({ stage: 'error' }, 2).state, 'offline');
   assert.match(getSyncStatusViewModel({ stage: 'error' }, 2).label, /2 saved locally/);
   assert.equal(getMobileSyncPresentation({}, 0, false).state, 'unavailable');
+  assert.equal(getMobileSyncPresentation({}, 0, false).compactMessage, '');
   const users = normalizeMobilePresence({
     presence: [
       { user_id: 'a', display_name: 'Ann', last_seen: '1' },

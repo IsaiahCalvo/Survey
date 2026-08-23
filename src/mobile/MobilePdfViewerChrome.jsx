@@ -1423,7 +1423,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const sync = useMemo(() => getMobileSyncPresentation(
     leftRailApi?.cloudSyncStatus,
     leftRailApi?.cloudSyncQueueSize,
-    leftRailApi?.cloudSyncEnabled !== false,
+    leftRailApi?.cloudSyncEnabled === true,
   ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled]);
 
   useEffect(() => {
@@ -1620,11 +1620,11 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               ref={syncButtonRef}
               type="button"
               className="mobile-pdf-tools__sync"
-              aria-label={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. ${sync.compactMessage}`}
+              aria-label={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : (sync.compactMessage ? `${sync.label}. ${sync.compactMessage}` : sync.label)}
               aria-expanded={sync.state !== 'synced' && syncDetailsOpen}
               aria-controls="mobile-sync-status-details"
               title={sync.state === 'synced' ? `${sync.label}. Tap to sync now.` : `${sync.label}. Tap for details.`}
-              disabled={leftRailApi?.cloudSyncEnabled === false}
+                  disabled={!leftRailApi?.cloudSyncEnabled}
               onClick={activateSyncStatus}
             >
               <span style={{ background: sync.color }} />
