@@ -697,6 +697,17 @@ function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
       if ('x' in data) data.x = next.x ?? next.left;
       if ('y' in data) data.y = next.y ?? next.top;
       data.angle = next.angle;
+      // Live line/arrow stores data.midpoint in pre-object-angle page
+      // space. Translate it with the bbox so object-angle (now +delta)
+      // still yields the displayed-space point. Do not independently
+      // rotateDisplayedPoint the midpoint — that would double-rotate.
+      if (data.midpoint && typeof data.midpoint === 'object' && !Array.isArray(data.midpoint)) {
+        data.midpoint = {
+          ...data.midpoint,
+          x: Number(data.midpoint.x) + (nextLeft - left),
+          y: Number(data.midpoint.y) + (nextTop - top),
+        };
+      }
       next.data = data;
     }
   }
