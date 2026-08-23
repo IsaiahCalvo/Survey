@@ -171,7 +171,7 @@ test('separateRotationHandle keeps remapped mtr off the mt pill', () => {
   assert.ok(world.x >= 16 - 1e-6 && world.x <= 792 - 16 + 1e-6, 'separated mtr stays on-page');
 });
 
-test('line/arrow/callout remapper does not invent endpoint or fraction remap', () => {
+test('line remapper does not invent endpoint remap (callout fractions are a sibling)', () => {
   const line = {
     type: 'line',
     left: 122.4,

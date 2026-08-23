@@ -288,10 +288,172 @@ export function rotateDisplayedPageSize(pageWidth, pageHeight, delta) {
   return { width: pageWidth, height: pageHeight };
 }
 
+function isCalloutLike(obj) {
+  const data = obj?.data;
+  if (data?.type === 'callout') return true;
+  if (data?.legacyCallout && typeof data.legacyCallout === 'object') return true;
+  if (data?.legacyNormalizedCoords && typeof data.legacyNormalizedCoords === 'object') return true;
+  if (obj?.arrowTip && obj?.knee && (obj?.textBoxPosition || obj?.textBox || obj?.label)) return true;
+  return false;
+}
+
+/** Map a 0-1 page-fraction point through a baked page rotate. */
+export function rotateNormalizedPoint(pt, pageWidth, pageHeight, delta) {
+  if (!pt || typeof pt !== 'object') return pt;
+  const nextSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
+  const rotated = rotateDisplayedPoint(
+    Number(pt.x) * pageWidth,
+    Number(pt.y) * pageHeight,
+    pageWidth,
+    pageHeight,
+    delta,
+  );
+  return { ...pt, x: rotated.x / nextSize.width, y: rotated.y / nextSize.height };
+}
+
+/**
+ * Visual-center contract for a 0-1 callout box: remap the pixel center,
+ * keep pixel width/height (same as rect), re-express as fractions of the
+ * swapped page. Callout SVG stays axis-aligned (no angle field).
+ */
+export function rotateNormalizedBox(pos, wFrac, hFrac, pageWidth, pageHeight, delta) {
+  const nextSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
+  const pw = Number(wFrac) * pageWidth;
+  const ph = Number(hFrac) * pageHeight;
+  const cx = Number(pos?.x ?? 0) * pageWidth + pw / 2;
+  const cy = Number(pos?.y ?? 0) * pageHeight + ph / 2;
+  const rotated = rotateDisplayedPoint(cx, cy, pageWidth, pageHeight, delta);
+  return {
+    x: (rotated.x - pw / 2) / nextSize.width,
+    y: (rotated.y - ph / 2) / nextSize.height,
+    width: pw / nextSize.width,
+    height: ph / nextSize.height,
+  };
+}
+
+function readCalloutBox(callout) {
+  if (callout.textBoxPosition) {
+    return {
+      x: Number(callout.textBoxPosition.x ?? 0),
+      y: Number(callout.textBoxPosition.y ?? 0),
+      width: Number(callout.textBoxWidth ?? callout.textBox?.width ?? 0.1),
+      height: Number(callout.textBoxHeight ?? callout.textBox?.height ?? 0.05),
+    };
+  }
+  if (callout.textBox) {
+    return {
+      x: Number(callout.textBox.x ?? 0),
+      y: Number(callout.textBox.y ?? 0),
+      width: Number(callout.textBox.width ?? callout.textBoxWidth ?? 0.1),
+      height: Number(callout.textBox.height ?? callout.textBoxHeight ?? 0.05),
+    };
+  }
+  if (callout.label) {
+    return {
+      x: Number(callout.label.left ?? 0),
+      y: Number(callout.label.top ?? 0),
+      width: Number(callout.label.width ?? 0.1),
+      height: Number(callout.label.height ?? 0.05),
+    };
+  }
+  return null;
+}
+
+export function rotateCalloutFractions(callout, pageWidth, pageHeight, delta) {
+  if (!callout || typeof callout !== 'object') return callout;
+  const next = { ...callout };
+  if (next.arrowTip) next.arrowTip = rotateNormalizedPoint(next.arrowTip, pageWidth, pageHeight, delta);
+  if (next.anchor) next.anchor = rotateNormalizedPoint(next.anchor, pageWidth, pageHeight, delta);
+  if (next.knee) next.knee = rotateNormalizedPoint(next.knee, pageWidth, pageHeight, delta);
+  const box = readCalloutBox(next);
+  if (box) {
+    const rotated = rotateNormalizedBox(box, box.width, box.height, pageWidth, pageHeight, delta);
+    if (next.textBoxPosition) next.textBoxPosition = { ...next.textBoxPosition, x: rotated.x, y: rotated.y };
+    if (next.textBoxWidth != null) next.textBoxWidth = rotated.width;
+    if (next.textBoxHeight != null) next.textBoxHeight = rotated.height;
+    if (next.textBox) {
+      next.textBox = { ...next.textBox, x: rotated.x, y: rotated.y, width: rotated.width, height: rotated.height };
+    }
+    if (next.label) {
+      next.label = { ...next.label, left: rotated.x, top: rotated.y, width: rotated.width, height: rotated.height };
+    }
+  }
+  return next;
+}
+
+function calloutPixels(callout, pageWidth, pageHeight) {
+  const at = callout?.arrowTip || callout?.anchor || {};
+  const kn = callout?.knee || {};
+  const box = readCalloutBox(callout) || { x: 0, y: 0, width: 0.1, height: 0.05 };
+  const atX = Number(at.x ?? 0) * pageWidth;
+  const atY = Number(at.y ?? 0) * pageHeight;
+  const knX = Number(kn.x ?? 0) * pageWidth;
+  const knY = Number(kn.y ?? 0) * pageHeight;
+  const tbX = box.x * pageWidth;
+  const tbY = box.y * pageHeight;
+  const tbW = Math.max(1, box.width * pageWidth);
+  const tbH = Math.max(1, box.height * pageHeight);
+  return { atX, atY, knX, knY, tbX, tbY, tbW, tbH };
+}
+
+function rebuildCalloutChildren(objects, callout, pageWidth, pageHeight) {
+  const { atX, atY, knX, knY, tbX, tbY, tbW, tbH } = calloutPixels(callout, pageWidth, pageHeight);
+  return (Array.isArray(objects) ? objects : []).map((child) => {
+    const part = child?.data?.calloutPart;
+    if (part === 'line1') return { ...child, x1: tbX + tbW / 2, y1: tbY + tbH / 2, x2: knX, y2: knY };
+    if (part === 'line2') return { ...child, x1: knX, y1: knY, x2: atX, y2: atY };
+    if (part === 'arrowTip') return { ...child, left: atX - 3, top: atY - 3 };
+    if (part === 'textBox' || part === 'text' || child?.type === 'textbox') {
+      return { ...child, left: tbX, top: tbY, width: tbW, height: tbH };
+    }
+    return child;
+  });
+}
+
+function rotateCalloutObject(obj, pageWidth, pageHeight, delta) {
+  const nextSize = rotateDisplayedPageSize(pageWidth, pageHeight, delta);
+  let next = { ...obj };
+  if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
+    const data = { ...next.data };
+    if (data.legacyCallout && typeof data.legacyCallout === 'object') {
+      data.legacyCallout = rotateCalloutFractions(data.legacyCallout, pageWidth, pageHeight, delta);
+    }
+    if (data.legacyNormalizedCoords && typeof data.legacyNormalizedCoords === 'object') {
+      data.legacyNormalizedCoords = rotateCalloutFractions(
+        data.legacyNormalizedCoords,
+        pageWidth,
+        pageHeight,
+        delta,
+      );
+    }
+    next.data = data;
+  }
+  if (next.arrowTip || next.knee || next.textBoxPosition || next.textBox || next.anchor || next.label) {
+    next = { ...next, ...rotateCalloutFractions(next, pageWidth, pageHeight, delta) };
+  }
+  const source = next.data?.legacyCallout || next;
+  if (Array.isArray(next.objects)) {
+    next.objects = rebuildCalloutChildren(next.objects, source, nextSize.width, nextSize.height);
+  }
+  const { atX, atY, knX, knY, tbX, tbY, tbW, tbH } = calloutPixels(source, nextSize.width, nextSize.height);
+  const groupLeft = Math.min(tbX, knX, atX);
+  const groupTop = Math.min(tbY, knY, atY);
+  const groupRight = Math.max(tbX + tbW, knX, atX);
+  const groupBottom = Math.max(tbY + tbH, knY, atY);
+  next.left = groupLeft;
+  next.top = groupTop;
+  next.width = groupRight - groupLeft;
+  next.height = groupBottom - groupTop;
+  if ('x' in obj) next.x = groupLeft;
+  if ('y' in obj) next.y = groupTop;
+  return next;
+}
+
 function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const turns = normalizeRotationDelta(delta);
   if (turns === 0) return obj;
+  if (isCalloutLike(obj)) return rotateCalloutObject(obj, pageWidth, pageHeight, delta);
   const next = { ...obj };
   const hasBox = ['left', 'top', 'width', 'height', 'x', 'y'].some((key) => (
     Number.isFinite(Number(obj[key]))
