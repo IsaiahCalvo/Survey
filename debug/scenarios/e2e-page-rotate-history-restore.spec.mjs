@@ -262,15 +262,14 @@ async function createRect(page, coords = RECT_BOX) {
 }
 
 async function selectMode(page) {
+  await dismissChrome(page);
   await blurInputs(page);
-  const selectBtn = page.getByRole('button', { name: 'Select', exact: true });
+  const editorSelect = toolButtons(page, 'Select');
   let clicked = false;
-  const count = await selectBtn.count();
+  const count = await editorSelect.count();
   for (let i = 0; i < count; i += 1) {
-    const button = selectBtn.nth(i);
+    const button = editorSelect.nth(i);
     if (!(await button.isVisible().catch(() => false))) continue;
-    const cls = String(await button.getAttribute('class') || '');
-    if (cls.includes('mobile-header-select-button')) continue;
     await button.click({ timeout: 4_000 }).catch(() => {});
     clicked = true;
     break;
@@ -285,16 +284,35 @@ async function strokeClick(page, id) {
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
   expect(box, `bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + 2, box.y + Math.max(2, box.height / 2));
+  const points = [
+    { x: box.x + Math.min(6, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + 2, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    if (await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count()) return;
+  }
+  await expect(
+    page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').first(),
+    `expected resize/rotate handles after selecting ${id}`,
+  ).toBeVisible();
 }
 
 async function deleteSelected(page, id) {
+  await dismissChrome(page);
   await selectMode(page);
   await strokeClick(page, id);
+  await expect.poll(async () => {
+    const selected = await page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
+    const handles = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
+    return selected.includes(id) || handles > 0;
+  }, { message: `${id} must be selected before Delete` }).toBeTruthy();
   await blurInputs(page);
-  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Delete');
+  if ((await userIds(page)).includes(id)) await page.keyboard.press('Backspace');
   await expect.poll(async () => (await userIds(page)).includes(id), {
-    message: `Backspace must remove ${id} so Restore can run`,
+    message: `Delete must remove ${id} so Restore can run`,
   }).toBeFalsy();
 }
 
