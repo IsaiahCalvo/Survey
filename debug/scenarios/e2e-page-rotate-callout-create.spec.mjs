@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 
 // Create a callout AFTER the page is already CW-rotated (viewBox 0 0 792 612).
 // 52d001fd / e2e-page-rotate-create proved rect+pen via screenToSVG.
-// Callout stores 0–1 fractions of the current page (120/W × 32/H). Distinct
-// from leftover-18 / X-01 / remapped rect/callout/ink/counter/survey-marker/
-// midpoint / remapped mt/mtr/br / remapped-page export / rect+pen create.
-// Do not stamp file.id.
+// Callout stores 0–1 fractions of the current page (120/W × 32/H).
+// Distinct from leftover-18 / X-01 / remapped rect/callout/ink/counter/
+// survey-marker/midpoint / remapped mt/mtr/br / remapped-page export /
+// rect+pen create. Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
