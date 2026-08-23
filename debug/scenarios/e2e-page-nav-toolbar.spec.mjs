@@ -228,8 +228,8 @@ test('desktop rail Previous/Next page click intended + break + edge', async ({ p
   expect(hunt.note, 'Note/Link create compile-hidden').toBe(0);
   expect(hunt.marqueeZoom, 'Marquee zoom compile-hidden').toBe(0);
 
-  await page.getByRole('button', { name: 'Search', exact: true }).first().click();
-  await expect(page.getByRole('textbox', { name: /search|find/i }).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Search text', exact: true }).first().click();
+  await expect(page.getByPlaceholder(/Search text/i).first()).toBeVisible({ timeout: 15_000 });
   expect(await page.getByRole('button', { name: /match case/i }).count(), 'opened Search still has no Match case').toBe(0);
   expect(await page.getByRole('button', { name: /whole word/i }).count(), 'opened Search still has no Whole word').toBe(0);
 

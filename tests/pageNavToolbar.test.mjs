@@ -33,8 +33,9 @@ test('AppShell rail Previous/Next calls goToPreviousPage/goToNextPage and disabl
 test('keyboard leftover stays Arrow/Home/End; overlay omits rail labels', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /Previous\/Next page/);
-  assert.doesNotMatch(overlay, /Previous page/);
-  assert.doesNotMatch(overlay, /Next page/);
+  assert.doesNotMatch(overlay, /aria-label="Previous page"/);
+  assert.doesNotMatch(overlay, /description: 'Previous page'/);
+  assert.doesNotMatch(overlay, /description: 'Next page'/);
 
   const keyboard = read('debug/scenarios/e2e-page-nav-keyboard.spec.mjs');
   assert.match(keyboard, /ArrowRight must move a page/);
