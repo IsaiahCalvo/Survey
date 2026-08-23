@@ -151,7 +151,10 @@ test('Projects rename Escape edge: 390 drill title + empty + testPdf', async ({ 
 
   await openPage(page, { url: TEST_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator('.projects-desktop-layout')).toHaveCount(0);
+  await expect(page.locator('.projects-mobile-title-input').locator('visible=true')).toHaveCount(0);
+  await expect(page.locator('input[title="Click to rename"]').locator('visible=true')).toHaveCount(0);
+  const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
+  expect(fileId).toBeNull();
   await assertNoErrorBoundary(page);
 
   console.log('HUB_PROJECTS_RENAME_ESCAPE_EDGE', JSON.stringify({
