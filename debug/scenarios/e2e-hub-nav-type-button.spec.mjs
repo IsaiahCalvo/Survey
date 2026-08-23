@@ -92,7 +92,7 @@ test('desktop hub nav is type=button + switches Documents/Projects/Templates/Arc
 
   await desktopNavButton(page, 'Archive').click();
   await expect(page.locator('h1.title')).toHaveText('Archive');
-  await expect(page.getByPlaceholder('Search archive...')).toBeVisible();
+  await expect(page.getByPlaceholder('Search archive...').first()).toBeVisible();
 
   await desktopNavButton(page, 'Documents').click();
   await expect(page.locator('h1.title')).toHaveText('Documents');
@@ -132,7 +132,7 @@ test('390 Home sections + editor break for hub nav type=button', async ({ page }
 
   await page.locator('.mobile-home-tabs').getByRole('button', { name: 'Templates', exact: true }).click();
   await expect(page.locator('h1.title')).toHaveText('Templates');
-  await expect(page.getByText('Security Walk-Through').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Security Walk-Through/ }).first()).toBeVisible();
 
   await page.locator('.mobile-home-tabs').getByRole('button', { name: 'Documents', exact: true }).click();
   await expect(page.locator('h1.title')).toHaveText('Documents');
