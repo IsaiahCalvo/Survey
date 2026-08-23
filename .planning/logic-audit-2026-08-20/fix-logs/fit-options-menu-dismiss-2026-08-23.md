@@ -6,7 +6,9 @@
 
 Unique leftover after Home-tab click (`3431364f`). Menu Fit height / Fit page / Fit width **apply** modes already dedicated. Ctrl+2 / Ctrl+M / Ctrl+0 / Ctrl+1 apply modes. V-09 is the shortcuts overlay Esc. This leftover is the Fit options **popup dismiss** (open / Escape / click-outside / Enter). Overlay lists Esc as Close dialogs/cancel.
 
-**Product:** desktop Fit options advertised `aria-haspopup="listbox"` but the popup was a plain div of buttons (no `role="listbox"` / `option`, no Arrow keys). 390 already uses a real listbox. Trigger + items now `type="button"`; `aria-haspopup="true"` so the control does not lie. Items stay buttons so existing apply-mode specs keep `getByRole('button', { name: 'Fit height' })`. Space stays the global temporary-pan chord (`isEditableTarget` is input/textarea/select only).
+**Product:**
+1. Desktop Fit options advertised `aria-haspopup="listbox"` but the popup was a plain div of buttons (no `role="listbox"` / `option`, no Arrow keys). 390 already uses a real listbox. Trigger + items now `type="button"`; `aria-haspopup="true"` so the control does not lie. Items stay buttons so existing apply-mode specs keep `getByRole('button', { name: 'Fit height' })`.
+2. Click-outside never closed the menu: PDFViewer listened for bubbling `mousedown`, but the page layer `preventDefault`s `pointerdown` and suppresses that mousedown. Listener is now capture `pointerdown`. Space stays the global temporary-pan chord (`isEditableTarget` is input/textarea/select only).
 
 Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another X-01 parking note. Did **not** pad FEATURE-MATRIX. Did **not** write a 103-ID refresh. Did **not** replay remapped-after-CW, Ctrl+2 / Ctrl+M, menu Fit height / Ctrl+0 / Ctrl+1, rail Previous/Next, keyboard letters, toolbar click-to-arm, or Home/Close tab.
 
@@ -29,7 +31,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 
 ## Live-proved
 
-Playwright `debug/scenarios/e2e-fit-options-menu-dismiss.spec.mjs` pending live on a fresh Vite port. Focused Node `fitOptionsMenuDismiss` + leftover18 **14 / 14**.
+Playwright `debug/scenarios/e2e-fit-options-menu-dismiss.spec.mjs` **2 / 2 (8.7s)** on Playwright Vite `http://127.0.0.1:5359`. Focused Node `fitOptionsMenuDismiss` + leftover18 **14 / 14**.
 
 | Slice | Intended / break / edge |
 |---|---|
@@ -42,7 +44,7 @@ Playwright `debug/scenarios/e2e-fit-options-menu-dismiss.spec.mjs` pending live 
 
 Hunt live counts: Match case / Whole word / Comments / Forms / Print / Actual size / Measure / Group / Extract / Note / Marquee zoom / Layers / Attachments **0**. `file.id` null.
 
-Product edit: `src/AppShell.jsx` Fit options trigger + menu items only (not a high-risk file). Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` not re-run (no high-risk touch). Cap **8448** / 75/250 not loosened. Isolated `partialEraserComplexity` 8448 standing.
+Product edits: `src/AppShell.jsx` Fit options trigger + menu items (`type="button"` / `aria-haspopup="true"`). `src/PDFViewer.jsx` zoom-menu dismiss only — capture `pointerdown` (high-risk min-viable-diff). Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` after PDFViewer: main files + isolated `annotationDocConcurrency` **103 / 103** + `partialEraseCurveLocality` **15 / 15** **0 fail**; isolated `partialEraserComplexity` **9 / 10** — only leftover `500 crossing cuts` **11961.37 MiB > 8448.00 MiB**. Cap **8448** / 75/250 not loosened. Isolated 8448 standing.
 
 ## Leftover-18
 
