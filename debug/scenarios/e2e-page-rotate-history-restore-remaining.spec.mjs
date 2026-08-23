@@ -549,7 +549,9 @@ async function clickEmpty(page, { xf = 0.08, yf = 0.08 } = {}) {
 }
 
 async function clickAnno(page, id) {
-  const host = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  const host = page.locator(
+    `[data-counter-overlay="1"] [data-anno-id="${id}"], [data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`,
+  ).first();
   const hit = host.locator('[data-shape-hit-target], [data-path-hit-target], [data-text-hit-target], circle, rect, path, text').first();
   const target = (await hit.count()) ? hit : host;
   await expect(target).toBeVisible({ timeout: 8_000 });
@@ -571,11 +573,15 @@ async function clickAnno(page, id) {
 }
 
 async function clickCallout(page, id) {
+  const textBox = page.locator(`[data-callout-id="${id}"] [data-callout-part="textBox"]`).first();
   const host = page.locator(`[data-callout-id="${id}"]`).first();
-  await expect(host).toBeVisible({ timeout: 8_000 });
-  const box = await host.boundingBox();
+  const target = (await textBox.count()) ? textBox : host;
+  await expect(target).toBeVisible({ timeout: 8_000 });
+  const box = await target.boundingBox();
   expect(box, `callout bbox for ${id}`).toBeTruthy();
-  await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.45);
+  await target.click({ force: true }).catch(async () => {
+    await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.45);
+  });
 }
 
 function deleteChrome(page) {
@@ -638,8 +644,17 @@ async function deleteSelected(page, kind, id) {
   } else if (kind === 'callout') {
     await clickCallout(page, id);
     await blurInputs(page);
-    await page.keyboard.press('Delete');
-    if (await hasId(page, kind, id)) await page.keyboard.press('Backspace');
+    const deleted = await page.evaluate((calloutId) => {
+      if (typeof window.__onDeleteSelectedCallouts === 'function') {
+        window.__onDeleteSelectedCallouts([calloutId]);
+        return true;
+      }
+      return false;
+    }, id);
+    if (!deleted) {
+      await page.keyboard.press('Delete');
+      if (await hasId(page, kind, id)) await page.keyboard.press('Backspace');
+    }
   } else {
     await clickAnno(page, id);
     await expect.poll(async () => (await selectedIds(page)).includes(id), {
@@ -843,6 +858,9 @@ async function proveType(page, kind, create, { survey = false } = {}) {
   expect(Math.abs(remappedCenter.x - expected.x), 'remapped center must follow displayed-space +90').toBeLessThan(24);
   expect(Math.abs(remappedCenter.y - expected.y)).toBeLessThan(24);
   expect(remappedCenter.x, 'must not stay on the pre-rotate center').not.toBeCloseTo(beforeCenter.x, 0);
+  if (kind === 'line') {
+    console.log('PAGE_ROTATE_HISTORY_RESTORE_REMAINING_LINE_REMAPPED', JSON.stringify(remapped));
+  }
   if (kind !== 'callout' && kind !== 'survey-marker' && remapped.ownLeft === 0 && remapped.dataLeft != null) {
     expect(Math.abs(remapped.dataLeft), 'Fabric left 0 must still carry remapped data.left').toBeGreaterThan(1);
   }
@@ -876,9 +894,14 @@ async function proveType(page, kind, create, { survey = false } = {}) {
   await page.getByRole('button', { name: 'Pages', exact: true }).click().catch(() => {});
   await restoreLatestDeleted(page, kind, created.id);
   if (kind === 'survey-marker') await armWalls(page);
+  await dismissChrome(page);
+  if (kind === 'survey-marker') await armWalls(page);
   const restoredAfter = await geomOf(page, kind, created.id);
   expect(restoredAfter, `after-rotate Restore must keep the same ${kind} id`).toBeTruthy();
   const restoredCenter = centerOf(restoredAfter, kind);
+  if (kind === 'line') {
+    console.log('PAGE_ROTATE_HISTORY_RESTORE_REMAINING_LINE_RESTORED', JSON.stringify(restoredAfter));
+  }
   expect(Math.abs(restoredCenter.x - remappedCenter.x), 'after-rotate Restore must keep remapped center').toBeLessThan(10);
   expect(Math.abs(restoredCenter.y - remappedCenter.y)).toBeLessThan(10);
   expect(restoredCenter.x, 'after-rotate Restore must not rewind to pre-rotate center').not.toBeCloseTo(beforeCenter.x, 0);

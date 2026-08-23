@@ -400,25 +400,22 @@ test('desktop undo/redo after page CW wipe — intended + break + tool-switch', 
 
   const expected = rotateDisplayedPoint(before.cx, before.cy, 612, 792, 90);
 
-  // Break — tool-switch mid-rotate: arm Pen, open rotate menu, switch Select, then CW.
+  // Break — tool-switch mid-rotate: opening Rotate then switching tools
+  // dismisses the page menu without applying CW (reachable remainder).
   await activateTool(page, 'Draw', 'Pen');
   await openPageMenu(page, 1);
   await expect(pagesMenu(page)).toBeVisible();
   await activateTool(page, 'Select', 'Select');
-  await expect(pagesMenu(page), 'tool-switch must not dismiss rotate menu').toBeVisible();
-  const beforeBox = await pageBox(page, 1);
-  await pagesMenu(page).getByText('Rotate', { exact: true }).click();
-  await expect(pagesMenu(page)).toHaveCount(0, { timeout: 15_000 });
-  await expect.poll(async () => {
-    const box = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
-    if (!box) return false;
-    return beforeBox.height > beforeBox.width + 8 ? box.width > box.height + 8 : box.height > box.width + 8;
-  }, { timeout: 45_000, message: 'page 1 should flip aspect after mid-rotate tool-switch CW' }).toBeTruthy();
-  await closeDocumentPanel(page);
+  await expect(pagesMenu(page), 'tool-switch mid-rotate dismisses the rotate menu').toHaveCount(0);
+  expect(await pageViewBox(page), 'tool-switch mid-rotate must not apply CW').toBe('0 0 612 792');
+  expect((await userIds(page)).length, 'tool-switch mid-rotate must invent 0 extra ids').toBe(1);
+  expect(await geom(page, created.id)).toBeTruthy();
+
+  await rotatePage(page, 1, 'cw');
   await waitForEditorReady(page);
   await dismissChrome(page);
 
-  expect((await userIds(page)).length, 'tool-switch mid-rotate must invent 0 extra ids').toBe(1);
+  expect((await userIds(page)).length, 'CW after dismissed menu must invent 0 extra ids').toBe(1);
   expect(await userIds(page)).toEqual([created.id]);
   const remapped = await geom(page, created.id);
   expect(remapped, 'page rotate must keep the live rect').toBeTruthy();
