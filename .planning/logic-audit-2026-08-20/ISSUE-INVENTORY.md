@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**Evidence refresh:** 2026-08-22 E-03 selected-annotation move intended+break+edge (`fix-logs/annotation-move-2026-08-22.md`). Single + group-move + clamp on `?testPdf=` (no `file.id`). No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+**Evidence refresh:** 2026-08-23 S-01 selected Cloud bbox resize + canvas `mtr` intended+break+edge (`fix-logs/cloud-resize-rotate-2026-08-23.md`). Path rebuild + intensity hold + flip + free 90°/180° on `?testPdf=` (no `file.id`). Callout bbox/`mtr` is not live. No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
+
+**Prior evidence refresh:** 2026-08-22 E-03 selected-annotation move intended+break+edge (`fix-logs/annotation-move-2026-08-22.md`). Single + group-move + clamp on `?testPdf=` (no `file.id`). No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **15 / 15**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
 **Prior evidence refresh:** 2026-08-22 T-01 textbox create auto-edit intended+break+edge (`fix-logs/textbox-create-edit-2026-08-22.md`). Type / click-out / blank / Escape / tight-fit / wrap / re-edit on `?testPdf=` (no `file.id`). No product bug. Cloud save / identity-churn stays leftover-18 **X-01**. Hosts still need lease + `file.id`. Playwright **2 / 2**. Node **25 / 25**. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim unblocked GAP = 0.
 
