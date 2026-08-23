@@ -391,11 +391,11 @@ function getPathBBox(obj) {
 
 function getRectBBox(obj) {
   return {
-    left: obj.left ?? 0,
-    top: obj.top ?? 0,
+    left: obj.left ?? obj.data?.left ?? 0,
+    top: obj.top ?? obj.data?.top ?? 0,
     width: Math.abs((obj.width ?? 0) * (obj.scaleX ?? 1)),
     height: Math.abs((obj.height ?? 0) * (obj.scaleY ?? 1)),
-    angle: obj.angle ?? 0,
+    angle: obj.angle ?? obj.data?.angle ?? 0,
   };
 }
 

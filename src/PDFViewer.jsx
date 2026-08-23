@@ -31858,7 +31858,7 @@ ${pageBlocks}
                                 onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                               >
                                 <SVGAnnotationLayer
-                                  key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
+                                  key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}-${pageMutationRevision}`}
                                   pageNumber={pageNumber}
                                   isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}

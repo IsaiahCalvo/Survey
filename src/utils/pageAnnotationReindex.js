@@ -310,8 +310,8 @@ function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
     const rotated = rotateDisplayedPoint(cx, cy, pageWidth, pageHeight, delta);
     const nextLeft = rotated.x - vw / 2;
     const nextTop = rotated.y - vh / 2;
-    if ('left' in obj || Number.isFinite(Number(obj.left))) next.left = nextLeft;
-    if ('top' in obj || Number.isFinite(Number(obj.top))) next.top = nextTop;
+    next.left = nextLeft;
+    next.top = nextTop;
     if ('x' in obj) next.x = nextLeft;
     if ('y' in obj) next.y = nextTop;
     if ('angle' in obj || Number.isFinite(Number(obj.angle))) {
@@ -321,11 +321,11 @@ function rotateFabricLikeObject(obj, pageWidth, pageHeight, delta) {
     }
     if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
       const data = { ...next.data };
-      if ('left' in data) data.left = next.left;
-      if ('top' in data) data.top = next.top;
+      data.left = next.left;
+      data.top = next.top;
       if ('x' in data) data.x = next.x ?? next.left;
       if ('y' in data) data.y = next.y ?? next.top;
-      if ('angle' in data || 'angle' in next) data.angle = next.angle;
+      data.angle = next.angle;
       next.data = data;
     }
   }

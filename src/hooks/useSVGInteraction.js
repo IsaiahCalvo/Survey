@@ -4406,8 +4406,8 @@ export function useSVGInteraction({
         // has a matching reference point. Commit branch translates back to
         // object-space for polygon/polyline. For line, commit rewrites
         // endpoints directly, so visible-bbox left/top is what we want.
-        left: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? 0),
-        top: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
+        left: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? obj.data?.left ?? 0),
+        top: (imported || absolutePath || isInkPath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? obj.data?.top ?? 0),
         scaleX: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleX ?? 1),
         scaleY: (imported || absolutePath || isInkPath) ? 1 : (obj.scaleY ?? 1),
         angle: isCounterPin ? (bbox.angle ?? 0) : (obj.angle ?? 0),

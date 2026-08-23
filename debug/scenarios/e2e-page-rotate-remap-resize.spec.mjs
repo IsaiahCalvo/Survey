@@ -542,6 +542,20 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   );
   expect(await page.locator('[data-svg-annotation-layer="1"] [data-rotation-handle="mtr"]').count(), 'mtr on remapped page').toBeGreaterThan(0);
   await assertHandlesNearHit(page, created.id);
+  console.log('REMAP_SELECT_DUMP', JSON.stringify(await page.evaluate((id) => {
+    const store = window.__phase35GetAnnotationById?.(id) || {};
+    const rect = document.querySelector(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"] [data-shape-hit-target="rect"]`);
+    const br = document.querySelector('[data-svg-annotation-layer="1"] [data-resize-handle="br"]');
+    return {
+      storeLeft: store.left,
+      storeDataLeft: store.data?.left,
+      storeTop: store.top,
+      renderX: rect?.getAttribute('x'),
+      renderY: rect?.getAttribute('y'),
+      handleCx: br?.getAttribute('cx'),
+      handleCy: br?.getAttribute('cy'),
+    };
+  }, created.id)));
 
   // Intended — another br on the remapped page grows size; object stays on-page.
   await dragHandleRadial(page, created.id, 'data-resize-handle="br"', { mode: 'grow', extraPx: 100 });

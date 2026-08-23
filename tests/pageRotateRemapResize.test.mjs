@@ -66,6 +66,9 @@ test('remapper hands resize a 90deg object on a swapped 792x612 page', () => {
   const cy = after.top + 152.2 / 2;
   assert.ok(cx > 0 && cx < 792);
   assert.ok(cy > 0 && cy < 612);
+  assert.equal(after.data.left, after.left);
+  assert.equal(after.data.top, after.top);
+  assert.equal(after.data.angle, 90);
 });
 
 test('90deg local projection: screen +y grows local width; screen -x grows local height', () => {
