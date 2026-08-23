@@ -316,7 +316,7 @@ export default function DocumentsLedger({
             </span>
           </button>
           {mobileSortOpen && (
-            <div className="documents-mobile-sort-menu" role="menu">
+            <div className="documents-mobile-sort-menu" role="menu" aria-label="Sort">
               {sortOptions.map(([key, label]) => (
                 <button
                   key={key}
