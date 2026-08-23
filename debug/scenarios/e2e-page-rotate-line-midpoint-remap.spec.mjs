@@ -238,7 +238,8 @@ async function createCurvedLine(page, coords = { x0: 0.18, y0: 0.30, x1: 0.46, y
     if (!object) return false;
     const cx = Number(object.left || 0) + Number(object.width || 0) / 2;
     const cy = Number(object.top || 0) + Number(object.height || 0) / 2;
-    object.data = { ...(object.data || {}), midpoint: { x: cx, y: cy - 48 } };
+    if (!object.data || typeof object.data !== 'object') return false;
+    object.data.midpoint = { x: cx, y: cy - 48 };
     return true;
   }, created.id);
   let bent = null;
