@@ -124,6 +124,23 @@ async function dismissChrome(page) {
   await closePagesOverlay(page);
 }
 
+async function blurInputs(page) {
+  await page.evaluate(() => {
+    const el = document.activeElement;
+    if (el && typeof el.blur === 'function') el.blur();
+  });
+}
+
+async function selectMode(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) {
+    await page.keyboard.press('Escape');
+  }
+}
+
 async function pageBox(page, pageNumber = 1) {
   const box = await page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).boundingBox();
   expect(box, `page ${pageNumber} geometry`).toBeTruthy();
@@ -225,13 +242,26 @@ async function createRect(page, { x0 = 0.18, y0 = 0.22, x1 = 0.42, y1 = 0.38 } =
   return created;
 }
 
-async function clickShape(page, id) {
-  const handle = page.locator(`[data-shape-id="${id}"]`).first();
-  if (await handle.count()) {
-    await handle.click({ force: true });
-    return;
-  }
-  await page.locator(`[data-anno-id="${id}"]`).first().click({ force: true });
+async function selectRect(page, id) {
+  await selectMode(page);
+  const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible();
+  await expect.poll(async () => {
+    const box = await target.boundingBox();
+    if (!box) return 0;
+    const points = [
+      { x: box.x + box.width / 2, y: box.y + 3 },
+      { x: box.x + 3, y: box.y + box.height / 2 },
+      { x: box.x + box.width - 3, y: box.y + box.height / 2 },
+      { x: box.x + box.width / 2, y: box.y + box.height - 3 },
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    ];
+    for (const point of points) {
+      await page.mouse.click(point.x, point.y);
+      if (await page.locator('[data-resize-handle]').count() > 0) return 1;
+    }
+    return 0;
+  }, { timeout: 12_000, message: `rect handles for ${id}` }).toBe(1);
 }
 
 test('Width Escape skip-commit intended + break + edge', async ({ page }) => {
@@ -279,8 +309,7 @@ test('Width Escape skip-commit intended + break + edge', async ({ page }) => {
 
   const rect = await createRect(page);
   expect(rect.strokeWidth).toBe(2);
-  await clickVisible(page, 'Select');
-  await clickShape(page, rect.id);
+  await selectRect(page, rect.id);
   const rectField = await widthField(page);
   await expect(rectField).toBeVisible({ timeout: 8_000 });
   await expect(rectField).toHaveValue('2');
