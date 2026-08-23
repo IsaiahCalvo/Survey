@@ -48,7 +48,7 @@ const MENU_HEX = {
   danger: '#d95a56',
 };
 
-function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168, trigger = null }) {
+function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168, trigger = null, ariaLabel = 'Document actions' }) {
   const ref = useRef(null);
 
   if (!anchorRect) return null;
@@ -64,6 +64,7 @@ function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168, trigge
       <div
         ref={ref}
         role="menu"
+        aria-label={ariaLabel}
         style={{
           position: 'fixed',
           top,
@@ -717,6 +718,7 @@ export default function DocumentsLedger({
           anchorRect={docMenu.rect}
           trigger={docMenu.trigger}
           onClose={() => setDocMenu(null)}
+          ariaLabel={`${doc.name || 'Document'} actions`}
           items={[
             { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },
             { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
