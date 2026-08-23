@@ -478,6 +478,7 @@ test('desktop remapped line/arrow handle drag after page CW + hit-test verdict',
   expect((await lineIds(page)).length, 'empty opposite rotate must invent 0').toBe(0);
 
   const line = await createLine(page, { x0: 0.18, y0: 0.30, x1: 0.46, y1: 0.30 }, 'Line');
+  await dismissChrome(page);
   const arrow = await createLine(page, { x0: 0.18, y0: 0.58, x1: 0.44, y1: 0.58 }, 'Arrow');
   await dismissChrome(page);
   expect(line?.id).toBeTruthy();
