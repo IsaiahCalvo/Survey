@@ -130,10 +130,16 @@ test('390 + hubPreview + idle editor break/edge for CreateCategoryModal name', a
   await openPage(page, { url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await namedCreate(page).count()).toBe(0);
-  await page.getByRole('button', { name: 'More' }).first().click();
-  const lockItem = page.getByRole('menuitem', { name: /Lock document|Unlock document/ });
-  if (await lockItem.count()) {
-    await lockItem.first().click();
+  const ownerMore = page.locator('.documents-desktop-card [data-document-id]')
+    .filter({ hasText: 'SE-011' })
+    .getByRole('button', { name: 'More' })
+    .first();
+  if (await ownerMore.count() && await ownerMore.isVisible().catch(() => false)) {
+    await ownerMore.click();
+    const lockItem = page.getByRole('menuitem', { name: 'Lock document', exact: true });
+    if (await lockItem.count() && await lockItem.first().isEnabled()) {
+      await lockItem.first().click();
+    }
   }
   expect(await page.getByRole('dialog', { name: /Lock this document/ }).count()).toBe(0);
   expect(await namedCreate(page).count()).toBe(0);
