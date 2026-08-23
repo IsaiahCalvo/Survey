@@ -101,6 +101,18 @@ test('independent hunt after Expand Survey panel leftover', async ({ page }) => 
 
     if (inventory.rails.spaces) {
       await page.getByRole('button', { name: 'Spaces', exact: true }).click();
+      await expect(page.getByText(/No spaces yet/i)).toBeVisible({ timeout: 8_000 });
+      await expect.poll(async () => page.evaluate(() => {
+        const host = document.getElementById('chrome-left-host');
+        const panel = [...(host?.querySelectorAll('div') || [])].find((el) => {
+          const width = el.style && el.style.width;
+          return width === '48px' || width === '272px';
+        });
+        return panel ? panel.offsetWidth : 0;
+      }).catch(() => 0), {
+        timeout: 5_000,
+        message: 'Spaces overlay panel settles at 272',
+      }).toBe(272);
       inventory.rails.leftWidthAfterSpaces = await page.locator('#chrome-left-host').evaluate((el) => el?.offsetWidth || 0).catch(() => 0);
       inventory.rails.leftPanelAfterSpaces = await page.evaluate(() => {
         const host = document.getElementById('chrome-left-host');
@@ -165,6 +177,8 @@ test('independent hunt after Expand Survey panel leftover', async ({ page }) => 
   expect(inventory.editor.viewBox).toBe('0 0 612 792');
   expect(inventory.editor.fileId).toBeNull();
   expect(inventory.rails.spaces).toBeGreaterThan(0);
+  expect(inventory.rails.leftWidthAfterSpaces).toBe(48);
+  expect(inventory.rails.leftPanelAfterSpaces).toBe(272);
   expect(inventory.rails.noSpacesYet).toBeGreaterThan(0);
   expect(inventory.rails.createSpace).toBeGreaterThan(0);
   expect(inventory.rails.yesNo).toBe(0);

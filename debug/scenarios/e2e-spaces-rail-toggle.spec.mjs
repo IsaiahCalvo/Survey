@@ -199,7 +199,8 @@ test('desktop Spaces rail toggle intended + break + edge', async ({ page }) => {
     timeout: 5_000,
     message: 'Expand sidebar grows panel to 272',
   }).toBe(272);
-  expect(await page.getByText(/No spaces yet/i).count(), 'Expand sidebar must not open Spaces').toBe(0);
+  await expect(page.getByText(/No spaces yet/i), 'Expand sidebar must not open Spaces').toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Spaces', exact: true }), 'Expand sidebar must not show Spaces heading').toBeHidden();
   await collapseSidebarBtn(page).click();
   await expect(expandSidebarBtn(page)).toBeVisible({ timeout: 8_000 });
   await expect.poll(async () => (await leftRailMetrics(page)).panel, {
