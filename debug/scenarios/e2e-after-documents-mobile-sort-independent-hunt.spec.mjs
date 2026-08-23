@@ -331,7 +331,7 @@ test('independent hunt after Documents mobile sort menu name', async ({ page }) 
       await mobileSort.click();
       inventory.hub.mobileSortNameless = await namelessOpenMenus(page);
       inventory.hub.mobileSortNamed = await page.getByRole('menu', { name: 'Sort', exact: true }).count();
-      inventory.hub.mobileSortItems = await page.getByRole('menuitem', { name: 'Last edited', exact: true }).count();
+      inventory.hub.mobileSortItems = await page.getByRole('menuitem', { name: /^Last edited/ }).count();
       await page.keyboard.press('Escape');
     }
 

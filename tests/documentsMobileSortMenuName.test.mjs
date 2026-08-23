@@ -48,7 +48,7 @@ test('live spec covers named Documents Sort intended + break + edge; skip leftov
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /name: 'Sort', exact: true/);
-  assert.match(spec, /getByRole\('menuitem', \{ name, exact: true \}\)/);
+  assert.match(spec, /getByRole\('menuitem', \{ name \}\)/);
   assert.match(spec, /Last edited/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /390/);

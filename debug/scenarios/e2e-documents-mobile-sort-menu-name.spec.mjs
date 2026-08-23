@@ -69,7 +69,8 @@ test('390 Documents Sort menu is named + File apply; Escape dismisses', async ({
   test.setTimeout(180_000);
 
   await openPage(page, { width: 390, height: 844, url: HUB_EMPTY });
-  await expect(page.getByText('No documents yet').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.documents-mobile-list').getByText('No documents yet')).toBeVisible({ timeout: 15_000 });
   expect(await sortMenu(page).count()).toBe(0);
   await mobileFilter(page).click();
   await expect(sortMenu(page)).toBeVisible();
@@ -90,8 +91,8 @@ test('390 Documents Sort menu is named + File apply; Escape dismisses', async ({
   await mobileFilter(page).click();
   const menu = sortMenu(page);
   await expect(menu).toBeVisible();
-  for (const name of ['File', 'Project', 'Last edited', 'Size']) {
-    await expect(menu.getByRole('menuitem', { name, exact: true })).toHaveCount(1);
+  for (const name of [/^File$/, /^Project$/, /^Last edited/, /^Size$/]) {
+    await expect(menu.getByRole('menuitem', { name })).toHaveCount(1);
   }
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Add member', exact: true })).toHaveCount(0);
