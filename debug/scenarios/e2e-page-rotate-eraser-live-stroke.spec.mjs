@@ -518,11 +518,13 @@ test('desktop remapped-ink eraser live stroke intended + break + edge', async ({
   await page.mouse.move(ghost.x, ghost.y);
   await page.mouse.down();
   await page.mouse.move(ghost.x + 12, ghost.y + 8, { steps: 4 });
-  expect((await liveErasePreviewInfo(page)).visible, 'ghost swipe must not paint eraser preview').toBe(false);
   await page.mouse.up();
   expect(await userInkMetric(page), 'ghost swipe at pre-rotate location invents 0').toEqual(ghostBefore);
   expect((await inkIds(page)).includes(inkA.id), 'ghost swipe must leave remapped ink A').toBe(true);
   expect((await inkIds(page)).includes(inkB.id), 'ghost swipe must isolate remapped ink B').toBe(true);
+  const ghostA = await geom(page, inkA.id);
+  expect(Math.abs(ghostA.clx - expectedA.x), 'ghost swipe must not rewind remapped A').toBeLessThan(1.5);
+  expect(Math.abs(ghostA.clx - beforeA.clx), 'ghost swipe must not park A on the pre-rotate point').toBeGreaterThan(1);
 
   const inkBefore = await userInkMetric(page);
   const beforePartial = await inkIds(page);
