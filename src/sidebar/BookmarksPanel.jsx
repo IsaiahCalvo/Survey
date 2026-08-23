@@ -1764,6 +1764,8 @@ const BookmarksPanel = ({
             onDismiss={() => setShowCreateMenu(false)}
           />
           <button
+            type="button"
+            aria-label="Add bookmark"
             onClick={() => setShowCreateMenu(!showCreateMenu)}
             style={{
               width: '100%',
