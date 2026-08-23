@@ -9,9 +9,7 @@ import { test, expect } from '@playwright/test';
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
-// Stay near page center so CW remap (x,y)→(pageH-y, x) does not pin
-// the rect under the right-rail / top-right clip of the landscape page.
-const RECT_BOX = { x0: 0.36, y0: 0.40, x1: 0.52, y1: 0.54 };
+const RECT_BOX = { x0: 0.20, y0: 0.26, x1: 0.40, y1: 0.44 };
 
 function isRect(row) {
   return row.type === 'rect' || row.type === 'rectangle' || row.tool === 'rect';
@@ -293,10 +291,12 @@ async function strokeClickRect(page, id) {
   expect(box, `hit bbox for ${id}`).toBeTruthy();
   const before = (await selectedIds(page)).includes(id);
   const points = [
+    { x: box.x + box.width * 0.50, y: box.y + box.height * 0.50 },
     { x: box.x + box.width * 0.35, y: box.y + box.height * 0.35 },
     { x: box.x + box.width * 0.65, y: box.y + box.height * 0.40 },
     { x: box.x + 6, y: box.y + box.height * 0.30 },
     { x: box.x + box.width * 0.30, y: box.y + 6 },
+    { x: box.x + box.width * 0.80, y: box.y + box.height * 0.50 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
@@ -507,6 +507,11 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
 
   await rotatePage(page, 1, 'cw');
   await waitForEditorReady(page);
+  await dismissChrome(page);
+  const tab = page.getByRole('button', { name: /clickable-link-test\.pdf/ }).first();
+  if (await tab.isVisible().catch(() => false)) {
+    await tab.click({ position: { x: 24, y: 8 } }).catch(() => {});
+  }
   await dismissChrome(page);
   await expect.poll(async () => geom(page, created.id), {
     timeout: 20_000,
