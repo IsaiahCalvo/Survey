@@ -111,8 +111,11 @@ test('390 + empty + guest + projects + editor break/edge for Entity name', async
   await expect(mobile).toHaveValue(ENTITY);
   await mobile.focus();
   await page.keyboard.press('Escape');
-  await expect(mobile).toHaveValue(ENTITY);
-  await expect(mobile).toHaveAttribute('aria-label', 'Entity name');
+  await expect(mobileDialog).toHaveCount(0, { timeout: 8_000 });
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+  await expect(mobileDialog).toBeVisible({ timeout: 10_000 });
+  await expect(mobileEntityName(page).first()).toHaveValue(ENTITY);
+  await expect(mobileEntityName(page).first()).toHaveAttribute('aria-label', 'Entity name');
 
   await openPage(page, { url: HUB_EMPTY });
   await expect(page.getByText('No templates yet').first()).toBeVisible({ timeout: 15_000 });
