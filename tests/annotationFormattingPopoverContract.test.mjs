@@ -20,13 +20,18 @@ test('annotation formatting popovers share one exclusive Radix layer', () => {
 
   assert.match(
     contract,
-    /document\.addEventListener\('mousedown', onDown, true\)/,
-    'dismissal must run in capture phase before toolbar triggers stop propagation',
+    /document\.addEventListener\('pointerdown', onDown, true\)/,
+    'dismissal must run in capture pointerdown before the page layer swallows mousedown',
   );
   assert.match(
     contract,
-    /document\.removeEventListener\('mousedown', onDown, true\)/,
+    /document\.removeEventListener\('pointerdown', onDown, true\)/,
     'capture-phase listener must be removed with the same capture option',
+  );
+  assert.doesNotMatch(
+    contract,
+    /document\.addEventListener\('mousedown', onDown, true\)/,
+    'exclusive layer must not wait on swallowed compatibility mousedown',
   );
 
   assert.match(appShell, /const \[openAnnotationDropdown, setOpenAnnotationDropdown\] = useState\(null\)/);
