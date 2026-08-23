@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-// Product bug leftover the color-picker Width/Style hunt parked:
-// 390 MobileStyledSelect (Style / Arrowhead) had no sibling passthrough,
-// so the first Width / swatch tap only dismissed the menu. Documents
-// Search likewise ate the first Upload click (Templates / Archive already
-// passthroughed their header siblings). Canvas / document-row dismiss
-// must still not activate. Distinct from leftover-18 / X-01. No file.id.
+// Product bug leftover the color-picker Width/Style hunt parked, then
+// the Style/Search hunt: 390 Documents sort had no Search/Upload
+// passthrough, so the first header tap only dismissed the menu.
+// Canvas / document-row dismiss must still not activate.
+// Distinct from leftover-18 / X-01. No file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -193,6 +192,67 @@ test('Documents search first Upload click + edge hub / testPdf', async ({ page }
     desktopUpload: true,
     rowNoOpen: true,
     hub: true,
+    testPdf: true,
+  }));
+});
+
+test('390 Documents sort first Upload / Search click lands', async ({ page }) => {
+  test.setTimeout(180_000);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+
+  const sort = page.locator('.documents-mobile-filter');
+  await expect(sort).toBeVisible();
+  await sort.click();
+  const sortMenu = page.locator('.documents-mobile-sort-menu');
+  await expect(sortMenu).toBeVisible();
+
+  const logs = [];
+  page.on('console', (msg) => logs.push(msg.text()));
+
+  // Intended — first Upload tap dismisses sort and fires upload.
+  await page.locator('.hub-mobile-primary-action').click();
+  await expect(sortMenu).toHaveCount(0);
+  await expect.poll(() => logs.some((text) => text.includes('[hub preview] upload'))).toBe(true);
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+
+  await sort.click();
+  await expect(sortMenu).toBeVisible();
+  const mobileSearch = page.locator('.hub-mobile-search-actions input[placeholder="Search documents..."]');
+  await expect(mobileSearch).toBeVisible();
+  await mobileSearch.click();
+  await expect(sortMenu).toHaveCount(0);
+  await expect(mobileSearch).toBeFocused();
+  await mobileSearch.fill('test');
+
+  // Break — a document row click still only dismisses (does not open).
+  await sort.click();
+  await expect(sortMenu).toBeVisible();
+  const row = page.locator('.documents-mobile-list [data-document-id]').first();
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(sortMenu).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Draw', exact: true })).toHaveCount(0);
+  await expect(page.locator('.survey-hub')).toBeVisible();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.documents-mobile-filter')).toBeHidden();
+
+  await openEditor(page);
+  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible();
+  const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
+  expect(fileId).toBeNull();
+  await assertNoErrorBoundary(page);
+
+  console.log('DOCUMENTS_SORT_SIBLING_PASSTHROUGH', JSON.stringify({
+    firstUpload: true,
+    firstSearch: true,
+    rowNoOpen: true,
+    desktopSortHidden: true,
     testPdf: true,
   }));
 });

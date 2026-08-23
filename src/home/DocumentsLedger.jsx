@@ -19,6 +19,17 @@ import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import useModalFocusTrap from './useModalFocusTrap';
 
+/* Sibling header chrome (Search / Upload) must receive the same tap that
+   dismisses an open mobile sort menu. Without passthrough, DismissBarrier
+   consumes the gesture and Search / Upload need a second tap. Document-row
+   clicks stay consumed so dismiss does not open the editor. */
+const DOCUMENTS_SORT_SIBLING_PASSTHROUGH = [
+  '.hub-mobile-primary-action',
+  '.documents-desktop-upload',
+  '.hub-mobile-search-actions',
+  '.documents-desktop-search',
+].join(', ');
+
 const ledgerHeader = {
   background: 'var(--ink-700)',
   borderBottom: '1px solid var(--ink-500)',
@@ -261,6 +272,7 @@ export default function DocumentsLedger({
     <DismissBarrier
       active={mobileSortOpen}
       insideRefs={[mobileSortRef]}
+      passthroughSelector={DOCUMENTS_SORT_SIBLING_PASSTHROUGH}
       onDismiss={() => setMobileSortOpen(false)}
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>

@@ -23,3 +23,14 @@ test('Documents and Projects search passthrough header Upload / New project', ()
   assert.match(projects, /dismissActionSelector="\.projects-desktop-create-button, \.projects-mobile-create-button"/);
   assert.match(projects, /className="btn primary projects-desktop-create-button"/);
 });
+
+test('Documents mobile sort passthroughs Search and Upload', () => {
+  const constStart = documents.indexOf('const DOCUMENTS_SORT_SIBLING_PASSTHROUGH');
+  assert.notEqual(constStart, -1, 'shared sort sibling passthrough constant');
+  assert.match(documents.slice(constStart, constStart + 280), /\.hub-mobile-primary-action/);
+  assert.match(documents.slice(constStart, constStart + 280), /\.hub-mobile-search-actions/);
+  assert.match(
+    documents,
+    /active=\{mobileSortOpen\}[\s\S]*insideRefs=\{\[mobileSortRef\]\}[\s\S]*passthroughSelector=\{DOCUMENTS_SORT_SIBLING_PASSTHROUGH\}/,
+  );
+});

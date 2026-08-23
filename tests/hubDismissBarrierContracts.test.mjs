@@ -25,6 +25,13 @@ test('shared Home search blurs through the first-tap barrier', () => {
   assert.match(hubShell, /onFocus=\{\(\) => setFocused\(true\)\}/);
 });
 
+test('Documents mobile sort uses the first-tap barrier and passthroughs Search / Upload', () => {
+  assert.match(
+    documents,
+    /active=\{mobileSortOpen\}[\s\S]*insideRefs=\{\[mobileSortRef\]\}[\s\S]*passthroughSelector=\{DOCUMENTS_SORT_SIBLING_PASSTHROUGH\}/,
+  );
+});
+
 test('document, project, and template More menus use the same barrier', () => {
   assert.match(documents, /function DocumentActionMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref, trigger\]\} onDismiss=\{onClose\}/);
   // Campaign product: keep the More trigger inside the barrier so a
