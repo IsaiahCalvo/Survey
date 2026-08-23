@@ -1831,7 +1831,7 @@ export default function TemplatesEditor({
           onChange={mobileTemplateOpen ? setTemplateContentSearch : setSearch}
           width="100%"
           dismissActionSelector={mobileTemplateOpen
-            ? '[data-search-dismiss-action], [data-drag-rearrange-row], .templates-mobile-back-button, .templates-mobile-entities-button'
+            ? '[data-search-dismiss-action], [data-drag-rearrange-row], .templates-mobile-back-button, .templates-mobile-entities-button, .templates-mobile-save-row button'
             : '[data-drag-rearrange-row], .templates-mobile-create-button'}
         />
         {!mobileTemplateOpen ? (

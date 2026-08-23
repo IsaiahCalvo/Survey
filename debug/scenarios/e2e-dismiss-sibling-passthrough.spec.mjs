@@ -260,3 +260,82 @@ test('390 Documents sort first Upload / Search click lands', async ({ page }) =>
     testPdf: true,
   }));
 });
+
+test('Manage Team Search first Invite click + 390 Templates Save', async ({ page }) => {
+  test.setTimeout(180_000);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${HUB}&tab=projects`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole('button', { name: 'Manage team', exact: true }).click();
+  const team = page.getByRole('dialog', { name: 'Manage Team' });
+  await expect(team).toBeVisible({ timeout: 10_000 });
+  const teamSearch = team.locator('input[placeholder="Find a teammate…"]');
+  await teamSearch.click();
+  await teamSearch.fill('isaiah');
+  await expect(teamSearch).toBeFocused();
+
+  // Intended — first Invite tap dismisses Search and opens Invite.
+  await team.getByRole('button', { name: 'Invite', exact: true }).click();
+  const invite = page.getByRole('dialog', { name: 'Invite User' });
+  await expect(invite).toBeVisible();
+  await expect(teamSearch).not.toBeFocused();
+  await invite.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(invite).toHaveCount(0);
+
+  await teamSearch.click();
+  await expect(teamSearch).toBeFocused();
+  await team.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(team.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+  await expect(teamSearch).not.toBeFocused();
+
+  // Break — a member row click still only blurs search (does not open More).
+  await team.getByRole('button', { name: 'Done', exact: true }).click();
+  await teamSearch.click();
+  await expect(teamSearch).toBeFocused();
+  const memberRow = team.locator('[data-kal31-project-member]').first();
+  await expect(memberRow).toBeVisible();
+  await memberRow.click();
+  await expect(teamSearch).not.toBeFocused();
+  await expect(team.locator('[data-manage-team-dismiss-surface="true"]')).toHaveCount(0);
+  await expect(team.getByText('View activity')).toHaveCount(0);
+  await expect(invite).toHaveCount(0);
+  await team.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(team).toHaveCount(0);
+
+  // 390 Templates — first Save tap while content Search is focused lands.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${HUB}&tab=templates`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  const firstRow = page.locator('.templates-mobile-browser .templates-mobile-row').first();
+  await expect(firstRow).toBeVisible();
+  await firstRow.click();
+  const nameInput = page.locator('.templates-mobile-inline-input').first();
+  await expect(nameInput).toBeVisible();
+  await nameInput.click();
+  await nameInput.fill('Dirty name');
+  const save = page.locator('.templates-mobile-save-row button.primary');
+  await expect(save).toBeVisible();
+  const contentSearch = page.locator('.templates-mobile-search-actions input[placeholder="Search template..."]');
+  await contentSearch.click();
+  await contentSearch.fill('cam');
+  await expect(contentSearch).toBeFocused();
+  await save.click();
+  await expect(save).toHaveCount(0);
+  await expect(contentSearch).not.toBeFocused();
+
+  await openEditor(page);
+  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible();
+  const fileId = await page.evaluate(() => window.__devTestPdf?.id ?? null);
+  expect(fileId).toBeNull();
+  await assertNoErrorBoundary(page);
+
+  console.log('SEARCH_INVITE_SAVE_PASSTHROUGH', JSON.stringify({
+    firstInvite: true,
+    firstEdit: true,
+    memberRowNoMenu: true,
+    templates390Save: true,
+    testPdf: true,
+  }));
+});

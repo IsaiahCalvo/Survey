@@ -24,6 +24,21 @@ test('Documents and Projects search passthrough header Upload / New project', ()
   assert.match(projects, /className="btn primary projects-desktop-create-button"/);
 });
 
+test('Manage Team Search and Templates Save passthrough sibling header chrome', () => {
+  const manageTeam = read('../src/home/ManageTeamModal.jsx');
+  const templates = read('../src/home/TemplatesEditor.jsx');
+  const constStart = manageTeam.indexOf('const MANAGE_TEAM_SEARCH_SIBLING_PASSTHROUGH');
+  assert.notEqual(constStart, -1, 'manage-team search sibling passthrough constant');
+  assert.match(manageTeam.slice(constStart, constStart + 220), /\[data-manage-team-invite\]/);
+  assert.match(manageTeam.slice(constStart, constStart + 220), /\[data-manage-team-edit\]/);
+  assert.match(
+    manageTeam,
+    /active=\{searchFocused\}[\s\S]*insideRefs=\{\[searchRootRef\]\}[\s\S]*passthroughSelector=\{MANAGE_TEAM_SEARCH_SIBLING_PASSTHROUGH\}/,
+  );
+  assert.match(templates, /dismissActionSelector=\{mobileTemplateOpen/);
+  assert.match(templates, /\.templates-mobile-save-row button/);
+});
+
 test('Documents mobile sort passthroughs Search and Upload', () => {
   const constStart = documents.indexOf('const DOCUMENTS_SORT_SIBLING_PASSTHROUGH');
   assert.notEqual(constStart, -1, 'shared sort sibling passthrough constant');

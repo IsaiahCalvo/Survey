@@ -44,7 +44,9 @@ test('document, project, and template More menus use the same barrier', () => {
 });
 
 test('Manage Team search and transient menus use the first-tap barrier', () => {
-  assert.match(manageTeam, /active=\{searchFocused\}[\s\S]*insideRefs=\{\[searchRootRef\]\}/);
+  assert.match(manageTeam, /active=\{searchFocused\}[\s\S]*insideRefs=\{\[searchRootRef\]\}[\s\S]*passthroughSelector=\{MANAGE_TEAM_SEARCH_SIBLING_PASSTHROUGH\}/);
+  assert.match(manageTeam, /data-manage-team-invite/);
+  assert.match(manageTeam, /data-manage-team-edit/);
   assert.match(manageTeam, /data-manage-team-dismiss-surface="true"/);
   assert.match(manageTeam, /insideSelector="\[data-manage-team-dismiss-surface='true'\]"/);
   assert.doesNotMatch(manageTeam, /document\.addEventListener\("click", onDoc\)/);

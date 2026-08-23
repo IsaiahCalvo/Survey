@@ -42,6 +42,15 @@ import {
   sendAccessRemovedEmail,
 } from '../services/shareEmailService';
 
+/* Sibling header chrome (Invite / Edit) must receive the same tap that
+   dismisses a focused teammate Search. Without passthrough, DismissBarrier
+   consumes the gesture and Invite needs a second tap. Member-row clicks
+   stay consumed so dismiss does not open a More menu. */
+const MANAGE_TEAM_SEARCH_SIBLING_PASSTHROUGH = [
+  '[data-manage-team-invite]',
+  '[data-manage-team-edit]',
+].join(', ');
+
 /* Hub palette — literal hex, see header note. */
 const INK_800 = '#12151c';
 const INK_700 = '#181c24';
@@ -578,6 +587,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
       <DismissBarrier
         active={searchFocused}
         insideRefs={[searchRootRef]}
+        passthroughSelector={MANAGE_TEAM_SEARCH_SIBLING_PASSTHROUGH}
         onDismiss={() => {
           searchInputRef.current?.blur();
           setSearchFocused(false);
@@ -602,7 +612,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>Manage Team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
-            <button onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <button data-manage-team-invite onClick={() => setInviteOpen(true)} style={{ flex: "none", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 11px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
               <Icon name="plus" size={11}/>Invite
             </button>
           </div>
@@ -654,7 +664,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 )}
               </div>
             )}
-            <button onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
+            <button data-manage-team-edit onClick={toggleEdit} className="btn link" style={{ flex: "none", background: "transparent", border: 0, color: GOLD, fontWeight: 600, fontSize: 11.5, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", height: "auto" }}>{editMode ? "Done" : "Edit"}</button>
           </div>
 
           {/* Column headers */}
