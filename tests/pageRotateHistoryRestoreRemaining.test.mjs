@@ -329,6 +329,7 @@ test('History restore remaining after remap uses live activity Restore; no file.
   assert.match(spec, /390 History restore remaining after remap edge/);
   assert.match(spec, /desktop History restore after CW — callout/);
   assert.match(spec, /desktop History restore after CW — counter/);
+  assert.match(spec, /COUNTER_UNREACHABLE|no History deleted row after remapped delete/);
   assert.match(spec, /desktop History restore after CW — line/);
   assert.match(spec, /desktop History restore after CW — textbox/);
   assert.match(spec, /desktop History restore after CW — survey-marker/);
