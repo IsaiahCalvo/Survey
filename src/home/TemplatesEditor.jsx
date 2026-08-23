@@ -2221,8 +2221,10 @@ export default function TemplatesEditor({
                           style={{ width: 24, height: 24 }}
                         />
                         <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); setOpenCat(open ? -1 : i); }}
                           title={open ? 'Collapse' : 'Expand'}
+                          aria-label={open ? 'Collapse' : 'Expand'}
                           style={{
                             background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
                             color: 'var(--ink-muted)', fontSize: 13, lineHeight: 1, fontFamily: 'inherit',
