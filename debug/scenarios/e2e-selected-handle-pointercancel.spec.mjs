@@ -1,16 +1,16 @@
 import { test, expect } from '@playwright/test';
 
-// Switched class after Counter nubbin pointercancel. Selected bbox `mtr`
-// pointerup already commits obj.angle. pointercancel left visualTransform
-// armed and stored angle stale — undo / zoom / isolation could not see the
-// rotate. zoomGeneration now flushes the same handlePointerUp commit.
-// Endpoint / midpoint / knee / bbox resize share that path. Distinct from
-// leftover-18 / X-01 / nubbin / create keep-track / eraser commit /
-// survey-marker discard. Do not stamp file.id.
+// Switched class after Counter nubbin pointercancel. Selected bbox `br`
+// pointerup already commits scale. pointercancel left visualTransform armed
+// and stored size stale — undo / zoom / isolation could not see the resize.
+// zoomGeneration now flushes the same handlePointerUp commit. mtr / endpoint
+// / midpoint / knee share that path. Distinct from leftover-18 / X-01 /
+// nubbin / create keep-track / eraser commit / survey-marker discard.
+// Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
-const RECT_A = { x0: 0.24, y0: 0.30, x1: 0.44, y1: 0.48 };
+const RECT_A = { x0: 0.22, y0: 0.28, x1: 0.42, y1: 0.46 };
 
 async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
   await page.addInitScript(() => {
@@ -87,6 +87,150 @@ async function dismissChrome(page) {
   await blurInputs(page);
 }
 
+async function pageBox(page, pageNumber = 1) {
+  const box = await page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).boundingBox();
+  expect(box, `page ${pageNumber} geometry`).toBeTruthy();
+  return box;
+}
+
+async function pageViewBox(page) {
+  const raw = await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox');
+  return raw || '';
+}
+
+async function fileId(page) {
+  return page.evaluate(() => window.__devTestPdf?.id ?? null);
+}
+
+async function userAnnotationSnapshot(page, pageNumber = 1) {
+  return page.evaluate((pageNum) => {
+    const ids = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
+      .map((group) => group.getAttribute('data-anno-id'))
+      .filter(Boolean);
+    return ids.map((id) => {
+      const object = window.__phase35GetAnnotationById?.(id) || {};
+      const data = object.data || {};
+      const width = Number(object.width ?? data.width ?? 0);
+      const height = Number(object.height ?? data.height ?? 0);
+      const scaleX = Number(object.scaleX ?? data.scaleX ?? 1) || 1;
+      const scaleY = Number(object.scaleY ?? data.scaleY ?? 1) || 1;
+      return {
+        id,
+        type: String(object.type || data.type || '').toLowerCase(),
+        tool: String(data.tool || object.tool || data.type || '').toLowerCase(),
+        imported: object.isPdfImported === true,
+        left: Number(object.left ?? data.left ?? 0),
+        top: Number(object.top ?? data.top ?? 0),
+        vw: width * Math.abs(scaleX),
+        vh: height * Math.abs(scaleY),
+      };
+    }).filter((row) => row.imported !== true && !/^\d+R$/i.test(String(row.id || '')));
+  }, pageNumber);
+}
+
+async function geom(page, id) {
+  const rows = await userAnnotationSnapshot(page);
+  return rows.find((row) => row.id === id) || null;
+}
+
+async function userOrder(page) {
+  return (await userAnnotationSnapshot(page)).map((row) => row.id);
+}
+
+async function waitForNewUserAnnotation(page, beforeIds, predicate = () => true) {
+  let created = null;
+  await expect.poll(async () => {
+    const rows = await userAnnotationSnapshot(page);
+    created = rows.find((row) => !beforeIds.has(row.id) && predicate(row)) || null;
+    return created;
+  }, { message: 'expected a new user annotation' }).not.toBeNull();
+  return created;
+}
+
+function isRect(row) {
+  return row.type === 'rect' || row.type === 'rectangle' || row.tool === 'rect';
+}
+
+async function selectedIds(page) {
+  return page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
+}
+
+function toolButtons(page, name) {
+  return page.locator(
+    `button.btn-icon[aria-label="${name}"], button.mobile-pdf-tools__button[aria-label="${name}"]`,
+  );
+}
+
+async function clickVisible(page, name) {
+  const buttons = toolButtons(page, name);
+  const count = await buttons.count();
+  for (let i = 0; i < count; i += 1) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible().catch(() => false))) continue;
+    await button.click();
+    return button;
+  }
+  const fallback = page.getByRole('button', { name, exact: true });
+  await expect(fallback.first(), `visible ${name}`).toBeVisible();
+  await fallback.first().click();
+  return fallback.first();
+}
+
+async function activateTool(page, categoryName, toolName) {
+  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
+  if (await sub.count()) {
+    if ((await sub.first().getAttribute('aria-pressed')) !== 'true') await sub.first().click();
+    return;
+  }
+  const visible = page.getByRole('button', { name: toolName, exact: true });
+  if (await visible.count() && await visible.first().isVisible().catch(() => false)) {
+    if ((await visible.first().getAttribute('aria-pressed')) !== 'true') await visible.first().click();
+    return;
+  }
+  await clickVisible(page, categoryName);
+  const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
+  const target = (await again.count()) ? again.first() : page.getByRole('button', { name: toolName, exact: true }).first();
+  if ((await target.getAttribute('aria-pressed')) !== 'true') await target.click();
+}
+
+async function dragOnPage(page, {
+  pageNumber = 1,
+  x0 = 0.22,
+  y0 = 0.28,
+  x1 = 0.42,
+  y1 = 0.46,
+} = {}) {
+  const box = await pageBox(page, pageNumber);
+  await page.mouse.move(box.x + box.width * x0, box.y + box.height * y0);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * x1, box.y + box.height * y1, { steps: 10 });
+  await page.mouse.up();
+}
+
+async function createRect(page, coords) {
+  const before = new Set(await userOrder(page));
+  await activateTool(page, 'Shapes', 'Rectangle');
+  await dragOnPage(page, coords);
+  return waitForNewUserAnnotation(page, before, isRect);
+}
+
+async function selectMode(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const scoped = toolButtons(page, 'Select');
+  if (await scoped.count() && await scoped.first().isVisible().catch(() => false)) {
+    await scoped.first().click();
+  }
+  await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) await page.keyboard.press('Escape');
+  await expect.poll(async () => {
+    const layer = page.locator('[data-svg-annotation-layer="1"]').first();
+    const cls = String(await layer.getAttribute('class') || '');
+    return !cls.includes('tool-crosshair');
+  }, { timeout: 8_000, message: 'Select must drop the creation crosshair' }).toBeTruthy();
+}
+
 async function setNextDrawFill(page, hex = '#00FFFF') {
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
   if (!(await color.isVisible().catch(() => false))) return false;
@@ -106,123 +250,20 @@ async function setNextDrawFill(page, hex = '#00FFFF') {
   return true;
 }
 
-async function selectedIds(page) {
-  return page.evaluate(() => [...(window.__selectedAnnotationIds || [])]);
+async function hitTarget(page, id) {
+  return page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"] [data-shape-hit-target="rect"]`).first();
 }
 
-async function pageBox(page, pageNumber = 1) {
-  const box = await page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`).boundingBox();
-  expect(box, `page ${pageNumber} geometry`).toBeTruthy();
-  return box;
-}
-
-async function pageViewBox(page) {
-  const raw = await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox');
-  const parts = String(raw || '0 0 612 792').trim().split(/\s+/).map(Number);
-  return { raw, W: parts[2] || 612, H: parts[3] || 792 };
-}
-
-async function fileId(page) {
-  return page.evaluate(() => window.__devTestPdf?.id ?? null);
-}
-
-async function userAnnotationSnapshot(page) {
-  return page.evaluate(() => {
-    const ids = [...document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]')]
-      .map((group) => group.getAttribute('data-anno-id'))
-      .filter(Boolean);
-    return ids.map((id) => {
-      const object = window.__phase35GetAnnotationById?.(id) || {};
-      const data = object.data || {};
-      return {
-        id,
-        type: String(object.type || data.type || '').toLowerCase(),
-        tool: String(data.tool || object.tool || data.type || '').toLowerCase(),
-        imported: object.isPdfImported === true,
-        left: Number(object.left ?? data.left ?? 0),
-        top: Number(object.top ?? data.top ?? 0),
-        width: Number(object.width ?? data.width ?? 0) * Math.abs(Number(object.scaleX ?? 1)),
-        height: Number(object.height ?? data.height ?? 0) * Math.abs(Number(object.scaleY ?? 1)),
-        angle: Number(object.angle ?? data.angle ?? 0),
-      };
-    }).filter((row) => row.imported !== true && !/^\d+R$/i.test(String(row.id || '')));
-  });
-}
-
-async function geom(page, id) {
-  const rows = await userAnnotationSnapshot(page);
-  return rows.find((row) => row.id === id) || null;
-}
-
-function isRect(row) {
-  return row.type === 'rect' || row.type === 'rectangle' || row.tool === 'rect';
-}
-
-function angleDelta(a, b) {
-  const delta = ((Number(b) - Number(a) + 540) % 360) - 180;
-  return Math.abs(delta);
-}
-
-function almostEq(a, b, eps = 3) {
-  return Math.abs(Number(a) - Number(b)) < eps;
-}
-
-async function activateTool(page, categoryName, toolName) {
-  const sub = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
-  if (await sub.count()) {
-    if ((await sub.first().getAttribute('aria-pressed')) !== 'true') await sub.first().click();
-    return;
-  }
-  const visible = page.getByRole('button', { name: toolName, exact: true });
-  if (await visible.count() && await visible.first().isVisible().catch(() => false)) {
-    if ((await visible.first().getAttribute('aria-pressed')) !== 'true') await visible.first().click();
-    return;
-  }
-  const category = page.getByRole('button', { name: categoryName, exact: true }).first();
-  await expect(category).toBeVisible({ timeout: 8_000 });
-  if (!String(await category.getAttribute('class') || '').includes('btn-active')) {
-    await category.click();
-  }
-  const again = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true });
-  const target = (await again.count()) ? again.first() : page.getByRole('button', { name: toolName, exact: true }).first();
-  if ((await target.getAttribute('aria-pressed')) !== 'true') await target.click();
-}
-
-async function dragOnPage(page, { x0, y0, x1, y1 }) {
-  const box = await pageBox(page);
-  await page.mouse.move(box.x + box.width * x0, box.y + box.height * y0);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * x1, box.y + box.height * y1, { steps: 10 });
-  await page.mouse.up();
-}
-
-async function createRect(page, coords) {
-  const before = new Set((await userAnnotationSnapshot(page)).map((row) => row.id));
-  await activateTool(page, 'Shapes', 'Rectangle');
-  await setNextDrawFill(page, '#00FFFF');
-  await dragOnPage(page, coords);
-  let created = null;
-  await expect.poll(async () => {
-    const rows = await userAnnotationSnapshot(page);
-    created = rows.find((row) => !before.has(row.id) && isRect(row)) || null;
-    return created;
-  }, { message: 'expected a rectangle' }).not.toBeNull();
-  return created;
-}
-
-async function selectMode(page) {
-  await blurInputs(page);
-  await page.keyboard.press('Escape').catch(() => {});
-  await page.keyboard.press('v');
-  const menu = page.locator('[data-select-mode-menu="true"]');
-  if (await menu.count()) await page.keyboard.press('Escape');
-}
-
-async function strokeClick(page, id) {
-  const hit = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"] [data-shape-hit-target="rect"]`).first();
+async function annoBox(page, id) {
+  const hit = await hitTarget(page, id);
   await expect(hit).toBeVisible();
   const box = await hit.boundingBox();
   expect(box, `hit bbox for ${id}`).toBeTruthy();
+  return box;
+}
+
+async function strokeClick(page, id) {
+  const box = await annoBox(page, id);
   const before = (await selectedIds(page)).includes(id);
   const points = [
     { x: box.x + box.width * 0.35, y: box.y + box.height * 0.35 },
@@ -244,147 +285,127 @@ async function strokeClick(page, id) {
   throw new Error(`stroke-click missed ${id}`);
 }
 
-async function selectUntilMtr(page, id) {
-  await selectMode(page);
-  await dismissChrome(page);
-  await strokeClick(page, id);
-  await expect.poll(async () => page.locator('[data-rotation-handle="mtr"]').count(), {
-    timeout: 8_000,
-    message: 'single-select must show mtr',
-  }).toBeGreaterThan(0);
+async function clickEmpty(page, { xf = 0.08, yf = 0.08 } = {}) {
+  const box = await pageBox(page);
+  await page.mouse.click(box.x + box.width * xf, box.y + box.height * yf);
 }
 
-async function startMtrDrag(page, id, deg) {
-  const hit = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"] [data-shape-hit-target="rect"]`).first();
-  const box = await hit.boundingBox();
-  expect(box, 'rect hit').toBeTruthy();
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  const handle = page.locator('[data-rotation-handle="mtr"]').first();
-  await expect(handle).toBeVisible({ timeout: 8_000 });
-  const hb = await handle.boundingBox();
-  expect(hb, 'mtr handle').toBeTruthy();
-  const start = { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
-  const radius = Math.max(80, Math.hypot(start.x - cx, start.y - cy));
-  const end = {
-    x: cx + radius * Math.sin((deg * Math.PI) / 180),
-    y: cy - radius * Math.cos((deg * Math.PI) / 180),
-  };
+async function selectUntilHandles(page, id, min = 4) {
+  await selectMode(page);
+  await clickEmpty(page);
+  await strokeClick(page, id);
+  await expect.poll(async () => page.locator('[data-resize-handle]').count(), {
+    timeout: 8_000,
+    message: `selected ${id} must show resize handles`,
+  }).toBeGreaterThanOrEqual(min);
+}
+
+async function startBrDrag(page, dx, dy) {
+  const handle = page.locator('[data-resize-handle="br"]').first();
+  await expect(handle, 'br handle').toBeVisible({ timeout: 8_000 });
+  const box = await handle.boundingBox();
+  expect(box, 'br handle box').toBeTruthy();
+  const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 16 });
+  await page.mouse.move(start.x + dx, start.y + dy, { steps: 12 });
   return start;
 }
 
-async function liveRotatePreview(page, id) {
-  return page.evaluate((annoId) => {
-    const group = document.querySelector(`[data-svg-annotation-layer="1"] > g[data-anno-id="${annoId}"]`);
-    const transform = group?.getAttribute?.('transform') || '';
-    const object = window.__phase35GetAnnotationById?.(annoId) || {};
-    return {
-      transform,
-      storedAngle: Number(object.angle ?? 0),
-    };
-  }, id);
-}
-
-async function cancelMtrPointer(page) {
-  await page.locator('[data-rotation-handle="mtr"]').first().dispatchEvent('pointercancel', {
+async function cancelBrPointer(page) {
+  await page.locator('[data-resize-handle="br"]').first().dispatchEvent('pointercancel', {
     pointerId: 1,
     pointerType: 'mouse',
     bubbles: true,
     cancelable: true,
-    clientX: 400,
-    clientY: 300,
   });
 }
 
-async function proveMtrPointercancel(page, coords) {
+async function proveBrPointercancel(page, coords) {
+  await activateTool(page, 'Shapes', 'Rectangle');
+  await setNextDrawFill(page, '#00FFFF');
   const rect = await createRect(page, coords);
   await dismissChrome(page);
-  await selectUntilMtr(page, rect.id);
+  await blurInputs(page);
+  await selectUntilHandles(page, rect.id, 4);
   const pre = await geom(page, rect.id);
 
-  await startMtrDrag(page, rect.id, 90);
-  await cancelMtrPointer(page);
+  await startBrDrag(page, 48, 36);
+  await cancelBrPointer(page);
   let afterCancel = null;
   await expect.poll(async () => {
     afterCancel = await geom(page, rect.id);
-    return angleDelta(pre.angle, afterCancel.angle);
-  }, { message: 'pointercancel must persist the live mtr angle', timeout: 8_000 }).toBeGreaterThan(40);
-  expect(almostEq(afterCancel.left, pre.left, 3), 'pointercancel keeps left').toBe(true);
-  expect(almostEq(afterCancel.top, pre.top, 3), 'pointercancel keeps top').toBe(true);
-  expect(almostEq(afterCancel.width, pre.width, 3), 'pointercancel keeps width').toBe(true);
-  expect(almostEq(afterCancel.height, pre.height, 3), 'pointercancel keeps height').toBe(true);
+    return afterCancel && afterCancel.vw > pre.vw + 6 && afterCancel.vh > pre.vh + 4;
+  }, { message: 'pointercancel must persist the live br resize', timeout: 8_000 }).toBeTruthy();
+  expect(afterCancel.left, 'pointercancel pins left').toBeCloseTo(pre.left, 1);
+  expect(afterCancel.top, 'pointercancel pins top').toBeCloseTo(pre.top, 1);
 
-  const empty = await pageBox(page);
-  await page.mouse.click(empty.x + empty.width * 0.92, empty.y + empty.height * 0.08);
+  await clickEmpty(page, { xf: 0.92, yf: 0.08 });
   await page.keyboard.press('Control+z');
   let afterUndo = null;
   await expect.poll(async () => {
     afterUndo = await geom(page, rect.id);
-    return angleDelta(pre.angle, afterUndo.angle) < 2
-      && almostEq(afterUndo.left, pre.left, 3)
-      && almostEq(afterUndo.top, pre.top, 3);
-  }, { timeout: 8_000 }).toBe(true);
+    return afterUndo && Math.abs(afterUndo.vw - pre.vw) < 2 && Math.abs(afterUndo.vh - pre.vh) < 2;
+  }, { timeout: 8_000 }).toBeTruthy();
 
-  await selectUntilMtr(page, rect.id);
+  await selectUntilHandles(page, rect.id, 4);
   const preNoop = await geom(page, rect.id);
-  const handle = page.locator('[data-rotation-handle="mtr"]').first();
+  const handle = page.locator('[data-resize-handle="br"]').first();
   const box = await handle.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await cancelMtrPointer(page);
+  await cancelBrPointer(page);
   const afterNoop = await geom(page, rect.id);
-  expect(angleDelta(preNoop.angle, afterNoop.angle) < 1, 'no-move pointercancel invents 0').toBe(true);
+  expect(Math.abs(afterNoop.vw - preNoop.vw) < 2, 'no-move pointercancel invents 0').toBe(true);
+  expect(Math.abs(afterNoop.vh - preNoop.vh) < 2, 'no-move pointercancel invents 0 height').toBe(true);
 
-  await selectUntilMtr(page, rect.id);
+  await selectUntilHandles(page, rect.id, 4);
   const preZoom = await geom(page, rect.id);
-  await startMtrDrag(page, rect.id, 180);
+  await startBrDrag(page, 40, 28);
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('Control+=');
   let afterZoom = null;
   await expect.poll(async () => {
     afterZoom = await geom(page, rect.id);
-    return angleDelta(preZoom.angle, afterZoom.angle);
-  }, { message: 'zoomGeneration must flush the live mtr angle', timeout: 8_000 }).toBeGreaterThan(40);
+    return afterZoom && afterZoom.vw > preZoom.vw + 6 && afterZoom.vh > preZoom.vh + 4;
+  }, { message: 'zoomGeneration must flush the live br resize', timeout: 8_000 }).toBeTruthy();
   await page.mouse.up().catch(() => {});
   const afterZoomUp = await geom(page, rect.id);
-  expect(angleDelta(afterZoom.angle, afterZoomUp.angle) < 2, 'zoom flush + pointerup must not double-commit').toBe(true);
-  expect(almostEq(afterZoom.left, preZoom.left, 4), 'zoom flush keeps left').toBe(true);
-  expect(almostEq(afterZoom.top, preZoom.top, 4), 'zoom flush keeps top').toBe(true);
+  expect(Math.abs(afterZoomUp.vw - afterZoom.vw) < 2, 'zoom flush + pointerup must not double-commit').toBe(true);
+  expect(afterZoom.left, 'zoom flush pins left').toBeCloseTo(preZoom.left, 1);
 
   return {
     id: rect.id,
-    cancelDelta: angleDelta(pre.angle, afterCancel.angle),
-    zoomDelta: angleDelta(preZoom.angle, afterZoom.angle),
-    undoRestored: angleDelta(pre.angle, afterUndo.angle) < 2,
-    viewBox: (await pageViewBox(page)).raw,
+    cancelDw: afterCancel.vw - pre.vw,
+    cancelDh: afterCancel.vh - pre.vh,
+    zoomDw: afterZoom.vw - preZoom.vw,
+    undoRestored: Math.abs(afterUndo.vw - pre.vw) < 2,
+    viewBox: await pageViewBox(page),
     fileId: await fileId(page),
   };
 }
 
-test('desktop selected mtr pointercancel + zoomGeneration commit', async ({ page }) => {
+test('desktop selected br pointercancel + zoomGeneration commit', async ({ page }) => {
   await openEditor(page);
   await dismissChrome(page);
-  const proof = await proveMtrPointercancel(page, RECT_A);
+  const proof = await proveBrPointercancel(page, RECT_A);
   expect(proof.viewBox, 'SVG viewBox owns zoom').toBe('0 0 612 792');
   expect(proof.fileId, 'file.id must stay null').toBeNull();
   await assertNoErrorBoundary(page);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'hubPreview mtr 0').toBe(0);
+  expect(await page.locator('[data-resize-handle]').count(), 'hubPreview handles 0').toBe(0);
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count(), 'hubPreview Draw 0').toBe(0);
 
   console.log('SELECTED_HANDLE_POINTERCANCEL_DESKTOP', JSON.stringify(proof));
 });
 
-test('390 selected mtr pointercancel + zoomGeneration commit', async ({ page }) => {
+test('390 selected br pointercancel + zoomGeneration commit', async ({ page }) => {
   await openEditor(page, { width: 390, height: 844 });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
-  await dismissChrome(page);
-  const proof = await proveMtrPointercancel(page, { x0: 0.28, y0: 0.34, x1: 0.52, y1: 0.52 });
+  await blurInputs(page);
+  const proof = await proveBrPointercancel(page, { x0: 0.18, y0: 0.24, x1: 0.48, y1: 0.48 });
   expect(proof.viewBox, '390 viewBox owns zoom').toBe('0 0 612 792');
   expect(proof.fileId, 'file.id must stay null').toBeNull();
   await assertNoErrorBoundary(page);
