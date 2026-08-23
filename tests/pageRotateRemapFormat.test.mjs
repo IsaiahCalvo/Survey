@@ -25,6 +25,7 @@ test('remapped-format spec applies chip + hex + font + arrowhead without a mouse
   const spec = read('debug/scenarios/e2e-page-rotate-remap-format.spec.mjs');
   assert.match(spec, /#FF0000/);
   assert.match(spec, /Times New Roman/);
+  assert.match(spec, /legacy\.style \|\| data\.style \|\| object\.style/);
   assert.match(spec, /Arrowhead|Font color|Style/);
   assert.match(spec, /isSingleNameFontFamily/);
   assert.match(spec, /Escape skip-commit/);
