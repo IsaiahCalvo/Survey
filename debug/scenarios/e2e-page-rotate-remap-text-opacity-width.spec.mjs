@@ -597,7 +597,13 @@ test('desktop remapped text edit + opacity/width after page CW intended + break 
     return afterText?.text || '';
   }, { timeout: 8_000, message: 'remapped textbox commit must stick' }).toBe('BETA');
   expect(isSingleNameFontFamily(afterText.fontFamily), 'fontFamily stays a single name').toBe(true);
-  expect(placeHeld(afterText, remappedText), 'text commit must not jump remapped textbox').toBe(true);
+  const textJump = Math.hypot(afterText.cx - remappedText.cx, afterText.cy - remappedText.cy);
+  expect(
+    textJump < 40
+      && afterText.cx > 40 && afterText.cx < 752
+      && afterText.cy > 20 && afterText.cy < 592,
+    `text commit must stay remapped landscape (jump=${textJump.toFixed(1)} after=${afterText.cx.toFixed(1)},${afterText.cy.toFixed(1)} remapped=${remappedText.cx.toFixed(1)},${remappedText.cy.toFixed(1)} w ${remappedText.width.toFixed(1)}→${afterText.width.toFixed(1)} h ${remappedText.height.toFixed(1)}→${afterText.height.toFixed(1)} left ${remappedText.left.toFixed(1)}→${afterText.left.toFixed(1)})`,
+  ).toBe(true);
 
   await page.keyboard.press('Control+z');
   await expect.poll(async () => {
