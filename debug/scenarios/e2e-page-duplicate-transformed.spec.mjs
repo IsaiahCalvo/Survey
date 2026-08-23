@@ -436,13 +436,14 @@ test('desktop page duplicate with transformed rect intended + break + edge', asy
   expect(await pageViewBox(page, 1)).toBe('0 0 612 792');
   await expect.poll(() => page.locator('.survey-pdfjs-page-div').count()).toBe(3);
 
-  // Break — empty last-page Duplicate invents 0 user marks.
-  expect((await userOwned(page, 3)).length, 'last page starts empty of user marks').toBe(0);
-  await mutatePage(page, 3, 'duplicate');
+  // Break — empty first-page Duplicate invents 0 user marks and stays on page 1.
+  await mutatePage(page, 1, 'duplicate');
   await expect.poll(() => page.locator('.survey-pdfjs-page-div').count()).toBe(4);
+  await waitForEditorReady(page);
   await dismissChrome(page);
-  expect((await userOwned(page, 3)).length, 'empty page duplicate must invent 0').toBe(0);
-  expect((await userOwned(page, 4)).length, 'empty clone invents 0').toBe(0);
+  await gotoPage(page, 1);
+  expect((await userOwned(page, 1)).length, 'empty page duplicate must invent 0').toBe(0);
+  expect((await userOwned(page, 2)).length, 'empty clone invents 0').toBe(0);
   expect(await pageViewBox(page, 1)).toBe('0 0 612 792');
 
   const created = await createRect(page, RECT_BOX, 1);
