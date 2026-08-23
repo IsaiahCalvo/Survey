@@ -310,16 +310,18 @@ async function probeHitTest(page, which) {
     const H = vb[3] || 612;
     const leftoverPortrait = [...document.querySelectorAll('[data-svg-annotation-layer]')]
       .filter((node) => (node.getAttribute('viewBox') || '') === '0 0 612 792');
+    const svgBox = svg?.getBoundingClientRect();
+    const hostBox = host?.getBoundingClientRect();
     return {
       viewBox: svg?.getAttribute('viewBox') || '',
-      svgOffset: { w: svg?.offsetWidth || 0, h: svg?.offsetHeight || 0 },
-      hostOffset: { w: host?.offsetWidth || 0, h: host?.offsetHeight || 0 },
+      svgRect: { w: svgBox?.width || 0, h: svgBox?.height || 0 },
+      hostRect: { w: hostBox?.width || 0, h: hostBox?.height || 0 },
       leftoverPortraitCount: leftoverPortrait.length,
       screenToSVG: { x: pt.x, y: pt.y },
       onPage: pt.x >= -2 && pt.x <= W + 2 && pt.y >= -2 && pt.y <= H + 2,
       ctmOk: Boolean(ctm),
-      overlayDx: Math.abs((svg?.offsetWidth || 0) - (host?.offsetWidth || 0)),
-      overlayDy: Math.abs((svg?.offsetHeight || 0) - (host?.offsetHeight || 0)),
+      overlayDx: Math.abs((svgBox?.width || 0) - (hostBox?.width || 0)),
+      overlayDy: Math.abs((svgBox?.height || 0) - (hostBox?.height || 0)),
       hitTag: hit?.tagName || '',
       hitIsHandle: Boolean(hit && (hit === el || el.contains(hit) || hit.contains?.(el))),
     };
