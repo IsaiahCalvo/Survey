@@ -2,6 +2,7 @@
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Tip before this pass:** `e6168568` Fit-options dismiss.  
+**This-pass SHA:** `39da34c8` (capture pointerdown + consume).  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
 Unique leftover after Fit-options dismiss (`e6168568`). Menu Style / Width **apply** catalogs already dedicated (`e2e-rect-ellipse-text-dash`, `e2e-shape-stroke-width-presets`). Color every-swatch already dedicated. This leftover is Style / Width / color **popup dismiss** on a page click while a creation tool is armed. Overlay lists Esc as Close dialogs/cancel. Distinct from leftover-18 / X-01 / remapped-after-CW / Fit apply / Fit dismiss / Select caret arm-then-toggle / Home / Close tab.
