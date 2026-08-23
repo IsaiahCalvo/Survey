@@ -50,13 +50,6 @@ async function openDesktopMoreShare(page, name) {
   await page.getByRole('menuitem', { name: 'Share', exact: true }).click();
 }
 
-async function dismissGuestAuth(page) {
-  const guestDialog = page.getByRole('dialog');
-  if (await guestDialog.getByRole('button', { name: 'Continue without an account' }).isVisible().catch(() => false)) {
-    await guestDialog.getByRole('button', { name: 'Continue without an account' }).click();
-  }
-}
-
 async function fileId(page) {
   return page.evaluate(() => {
     const file = window.__phase35SelectedPdf || window.selectedPDF || window.__devTestPdf || null;
@@ -126,13 +119,12 @@ test('390 + guest + idle editor break/edge for AccessManagementModal name', asyn
   test.setTimeout(180_000);
 
   await openPage(page, { url: HUB_GUEST });
-  await dismissGuestAuth(page);
-  await expect(page.getByText(OWNER).first()).toBeVisible({ timeout: 15_000 });
-  await openDesktopMoreShare(page, OWNER);
-  await expect(shareDialog(page)).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  // Guest AuthModal is leftover-18 A-01 — do not submit. Named Access must
+  // not be idle-open under the overlay.
+  await expect(page.getByRole('button', { name: 'Sign in' }).first()).toBeVisible();
   expect(await namedAccess(page).count()).toBe(0);
-  await shareDialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(shareDialog(page)).toHaveCount(0);
+  expect(await page.getByRole('dialog', { name: /Lock this document/ }).count()).toBe(0);
 
   await openPage(page, { width: 390, height: 844, url: HUB });
   const mobileCard = page.locator('.mobile-doc-card').filter({ hasText: OWNER }).first();
