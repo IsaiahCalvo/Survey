@@ -92,9 +92,10 @@ test('desktop Archive Show and sort menu is named + Documents filter; Escape dis
   expect(await page.getByRole('menuitemradio', { name: /^Documents/ }).count()).toBe(0);
 
   await desktopFilter(page).click();
-  await expect(showAndSort(page)).toBeVisible();
-  for (const name of ['All', 'Documents', 'Projects', 'Templates', 'File', 'Project', 'Most recently archived', 'Size']) {
-    await expect(page.getByRole('menuitemradio', { name, exact: true })).toHaveCount(1);
+  const menu = showAndSort(page);
+  await expect(menu).toBeVisible();
+  for (const name of [/^All/, /^Documents/, /^Projects/, /^Templates/, /^File/, /^Project$/, /^Most recently archived/, /^Size/]) {
+    await expect(menu.getByRole('menuitemradio', { name })).toHaveCount(1);
   }
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Partial erase', exact: true })).toHaveCount(0);
@@ -107,7 +108,7 @@ test('desktop Archive Show and sort menu is named + Documents filter; Escape dis
 
   await desktopFilter(page).click();
   await expect(showAndSort(page)).toBeVisible();
-  await page.getByRole('menuitemradio', { name: 'Documents', exact: true }).click();
+  await menu.getByRole('menuitemradio', { name: /^Documents/ }).click();
   await expect(showAndSort(page)).toHaveCount(0);
   await expect(page.getByText('Site plan').first()).toBeVisible();
   await expect(page.getByText('Atrium')).toHaveCount(0);

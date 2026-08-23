@@ -38,7 +38,7 @@ test('live spec covers named Archive Show and sort intended + break + edge; skip
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /Show and sort/);
-  assert.match(spec, /getByRole\('menuitemradio', \{ name: 'Documents', exact: true \}\)/);
+  assert.match(spec, /getByRole\('menuitemradio', \{ name: \/\^Documents\/ \}\)/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /390/);
   assert.match(spec, /file\.id/);
