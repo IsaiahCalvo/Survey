@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf&surveyTransitionE2E=1';
 const HUB = '/?hubPreview=1';
 const FIXTURE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures');
-const REIMPORT_NAME = '_e2e-page-rotate-remaining-export-reimport.pdf';
+const REIMPORT_TAB = /clickable-link-test\.pdf|_e2e-page-rotate-(line|textbox|counter|survey-marker)-export-reimport\.pdf/;
 
 const LINE_BOX = { x0: 0.18, y0: 0.22, x1: 0.42, y1: 0.38 };
 const TEXT_BOX = { x0: 0.48, y0: 0.20, x1: 0.74, y1: 0.34 };
@@ -128,7 +128,7 @@ async function dismissChrome(page) {
     if (await rail.first().isVisible().catch(() => false)) {
       await rail.first().click().catch(() => {});
     } else {
-      const tab = page.getByRole('button', { name: /clickable-link-test\.pdf|_e2e-page-rotate-remaining-export-reimport\.pdf/ }).first();
+      const tab = page.getByRole('button', { name: REIMPORT_TAB }).first();
       if (await tab.isVisible().catch(() => false)) {
         await tab.click({ position: { x: 24, y: 8 } }).catch(() => {});
       }
@@ -610,11 +610,27 @@ function findRow(rows, pred, id) {
     || rows.find((row) => pred(row));
 }
 
-test('desktop rotate remapper then export re-import of counter, survey-marker, line, textbox', async ({ page }) => {
-  test.setTimeout(240_000);
-  page.on('dialog', async (dialog) => {
-    await dialog.accept().catch(() => {});
-  });
+async function createdGeom(page, kind, created) {
+  if (kind === 'survey-marker') return markerGeom(page, created.id);
+  return (await annotationSnapshot(page)).find((row) => row.id === created.id) || null;
+}
+
+function expectedCenter(created, kind) {
+  if (kind === 'line') return { x: created.px1, y: created.py1 };
+  return { x: created.cx, y: created.cy };
+}
+
+function actualCenter(row, kind) {
+  if (kind === 'line') return { x: row.px1, y: row.py1 };
+  return { x: row.cx, y: row.cy };
+}
+
+async function proveType(page, kind) {
+  const destName = `_e2e-page-rotate-${kind}-export-reimport.pdf`;
+  const pred = kind === 'line' ? isLine
+    : kind === 'textbox' ? isTextRow
+      : kind === 'counter' ? isCounter
+        : null;
 
   await openEditor(page, { keepOnReload: true });
   await assertNoErrorBoundary(page);
@@ -622,126 +638,100 @@ test('desktop rotate remapper then export re-import of counter, survey-marker, l
   expect(page.url()).toContain('testPdf=clickable-link-test.pdf');
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
   expect(await pageViewBox(page)).toBe('0 0 612 792');
-  expect((await annotationSnapshot(page)).filter((row) => row.imported !== true).length, 'fresh fixture starts empty').toBe(0);
-  expect((await markerIds(page)).length, 'fresh fixture starts with 0 survey-markers').toBe(0);
 
-  const createdLine = await createLine(page);
+  const created = kind === 'line' ? await createLine(page)
+    : kind === 'textbox' ? await createTextbox(page)
+      : kind === 'counter' ? await createCounter(page)
+        : await createSurveyMarker(page, 'walls-xf');
   await dismissChrome(page);
-  const createdText = await createTextbox(page);
-  await dismissChrome(page);
-  const createdCounter = await createCounter(page);
-  await dismissChrome(page);
-  const createdMarker = await createSurveyMarker(page, 'walls-xf');
-  await dismissChrome(page);
+  expect(created?.id).toBeTruthy();
+  if (kind === 'textbox') {
+    expect(created.fontFamily, 'create stamps a single-name fontFamily').toBe('Helvetica');
+    expect(created.text).toBe('A');
+  }
+  if (kind === 'counter') {
+    expect(created.pointerAngle, 'live counter starts at the place default').toBe(225);
+  }
 
-  expect(createdLine?.id).toBeTruthy();
-  expect(createdText?.id).toBeTruthy();
-  expect(createdCounter?.id).toBeTruthy();
-  expect(createdMarker?.id).toBeTruthy();
-  expect(createdText.fontFamily, 'create stamps a single-name fontFamily').toBe('Helvetica');
-  expect(createdText.text).toBe('A');
-  expect(createdCounter.pointerAngle, 'live counter starts at the place default').toBe(225);
+  const selectBtn = page.getByRole('button', { name: 'Select', exact: true }).first();
+  if (await selectBtn.isVisible().catch(() => false)) await selectBtn.click();
+  await dismissChrome(page);
 
   await rotatePage(page, 1, 'cw');
   await waitForEditorReady(page);
   await dismissChrome(page);
   expect(await pageViewBox(page)).toBe('0 0 792 612');
 
-  await expect.poll(async () => {
-    const rows = await annotationSnapshot(page);
-    return rows.some((row) => row.id === createdLine.id)
-      && rows.some((row) => row.id === createdText.id)
-      && rows.some((row) => row.id === createdCounter.id)
-      && (await markerIds(page)).includes(createdMarker.id);
-  }, { timeout: 20_000, message: 'page rotate must keep all four live types' }).toBe(true);
+  await expect.poll(async () => createdGeom(page, kind, created), {
+    timeout: 20_000,
+    message: `page rotate must keep the live ${kind}`,
+  }).not.toBeNull();
+  const rotated = await createdGeom(page, kind, created);
+  expect(rotated, `page rotate must keep the live ${kind}`).toBeTruthy();
 
-  const rowsAfter = await annotationSnapshot(page);
-  const rotatedLine = rowsAfter.find((row) => row.id === createdLine.id);
-  const rotatedText = rowsAfter.find((row) => row.id === createdText.id);
-  const rotatedCounter = rowsAfter.find((row) => row.id === createdCounter.id);
-  const rotatedMarker = await markerGeom(page, createdMarker.id);
+  const expected = rotateDisplayedPoint(expectedCenter(created, kind).x, expectedCenter(created, kind).y, 612, 792, 90);
+  const rotatedCenter = actualCenter(rotated, kind);
+  expect(Math.abs(rotatedCenter.x - expected.x), `remapped ${kind} follows +90`).toBeLessThan(22);
+  expect(Math.abs(rotatedCenter.y - expected.y)).toBeLessThan(22);
+  if (kind === 'line') {
+    expect(rotated.px1, 'line must not stay on the pre-rotate point').not.toBeCloseTo(created.px1, 0);
+  } else if (kind === 'textbox') {
+    expect(rotated.left, 'textbox must not stay on the pre-rotate left').not.toBeCloseTo(created.left, 0);
+    expect(rotated.fontFamily).toBe('Helvetica');
+  } else if (kind === 'counter') {
+    expect(rotated.pointerAngle, 'nubbin pointerAngle remaps +90').toBe(315);
+    expect(rotated.cx, 'counter must not stay on the pre-rotate center').not.toBeCloseTo(created.cx, 0);
+  } else {
+    expect(rotated.x, 'survey-marker must not stay on the pre-rotate bounds').not.toBeCloseTo(created.x, 0);
+  }
 
-  const expectedLineStart = rotateDisplayedPoint(createdLine.px1, createdLine.py1, 612, 792, 90);
-  const expectedTextCenter = rotateDisplayedPoint(createdText.cx, createdText.cy, 612, 792, 90);
-  const expectedCounter = rotateDisplayedPoint(createdCounter.cx, createdCounter.cy, 612, 792, 90);
-  const expectedMarker = rotateDisplayedPoint(createdMarker.cx, createdMarker.cy, 612, 792, 90);
+  if (kind === 'survey-marker') {
+    await waitForCacheIds(page, [], [created.id]);
+  } else {
+    await waitForCacheIds(page, [created.id]);
+  }
+  expect((await localCache(page)).fileId).toBeNull();
 
-  expect(Math.abs(rotatedLine.px1 - expectedLineStart.x), 'remapped line start follows +90').toBeLessThan(22);
-  expect(Math.abs(rotatedLine.py1 - expectedLineStart.y)).toBeLessThan(22);
-  expect(rotatedLine.px1, 'line must not stay on the pre-rotate point').not.toBeCloseTo(createdLine.px1, 0);
-
-  expect(Math.abs(rotatedText.cx - expectedTextCenter.x), 'remapped textbox center follows +90').toBeLessThan(22);
-  expect(Math.abs(rotatedText.cy - expectedTextCenter.y)).toBeLessThan(22);
-  expect(rotatedText.left, 'textbox must not stay on the pre-rotate left').not.toBeCloseTo(createdText.left, 0);
-  expect(rotatedText.fontFamily).toBe('Helvetica');
-
-  expect(Math.abs(rotatedCounter.cx - expectedCounter.x), 'remapped counter center follows +90').toBeLessThan(22);
-  expect(Math.abs(rotatedCounter.cy - expectedCounter.y)).toBeLessThan(22);
-  expect(rotatedCounter.pointerAngle, 'nubbin pointerAngle remaps +90').toBe(315);
-  expect(rotatedCounter.cx, 'counter must not stay on the pre-rotate center').not.toBeCloseTo(createdCounter.cx, 0);
-
-  expect(Math.abs(rotatedMarker.cx - expectedMarker.x), 'remapped survey-marker center follows +90').toBeLessThan(22);
-  expect(Math.abs(rotatedMarker.cy - expectedMarker.y)).toBeLessThan(22);
-  expect(rotatedMarker.x, 'survey-marker must not stay on the pre-rotate bounds').not.toBeCloseTo(createdMarker.x, 0);
-
-  await waitForCacheIds(page, [createdLine.id, createdText.id, createdCounter.id], [createdMarker.id]);
-  const cached = await localCache(page);
-  expect(cached.fileId).toBeNull();
-
-  const { dest, filename } = await exportAndSave(page, REIMPORT_NAME);
+  const { dest, filename } = await exportAndSave(page, destName);
   await page.evaluate(() => { sessionStorage.removeItem('e2e-keep-local-save'); });
   await wipeAnnotationKeys(page);
-  await openEditor(page, { url: `/?testPdf=${REIMPORT_NAME}`, keepOnReload: false });
+  await openEditor(page, { url: `/?testPdf=${destName}`, keepOnReload: false });
   await assertNoErrorBoundary(page);
   await dismissChrome(page);
   expect(await fileId(page), 're-import must not stamp file.id').toBeNull();
   expect(await pageViewBox(page), 're-import must keep swapped viewBox').toBe('0 0 792 612');
 
+  let imported = null;
   await expect.poll(async () => {
+    if (kind === 'survey-marker') {
+      const ids = await markerIds(page);
+      const id = ids.includes(created.id) ? created.id : ids[0];
+      imported = id ? await markerGeom(page, id) : null;
+      return imported;
+    }
     const rows = await annotationSnapshot(page);
-    const ids = await markerIds(page);
-    return {
-      line: Boolean(findRow(rows, isLine, createdLine.id)),
-      text: Boolean(findRow(rows, isTextRow, createdText.id)),
-      counter: Boolean(findRow(rows, isCounter, createdCounter.id)),
-      marker: ids.includes(createdMarker.id) || ids.length > 0,
-    };
-  }, { timeout: 20_000, message: 're-import must paint all four exported types' }).toEqual({
-    line: true,
-    text: true,
-    counter: true,
-    marker: true,
-  });
+    imported = findRow(rows, pred, created.id);
+    return imported;
+  }, { timeout: 20_000, message: `re-import must paint the exported ${kind}` }).not.toBeNull();
 
-  const importedRows = await annotationSnapshot(page);
-  const importedLine = findRow(importedRows, isLine, createdLine.id);
-  const importedText = findRow(importedRows, isTextRow, createdText.id);
-  const importedCounter = findRow(importedRows, isCounter, createdCounter.id);
-  const importedMarkerId = (await markerIds(page)).includes(createdMarker.id)
-    ? createdMarker.id
-    : (await markerIds(page))[0];
-  const importedMarker = await markerGeom(page, importedMarkerId);
-
-  expect(importedLine.id, 're-import keeps the same line id').toBe(createdLine.id);
-  expect(Math.abs(importedLine.px1 - rotatedLine.px1), 're-import must keep remapped line start').toBeLessThan(28);
-  expect(Math.abs(importedLine.py1 - rotatedLine.py1)).toBeLessThan(28);
-  expect(importedLine.px1, 're-import must not restore pre-rotate line').not.toBeCloseTo(createdLine.px1, 0);
-
-  expect(importedText.id, 're-import keeps the same textbox id').toBe(createdText.id);
-  expect(Math.abs(importedText.cx - rotatedText.cx), 're-import must keep remapped textbox center').toBeLessThan(28);
-  expect(Math.abs(importedText.cy - rotatedText.cy)).toBeLessThan(28);
-  expect(importedText.left, 're-import must not restore pre-rotate textbox').not.toBeCloseTo(createdText.left, 0);
-  expect(importedText.fontFamily, 're-import keeps a single-name fontFamily').toBe('Helvetica');
-
-  expect(importedCounter.id, 're-import keeps the same counter id').toBe(createdCounter.id);
-  expect(Math.abs(importedCounter.cx - rotatedCounter.cx), 're-import must keep remapped counter center').toBeLessThan(28);
-  expect(Math.abs(importedCounter.cy - rotatedCounter.cy)).toBeLessThan(28);
-  expect(importedCounter.cx, 're-import must not restore pre-rotate counter').not.toBeCloseTo(createdCounter.cx, 0);
-
-  expect(importedMarker.id, 're-import keeps the same survey-marker id').toBe(createdMarker.id);
-  expect(Math.abs(importedMarker.cx - rotatedMarker.cx), 're-import must keep remapped survey-marker center').toBeLessThan(28);
-  expect(Math.abs(importedMarker.cy - rotatedMarker.cy)).toBeLessThan(28);
-  expect(importedMarker.x, 're-import must not restore pre-rotate survey-marker').not.toBeCloseTo(createdMarker.x, 0);
+  expect(imported.id, `re-import keeps the same ${kind} id`).toBe(created.id);
+  const importedCenter = actualCenter(imported, kind);
+  const keepMsg = kind === 'line' ? 're-import must keep remapped line start'
+    : kind === 'textbox' ? 're-import must keep remapped textbox center'
+      : kind === 'counter' ? 're-import must keep remapped counter center'
+        : 're-import must keep remapped survey-marker center';
+  expect(Math.abs(importedCenter.x - rotatedCenter.x), keepMsg).toBeLessThan(28);
+  expect(Math.abs(importedCenter.y - rotatedCenter.y)).toBeLessThan(28);
+  if (kind === 'line') {
+    expect(imported.px1, 're-import must not restore pre-rotate line').not.toBeCloseTo(created.px1, 0);
+  } else if (kind === 'textbox') {
+    expect(imported.left, 're-import must not restore pre-rotate textbox').not.toBeCloseTo(created.left, 0);
+    expect(imported.fontFamily, 're-import keeps a single-name fontFamily').toBe('Helvetica');
+  } else if (kind === 'counter') {
+    expect(imported.cx, 're-import must not restore pre-rotate counter').not.toBeCloseTo(created.cx, 0);
+  } else {
+    expect(imported.x, 're-import must not restore pre-rotate survey-marker').not.toBeCloseTo(created.x, 0);
+  }
   expect(await fileId(page)).toBeNull();
 
   try { await unlink(dest); } catch { /* leftover fixture is fine */ }
@@ -752,10 +742,12 @@ test('desktop rotate remapper then export re-import of counter, survey-marker, l
   await wipeAnnotationKeys(page);
   await reloadEditor(page);
   await dismissChrome(page);
-  const wipedRows = (await annotationSnapshot(page)).filter((row) => row.imported !== true);
-  const wipedMarkers = await markerIds(page);
-  expect(wipedRows.some((row) => [createdLine.id, createdText.id, createdCounter.id].includes(row.id)), 'reload without save invents 0').toBe(false);
-  expect(wipedMarkers.includes(createdMarker.id), 'reload without save invents 0 survey-markers').toBe(false);
+  if (kind === 'survey-marker') {
+    expect((await markerIds(page)).includes(created.id), 'reload without save invents 0').toBe(false);
+  } else {
+    const wiped = (await annotationSnapshot(page)).filter((row) => row.imported !== true);
+    expect(wiped.some((row) => row.id === created.id), 'reload without save invents 0').toBe(false);
+  }
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
   // Break — empty export still downloads; cancel does not invent marks.
@@ -767,23 +759,33 @@ test('desktop rotate remapper then export re-import of counter, survey-marker, l
   ]);
   expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
   await emptyDownload.cancel();
-  expect((await annotationSnapshot(page)).some((row) => row.id === createdLine.id)).toBe(false);
   expect(await fileId(page)).toBeNull();
 
-  console.log('PAGE_ROTATE_REMAINING_EXPORT_REIMPORT_DESKTOP_PROOF', JSON.stringify({
-    line: { id: createdLine.id, created: { px1: createdLine.px1, py1: createdLine.py1 }, rotated: { px1: rotatedLine.px1, py1: rotatedLine.py1 }, imported: { id: importedLine.id, px1: importedLine.px1, py1: importedLine.py1 } },
-    textbox: { id: createdText.id, created: { left: createdText.left, top: createdText.top, cx: createdText.cx, cy: createdText.cy }, rotated: { left: rotatedText.left, top: rotatedText.top, cx: rotatedText.cx, cy: rotatedText.cy }, imported: { id: importedText.id, cx: importedText.cx, cy: importedText.cy, fontFamily: importedText.fontFamily } },
-    counter: { id: createdCounter.id, created: { cx: createdCounter.cx, cy: createdCounter.cy, pointerAngle: createdCounter.pointerAngle }, rotated: { cx: rotatedCounter.cx, cy: rotatedCounter.cy, pointerAngle: rotatedCounter.pointerAngle }, imported: { id: importedCounter.id, cx: importedCounter.cx, cy: importedCounter.cy } },
-    surveyMarker: { id: createdMarker.id, created: { cx: createdMarker.cx, cy: createdMarker.cy }, rotated: { cx: rotatedMarker.cx, cy: rotatedMarker.cy }, imported: { id: importedMarker.id, cx: importedMarker.cx, cy: importedMarker.cy } },
+  console.log(`PAGE_ROTATE_${kind.toUpperCase().replace('-', '_')}_EXPORT_REIMPORT_DESKTOP_PROOF`, JSON.stringify({
+    kind,
+    id: created.id,
+    created: expectedCenter(created, kind),
+    rotated: rotatedCenter,
+    expected,
+    imported: { id: imported.id, ...importedCenter },
     exportName: filename,
     emptyExport: emptyDownload.suggestedFilename(),
-    wipedInvented: wipedRows.length + wipedMarkers.length,
     viewBoxAfterRotate: '0 0 792 612',
     viewBoxAfterWipe: await pageViewBox(page),
     fileId: await fileId(page),
     leftover18CloudSave: 'unchanged',
   }));
-});
+}
+
+for (const kind of ['line', 'textbox', 'counter', 'survey-marker']) {
+  test(`desktop rotate remapper then export re-import of ${kind}`, async ({ page }) => {
+    test.setTimeout(180_000);
+    page.on('dialog', async (dialog) => {
+      await dialog.accept().catch(() => {});
+    });
+    await proveType(page, kind);
+  });
+}
 
 test('390 remaining-export-reimport edge: viewBox, file.id, Pages present, no invent', async ({ page }) => {
   test.setTimeout(90_000);

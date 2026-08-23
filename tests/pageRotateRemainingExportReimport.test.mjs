@@ -384,10 +384,11 @@ test('remaining-type remappers + persist skip file.id; live spec covers export/r
   assert.equal(getPDFId({ name: 'clickable-link-test.pdf', size: 23183 }), 'clickable-link-test.pdf-23183');
   assert.notEqual(
     getPDFId({ name: 'clickable-link-test.pdf', size: 23183 }),
-    getPDFId({ name: '_e2e-page-rotate-remaining-export-reimport.pdf', size: 99 }),
+    getPDFId({ name: '_e2e-page-rotate-line-export-reimport.pdf', size: 99 }),
   );
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
-  assert.match(spec, /page rotate must keep all four live types/);
+  assert.match(spec, /page rotate must keep the live \$\{kind\}/);
+  assert.match(spec, /desktop rotate remapper then export re-import of \$\{kind\}/);
   assert.match(spec, /re-import must keep remapped line start/);
   assert.match(spec, /re-import must keep remapped textbox center/);
   assert.match(spec, /re-import must keep remapped counter center/);
