@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { shouldApplyPersistedFormValue } from './pdfjsFormLocalValueGuard.js';
+import {
+  remapFormWidgetRect,
+  resolveTextLayerRotation,
+  resolveTextLayerScale,
+} from '../utils/pdfjsTextLayerViewport.js';
 
 /**
  * PdfjsFormLayer — interactive form-field (Widget) overlay for one page under
@@ -19,10 +24,14 @@ import { shouldApplyPersistedFormValue } from './pdfjsFormLocalValueGuard.js';
  * values back through `persistedValues` so reloaded widgets show what the user
  * last typed/ticked (see PDFViewer form-field persistence, Stage 4.3).
  *
- * Scaling/rotation match PdfjsViewerContainer: rendered at the committed `scale`
- * with the intrinsic /Rotate baked by pdf.js (user-rotation 0). The widgets ride
- * the host's live-zoom CSS transform during a gesture and re-render crisp on the
- * committed scale, exactly like the page canvas.
+ * Scaling/rotation match the text layer: measure the live page host
+ * (`.survey-pdfjs-page-div`), never pageSize * scale. After Pages CW the
+ * overlay viewBox is already 792×612, but pdf.js rawDims can stay leftover
+ * portrait. AnnotationLayer then paints leftover fractions (0.363/0.338)
+ * onto the landscape host. Remap each widget rect through the host-aware
+ * viewport and pin the layer to the host box (drop leftover inset:0).
+ * The widgets ride the host's live-zoom CSS transform during a gesture
+ * and re-render crisp on the committed scale.
  */
 
 const LINK_SERVICE_STUB = {
@@ -163,8 +172,33 @@ export default function PdfjsFormLayer({
             rect: Array.isArray(w.rect) ? w.rect : null,
           });
         }
-        const viewport = page.getViewport({ scale: scaleRef.current, rotation: page.rotate });
-        div.style.setProperty('--scale-factor', String(scaleRef.current));
+        const pageHost = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
+          || div.closest('.survey-pdfjs-page-div')
+          || div.parentElement;
+        const hostWidth = Number(pageHost?.offsetWidth) || 0;
+        const hostHeight = Number(pageHost?.offsetHeight) || 0;
+        const intrinsic = page.getViewport({ scale: 1, rotation: page.rotate });
+        const displayRotation = resolveTextLayerRotation(
+          page.rotate,
+          0,
+          hostWidth,
+          hostHeight,
+          intrinsic.width,
+          intrinsic.height,
+        );
+        const fitted = page.getViewport({ scale: 1, rotation: displayRotation });
+        const effectiveScale = resolveTextLayerScale(hostWidth, fitted.width, scaleRef.current);
+        const viewport = page.getViewport({ scale: effectiveScale, rotation: displayRotation });
+        div.style.setProperty('--scale-factor', String(viewport.scale));
+        // inset:0 would lock leftover portrait percentages onto the swapped
+        // landscape host. Pin top-left and use the live host box instead.
+        div.style.inset = 'auto';
+        div.style.top = '0';
+        div.style.left = '0';
+        div.style.right = 'auto';
+        div.style.bottom = 'auto';
+        div.style.width = `${Math.floor(hostWidth || viewport.width)}px`;
+        div.style.height = `${Math.floor(hostHeight || viewport.height)}px`;
 
         // Seed saved values into the shared annotationStorage BEFORE render so
         // reloaded text widgets paint their persisted value rather than blank.
@@ -187,6 +221,26 @@ export default function PdfjsFormLayer({
           hasJSActions: false,
         });
         if (cancelled || !ref.current) return;
+
+        // pdf.js sizes sections as leftover rawDims percentages. Remap each
+        // widget rect through the host-aware viewport so the boxes sit on
+        // the visible fields after CW (same displayed-space contract as
+        // callout fractions / text layer). Do not invent a Forms editor.
+        const layoutViewport = page.getViewport({ scale: 1, rotation: displayRotation });
+        div.querySelectorAll('section[data-annotation-id]').forEach((section) => {
+          const fieldId = section.getAttribute('data-annotation-id');
+          const mapped = remapFormWidgetRect(widgetMetaById.get(fieldId)?.rect, layoutViewport);
+          if (!mapped) return;
+          section.style.left = `${mapped.left}%`;
+          section.style.top = `${mapped.top}%`;
+          section.style.width = `${mapped.width}%`;
+          section.style.height = `${mapped.height}%`;
+        });
+        if (hostWidth > 8 && hostHeight > 8) {
+          div.style.inset = 'auto';
+          div.style.width = `${Math.floor(hostWidth)}px`;
+          div.style.height = `${Math.floor(hostHeight)}px`;
+        }
 
         // Wire interaction events for persistence. Values themselves live in
         // pdf.annotationStorage (pdf.js mirrors edits there automatically); these
@@ -260,13 +314,18 @@ export default function PdfjsFormLayer({
         // tracks the page, so derive --scale-factor from the host's measured
         // width and recompute on every resize (button, wheel, pinch, window).
         // Inputs are never rebuilt, so focus/caret/in-flight edits survive zoom.
-        const baseViewport = page.getViewport({ scale: 1, rotation: page.rotate });
-        const pageWidthPoints = baseViewport.width;
-        const host = div.parentElement;
+        const pageWidthPoints = fitted.width;
+        const host = pageHost;
         const syncScaleFactor = () => {
           const w = host ? host.offsetWidth : 0;
+          const h = host ? host.offsetHeight : 0;
           if (w > 0 && pageWidthPoints > 0) {
             div.style.setProperty('--scale-factor', String(w / pageWidthPoints));
+          }
+          if (w > 8 && h > 8) {
+            div.style.inset = 'auto';
+            div.style.width = `${Math.floor(w)}px`;
+            div.style.height = `${Math.floor(h)}px`;
           }
         };
         syncScaleFactor();
@@ -314,7 +373,7 @@ export default function PdfjsFormLayer({
       className="pdfjsFormLayer annotationLayer"
       data-pdfjs-form-layer={pageNumber}
       data-interactive={interactive ? 'true' : 'false'}
-      style={{ position: 'absolute', inset: 0, zIndex: 12 }}
+      style={{ position: 'absolute', top: 0, left: 0, zIndex: 12 }}
     />
   );
 }
