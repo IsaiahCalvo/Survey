@@ -36,9 +36,9 @@ Focused Node `annotationFormattingPopoverContract` + `annotationFormattingPopove
 | Intended official | Exclusive-layer slice matches capture `pointerdown` add/remove. |
 | Break official | Slice does **not** match `mousedown` add. Old “toolbar stop propagation” message gone. |
 | Edge official | Context-tool peer dismiss still matches. leftover-18 **12 / 12**. Isolated 8448 standing. |
-| Intended hunt | `?testPdf=clickable-link-test.pdf` 1400×900. viewBox **`0 0 612 792`**. `file.id` null. Hidden tools **0**. Highlighter / Underline / Strike caret **0**. |
-| Break hunt | Search Match case / Whole word **0**. kal441 Forms create **0**. sticky-note Note **0**. hubPreview Draw **0**. |
-| Edge hunt | 390 Document tools. Search Next/Previous live if field opens. Collapse sidebar counted, not replayed. |
+| Intended hunt | `?testPdf=clickable-link-test.pdf` 1400×900. viewBox **`0 0 612 792`**. `file.id` null. Hidden tools **0**. Highlighter / Underline / Strike / Eraser / Counter caret **0**. Export **1**. Collapse sidebar **1** (not replayed). Save Log **0**. |
+| Break hunt | Search Match case / Whole word **0**. kal441 widgets **7**, Forms create **0**. sticky-note Note **0**. hubPreview Draw / Home tab / Select caret **0**. |
+| Edge hunt | Search field + Next + Previous **1**. 390 Document tools **0** this session. `file.id` null. |
 
 Product edit: none. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. High-risk files not edited; official `npm test` not required this pass (no high-risk product edit). Cap **8448** / 75/250 not loosened. Isolated 8448 standing. `graphify` CLI checked.
 
