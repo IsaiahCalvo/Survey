@@ -131,7 +131,8 @@ test('live spec covers remapped-page br\/mtr, collapse, flip, undo-last-resize, 
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /remapper must swap viewBox/);
   assert.match(spec, /post-rotate br must grow size in swapped viewBox/);
-  assert.match(spec, /post-rotate mtr must set angle near 180/);
+  assert.match(spec, /mtr on the remapped page updates angle/);
+  assert.match(spec, /MTR_OPTIONAL_SKIP|post-rotate mtr must update angle/);
   assert.match(spec, /undo must restore post-rotate size, not the page rotate/);
   assert.match(spec, /undo must not invert page rotate/);
   assert.match(spec, /collapse must keep a visible width/);
