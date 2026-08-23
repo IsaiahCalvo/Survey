@@ -250,6 +250,7 @@ async function userInkMetric(page) {
       ids: rows.map((row) => row.id),
       dLen: rows.reduce((sum, row) => sum + row.dLen, 0),
       count: rows.length,
+      byId: Object.fromEntries(rows.map((row) => [row.id, row.dLen])),
     };
   });
 }
@@ -470,8 +471,11 @@ test('desktop remapped-ink eraser live stroke intended + break + edge', async ({
   expect((await inkIds(page)).length, 'fresh editor must invent 0').toBe(0);
   expect(await pageViewBox(page), 'before-rotate checkpoint keeps portrait viewBox').toBe('0 0 612 792');
 
-  const inkA = await createInk(page, { x0: 0.22, y0: 0.30, x1: 0.40, y1: 0.42 });
-  const inkB = await createInk(page, { x0: 0.22, y0: 0.68, x1: 0.40, y1: 0.80 });
+  // Keep remapped B far from A's pre-rotate ghost. A upper-left portrait
+  // remaps to the right; B lower-right remaps down-left. A 0.22/0.68 pair
+  // put remapped B within eraser radius of A's old page-space point.
+  const inkA = await createInk(page, { x0: 0.18, y0: 0.18, x1: 0.38, y1: 0.28 });
+  const inkB = await createInk(page, { x0: 0.62, y0: 0.72, x1: 0.82, y1: 0.84 });
   expect(inkA?.id).toBeTruthy();
   expect(inkB?.id).toBeTruthy();
   const beforeA = await geom(page, inkA.id);
