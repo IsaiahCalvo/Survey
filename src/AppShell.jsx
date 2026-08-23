@@ -2989,6 +2989,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     return (
                       <button
                         key={option.id}
+                        type="button"
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
                         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'transparent', border: 'none', borderRadius: '2px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e8e2d4' : '#8d96a6', fontSize: '11px', fontFamily: FONT_FAMILY }}
@@ -3064,8 +3065,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         flies out LEFTWARD over the PDF. */}
                     <div ref={api.zoomMenuRef} style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                       <button
+                        type="button"
                         onClick={api.toggleZoomMenu}
-                        aria-haspopup="listbox"
+                        aria-haspopup="true"
                         aria-expanded={api.isZoomMenuOpen}
                         aria-label="Fit options"
                         data-active={fitMode !== ZOOM_MODES.MANUAL}
@@ -3142,8 +3144,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       pointing UP because the popup opens upward here. */}
                   <div ref={api.zoomMenuRef} style={{ position: 'relative' }}>
                     <button
+                      type="button"
                       onClick={api.toggleZoomMenu}
-                      aria-haspopup="listbox"
+                      aria-haspopup="true"
                       aria-expanded={api.isZoomMenuOpen}
                       aria-label="Fit options"
                       data-active={fitMode !== ZOOM_MODES.MANUAL}
