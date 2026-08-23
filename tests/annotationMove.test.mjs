@@ -54,6 +54,7 @@ test('live spec covers single / group-move / clamp / hollow / Pen / 390 / file.i
   assert.match(spec, /desktop annotation move intended \+ break \+ edge/);
   assert.match(spec, /390 annotation move intended \+ break \+ edge/);
   assert.match(spec, /empty Select drag invents 0/);
+  assert.match(spec, /intended create H then A then B/);
   assert.match(spec, /single move must change A left\/top/);
   assert.match(spec, /single move must hold A width/);
   assert.match(spec, /single move must isolate B left/);

@@ -239,28 +239,22 @@ async function selectMode(page) {
 }
 
 async function setNextDrawFill(page, hex = '#00FFFF') {
-  const color = page.getByRole('button', { name: /^(Color|Fill and border colors)$/ }).first();
+  const color = page.getByRole('button', { name: 'Color', exact: true }).first();
   if (!(await color.isVisible().catch(() => false))) return false;
   await color.click();
   const picker = page.locator('[data-annotation-color-picker]');
-  const sheet = page.getByRole('button', { name: /Set (Fill|Stroke) color/i });
+  try {
+    await expect(picker).toBeVisible({ timeout: 2_000 });
+  } catch {
+    await page.keyboard.press('Escape').catch(() => {});
+    return false;
+  }
+  const fillTab = picker.getByRole('button', { name: 'Fill', exact: true });
+  if (await fillTab.count()) await fillTab.click();
   const title = /^transparent$/i.test(hex) ? 'Transparent' : hex;
-  if (await picker.isVisible().catch(() => false)) {
-    const fillTab = picker.getByRole('button', { name: 'Fill', exact: true });
-    if (await fillTab.count()) await fillTab.click();
-    await picker.locator(`button[title="${title}"]`).first().click();
-    await page.keyboard.press('Escape').catch(() => {});
-    return true;
-  }
-  if (await sheet.first().isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: new RegExp(`Set Fill color ${title === 'Transparent' ? '.*' : title}`, 'i') }).first().click().catch(async () => {
-      await page.locator(`button[title="${title}"]`).first().click();
-    });
-    await page.keyboard.press('Escape').catch(() => {});
-    return true;
-  }
+  await picker.locator(`button[title="${title}"]`).first().click();
   await page.keyboard.press('Escape').catch(() => {});
-  return false;
+  return true;
 }
 
 async function hitTarget(page, id) {
@@ -306,13 +300,13 @@ async function strokeClick(page, id, { modifiers = [] } = {}) {
   throw new Error(`stroke-click missed ${id}`);
 }
 
-async function strokeDrag(page, id, dxPx, dyPx) {
+async function strokeDrag(page, id, dxPx, dyPx, { interior = true } = {}) {
   const box = await annoBox(page, id);
-  // Interior grab — selected mid-edge is a resize handle, not move.
-  const start = {
-    x: box.x + box.width * 0.35,
-    y: box.y + box.height * 0.35,
-  };
+  // Interior grab on a filled hit-target. Mid-edge is a resize handle.
+  // Unfilled / 390 uses the 25% top stroke band (not the mt handle).
+  const start = interior
+    ? { x: box.x + box.width * 0.35, y: box.y + box.height * 0.35 }
+    : { x: box.x + box.width * 0.25, y: box.y + 5 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(start.x + dxPx, start.y + dyPx, { steps: 12 });
@@ -342,13 +336,14 @@ test('desktop annotation move intended + break + edge', async ({ page }) => {
   await dragOnPage(page, { x0: 0.10, y0: 0.12, x1: 0.18, y1: 0.20 });
   expect(await userOrder(page), 'empty Select drag invents 0').toEqual(emptyBefore);
 
+  const rectH = await createRect(page, { x0: 0.44, y0: 0.18, x1: 0.58, y1: 0.30 });
   await activateTool(page, 'Shapes', 'Rectangle');
   await setNextDrawFill(page, '#00FFFF');
   const rectA = await createRect(page, RECT_A);
   const rectB = await createRect(page, RECT_B);
   await dismissChrome(page);
   await blurInputs(page);
-  expect(await userOrder(page), 'intended create A then B').toEqual([rectA.id, rectB.id]);
+  expect(await userOrder(page), 'intended create H then A then B').toEqual([rectH.id, rectA.id, rectB.id]);
 
   await selectMode(page);
   await clickEmpty(page);
@@ -439,12 +434,8 @@ test('desktop annotation move intended + break + edge', async ({ page }) => {
   expect(aMicroAfter.left, 'micro-drag must not commit left').toBeCloseTo(aMicro.left, 1);
   expect(aMicroAfter.top, 'micro-drag must not commit top').toBeCloseTo(aMicro.top, 1);
 
-  // Break — hollow interior is inert (transparent fill). Center-drag
-  // must not move H (stroke-only hit; interior is not body-move).
-  await activateTool(page, 'Shapes', 'Rectangle');
-  await setNextDrawFill(page, 'transparent');
-  const rectH = await createRect(page, { x0: 0.44, y0: 0.18, x1: 0.58, y1: 0.30 });
-  await selectMode(page);
+  // Break — hollow interior is inert (default transparent fill).
+  // Center-drag is not body-move (pointer-events: stroke).
   await clickEmpty(page);
   await strokeClick(page, rectH.id);
   const h0 = await geom(page, rectH.id);
@@ -458,8 +449,6 @@ test('desktop annotation move intended + break + edge', async ({ page }) => {
   expect(h1.top, 'hollow-fill drag must not move H top').toBeCloseTo(h0.top, 1);
 
   // Break — off-page drag clamps to the viewBox (constrainToPage).
-  await activateTool(page, 'Shapes', 'Rectangle');
-  await setNextDrawFill(page, '#00FFFF');
   const rectC = await createRect(page, RECT_CLAMP);
   await selectMode(page);
   await clickEmpty(page);
@@ -536,8 +525,6 @@ test('390 annotation move intended + break + edge', async ({ page }) => {
   await dragOnPage(page, { x0: 0.12, y0: 0.16, x1: 0.22, y1: 0.24 });
   expect(await userOrder(page), '390 empty Select drag invents 0').toEqual(emptyBefore);
 
-  await activateTool(page, 'Shapes', 'Rectangle');
-  await setNextDrawFill(page, '#00FFFF');
   const rectA = await createRect(page, { x0: 0.20, y0: 0.26, x1: 0.42, y1: 0.42 });
   const rectB = await createRect(page, { x0: 0.54, y0: 0.54, x1: 0.76, y1: 0.70 });
   await blurInputs(page);
@@ -549,7 +536,7 @@ test('390 annotation move intended + break + edge', async ({ page }) => {
   const b0 = await geom(page, rectB.id);
   await strokeClick(page, rectA.id);
   await expectSelected(page, [rectA.id], '390 stroke-click must select A');
-  await strokeDrag(page, rectA.id, 36, 28);
+  await strokeDrag(page, rectA.id, 36, 28, { interior: false });
   await expect.poll(async () => {
     const now = await geom(page, rectA.id);
     return now && now.left > a0.left + 6 && now.top > a0.top + 6;
@@ -570,7 +557,7 @@ test('390 annotation move intended + break + edge', async ({ page }) => {
   await expectSelected(page, [rectA.id, rectB.id], '390 Shift-click must add B');
   const aPre = await geom(page, rectA.id);
   const bPre = await geom(page, rectB.id);
-  await strokeDrag(page, rectA.id, 30, 22);
+  await strokeDrag(page, rectA.id, 30, 22, { interior: false });
   await expect.poll(async () => {
     const nowA = await geom(page, rectA.id);
     const nowB = await geom(page, rectB.id);
@@ -580,13 +567,11 @@ test('390 annotation move intended + break + edge', async ({ page }) => {
   const bG = await geom(page, rectB.id);
   expect(bG.left - bPre.left, '390 group-move must keep B dx with A').toBeCloseTo(aG.left - aPre.left, 1);
 
-  await activateTool(page, 'Shapes', 'Rectangle');
-  await setNextDrawFill(page, '#00FFFF');
   const rectC = await createRect(page, { x0: 0.05, y0: 0.18, x1: 0.22, y1: 0.32 });
   await selectMode(page);
   await clickEmpty(page);
   await strokeClick(page, rectC.id);
-  await strokeDrag(page, rectC.id, -160, -140);
+  await strokeDrag(page, rectC.id, -160, -140, { interior: false });
   await expect.poll(async () => {
     const now = await geom(page, rectC.id);
     return now && now.left <= 1 && now.top <= 1;
