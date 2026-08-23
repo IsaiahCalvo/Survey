@@ -1836,7 +1836,7 @@ export default function TemplatesEditor({
             : '[data-drag-rearrange-row], .templates-mobile-create-button'}
         />
         {!mobileTemplateOpen ? (
-          <button className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={createTemplate}>
+          <button type="button" className="btn primary templates-mobile-create-button hub-mobile-primary-action" onClick={createTemplate}>
             <Icon name="plus" size={12} />New template
           </button>
         ) : null}
@@ -1920,6 +1920,7 @@ export default function TemplatesEditor({
           }}>
             <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <button
+                type="button"
                 className="btn-ink"
                 onClick={createTemplate}
                 style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', whiteSpace: 'nowrap' }}
