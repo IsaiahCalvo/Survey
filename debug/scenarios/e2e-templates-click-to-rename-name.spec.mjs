@@ -34,11 +34,11 @@ async function openPage(page, { width = 1400, height = 900, url } = {}) {
 }
 
 function templatesRename(page) {
-  return page.locator('.ed-scope input[data-template-title][aria-label="Click to rename"]');
+  return page.locator('.ed-scope input[data-template-title][aria-label="Click to rename"]').filter({ visible: true });
 }
 
 function templatesTapRename(page) {
-  return page.locator('.templates-mobile-title-input[aria-label="Tap to rename"]');
+  return page.locator('.templates-mobile-title-input[aria-label="Tap to rename"]').filter({ visible: true });
 }
 
 function clickToRename(page) {

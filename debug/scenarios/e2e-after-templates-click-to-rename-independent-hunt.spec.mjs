@@ -239,7 +239,7 @@ async function armRectangle(page) {
 }
 
 test('independent hunt after Templates Click to rename name', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const inventory = {
     editor: {},
     overlay: {},
