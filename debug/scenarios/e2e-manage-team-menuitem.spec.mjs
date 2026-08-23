@@ -124,8 +124,15 @@ test('390 + editor break for Manage Team menuitem chrome', async ({ page }) => {
 
   await openPage(page, { width: 390, height: 844, url: HUB_PROJECTS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await page.getByText(TOWER).first().click();
-  await page.getByRole('button', { name: 'Manage team', exact: true }).click();
+  const mobileRow = page.locator('.projects-mobile-folder-row[data-project-id="p1"]');
+  await expect(mobileRow).toBeVisible({ timeout: 15_000 });
+  await mobileRow.click();
+  await expect(page.locator('.projects-mobile-back-button')).toBeVisible({ timeout: 8_000 });
+  const mobileTeam = page.getByRole('button', { name: 'Manage team' })
+    .or(page.getByRole('button', { name: 'Team', exact: true }))
+    .locator('visible=true');
+  await expect(mobileTeam).toBeVisible();
+  await mobileTeam.click();
   await expect(teamDialog(page)).toBeVisible({ timeout: 10_000 });
   await openFirstMore(page);
   await expect(page.getByRole('menuitem', { name: 'Invite user', exact: true })).toHaveCount(1);
