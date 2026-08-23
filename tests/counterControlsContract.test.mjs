@@ -10,6 +10,10 @@ const APP_SHELL_SOURCE = readFileSync(
   new URL('../src/AppShell.jsx', import.meta.url),
   'utf8',
 );
+const START_FIELD_SOURCE = readFileSync(
+  new URL('../src/components/CounterStartNumberField.jsx', import.meta.url),
+  'utf8',
+);
 
 test('selected counter colors route through the series update contract', () => {
   assert.match(VIEWER_SOURCE, /const handleCounterGroupUpdateRef = useRef\(null\);/);
@@ -50,8 +54,13 @@ test('counter start is published and remains editable only for a one-pin series'
     APP_SHELL_SOURCE,
     /const startLocked = bottomToolbarApi\.selectedCounterSeriesSize !== 1;/,
   );
-  assert.match(APP_SHELL_SOURCE, /disabled=\{startLocked\}/);
-  assert.match(APP_SHELL_SOURCE, /aria-label="Counter start number"/);
+  assert.match(APP_SHELL_SOURCE, /<CounterStartNumberField/);
+  assert.match(APP_SHELL_SOURCE, /locked=\{startLocked\}/);
+
+  // Shared field (desktop + 390) maps locked → native disabled. The
+  // pre-extract inline input used disabled={startLocked} on AppShell.
+  assert.match(START_FIELD_SOURCE, /disabled=\{locked\}/);
+  assert.match(START_FIELD_SOURCE, /aria-label="Counter start number"/);
 });
 
 test('counter Size clamps to a radius of at least four', () => {
