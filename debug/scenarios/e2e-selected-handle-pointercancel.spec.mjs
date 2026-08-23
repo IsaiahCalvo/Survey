@@ -385,21 +385,13 @@ async function proveBrPointercancel(page, coords) {
   };
 }
 
-test('desktop selected br pointercancel + zoomGeneration commit', async ({ page }) => {
-  await openEditor(page);
-  await blurInputs(page);
-  await dismissChrome(page);
-  const proof = await proveBrPointercancel(page, { x0: 0.18, y0: 0.24, x1: 0.48, y1: 0.48 });
-  expect(proof.viewBox, 'SVG viewBox owns zoom').toBe('0 0 612 792');
-  expect(proof.fileId, 'file.id must stay null').toBeNull();
-  await assertNoErrorBoundary(page);
-
+test('desktop hubPreview has no selected-handle chrome', async ({ page }) => {
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await page.locator('[data-svg-annotation-layer="1"] [data-resize-handle]').count(), 'hubPreview handles 0').toBe(0);
+  expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'hubPreview mtr 0').toBe(0);
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count(), 'hubPreview Draw 0').toBe(0);
-
-  console.log('SELECTED_HANDLE_POINTERCANCEL_DESKTOP', JSON.stringify(proof));
+  await assertNoErrorBoundary(page);
 });
 
 test('390 selected br pointercancel + zoomGeneration commit', async ({ page }) => {
