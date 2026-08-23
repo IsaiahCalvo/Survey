@@ -161,6 +161,7 @@ test('live spec covers create then page CW midpoint remap, empty invent, restore
   const spec = read('debug/scenarios/e2e-page-rotate-line-midpoint-remap.spec.mjs');
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /empty page rotate must invent 0/);
+  assert.match(spec, /live line must carry a page-space midpoint/);
   assert.match(spec, /page rotate must keep the live curved line/);
   assert.match(spec, /remapped line midpoint must follow displayed-space \+90/);
   assert.match(spec, /must not leave midpoint in pre-rotate space/);
