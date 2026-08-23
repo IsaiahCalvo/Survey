@@ -130,7 +130,19 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      data-home-tab={isHome ? 'true' : undefined}
+      role={isHome ? 'tab' : undefined}
+      aria-label={isHome ? 'Home' : undefined}
+      aria-selected={isHome ? isActive : undefined}
+      tabIndex={isHome ? 0 : undefined}
       onClick={() => onTabClick(tab.id)}
+      onKeyDown={(e) => {
+        if (!isHome) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onTabClick(tab.id);
+        }
+      }}
       onDragOver={(e) => !isHome && onPageDragOver(e, tab.id)}
       onDragLeave={(e) => !isHome && onPageDragLeave(e, tab.id)}
       onDrop={(e) => !isHome && onPageDrop(e, tab.id)}
