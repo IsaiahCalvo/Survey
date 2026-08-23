@@ -26,9 +26,9 @@ test('mobile viewer popovers consume the first outside gesture through the share
   const toolRail = componentSlice(mobileChrome, 'export function MobilePdfViewerToolRail', 'export function MobilePdfViewerDock');
 
   assert.match(mobileChrome, /import DismissBarrier from '\.\.\/components\/DismissBarrier'/);
-  assert.match(styledSelect, /active=\{open\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
+  assert.match(styledSelect, /active=\{open\}[\s\S]*insideRefs=\{dismissInsideRefs\}[\s\S]*passthroughSelector=\{MOBILE_SELECT_SIBLING_PASSTHROUGH\}/);
   assert.match(header, /active=\{pageEditing \|\| zoomOpen\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
-  assert.match(toolProperties, /active=\{counterMenuOpen\}[\s\S]*insideRefs=\{counterMenuInsideRefs\}/);
+  assert.match(toolProperties, /active=\{counterMenuOpen\}[\s\S]*insideRefs=\{counterMenuInsideRefs\}[\s\S]*passthroughSelector=\{MOBILE_SELECT_SIBLING_PASSTHROUGH\}/);
   assert.match(toolRail, /active=\{moreOpen \|\| syncDetailsOpen\}[\s\S]*insideRefs=\{popoverInsideRefs\}/);
 
   for (const source of [styledSelect, header, toolProperties, toolRail]) {

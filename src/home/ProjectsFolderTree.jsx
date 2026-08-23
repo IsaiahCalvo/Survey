@@ -716,6 +716,7 @@ export default function ProjectsFolderTree({
           width="100%"
           value={mobileDrillProject ? fileSearch : search}
           onChange={mobileDrillProject ? setFileSearch : setSearch}
+          dismissActionSelector=".projects-mobile-create-button, .projects-desktop-create-button, .projects-mobile-back-button"
         />
         {!mobileDrillProject ? (
           <button className="btn primary projects-mobile-create-button hub-mobile-primary-action" onClick={handleNewProject}>
@@ -724,7 +725,12 @@ export default function ProjectsFolderTree({
         ) : null}
       </div>
       <div className="projects-desktop-search">
-        <Search placeholder="Search projects..." value={search} onChange={setSearch} />
+        <Search
+          placeholder="Search projects..."
+          value={search}
+          onChange={setSearch}
+          dismissActionSelector=".projects-desktop-create-button, .projects-mobile-create-button"
+        />
       </div>
     </>
   );
@@ -894,7 +900,7 @@ export default function ProjectsFolderTree({
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '4px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button
-              className="btn primary"
+              className="btn primary projects-desktop-create-button"
               style={{ padding: '4px 8px', fontSize: 11, gap: 4, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
               onClick={handleNewProject}
             >

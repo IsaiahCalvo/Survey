@@ -145,6 +145,12 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
  * (opens up). Keyboard: Enter/Space or ArrowDown opens; arrows move; Enter
  * selects; Escape closes. Tap: outside pointerdown closes.
  */
+/* Sibling formatting chrome (Width / Color / other strip selects) must
+   receive the same tap that dismisses an open MobileStyledSelect. Without
+   passthrough, DismissBarrier consumes the gesture and Width / Arrowhead
+   need a second tap. Canvas / tool-rail clicks stay consumed. */
+const MOBILE_SELECT_SIBLING_PASSTHROUGH = '[data-mobile-tool-properties]';
+
 function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = false, minWidth, placeholder }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
@@ -237,6 +243,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
       <DismissBarrier
         active={open}
         insideRefs={dismissInsideRefs}
+        passthroughSelector={MOBILE_SELECT_SIBLING_PASSTHROUGH}
         dismissOnEscape={false}
         onDismiss={() => closeMenu(true)}
       />
@@ -897,6 +904,7 @@ export function MobileToolProperties({ api }) {
     <DismissBarrier
       active={counterMenuOpen}
       insideRefs={counterMenuInsideRefs}
+      passthroughSelector={MOBILE_SELECT_SIBLING_PASSTHROUGH}
       onDismiss={() => setCounterMenuOpen(false)}
     />
     <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} formatting`}>

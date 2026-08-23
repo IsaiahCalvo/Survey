@@ -333,11 +333,22 @@ export default function DocumentsLedger({
   const actions = (
     <>
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
-        <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
+        <Search
+          placeholder="Search documents..."
+          value={search}
+          onChange={setSearch}
+          width="100%"
+          dismissActionSelector=".hub-mobile-primary-action, .documents-desktop-upload"
+        />
         <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       </div>
       <div className="documents-desktop-search">
-        <Search placeholder="Search documents..." value={search} onChange={setSearch} />
+        <Search
+          placeholder="Search documents..."
+          value={search}
+          onChange={setSearch}
+          dismissActionSelector=".documents-desktop-upload, .hub-mobile-primary-action"
+        />
       </div>
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
     </>
