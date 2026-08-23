@@ -249,22 +249,19 @@ async function selectUntilHandles(page, id) {
   }, { timeout: 12_000 }).toBeGreaterThan(0);
 }
 
-async function dragMidpoint(page, dy = 80) {
-  const circle = page.locator('[data-svg-annotation-layer="1"] circle[data-handle="midpoint"]');
+async function dragMidpoint(page, dy = 56) {
+  const circle = page.locator('circle[data-handle="midpoint"]');
   await expect(circle).toBeAttached({ timeout: 8_000 });
   const box = await circle.boundingBox();
   expect(box, 'midpoint handle bbox').toBeTruthy();
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  // Hub Documents can sit over the page after Pages rotate. force hover
-  // still lands on the SVG knob; a plain mouse.move hits the overlay.
-  await circle.hover({ force: true });
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(start.x, start.y + dy, { steps: 12 });
+  await page.mouse.move(start.x, start.y + dy, { steps: 10 });
   await page.mouse.up();
 }
 
-async function createCurvedLine(page, coords = { x0: 0.20, y0: 0.32, x1: 0.48, y1: 0.32 }) {
-  await dismissChrome(page);
+async function createCurvedLine(page, coords = { x0: 0.18, y0: 0.30, x1: 0.46, y1: 0.30 }) {
   const before = new Set(await lineIds(page));
   await activateShapeTool(page, 'Line');
   const box = await pageBox(page);
@@ -274,11 +271,13 @@ async function createCurvedLine(page, coords = { x0: 0.20, y0: 0.32, x1: 0.48, y
   await page.mouse.up();
   const created = await waitForNewLine(page, before);
   await selectUntilHandles(page, created.id);
-  await dragMidpoint(page, 80);
+  const preMid = await geom(page, created.id);
+  await dragMidpoint(page, 56);
   let bent = null;
   await expect.poll(async () => {
     bent = await geom(page, created.id);
-    return Boolean(bent?.midpoint);
+    return bent?.midpoint
+      && Math.abs(bent.midpoint.y - (preMid.midpoint?.y ?? ((preMid.cy + (preMid.y1 + preMid.y2) / 2)))) > 12;
   }, { timeout: 8_000, message: 'midpoint bend must write data.midpoint' }).toBe(true);
   await selectMode(page);
   return geom(page, created.id);
@@ -383,6 +382,13 @@ test('desktop line midpoint after page CW remap intended + break + edge', async 
   await dismissChrome(page);
   expect((await lineIds(page)).length, 'empty opposite rotate must invent 0').toBe(0);
   expect(await pageViewBox(page)).toBe('0 0 612 792');
+
+  // Remount after the empty rotate pair so midpoint-handle pointer
+  // capture matches a fresh editor (page-mutation remounts the SVG).
+  await page.goto(LINK_PDF, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await waitForEditorReady(page);
+  await dismissChrome(page);
+  expect((await lineIds(page)).length, 'reload after empty rotate invents 0').toBe(0);
 
   const created = await createCurvedLine(page);
   await dismissChrome(page);
