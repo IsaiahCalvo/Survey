@@ -347,6 +347,8 @@ test('History restore remaining after remap uses live activity Restore; no file.
   assert.match(reindex, /rotateCalloutFractions/);
   assert.match(history, /export function stampDisplayedPlacement/);
   assert.match(history, /After page CW remap, Fabric snapshots often store left\/top 0/);
+  assert.match(history, /Math\.abs\(ownLeft\) < 1/);
+  assert.match(read('src/utils/svgBoundingBox.js'), /Math\.abs\(ownN\) < 1 && Math\.abs\(dataN\) > 1/);
   assert.match(trash, /export function buildAnnotationRestoreAction/);
   assert.match(markerHist, /export function applySurveyMarkerRestore/);
   assert.match(dev, /Do NOT set file\.id/);
