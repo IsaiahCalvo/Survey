@@ -1,6 +1,7 @@
 # Product bug: 390 Counter series missing Delete — 2026-08-23
 
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
+**Tip:** `37b9a0c2` (fix). Live proof follows.  
 **Does not mark the `/goal` complete.** Does **not** re-claim unblocked GAP = 0.  
 Does **not** claim leftover-18 GAP = 0.
 
@@ -20,13 +21,15 @@ No high-risk file. No `file.id` stamp. PDFViewer / SVGAnnotationLayer / FabricEr
 
 ## Live-proved
 
-Playwright `e2e-counter-series-delete-390.spec.mjs` on Vite `/?testPdf=clickable-link-test.pdf`. Focused Node `counterSeriesDeleteExecute` + leftover18.
+Playwright `e2e-counter-series-delete-390.spec.mjs` **2 / 2 (8.1s)** on Vite `http://127.0.0.1:5255`. Focused Node `counterSeriesDeleteExecute` + `continueCountToolbar` + leftover18 + `counterSizeStartNumber` **21 / 21**.
 
-`viewBox="0 0 612 792"`. `file.id` null.
+`?testPdf=clickable-link-test.pdf`. `viewBox="0 0 612 792"`. `file.id` null.
+
+390 pins `95a5af0d-…` / `806a71a1-…` / `201338b0-…` series `series-1787453738848`. Count 2 isolate `1cc10006-…` series `series-1787453740037`. Desktop wipe `5aef9f7f-…`.
 
 ### Intended — **pass**
 
-390 empty-armed Delete **0**. 3-pin series Delete opens confirm. Cancel keeps pins. Delete count wipes. Desktop context Delete still wipes.
+390 empty-armed Delete **0**. 3-pin series Delete opens confirm. Cancel keeps pins. Delete count wipes. Desktop context Delete still wipes (`5aef9f7f-…`).
 
 ### Break — **pass**
 
