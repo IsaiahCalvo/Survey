@@ -177,9 +177,9 @@ test('color picker Width passthrough edge: 390 takeover + hub + testPdf', async 
     const hex = page.getByRole('textbox', { name: 'Hex color', exact: true });
     await expect(hex).toBeVisible({ timeout: 8_000 });
     await hex.fill('0000FF');
-    // 390 uses a modal takeover + backdrop. The first outside tap hits the
-    // backdrop (Width sits underneath) and only closes the picker.
-    await page.getByRole('button', { name: /Close .*color picker/i }).first().click();
+    // 390 takeover is a modal surface. Escape closes it; Width presets stay
+    // closed (the strip chevron sits under the backdrop).
+    await page.keyboard.press('Escape');
     await expect(hex).toHaveCount(0);
     await expect(page.locator('[data-annotation-size-popover="true"]')).toHaveCount(0);
   }
