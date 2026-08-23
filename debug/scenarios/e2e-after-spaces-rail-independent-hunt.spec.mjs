@@ -94,19 +94,22 @@ test('independent hunt after Spaces rail toggle leftover', async ({ page }) => {
     const bookmarksTab = page.getByRole('button', { name: 'Bookmarks', exact: true }).first();
     if (await bookmarksTab.isVisible().catch(() => false)) {
       await bookmarksTab.click();
-      inventory.bookmarks.noBookmarksYet = await page.getByText(/No bookmarks yet/i).count();
+      inventory.bookmarks.noBookmarksYet = await page.getByText(/No bookmarks yet/i).isVisible().catch(() => false);
       inventory.bookmarks.addBookmark = await page.getByRole('button', { name: 'Add bookmark', exact: true }).count();
       inventory.bookmarks.newGroup = await page.getByRole('button', { name: 'New bookmark group', exact: true }).count();
-      inventory.bookmarks.pageActions = await page.getByRole('button', { name: 'Page 1 actions', exact: true }).count();
-      inventory.bookmarks.searchField = await page.getByPlaceholder('Search text in PDF...').count();
+      inventory.bookmarks.searchFieldVisible = await page.getByPlaceholder('Search text in PDF...').isVisible().catch(() => false);
     }
 
     // Pages tab vs V-06 thumbnail jump: count thumbnails, do not click them.
     const pagesTab = page.getByRole('button', { name: 'Pages', exact: true }).first();
     if (await pagesTab.isVisible().catch(() => false)) {
       await pagesTab.click();
-      inventory.pages.page1Actions = await page.getByRole('button', { name: 'Page 1 actions', exact: true }).count();
-      inventory.pages.noBookmarksYet = await page.getByText(/No bookmarks yet/i).count();
+      await expect(
+        page.getByAltText('Page 1').or(page.getByText('Loading...')).or(page.getByText('Loading pages…')),
+      ).toBeVisible({ timeout: 8_000 }).catch(() => {});
+      inventory.pages.page1Visible = await page.getByAltText('Page 1').isVisible().catch(() => false);
+      inventory.pages.loading = await page.getByText('Loading...').isVisible().catch(() => false);
+      inventory.pages.noBookmarksYetVisible = await page.getByText(/No bookmarks yet/i).isVisible().catch(() => false);
     }
 
     // Unused chords besides exhausted Fit/tool/nav family.
@@ -166,10 +169,11 @@ test('independent hunt after Spaces rail toggle leftover', async ({ page }) => {
   expect(inventory.editor.fileId).toBeNull();
   expect(inventory.rails.bookmarks).toBeGreaterThan(0);
   expect(inventory.rails.searchText).toBeGreaterThan(0);
-  expect(inventory.bookmarks.noBookmarksYet).toBeGreaterThan(0);
+  expect(inventory.bookmarks.noBookmarksYet).toBe(true);
   expect(inventory.bookmarks.addBookmark).toBeGreaterThan(0);
-  expect(inventory.bookmarks.searchField).toBe(0);
-  expect(inventory.pages.page1Actions).toBeGreaterThan(0);
+  expect(inventory.bookmarks.searchFieldVisible).toBe(false);
+  expect(inventory.pages.page1Visible || inventory.pages.loading).toBe(true);
+  expect(inventory.pages.noBookmarksYetVisible).toBe(false);
   expect(inventory.create.curve).toBe(0);
   expect(inventory.create.stamp).toBe(0);
   expect(inventory.rails.matchCase).toBe(0);

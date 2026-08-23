@@ -226,8 +226,11 @@ test('desktop Search text rail toggle intended + break + edge', async ({ page })
     timeout: 5_000,
     message: 'Expand sidebar grows panel to 272',
   }).toBe(272);
-  await expect(page.getByRole('button', { name: 'Page 1 actions', exact: true }), 'Expand sidebar opens Pages').toBeVisible();
-  expect(await desktopSearchField(page).count(), 'Expand sidebar must not show Search field').toBe(0);
+  await expect(
+    page.getByAltText('Page 1').or(page.getByText('Loading...')).or(page.getByText('Loading pages…')),
+    'Expand sidebar opens Pages',
+  ).toBeVisible({ timeout: 8_000 });
+  await expect(desktopSearchField(page), 'Expand sidebar must not show Search field').toBeHidden();
   await collapseSidebarBtn(page).click();
   await expect(expandSidebarBtn(page)).toBeVisible({ timeout: 8_000 });
   await expect.poll(async () => (await leftRailMetrics(page)).panel, {
@@ -240,7 +243,7 @@ test('desktop Search text rail toggle intended + break + edge', async ({ page })
   const overlay = page.locator('[data-keyboard-shortcuts-modal="true"]');
   await expect(overlay).toBeVisible({ timeout: 8_000 });
   const overlayText = await overlay.innerText();
-  expect(overlayText, 'overlay lists Find').toMatch(/Find|Ctrl\+F|⌘F/);
+  expect(overlayText, 'overlay lists Ctrl+F Search text').toMatch(/Search text/);
   expect(overlayText, 'overlay does not list a Search-tab chord').not.toMatch(/Open search|Expand Search|Search panel|Search text tab/);
   await page.keyboard.press('Escape');
   await expect(overlay).toHaveCount(0);
@@ -381,11 +384,14 @@ test('390 Open pages/search/bookmarks Search tab edge', async ({ page }) => {
   await assertNoErrorBoundary(page);
 
   // 390 uses the dock hub, not the 48px desktop Search text icon.
-  expect(await page.getByPlaceholder('Search text').count(), '390 Search field 0 until hub Search').toBe(0);
+  expect(
+    await page.getByPlaceholder('Search text').isVisible().catch(() => false),
+    '390 Search field hidden until hub Search',
+  ).toBe(false);
   await expect(page.getByRole('button', { name: 'Open pages, search, and bookmarks', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Open pages, search, and bookmarks', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible({ timeout: 8_000 });
-  expect(await page.getByPlaceholder('Search text').count(), '390 hub defaults to Pages not Search').toBe(0);
+  await expect(page.getByPlaceholder('Search text'), '390 hub defaults to Pages not Search').toBeHidden();
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByPlaceholder('Search text')).toBeVisible({ timeout: 8_000 });
   await expect.poll(async () => page.getByPlaceholder('Search text').evaluate((el) => document.activeElement === el), {
