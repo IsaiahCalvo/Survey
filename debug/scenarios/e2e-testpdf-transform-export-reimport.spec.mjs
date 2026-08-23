@@ -361,9 +361,28 @@ async function dragMtrToAngle(page, id, deg) {
   await page.mouse.up();
 }
 
+async function setNextDrawFill(page, hex = '#00FFFF') {
+  const color = page.getByRole('button', { name: 'Color', exact: true }).first();
+  if (!(await color.isVisible().catch(() => false))) return false;
+  await color.click();
+  const picker = page.locator('[data-annotation-color-picker]');
+  try {
+    await expect(picker).toBeVisible({ timeout: 2_000 });
+  } catch {
+    await page.keyboard.press('Escape').catch(() => {});
+    return false;
+  }
+  const fillTab = picker.getByRole('button', { name: 'Fill', exact: true });
+  if (await fillTab.count()) await fillTab.click();
+  await picker.locator(`button[title="${hex}"]`).first().click();
+  await page.keyboard.press('Escape').catch(() => {});
+  return true;
+}
+
 async function createRect(page, coords) {
   const before = new Set((await userOwned(page)).map((row) => row.id));
   await activateTool(page, 'Shapes', 'Rectangle');
+  await setNextDrawFill(page, '#00FFFF');
   await dragOnPage(page, coords);
   return waitForNewUserAnnotation(page, before, isRect);
 }
@@ -489,7 +508,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   expect(createdGeom.vw).toBeGreaterThan(20);
 
   await selectUntilHandles(page, created.id, strokeClickRect, 8);
-  await dragResizeHandle(page, 'br', 56, 40);
+  await dragResizeHandle(page, 'br', 120, 90);
   await expect.poll(async () => {
     const now = await geom(page, created.id);
     return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
@@ -515,7 +534,7 @@ test('desktop create/transform then local save/reload + export re-import', async
   const pen0 = await geom(page, pen.id);
   expect(pen0.vw).toBeGreaterThan(8);
   await selectUntilHandles(page, pen.id, strokeClickInk, 8);
-  await dragResizeHandle(page, 'br', 48, 28);
+  await dragResizeHandle(page, 'br', 80, 48);
   await expect.poll(async () => {
     const now = await geom(page, pen.id);
     return now && now.vw > pen0.vw + 8 && now.vh > pen0.vh + 6;
