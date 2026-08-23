@@ -538,8 +538,6 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   await assertHandlesNearHit(page, created.id);
 
   // Intended — another br on the remapped page grows size; object stays on-page.
-  await dismissChrome(page);
-  await selectUntilHandles(page, created.id, 8);
   await dragHandleRadial(page, created.id, 'data-resize-handle="br"', { mode: 'grow', extraPx: 100 });
   const afterBrAttempt = await geom(page, created.id);
   console.log('POST_ROTATE_BR_DELTA', JSON.stringify({
