@@ -97,8 +97,19 @@ async function pageBox(page, pageNumber = 1) {
   return box;
 }
 
-async function leftHostWidth(page) {
-  return page.locator('#chrome-left-host').evaluate((el) => el?.offsetWidth || 0);
+async function leftRailMetrics(page) {
+  return page.evaluate(() => {
+    const host = document.getElementById('chrome-left-host');
+    if (!host) return { host: 0, panel: 0 };
+    const panel = [...host.querySelectorAll('div')].find((el) => {
+      const width = el.style && el.style.width;
+      return width === '48px' || width === '272px';
+    });
+    return {
+      host: host.offsetWidth,
+      panel: panel ? panel.offsetWidth : 0,
+    };
+  });
 }
 
 function spacesBtn(page) {
@@ -147,10 +158,13 @@ async function waitForSpacesPanel(page) {
   await expect(page.getByRole('heading', { name: 'Spaces', exact: true })).toBeVisible({ timeout: 8_000 });
   await expect(page.getByText(/No spaces yet/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create space', exact: true })).toBeVisible();
-  await expect.poll(async () => leftHostWidth(page), {
+  await expect.poll(async () => (await leftRailMetrics(page)).panel, {
     timeout: 5_000,
-    message: 'expanded left rail is 272',
+    message: 'expanded Spaces panel is 272',
   }).toBe(272);
+  const metrics = await leftRailMetrics(page);
+  expect(metrics.host, 'left host flex stays 48 (panel overlays)').toBe(48);
+  expect(metrics.panel, 'expanded Spaces panel is 272').toBe(272);
 }
 
 test('desktop Spaces rail toggle intended + break + edge', async ({ page }) => {
@@ -172,23 +186,25 @@ test('desktop Spaces rail toggle intended + break + edge', async ({ page }) => {
   // Intended — collapsed 48px left rail shows Spaces, not the Spaces panel.
   await expect(spacesBtn(page), 'collapsed rail Spaces must be live').toBeVisible();
   expect(await page.getByText(/No spaces yet/i).count(), 'collapsed rail Spaces panel 0').toBe(0);
-  expect(await leftHostWidth(page), 'chrome-left-host starts 48').toBe(48);
+  const start = await leftRailMetrics(page);
+  expect(start.host, 'chrome-left-host stays 48').toBe(48);
+  expect(start.panel, 'collapsed left rail is 48').toBe(48);
   await expect(expandSidebarBtn(page), 'collapsed rail Expand sidebar lives (History-dedicated, not this leftover)').toBeVisible();
   expect(await collapseSidebarBtn(page).count(), 'collapsed rail Collapse sidebar 0').toBe(0);
 
   // Contrast — Expand sidebar opens Pages, not Spaces.
   await expandSidebarBtn(page).click();
   await expect(collapseSidebarBtn(page)).toBeVisible({ timeout: 8_000 });
-  await expect.poll(async () => leftHostWidth(page), {
+  await expect.poll(async () => (await leftRailMetrics(page)).panel, {
     timeout: 5_000,
-    message: 'Expand sidebar grows left host to 272',
+    message: 'Expand sidebar grows panel to 272',
   }).toBe(272);
   expect(await page.getByText(/No spaces yet/i).count(), 'Expand sidebar must not open Spaces').toBe(0);
   await collapseSidebarBtn(page).click();
   await expect(expandSidebarBtn(page)).toBeVisible({ timeout: 8_000 });
-  await expect.poll(async () => leftHostWidth(page), {
+  await expect.poll(async () => (await leftRailMetrics(page)).panel, {
     timeout: 5_000,
-    message: 'Collapse sidebar restores 48',
+    message: 'Collapse sidebar restores panel 48',
   }).toBe(48);
 
   // Overlay lists B for sidebar, not a Spaces chord.
@@ -223,7 +239,7 @@ test('desktop Spaces rail toggle intended + break + edge', async ({ page }) => {
   await collapseSidebarBtn(page).click();
   await expect(spacesBtn(page), 'Collapse sidebar must restore Spaces icon').toBeVisible({ timeout: 8_000 });
   expect(await page.getByText(/No spaces yet/i).count(), 'Spaces panel hidden after collapse').toBe(0);
-  await expect.poll(async () => leftHostWidth(page), {
+  await expect.poll(async () => (await leftRailMetrics(page)).panel, {
     timeout: 5_000,
     message: 'collapsed left rail is 48 again',
   }).toBe(48);
@@ -244,7 +260,8 @@ test('desktop Spaces rail toggle intended + break + edge', async ({ page }) => {
   // Break — already-open Spaces tab click stays on Spaces (not a toggle-close).
   await spacesBtn(page).click();
   await expect(page.getByText(/No spaces yet/i), 're-click Spaces must stay open').toBeVisible();
-  expect(await leftHostWidth(page), 're-click Spaces keeps 272').toBe(272);
+  expect((await leftRailMetrics(page)).panel, 're-click Spaces keeps panel 272').toBe(272);
+  expect((await leftRailMetrics(page)).host, 're-click Spaces keeps host 48').toBe(48);
 
   await collapseSidebarBtn(page).click();
   await expect(spacesBtn(page)).toBeVisible();
@@ -317,7 +334,7 @@ test('desktop Spaces rail toggle intended + break + edge', async ({ page }) => {
 
   console.log('SPACES_RAIL_TOGGLE_DESKTOP_PROOF', JSON.stringify({
     hunt,
-    leftStart: 48,
+    start,
     overlayListsSpacesChord: /Open spaces|Expand Spaces|Spaces panel/.test(overlayText),
     rectId,
     viewBox,

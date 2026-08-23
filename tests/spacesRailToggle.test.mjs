@@ -54,7 +54,7 @@ test('live spec covers Spaces rail toggle intended + break + edge; skip leftover
   assert.match(spec, /390 Open spaces sheet edge/);
   assert.match(spec, /collapsed rail Spaces must be live/);
   assert.match(spec, /Expand sidebar must not open Spaces/);
-  assert.match(spec, /expanded left rail is 272/);
+  assert.match(spec, /expanded Spaces panel is 272/);
   assert.match(spec, /Escape must not collapse Spaces/);
   assert.match(spec, /Space must not collapse Spaces/);
   assert.match(spec, /double-click Spaces must stay expanded/);

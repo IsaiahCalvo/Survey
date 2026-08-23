@@ -87,6 +87,14 @@ test('independent hunt after Expand Survey panel leftover', async ({ page }) => 
     inventory.rails.searchText = await page.getByRole('button', { name: 'Search text', exact: true }).count();
     inventory.rails.history = await page.getByRole('button', { name: 'Version history', exact: true }).count();
     inventory.rails.leftWidth = await page.locator('#chrome-left-host').evaluate((el) => el?.offsetWidth || 0).catch(() => 0);
+    inventory.rails.leftPanel = await page.evaluate(() => {
+      const host = document.getElementById('chrome-left-host');
+      const panel = [...(host?.querySelectorAll('div') || [])].find((el) => {
+        const width = el.style && el.style.width;
+        return width === '48px' || width === '272px';
+      });
+      return panel ? panel.offsetWidth : 0;
+    }).catch(() => 0);
     inventory.rails.rightWidth = await page.locator('#chrome-right-host').evaluate((el) => el?.offsetWidth || 0).catch(() => 0);
     inventory.rails.left = (await visibleNames(page.locator('#chrome-left-host button, #chrome-left-host [role="tab"]'))).slice(0, 24);
     inventory.rails.right = (await visibleNames(page.locator('#chrome-right-host button, #chrome-right-host [role="tab"]'))).slice(0, 24);
@@ -94,6 +102,14 @@ test('independent hunt after Expand Survey panel leftover', async ({ page }) => 
     if (inventory.rails.spaces) {
       await page.getByRole('button', { name: 'Spaces', exact: true }).click();
       inventory.rails.leftWidthAfterSpaces = await page.locator('#chrome-left-host').evaluate((el) => el?.offsetWidth || 0).catch(() => 0);
+      inventory.rails.leftPanelAfterSpaces = await page.evaluate(() => {
+        const host = document.getElementById('chrome-left-host');
+        const panel = [...(host?.querySelectorAll('div') || [])].find((el) => {
+          const width = el.style && el.style.width;
+          return width === '48px' || width === '272px';
+        });
+        return panel ? panel.offsetWidth : 0;
+      }).catch(() => 0);
       inventory.rails.noSpacesYet = await page.getByText(/No spaces yet/i).count();
       inventory.rails.createSpace = await page.getByRole('button', { name: 'Create space', exact: true }).count();
       inventory.rails.spacesHeading = await page.getByRole('heading', { name: 'Spaces', exact: true }).count();
