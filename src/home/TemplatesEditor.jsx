@@ -2103,6 +2103,7 @@ export default function TemplatesEditor({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <p className="micro" style={{ margin: 0 }}>Module</p>
                   <button
+                    type="button"
                     onClick={() => { setModEdit(true); setSelMods(new Set()); }}
                     style={{ background: 'transparent', border: 0, color: 'var(--accent)', borderRadius: 2, padding: '2px 6px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
                   >
