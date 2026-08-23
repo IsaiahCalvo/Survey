@@ -10,9 +10,11 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 test('font catalogs stay single-name; no leftover-portrait pageWidth in style apply', () => {
   const catalog = read('src/utils/annotationStyleCatalog.js');
-  assert.match(catalog, /Times New Roman/);
-  assert.match(catalog, /Helvetica/);
-  assert.doesNotMatch(catalog, /-apple-system|BlinkMacSystemFont|sans-serif/);
+  const families = catalog.match(/export const FONT_FAMILIES = Object\.freeze\(\[([\s\S]*?)\]\)/)?.[1] || '';
+  assert.match(families, /Times New Roman/);
+  assert.match(families, /Helvetica/);
+  assert.doesNotMatch(families, /-apple-system|BlinkMacSystemFont|sans-serif/);
+  assert.match(catalog, /Never put a CSS fallback stack in FONT_FAMILIES/);
 
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.ok(layer.includes('viewBox={`0 0 ${width} ${height}`}'));
