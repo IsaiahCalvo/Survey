@@ -14,7 +14,7 @@
  */
 import { memo } from 'react';
 import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath';
-import { clampHandleToPage, getHandlePositions, placeRotationHandle } from '../utils/svgBoundingBox';
+import { clampHandleToPage, getHandlePositions, placeRotationHandle, separateRotationHandle } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
   getRotationHandleHitMetrics,
@@ -101,10 +101,15 @@ const SVGSelectionOverlay = memo(({
     mb: clampHandleToPage(baseHandles.mb, bbox, pageClamp),
     ml: clampHandleToPage(baseHandles.ml, bbox, pageClamp),
     mr: clampHandleToPage(baseHandles.mr, bbox, pageClamp),
-    mtr: {
-      x: rotationHandle.x,
-      y: rotationHandle.y,
-    },
+  };
+  const separatedMtr = separateRotationHandle(handles.mt, rotationHandle, bbox, {
+    minSep: rotationHit.knobHitR + handleMetrics.hPillH / 2 + handleMetrics.minGap,
+    pageWidth,
+    pageHeight,
+  });
+  handles.mtr = {
+    x: separatedMtr.x,
+    y: separatedMtr.y,
   };
   // Stem hit used to start on mt, so the ~16px stroke ate the whole top
   // pill and mt resize never fired. Leave a gap on the mtr side of the

@@ -133,6 +133,38 @@ export function placeRotationHandle(bbox, {
   return { ...local, attach: 'mt' };
 }
 
+/**
+ * After both knobs clamp onto the same 90° ray they can stack, and the
+ * mtr hit circle (r≈17) eats mt. Park mtr further toward the bbox
+ * center along that ray so the pill stays hittable.
+ */
+export function separateRotationHandle(mt, mtr, bbox, {
+  minSep = 28,
+  pageWidth,
+  pageHeight,
+  inset = 16,
+} = {}) {
+  const left = Number(bbox?.left) || 0;
+  const top = Number(bbox?.top) || 0;
+  const width = Number(bbox?.width) || 0;
+  const height = Number(bbox?.height) || 0;
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  const mtX = Number(mt?.x) || 0;
+  const mtY = Number(mt?.y) || 0;
+  const mtrX = Number(mtr?.x) || 0;
+  const mtrY = Number(mtr?.y) || 0;
+  const dist = Math.hypot(mtrX - mtX, mtrY - mtY);
+  if (dist >= minSep) return { x: mtrX, y: mtrY };
+  const vx = cx - mtX;
+  const vy = cy - mtY;
+  const vlen = Math.hypot(vx, vy) || 1;
+  return clampHandleToPage({
+    x: mtX + (vx / vlen) * minSep,
+    y: mtY + (vy / vlen) * minSep,
+  }, bbox, { pageWidth, pageHeight, inset });
+}
+
 const degreesToRadians = (degrees) => {
   const numeric = Number(degrees) || 0;
   return (numeric % 360) * Math.PI / 180;

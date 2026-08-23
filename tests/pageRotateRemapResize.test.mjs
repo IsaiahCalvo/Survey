@@ -8,7 +8,7 @@ import {
   rotateDisplayedPoint,
   transformPageState,
 } from '../src/utils/pageAnnotationReindex.js';
-import { displayedBoxOrigin, displayedAngle, placeRotationHandle, clampHandleToPage, getHandlePositions } from '../src/utils/svgBoundingBox.js';
+import { displayedBoxOrigin, displayedAngle, placeRotationHandle, clampHandleToPage, getHandlePositions, separateRotationHandle } from '../src/utils/svgBoundingBox.js';
 
 // Source contracts for selected bbox resize / mtr on a remapped page
 // after CW rotate (viewBox 0 0 792 612, angle 90). Distinct from
@@ -156,6 +156,21 @@ test('clampHandleToPage pulls remapped 90deg mt/tl/tr/ml/bl onto the 792 page', 
   }
 });
 
+test('separateRotationHandle keeps remapped mtr off the mt pill', () => {
+  const bbox = { left: 648.17, top: -8.41, width: 135.42, height: 152.24, angle: 90 };
+  const raw = getHandlePositions(bbox, 2);
+  const page = { pageWidth: 792, pageHeight: 612, inset: 16 };
+  const mt = clampHandleToPage(raw.mt, bbox, { ...page, inset: 8 });
+  const mtr = placeRotationHandle(bbox, { padding: 2, rotationOffset: 36, ...page });
+  const stacked = Math.hypot(mtr.x - mt.x, mtr.y - mt.y);
+  assert.ok(stacked < 28, 'clamped mtr must sit on top of mt before separate');
+  const separated = separateRotationHandle(mt, mtr, bbox, { minSep: 28, ...page });
+  const dist = Math.hypot(separated.x - mt.x, separated.y - mt.y);
+  assert.ok(dist >= 28 - 1e-6, 'separated mtr must clear the mt pill');
+  const world = worldOf(separated, bbox);
+  assert.ok(world.x >= 16 - 1e-6 && world.x <= 792 - 16 + 1e-6, 'separated mtr stays on-page');
+});
+
 test('line/arrow/callout remapper does not invent endpoint or fraction remap', () => {
   const line = {
     type: 'line',
@@ -219,9 +234,11 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   assert.match(overlay, /data-rotation-handle/);
   assert.match(overlay, /placeRotationHandle/);
   assert.match(overlay, /clampHandleToPage/);
+  assert.match(overlay, /separateRotationHandle/);
   assert.match(overlay, /pageWidth/);
   assert.match(bbox, /export function placeRotationHandle/);
   assert.match(bbox, /export function clampHandleToPage/);
+  assert.match(bbox, /export function separateRotationHandle/);
   assert.match(bbox, /export function displayedAngle/);
   assert.match(interaction, /displayedAngle\(obj\)/);
   assert.match(interaction, /data = \{ \.\.\.rotObj\.data, angle: ds\.currentAngle \}/);
