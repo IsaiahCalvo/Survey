@@ -403,8 +403,10 @@ test('desktop Search after page CW intended + break + edge', async ({ page }) =>
   expect(hits.geom.landscapeHost, 'page host stays landscape').toBe(true);
   expect(hits.geom.landscapeLayer, 'search overlay must be landscape, not leftover portrait').toBe(true);
   expect(hits.geom.leftoverPortraitLayer, 'search overlay must not keep the leftover portrait box').toBe(false);
-  expect(Math.abs(hits.geom.layerOffsetW - hits.geom.hostOffsetW), 'search overlay width must match swapped host').toBeLessThan(8);
-  expect(Math.abs(hits.geom.layerOffsetH - hits.geom.hostOffsetH), 'search overlay height must match swapped host').toBeLessThan(8);
+  expect(hits.geom.layerW, 'search overlay must have a live width').toBeGreaterThan(8);
+  expect(hits.geom.hostW, 'page host must have a live width').toBeGreaterThan(8);
+  expect(Math.abs(hits.geom.layerW - hits.geom.hostW), 'search overlay width must match swapped host').toBeLessThan(8);
+  expect(Math.abs(hits.geom.layerH - hits.geom.hostH), 'search overlay height must match swapped host').toBeLessThan(8);
   expect(hits.geom.rectsInside.length, 'search hits must sit on the swapped page, not the pre-rotate portrait').toBeGreaterThan(0);
   expect(await userAnnotationIds(page), 'Search hits do not invent annotations').toEqual([]);
 
