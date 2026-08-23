@@ -38,6 +38,11 @@ export default function AnnotationSizeControl({
   const open = controlledOpen ?? uncontrolledOpen;
   const [focusedPresetIndex, setFocusedPresetIndex] = useState(0);
   const presetOptionRefs = useRef([]);
+  // Escape must restore the pre-edit value and skip the blur commit.
+  // Zoom % / page # / rotation already do this; Width/Size did not, so a
+  // typed draft stayed live (next-draw) and blur persisted it.
+  const skipCommitRef = useRef(false);
+  const valueAtFocusRef = useRef('');
   const rawValueText = value == null ? '' : String(value).trim();
   // Normalize legacy/persisted fractional values at the display boundary too;
   // the field must never visually present a decimal even before its first edit.
@@ -108,13 +113,34 @@ export default function AnnotationSizeControl({
     disabled,
     value: customValue,
     onChange: (event) => updateDraft(event.target.value),
-    onFocus: () => onFocusChange?.(true),
+    onFocus: () => {
+      skipCommitRef.current = false;
+      valueAtFocusRef.current = valueText;
+      onFocusChange?.(true);
+    },
     onBlur: (event) => {
       onFocusChange?.(false);
+      if (skipCommitRef.current) {
+        skipCommitRef.current = false;
+        return;
+      }
       commit(event.currentTarget.value);
     },
     onKeyDown: (event) => {
-      if (event.key === 'Enter') event.currentTarget.blur();
+      if (event.key === 'Enter') {
+        event.currentTarget.blur();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        skipCommitRef.current = true;
+        const restore = valueAtFocusRef.current;
+        setCustomValue(restore);
+        onValueChange?.(restore);
+        event.currentTarget.blur();
+        return;
+      }
       if (event.key === '.' || event.key === ',' || event.key === '-' || event.key === '+' || event.key === 'e') {
         event.preventDefault();
       }

@@ -45,6 +45,20 @@ test('every counter preset through 64 receives a distinct preview thickness', ()
   }
 });
 
+test('width size field Escape restores the pre-edit value and skips blur commit', () => {
+  assert.match(componentSource, /skipCommitRef/);
+  assert.match(componentSource, /valueAtFocusRef/);
+  assert.match(componentSource, /if \(event\.key === 'Escape'\)/);
+  assert.match(componentSource, /skipCommitRef\.current = true/);
+  assert.match(componentSource, /onValueChange\?\.\(restore\)/);
+  assert.match(componentSource, /event\.currentTarget\.blur\(\)/);
+  assert.match(
+    componentSource,
+    /if \(skipCommitRef\.current\) \{\s*skipCommitRef\.current = false;\s*return;/s,
+  );
+  assert.match(componentSource, /if \(event\.key === 'Enter'\)/);
+});
+
 test('annotation size listbox uses roving focus and standard navigation keys', () => {
   assert.match(componentSource, /tabIndex=\{focusedPresetIndex === index \? 0 : -1\}/);
   assert.match(componentSource, /onFocus=\{\(\) => setFocusedPresetIndex\(index\)\}/);
