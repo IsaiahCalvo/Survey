@@ -275,6 +275,11 @@ test('callout metadata + remapper + persist skip file.id; live spec covers expor
   assert.match(dev, /Do NOT set file\.id/);
   assert.doesNotMatch(dev, /file\.id\s*=/);
   assert.match(viewer, /if \(!pdfId\) return;\s*\n\s*if \(pdfFile\?\.id\) return;\s*\n\s*saveAnnotationsByPage\(pdfId, annotationsByPage\)/);
+  assert.match(
+    viewer,
+    /Replace previously imported PDF annotations[\s\S]{0,1800}Project imported SurveyAppCallout rows AFTER the native-object/,
+    'imported callouts must project after the isPdfImported native replace',
+  );
   assert.match(meta, /if \(item\.type === 'callout'/);
   assert.match(calloutMeta, /export const PDF_CALLOUT_SUBJECT = 'survey-callout'/);
   assert.match(exporter, /const calloutToExportObject = \(callout, pageSize\)/);

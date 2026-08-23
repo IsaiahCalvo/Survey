@@ -22066,14 +22066,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             spaces: hiddenSpaces.length,
           }));
 
-      setCalloutsIfPersistedChanged((prev) => {
-        const preserved = Array.isArray(prev)
-          ? prev.filter((c) => !c?.isPdfImported)
-          : [];
-        const importedFlat = Object.values(importedCalloutsByPage).flat();
-        return [...preserved, ...importedFlat];
-          });
-
           // Replace previously imported PDF annotations (stale styling) while preserving user-created annotations.
           setAnnotationsByPage((prev) => {
             const next = {};
@@ -22110,6 +22102,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             });
 
             return next;
+          });
+
+          // Project imported SurveyAppCallout rows AFTER the native-object
+          // replace. That replace strips every isPdfImported object; callouts
+          // are split out of filteredImportedAnnotations, so applying them
+          // first left remapped fractions on the floor after ?testPdf= re-import.
+          setCalloutsIfPersistedChanged((prev) => {
+            const preserved = Array.isArray(prev)
+              ? prev.filter((c) => !c?.isPdfImported)
+              : [];
+            const importedFlat = Object.values(importedCalloutsByPage).flat();
+            return [...preserved, ...importedFlat];
           });
 
           // UX (owner-approved 2026-07-17): arm the friendly non-blocking
