@@ -1780,6 +1780,8 @@ const BookmarksPanel = ({
           <button
             type="button"
             aria-label="Add bookmark"
+            aria-haspopup="dialog"
+            aria-expanded={showCreateMenu}
             onClick={() => setShowCreateMenu(!showCreateMenu)}
             style={{
               width: '100%',
@@ -1804,7 +1806,10 @@ const BookmarksPanel = ({
             Add bookmark
           </button>
           {showCreateMenu && (
-            <div style={{
+            <div
+              role="dialog"
+              aria-label="Add bookmark"
+              style={{
               position: 'absolute',
               bottom: '100%',
               left: 0,
@@ -1818,6 +1823,7 @@ const BookmarksPanel = ({
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
             }}>
               <button
+                type="button"
                 onClick={handleCreateFolder}
                 style={{
                   width: '100%',
@@ -1908,6 +1914,7 @@ const BookmarksPanel = ({
                   pattern="[0-9]*"
                 />
                 <button
+                  type="button"
                   onClick={() => {
                     if (pageNum) {
                       const clampedPage = numPages ? Math.min(pageNum, numPages) : pageNum;
@@ -1936,6 +1943,7 @@ const BookmarksPanel = ({
                   Current page
                 </button>
                 <button
+                  type="button"
                   onClick={handleCreateBookmark}
                   style={{
                     width: '100%',
