@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 // the menu item role. Distinct from leftover-18 / X-01 / remapped-after-CW /
 // dismiss-family / rail-toggle / overlay-mount / Home `?` / annotation
 // context actions / Pages context actions / Pages apply catalogs.
-// Do not invent Stripe / MSAL / Turnstile panes. Do not stamp file.id.
+// Do not invent leftover-18 auth/billing panes. Do not stamp file.id.
 
 const HUB = '/?hubPreview=1';
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -63,7 +63,7 @@ test('desktop Account menu actions are named menuitems + Enter Settings', async 
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(dialog.locator('.account-sidebar-btn.active')).toHaveText('General');
   await expect(dialog.getByRole('heading', { name: 'Profile information' })).toBeVisible();
-  await expect(page.locator('.cf-turnstile, iframe[src*="turnstile"]')).toHaveCount(0);
+  await expect(page.locator('iframe[src*="challenges.cloudflare.com"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Start trial|Manage billing|Checkout/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Connect Microsoft|Sign in with Microsoft/i })).toHaveCount(0);
   await dialog.locator('.account-settings-close').click();

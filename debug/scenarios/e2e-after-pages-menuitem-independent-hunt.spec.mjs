@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 // (hub Account *actions*, Spaces CSV, Fit items, Style/Width).
 // Do not replay Pages context actions / dismiss / rail-toggle /
 // Home `?` / annotation context actions / remapped-after-CW.
-// Do not invent Stripe / MSAL / Turnstile. Do not stamp file.id.
+// Do not invent leftover-18 auth/billing panes. Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
