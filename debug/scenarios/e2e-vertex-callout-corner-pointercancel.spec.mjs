@@ -115,14 +115,12 @@ async function selectUntilVertex(page, id, expectedCount) {
   }, { timeout: 12_000 }).toBe(expectedCount);
 }
 
-async function cancelOnSvg(page, clientX, clientY) {
-  await page.locator('[data-svg-annotation-layer="1"]').first().dispatchEvent('pointercancel', {
+async function cancelOn(page, locator) {
+  await locator.dispatchEvent('pointercancel', {
     pointerId: 1,
     pointerType: 'mouse',
     bubbles: true,
     cancelable: true,
-    clientX,
-    clientY,
   });
 }
 
@@ -153,7 +151,7 @@ test('desktop vertex-0 pointercancel + zoomGeneration commit', async ({ page }) 
   await page.mouse.down();
   await page.mouse.move(start.x + 48, start.y + 36, { steps: 10 });
   await page.waitForTimeout(80);
-  await cancelOnSvg(page, start.x + 48, start.y + 36);
+  await cancelOn(page, handle);
   let afterCancel = null;
   await expect.poll(async () => {
     afterCancel = (await listPolys(page)).find((row) => row.id === polyA.id);
@@ -172,7 +170,7 @@ test('desktop vertex-0 pointercancel + zoomGeneration commit', async ({ page }) 
   const noopBox = await handle.boundingBox();
   await page.mouse.move(noopBox.x + noopBox.width / 2, noopBox.y + noopBox.height / 2);
   await page.mouse.down();
-  await cancelOnSvg(page, noopBox.x + noopBox.width / 2, noopBox.y + noopBox.height / 2);
+  await cancelOn(page, handle);
   const afterNoop = (await listPolys(page)).find((row) => row.id === polyA.id);
   expect(
     Math.hypot(afterNoop.world[0].x - preNoop.world[0].x, afterNoop.world[0].y - preNoop.world[0].y) < 3,
@@ -273,7 +271,7 @@ test('desktop callout textBox-br pointercancel + zoomGeneration commit', async (
   await page.mouse.down();
   await page.mouse.move(start.x + 40, start.y + 32, { steps: 10 });
   await page.waitForTimeout(80);
-  await cancelOnSvg(page, start.x + 40, start.y + 32);
+  await cancelOn(page, handle);
   let afterCancel = null;
   await expect.poll(async () => {
     afterCancel = await calloutBox();
@@ -293,7 +291,7 @@ test('desktop callout textBox-br pointercancel + zoomGeneration commit', async (
   const noopBox = await handle.boundingBox();
   await page.mouse.move(noopBox.x + noopBox.width / 2, noopBox.y + noopBox.height / 2);
   await page.mouse.down();
-  await cancelOnSvg(page, noopBox.x + noopBox.width / 2, noopBox.y + noopBox.height / 2);
+  await cancelOn(page, handle);
   const afterNoop = await calloutBox();
   expect(Math.abs(afterNoop.w - preNoop.w) < 2, 'no-move pointercancel invents 0').toBe(true);
   expect(Math.abs(afterNoop.h - preNoop.h) < 2, 'no-move pointercancel invents 0 height').toBe(true);

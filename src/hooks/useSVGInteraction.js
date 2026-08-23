@@ -1154,10 +1154,7 @@ export function useSVGInteraction({
           textBoxPosition: { ...callout.textBoxPosition },
         },
       };
-      // Callout knee / corner / arrowTip remount on live paint. Capture
-      // on the SVG so pointercancel reaches the root handlePointerUp
-      // commit without aborting the first preview frame.
-      try { (svgRef.current || e.target).setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
+      try { e.target.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
       e.stopPropagation();
       setInteractionState('dragging');
       setActiveCalloutDrag({ id: calloutId, partType });
@@ -3863,14 +3860,7 @@ export function useSVGInteraction({
         return;
       }
     }
-    // Vertex knobs remount as previewObjects updates. Capture on the
-    // SVG so pointercancel / move stay on the layer that already
-    // commits via handlePointerUp (same class as selected bbox knobs,
-    // without aborting the live drag when the circle is replaced).
-    const captureEl = (
-      typeof handleId === 'string' && handleId.startsWith('vertex-')
-    ) ? (svgRef.current || e.target) : e.target;
-    try { captureEl.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+    e.target.setPointerCapture(e.pointerId);
 
     // UX: 2026-04-20 — Group transform branch. When 2+ items are selected
     // (annotations + callouts combined), the multi-selection's outer dashed
