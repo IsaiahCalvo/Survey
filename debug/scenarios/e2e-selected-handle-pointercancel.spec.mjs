@@ -331,6 +331,7 @@ async function proveBrPointercancel(page, coords) {
   const pre = await geom(page, rect.id);
 
   await startBrDrag(page, 48, 36);
+  await page.waitForTimeout(80);
   await cancelBrPointer(page);
   let afterCancel = null;
   await expect.poll(async () => {
@@ -387,8 +388,9 @@ async function proveBrPointercancel(page, coords) {
 
 test('desktop selected br pointercancel + zoomGeneration commit', async ({ page }) => {
   await openEditor(page);
+  await blurInputs(page);
   await dismissChrome(page);
-  const proof = await proveBrPointercancel(page, RECT_A);
+  const proof = await proveBrPointercancel(page, { x0: 0.18, y0: 0.24, x1: 0.48, y1: 0.48 });
   expect(proof.viewBox, 'SVG viewBox owns zoom').toBe('0 0 612 792');
   expect(proof.fileId, 'file.id must stay null').toBeNull();
   await assertNoErrorBoundary(page);
