@@ -35,7 +35,7 @@ async function openPage(page, { width = 1400, height = 900, url } = {}) {
 }
 
 function desktopNewTemplate(page) {
-  return page.locator('.templates-editor-grid aside .btn-ink').filter({ hasText: 'New template' });
+  return page.locator('.templates-editor-grid aside .btn-ink').filter({ hasText: 'New template', visible: true });
 }
 
 function mobileNewTemplate(page) {
