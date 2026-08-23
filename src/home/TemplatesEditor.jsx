@@ -375,6 +375,7 @@ function SortableModuleTab({
           onClick={() => onOpen(index)}
           onDoubleClick={() => onStartRename(mod.id)}
           title={`${mod.name} · drag to reorder · double-click to rename`}
+          aria-label={`${mod.name} · drag to reorder · double-click to rename`}
           style={{
             background: 'transparent',
             border: 0,
