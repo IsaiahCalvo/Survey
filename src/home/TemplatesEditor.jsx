@@ -2485,6 +2485,7 @@ export default function TemplatesEditor({
                           style={{ width: 24, height: 24 }}
                         />
                         <button
+                          type="button"
                           onClick={() => setOpenColor(isOpen ? null : r.id)}
                           title="Edit color" aria-label="Edit color"
                           style={{
