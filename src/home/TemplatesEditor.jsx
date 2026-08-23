@@ -373,6 +373,7 @@ function SortableModuleTab({
         />
       ) : (
         <button
+          type="button"
           onClick={() => onOpen(index)}
           onDoubleClick={() => onStartRename(mod.id)}
           title={`${mod.name} · drag to reorder · double-click to rename`}
