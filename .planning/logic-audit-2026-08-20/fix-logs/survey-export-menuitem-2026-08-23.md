@@ -32,7 +32,7 @@ Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another 
 | Counter caret | Fresh `?testPdf=` caret **0**. Not taken. |
 | Survey EXPORT / Push / Sync apply | leftover-18. Not clicked. |
 | Space CSV / PDF Pages apply | leftover-18. Not clicked. |
-| **Survey export menu name** | **This pass.** Menu open **1**; before fix named menu **0**. After fix: `Excel actions` (desktop) + `Export survey data` (390). |
+| **Survey export menu name + Escape** | **This pass.** Menu open **1**; before fix named menu **0** and Escape left it open. After fix: `Excel actions` (desktop) + `Export survey data` (390); Escape dismisses. |
 
 ## Live-proved
 
