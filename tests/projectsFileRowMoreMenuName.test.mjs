@@ -14,8 +14,8 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 test('Projects file-row More menu is role=menu with name from the document; isolated 8448 standing', () => {
   const src = read('src/home/ProjectsFolderTree.jsx');
-  const start = src.indexOf('File-row "more" menu');
-  const end = src.indexOf('Manage Team modal');
+  const start = src.indexOf('{/* File-row "more" menu');
+  const end = src.indexOf('{/* Manage Team modal');
   assert.ok(start >= 0 && end > start);
   const slice = src.slice(start, end);
   assert.match(slice, /ariaLabel=\{`\$\{f\.name \|\| 'Document'\} actions`\}/);
