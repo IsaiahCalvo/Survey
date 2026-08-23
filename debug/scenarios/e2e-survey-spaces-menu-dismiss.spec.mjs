@@ -74,9 +74,13 @@ async function userAnnotationIds(page) {
 }
 
 async function armRectangle(page) {
+  const style = page.getByRole('button', { name: 'Style', exact: true });
+  if (await style.isVisible().catch(() => false)) return;
   await page.getByRole('button', { name: 'Shapes', exact: true }).click();
-  await page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Rectangle', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Style', exact: true })).toBeVisible({ timeout: 5_000 });
+  const rectangle = page.getByRole('button', { name: 'Rectangle', exact: true });
+  await expect(rectangle.first()).toBeVisible({ timeout: 8_000 });
+  await rectangle.first().click();
+  await expect(style).toBeVisible({ timeout: 5_000 });
 }
 
 async function clickPage(page, fracX = 0.82, fracY = 0.82) {
