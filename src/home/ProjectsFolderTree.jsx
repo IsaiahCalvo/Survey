@@ -103,6 +103,22 @@ const orderByStoredIds = (rows, storedIds = []) => {
     return aRank - bRank;
   });
 };
+
+/* Inline project-name fields commit on Enter/blur. Escape must restore the
+   pre-edit name and then blur so the following persist sees no change —
+   same contract as template / space / bookmark rename. */
+const handleProjectRenameKeyDown = (event, currentName) => {
+  if (event.key === 'Enter') {
+    event.currentTarget.blur();
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.value = currentName;
+    event.currentTarget.blur();
+  }
+};
 /* Fixed-position popup menu, portalled to <body>.
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
@@ -1037,7 +1053,7 @@ export default function ProjectsFolderTree({
                     onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'var(--ink-500)'; }}
                     onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderBottomColor = 'transparent'; }}
                     onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--gold)'; }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    onKeyDown={(e) => handleProjectRenameKeyDown(e, open.name)}
                     onBlur={(e) => {
                       e.currentTarget.style.borderBottom = '1px dashed transparent';
                       const name = e.currentTarget.value.trim();
@@ -1278,7 +1294,7 @@ export default function ProjectsFolderTree({
                       className="projects-mobile-title-input"
                       defaultValue={mobileDrillProject.name}
                       title="Tap to rename"
-                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      onKeyDown={(e) => handleProjectRenameKeyDown(e, mobileDrillProject.name)}
                       onBlur={(e) => {
                         const name = e.currentTarget.value.trim();
                         if (name && name !== mobileDrillProject.name) renameProject(mobileDrillProject.id, name);
@@ -1701,7 +1717,7 @@ export default function ProjectsFolderTree({
             <input
               key={`mobile-focus-${open.id}`}
               defaultValue={open.name}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              onKeyDown={(e) => handleProjectRenameKeyDown(e, open.name)}
               onBlur={(e) => {
                 const name = e.currentTarget.value.trim();
                 if (name && name !== open.name) renameProject(open.id, name);
@@ -1773,7 +1789,7 @@ export default function ProjectsFolderTree({
                   width: '100%',
                   fontFamily: 'inherit',
                 }}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                onKeyDown={(e) => handleProjectRenameKeyDown(e, open.name)}
                 onBlur={(e) => {
                   const name = e.currentTarget.value.trim();
                   if (name && name !== open.name) renameProject(open.id, name);
