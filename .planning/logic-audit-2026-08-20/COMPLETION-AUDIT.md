@@ -3,7 +3,9 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0. Leftover-18 still blocks `/goal` complete.
 
-**This-pass (2026-08-23 S-03 / S-04 leftover live Line/Arrow rubber-band then commit):** named leftover after S-01 / S-02 live rect/ellipse rubber-band. Live `e2e-line-arrow-live-create.spec.mjs` **2 / 2 (8.4s)**. Node **15 / 15**. No product bug. Callout `.callout-preview` skipped (different path). Receipt `fix-logs/line-arrow-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+**This-pass (2026-08-23 T-02 leftover live Callout rubber-band then commit):** named leftover after S-03 / S-04 live Line/Arrow rubber-band. Live `e2e-callout-live-create.spec.mjs` **2 / 2 (10.7s)**. Node **15 / 15**. No product bug. Prior T-02 knee / corners / arrowhead catalogs not replayed. Receipt `fix-logs/callout-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
+
+**Prior-pass (2026-08-23 S-03 / S-04 leftover live Line/Arrow rubber-band then commit):** named leftover after S-01 / S-02 live rect/ellipse rubber-band. Live `e2e-line-arrow-live-create.spec.mjs` **2 / 2 (8.4s)**. Node **15 / 15**. No product bug. Callout `.callout-preview` skipped (different path). Receipt `fix-logs/line-arrow-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
 **Prior-pass (2026-08-23 S-01 / S-02 leftover live rect/ellipse rubber-band then commit):** named leftover after E-02 pill Arrow ±1 / Shift+Arrow ±45. Live `e2e-shape-live-create.spec.mjs` **2 / 2 (8.7s)**. Node **15 / 15**. No product bug. Line/arrow dashed create skipped (different path). Receipt `fix-logs/shape-live-create-2026-08-23.md`. Leftover **18** still parked — this still blocks `/goal` complete.
 
