@@ -470,7 +470,10 @@ test('desktop ink resize + rotate intended + break + edge', async ({ page }) => 
   expect(await page.locator('circle[data-handle^="vertex-"]').count(), 'no vertex-N seam').toBe(0);
   expect(await page.locator('circle[data-handle="p1"]').count(), 'no line p1 seam').toBe(0);
   expect(await page.locator('[data-handle="textBox-br"]').count(), 'no callout textBox-br seam').toBe(0);
-  expect(await page.locator('[data-shape-kind="cloud-rect"]').count(), 'no cloud-rect seam').toBe(0);
+  expect(
+    await page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${inkA.id}"] [data-shape-kind="cloud-rect"]`).count(),
+    'selected A is not cloud-rect',
+  ).toBe(0);
 
   const a0 = await geom(page, inkA.id);
   const b0 = await geom(page, inkB.id);

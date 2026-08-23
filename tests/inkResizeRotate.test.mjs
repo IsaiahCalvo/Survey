@@ -132,7 +132,7 @@ test('live spec covers ink br\/mr\/mb / affine hold / mtr 90\/180 / 390 / file.i
   assert.match(spec, /single-click ink shows all 8 handles/);
   assert.match(spec, /single-select A must show mtr/);
   assert.match(spec, /no counter nubbin seam/);
-  assert.match(spec, /no cloud-rect seam/);
+  assert.match(spec, /selected A is not cloud-rect/);
   assert.match(spec, /A visible width uses width\*\|sx\|/);
   assert.match(spec, /br must grow A width and height/);
   assert.match(spec, /br must keep A as path/);
