@@ -68,6 +68,8 @@ test('official leftover files besides isolated 8448 match live source after Surv
   const rail = read('src/SurveySpacesRail.jsx');
   assert.match(rail, /className="survey-marker-export-compact-menu" role="menu" aria-label="Excel actions"/);
   assert.match(rail, /className="mobile-survey-sheet-export-menu" role="menu" aria-label="Export survey data"/);
+  assert.match(rail, /if \(!showExportMenu\) return undefined;/);
+  assert.match(rail, /setShowExportMenu\(false\);/);
 
   const settings = read('src/components/AccountSettings.jsx');
   assert.match(settings, /aria-labelledby="account-settings-title"/);

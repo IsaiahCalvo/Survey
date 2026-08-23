@@ -747,10 +747,34 @@ const SurveySpacesRail = ({
         () => setIsMobileExportMenuOpen(false),
       );
     };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setIsMobileExportMenuOpen(false);
+    };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
-    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [isMobileExportMenuOpen]);
+
+  useEffect(() => {
+    if (!showExportMenu) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setShowExportMenu(false);
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [showExportMenu, setShowExportMenu]);
 
   useEffect(() => {
     if (isSurveyPanelCollapsed) setIsMobileExportMenuOpen(false);

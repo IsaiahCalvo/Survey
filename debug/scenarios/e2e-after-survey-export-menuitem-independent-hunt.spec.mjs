@@ -226,6 +226,7 @@ test('independent hunt after Survey export menu name', async ({ page }) => {
     const excelChevron = page.getByRole('button', { name: 'Excel actions', exact: true });
     await expect(excelChevron).toBeVisible({ timeout: 15_000 });
     await excelChevron.click();
+    await expect(page.getByRole('menu', { name: 'Excel actions', exact: true })).toBeVisible({ timeout: 8_000 });
     inventory.survey.namedMenu = await page.getByRole('menu', { name: 'Excel actions', exact: true }).count();
     inventory.survey.openLinked = await page.getByRole('menuitem', { name: 'Open linked', exact: true }).count();
     inventory.survey.updateExisting = await page.getByRole('menuitem', { name: 'Update existing', exact: true }).count();

@@ -27,6 +27,10 @@ test('Survey export menus are role=menu with names; items stay menuitems; isolat
   assert.match(desktop, /aria-label="Open linked"/);
   assert.match(desktop, /aria-label="Update existing"/);
   assert.equal((desktop.match(/role="menuitem"/g) || []).length, 2);
+  assert.match(src, /if \(!showExportMenu\) return undefined;/);
+  assert.match(src, /setShowExportMenu\(false\);/);
+  assert.match(src, /if \(!isMobileExportMenuOpen\) return undefined;/);
+  assert.match(src, /setIsMobileExportMenuOpen\(false\);/);
 
   const mobileStart = src.indexOf('className="mobile-survey-sheet-export-wrap"');
   const mobileEnd = src.indexOf('aria-label="Close Survey panel"', mobileStart);
