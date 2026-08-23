@@ -676,11 +676,24 @@ const PagesPanel = ({
     });
   }, [allowedPages, generateThumbnail, pageNum]);
 
-  // Close context menu when clicking outside or pressing Escape
+  // Close context menu when clicking outside or pressing Escape.
+  // Capture pointerdown: the page layer preventDefaults pointerdown while a
+  // creation tool is armed, which suppresses the bubbling mousedown this menu
+  // used to wait on — so a PDF click never closed Pages context with Rectangle
+  // armed. Consume page-surface dismiss so it does not start a rubber-band
+  // (same contract as AppShell exclusive-layer / CompactColorPicker).
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+      const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+      if (contextMenuRef.current && target && !contextMenuRef.current.contains(target)) {
         setContextMenu(null);
+        const onPageSurface = target.closest('[data-svg-annotation-layer]')
+          || target.closest('.survey-pdfjs-page-div')
+          || target.closest('.textLayer');
+        if (onPageSurface) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
       }
     };
     const handleEscape = (event) => {
@@ -688,15 +701,15 @@ const PagesPanel = ({
     };
 
     if (contextMenu) {
-      // Defer the outside-click listener one frame so the opening
-      // right-click's leftover mousedown cannot dismiss the menu.
+      // Defer one frame so the opening right-click's leftover pointer
+      // cannot dismiss the menu.
       const listenId = window.requestAnimationFrame(() => {
-        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('pointerdown', handleClickOutside, true);
       });
       document.addEventListener('keydown', handleEscape);
       return () => {
         window.cancelAnimationFrame(listenId);
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('pointerdown', handleClickOutside, true);
         document.removeEventListener('keydown', handleEscape);
       };
     }

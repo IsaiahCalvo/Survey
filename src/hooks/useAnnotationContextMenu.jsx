@@ -127,19 +127,30 @@ export function useAnnotationContextMenu() {
   useEffect(() => {
     if (!annotationContextMenu) return undefined;
     const close = (e) => {
-      if (e?.target?.closest && e.target.closest('[data-annotation-context-menu]')) return;
+      const target = e?.target instanceof Element ? e.target : e?.target?.parentElement;
+      if (target?.closest?.('[data-annotation-context-menu]')) return;
       setAnnotationContextMenu(null);
+      // Capture pointerdown: creation-tool page preventDefault suppresses the
+      // compatibility mousedown this used to wait on. Consume page-surface
+      // dismiss so it does not start a rubber-band.
+      const onPageSurface = target?.closest?.('[data-svg-annotation-layer]')
+        || target?.closest?.('.survey-pdfjs-page-div')
+        || target?.closest?.('.textLayer');
+      if (onPageSurface) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     };
     const onKey = (e) => { if (e.key === 'Escape') setAnnotationContextMenu(null); };
-    // Delay attaching so the opening right-click's own mousedown doesn't
+    // Delay attaching so the opening right-click's own pointer doesn't
     // instantly re-close the menu.
     const t = window.setTimeout(() => {
-      window.addEventListener('mousedown', close, true);
+      window.addEventListener('pointerdown', close, true);
       window.addEventListener('keydown', onKey);
     }, 0);
     return () => {
       window.clearTimeout(t);
-      window.removeEventListener('mousedown', close, true);
+      window.removeEventListener('pointerdown', close, true);
       window.removeEventListener('keydown', onKey);
     };
   }, [annotationContextMenu]);
