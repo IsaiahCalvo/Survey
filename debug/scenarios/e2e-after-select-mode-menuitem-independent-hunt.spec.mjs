@@ -169,7 +169,7 @@ test('independent hunt after Selection Mode menuitem', async ({ page }) => {
     inventory.editor.hidden = await hiddenCounts(page);
     inventory.editor.fileId = await fileId(page);
     inventory.editor.viewBox = await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox');
-    inventory.editor.selectTextIdle = await page.getByRole('menuitem', { name: 'Select text', exact: true }).count();
+    inventory.editor.selectTextIdle = await page.getByRole('menuitem', { name: /^Select text/ }).count();
     inventory.editor.copyEmail = await page.getByRole('menuitem', { name: 'Copy email', exact: true }).count();
     inventory.editor.editModules = await page.getByRole('dialog', { name: 'Edit modules', exact: true }).count();
     inventory.editor.lockDialog = await page.getByRole('dialog', { name: /Lock this document/ }).count();
@@ -178,8 +178,8 @@ test('independent hunt after Selection Mode menuitem', async ({ page }) => {
 
     await page.locator('[data-select-mode-caret="true"]').click();
     inventory.editor.selectMenu = await page.getByRole('menu', { name: 'Selection Mode', exact: true }).count();
-    inventory.editor.selectText = await page.getByRole('menuitem', { name: 'Select text', exact: true }).count();
-    inventory.editor.selectAnnotations = await page.getByRole('menuitem', { name: 'Select annotations', exact: true }).count();
+    inventory.editor.selectText = await page.getByRole('menuitem', { name: /^Select text/ }).count();
+    inventory.editor.selectAnnotations = await page.getByRole('menuitem', { name: /^Select annotations/ }).count();
     inventory.editor.namelessMenus = await namelessOpenMenus(page);
     await page.keyboard.press('Escape');
 
@@ -210,7 +210,7 @@ test('independent hunt after Selection Mode menuitem', async ({ page }) => {
     await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
     const hubControls = await visibleControls(page);
     inventory.hub.draw = await page.getByRole('button', { name: 'Draw', exact: true }).count();
-    inventory.hub.selectTextIdle = await page.getByRole('menuitem', { name: 'Select text', exact: true }).count();
+    inventory.hub.selectTextIdle = await page.getByRole('menuitem', { name: /^Select text/ }).count();
     inventory.hub.lockDialog = await page.getByRole('dialog', { name: /Lock this document/ }).count();
     inventory.hub.unnamed = hubControls.filter((row) => row.unnamed);
     inventory.novel.hub = novelNames(hubControls);
@@ -256,7 +256,7 @@ test('independent hunt after Selection Mode menuitem', async ({ page }) => {
     await team.getByRole('button', { name: 'More', exact: true }).first().click();
     inventory.projects.memberMenu = await page.getByRole('menu', { name: /actions$/ }).count();
     inventory.projects.copyEmail = await page.getByRole('menuitem', { name: 'Copy email', exact: true }).count();
-    inventory.projects.selectText = await page.getByRole('menuitem', { name: 'Select text', exact: true }).count();
+    inventory.projects.selectText = await page.getByRole('menuitem', { name: /^Select text/ }).count();
     inventory.projects.activityDialog = await page.getByRole('dialog', { name: /activity/i }).count();
     inventory.projects.namelessMenus = await namelessOpenMenus(page);
     inventory.projects.unnamedDialogs = await unnamedDialogs(page);

@@ -75,26 +75,26 @@ test('desktop Selection Mode actions are named menuitems + Select text', async (
   await openPage(page, { url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await page.locator('[data-select-mode-caret="true"]').count()).toBe(0);
-  expect(await page.getByRole('menuitem', { name: 'Select text', exact: true }).count()).toBe(0);
-  expect(await page.getByRole('menuitem', { name: 'Select annotations', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select text/ }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select annotations/ }).count()).toBe(0);
 
   await openPage(page, { url: LINK_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
-  expect(await page.getByRole('menuitem', { name: 'Select text', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select text/ }).count()).toBe(0);
   expect(await page.getByRole('button', { name: 'Select', exact: true }).count()).toBeGreaterThan(0);
 
   await openSelectMenu(page);
-  await expect(page.getByRole('menuitem', { name: 'Select annotations', exact: true })).toHaveCount(1);
-  await expect(page.getByRole('menuitem', { name: 'Select text', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('menuitem', { name: /^Select annotations/ })).toHaveCount(1);
+  await expect(page.getByRole('menuitem', { name: /^Select text/ })).toHaveCount(1);
   await expect(page.getByRole('menuitem', { name: 'Copy email', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Group', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: /Extract/i })).toHaveCount(0);
 
-  await page.getByRole('menuitem', { name: 'Select text', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Select text/ }).click();
   await expect(selectMenu(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Select text', exact: true })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'Select text', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /^Select text/ })).toHaveCount(0);
 
   await openSelectMenu(page);
   await page.keyboard.press('Escape');
@@ -102,7 +102,7 @@ test('desktop Selection Mode actions are named menuitems + Select text', async (
   await expect(page.getByRole('button', { name: 'Select text', exact: true })).toBeVisible();
 
   await openSelectMenu(page);
-  await page.getByRole('menuitem', { name: 'Select annotations', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Select annotations/ }).click();
   await expect(selectMenu(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Select', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Select text', exact: true })).toHaveCount(0);
@@ -117,19 +117,19 @@ test('390 + idle break for Selection Mode menuitem chrome', async ({ page }) => 
   await openPage(page, { width: 390, height: 844, url: LINK_PDF });
   await expect(page.getByRole('button', { name: /Draw|Document tools/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(await page.locator('[data-select-mode-caret="true"]').count()).toBe(0);
-  expect(await page.getByRole('menuitem', { name: 'Select text', exact: true }).count()).toBe(0);
-  expect(await page.getByRole('menuitem', { name: 'Select annotations', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select text/ }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select annotations/ }).count()).toBe(0);
 
   await openPage(page, { url: HUB_PROJECTS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await page.getByRole('button', { name: 'Manage team', exact: true }).count()).toBeGreaterThan(0);
-  expect(await page.getByRole('menuitem', { name: 'Select text', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select text/ }).count()).toBe(0);
   await page.getByRole('button', { name: 'Manage team', exact: true }).click();
   const team = page.getByRole('dialog', { name: 'Manage Team', exact: true });
   await expect(team).toBeVisible({ timeout: 10_000 });
   await team.getByRole('button', { name: 'More', exact: true }).first().click();
   await expect(page.getByRole('menuitem', { name: 'Copy email', exact: true })).toHaveCount(1);
-  await expect(page.getByRole('menuitem', { name: 'Select text', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /^Select text/ })).toHaveCount(0);
   expect(await page.getByRole('dialog', { name: /activity/i }).count()).toBe(0);
   await page.keyboard.press('Escape');
 
@@ -139,7 +139,7 @@ test('390 + idle break for Selection Mode menuitem chrome', async ({ page }) => 
   expect(hidden.Forms).toBe(0);
   expect(hidden.Group).toBe(0);
   expect(hidden.Note).toBe(0);
-  expect(await page.getByRole('menuitem', { name: 'Select text', exact: true }).count()).toBe(0);
+  expect(await page.getByRole('menuitem', { name: /^Select text/ }).count()).toBe(0);
   expect(await fileId(page)).toBeNull();
   expect(await page.locator('[data-svg-annotation-layer="1"]').getAttribute('viewBox')).toBe('0 0 612 792');
 });

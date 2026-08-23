@@ -31,8 +31,8 @@ test('live spec covers named menuitem actions intended + break + edge; skip left
   const spec = read('debug/scenarios/e2e-select-mode-menuitem.spec.mjs');
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /hubPreview=1/);
-  assert.match(spec, /getByRole\('menuitem', \{ name: 'Select text', exact: true \}\)/);
-  assert.match(spec, /getByRole\('menuitem', \{ name: 'Select annotations', exact: true \}\)/);
+  assert.match(spec, /getByRole\('menuitem', \{ name: \/\^Select text\/ \}\)/);
+  assert.match(spec, /getByRole\('menuitem', \{ name: \/\^Select annotations\/ \}\)/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /390/);
   assert.match(spec, /file\.id/);
