@@ -66,6 +66,7 @@ test('leftover-18 X-06 automatic writeback stays fail-closed; this slice is not 
   assert.match(spec, /hubPreview must not honor editor unplacedRows/);
   assert.match(spec, /must not stamp file\.id/);
   assert.match(spec, /390 unplaced mixed dismiss/);
+  assert.match(spec, /Open survey/);
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
   assert.doesNotMatch(spec, /page-rotate|viewBox `0 0 792 612`/);
 
