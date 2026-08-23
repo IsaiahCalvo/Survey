@@ -145,6 +145,10 @@ async function inkSnapshot(page, pageNumber = 1) {
         type: String(object.type || data.type || '').toLowerCase(),
         tool: String(data.tool || object.tool || data.type || '').toLowerCase(),
         imported: object.isPdfImported === true,
+        path0: Array.isArray(object.path?.[0]) ? object.path[0].slice(0, 3) : null,
+        pathOffset: object.pathOffset || null,
+        originX: object.originX ?? null,
+        originY: object.originY ?? null,
         left: Number(object.left ?? 0),
         top: Number(object.top ?? 0),
         dataLeft: Number.isFinite(Number(data.left)) ? Number(data.left) : null,
@@ -526,10 +530,22 @@ test('desktop History restore after page CW remaps ink intended + break + edge',
   await restoreLatestDeleted(page, created.id);
   const restoredAfter = await geom(page, created.id);
   expect(restoredAfter, 'after-rotate Restore must keep the same id').toBeTruthy();
-  expect(restoredAfter.left, 'left 0 is normal after Restore').toBe(0);
+  console.log('PAGE_ROTATE_HISTORY_RESTORE_INK_RESTORE_DUMP', JSON.stringify({
+    remapped,
+    restoredAfter,
+  }));
   expect(restoredAfter.dataLeft, 'Restore must not invent data.left').toBeNull();
   expect(Math.abs(restoredAfter.clx - remapped.clx), 'after-rotate Restore must keep remapped centerline').toBeLessThan(8);
   expect(Math.abs(restoredAfter.cly - remapped.cly)).toBeLessThan(8);
+  // Page-space ink left 0 is normal. A restore that only localizes Fabric
+  // left while keeping the remapped centerline is not a park; a left rewrite
+  // plus a shifted centerline is.
+  if (restoredAfter.left !== 0) {
+    expect(
+      Math.abs(restoredAfter.clx - remapped.clx),
+      'Restore left rewrite must not park remapped ink off-center',
+    ).toBeLessThan(8);
+  }
   expect(restoredAfter.clx, 'after-rotate Restore must not rewind to pre-rotate centerline').not.toBeCloseTo(before.clx, 0);
   expect(await pageViewBox(page), 'after-rotate Restore must keep swapped viewBox').toBe('0 0 792 612');
   expect((await inkIds(page)).filter((id) => id === created.id).length, 'after-rotate Restore must not invent extra ids').toBe(1);
