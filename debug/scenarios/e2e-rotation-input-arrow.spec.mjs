@@ -325,7 +325,11 @@ test('desktop RotationInputField Arrow nudge intended + break + edge', async ({ 
   await page.keyboard.press('Control+Z');
   await expectAngle(page, b.id, 0, 'second undo must drop B Arrow 1 again');
 
-  // Edge — Pen hide holds stored angle.
+  // Edge — deselect + Pen hide holds stored angle (Pen-armed selection still
+  // shows mtr; empty-page Pen is the hide path, same as the typed-pill spec).
+  await page.keyboard.press('v');
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').click({ position: { x: 12, y: 12 } });
+  expect(await page.getByRole('textbox', { name: 'Rotation angle in degrees', exact: true }).count()).toBe(0);
   await activateTool(page, 'Draw', 'Pen');
   expect(await page.locator('[data-rotation-handle="mtr"]').count(), 'Pen hide mtr').toBe(0);
   expect(await page.getByRole('textbox', { name: 'Rotation angle in degrees', exact: true }).count()).toBe(0);
