@@ -56,11 +56,10 @@ async function openSpaces(page) {
 
 async function createSpaceAndOpenExport(page) {
   await openSpaces(page);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await page.waitForTimeout(360);
   const exportBtn = page.getByRole('button', { name: 'Export Space 1', exact: true });
-  if (!(await exportBtn.isEnabled().catch(() => false))) {
-    await page.getByRole('button', { name: 'Create space', exact: true }).click();
-    await expect(exportBtn).toBeEnabled({ timeout: 8_000 });
-  }
+  await expect(exportBtn).toBeEnabled({ timeout: 8_000 });
   await exportBtn.click();
   await expect(exportMenu(page)).toBeVisible({ timeout: 8_000 });
 }
@@ -144,11 +143,10 @@ test('390 + hub/search break for Spaces export menuitem', async ({ page }) => {
   expect(await exportMenu(page).count()).toBe(0);
   await page.getByRole('button', { name: 'Open spaces', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Create space', exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await page.waitForTimeout(360);
   const mobileExport = page.getByRole('button', { name: 'Export Space 1', exact: true });
-  if (!(await mobileExport.isEnabled().catch(() => false))) {
-    await page.getByRole('button', { name: 'Create space', exact: true }).click();
-    await expect(mobileExport).toBeEnabled({ timeout: 8_000 });
-  }
+  await expect(mobileExport).toBeEnabled({ timeout: 8_000 });
   await mobileExport.click();
   await expect(exportMenu(page)).toBeVisible({ timeout: 8_000 });
   await expect(page.getByRole('menuitem', { name: 'CSV', exact: true })).toHaveCount(1);

@@ -212,11 +212,10 @@ test('independent hunt after Spaces export menuitem', async ({ page }) => {
     inventory.novel.editor = novelNames(editorControls);
 
     await openSpaces(page);
+    await page.getByRole('button', { name: 'Create space', exact: true }).click();
+    await page.waitForTimeout(360);
     const exportBtn = page.getByRole('button', { name: 'Export Space 1', exact: true });
-    if (!(await exportBtn.isEnabled().catch(() => false))) {
-      await page.getByRole('button', { name: 'Create space', exact: true }).click();
-      await expect(exportBtn).toBeEnabled({ timeout: 8_000 });
-    }
+    await expect(exportBtn).toBeEnabled({ timeout: 8_000 });
     await exportBtn.click();
     inventory.spaces.namedMenu = await page.getByRole('menu', { name: 'Export Space 1', exact: true }).count();
     inventory.spaces.csv = await page.getByRole('menuitem', { name: 'CSV', exact: true }).count();
