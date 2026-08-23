@@ -2074,6 +2074,7 @@ export default function TemplatesEditor({
                   defaultValue={tpl.name}
                   data-template-title=""
                   title="Click to rename"
+                  aria-label="Click to rename"
                   onDoubleClick={(e) => e.currentTarget.select()}
                   onBlur={(e) => {
                     const next = e.currentTarget.value;
@@ -2234,6 +2235,7 @@ export default function TemplatesEditor({
                           defaultValue={c.name}
                           key={c.id + ':' + c.name}
                           title="Click to rename"
+                          aria-label="Click to rename"
                           onClick={(e) => e.stopPropagation()}
                           onDoubleClick={(e) => e.currentTarget.select()}
                           onBlur={(e) => {
@@ -2713,6 +2715,7 @@ export default function TemplatesEditor({
                     defaultValue={tpl.name}
                     data-template-title=""
                     title="Tap to rename"
+                    aria-label="Tap to rename"
                     onBlur={(e) => {
                       const next = e.currentTarget.value;
                       if (!next.trim()) {
