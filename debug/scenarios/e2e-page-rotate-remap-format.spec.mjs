@@ -330,19 +330,28 @@ async function pointerClickHost(page, selector) {
   }, selector);
 }
 
-async function selectionChromeUp(page) {
+async function selectionChromeUp(page, kind = 'shape') {
+  if (kind === 'text' || kind === 'callout') {
+    const font = page.getByRole('button', { name: 'Font', exact: true }).first();
+    const edit = page.getByRole('button', { name: 'Edit text', exact: true }).first();
+    const arrowhead = page.getByRole('button', { name: 'Arrowhead', exact: true }).first();
+    return (await font.isVisible().catch(() => false))
+      || (await edit.isVisible().catch(() => false))
+      || (kind === 'callout' && await arrowhead.isVisible().catch(() => false));
+  }
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
-  const font = page.getByRole('button', { name: 'Font', exact: true }).first();
-  const arrowhead = page.getByRole('button', { name: 'Arrowhead', exact: true }).first();
-  const handles = page.locator('[data-resize-handle], [data-handle], [data-callout-part="knee"]');
-  return (await color.isVisible().catch(() => false))
-    || (await font.isVisible().catch(() => false))
-    || (await arrowhead.isVisible().catch(() => false))
-    || (await handles.count()) > 0;
+  const handles = page.locator('[data-resize-handle], [data-handle]');
+  return (await color.isVisible().catch(() => false)) || (await handles.count()) > 0;
 }
 
-async function selectAnno(page, id) {
+async function deselectEmpty(page) {
+  const pageEl = await pageBox(page);
+  await page.mouse.click(pageEl.x + pageEl.width * 0.92, pageEl.y + pageEl.height * 0.08);
+}
+
+async function selectAnno(page, id, kind = 'shape') {
   await selectMode(page);
+  await deselectEmpty(page);
   const selectors = [
     `[data-svg-annotation-layer="1"] [data-anno-id="${id}"] [data-shape-hit-target]`,
     `[data-svg-annotation-layer="1"] [data-anno-id="${id}"]`,
@@ -352,9 +361,9 @@ async function selectAnno(page, id) {
   await expect.poll(async () => {
     for (const selector of selectors) {
       await pointerClickHost(page, selector);
-      if (await selectionChromeUp(page)) return true;
+      if (await selectionChromeUp(page, kind)) return true;
       await clickHost(page, selector);
-      if (await selectionChromeUp(page)) return true;
+      if (await selectionChromeUp(page, kind)) return true;
     }
     return false;
   }, { timeout: 12_000, message: `select remapped ${id}` }).toBe(true);
@@ -566,7 +575,7 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
   expect(placeHeld(afterStroke, remappedRect), 'stroke chip must not jump remapped rect').toBe(true);
   await page.keyboard.press('Escape');
 
-  expect(await selectAnno(page, text.id), 'select remapped textbox').toBe(true);
+  expect(await selectAnno(page, text.id, 'text'), 'select remapped textbox').toBe(true);
   const edit = page.getByRole('button', { name: 'Edit text', exact: true }).first();
   if (await edit.isVisible().catch(() => false)) await edit.click();
   await expect(page.getByRole('button', { name: 'Font', exact: true }).first()).toBeVisible({ timeout: 8_000 });
@@ -589,7 +598,7 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
     return familyKey(now.fontFamily) === priorFamily && placeHeld(now, remappedText);
   }, { timeout: 12_000, message: 'undo font restores remapped textbox + prior family' }).toBeTruthy();
 
-  expect(await selectAnno(page, text.id)).toBe(true);
+  expect(await selectAnno(page, text.id, 'text')).toBe(true);
   if (await edit.isVisible().catch(() => false)) await edit.click();
   await pickDesktopOption(page, 'Font size', 'Font size', '24');
   let afterSize = null;
@@ -607,7 +616,7 @@ test('desktop remapped fill / font / callout style after page CW intended + brea
     return Number(now.fontSize) === priorSize && placeHeld(now, remappedText);
   }, { timeout: 12_000, message: 'undo size restores remapped textbox + prior size' }).toBeTruthy();
 
-  expect(await selectAnno(page, callout.id), 'select remapped callout').toBe(true);
+  expect(await selectAnno(page, callout.id, 'callout'), 'select remapped callout').toBe(true);
   const arrowhead = page.getByRole('button', { name: 'Arrowhead', exact: true }).first();
   const styleBtn = page.getByRole('button', { name: 'Style', exact: true }).first();
   const priorHead = remappedCallout.arrowheadStyle || 'solidTriangle';
