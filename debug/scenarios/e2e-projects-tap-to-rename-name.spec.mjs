@@ -107,15 +107,11 @@ test('desktop + empty + guest + templates + editor break/edge for Projects Tap t
   expect(await projectsTapRename(page).count()).toBe(0);
   expect(await tapToRename(page).count()).toBe(0);
 
-  await openPage(page, { width: 390, height: 844, url: HUB_GUEST });
+  await openPage(page, { url: HUB_GUEST });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
   expect(await page.getByRole('textbox', { name: 'Search projects...', exact: true }).count()).toBeGreaterThan(0);
-  const guestRow = mobileProjectRow(page);
-  await expect(guestRow).toBeVisible({ timeout: 15_000 });
-  await guestRow.click();
-  await expect(projectsTapRename(page)).toBeVisible({ timeout: 10_000 });
-  await expect(projectsTapRename(page)).toHaveValue(PROJECT);
-  await expect(projectsTapRename(page)).toHaveAttribute('aria-label', 'Tap to rename');
+  await expect(page.locator('.projects-desktop-layout input[aria-label="Click to rename"]')).toHaveValue(PROJECT);
+  expect(await projectsTapRename(page).count()).toBe(0);
 
   await openPage(page, { url: HUB_DOCS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
