@@ -8,7 +8,7 @@ import {
   rotateDisplayedPoint,
   transformPageState,
 } from '../src/utils/pageAnnotationReindex.js';
-import { displayedBoxOrigin, displayedAngle, placeRotationHandle } from '../src/utils/svgBoundingBox.js';
+import { displayedBoxOrigin, displayedAngle, placeRotationHandle, clampHandleToPage, getHandlePositions } from '../src/utils/svgBoundingBox.js';
 
 // Source contracts for selected bbox resize / mtr on a remapped page
 // after CW rotate (viewBox 0 0 792 612, angle 90). Distinct from
@@ -90,6 +90,18 @@ test('displayedAngle prefers remapped data.angle when Fabric angle is 0', () => 
   assert.equal(displayedAngle({ angle: 0, data: {} }), 0);
 });
 
+function worldOf(local, bbox) {
+  const cx = bbox.left + bbox.width / 2;
+  const cy = bbox.top + bbox.height / 2;
+  const rad = (bbox.angle * Math.PI) / 180;
+  const dx = local.x - cx;
+  const dy = local.y - cy;
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
+}
+
 test('placeRotationHandle shortens the 90deg stem so mtr stays on the 792 page', () => {
   const bbox = { left: 648.17, top: -8.41, width: 135.42, height: 152.24, angle: 90 };
   const cx = bbox.left + bbox.width / 2;
@@ -116,6 +128,67 @@ test('placeRotationHandle shortens the 90deg stem so mtr stays on the 792 page',
   assert.ok(world.x <= 792 - 16 + 1e-6, 'clamped mtr must stay inside viewBox');
   assert.ok(world.x > cx + 4, 'clamped mtr must stay on the +x (90deg) ray');
   assert.ok(Math.abs(world.y - cy) < 1, 'clamped mtr must not leave the 90deg ray');
+});
+
+test('clampHandleToPage pulls remapped 90deg mt/tl/tr/ml/bl onto the 792 page', () => {
+  const bbox = { left: 648.17, top: -8.41, width: 135.42, height: 152.24, angle: 90 };
+  const raw = getHandlePositions(bbox, 2);
+  const page = { pageWidth: 792, pageHeight: 612, inset: 16 };
+  const offPage = ['mt', 'tl', 'tr', 'ml', 'bl'];
+  const onPage = ['br', 'mb', 'mr'];
+  for (const id of offPage) {
+    const unclamped = worldOf(raw[id], bbox);
+    assert.ok(
+      unclamped.x > 792 || unclamped.y < 0,
+      `${id} default world must sit past viewBox (got ${unclamped.x.toFixed(2)},${unclamped.y.toFixed(2)})`,
+    );
+    const clamped = clampHandleToPage(raw[id], bbox, page);
+    const world = worldOf(clamped, bbox);
+    assert.ok(world.x >= 16 - 1e-6 && world.x <= 792 - 16 + 1e-6, `${id} clamped x on-page`);
+    assert.ok(world.y >= 16 - 1e-6 && world.y <= 612 - 16 + 1e-6, `${id} clamped y on-page`);
+  }
+  for (const id of onPage) {
+    const unclamped = worldOf(raw[id], bbox);
+    assert.ok(unclamped.x >= 0 && unclamped.x <= 792 && unclamped.y >= 0 && unclamped.y <= 612, `${id} already on-page`);
+    const clamped = clampHandleToPage(raw[id], bbox, page);
+    assert.ok(Math.abs(clamped.x - raw[id].x) < 1e-6, `${id} must not move when already on-page`);
+    assert.ok(Math.abs(clamped.y - raw[id].y) < 1e-6, `${id} must not move when already on-page`);
+  }
+});
+
+test('line/arrow/callout remapper does not invent endpoint or fraction remap', () => {
+  const line = {
+    type: 'line',
+    left: 122.4,
+    top: 205.9,
+    width: 122.4,
+    height: 142.6,
+    x1: -61.2,
+    y1: -71.3,
+    x2: 61.2,
+    y2: 71.3,
+    angle: 0,
+    data: { id: 'xf-line', type: 'line', tool: 'line', pageNumber: 1 },
+  };
+  const cw = transformPageState({
+    annotationsByPage: { 1: { width: 612, height: 792, objects: [line] } },
+    surveyMarkers: {},
+    annotations: {},
+    pageNames: {},
+    pageTransformations: {},
+    bookmarks: [],
+    spaces: [],
+  }, { type: 'rotate', page: 1, delta: 90, pageWidth: 612, pageHeight: 792 });
+  const after = cw.annotationsByPage[1].objects[0];
+  assert.equal(after.angle, 90);
+  assert.equal(after.x1, -61.2);
+  assert.equal(after.y1, -71.3);
+  const cx = after.left + after.width / 2;
+  const cy = after.top + after.height / 2;
+  const p1 = worldOf({ x: cx + after.x1, y: cy + after.y1 }, { ...after, width: after.width, height: after.height, angle: 90 });
+  const p2 = worldOf({ x: cx + after.x2, y: cy + after.y2 }, { ...after, width: after.width, height: after.height, angle: 90 });
+  assert.ok(p1.x >= 0 && p1.x <= 792 && p1.y >= 0 && p1.y <= 612, 'typical remapped line p1 stays on-page');
+  assert.ok(p2.x >= 0 && p2.x <= 792 && p2.y >= 0 && p2.y <= 612, 'typical mid-page line p2 stays on-page');
 });
 
 test('90deg local projection: screen +y grows local width; screen -x grows local height', () => {
@@ -145,8 +218,10 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   assert.match(overlay, /data-resize-handle=\{id\}/);
   assert.match(overlay, /data-rotation-handle/);
   assert.match(overlay, /placeRotationHandle/);
+  assert.match(overlay, /clampHandleToPage/);
   assert.match(overlay, /pageWidth/);
   assert.match(bbox, /export function placeRotationHandle/);
+  assert.match(bbox, /export function clampHandleToPage/);
   assert.match(bbox, /export function displayedAngle/);
   assert.match(interaction, /displayedAngle\(obj\)/);
   assert.match(interaction, /data = \{ \.\.\.rotObj\.data, angle: ds\.currentAngle \}/);
@@ -168,7 +243,7 @@ test('overlay rotate + local-frame resize + page-mutation undo wipe; no file.id 
   assert.doesNotMatch(dev, /file\.id\s*=/);
 });
 
-test('live spec covers remapped-page br\/mtr, collapse, flip, undo-last-resize, 390, file.id', () => {
+test('live spec covers remapped-page br\/mtr, remapped mt, collapse, flip, undo-last-resize, 390, file.id', () => {
   const spec = read('debug/scenarios/e2e-page-rotate-remap-resize.spec.mjs');
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /remapper must swap viewBox/);
@@ -176,6 +251,8 @@ test('live spec covers remapped-page br\/mtr, collapse, flip, undo-last-resize, 
   assert.match(spec, /mtr on the remapped page updates angle/);
   assert.match(spec, /post-rotate mtr must update angle/);
   assert.match(spec, /mtr knob must stay inside the remapped page/);
+  assert.match(spec, /post-rotate mt must grow size in swapped viewBox/);
+  assert.match(spec, /mt knob must stay inside the remapped page/);
   assert.doesNotMatch(spec, /MTR_OPTIONAL_SKIP/);
   assert.match(spec, /undo must restore post-rotate size, not the page rotate/);
   assert.match(spec, /undo must not invert page rotate/);

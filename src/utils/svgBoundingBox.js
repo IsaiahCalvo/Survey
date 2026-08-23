@@ -75,16 +75,13 @@ function rayToInsetRect(cx, cy, ux, uy, pageWidth, pageHeight, inset) {
 }
 
 /**
- * Local-space mtr knob. Overlay rotate() maps local-top to the object's
- * angle ray (absolute rotate math: pointer on that ray = current angle).
- * After page CW remap the remapped box often sits on the new right edge,
- * so the 90° ray would put mtr past viewBox + overflow:hidden. Shorten
- * the stem along the SAME ray so the knob stays hittable without flipping
- * to the opposite side (that would jump angle by 180 on pointerdown).
+ * Keep an overlay knob inside viewBox + overflow:hidden. After page CW
+ * remap the remapped box often sits on a new edge, so local-top (mt / mtr)
+ * becomes world-right and would paint past 792. Pull the knob toward the
+ * bbox center along the SAME world ray — do not flip to the opposite side
+ * (that would jump rotate math by 180 on pointerdown).
  */
-export function placeRotationHandle(bbox, {
-  padding = 2,
-  rotationOffset = 36,
+export function clampHandleToPage(localPoint, bbox, {
   pageWidth,
   pageHeight,
   inset = 16,
@@ -96,14 +93,13 @@ export function placeRotationHandle(bbox, {
   const angle = Number(bbox?.angle) || 0;
   const cx = left + width / 2;
   const cy = top + height / 2;
-  const defaultLocal = { x: cx, y: top - padding - rotationOffset };
-  if (!(pageWidth > 0 && pageHeight > 0)) {
-    return { ...defaultLocal, attach: 'mt' };
-  }
-  const world = rotatePointAround(defaultLocal.x, defaultLocal.y, cx, cy, angle);
-  if (pointOnPage(world.x, world.y, pageWidth, pageHeight, inset)) {
-    return { ...defaultLocal, attach: 'mt' };
-  }
+  const local = {
+    x: Number(localPoint?.x) || 0,
+    y: Number(localPoint?.y) || 0,
+  };
+  if (!(pageWidth > 0 && pageHeight > 0)) return local;
+  const world = rotatePointAround(local.x, local.y, cx, cy, angle);
+  if (pointOnPage(world.x, world.y, pageWidth, pageHeight, inset)) return local;
   const dx = world.x - cx;
   const dy = world.y - cy;
   const len = Math.hypot(dx, dy) || 1;
@@ -112,8 +108,29 @@ export function placeRotationHandle(bbox, {
   const tMax = rayToInsetRect(cx, cy, ux, uy, pageWidth, pageHeight, inset);
   const useT = tMax > 4 ? Math.min(len, tMax) : 4;
   const clamped = { x: cx + ux * useT, y: cy + uy * useT };
-  const local = rotatePointAround(clamped.x, clamped.y, cx, cy, -angle);
-  return { x: local.x, y: local.y, attach: 'mt' };
+  return rotatePointAround(clamped.x, clamped.y, cx, cy, -angle);
+}
+
+/**
+ * Local-space mtr knob. Overlay rotate() maps local-top to the object's
+ * angle ray (absolute rotate math: pointer on that ray = current angle).
+ */
+export function placeRotationHandle(bbox, {
+  padding = 2,
+  rotationOffset = 36,
+  pageWidth,
+  pageHeight,
+  inset = 16,
+} = {}) {
+  const left = Number(bbox?.left) || 0;
+  const top = Number(bbox?.top) || 0;
+  const width = Number(bbox?.width) || 0;
+  const defaultLocal = {
+    x: left + width / 2,
+    y: top - padding - rotationOffset,
+  };
+  const local = clampHandleToPage(defaultLocal, bbox, { pageWidth, pageHeight, inset });
+  return { ...local, attach: 'mt' };
 }
 
 const degreesToRadians = (degrees) => {

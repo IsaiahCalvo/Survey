@@ -360,6 +360,32 @@ async function handleScreenCenter(page, attr) {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2, box };
 }
 
+function handleOnPage(handle, pageRect, slop = 8) {
+  return handle
+    && handle.x > pageRect.x - 4
+    && handle.x < pageRect.x + pageRect.width + slop
+    && handle.y > pageRect.y - 4
+    && handle.y < pageRect.y + pageRect.height + slop;
+}
+
+async function dumpResizeHandleClip(page) {
+  const pageRect = await pageBox(page);
+  const ids = ['tl', 'tr', 'bl', 'br', 'mt', 'mb', 'ml', 'mr'];
+  const rows = [];
+  for (const id of ids) {
+    const handle = await handleScreenCenter(page, `data-resize-handle="${id}"`).catch(() => null);
+    rows.push({
+      id,
+      handle,
+      onPage: handleOnPage(handle, pageRect),
+      dxRight: handle ? (pageRect.x + pageRect.width) - handle.x : null,
+      dyTop: handle ? handle.y - pageRect.y : null,
+    });
+  }
+  console.log('REMAP_HANDLE_CLIP', JSON.stringify({ pageRect, rows }));
+  return { pageRect, rows };
+}
+
 async function assertHandlesNearHit(page, id) {
   const hit = await annoHitBox(page, id);
   const br = await handleScreenCenter(page, 'data-resize-handle="br"');
@@ -688,7 +714,7 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
   for (let step = 0; step < 3; step += 1) {
     const now = await geom(page, created.id);
     if (now && Math.abs(now.angle - undoTarget) < 4) break;
-    if ((await undoBtn.getAttribute('disabled')) !== null) break;
+    if (!(await undoBtn.isEnabled())) break;
     await undoBtn.click();
     console.log('POST_MTR_UNDO', JSON.stringify({ step, undoTarget, now: await geom(page, created.id) }));
   }
@@ -732,6 +758,91 @@ test('desktop remapped-page bbox resize + mtr after CW rotate', async ({ page })
     collapseVw: postBr.vw,
     collapseVh: postBr.vh,
     flip: { left: postBr.left, top: postBr.top, vw: postBr.vw },
+    viewBox: '0 0 792 612',
+    fileId: null,
+  }));
+});
+
+test('desktop remapped-page mt after CW rotate', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openEditor(page);
+  await dismissChrome(page);
+  await assertNoErrorBoundary(page);
+
+  expect((await userOwned(page)).length, 'fresh editor must have 0 user marks').toBe(0);
+  expect(await pageViewBox(page)).toBe('0 0 612 792');
+
+  const created = await createRect(page, RECT_BOX);
+  await dismissChrome(page);
+  expect(created?.id).toBeTruthy();
+  const createdGeom = await geom(page, created.id);
+  await selectUntilHandles(page, created.id, 8);
+  await dragResizeHandle(page, 'br', 180, 140);
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now && now.vw > createdGeom.vw + 10 && now.vh > createdGeom.vh + 8;
+  }, { timeout: 8_000, message: `pre-rotate br must grow from ${createdGeom.vw}x${createdGeom.vh}` }).toBeTruthy();
+  const resized = await geom(page, created.id);
+
+  await rotatePage(page, 1, 'cw');
+  await waitForEditorReady(page);
+  await dismissChrome(page);
+  await expect.poll(async () => geom(page, created.id), {
+    timeout: 20_000,
+    message: 'page rotate must keep the resized rect',
+  }).not.toBeNull();
+  const rotated = await geom(page, created.id);
+  expect(await pageViewBox(page), 'remapper must swap viewBox').toBe('0 0 792 612');
+  expect(Math.abs(rotated.angle - 90), 'remapper must set angle 90').toBeLessThan(1);
+
+  await selectUntilHandles(page, created.id, 8);
+  const clip = await dumpResizeHandleClip(page);
+  const mtRow = clip.rows.find((row) => row.id === 'mt');
+  expect(mtRow?.onPage, 'mt knob must stay inside the remapped page').toBe(true);
+  const offPage = clip.rows.filter((row) => !row.onPage).map((row) => row.id);
+  console.log('REMAP_MT_ON_PAGE', JSON.stringify({ mt: mtRow, offPage }));
+
+  // Intended — remapped mt (local-top → world-right at 90°) is hittable
+  // after clamp. Radial grow may leave the page; SVG-root capture keeps it.
+  const preMt = await geom(page, created.id);
+  await dragHandleRadial(page, created.id, 'data-resize-handle="mt"', { mode: 'grow', extraPx: 80 });
+  const afterMtAttempt = await geom(page, created.id);
+  console.log('POST_ROTATE_MT_DELTA', JSON.stringify({
+    before: preMt,
+    after: afterMtAttempt,
+    dvw: afterMtAttempt ? afterMtAttempt.vw - preMt.vw : null,
+    dvh: afterMtAttempt ? afterMtAttempt.vh - preMt.vh : null,
+  }));
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now && (now.vw > preMt.vw + 2 || now.vh > preMt.vh + 2);
+  }, { timeout: 8_000, message: 'post-rotate mt must grow size in swapped viewBox' }).toBeTruthy();
+  const postMt = await geom(page, created.id);
+  expect(onPage(postMt, 792, 612), 'post-rotate mt must stay on-page').toBe(true);
+  expect(await pageViewBox(page), 'viewBox held after remapped mt').toBe('0 0 792 612');
+  expect(postMt.angle, 'mt must hold remapped angle').toBeCloseTo(rotated.angle, 0);
+
+  // Break — undo last mt only; page rotate stays.
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => {
+    const now = await geom(page, created.id);
+    return now
+      && Math.abs(now.vw - preMt.vw) < 4
+      && Math.abs(now.vh - preMt.vh) < 4;
+  }, { timeout: 8_000, message: 'undo must restore post-rotate size, not the page rotate' }).toBeTruthy();
+  expect(await pageViewBox(page), 'undo must not invert page rotate').toBe('0 0 792 612');
+
+  expect(await fileId(page), 'must not stamp file.id').toBeNull();
+  await assertNoErrorBoundary(page);
+
+  console.log('PAGE_ROTATE_REMAP_MT_PROOF', JSON.stringify({
+    rectId: created.id,
+    resized: { vw: resized.vw, vh: resized.vh },
+    rotated: { left: rotated.left, top: rotated.top, vw: rotated.vw, vh: rotated.vh, angle: rotated.angle },
+    postMt: { vw: postMt.vw, vh: postMt.vh, angle: postMt.angle },
+    mtOnPage: mtRow?.onPage,
+    offPage,
     viewBox: '0 0 792 612',
     fileId: null,
   }));

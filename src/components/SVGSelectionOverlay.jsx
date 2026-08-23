@@ -14,7 +14,7 @@
  */
 import { memo } from 'react';
 import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath';
-import { getHandlePositions, placeRotationHandle } from '../utils/svgBoundingBox';
+import { clampHandleToPage, getHandlePositions, placeRotationHandle } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
   getRotationHandleHitMetrics,
@@ -89,8 +89,16 @@ const SVGSelectionOverlay = memo(({
     pageWidth,
     pageHeight,
   });
+  const pageClamp = { pageWidth, pageHeight };
   const handles = {
-    ...baseHandles,
+    tl: clampHandleToPage(baseHandles.tl, bbox, pageClamp),
+    tr: clampHandleToPage(baseHandles.tr, bbox, pageClamp),
+    bl: clampHandleToPage(baseHandles.bl, bbox, pageClamp),
+    br: clampHandleToPage(baseHandles.br, bbox, pageClamp),
+    mt: clampHandleToPage(baseHandles.mt, bbox, pageClamp),
+    mb: clampHandleToPage(baseHandles.mb, bbox, pageClamp),
+    ml: clampHandleToPage(baseHandles.ml, bbox, pageClamp),
+    mr: clampHandleToPage(baseHandles.mr, bbox, pageClamp),
     mtr: {
       x: rotationHandle.x,
       y: rotationHandle.y,
