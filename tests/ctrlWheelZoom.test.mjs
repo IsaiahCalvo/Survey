@@ -47,7 +47,8 @@ test('engine owns Ctrl+wheel; overlay path is dead; zoomGeneration watches wheel
 
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /description: 'Zoom in'/);
-  assert.doesNotMatch(overlay, /wheel|pinch|trackpad/i);
+  assert.match(overlay, /description: 'Fit page'/);
+  assert.doesNotMatch(overlay, /description: '[^']*(?:[Ww]heel|[Pp]inch|[Tt]rackpad)/);
 
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /viewBox=\{`0 0 \$\{width\} \$\{height\}`\}/);

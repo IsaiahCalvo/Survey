@@ -273,6 +273,12 @@ test('desktop Ctrl+wheel zoom intended + break + edge', async ({ page }) => {
   expect(await zoomPercent(page), '4000% Ctrl+wheel in must clamp').toBe(4000);
 
   // Edge — isolation: page-1 rect survives; wheel invents 0.
+  // Fit page first — the Zoom % field is unusable while the page is at 4000%.
+  await selectDesktopFit(page, 'Fit page');
+  await expect.poll(() => zoomPercent(page), {
+    timeout: 20_000,
+    message: 'Fit page must leave the 4000% ceiling',
+  }).toBeLessThan(400);
   await setZoomPercent(page, 200);
   const rectId = await createRectOnPage(page, 1);
   await blurInputs(page);
