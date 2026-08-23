@@ -437,11 +437,15 @@ test('empty page-2 CW invents 0 on both pages; 390 edge; hubPreview Draw 0', asy
   const beforeP1 = await cacheGeom(page, page1.id);
 
   await rotatePage(page, 2, 'cw');
+  const held = await cacheGeom(page, page1.id);
+  expect(held, 'page-2 CW must not drop the page 1 object').toBeTruthy();
+  expect(Math.abs(held.cx - beforeP1.cx), 'page-2 CW must not remap page 1').toBeLessThan(2);
+  expect(Math.abs(held.cy - beforeP1.cy)).toBeLessThan(2);
+  expect(Math.abs(held.angle - beforeP1.angle)).toBeLessThan(1);
+
+  await goToPage(page, 1);
   await dismissChrome(page, 1);
   expect((await userOwned(page, 1)).length, 'page-2 CW must not invent on page 1').toBe(1);
-  const held = await cacheGeom(page, page1.id);
-  expect(Math.abs(held.cx - beforeP1.cx)).toBeLessThan(2);
-  expect(Math.abs(held.cy - beforeP1.cy)).toBeLessThan(2);
   expect(await pageViewBox(page, 1)).toBe('0 0 612 792');
 
   await goToPage(page, 2);
