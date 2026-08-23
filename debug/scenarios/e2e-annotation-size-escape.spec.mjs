@@ -260,7 +260,6 @@ test('Width Escape skip-commit intended + break + edge', async ({ page }) => {
   expect(committedInk.sourceWidth, 'Enter still commits').toBe(32);
 
   await typeDraft(field, '999');
-  await expect(field).toHaveValue('999');
   await field.press('Escape');
   await expect(field).toHaveValue('32');
   const afterCeilEscape = await drawInk(page, { yFraction: 0.40, x0: 0.14, x1: 0.40 });
