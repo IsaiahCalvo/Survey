@@ -15,6 +15,7 @@ import {
 import { calloutToAnnotationObject } from '../src/utils/calloutAnnotationBridge.js';
 import {
   rotateDisplayedPoint,
+  rotatePageSpaceCounter,
   transformPageState,
 } from '../src/utils/pageAnnotationReindex.js';
 
@@ -253,6 +254,19 @@ test('History restore after CW remap keeps remapped counter center + pointerAngl
     buildAnnotationRestoreAction(deleteAction(fabricZero)),
   );
   assert.ok(Math.abs(fromZero[1].objects[0].left - remapped.left) < 1e-6, 'Restore must not keep Fabric left 0');
+
+  const remappedBare = rotatePageSpaceCounter(created, 612, 792, 90);
+  assert.ok('left' in remappedBare.data, 'CW remapper must stamp data.left for Restore');
+  assert.ok(Math.abs(remappedBare.data.left - remappedBare.left) < 1e-6);
+  const parkedBare = { ...remappedBare, left: 0, top: 0 };
+  const fromParked = applyAnnotationHistoryAction(
+    { 1: { width: 792, height: 612, objects: [] } },
+    buildAnnotationRestoreAction(deleteAction(parkedBare)),
+  );
+  assert.ok(
+    Math.abs(fromParked[1].objects[0].left - remappedBare.left) < 1e-6,
+    'Restore must lift Fabric 0 from remapper-stamped data.left',
+  );
 });
 
 test('History restore after CW remap keeps remapped callout 0–1 fractions', () => {

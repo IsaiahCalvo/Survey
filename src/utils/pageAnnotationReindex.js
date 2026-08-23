@@ -561,8 +561,11 @@ export function rotatePageSpaceCounter(obj, pageWidth, pageHeight, delta) {
   data.pointerAngle = normalizePointerAngle(
     (data.pointerAngle != null ? Number(data.pointerAngle) : 225) + Number(delta || 0),
   );
-  if ('left' in data) data.left = nextLeft;
-  if ('top' in data) data.top = nextTop;
+  // Always persist displayed origin. Counters are created without data.left;
+  // SVG later localizes Fabric left/top to ~0. History Restore reads
+  // stampDisplayedPlacement from data.left — omitting it parks the pin at 0.
+  data.left = nextLeft;
+  data.top = nextTop;
   if ('x' in data) data.x = next.x ?? nextLeft;
   if ('y' in data) data.y = next.y ?? nextTop;
   next.data = data;
