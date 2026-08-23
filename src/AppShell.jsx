@@ -2489,6 +2489,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             return (
                               <button
                                 key={k}
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setColorPickerTab(k);
