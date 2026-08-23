@@ -50,7 +50,7 @@ test('live persist spec covers export re-import, leftover miss, 390, file.id', (
   assert.match(spec, /file\.id/);
   assert.match(spec, /390/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
-  assert.doesNotMatch(spec, /createTextField|Forms editor|formDesigner/);
+  assert.doesNotMatch(spec, /createTextField|formDesigner|setFormFieldMode/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
 });
 
