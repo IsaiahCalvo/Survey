@@ -110,8 +110,11 @@ test('390 + empty + guest + projects + editor break/edge for New entity type', a
 
   await openPage(page, { url: HUB_EMPTY });
   await expect(page.getByText('No templates yet').first()).toBeVisible({ timeout: 15_000 });
-  expect(await desktopNewEntity(page).count()).toBe(0);
-  expect(await namedNewEntity(page).count()).toBe(0);
+  // Entities rail still mounts New entity when no template is selected;
+  // it is typed + disabled. Do not click apply.
+  await expect(desktopNewEntity(page)).toHaveAttribute('type', 'button');
+  await expect(desktopNewEntity(page)).toBeDisabled();
+  await expect(namedNewEntity(page).first()).toHaveAttribute('type', 'button');
 
   await openPage(page, { url: HUB_GUEST });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
