@@ -157,6 +157,8 @@ export default function AnnotationSizeControl({
             className="annotation-size-control__trigger"
             aria-label={`${label} presets`}
             title={`${label} presets`}
+            aria-haspopup="dialog"
+            aria-expanded={open}
             disabled={disabled}
           >
             <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
@@ -169,6 +171,8 @@ export default function AnnotationSizeControl({
         <Popover.Content
           className="annotation-size-control__popover"
           data-annotation-size-popover="true"
+          role="dialog"
+          aria-label={label}
           align="center"
           sideOffset={6}
           collisionPadding={8}
