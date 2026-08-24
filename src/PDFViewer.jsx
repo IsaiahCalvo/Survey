@@ -377,7 +377,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
-import { createTextMarkupAnnotation, getSelectionPageRanges, resolveTextMarkupEditPaint } from './utils/pdfTextMarkup.js';
+import { createTextMarkupAnnotation, getSelectionPageRanges, quadBounds, resolveTextMarkupEditPaint } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -7408,6 +7408,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const toolPrefs = getToolPreference(activeTool);
     if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
     if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
+    else if (activeTool === 'text-select') setStrokeOpacity(30);
     if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
     if (toolPrefs.strokeWidth !== undefined) {
@@ -28016,8 +28017,56 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     capturePdfjsTextSelection();
   }, [capturePdfjsTextSelection]);
 
+  const [selectedTextMarkupAnchorTick, setSelectedTextMarkupAnchorTick] = useState(0);
+  useEffect(() => {
+    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return undefined;
+    let frame = 0;
+    const refreshAnchor = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setSelectedTextMarkupAnchorTick((tick) => tick + 1);
+      });
+    };
+    window.addEventListener('resize', refreshAnchor);
+    document.addEventListener('scroll', refreshAnchor, true);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', refreshAnchor);
+      document.removeEventListener('scroll', refreshAnchor, true);
+    };
+  }, [activeTool, selectedToolbarAnnotation]);
+
+  const selectedTextMarkupActionSelection = useMemo(() => {
+    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return null;
+    const { annotation, pageNumber } = selectedToolbarAnnotation;
+    const bounds = quadBounds(annotation.data.quads);
+    const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+    const pageRect = pageElement?.getBoundingClientRect?.();
+    const pageSize = pageSizesRef.current?.[pageNumber];
+    if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
+    const scaleX = pageRect.width / pageSize.width;
+    const scaleY = pageRect.height / pageSize.height;
+    return {
+      text: String(annotation.data.selectedText || ''),
+      pages: [{ pageNumber, quads: annotation.data.quads, selectedText: annotation.data.selectedText || '' }],
+      anchor: {
+        left: pageRect.left + bounds.left * scaleX,
+        top: pageRect.top + bounds.top * scaleY,
+        width: bounds.width * scaleX,
+        height: bounds.height * scaleY,
+      },
+      selectedMarkup: true,
+    };
+  }, [activeTool, selectedToolbarAnnotation, scale, zoomGeneration, selectedTextMarkupAnchorTick]);
+
   const handleTextSelectionAction = useCallback(async (action) => {
-    const selection = liveTextSelection || liveTextSelectionRef.current || capturePdfjsTextSelection();
+    const selectedMarkup = activeTool === 'select'
+      ? selectedToolbarAnnotationRef.current?.annotation
+      : null;
+    const selection = selectedMarkup?.data?.type === 'text-markup'
+      ? selectedTextMarkupActionSelection
+      : (liveTextSelection || liveTextSelectionRef.current || capturePdfjsTextSelection());
     if (!selection) return;
     if (action === 'copy') {
       try {
@@ -28045,8 +28094,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout'].includes(markupType)) return;
+    if (selectedMarkup?.data?.type === 'text-markup') {
+      const pdfAnnotationType = markupType === 'highlight' ? 'Highlight'
+        : markupType === 'underline' ? 'Underline'
+          : markupType === 'squiggly' ? 'Squiggly' : 'StrikeOut';
+      handlePatchSelectedAnnotation({
+        exportType: markupType,
+        pdfAnnotationType,
+        data: { markupType },
+      });
+      return;
+    }
     const selectionGroupId = generateUUID();
-    const annotations = selection.pages.map(({ pageNumber, quads, selectedText }) => {
+    const annotations = selection.pages.map(({ pageNumber, quads, selectedText, textRange, textRangeModel }) => {
       const id = generateUUID();
       return createTextMarkupAnnotation({
         id,
@@ -28054,11 +28114,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         selectionGroupId,
         markupType,
         selectedText: selectedText || selection.text,
+        textRange,
+        textRangeModel,
         quads,
         color: strokeColorStateRef.current || '#f4d35e',
-        opacity: markupType === 'highlight'
-          ? Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current) || 38) / 100))
-          : Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current) || 100) / 100)),
+        opacity: Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current) || 30) / 100)),
         overlapMode: textMarkupOverlapMode,
         authorId: user?.id || null,
       });
@@ -28087,7 +28147,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         selectCreatedMark();
       }
     }
-  }, [activateSelectFamilyMode, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelection, textMarkupOverlapMode, user?.id]);
+  }, [activeTool, activateSelectFamilyMode, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, handlePatchSelectedAnnotation, liveTextSelection, selectedTextMarkupActionSelection, textMarkupOverlapMode, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -36869,14 +36929,16 @@ ${pageBlocks}
         }}
       />
       <TextSelectionActionBar
-        selection={activeTool === 'text-select' ? liveTextSelection : null}
+        selection={activeTool === 'text-select' ? liveTextSelection : selectedTextMarkupActionSelection}
         color={strokeColor}
-        opacity={Math.max(0.05, Math.min(1, (Number(strokeOpacity) || 38) / 100))}
+        opacity={Math.max(0.05, Math.min(1, (Number(strokeOpacity) || 30) / 100))}
         overlapMode={textMarkupOverlapMode}
         colorPickerOpen={showAnnotationColorPicker}
         onAction={handleTextSelectionAction}
         onColorClick={() => setShowAnnotationColorPicker(true)}
-        onOverlapModeChange={setTextMarkupOverlapMode}
+        onOverlapModeChange={activeTool === 'select'
+          ? handleTextMarkupOverlapModeChange
+          : setTextMarkupOverlapMode}
       />
       <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />
 

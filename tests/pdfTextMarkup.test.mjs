@@ -7,6 +7,7 @@ import {
   mapOcrBoxToPage,
   mergeLineQuads,
   resizeTextMarkupHorizontalEdge,
+  getTextMarkupRangeHandlePositions,
   rotatePageQuad,
   resolveTextMarkupEditPaint,
 } from '../src/utils/pdfTextMarkup.js';
@@ -74,6 +75,16 @@ for (const type of ['highlight', 'underline', 'squiggly', 'strikeout']) {
   });
 }
 
+test('all new text markup types default to thirty percent opacity', () => {
+  for (const markupType of ['highlight', 'underline', 'squiggly', 'strikeout']) {
+    const annotation = createTextMarkupAnnotation({
+      id: `default-${markupType}`, pageNumber: 1, markupType,
+      quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],
+    });
+    assert.equal(annotation.opacity, 0.3);
+  }
+});
+
 test('each selected text mark hydrates its own base color and effective opacity', () => {
   const amber = createTextMarkupAnnotation({
     id: 'amber', pageNumber: 1, markupType: 'highlight', color: '#f59e0b', opacity: 0.35,
@@ -91,9 +102,9 @@ test('each selected text mark hydrates its own base color and effective opacity'
   );
 });
 
-test('text markup range handles change only the left or right quad edge', () => {
+test('text markup range handles change the text start or end line only', () => {
   const annotation = createTextMarkupAnnotation({
-    id: 'range-edit', pageNumber: 1, markupType: 'highlight', selectedText: 'two lines',
+    id: 'range-edit', pageNumber: 1, markupType: 'highlight',
     quads: [
       { x1: 20, y1: 10, x2: 80, y2: 10, x3: 20, y3: 20, x4: 80, y4: 20 },
       { x1: 10, y1: 30, x2: 60, y2: 30, x3: 10, y3: 40, x4: 60, y4: 40 },
@@ -102,8 +113,8 @@ test('text markup range handles change only the left or right quad edge', () => 
 
   const left = resizeTextMarkupHorizontalEdge(annotation, 'ml', 5, 100);
   assert.deepEqual(left.data.quads, [
-    annotation.data.quads[0],
-    { x1: 5, y1: 30, x2: 60, y2: 30, x3: 5, y3: 40, x4: 60, y4: 40 },
+    { x1: 5, y1: 10, x2: 80, y2: 10, x3: 5, y3: 20, x4: 80, y4: 20 },
+    annotation.data.quads[1],
   ]);
   assert.deepEqual(
     { top: left.top, height: left.height, scaleX: left.scaleX, scaleY: left.scaleY, angle: left.angle },
@@ -112,8 +123,8 @@ test('text markup range handles change only the left or right quad edge', () => 
 
   const right = resizeTextMarkupHorizontalEdge(annotation, 'mr', 95, 100);
   assert.deepEqual(right.data.quads, [
-    { x1: 20, y1: 10, x2: 95, y2: 10, x3: 20, y3: 20, x4: 95, y4: 20 },
-    annotation.data.quads[1],
+    annotation.data.quads[0],
+    { x1: 10, y1: 30, x2: 95, y2: 30, x3: 10, y3: 40, x4: 95, y4: 40 },
   ]);
   assert.deepEqual(
     { top: right.top, height: right.height, scaleX: right.scaleX, scaleY: right.scaleY, angle: right.angle },
@@ -135,7 +146,7 @@ test('text markup range handles clamp to page bounds and keep a usable width', (
   assert.strictEqual(resizeTextMarkupHorizontalEdge(annotation, 'mt', 10, 50), annotation);
 });
 
-test('text markup range handles move every line tied at the visible edge', () => {
+test('text markup range handles move one endpoint line, never every aligned line', () => {
   const annotation = createTextMarkupAnnotation({
     id: 'range-tied', pageNumber: 1, markupType: 'highlight',
     quads: [
@@ -145,14 +156,72 @@ test('text markup range handles move every line tied at the visible edge', () =>
   });
 
   const left = resizeTextMarkupHorizontalEdge(annotation, 'ml', 20, 100);
-  assert.equal(left.left, 20);
-  assert.equal(left.width, 60);
-  assert.deepEqual(left.data.quads.map((quad) => [quad.x1, quad.x3]), [[20, 20], [20, 20]]);
+  assert.equal(left.left, 10);
+  assert.equal(left.width, 70);
+  assert.deepEqual(left.data.quads.map((quad) => [quad.x1, quad.x3]), [[20, 20], [10, 10]]);
 
   const right = resizeTextMarkupHorizontalEdge(annotation, 'mr', 70, 100);
   assert.equal(right.left, 10);
-  assert.equal(right.width, 60);
-  assert.deepEqual(right.data.quads.map((quad) => [quad.x2, quad.x4]), [[70, 70], [70, 70]]);
+  assert.equal(right.width, 70);
+  assert.deepEqual(right.data.quads.map((quad) => [quad.x2, quad.x4]), [[80, 80], [70, 70]]);
+});
+
+test('text range handles sit on the first and last selected lines', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'range-handles', pageNumber: 1, markupType: 'highlight',
+    quads: [
+      { x1: 20, y1: 10, x2: 80, y2: 10, x3: 20, y3: 20, x4: 80, y4: 20 },
+      { x1: 10, y1: 30, x2: 60, y2: 30, x3: 10, y3: 40, x4: 60, y4: 40 },
+    ],
+  });
+  assert.deepEqual(getTextMarkupRangeHandlePositions(annotation), {
+    ml: { x: 20, y: 15 },
+    mr: { x: 60, y: 35 },
+  });
+});
+
+test('dragging an endpoint to another line wraps the text range one line at a time', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'range-wrap', pageNumber: 1, markupType: 'highlight',
+    quads: [
+      { x1: 20, y1: 10, x2: 80, y2: 10, x3: 20, y3: 20, x4: 80, y4: 20 },
+      { x1: 10, y1: 30, x2: 60, y2: 30, x3: 10, y3: 40, x4: 60, y4: 40 },
+      { x1: 15, y1: 50, x2: 70, y2: 50, x3: 15, y3: 60, x4: 70, y4: 60 },
+    ],
+  });
+  const wrappedStart = resizeTextMarkupHorizontalEdge(annotation, 'ml', { x: 25, y: 35 }, 100);
+  assert.equal(wrappedStart.data.quads.length, 2);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(wrappedStart).ml, { x: 25, y: 35 });
+  const wrappedEnd = resizeTextMarkupHorizontalEdge(annotation, 'mr', { x: 50, y: 15 }, 100);
+  assert.equal(wrappedEnd.data.quads.length, 1);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(wrappedEnd).mr, { x: 50, y: 15 });
+});
+
+test('stored text model expands across lines and keeps selected text in sync', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'stored-range', pageNumber: 1, markupType: 'highlight', selectedText: 'one',
+    textRange: { start: 5, end: 8 },
+    textRangeModel: {
+      text: 'line one\nline two',
+      runs: [
+        { start: 0, end: 8, left: 10, top: 10, right: 90, bottom: 20, rtl: false },
+        { start: 8, end: 17, left: 10, top: 30, right: 100, bottom: 40, rtl: false },
+      ],
+    },
+    quads: [{ x1: 60, y1: 10, x2: 90, y2: 10, x3: 60, y3: 20, x4: 90, y4: 20 }],
+  });
+  const expanded = resizeTextMarkupHorizontalEdge(annotation, 'mr', { x: 80, y: 35 }, 100, 100);
+  assert.equal(expanded.data.quads.length, 2);
+  assert.equal(expanded.data.selectedText, 'one\nline t');
+  assert.deepEqual(getTextMarkupRangeHandlePositions(expanded).mr, { x: 80, y: 35 });
+});
+
+test('legacy text marks without a range model cannot drift from their saved text', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'legacy-range', pageNumber: 1, markupType: 'highlight', selectedText: 'saved words',
+    quads: [{ x1: 10, y1: 10, x2: 60, y2: 10, x3: 10, y3: 20, x4: 60, y4: 20 }],
+  });
+  assert.equal(resizeTextMarkupHorizontalEdge(annotation, 'mr', { x: 90, y: 15 }, 100, 100), annotation);
 });
 
 test('OCR boxes map locally to page space and rotation', () => {

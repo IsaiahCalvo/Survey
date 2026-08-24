@@ -111,6 +111,8 @@ export function createTextMarkupAnnotation({
   selectionGroupId,
   markupType,
   selectedText,
+  textRange,
+  textRangeModel,
   quads,
   color = '#f4d35e',
   opacity,
@@ -121,7 +123,7 @@ export function createTextMarkupAnnotation({
   const mergedQuads = mergeLineQuads(quads);
   const bounds = quadBounds(mergedQuads);
   if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber))) return null;
-  const resolvedOpacity = clamp01(opacity ?? (type === 'highlight' ? 0.38 : 1));
+  const resolvedOpacity = clamp01(opacity ?? 0.3);
   const pdfType = type === 'highlight' ? 'Highlight'
     : type === 'underline' ? 'Underline'
       : type === 'squiggly' ? 'Squiggly' : 'StrikeOut';
@@ -156,6 +158,10 @@ export function createTextMarkupAnnotation({
       pageNumber: Number(pageNumber),
       selectionGroupId: selectionGroupId || id,
       selectedText: String(selectedText || ''),
+      ...(textRange && Number.isFinite(textRange.start) && Number.isFinite(textRange.end)
+        ? { textRange: { start: textRange.start, end: textRange.end } }
+        : {}),
+      ...(textRangeModel?.runs?.length ? { textRangeModel } : {}),
       quads: mergedQuads,
       overlapMode: overlapMode === 'uniform' ? 'uniform' : 'layered',
       ...(authorId ? { authorId } : {}),
@@ -164,44 +170,259 @@ export function createTextMarkupAnnotation({
   };
 }
 
-export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, pageWidth) {
+const orderedTextMarkupQuads = (annotation) => (Array.isArray(annotation?.data?.quads)
+  ? annotation.data.quads.map((quad, index) => ({ quad, index })).sort((a, b) => {
+      const ay = Math.min(Number(a.quad.y1), Number(a.quad.y2), Number(a.quad.y3), Number(a.quad.y4));
+      const by = Math.min(Number(b.quad.y1), Number(b.quad.y2), Number(b.quad.y3), Number(b.quad.y4));
+      return ay - by || Math.min(Number(a.quad.x1), Number(a.quad.x3)) - Math.min(Number(b.quad.x1), Number(b.quad.x3));
+    })
+  : []);
+
+export function getTextMarkupRangeHandlePositions(annotation) {
+  const ordered = orderedTextMarkupQuads(annotation);
+  if (!ordered.length) return null;
+  const first = ordered[0].quad;
+  const last = ordered.at(-1).quad;
+  const centerY = (quad) => (
+    Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4))
+    + Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4))
+  ) / 2;
+  return {
+    ml: { x: Math.min(Number(first.x1), Number(first.x3)), y: centerY(first) },
+    mr: { x: Math.max(Number(last.x2), Number(last.x4)), y: centerY(last) },
+  };
+}
+
+const textNodesFor = (root) => {
+  if (!root || typeof document === 'undefined') return [];
+  const walker = document.createTreeWalker(root, globalThis.NodeFilter?.SHOW_TEXT ?? 4);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  return nodes;
+};
+
+const absoluteTextOffset = (root, container, offset) => {
+  try {
+    const prefix = document.createRange();
+    prefix.selectNodeContents(root);
+    prefix.setEnd(container, offset);
+    return prefix.toString().length;
+  } catch {
+    return null;
+  }
+};
+
+const boundaryAtTextOffset = (root, rawOffset) => {
+  const nodes = textNodesFor(root);
+  if (!nodes.length) return null;
+  let offset = Math.max(0, Number(rawOffset) || 0);
+  for (const node of nodes) {
+    const length = node.nodeValue?.length || 0;
+    if (offset <= length) return { node, offset };
+    offset -= length;
+  }
+  const last = nodes.at(-1);
+  return { node: last, offset: last.nodeValue?.length || 0 };
+};
+
+const textOffsetAtClientPoint = (root, clientX, clientY) => {
+  const nodes = textNodesFor(root);
+  let base = 0;
+  let bestNode = null;
+  let bestBase = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const node of nodes) {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = Array.from(range.getClientRects?.() || []);
+    for (const rect of rects) {
+      const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+      const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+      const distance = dy * 10_000 + dx;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestNode = node;
+        bestBase = base;
+      }
+    }
+    base += node.nodeValue?.length || 0;
+  }
+  if (!bestNode) return null;
+  const length = bestNode.nodeValue?.length || 0;
+  let bestOffset = 0;
+  let bestXDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < length; index += 1) {
+    const character = document.createRange();
+    character.setStart(bestNode, index);
+    character.setEnd(bestNode, index + 1);
+    const rect = character.getBoundingClientRect?.();
+    if (!rect?.width && !rect?.height) continue;
+    for (const [offset, edge] of [[index, rect.left], [index + 1, rect.right]]) {
+      const distance = Math.abs(clientX - edge);
+      if (distance < bestXDistance) {
+        bestXDistance = distance;
+        bestOffset = offset;
+      }
+    }
+  }
+  return bestBase + bestOffset;
+};
+
+const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer) => {
+  const storedRange = annotation?.data?.textRange;
+  const model = annotation?.data?.textRangeModel;
+  const runs = Array.isArray(model?.runs) ? model.runs : [];
+  if (!Number.isFinite(storedRange?.start) || !Number.isFinite(storedRange?.end) || !runs.length) return null;
+  let target = null;
+  let targetDistance = Number.POSITIVE_INFINITY;
+  for (const run of runs) {
+    const dx = pointer.x < run.left ? run.left - pointer.x : pointer.x > run.right ? pointer.x - run.right : 0;
+    const dy = pointer.y < run.top ? run.top - pointer.y : pointer.y > run.bottom ? pointer.y - run.bottom : 0;
+    const distance = dy * 10_000 + dx;
+    if (distance < targetDistance) {
+      targetDistance = distance;
+      target = run;
+    }
+  }
+  if (!target || target.end <= target.start || target.right <= target.left) return null;
+  const ratio = Math.max(0, Math.min(1, (pointer.x - target.left) / (target.right - target.left)));
+  const visualRatio = target.rtl ? 1 - ratio : ratio;
+  const candidate = target.start + Math.round((target.end - target.start) * visualRatio);
+  const start = handleId === 'ml' ? Math.min(candidate, storedRange.end) : storedRange.start;
+  const end = handleId === 'mr' ? Math.max(candidate, storedRange.start) : storedRange.end;
+  if (end <= start) return null;
+  const quads = [];
+  for (const run of runs) {
+    const rangeStart = Math.max(start, run.start);
+    const rangeEnd = Math.min(end, run.end);
+    if (rangeEnd <= rangeStart) continue;
+    const length = run.end - run.start;
+    let leftRatio = (rangeStart - run.start) / length;
+    let rightRatio = (rangeEnd - run.start) / length;
+    if (run.rtl) [leftRatio, rightRatio] = [1 - rightRatio, 1 - leftRatio];
+    const left = run.left + (run.right - run.left) * leftRatio;
+    const right = run.left + (run.right - run.left) * rightRatio;
+    quads.push({
+      x1: round(left), y1: run.top, x2: round(right), y2: run.top,
+      x3: round(left), y3: run.bottom, x4: round(right), y4: run.bottom,
+    });
+  }
+  const mergedQuads = mergeLineQuads(quads);
+  const bounds = quadBounds(mergedQuads);
+  if (!bounds) return null;
+  return {
+    ...annotation,
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+    data: {
+      ...annotation.data,
+      quads: mergedQuads,
+      selectedText: String(model.text || '').slice(start, end),
+      textRange: { start, end },
+    },
+  };
+};
+
+const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth, pageHeight) => {
+  if (typeof document === 'undefined' || !Number.isFinite(pointer.y)) return null;
+  const storedRange = annotation?.data?.textRange;
+  const pageNumber = Number(annotation?.data?.pageNumber);
+  if (!Number.isFinite(storedRange?.start) || !Number.isFinite(storedRange?.end) || !Number.isFinite(pageNumber)) return null;
+  const pageEl = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+  const textLayer = pageEl?.querySelector?.('.pdfjsTextLayer.is-interactive');
+  const pageRect = pageEl?.getBoundingClientRect?.();
+  if (!textLayer || !pageRect?.width || !pageRect?.height || !pageWidth || !pageHeight) return null;
+  const clientX = pageRect.left + pointer.x * pageRect.width / pageWidth;
+  const clientY = pageRect.top + pointer.y * pageRect.height / pageHeight;
+  const candidate = textOffsetAtClientPoint(textLayer, clientX, clientY);
+  if (!Number.isFinite(candidate)) return null;
+  const start = handleId === 'ml' ? Math.min(candidate, storedRange.end) : storedRange.start;
+  const end = handleId === 'mr' ? Math.max(candidate, storedRange.start) : storedRange.end;
+  if (end <= start) return null;
+  const startBoundary = boundaryAtTextOffset(textLayer, start);
+  const endBoundary = boundaryAtTextOffset(textLayer, end);
+  if (!startBoundary || !endBoundary) return null;
+  const range = document.createRange();
+  range.setStart(startBoundary.node, startBoundary.offset);
+  range.setEnd(endBoundary.node, endBoundary.offset);
+  const selectedText = range.toString();
+  if (!selectedText) return null;
+  const quads = mergeLineQuads(Array.from(range.getClientRects?.() || [])
+    .map((rect) => clientRectToPageQuad(rect, pageRect, { width: pageWidth, height: pageHeight }))
+    .filter(Boolean));
+  const bounds = quadBounds(quads);
+  if (!bounds) return null;
+  return {
+    ...annotation,
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+    data: { ...annotation.data, quads, selectedText, textRange: { start, end } },
+  };
+};
+
+export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, pageWidth, pageHeight) {
   if (annotation?.data?.type !== 'text-markup' || !['ml', 'mr'].includes(handleId)) return annotation;
   const quads = Array.isArray(annotation.data.quads)
     ? annotation.data.quads.map((quad) => ({ ...quad }))
     : [];
-  if (quads.length === 0 || !Number.isFinite(Number(pointerX))) return annotation;
+  const pointer = typeof pointerX === 'object'
+    ? { x: Number(pointerX?.x), y: Number(pointerX?.y) }
+    : { x: Number(pointerX), y: Number.NaN };
+  if (quads.length === 0 || !Number.isFinite(pointer.x)) return annotation;
+  const storedModelResult = resizeTextMarkupFromStoredModel(annotation, handleId, pointer);
+  if (storedModelResult) return storedModelResult;
+  const textLayerResult = resizeTextMarkupFromTextLayer(annotation, handleId, pointer, pageWidth, pageHeight);
+  if (textLayerResult) return textLayerResult;
+  // Old saved marks do not contain a stable text boundary model. Changing
+  // their quads would leave Copy/PDF export tied to stale selectedText.
+  if (String(annotation.data.selectedText || '')) return annotation;
 
-  const edgeForQuad = (quad) => handleId === 'ml'
-    ? Math.min(Number(quad.x1), Number(quad.x3))
-    : Math.max(Number(quad.x2), Number(quad.x4));
-  const visibleEdge = quads.reduce((best, quad) => (
-    handleId === 'ml'
-      ? Math.min(best, edgeForQuad(quad))
-      : Math.max(best, edgeForQuad(quad))
-  ), handleId === 'ml' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
-  const edgeTolerance = 0.001;
-  const edgeQuads = quads.filter((quad) => Math.abs(edgeForQuad(quad) - visibleEdge) <= edgeTolerance);
+  const ordered = orderedTextMarkupQuads({ data: { quads } });
+  let endpointPosition = handleId === 'ml' ? 0 : ordered.length - 1;
+  if (Number.isFinite(pointer.y)) {
+    endpointPosition = ordered.reduce((best, entry, index) => {
+      const top = Math.min(Number(entry.quad.y1), Number(entry.quad.y2), Number(entry.quad.y3), Number(entry.quad.y4));
+      const bottom = Math.max(Number(entry.quad.y1), Number(entry.quad.y2), Number(entry.quad.y3), Number(entry.quad.y4));
+      const center = (top + bottom) / 2;
+      const bestQuad = ordered[best].quad;
+      const bestCenter = (
+        Math.min(Number(bestQuad.y1), Number(bestQuad.y2), Number(bestQuad.y3), Number(bestQuad.y4))
+        + Math.max(Number(bestQuad.y1), Number(bestQuad.y2), Number(bestQuad.y3), Number(bestQuad.y4))
+      ) / 2;
+      return Math.abs(pointer.y - center) < Math.abs(pointer.y - bestCenter) ? index : best;
+    }, endpointPosition);
+  }
+  const retained = handleId === 'ml'
+    ? ordered.slice(endpointPosition)
+    : ordered.slice(0, endpointPosition + 1);
+  const nextQuads = retained.map(({ quad }) => quad);
+  const endpointQuad = nextQuads[handleId === 'ml' ? 0 : nextQuads.length - 1];
+  if (!endpointQuad) return annotation;
   const pageRight = Number.isFinite(Number(pageWidth)) && Number(pageWidth) > 0
     ? Number(pageWidth)
     : Number.POSITIVE_INFINITY;
   const minimumRangeWidth = 0.5;
   if (handleId === 'ml') {
-    for (const quad of edgeQuads) {
+    for (const quad of [endpointQuad]) {
       const right = Math.min(Number(quad.x2), Number(quad.x4));
-      const nextLeft = round(Math.max(0, Math.min(Number(pointerX), right - minimumRangeWidth)));
+      const nextLeft = round(Math.max(0, Math.min(pointer.x, right - minimumRangeWidth)));
       quad.x1 = nextLeft;
       quad.x3 = nextLeft;
     }
   } else {
-    for (const quad of edgeQuads) {
+    for (const quad of [endpointQuad]) {
       const left = Math.max(Number(quad.x1), Number(quad.x3));
-      const nextRight = round(Math.min(pageRight, Math.max(Number(pointerX), left + minimumRangeWidth)));
+      const nextRight = round(Math.min(pageRight, Math.max(pointer.x, left + minimumRangeWidth)));
       quad.x2 = nextRight;
       quad.x4 = nextRight;
     }
   }
 
-  const bounds = quadBounds(quads);
+  const bounds = quadBounds(nextQuads);
   if (!bounds) return annotation;
   return {
     ...annotation,
@@ -209,7 +430,7 @@ export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, p
     top: bounds.top,
     width: bounds.width,
     height: bounds.height,
-    data: { ...annotation.data, quads },
+    data: { ...annotation.data, quads: nextQuads },
   };
 }
 
@@ -260,7 +481,36 @@ export function getSelectionPageRanges(selection, pageSizes) {
       .map((rect) => clientRectToPageQuad(rect, pageRect, pageSize))
       .filter(Boolean);
     if (quads.length === 0) continue;
-    pages.push({ pageNumber, selectedText: pageText, quads: mergeLineQuads(quads) });
+    const start = absoluteTextOffset(textLayer, pageRange.startContainer, pageRange.startOffset);
+    const end = absoluteTextOffset(textLayer, pageRange.endContainer, pageRange.endOffset);
+    const runs = [];
+    let textOffset = 0;
+    for (const node of textNodesFor(textLayer)) {
+      const text = String(node.nodeValue || '');
+      const nodeRange = document.createRange();
+      nodeRange.selectNodeContents(node);
+      const rect = nodeRange.getBoundingClientRect?.();
+      const quad = clientRectToPageQuad(rect, pageRect, pageSize);
+      if (text && quad) {
+        runs.push({
+          start: textOffset,
+          end: textOffset + text.length,
+          left: quad.x1,
+          top: quad.y1,
+          right: quad.x2,
+          bottom: quad.y3,
+          rtl: getComputedStyle(node.parentElement || textLayer).direction === 'rtl',
+        });
+      }
+      textOffset += text.length;
+    }
+    pages.push({
+      pageNumber,
+      selectedText: pageText,
+      quads: mergeLineQuads(quads),
+      ...(Number.isFinite(start) && Number.isFinite(end) ? { textRange: { start, end } } : {}),
+      ...(runs.length ? { textRangeModel: { text: textLayer.textContent || '', runs } } : {}),
+    });
   }
   return pages.sort((a, b) => a.pageNumber - b.pageNumber);
 }

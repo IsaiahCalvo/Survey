@@ -474,7 +474,7 @@ export const renderTextMarkup = (obj, index) => {
   const quads = Array.isArray(data.quads) ? data.quads : [];
   if (data.type !== 'text-markup' || quads.length === 0) return null;
   const color = obj.fill || obj.stroke || '#f4d35e';
-  const opacity = Math.max(0, Math.min(1, Number(obj.opacity ?? (type === 'highlight' ? 0.38 : 1))));
+  const opacity = Math.max(0, Math.min(1, Number(obj.opacity ?? 0.3)));
   const key = `text-markup-${obj.id || data.id || index}`;
   const shapeId = obj.id || data.id || key;
   const lineWidth = Math.max(0.8, Number(data.lineWidth) || 1.2);

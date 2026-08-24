@@ -35,13 +35,19 @@ const boundsForOutlines = (outlines) => {
   };
 };
 
-const makeGeometry = (outlines) => {
+const makeGeometry = (outlines, interiorSelectable = false) => {
   const clean = outlines
     .map((outline) => outline.filter(finitePoint))
     .filter((outline) => outline.length > 0);
   const bounds = boundsForOutlines(clean);
-  return bounds ? { outlines: clean, bounds } : null;
+  return bounds ? { outlines: clean, bounds, interiorSelectable } : null;
 };
+
+const hasVisiblePaint = (paint) => paint != null
+  && String(paint).trim() !== ''
+  && String(paint).toLowerCase() !== 'none'
+  && String(paint).toLowerCase() !== 'transparent'
+  && !/^rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/i.test(String(paint));
 
 const rectangleOutline = (left, top, width, height, angle = 0, pad = 0) => {
   const l = left - pad;
@@ -246,9 +252,9 @@ const geometryFromTextMarkup = (annotation) => {
       { x: Number(quad?.x3), y: Number(quad?.y3) },
     ])
     .filter((outline) => outline.every(finitePoint));
-  if (outlines.length) return makeGeometry(outlines);
+  if (outlines.length) return makeGeometry(outlines, true);
   const bbox = getAnnotationBBox(annotation);
-  return makeGeometry([rectangleOutline(bbox.left, bbox.top, bbox.width, bbox.height)]);
+  return makeGeometry([rectangleOutline(bbox.left, bbox.top, bbox.width, bbox.height)], true);
 };
 
 const geometryFromGroup = (annotation) => {
@@ -335,7 +341,7 @@ export function annotationToLassoGeometry(annotation) {
       height,
       Number(annotation.angle) || 0,
       strokePad,
-    )]);
+    )], hasVisiblePaint(annotation.backgroundColor || annotation.fill));
   }
 
   const bbox = getAnnotationBBox(annotation);
@@ -348,7 +354,7 @@ export function annotationToLassoGeometry(annotation) {
       bbox.height / 2,
       bbox.angle || 0,
       strokePad,
-    )]);
+    )], hasVisiblePaint(annotation.fill));
   }
   if (type === 'triangle') {
     const center = { x: bbox.left + bbox.width / 2, y: bbox.top + bbox.height / 2 };
@@ -357,11 +363,11 @@ export function annotationToLassoGeometry(annotation) {
       { x: bbox.left + bbox.width + strokePad, y: bbox.top + bbox.height + strokePad },
       { x: bbox.left - strokePad, y: bbox.top + bbox.height + strokePad },
     ].map((point) => rotatePoint(point, bbox.angle || 0, center));
-    return makeGeometry([points]);
+    return makeGeometry([points], hasVisiblePaint(annotation.fill));
   }
   return makeGeometry([rectangleOutline(
     bbox.left, bbox.top, bbox.width, bbox.height, bbox.angle || 0, strokePad,
-  )]);
+  )], hasVisiblePaint(annotation.fill));
 }
 
 export function calloutToLassoGeometry(callout, pageWidth, pageHeight) {

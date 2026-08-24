@@ -72,6 +72,7 @@ import {
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
+import { getTextMarkupRangeHandlePositions } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
@@ -508,6 +509,7 @@ const SVGAnnotationLayer = memo(({
     // steals events from annotations underneath.
     marqueeRect,
     marqueeDirection,
+    lassoMode,
     lassoPoints,
     cancelLasso,
     shouldHandoffLassoPointer,
@@ -4652,8 +4654,8 @@ const SVGAnnotationLayer = memo(({
     for (const entry of stagedAnnotations) {
       const obj = entry?.obj;
       if (obj?.data?.type !== 'text-markup' || obj.data.markupType !== 'highlight' || obj.data.overlapMode !== 'uniform') continue;
-      const key = `${obj.fill || obj.stroke || '#f4d35e'}:${Number(obj.opacity ?? 0.38)}`;
-      if (!groups.has(key)) groups.set(key, { color: obj.fill || obj.stroke || '#f4d35e', opacity: Number(obj.opacity ?? 0.38), quads: [] });
+      const key = `${obj.fill || obj.stroke || '#f4d35e'}:${Number(obj.opacity ?? 0.3)}`;
+      if (!groups.has(key)) groups.set(key, { color: obj.fill || obj.stroke || '#f4d35e', opacity: Number(obj.opacity ?? 0.3), quads: [] });
       groups.get(key).quads.push(...(obj.data.quads || []));
     }
     return Array.from(groups.values()).map((group, index) => (
@@ -5110,14 +5112,21 @@ const SVGAnnotationLayer = memo(({
         />
       )}
       {lassoPoints?.length > 0 && (
-        <polyline
+        <path
           data-lasso-selection-trail="true"
-          points={lassoPoints.map((point) => `${point.x},${point.y}`).join(' ')}
-          fill="none"
-          stroke="rgba(45, 145, 255, 0.95)"
+          data-lasso-mode={lassoMode || 'window'}
+          d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
+          fill={lassoMode === 'window'
+            ? 'rgba(0, 100, 255, 0.12)'
+            : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.12)' : 'none'}
+          stroke={lassoMode === 'window'
+            ? 'rgba(0, 100, 255, 0.9)'
+            : lassoMode === 'crossing' ? 'rgba(0, 180, 90, 0.95)' : 'rgba(245, 158, 11, 0.95)'}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
+          strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
+          fillRule="evenodd"
           vectorEffect="non-scaling-stroke"
           pointerEvents="none"
         />
@@ -5722,7 +5731,12 @@ const SVGAnnotationLayer = memo(({
               padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
+              hideResizeHandles={selectionObj?.data?.type === 'text-markup'
+                && !selectionObj?.data?.textRangeModel}
               horizontalResizeOnly={selectionObj?.data?.type === 'text-markup' && !isSelectDeleteOnlyPdfTextMarkup}
+              horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
+                ? getTextMarkupRangeHandlePositions(selectionObj)
+                : null}
             />
           </g>
         );

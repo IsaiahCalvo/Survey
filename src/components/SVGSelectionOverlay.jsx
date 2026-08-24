@@ -53,6 +53,7 @@ const SVGSelectionOverlay = memo(({
   // Text marks keep their line height and angle. These two side handles
   // rewrite only the first/last selected text quad instead of scaling it.
   horizontalResizeOnly = false,
+  horizontalHandlePositions = null,
 }) => {
   if (!bbox) return null;
 
@@ -209,7 +210,9 @@ const SVGSelectionOverlay = memo(({
 
           {/* Vertical pills (ml, mr) */}
           {!hideResizeHandles && ['ml', 'mr'].filter((id) => horizontalResizeOnly || visibleResizeHandles.has(id)).map((id) => {
-            const pos = handles[id];
+            const pos = horizontalResizeOnly && horizontalHandlePositions?.[id]
+              ? horizontalHandlePositions[id]
+              : handles[id];
             return (
               <rect
                 key={`pill-${id}`}

@@ -6,6 +6,22 @@ const EPSILON = 1e-7;
 export const LASSO_SAMPLE_GAP_PX = 4;
 export const LASSO_SIMPLIFY_PX = 1.5;
 
+export function getLassoModeFromTrail(points, threshold = 5) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const startX = Number(points[0]?.x);
+  if (!Number.isFinite(startX)) return null;
+  for (let index = 1; index < points.length; index += 1) {
+    const endX = Number(points[index]?.x);
+    if (!Number.isFinite(endX) || Math.abs(endX - startX) < threshold) continue;
+    return endX >= startX ? 'window' : 'crossing';
+  }
+  return null;
+}
+
+export function cycleLassoMode(mode) {
+  return mode === 'window' ? 'crossing' : mode === 'crossing' ? 'fence' : 'window';
+}
+
 const samePoint = (a, b) => Math.abs(a.x - b.x) <= EPSILON && Math.abs(a.y - b.y) <= EPSILON;
 const orientation = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 
@@ -96,18 +112,30 @@ export function getLassoPolygonValidation(points) {
   }
   if (polygon.length > 1 && samePoint(polygon[0], polygon.at(-1))) polygon.pop();
   if (polygon.length < 3) return { polygon: null, issue: 'too-few-points' };
-  if (polygonSelfIntersects(polygon)) return { polygon: null, issue: 'self-intersection' };
   let twiceArea = 0;
   for (let i = 0; i < polygon.length; i += 1) {
     const next = polygon[(i + 1) % polygon.length];
     twiceArea += polygon[i].x * next.y - next.x * polygon[i].y;
   }
-  if (Math.abs(twiceArea) <= EPSILON) return { polygon: null, issue: 'zero-area' };
+  const hasTurn = polygon.some((point, index) => (
+    Math.abs(orientation(point, polygon[(index + 1) % polygon.length], polygon[(index + 2) % polygon.length])) > EPSILON
+  ));
+  if (Math.abs(twiceArea) <= EPSILON && !hasTurn) return { polygon: null, issue: 'zero-area' };
   return { polygon, issue: null };
 }
 
 export function normalizeLassoPolygon(points) {
   return getLassoPolygonValidation(points).polygon;
+}
+
+export function normalizeLassoTrail(points) {
+  if (!Array.isArray(points)) return null;
+  const trail = [];
+  for (const point of points) {
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+    if (!trail.length || !samePoint(trail.at(-1), point)) trail.push({ x: point.x, y: point.y });
+  }
+  return trail.length >= 2 ? trail : null;
 }
 
 export function isPointInLasso(point, polygon) {
@@ -158,8 +186,54 @@ export function isGeometryFullyInsideLasso(geometry, rawPolygon) {
   return true;
 }
 
+const outlinesIntersectPolygonBoundary = (outlines, polygon) => {
+  for (const outline of outlines || []) {
+    for (let index = 0; index < outline.length; index += 1) {
+      const start = outline[index];
+      const end = outline[(index + 1) % outline.length];
+      if (outline.length === 1 || samePoint(start, end)) continue;
+      for (let edge = 0; edge < polygon.length; edge += 1) {
+        if (segmentsIntersect(start, end, polygon[edge], polygon[(edge + 1) % polygon.length])) return true;
+      }
+    }
+  }
+  return false;
+};
+
+const outlinesIntersectOpenTrail = (outlines, trail) => {
+  for (const outline of outlines || []) {
+    for (let index = 0; index < outline.length; index += 1) {
+      const start = outline[index];
+      const end = outline[(index + 1) % outline.length];
+      if (outline.length === 1 || samePoint(start, end)) continue;
+      for (let edge = 0; edge < trail.length - 1; edge += 1) {
+        if (segmentsIntersect(start, end, trail[edge], trail[edge + 1])) return true;
+      }
+    }
+  }
+  return false;
+};
+
+export function doesGeometryCrossLasso(geometry, rawPolygon, { fenceOnly = false } = {}) {
+  const polygon = fenceOnly ? normalizeLassoTrail(rawPolygon) : normalizeLassoPolygon(rawPolygon);
+  if (!geometry || !polygon) return false;
+  const lassoBounds = polygonBounds(polygon);
+  const bounds = geometry.bounds;
+  if (bounds.right < lassoBounds.left || bounds.left > lassoBounds.right
+    || bounds.bottom < lassoBounds.top || bounds.top > lassoBounds.bottom) return false;
+  if (fenceOnly) return outlinesIntersectOpenTrail(geometry.outlines, polygon);
+  if (outlinesIntersectPolygonBoundary(geometry.outlines, polygon)) return true;
+  for (const outline of geometry.outlines || []) {
+    if (outline.some((point) => isPointInLasso(point, polygon))) return true;
+    if (geometry.interiorSelectable && outline.length >= 3
+      && polygon.some((point) => isPointInLasso(point, outline))) return true;
+  }
+  return false;
+}
+
 export function resolveLassoHits({
   lassoPolygon,
+  mode = 'window',
   annotations,
   callouts,
   pageWidth,
@@ -167,16 +241,22 @@ export function resolveLassoHits({
   pageNumber,
   selectableAnnotationIndices,
 }) {
-  const polygon = normalizeLassoPolygon(lassoPolygon);
+  const normalizedMode = ['crossing', 'fence'].includes(mode) ? mode : 'window';
+  const polygon = normalizedMode === 'fence'
+    ? normalizeLassoTrail(lassoPolygon)
+    : normalizeLassoPolygon(lassoPolygon);
   if (!polygon) return { annotationIndices: [], calloutIds: [] };
   const selectableSet = selectableAnnotationIndices instanceof Set
     ? selectableAnnotationIndices
     : Array.isArray(selectableAnnotationIndices) ? new Set(selectableAnnotationIndices) : null;
+  const geometryHits = (geometry) => normalizedMode === 'window'
+    ? isGeometryFullyInsideLasso(geometry, polygon)
+    : doesGeometryCrossLasso(geometry, polygon, { fenceOnly: normalizedMode === 'fence' });
   const annotationIndices = [];
   const groupedHits = new Map();
   const groupEntry = (groupId) => {
     if (!groupedHits.has(groupId)) {
-      groupedHits.set(groupId, { annotationIndices: [], calloutIds: [], allInside: true });
+      groupedHits.set(groupId, { annotationIndices: [], calloutIds: [], allInside: true, anyHit: false });
     }
     return groupedHits.get(groupId);
   };
@@ -193,8 +273,10 @@ export function resolveLassoHits({
         continue;
       }
       group.annotationIndices.push(index);
-      if (!isGeometryFullyInsideLasso(geometry, polygon)) group.allInside = false;
-    } else if (geometry && isGeometryFullyInsideLasso(geometry, polygon)) {
+      const hit = geometryHits(geometry);
+      if (!hit) group.allInside = false;
+      if (hit) group.anyHit = true;
+    } else if (geometry && geometryHits(geometry)) {
       annotationIndices.push(index);
     }
   }
@@ -211,13 +293,16 @@ export function resolveLassoHits({
         continue;
       }
       group.calloutIds.push(callout.id);
-      if (!isGeometryFullyInsideLasso(geometry, polygon)) group.allInside = false;
-    } else if (geometry && isGeometryFullyInsideLasso(geometry, polygon)) {
+      const hit = geometryHits(geometry);
+      if (!hit) group.allInside = false;
+      if (hit) group.anyHit = true;
+    } else if (geometry && geometryHits(geometry)) {
       calloutIds.push(callout.id);
     }
   }
   for (const group of groupedHits.values()) {
-    if (!group.allInside || (!group.annotationIndices.length && !group.calloutIds.length)) continue;
+    const includeGroup = normalizedMode === 'window' ? group.allInside : group.anyHit;
+    if (!includeGroup || (!group.annotationIndices.length && !group.calloutIds.length)) continue;
     annotationIndices.push(...group.annotationIndices);
     calloutIds.push(...group.calloutIds);
   }

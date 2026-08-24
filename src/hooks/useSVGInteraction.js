@@ -44,6 +44,8 @@ import {
 } from '../utils/marqueeSelection.js';
 import {
   getLassoPolygonValidation,
+  getLassoModeFromTrail,
+  cycleLassoMode,
   LASSO_SIMPLIFY_PX,
   resolveLassoHits,
   shouldSampleLassoPoint,
@@ -319,11 +321,17 @@ export function useSVGInteraction({
       if (e.key === 'Escape') {
         applyMarqueeState(null);
         cancelLasso();
+      } else if ((e.code === 'Space' || e.key === ' ') && lassoStateRef.current) {
+        e.preventDefault();
+        const current = lassoStateRef.current;
+        const activeMode = current.modeOverride || current.mode || getLassoModeFromTrail(current.points) || 'window';
+        const nextMode = cycleLassoMode(activeMode);
+        applyLassoState({ ...current, modeOverride: nextMode });
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [marqueeState, lassoState, applyMarqueeState, cancelLasso]);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [marqueeState, lassoState, applyMarqueeState, applyLassoState, cancelLasso]);
 
   // PdfjsViewerContainer owns the mobile two-finger gesture and emits this
   // event before live pinch zoom starts. Drop the transient trail so the PDF
@@ -647,6 +655,14 @@ export function useSVGInteraction({
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
     if (obj) {
+      // Text markup is a range anchored to PDF text. It can change via its
+      // two endpoint handles, but a body drag must never move the quads.
+      if (obj?.data?.type === 'text-markup') {
+        dragStateRef.current = { ...dragStateRef.current, active: false };
+        setVisualTransform(null);
+        e.preventDefault();
+        return;
+      }
       if (isTransformLockedAnnotation(obj)) {
         e.preventDefault();
         return;
@@ -678,7 +694,7 @@ export function useSVGInteraction({
         const originals = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (selObj) {
+          if (selObj && selObj?.data?.type !== 'text-markup' && !isTransformLockedAnnotation(selObj)) {
             // Imported paths: use bbox position (from path data), not obj.left/top
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
@@ -916,7 +932,7 @@ export function useSVGInteraction({
         const annotationOriginalsCO = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (!selObj) continue;
+          if (!selObj || selObj?.data?.type === 'text-markup' || isTransformLockedAnnotation(selObj)) continue;
           if (isImportedPath(selObj)) {
             const selBBox = getAnnotationBBox(selObj);
             annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top };
@@ -1156,6 +1172,9 @@ export function useSVGInteraction({
           y: Math.max(0, Math.min(pageHeight, svgPoint.y)),
         }],
         shiftHeld: !!e.shiftKey,
+        altHeld: !!e.altKey,
+        modeOverride: null,
+        mode: null,
         pointerId: e.pointerId,
         pointerType: e.pointerType || 'mouse',
       });
@@ -1200,14 +1219,23 @@ export function useSVGInteraction({
     const lasso = lassoStateRef.current;
     if (lasso) {
       if (e.pointerId !== lasso.pointerId) return;
-      const raw = screenToSVG(svgRef.current, e.clientX, e.clientY);
-      const point = {
-        x: Math.max(0, Math.min(pageWidth, raw.x)),
-        y: Math.max(0, Math.min(pageHeight, raw.y)),
-      };
-      const previous = lasso.points.at(-1);
-      if (!shouldSampleLassoPoint(previous, point, inverseScale)) return;
-      applyLassoState({ ...lasso, points: [...lasso.points, point] });
+      const sourceEvents = e.nativeEvent?.getCoalescedEvents?.() || [e];
+      const nextPoints = [...lasso.points];
+      for (const sourceEvent of sourceEvents) {
+        const raw = screenToSVG(svgRef.current, sourceEvent.clientX, sourceEvent.clientY);
+        const point = {
+          x: Math.max(0, Math.min(pageWidth, raw.x)),
+          y: Math.max(0, Math.min(pageHeight, raw.y)),
+        };
+        if (shouldSampleLassoPoint(nextPoints.at(-1), point, inverseScale)) nextPoints.push(point);
+        if (nextPoints.length >= 2048) break;
+      }
+      if (nextPoints.length === lasso.points.length) return;
+      applyLassoState({
+        ...lasso,
+        points: nextPoints,
+        mode: lasso.mode || getLassoModeFromTrail(nextPoints),
+      });
       e.preventDefault();
       return;
     }
@@ -2184,8 +2212,9 @@ export function useSVGInteraction({
       const preview = resizeTextMarkupHorizontalEdge(
         ds.originalTextMarkup,
         ds.handleId,
-        svgPoint.x,
+        svgPoint,
         pageWidth,
+        pageHeight,
       );
       ds.currentTextMarkup = preview;
       setVisualTransform({
@@ -2797,8 +2826,14 @@ export function useSVGInteraction({
         ? [...lasso.points, finalPoint]
         : lasso.points;
       const simplified = simplifyLassoPoints(sampled, LASSO_SIMPLIFY_PX * inverseScale);
-      const validation = getLassoPolygonValidation(simplified);
-      const polygon = validation.polygon;
+      const mode = lasso.modeOverride || lasso.mode || getLassoModeFromTrail(sampled) || 'window';
+      const validation = mode === 'fence'
+        ? { polygon: simplified.filter((point, index, list) => (
+            Number.isFinite(point?.x) && Number.isFinite(point?.y)
+            && (index === 0 || point.x !== list[index - 1]?.x || point.y !== list[index - 1]?.y)
+          )), issue: null }
+        : getLassoPolygonValidation(simplified);
+      const polygon = validation.polygon?.length >= (mode === 'fence' ? 2 : 3) ? validation.polygon : null;
       cancelLasso(e.pointerId);
       if (!polygon) {
         if (validation.issue === 'self-intersection') {
@@ -2813,6 +2848,7 @@ export function useSVGInteraction({
       }
       const rawHits = resolveLassoHits({
         lassoPolygon: polygon,
+        mode,
         annotations,
         callouts,
         pageWidth,
@@ -2828,7 +2864,15 @@ export function useSVGInteraction({
         viewerId,
         documentOwnerId,
       );
-      if (lasso.shiftHeld) {
+      if (lasso.altHeld) {
+        if (annotationIndices.length) {
+          setSelectedIds((previous) => {
+            const next = new Set(previous);
+            annotationIndices.forEach((index) => next.delete(index));
+            return next;
+          });
+        }
+      } else if (lasso.shiftHeld) {
         if (annotationIndices.length) {
           setSelectedIds((previous) => new Set([...previous, ...annotationIndices]));
         }
@@ -4738,6 +4782,9 @@ export function useSVGInteraction({
     marqueeRect: marqueeState && marqueeState.active ? getMarqueeRect(marqueeState) : null,
     marqueeDirection: marqueeState && marqueeState.active ? getMarqueeDirection(marqueeState) : null,
     lassoPoints: lassoState?.points || null,
+    lassoMode: lassoState?.points?.length
+      ? (lassoState.modeOverride || lassoState.mode || getLassoModeFromTrail(lassoState.points) || 'window')
+      : null,
     cancelLasso,
     shouldHandoffLassoPointer,
   };
