@@ -773,6 +773,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 {/* Sign Out Section */}
                 <section className="account-section">
                   <button
+                    type="button"
                     className="account-btn-secondary account-btn-secondary-full"
                     onClick={handleSignOut}
                   >
