@@ -1140,6 +1140,7 @@ export default function ProjectsFolderTree({
                         );
                       })()}
                       <button
+                        type="button"
                         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
                         style={miniSelectButtonStyle()}
                       >
