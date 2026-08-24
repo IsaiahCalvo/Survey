@@ -561,7 +561,7 @@ export default function DocumentsLedger({
             <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
-                <button onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" style={closeButtonStyle()}><Icon name="close" size={13} /></button>
+                <button type="button" onClick={() => setPreviewOpen(false)} title="Close preview" aria-label="Close preview" style={closeButtonStyle()}><Icon name="close" size={13} /></button>
               </div>
               <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
               <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
