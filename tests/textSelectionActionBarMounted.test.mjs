@@ -44,17 +44,27 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
 
   const { ActionBar, cleanup } = await loadActionBar();
   const changes = [];
+  const actions = [];
   const selection = { pages: [{ pageNumber: 1 }], anchor: { left: 100, top: 100 } };
   const root = createRoot(document.getElementById('root'));
   function Harness() {
     const [mode, setMode] = useState('layered');
+    const [activeMarkupTypes, setActiveMarkupTypes] = useState(['highlight', 'strikeout']);
     return React.createElement(ActionBar, {
       selection,
       color: '#ffff00',
       opacity: 0.3,
       overlapMode: mode,
-      activeMarkupTypes: ['highlight', 'strikeout'],
-      onAction: () => {},
+      activeMarkupTypes,
+      onAction: (action) => {
+        actions.push(action);
+        if (action === 'copy') return;
+        setActiveMarkupTypes((current) => (
+          current.includes(action)
+            ? current.filter((type) => type !== action)
+            : [...current, action]
+        ));
+      },
       onColorClick: () => {},
       onOverlapModeChange: (nextMode) => {
         changes.push(nextMode);
@@ -80,13 +90,25 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
     assert.equal(document.querySelector('button[aria-label="Underline"]').getAttribute('aria-pressed'), 'false');
     assert.equal(document.querySelector('button[aria-label="Strikeout"]').getAttribute('aria-pressed'), 'true');
     assert.equal(document.querySelectorAll('[data-text-selection-action-icon="true"]').length, 5);
-    assert.equal(document.querySelector('button[aria-label="Underline"] [data-text-format-glyph]').textContent, 'U');
+    assert.ok(document.querySelector('button[aria-label="Underline"] svg[data-icon-name="underline"]'));
+    assert.equal(document.querySelector('button[aria-label="Squiggle"] img')?.getAttribute('src'), 'squiggle.svg');
+    assert.equal(document.querySelector('button[aria-label="Squiggle"] [style*="mask"]'), null);
     assert.equal(document.querySelector('button[aria-label="Strikeout"] [data-text-format-glyph]').textContent, 'S');
     assert.equal(document.querySelector('button[aria-label="Highlight"]').style.background, 'transparent');
     assert.equal(document.querySelector('button[aria-label="Highlight"]').style.color, 'rgb(216, 168, 78)');
     assert.equal(document.querySelector('button[aria-label="Underline"]').style.background, 'transparent');
     assert.equal(document.querySelector('button[aria-label="Underline"]').style.width, '24px');
     assert.equal(document.querySelector('button[aria-label="Underline"]').style.height, '24px');
+
+    const underlineButton = document.querySelector('button[aria-label="Underline"]');
+    await act(async () => underlineButton.click());
+    assert.deepEqual(actions, ['underline']);
+    assert.equal(underlineButton.getAttribute('aria-pressed'), 'true');
+    assert.ok(document.querySelector('[data-text-selection-action-bar="true"]'), 'turning a mark on keeps the range toolbar open');
+    await act(async () => underlineButton.click());
+    assert.deepEqual(actions, ['underline', 'underline']);
+    assert.equal(underlineButton.getAttribute('aria-pressed'), 'false');
+    assert.ok(document.querySelector('[data-text-selection-action-bar="true"]'), 'turning a mark off keeps the range toolbar open');
 
     const copyButton = document.querySelector('button[aria-label="Copy"]');
     const buttonPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });

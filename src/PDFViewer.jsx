@@ -28073,13 +28073,43 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, annotationsByPage, selectedToolbarAnnotation, scale, zoomGeneration, selectedTextMarkupAnchorTick]);
 
+  const liveTextMarkupRangeProbes = useMemo(() => {
+    if (!liveTextSelection?.pages?.length) return [];
+    return liveTextSelection.pages.map(({ pageNumber, quads, selectedText, textRange, textRangeModel }, index) => (
+      createTextMarkupAnnotation({
+        id: `live-text-selection-${pageNumber}-${index}`,
+        pageNumber,
+        selectionGroupId: 'live-text-selection',
+        markupType: 'highlight',
+        selectedText: selectedText || liveTextSelection.text,
+        textRange,
+        textRangeModel,
+        quads,
+        color: strokeColorStateRef.current || '#f4d35e',
+        opacity: Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current) || 30) / 100)),
+        overlapMode: textMarkupOverlapMode,
+        authorId: user?.id || null,
+      })
+    )).filter(Boolean);
+  }, [liveTextSelection, textMarkupOverlapMode, user?.id]);
+
+  const liveTextSelectionActionSelection = useMemo(() => (
+    liveTextSelection ? {
+      ...liveTextSelection,
+      activeMarkupTypes: getTextMarkupRangeTypes(
+        annotationsByPage,
+        liveTextMarkupRangeProbes,
+      ),
+    } : null
+  ), [annotationsByPage, liveTextMarkupRangeProbes, liveTextSelection]);
+
   const handleTextSelectionAction = useCallback(async (action) => {
     const selectedMarkup = activeTool === 'select'
       ? selectedToolbarAnnotationRef.current?.annotation
       : null;
     const selection = selectedMarkup?.data?.type === 'text-markup'
       ? selectedTextMarkupActionSelection
-      : (liveTextSelection || liveTextSelectionRef.current || capturePdfjsTextSelection());
+      : (liveTextSelectionActionSelection || liveTextSelectionRef.current || capturePdfjsTextSelection());
     if (!selection) return;
     if (action === 'copy') {
       try {
@@ -28200,27 +28230,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotationsByPageRef.current || {},
       annotations,
     );
+    const toggleOff = buildTextMarkupRangeToggleOffTransaction(
+      annotationsByPageRef.current || {},
+      annotations,
+      markupType,
+    );
+    if (toggleOff) {
+      commitTextMarkupDocumentTransaction(toggleOff, {
+        source: 'text-markup:toggle-off-live-selection',
+        action: 'text-markup-delete',
+        selectionGroupIds: toggleOff.removedSelectionGroupIds,
+      });
+      return;
+    }
     const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
         source: 'text-markup:create',
         action: 'text-markup-create',
         selectionGroupId,
       });
-    const created = committed ? transaction.created : [];
-    clearLiveTextSelection();
-    if (created.length > 0) {
-      activateSelectFamilyMode('rectangle');
-      const selectCreatedMark = () => setPendingSvgSelection({
-        pageNumber: created[0].pageNumber,
-        annotationIndex: created[0].annotationIndex,
-        tick: Date.now(),
-      });
-      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(selectCreatedMark);
-      } else {
-        selectCreatedMark();
-      }
-    }
-  }, [activeTool, activateSelectFamilyMode, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelection, selectedTextMarkupActionSelection, textMarkupOverlapMode, user?.id]);
+    if (committed) capturePdfjsTextSelection();
+  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, selectedTextMarkupActionSelection, textMarkupOverlapMode, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -37002,11 +37031,13 @@ ${pageBlocks}
         }}
       />
       <TextSelectionActionBar
-        selection={activeTool === 'text-select' ? liveTextSelection : selectedTextMarkupActionSelection}
+        selection={activeTool === 'text-select' ? liveTextSelectionActionSelection : selectedTextMarkupActionSelection}
         color={strokeColor}
         opacity={Math.max(0.05, Math.min(1, (Number(strokeOpacity) || 30) / 100))}
         overlapMode={textMarkupOverlapMode}
-        activeMarkupTypes={selectedTextMarkupActionSelection?.activeMarkupTypes || []}
+        activeMarkupTypes={(activeTool === 'text-select'
+          ? liveTextSelectionActionSelection
+          : selectedTextMarkupActionSelection)?.activeMarkupTypes || []}
         colorPickerOpen={showAnnotationColorPicker}
         onAction={handleTextSelectionAction}
         onColorClick={() => setShowAnnotationColorPicker(true)}

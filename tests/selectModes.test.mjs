@@ -63,18 +63,17 @@ test('Select mode menus wrap arrow keys and honor Home and End', () => {
   assert.equal(getSelectModeMenuFocusIndex('Enter', 1, 3), null);
 });
 
-test('creating a text mark leaves Text Select in truthful rectangle object selection', () => {
+test('creating or toggling a text mark keeps the live Text Select range active', () => {
   const textSelect = getSelectFamilyTransition('text');
   assert.deepEqual(textSelect, { activeTool: 'text-select', selectionMode: 'text' });
-
-  const createdMarkSelection = getSelectFamilyTransition('rectangle');
-  assert.deepEqual(createdMarkSelection, { activeTool: 'select', selectionMode: 'rectangle' });
 
   const createHandler = PDF_VIEWER_SOURCE.slice(
     PDF_VIEWER_SOURCE.indexOf('const handleTextSelectionAction = useCallback'),
     PDF_VIEWER_SOURCE.indexOf('const isImportedSelectDeleteOnlyTextMarkupSelection'),
   );
-  assert.match(createHandler, /activateSelectFamilyMode\('rectangle'\)/);
+  assert.doesNotMatch(createHandler, /activateSelectFamilyMode\('rectangle'\)/);
+  assert.doesNotMatch(createHandler, /clearLiveTextSelection\(\)/);
+  assert.match(createHandler, /text-markup:toggle-off-live-selection/);
 });
 
 test('pan quick-pick leaves a saved Text Select mode in truthful rectangle object selection', () => {

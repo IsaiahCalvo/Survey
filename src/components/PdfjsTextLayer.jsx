@@ -59,6 +59,9 @@ function ensureTextLayerStyles() {
       --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
       --min-font-size-inv: calc(1 / var(--min-font-size));
     }
+    .pdfjsTextLayer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+    .pdfjsTextLayer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+    .pdfjsTextLayer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
     .pdfjsTextLayer :is(span, br) {
       color: transparent;
       position: absolute;
@@ -94,10 +97,8 @@ function ensureTextLayerStyles() {
   document.head.appendChild(style);
 }
 
-// NOTE on `rotation`: the pdf.js engine bakes intrinsic /Rotate into the page and
-// applies user rotation by rewriting the PDF bytes (it always renders at rotation 0,
-// same as the canvas, link, and form layers). So the default of 0 is correct — the
-// glyph viewport already inherits the page's baked orientation via `page.rotate`.
+// TextLayer sets data-main-rotation from this viewport. The CSS above applies
+// pdf.js's matching root transform so intrinsic /Rotate pages align with the canvas.
 export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, onTextAvailability }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);

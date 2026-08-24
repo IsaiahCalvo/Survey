@@ -6,7 +6,7 @@ import squiggleIconSvg from '../assets/text-markup-squiggle.svg';
 const ACTIONS = [
   { id: 'copy', label: 'Copy', icon: 'copy' },
   { id: 'highlight', label: 'Highlight', iconAsset: highlightIconSvg },
-  { id: 'underline', label: 'Underline', textGlyph: 'U' },
+  { id: 'underline', label: 'Underline', icon: 'underline' },
   { id: 'squiggly', label: 'Squiggle', iconAsset: squiggleIconSvg },
   { id: 'strikeout', label: 'Strikeout', textGlyph: 'S' },
 ];
@@ -33,14 +33,14 @@ function ActionIcon({ action }) {
   let content = null;
   if (action.iconAsset) {
     content = (
-      <span
+      <img
+        src={action.iconAsset}
+        alt=""
         style={{
           width: 14,
           height: 14,
           display: 'block',
-          background: 'currentColor',
-          WebkitMask: `url(${action.iconAsset}) center / contain no-repeat`,
-          mask: `url(${action.iconAsset}) center / contain no-repeat`,
+          objectFit: 'contain',
         }}
       />
     );

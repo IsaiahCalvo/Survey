@@ -72,12 +72,13 @@ test('text markup selection chrome exposes only left and right range handles', (
   assert.match(annotationLayerSource, /onPointerCancel=\{isInteractive[\s\S]{0,180}handlePointerCancel\(e\)/);
 });
 
-test('text action bar uses supplied highlight and squiggle SVGs with the app text-format icons', () => {
+test('text action bar uses supplied highlight and squiggle SVGs with the app underline icon', () => {
   assert.match(textActionBarSource, /text-markup-highlight\.svg/);
   assert.match(textActionBarSource, /text-markup-squiggle\.svg/);
-  assert.match(textActionBarSource, /id: 'underline'.*textGlyph: 'U'/);
+  assert.match(textActionBarSource, /id: 'underline'.*icon: 'underline'/);
   assert.match(textActionBarSource, /id: 'strikeout'.*textGlyph: 'S'/);
   assert.match(textActionBarSource, /textDecoration: underline \? 'underline' : 'line-through'/);
+  assert.doesNotMatch(textActionBarSource, /WebkitMask|mask: `url/);
   assert.match(textActionBarSource, /data-text-selection-action-icon="true"/);
   assert.match(textActionBarSource, /width: 14,[\s\S]{0,80}height: 14/);
 });

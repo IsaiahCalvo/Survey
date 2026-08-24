@@ -17,3 +17,9 @@ test('interactive PDF text keeps selection and pan while allowing native pinch z
     /\.pdfjsTextLayer:not\(\.is-interactive\) \{ pointer-events: none; \}/,
   );
 });
+
+test('rotated PDF text layers follow the pdf.js root rotation contract', () => {
+  assert.match(source, /\.pdfjsTextLayer\[data-main-rotation="90"\] \{ transform: rotate\(90deg\) translateY\(-100%\); \}/);
+  assert.match(source, /\.pdfjsTextLayer\[data-main-rotation="180"\] \{ transform: rotate\(180deg\) translate\(-100%, -100%\); \}/);
+  assert.match(source, /\.pdfjsTextLayer\[data-main-rotation="270"\] \{ transform: rotate\(270deg\) translateX\(-100%\); \}/);
+});
