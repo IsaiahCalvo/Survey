@@ -120,6 +120,8 @@ test('live spec covers Documents Select type intended + break + edge; skip lefto
   assert.match(spec, /toHaveText\('Select'\)/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /390/);
+  assert.match(spec, /data-hub-keep-mount/);
+  assert.match(spec, /namedDocumentsSelect\(page\)\.count\(\)\)\.toBe\(0\)/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
