@@ -281,6 +281,7 @@ export default function DocumentsLedger({
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row" ref={mobileSortRef}>
         <span className="documents-mobile-select-main">
           <button
+            type="button"
             className="mobile-header-select-button"
             onClick={() => { const next = !docSelectMode; setDocSelectMode(next); if (!next) setSelDocs(new Set()); }}
             style={{ background: 'transparent', border: 0, color: 'var(--gold)', borderRadius: 2, padding: 0, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', fontWeight: 600 }}
