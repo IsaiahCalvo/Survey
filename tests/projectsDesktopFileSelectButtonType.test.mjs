@@ -131,6 +131,8 @@ test('live spec covers Projects desktop file Select type intended + break + edge
   assert.match(spec, /Files/);
   assert.match(spec, /data-hub-keep-mount/);
   assert.match(spec, /namedProjectsDesktopFileSelect\(page\)\.count\(\)\)\.toBe\(0\)/);
+  assert.match(spec, /hubPreview=1&guest=1/);
+  assert.match(spec, /namedProjectsDesktopFileSelect\(page\)\)\.toBeVisible\(\)/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);

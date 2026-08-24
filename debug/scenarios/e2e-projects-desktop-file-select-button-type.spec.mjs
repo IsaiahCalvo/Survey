@@ -136,7 +136,9 @@ test('390 + empty + guest + docs + editor break/edge for Projects desktop file S
     await authClose.click();
   }
   expect(await page.getByRole('textbox', { name: 'Search projects...', exact: true }).count()).toBeGreaterThan(0);
-  expect(await namedProjectsDesktopFileSelect(page).count()).toBe(0);
+  await expect(projectsDesktopFileSelect(page)).toHaveAttribute('type', 'button');
+  await expect(projectsDesktopFileSelect(page)).toHaveText('Select');
+  await expect(namedProjectsDesktopFileSelect(page)).toBeVisible();
   await expect(projectsDesktopProjectSelect(page)).toHaveAttribute('type', 'button');
   await expect(projectsDesktopProjectSelect(page)).toBeVisible();
 
