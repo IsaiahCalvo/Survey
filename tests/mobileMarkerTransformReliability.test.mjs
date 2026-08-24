@@ -72,12 +72,12 @@ test('text markup selection chrome exposes only left and right range handles', (
   assert.match(annotationLayerSource, /onPointerCancel=\{isInteractive[\s\S]{0,180}handlePointerCancel\(e\)/);
 });
 
-test('text action bar uses supplied highlight and squiggle SVGs with the app text-format glyphs', () => {
+test('text action bar uses supplied highlight and squiggle SVGs with the app text-format icons', () => {
   assert.match(textActionBarSource, /text-markup-highlight\.svg/);
   assert.match(textActionBarSource, /text-markup-squiggle\.svg/);
-  assert.match(textActionBarSource, /id: 'underline'.*textGlyph: 'U'/);
-  assert.match(textActionBarSource, /id: 'strikeout'.*textGlyph: 'S'/);
-  assert.match(textActionBarSource, /textDecoration: underline \? 'underline' : 'line-through'/);
+  assert.match(textActionBarSource, /<Icon name=\{action\.icon \|\| action\.id\} size=\{18\}/);
+  assert.match(textActionBarSource, /data-text-selection-action-icon="true"/);
+  assert.match(textActionBarSource, /width: 18,[\s\S]{0,80}height: 18/);
 });
 
 test('mobile delete long-press targets exposed annotation body instead of transform handles', () => {

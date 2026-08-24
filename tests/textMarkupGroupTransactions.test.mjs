@@ -7,7 +7,9 @@ import {
 import {
   buildAtomicTextMarkupPageMutation,
   buildTextMarkupGroupCreateTransaction,
+  buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
+  getTextMarkupRangeTypes,
   isExactTextMarkupDuplicate,
 } from '../src/utils/textMarkupGroupTransactions.js';
 
@@ -69,6 +71,54 @@ test('same-range same-type marks remain distinct when paint or overlap differs',
   assert.equal(tx.created.length, 2);
   assert.equal(isExactTextMarkupDuplicate(first, recolored), false);
   assert.equal(isExactTextMarkupDuplicate(first, uniform), false);
+});
+
+test('same-range review marks report every active toggle', () => {
+  const highlight = mark('highlight', 1, 'highlight-group', 'highlight');
+  const underline = mark('underline', 1, 'underline-group', 'underline');
+  const squiggly = mark('squiggly', 1, 'squiggly-group', 'squiggly');
+  const strikeout = mark('strikeout', 1, 'strikeout-group', 'strikeout');
+  const types = getTextMarkupRangeTypes({
+    1: { objects: [highlight, underline, squiggly, strikeout] },
+  }, [highlight]);
+
+  assert.deepEqual(types, ['highlight', 'underline', 'squiggly', 'strikeout']);
+});
+
+test('turning off one review toggle removes only that full group', () => {
+  const pageOneHighlight = mark('highlight-1', 1, 'highlight-group', 'highlight');
+  const pageTwoHighlight = mark('highlight-2', 2, 'highlight-group', 'highlight');
+  const pageOneUnderline = mark('underline-1', 1, 'underline-group', 'underline');
+  const pageTwoUnderline = mark('underline-2', 2, 'underline-group', 'underline');
+  const pageOneSquiggly = mark('squiggly-1', 1, 'squiggly-group', 'squiggly');
+  const before = {
+    1: { objects: [pageOneHighlight, pageOneUnderline, pageOneSquiggly] },
+    2: { objects: [pageTwoHighlight, pageTwoUnderline] },
+  };
+  const tx = buildTextMarkupRangeToggleOffTransaction(
+    before,
+    [pageOneHighlight, pageTwoHighlight],
+    'highlight',
+  );
+
+  assert.ok(tx);
+  assert.equal(tx.action.type, 'fabric:document-batch');
+  assert.deepEqual(tx.removedSelectionGroupIds, ['highlight-group']);
+  assert.deepEqual(tx.selectionGroupIds, ['highlight-group']);
+  assert.deepEqual(tx.nextByPage['1'].objects, [pageOneUnderline, pageOneSquiggly]);
+  assert.deepEqual(tx.nextByPage['2'].objects, [pageTwoUnderline]);
+});
+
+test('turning off an inactive review toggle is a no-op', () => {
+  const highlight = mark('highlight', 1, 'highlight-group', 'highlight');
+  assert.equal(
+    buildTextMarkupRangeToggleOffTransaction(
+      { 1: { objects: [highlight] } },
+      [highlight],
+      'underline',
+    ),
+    null,
+  );
 });
 
 test('cross-page text markup creation is one document history action', () => {

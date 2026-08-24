@@ -6,33 +6,36 @@ import squiggleIconSvg from '../assets/text-markup-squiggle.svg';
 const ACTIONS = [
   { id: 'copy', label: 'Copy', icon: 'copy' },
   { id: 'highlight', label: 'Highlight', iconAsset: highlightIconSvg },
-  { id: 'underline', label: 'Underline', textGlyph: 'U' },
+  { id: 'underline', label: 'Underline' },
   { id: 'squiggly', label: 'Squiggle', iconAsset: squiggleIconSvg },
-  { id: 'strikeout', label: 'Strikeout', textGlyph: 'S' },
+  { id: 'strikeout', label: 'Strikeout' },
 ];
 
-function TextFormatGlyph({ action }) {
-  const underline = action.id === 'underline';
+function ActionIcon({ action }) {
+  let content = null;
+  if (action.iconAsset) {
+    content = <img aria-hidden="true" src={action.iconAsset} alt="" style={{ width: 18, height: 18, display: 'block' }} />;
+  } else {
+    content = <Icon name={action.icon || action.id} size={18} />;
+  }
   return (
     <span
+      data-text-selection-action-icon="true"
       aria-hidden="true"
       style={{
-        color: 'currentColor',
-        fontFamily: 'Arial, sans-serif',
-        fontSize: 15,
-        fontWeight: 600,
-        lineHeight: 1,
-        textDecoration: underline ? 'underline' : 'line-through',
-        textDecorationThickness: '1.5px',
-        textUnderlineOffset: underline ? '2px' : undefined,
+        width: 18,
+        height: 18,
+        display: 'grid',
+        placeItems: 'center',
+        flex: '0 0 18px',
       }}
     >
-      {action.textGlyph}
+      {content}
     </span>
   );
 }
 
-export default function TextSelectionActionBar({ selection, color, opacity, overlapMode, colorPickerOpen = false, onAction, onColorClick, onOverlapModeChange }) {
+export default function TextSelectionActionBar({ selection, color, opacity, overlapMode, activeMarkupTypes = [], colorPickerOpen = false, onAction, onColorClick, onOverlapModeChange }) {
   if (!selection?.pages?.length || !selection?.anchor) return null;
   const chromeBottom = Math.max(
     document.getElementById('chrome-top-host')?.getBoundingClientRect?.().bottom || 0,
@@ -65,31 +68,22 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
       <button type="button" aria-label="Markup color" onClick={onColorClick} style={{ width: 26, height: 26, border: 0, borderRadius: 4, background: 'transparent', padding: 5 }}>
         <span style={{ display: 'block', width: 16, height: 16, borderRadius: 3, background: color, opacity, border: '1px solid rgba(255,255,255,.45)' }} />
       </button>
-      {ACTIONS.map((action) => (
+      {ACTIONS.map((action) => {
+        const pressed = action.id !== 'copy' && activeMarkupTypes.includes(action.id);
+        return (
         <button
           key={action.id}
           type="button"
           title={action.label}
           aria-label={action.label}
+          aria-pressed={action.id === 'copy' ? undefined : pressed}
           onClick={() => onAction(action.id)}
-          style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', border: 0, borderRadius: 4, color: '#e8e2d4', background: 'transparent', cursor: 'pointer' }}
+          style={{ width: 32, height: 32, display: 'grid', placeItems: 'center', border: 0, borderRadius: 5, color: pressed ? '#111418' : '#e8e2d4', background: pressed ? '#f0c94c' : 'transparent', cursor: 'pointer', padding: 7 }}
         >
-          {action.iconAsset ? (
-            <img
-              aria-hidden="true"
-              src={action.iconAsset}
-              alt=""
-              style={{
-                width: 16,
-                height: 16,
-                display: 'block',
-              }}
-            />
-          ) : action.textGlyph ? (
-            <TextFormatGlyph action={action} />
-          ) : <Icon name={action.icon} size={15} />}
+          <ActionIcon action={action} />
         </button>
-      ))}
+        );
+      })}
       <select
         aria-label="Highlight overlap mode"
         title="Layered keeps editable native PDF highlights. Uniform exports as one flat visual mask so overlaps stay even in other viewers."

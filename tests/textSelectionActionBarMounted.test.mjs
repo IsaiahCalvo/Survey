@@ -19,7 +19,7 @@ async function loadActionBar() {
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
   source = source
-    .replace("import Icon from '../Icons';", 'const Icon = () => null;')
+    .replace("import Icon from '../Icons';", 'const Icon = ({ name, size }) => <svg data-icon-name={name} width={size} height={size} />;')
     .replace("import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';", 'const computeTextSelectionActionBarPosition = () => ({ left: 100, top: 100 });')
     .replace("import highlightIconSvg from '../assets/text-markup-highlight.svg';", "const highlightIconSvg = 'highlight.svg';")
     .replace("import squiggleIconSvg from '../assets/text-markup-squiggle.svg';", "const squiggleIconSvg = 'squiggle.svg';");
@@ -53,6 +53,7 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
       color: '#ffff00',
       opacity: 0.3,
       overlapMode: mode,
+      activeMarkupTypes: ['highlight', 'strikeout'],
       onAction: () => {},
       onColorClick: () => {},
       onOverlapModeChange: (nextMode) => {
@@ -74,6 +75,13 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
     assert.deepEqual(changes, ['uniform']);
     assert.equal(document.querySelector('select[aria-label="Highlight overlap mode"]').value, 'uniform');
     assert.ok(document.querySelector('[data-text-selection-action-bar="true"]'));
+
+    assert.equal(document.querySelector('button[aria-label="Highlight"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(document.querySelector('button[aria-label="Underline"]').getAttribute('aria-pressed'), 'false');
+    assert.equal(document.querySelector('button[aria-label="Strikeout"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(document.querySelectorAll('[data-text-selection-action-icon="true"]').length, 5);
+    assert.ok(document.querySelector('button[aria-label="Underline"] svg[data-icon-name="underline"]'));
+    assert.ok(document.querySelector('button[aria-label="Strikeout"] svg[data-icon-name="strikeout"]'));
 
     const copyButton = document.querySelector('button[aria-label="Copy"]');
     const buttonPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });

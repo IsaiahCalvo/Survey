@@ -96,7 +96,9 @@ import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPrecis
 import {
   buildAtomicTextMarkupPageMutation,
   buildTextMarkupGroupCreateTransaction,
+  buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
+  getTextMarkupRangeTypes,
 } from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
@@ -28040,6 +28042,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const selectedTextMarkupActionSelection = useMemo(() => {
     if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return null;
     const { annotation, pageNumber } = selectedToolbarAnnotation;
+    const sourceGroupId = annotation.data.selectionGroupId;
+    const sourceMarks = Object.values(annotationsByPageRef.current || {})
+      .flatMap((page) => Array.isArray(page?.objects) ? page.objects : [])
+      .filter((candidate) => (
+        candidate?.data?.type === 'text-markup'
+        && candidate.data.selectionGroupId === sourceGroupId
+      ));
     const bounds = quadBounds(annotation.data.quads);
     const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
     const pageRect = pageElement?.getBoundingClientRect?.();
@@ -28057,8 +28066,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         height: bounds.height * scaleY,
       },
       selectedMarkup: true,
+      activeMarkupTypes: getTextMarkupRangeTypes(
+        annotationsByPageRef.current || {},
+        sourceMarks.length ? sourceMarks : [annotation],
+      ),
     };
-  }, [activeTool, selectedToolbarAnnotation, scale, zoomGeneration, selectedTextMarkupAnchorTick]);
+  }, [activeTool, annotationsByPage, selectedToolbarAnnotation, scale, zoomGeneration, selectedTextMarkupAnchorTick]);
 
   const handleTextSelectionAction = useCallback(async (action) => {
     const selectedMarkup = activeTool === 'select'
@@ -28102,6 +28115,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           annotation?.data?.type === 'text-markup'
           && annotation.data.selectionGroupId === sourceGroupId
         ));
+      const toggleOff = buildTextMarkupRangeToggleOffTransaction(
+        annotationsByPageRef.current || {},
+        sourceMarks.length ? sourceMarks : [selectedMarkup],
+        markupType,
+      );
+      if (toggleOff) {
+        const committed = commitTextMarkupDocumentTransaction(toggleOff, {
+          source: 'text-markup:toggle-off',
+          action: 'text-markup-delete',
+          selectionGroupIds: toggleOff.removedSelectionGroupIds,
+        });
+        if (committed) {
+          const next = toggleOff.remaining[0];
+          setSelectedToolbarAnnotation(next ? {
+            pageNumber: next.pageNumber,
+            annotationIndex: next.annotationIndex,
+            annotation: next.annotation,
+          } : null);
+          setPendingSvgSelection({
+            pageNumber: next?.pageNumber || selectedToolbarAnnotationRef.current?.pageNumber,
+            annotationIndex: next?.annotationIndex ?? null,
+            tick: Date.now(),
+          });
+        }
+        return;
+      }
       const selectionGroupId = generateUUID();
       const paint = resolveTextMarkupEditPaint(selectedMarkup, strokeColorStateRef.current);
       const annotations = (sourceMarks.length ? sourceMarks : [selectedMarkup])
@@ -28255,7 +28294,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleSelectPdfjsTextMarkup = useCallback((pageNumber, event, pageSize) => {
-    if (activeTool !== 'select' && activeTool !== 'text-select') return false;
+    if (activeTool !== 'select') return false;
     const target = event?.currentTarget;
     if (!target || !pageSize?.width || !pageSize?.height) return false;
     const rect = target.getBoundingClientRect();
@@ -28320,7 +28359,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
-    if (activeTool !== 'select' && activeTool !== 'text-select') return false;
+    if (activeTool !== 'select') return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
     if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .survey-pdfjs-hyperlink, .survey-pdfjs-pdfviewer-formFields')) return false;
     const isPlainPdfTextTarget = !!event.target?.closest?.('.survey-pdfjs-text-layer, .survey-pdfjs-text');
@@ -28469,7 +28508,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, pageSizes, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   useEffect(() => {
-    if (activeTool !== 'select' && activeTool !== 'text-select') return undefined;
+    if (activeTool !== 'select') return undefined;
     const handlePointerDownCapture = (event) => {
       handleSelectPdfjsTextMarkupFromClientPoint(event);
     };
@@ -36967,6 +37006,7 @@ ${pageBlocks}
         color={strokeColor}
         opacity={Math.max(0.05, Math.min(1, (Number(strokeOpacity) || 30) / 100))}
         overlapMode={textMarkupOverlapMode}
+        activeMarkupTypes={selectedTextMarkupActionSelection?.activeMarkupTypes || []}
         colorPickerOpen={showAnnotationColorPicker}
         onAction={handleTextSelectionAction}
         onColorClick={() => setShowAnnotationColorPicker(true)}

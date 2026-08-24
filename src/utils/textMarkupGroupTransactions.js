@@ -21,6 +21,22 @@ const textMarkupRangeFingerprint = (annotation) => {
   });
 };
 
+const textMarkupRangeIdentityFingerprint = (annotation) => {
+  if (!isTextMarkupAnnotation(annotation)) return null;
+  const quads = Array.isArray(annotation.data.quads)
+    ? annotation.data.quads.map((quad) => [
+      quad.x1, quad.y1, quad.x2, quad.y2,
+      quad.x3, quad.y3, quad.x4, quad.y4,
+    ].map((value) => Number(Number(value).toFixed(4))))
+    : [];
+  return JSON.stringify({
+    pageNumber: Number(annotation.data.pageNumber),
+    textRange: annotation.data.textRange || null,
+    textRangeModel: annotation.data.textRangeModel || null,
+    quads,
+  });
+};
+
 export const isExactTextMarkupDuplicate = (existing, candidate) => {
   const candidateFingerprint = textMarkupRangeFingerprint(candidate);
   return candidateFingerprint != null
@@ -85,6 +101,71 @@ export function buildTextMarkupGroupCreateTransaction(annotationsByPage, annotat
   }
   const action = buildTextMarkupDocumentAction(previousByPage, nextByPage);
   return action ? { action, nextByPage, created } : null;
+}
+
+const matchingRangeFingerprints = (sourceAnnotations) => new Set(
+  (sourceAnnotations || [])
+    .map(textMarkupRangeIdentityFingerprint)
+    .filter(Boolean),
+);
+
+export function getTextMarkupRangeTypes(annotationsByPage, sourceAnnotations) {
+  const fingerprints = matchingRangeFingerprints(sourceAnnotations);
+  if (fingerprints.size === 0) return [];
+  const types = new Set();
+  for (const page of Object.values(annotationsByPage || {})) {
+    for (const annotation of pageObjects(page)) {
+      if (!fingerprints.has(textMarkupRangeIdentityFingerprint(annotation))) continue;
+      const type = String(annotation.data.markupType || annotation.exportType || '').toLowerCase();
+      if (type) types.add(type);
+    }
+  }
+  const order = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  return order.filter((type) => types.has(type));
+}
+
+export function buildTextMarkupRangeToggleOffTransaction(
+  annotationsByPage,
+  sourceAnnotations,
+  markupType,
+) {
+  const previousByPage = annotationsByPage || {};
+  const fingerprints = matchingRangeFingerprints(sourceAnnotations);
+  if (fingerprints.size === 0) return null;
+  const normalizedType = String(markupType || '').toLowerCase();
+  const removedSelectionGroupIds = new Set();
+  for (const page of Object.values(previousByPage)) {
+    for (const annotation of pageObjects(page)) {
+      if (!fingerprints.has(textMarkupRangeIdentityFingerprint(annotation))) continue;
+      const type = String(annotation.data.markupType || annotation.exportType || '').toLowerCase();
+      if (type === normalizedType) removedSelectionGroupIds.add(annotation.data.selectionGroupId);
+    }
+  }
+  if (removedSelectionGroupIds.size === 0) return null;
+
+  const nextByPage = { ...previousByPage };
+  const remaining = [];
+  for (const [pageKey, page] of Object.entries(previousByPage)) {
+    const objects = pageObjects(page);
+    const filtered = objects.filter((annotation) => (
+      !isTextMarkupAnnotation(annotation)
+      || !removedSelectionGroupIds.has(annotation.data.selectionGroupId)
+    ));
+    if (filtered.length !== objects.length) nextByPage[String(pageKey)] = { ...page, objects: filtered };
+    filtered.forEach((annotation, annotationIndex) => {
+      if (fingerprints.has(textMarkupRangeIdentityFingerprint(annotation))) {
+        remaining.push({ pageNumber: Number(pageKey), annotationIndex, annotation });
+      }
+    });
+  }
+  const action = buildTextMarkupDocumentAction(previousByPage, nextByPage);
+  return action ? {
+    action,
+    nextByPage,
+    remaining,
+    removedSelectionGroupIds: [...removedSelectionGroupIds],
+    selectionGroupIds: [...removedSelectionGroupIds],
+  } : null;
 }
 
 export function buildAtomicTextMarkupPageMutation({
