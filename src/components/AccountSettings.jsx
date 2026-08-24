@@ -548,6 +548,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => setIsEditing(true)}
                         className="account-btn-primary"
                       >
