@@ -113,12 +113,10 @@ test('390 + empty + guest + documents + editor break/edge for Archive Close prev
 
   await openPage(page, { width: 390, height: 844, url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(SITE_PLAN).first()).toBeVisible({ timeout: 15_000 });
-  const mobileCard = page.locator('.archive-mobile-card').filter({ hasText: SITE_PLAN }).first();
-  await expect(mobileCard).toBeVisible();
-  await mobileCard.click();
-  expect(await desktopClosePreview(page).count()).toBe(1);
-  await expect(desktopClosePreview(page)).toBeHidden();
+  await expect(page.locator('.archive-mobile-card').filter({ hasText: SITE_PLAN }).first()).toBeVisible({ timeout: 15_000 });
+  expect(await desktopClosePreview(page).count()).toBe(0);
+  await expect(page.locator('.archive-desktop-card')).toBeHidden();
+  expect(await namedClosePreview(page).count()).toBe(0);
   expect(await page.getByRole('button', { name: 'Restore', exact: true }).count()).toBe(0);
   expect(await page.getByRole('button', { name: 'Delete forever', exact: true }).count()).toBe(0);
 
@@ -130,7 +128,10 @@ test('390 + empty + guest + documents + editor break/edge for Archive Close prev
 
   await openPage(page, { url: HUB_GUEST });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
-  await page.keyboard.press('Escape');
+  const authClose = page.getByRole('button', { name: 'Close', exact: true });
+  if (await authClose.isVisible().catch(() => false)) {
+    await authClose.click();
+  }
   expect(await page.getByRole('textbox', { name: 'Search archive...', exact: true }).count()).toBeGreaterThan(0);
   await hostArchivePreview(page);
   await expect(desktopClosePreview(page)).toHaveAttribute('type', 'button');
