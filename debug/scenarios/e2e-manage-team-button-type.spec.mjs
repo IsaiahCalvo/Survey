@@ -110,8 +110,8 @@ test('390 + empty + guest + templates + editor break/edge for Manage team type',
   await openPage(page, { url: HUB_GUEST });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
   expect(await page.getByRole('textbox', { name: 'Search projects...', exact: true }).count()).toBeGreaterThan(0);
-  await expect(desktopManageTeam(page)).toBeVisible({ timeout: 8_000 });
-  await expect(desktopManageTeam(page)).toHaveAttribute('type', 'button');
+  expect(await desktopManageTeam(page).count()).toBe(0);
+  expect(await namedManageTeam(page).count()).toBe(0);
   await expect(page.getByRole('button', { name: 'Add files', exact: true }).first()).toHaveAttribute('type', 'button');
 
   await openPage(page, { url: HUB_DOCS });
