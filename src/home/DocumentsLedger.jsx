@@ -618,7 +618,7 @@ export default function DocumentsLedger({
                   just under the preview. */}
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
-                <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
+                <button type="button" className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
                 <button className="btn" title="Share" aria-label="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="share" size={12} /></button>
               </div>
             </aside>
