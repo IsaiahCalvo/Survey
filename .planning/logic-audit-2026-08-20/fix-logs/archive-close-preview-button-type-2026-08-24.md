@@ -3,6 +3,7 @@
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Tip before this pass:** `89a8a449` docs: record Documents Preview Share type live 3/3 (8.2s).  
 **Product:** `c1bc4171` `ArchiveScreen` desktop Close preview `type="button"`  
+**Prove:** `7a70fe97` intended + break + edge + this-pass receipt  
 **Does not mark the audit goal complete.** Leftover-18 stay parked.
 
 Last hunt named Archive desktop Close preview type. Did **not** take leftover-18 or exhausted slices. Looked beyond Documents Preview Share type / Documents Preview Open file type / Documents Close preview type / Documents Upload type / Manage team type / Category drag-title type / Entity Select type / Template-list Select type / Category Select type / Module Select type / New module name / New module type / Module count chrome / Category drag titles name / Edit color type / New entity type / New category type / Entity name / Projects Tap to rename / New template type / Templates Expand / Templates Click to rename / Drag to rearrange / Click to rename. Different axis:
