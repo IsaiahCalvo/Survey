@@ -475,6 +475,7 @@ export default function ArchiveScreen({
     <button
       type="button"
       title={open ? `Hide ${label}` : `Show ${label}`}
+      aria-label={open ? `Hide ${label}` : `Show ${label}`}
       aria-expanded={open}
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
       style={{
@@ -923,6 +924,7 @@ export default function ArchiveScreen({
                 className="archive-mobile-disclosure"
                 aria-expanded={expanded}
                 title={expanded ? 'Hide documents' : 'Show documents'}
+                aria-label={expanded ? 'Hide documents' : 'Show documents'}
                 onClick={(e) => { e.stopPropagation(); setExpandedIds((prev) => toggleExpanded(prev, item.id)); }}
               >{chevron(expanded, MOBILE_CHEVRON_SIZE)}</button>
             ) : null)}
