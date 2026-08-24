@@ -183,11 +183,12 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
             <div id="confirm-modal-title" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
             {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
           </div>
-          <button disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button type="button" disabled={submitting} onClick={onClose} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.rule, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button disabled={submitting} onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
+          <button type="button" disabled={submitting} onClick={onClose} style={{ background: 'transparent', border: 0, color: C.muted, padding: '6px 10px', fontSize: 12, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', borderRadius: 6 }}>Cancel</button>
           <button
+            type="button"
             disabled={submitting}
             onClick={handleConfirm}
             style={{ background: danger ? C.danger : C.gold, color: danger ? '#fff' : '#15110a', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: submitting ? 0.85 : 1 }}
