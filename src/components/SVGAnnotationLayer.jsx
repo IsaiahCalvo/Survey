@@ -653,8 +653,10 @@ const SVGAnnotationLayer = memo(({
   // tools. The three booleans have distinct jobs:
   //
   //   isSelectTool   — click-to-select / hover / double-click edit gate. Only
-  //                    the Select/Text-Select tools drive annotation selection
-  //                    behavior. Use this for any guard that protects
+  //                    object Select drives annotation selection behavior.
+  //                    Text Select must leave every SVG hit target inert so
+  //                    the PDF.js text layer receives the native drag. Use
+  //                    this for any guard that protects
   //                    select-mode-specific handlers (existing call sites at
   //                    988/1050/1084 KEEP isInteractive because they also
   //                    need creation-tool pointer routing — see Step 3 audit).
@@ -674,7 +676,7 @@ const SVGAnnotationLayer = memo(({
   // clicks, shape drags, and click-to-dismiss all keep working.
   const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
   const isCalloutTextEditMode = !!editingCalloutId;
-  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
+  const isSelectTool = activeTool === 'select'
     && !isCalloutTextEditMode
     && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: creation tools get pointerEvents=auto so the crosshair class shows
