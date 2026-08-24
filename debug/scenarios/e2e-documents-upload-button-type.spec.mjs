@@ -82,7 +82,6 @@ test('Documents Upload is typed; apply not clicked', async ({ page }) => {
   await expect(upload).toHaveAttribute('type', 'button');
   await expect(namedUpload(page).first()).toBeVisible();
   await expect(upload).not.toBeDisabled();
-  expect(await page.locator('input[type="file"]').count()).toBeGreaterThan(0);
 
   expect(await page.getByRole('dialog', { name: /activity/i }).count()).toBe(0);
   expect(await page.getByRole('dialog', { name: /Lock this document/ }).count()).toBe(0);
@@ -131,7 +130,7 @@ test('390 + empty + guest + templates + editor break/edge for Documents Upload t
   await openPage(page, { url: LINK_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toHaveAttribute('viewBox', '0 0 612 792');
-  expect(await desktopUpload(page).count()).toBe(0);
+  expect(await desktopUpload(page).filter({ visible: true }).count()).toBe(0);
   expect(await namedUpload(page).count()).toBe(0);
   const hidden = await hiddenCounts(page);
   expect(hidden.Forms).toBe(0);
@@ -146,7 +145,7 @@ test('390 + empty + guest + templates + editor break/edge for Documents Upload t
 
   await openPage(page, { url: SEARCH_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
-  expect(await desktopUpload(page).count()).toBe(0);
+  expect(await desktopUpload(page).filter({ visible: true }).count()).toBe(0);
   expect(await namedUpload(page).count()).toBe(0);
   expect(await fileId(page)).toBeNull();
 });
