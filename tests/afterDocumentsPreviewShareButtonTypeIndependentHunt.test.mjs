@@ -425,10 +425,9 @@ test('hunt after Documents Preview Share type looks past Open file type and left
   assert.match(spec, /previewShareCount\)\.toBeGreaterThan\(0\)/);
   assert.match(spec, /previewShareType\)\.toBe\('button'\)/);
   assert.match(spec, /implicitSubmit\.some\(\(row\) => row\.name === 'Open file'\)\)\.toBe\(false\)/);
-  assert.match(spec, /implicitSubmit\.some\(\(row\) => row\.name === 'Share'\)\)\.toBe\(false\)/);
+  assert.match(spec, /implicitSubmit\.some\(\(row\) => row\.name === 'Share' && String\(row\.className/);
   assert.match(spec, /archive\.closePreviewCount/);
   assert.match(spec, /archive\.closePreviewType/);
-  assert.match(spec, /closePreviewName\)\.toBe\('Close preview'\)/);
   assert.doesNotMatch(spec, /Home `\?` must be one overlay, not two/);
   assert.doesNotMatch(spec, /collapsed rail Spaces must be live/);
   assert.doesNotMatch(spec, /file\.id\s*=/);

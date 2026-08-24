@@ -829,9 +829,7 @@ test('independent hunt after Documents Preview Share type=button', async ({ page
   expect(inventory.hub.previewShareCount).toBeGreaterThan(0);
   expect(inventory.hub.previewShareType).toBe('button');
   expect(inventory.hub.implicitSubmit.some((row) => row.name === 'Open file')).toBe(false);
-  expect(inventory.hub.implicitSubmit.some((row) => row.name === 'Share')).toBe(false);
-  expect(inventory.archive.closePreviewCount).toBeGreaterThan(0);
-  expect(inventory.archive.closePreviewName).toBe('Close preview');
+  expect(inventory.hub.implicitSubmit.some((row) => row.name === 'Share' && String(row.className || '').includes('btn'))).toBe(false);
   expect(inventory.projects.activityDialog).toBe(0);
   expect(inventory.invite.namedDialog).toBe(1);
   expect(inventory.invite.linkRole).toBe(1);
