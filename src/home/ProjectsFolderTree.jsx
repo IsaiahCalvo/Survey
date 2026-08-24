@@ -911,6 +911,7 @@ export default function ProjectsFolderTree({
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'nowrap', height: 22, overflow: 'hidden' }}>
               <button
+                type="button"
                 data-testid="project-select-toggle"
                 onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
                 style={miniSelectButtonStyle()}
