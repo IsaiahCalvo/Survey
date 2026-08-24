@@ -152,7 +152,7 @@ test('390 + empty + guest + tabs + editor break/edge for Rename Cancel/Save type
   await expectTypedNamed(renameSave(page), 'Save');
   await page.keyboard.press('Escape');
   await expect(renameDialog(page)).toHaveCount(0, { timeout: 8_000 });
-  await expect(page.getByText(OWNER).first()).toBeVisible();
+  await expect(page.locator('.mobile-doc-card').filter({ hasText: OWNER }).first()).toBeVisible();
   expect(await page.getByRole('button', { name: 'Restore', exact: true }).count()).toBe(0);
   expect(await page.getByRole('button', { name: 'Delete forever', exact: true }).count()).toBe(0);
 
