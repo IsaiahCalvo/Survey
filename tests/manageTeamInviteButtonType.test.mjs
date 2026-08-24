@@ -149,7 +149,8 @@ test('live spec covers Manage Team Invite type intended + break + edge; skip lef
   assert.match(spec, /390/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /position: \{ x: 8, y: 8 \}/);
-  assert.match(spec, /name: 'Manage team', exact: true \}\)[\s\S]{0,80}\.click\(/);
+  assert.match(spec, /desktopManageTeam\(page\)\.click\(\)/);
+  assert.match(spec, /mobileTeam\.click\(\)/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
