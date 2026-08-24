@@ -491,6 +491,8 @@ test('hunt after Confirm Cancel/Confirm type looks past Rename Cancel/Save type 
   assert.match(spec, /createProject\.closeNamed/);
   assert.match(spec, /Create project/);
   assert.match(spec, /Two Category Template/);
+  assert.match(spec, /workflowE2E=1/);
+  assert.match(spec, /name: 'New project'[^\n]*\.click\(/);
   assert.match(spec, /name: 'Style'/);
   assert.match(spec, /name: 'Shapes'/);
   assert.match(spec, /#chrome-sub-toolbar-host/);
@@ -760,7 +762,6 @@ test('hunt after Confirm Cancel/Confirm type looks past Rename Cancel/Save type 
   assert.doesNotMatch(spec, /name: 'Previous match \(Shift\+Enter\)'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /name: 'Next match \(Enter\)'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /name: 'Add files'[^\n]*\.click\(/);
-  assert.doesNotMatch(spec, /name: 'New project'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /name: 'Edit'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /data-manage-team-edit[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /dragTo\(|manualDrag|dispatchEvent\(new MouseEvent\('drag/);

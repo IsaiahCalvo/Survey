@@ -94,6 +94,7 @@ const HUB = '/?hubPreview=1';
 const HUB_ARCHIVE = '/?hubPreview=1&tab=archive';
 const HUB_TEMPLATES = '/?hubPreview=1&tab=templates';
 const HUB_PROJECTS = '/?hubPreview=1&tab=projects';
+const HUB_PROJECTS_WORKFLOW = '/?hubPreview=1&tab=projects&workflowE2E=1';
 const OWNER = 'SE-011 Security Shop Drawings.pdf';
 const TEMPLATE = 'Security Walk-Through';
 const TOWER = 'Tower 5 — Security';
@@ -304,7 +305,7 @@ async function armRectangle(page) {
 }
 
 test('independent hunt after Confirm Cancel / Confirm type', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const inventory = {
     editor: {},
     overlay: {},
@@ -879,36 +880,6 @@ test('independent hunt after Confirm Cancel / Confirm type', async ({ page }) =>
     await expect(shareDialog).toHaveCount(0);
     inventory.share.afterEscape = await permission.count();
 
-    await page.locator('.projects-desktop-create-button').click();
-    const createProjectDialog = page.getByRole('dialog', { name: 'Create project', exact: true });
-    await expect(createProjectDialog).toBeVisible({ timeout: 8_000 });
-    inventory.createProject.namedDialog = await createProjectDialog.count();
-    const createClose = createProjectDialog.locator('button[title="Close"]');
-    inventory.createProject.closeCount = await createClose.count();
-    inventory.createProject.closeType = inventory.createProject.closeCount
-      ? await createClose.first().getAttribute('type')
-      : null;
-    inventory.createProject.closeTitle = inventory.createProject.closeCount
-      ? await createClose.first().getAttribute('title')
-      : null;
-    inventory.createProject.closeLabel = inventory.createProject.closeCount
-      ? await createClose.first().getAttribute('aria-label')
-      : null;
-    inventory.createProject.closeAccname = inventory.createProject.closeCount
-      ? await createClose.first().evaluate((node) => {
-        const labelled = node.getAttribute('aria-label')
-          || node.getAttribute('title')
-          || (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
-        return labelled || '';
-      })
-      : null;
-    inventory.createProject.closeNamed = await createProjectDialog.getByRole('button', { name: 'Close', exact: true }).count();
-    inventory.createProject.createCount = await createProjectDialog.getByRole('button', { name: 'Create project', exact: true }).count();
-    inventory.createProject.cancelCount = await createProjectDialog.getByRole('button', { name: 'Cancel', exact: true }).count();
-    await createProjectDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(createProjectDialog).toHaveCount(0, { timeout: 8_000 });
-    inventory.createProject.afterCancel = await createProjectDialog.count();
-
     const desktopSelect = page.locator('.projects-desktop-layout [data-testid="project-select-toggle"]');
     inventory.projects.desktopSelectCount = await desktopSelect.count();
     inventory.projects.desktopSelectType = inventory.projects.desktopSelectCount
@@ -960,6 +931,38 @@ test('independent hunt after Confirm Cancel / Confirm type', async ({ page }) =>
     inventory.novel.inviteOpen = novelNames(inviteControls);
     await page.keyboard.press('Escape');
     await expect(invite).toHaveCount(0);
+
+    await openPage(page, { url: HUB_PROJECTS_WORKFLOW });
+    await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'New project', exact: true }).first().click();
+    const createProjectDialog = page.getByRole('dialog', { name: 'Create project', exact: true });
+    await expect(createProjectDialog).toBeVisible({ timeout: 8_000 });
+    inventory.createProject.namedDialog = await createProjectDialog.count();
+    const createClose = createProjectDialog.locator('button[title="Close"]');
+    inventory.createProject.closeCount = await createClose.count();
+    inventory.createProject.closeType = inventory.createProject.closeCount
+      ? await createClose.first().getAttribute('type')
+      : null;
+    inventory.createProject.closeTitle = inventory.createProject.closeCount
+      ? await createClose.first().getAttribute('title')
+      : null;
+    inventory.createProject.closeLabel = inventory.createProject.closeCount
+      ? await createClose.first().getAttribute('aria-label')
+      : null;
+    inventory.createProject.closeAccname = inventory.createProject.closeCount
+      ? await createClose.first().evaluate((node) => {
+        const labelled = node.getAttribute('aria-label')
+          || node.getAttribute('title')
+          || (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
+        return labelled || '';
+      })
+      : null;
+    inventory.createProject.closeNamed = await createProjectDialog.getByRole('button', { name: 'Close', exact: true }).count();
+    inventory.createProject.createCount = await createProjectDialog.getByRole('button', { name: 'Create project', exact: true }).count();
+    inventory.createProject.cancelCount = await createProjectDialog.getByRole('button', { name: 'Cancel', exact: true }).count();
+    await createProjectDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(createProjectDialog).toHaveCount(0, { timeout: 8_000 });
+    inventory.createProject.afterCancel = await createProjectDialog.count();
 
     await openPage(page, { width: 390, height: 844, url: HUB_PROJECTS });
     await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
