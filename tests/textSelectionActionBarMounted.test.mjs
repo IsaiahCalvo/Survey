@@ -80,8 +80,13 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
     assert.equal(document.querySelector('button[aria-label="Underline"]').getAttribute('aria-pressed'), 'false');
     assert.equal(document.querySelector('button[aria-label="Strikeout"]').getAttribute('aria-pressed'), 'true');
     assert.equal(document.querySelectorAll('[data-text-selection-action-icon="true"]').length, 5);
-    assert.ok(document.querySelector('button[aria-label="Underline"] svg[data-icon-name="underline"]'));
-    assert.ok(document.querySelector('button[aria-label="Strikeout"] svg[data-icon-name="strikeout"]'));
+    assert.equal(document.querySelector('button[aria-label="Underline"] [data-text-format-glyph]').textContent, 'U');
+    assert.equal(document.querySelector('button[aria-label="Strikeout"] [data-text-format-glyph]').textContent, 'S');
+    assert.equal(document.querySelector('button[aria-label="Highlight"]').style.background, 'transparent');
+    assert.equal(document.querySelector('button[aria-label="Highlight"]').style.color, 'rgb(216, 168, 78)');
+    assert.equal(document.querySelector('button[aria-label="Underline"]').style.background, 'transparent');
+    assert.equal(document.querySelector('button[aria-label="Underline"]').style.width, '24px');
+    assert.equal(document.querySelector('button[aria-label="Underline"]').style.height, '24px');
 
     const copyButton = document.querySelector('button[aria-label="Copy"]');
     const buttonPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });
