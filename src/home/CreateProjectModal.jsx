@@ -65,7 +65,7 @@ export default function CreateProjectModal({
             <h2 style={{ margin: 0, fontSize: 18 }}>Create project</h2>
             <p style={{ margin: '6px 0 0', color: COLORS.muted, fontSize: 12 }}>Add PDFs now or start with an empty project.</p>
           </div>
-          <button type="button" title="Close" disabled={busy} onClick={onCancel} style={closeButtonStyle({ borderColor: COLORS.rule, color: COLORS.muted })}>×</button>
+          <button type="button" title="Close" aria-label="Close" disabled={busy} onClick={onCancel} style={closeButtonStyle({ borderColor: COLORS.rule, color: COLORS.muted })}>×</button>
         </header>
 
         <div style={{ display: 'grid', gap: 16, padding: 18 }}>
