@@ -427,7 +427,7 @@ test('official leftover files besides isolated 8448 match live source after Rena
     renameSlice,
     /<button onClick=\{onClose\} title="Close" style=\{closeButtonStyle/,
   );
-  assert.match(renameSlice, /title="Rename"/);
+  assert.match(renameSlice, /title = 'Rename'/);
 
   assert.match(read('src/PDFSidebar.jsx'), /openPanel\(tab\.id\)/);
   assert.match(read('src/AppShell.jsx'), /document\.addEventListener\('pointerdown', onDown, true\)/);
