@@ -132,9 +132,7 @@ test('desktop + empty + guest + docs + editor break/edge for Projects 390 Select
   await openPage(page, { width: 390, height: 844, url: HUB_TEMPLATES });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await projects390Select(page).count()).toBe(0);
-  await expect(page.locator('.ed-scope p.micro').filter({ hasText: /^Module$/ })
-    .locator('..')
-    .getByRole('button', { name: 'Select', exact: true })).toHaveAttribute('type', 'button');
+  await expect(page.locator('.templates-mobile-select-row button.mobile-header-select-button')).toHaveAttribute('type', 'button');
 
   await openPage(page, { url: LINK_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
