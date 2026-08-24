@@ -828,7 +828,7 @@ export default function ProjectsFolderTree({
     <div className="projects-mobile-action-row two">
       <button type="button" className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
       {canManageProjectTeam(open) && (
-        <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+        <button type="button" className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
       )}
     </div>
   ) : null;
@@ -1076,7 +1076,7 @@ export default function ProjectsFolderTree({
                       added to this project's document list. */}
                   <button type="button" className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
                   {canManageProjectTeam(open) && (
-                    <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
+                    <button type="button" className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
                   )}
                 </div>
               </div>
@@ -1315,7 +1315,7 @@ export default function ProjectsFolderTree({
                   </div>
                   <button type="button" className="btn" onClick={() => addFiles(mobileDrillProject)}><Icon name="upload" size={12} />Add files</button>
                   {canManageProjectTeam(mobileDrillProject) && (
-                    <button className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
+                    <button type="button" className="btn" aria-label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)}><Icon name="users" size={12} />Team</button>
                   )}
                 </div>
                 <div className="projects-mobile-file-list">
@@ -1811,7 +1811,7 @@ export default function ProjectsFolderTree({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
               <button type="button" className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
               {canManageProjectTeam(open) && (
-                <button className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
+                <button type="button" className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
               )}
             </div>
 
