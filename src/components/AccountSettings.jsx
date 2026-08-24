@@ -482,18 +482,21 @@ export const AccountSettings = ({ isOpen, onClose }) => {
           {/* Sidebar */}
           <div className="account-settings-sidebar">
             <button
+              type="button"
               onClick={() => setActiveTab('general')}
               className={`account-sidebar-btn ${activeTab === 'general' ? 'active' : ''}`}
             >
               General
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('connected-services')}
               className={`account-sidebar-btn ${activeTab === 'connected-services' ? 'active' : ''}`}
             >
               Connected services
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('subscription')}
               className={`account-sidebar-btn ${activeTab === 'subscription' ? 'active' : ''}`}
             >
