@@ -473,7 +473,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="account-settings-header">
           <h2 id="account-settings-title">Settings</h2>
-          <button className="account-settings-close" onClick={onClose} aria-label="Close">
+          <button type="button" className="account-settings-close" onClick={onClose} aria-label="Close">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M3 3l8 8M11 3l-8 8" /></svg>
           </button>
         </div>
