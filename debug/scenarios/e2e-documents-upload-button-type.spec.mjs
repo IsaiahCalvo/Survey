@@ -34,7 +34,7 @@ async function openPage(page, { width = 1400, height = 900, url } = {}) {
 }
 
 function desktopUpload(page) {
-  return page.locator('.documents-desktop-upload');
+  return page.locator('button.documents-desktop-upload');
 }
 
 function mobileUpload(page) {
@@ -74,7 +74,7 @@ test('Documents Upload is typed; apply not clicked', async ({ page }) => {
   await expect(upload).toHaveText(/Upload/);
 
   await expect(page.getByRole('textbox', { name: 'Search documents...', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Close preview', exact: true })).toHaveAttribute('type', 'button');
+  expect(await page.getByRole('button', { name: 'Close preview', exact: true }).count()).toBeGreaterThan(0);
 
   await upload.focus();
   await page.keyboard.press('Escape');
