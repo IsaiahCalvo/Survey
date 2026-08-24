@@ -34,7 +34,7 @@ async function openPage(page, { width = 1400, height = 900, url } = {}) {
 }
 
 function desktopClosePreview(page) {
-  return page.locator('.documents-desktop-card').getByRole('button', { name: 'Close preview', exact: true });
+  return page.locator('.documents-desktop-card button[aria-label="Close preview"]');
 }
 
 function namedClosePreview(page) {
