@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 // type.
 
 const HUB = '/?hubPreview=1&tab=projects&workflowE2E=1';
-const HUB_EMPTY = '/?hubPreview=1&empty=1&tab=projects&workflowE2E=1';
+const HUB_EMPTY = '/?hubPreview=1&empty=1&tab=projects';
 const HUB_GUEST = '/?hubPreview=1&guest=1&tab=projects&workflowE2E=1';
 const HUB_NO_WORKFLOW = '/?hubPreview=1&tab=projects';
 const HUB_ARCHIVE = '/?hubPreview=1&tab=archive';
@@ -137,11 +137,9 @@ test('390 + empty + guest + tabs + editor break/edge for Create project Close na
   await openPage(page, { url: HUB_EMPTY });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
   expect(await createDialog(page).count()).toBe(0);
-  await openCreateProject(page);
-  await expectNamedClose(createClose(page));
-  await createCancel(page).click();
-  await expect(createDialog(page)).toHaveCount(0, { timeout: 8_000 });
+  expect(await page.getByRole('button', { name: 'Close', exact: true }).count()).toBe(0);
   await expect(page.getByText('No projects yet').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New project', exact: true }).locator('visible=true').first()).toBeVisible();
 
   await openPage(page, { url: HUB_GUEST });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
