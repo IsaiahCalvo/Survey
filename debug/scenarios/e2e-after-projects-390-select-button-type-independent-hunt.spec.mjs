@@ -717,7 +717,8 @@ test('independent hunt after Projects 390 Select type=button', async ({ page }) 
 
     await openPage(page, { width: 390, height: 844, url: HUB_PROJECTS });
     await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(TOWER).first()).toBeVisible({ timeout: 15_000 });
+    const mobileTowerRow = page.locator('.projects-mobile-layout [data-project-id]').filter({ hasText: TOWER }).first();
+    await expect(mobileTowerRow).toBeVisible({ timeout: 15_000 });
     const projects390Select = page.locator('.projects-mobile-select-row button.mobile-header-select-button').first();
     inventory.projects.select390Count = await projects390Select.count();
     inventory.projects.select390Type = inventory.projects.select390Count

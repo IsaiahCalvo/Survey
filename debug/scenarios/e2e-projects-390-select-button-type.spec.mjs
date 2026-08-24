@@ -63,7 +63,8 @@ test('Projects 390 Select is typed; apply not clicked', async ({ page }) => {
   await openPage(page, { width: 390, height: 844, url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(TOWER).first()).toBeVisible({ timeout: 15_000 });
+  const mobileTower = page.locator('.projects-mobile-layout [data-project-id]').filter({ hasText: TOWER }).first();
+  await expect(mobileTower).toBeVisible({ timeout: 15_000 });
 
   const select = projects390Select(page);
   await expect(select).toBeVisible({ timeout: 8_000 });
@@ -71,10 +72,10 @@ test('Projects 390 Select is typed; apply not clicked', async ({ page }) => {
   await expect(select).toHaveText('Select');
   await expect(namedProjects390Select(page)).toBeVisible();
 
-  await expect(page.getByText(TOWER).first()).toBeVisible();
+  await expect(mobileTower).toBeVisible();
   await select.focus();
   await page.keyboard.press('Escape');
-  await expect(page.getByText(TOWER).first()).toBeVisible();
+  await expect(mobileTower).toBeVisible();
   await expect(select).toBeVisible();
   await expect(select).toHaveAttribute('type', 'button');
   await expect(select).toHaveText('Select');
@@ -104,7 +105,7 @@ test('desktop + empty + guest + docs + editor break/edge for Projects 390 Select
 
   await openPage(page, { width: 390, height: 844, url: HUB_EMPTY });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('No projects yet').first()).toBeVisible();
+  await expect(page.locator('.projects-mobile-layout').getByText('No projects yet').first()).toBeVisible();
   await expect(projects390Select(page)).toHaveAttribute('type', 'button');
   await expect(projects390Select(page)).toHaveText('Select');
 
