@@ -108,6 +108,8 @@ test('live spec covers Account Settings Close type intended + break + edge; skip
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /hubPreview=1&empty=1/);
   assert.match(spec, /hubPreview=1&guest=1/);
+  assert.match(spec, /name: 'Sign in'/);
+  assert.match(spec, /Open account menu' \}\)\.count\(\)\)\.toBe\(0\)/);
   assert.match(spec, /hubPreview=1&tab=documents/);
   assert.match(spec, /hubPreview=1&tab=archive/);
   assert.match(spec, /hubPreview=1&tab=templates/);

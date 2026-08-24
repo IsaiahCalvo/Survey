@@ -1,0 +1,68 @@
+# Account Settings Close type=button — 2026-08-24
+
+**Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
+**Tip before this pass:** `a3994081` docs: record Projects desktop file Select type live 3/3 (9.3s).  
+**Product:** `d6edd366` Account Settings Close `type="button"`  
+**Prove:** `a3e63a58` intended + break + edge + this-pass hunt; `ef8e34c2` guest stay unhosted after auth Close  
+**Does not mark the audit goal complete.** Leftover-18 stay parked.
+
+Last hunt left Projects desktop file Select typed. Did **not** take leftover-18 or exhausted Select-type / nameless-menu slices. Looked beyond Projects desktop file Select type / Projects 390 file Select type / Projects desktop Select type / Projects 390 Select type / Documents Select type / Archive Select type / Archive Close preview type / Documents Preview Share type / Documents Preview Open file type / Documents Close preview type / Documents Upload type / Manage team type / Category drag-title type / Entity Select type / Template-list Select type / Category Select type / Module Select type / New module name / New module type / Module count chrome / Category drag titles name / Edit color type / New entity type / New category type / Entity name / Projects Tap to rename / New template type / Templates Expand / Templates Click to rename / Drag to rearrange / Click to rename. Different axis:
+
+1. Official leftover files vs live source after Projects desktop file Select `type="button"` (NOT isolated 8448). Overlay-mount / spacesRail / popover / hub nav / Sync / Settings dialog name / Confirm / CreateCategory / KeyboardShortcuts / Access / Edit modules labelledby / Manage Team / Selection Mode / Eraser Type / Documents More / Archive Show and sort / Templates More / Projects More / Documents mobile Sort / Projects file-row More / Spaces export / Survey export / Create bookmark group / Add bookmarks to group / Add bookmark / Search clear / Color picker / Width picker / Style picker / Opacity slider / Share Permission / Invite User role / Fill / Border type / Search Previous-Next type / Share-open hub chrome / Invite-open Edit / Click to rename / Drag to rearrange / Templates Click to rename / Templates Expand / New template / Projects Tap to rename / Entity name / New category / New entity / Edit color / Category drag titles name / Module count chrome / New module type / New module name / Module Select type / Category Select type / Template-list Select type / Entity Select type / Category drag-title type / Manage team type / Documents Upload type / Documents Close preview type / Documents Preview Open file type / Documents Preview Share type / Archive Close preview type / Archive Select type / Documents Select type / Projects 390 Select type / Projects desktop Select type / Projects 390 file Select type / Projects desktop file Select type already match live compile-visible code. Isolated **8448** (`partialEraserComplexity` `8_448 * 1024 * 1024`) still standing — not loosened. Official `annotationContextMenuitem` leftover official vs spec Enter is **not** stale vs live source (`useAnnotationContextMenu.jsx` already has `e.key === 'Enter' || e.key === ' '`; spec-only leftover, not taken).
+2. Compile-visible chrome that is NOT leftover-18 and NOT the exhausted Select-type family.
+3. Live hub on `/?hubPreview=1` after Open account menu → Settings. Settings Close had a visible name (`Close`) but omitted `type="button"` (live `type` **null** before the type). Did **not** click Close apply. Did **not** click Edit profile / Start trial / Connect Microsoft / Manage billing / Delete account apply. Guest 390 drill not used (auth modal / A-01 adjacent). Select apply / All / None / Duplicate / Move/Copy / Upload apply / Open file apply / Share apply / Close preview apply not taken.
+
+Unique leftover: Account Settings Close omitted `type="button"`. Same a11y *type* class as Invite-open Edit / Documents Close preview / Archive Close preview, new host (`AccountSettings` Close). Distinct from leftover-18 / X-01 / Settings dialog name / Activity dialog name / Manage Team role picker / Documents Share Access apply / Style-Width dismiss / remapped opacity apply / C-01 swatch apply / Font color / V-08 Next-Previous apply / Search clear name / Search Previous-Next type / Fill / Border type / Invite User role name / Share Permission name / Opacity slider name / Style picker name / Width picker name / Color picker name / Share-open hub chrome type / Invite-open Edit type / Click to rename name / Drag to rearrange name / Templates Click to rename name / Templates Expand name / New template type / Projects Tap to rename name / Entity name name / New category type / New entity type / Edit color type / Category drag titles name / Module count chrome name / New module type / New module name / Module Select type / Category Select type / Template-list Select type / Entity Select type / Category drag-title type / Manage team type / Documents Upload type / Documents Close preview type / Documents Preview Open file type / Documents Preview Share type / Archive Close preview type / Archive Select type / Documents Select type / Projects 390 Select type / Projects desktop Select type / Projects 390 file Select type / Projects desktop file Select type / nameless-menu hosts already proved / unnamed-dialog family already proved / remapped-after-CW / dismiss / rail-toggle / dest-XYZ.
+
+**Product:** min-viable-diff — `AccountSettings` Close `type="button"`. Isolated 8448 standing. Cap **8448** / 75/250 not loosened. No high-risk file edit.
+
+Did **not** invent a lease, plus-alias, or `file.id`. Did **not** write another X-01 parking note. Did **not** pad FEATURE-MATRIX. Did **not** write a 103-ID refresh. Did **not** name Activity. Did **not** apply Select / New module / New category / New entity / Edit color / Entity name / Templates rename / Share / Delete / Drag to rearrange / Click to rename / Edit / Edit profile / Send / Copy / Add files / New project / New template apply / Upload / Pin / Lock / Delete / Previous / Next apply / Create group apply / Add bookmarks apply / Create bookmark apply / EXPORT / Open linked / Update existing / Export Excel / Sync / CSV / PDF Pages apply / color swatches / Width presets apply / Style options apply / Opacity apply / Fill / Border / hex / Transparent. Did **not** apply module edits. Did **not** open Edit-modules. Did **not** drag-apply category reorder. Did **not** click Manage team apply. Did **not** click Upload apply / pick a file. Did **not** click Close preview apply. Did **not** click Open file / Share apply. Did **not** apply archive restore/delete. Did **not** click Settings Close apply. Hunt still opened Manage Team / Invite / Documents More / Settings to inventory next leftovers.
+
+## Hunt (why this leftover)
+
+| Candidate | Verdict |
+|---|---|
+| Official leftover files after Projects desktop file Select type | **No stale fail vs live source** besides isolated 8448. Official `annotationContextMenuitem` leftover official vs spec Enter is spec-only — source already has Enter. |
+| X-01 / leftover-18 hosts | **Parked.** Process env absent; no coordinator `scripts/test-account-lease.mjs` token; no real `file.id`. |
+| PDF AcroForm `name` / `agree` | Forms / X-05 persist stay leftover-18. Idle editor unnamed text+checkbox **2**. |
+| PromptModal lock / NewColumnsModal | leftover-18 / X-01 / X-06. Not taken. |
+| Manage Team Activity dialog name | **Not taken.** A-06 roster adjacent. Do not invent a roster host. |
+| Manage Team role picker | hubPreview creator-only seed — `data-kal31-role-trigger` **0**. Not taken. |
+| Pages unnamed cards | Unnamed `div`s (`data-page-number`, no role). Tab-as-switcher / context — parked. |
+| Exhausted nameless-menu / unnamed-dialog / Select-type families | Do not replay. Documents More menuitem type-null (Rename / Share / Lock document in the open named menu) stays behind exhausted Documents More — not taken. Settings dialog name stays dedicated. |
+| Select-gated All / None / Duplicate / Move/Copy / Restore / Delete forever | Stay behind Select apply. Not taken. |
+| Edit-modules New module type | Dialog already named. Type-null host not opened. |
+| Guest 390 drill | Auth modal / A-01 adjacent. Not used as host. Guest has Sign in, not Open account menu. |
+| **Account Settings Close type** | **This pass.** Before fix live `type` **null**. After fix: Settings Close `type="button"`; Escape dismisses Settings; name unchanged. |
+
+## Live-proved
+
+Playwright `e2e-account-settings-close-button-type.spec.mjs` **2 / 2** + hunt `e2e-after-account-settings-close-button-type-independent-hunt.spec.mjs` **1 / 1**. Pair **3 / 3 (9.7s)** on Playwright Vite `http://127.0.0.1:5308`. Focused Node `accountSettingsCloseButtonType` + hunt + leftover18 **17 / 17**. Live spec opens Settings via account menu only; does not click Close apply. Live spec does not click Edit profile / Start trial / Connect Microsoft / Manage billing / Delete account apply. Live spec does not click Upload / Open file / Share / Close preview apply. Live spec does not apply archive restore/delete. Live spec does not guest-drill.
+
+| Slice | Intended / break / edge |
+|---|---|
+| Intended desktop | `/?hubPreview=1` at desktop. Open account menu → Settings hosts named Close typed (`type="button"`). General / Profile information visible. Focus + Escape dismisses Settings. Start trial / Connect Microsoft **0**. |
+| Break | 390 Settings Close typed then Escape. Empty Settings Close typed then Escape. Guest after auth Close: Sign in visible; Open account menu **0**; Settings Close **0**. Documents / Archive / Templates / Projects idle Settings Close **0**. Hidden tools **0**. `file.id` null. Isolated 8448 standing. |
+| Edge | Guest stay unhosted (not captcha / A-01). Search fixture idle **0**. Style / Width / Color / Opacity idle **0**. Version history **0**. viewBox **`0 0 612 792`**. Editor host does not keep-mount Settings Close. |
+| Lease | Process auto-login / service-role **absent**. No lease token. `file.id` not invented. |
+
+No high-risk file edit. Canvas sizing / `zoomGeneration` / SVG viewBox / Fabric `fontFamily` / CORS `*` untouched. Official `npm test` not required this pass. Isolated 8448 still standing. Cap **8448** / 75/250 not loosened. `graphify` CLI absent.
+
+## Leftover-18
+
+Still **18** fail-closed local + **18** host-gated. Next live host remains **X-01** (coordinator lease via `scripts/test-account-lease.mjs` + real saved `file.id`). Do **not** re-claim unblocked GAP = 0.
+
+Hunt after the type: idle editor unnamed text+checkbox remain Forms / X-05; Activity card stays unnamed (A-06 roster adjacent — not taken); Manage Team role trigger stays **0** on creator-only seed; Highlighter caret stays compile-hidden; Counter caret stays **0** on a fresh `?testPdf=` (no series); official spec Enter stays spec-only; Settings Close `type` **button**; Projects desktop file Select `type` **button**; Projects 390 file Select `type` **button**; Projects desktop Select `type` **button**; Projects 390 Select `type` **button**; Documents Select `type` **button**; Archive Select `type` **button**; Archive Close preview `type` **button** after row select; Documents Share / Open file / Close preview `type` **button**; History Version history trigger **0** on this path; Style / Width / Color / Opacity / Share Permission / Invite User role / Fill / Border / Search Previous / Next / Share-open Add files / New project / Invite-open Edit / Click to rename / Drag to rearrange / Templates Click to rename / Templates Expand / New template / Projects Tap to rename / Entity name / New category / New entity / Edit color / Category drag titles / Module count chrome / New module type / New module name / Module Select / Category Select / Template-list Select / Entity Select / Category drag-title / Manage team / Upload still named/typed; idle novel names **[]**; Color-open novel names are swatch hex / Hex color / Transparent (C-01 apply not taken); Search-open Previous / Next `type` **button**; Share-open Click to rename named; Share-open Drag to rearrange named; Share-open novel names left Send viewer invite (Send apply parked); Manage team `type` **button**; Upload `type` **button**; Close preview `type` **button**; Open file `type` **button**; Templates-open novel names **[]**; Invite-open Edit `type` **button**; Settings-open Close `type` **button**. Settings-open novel names left Delete account (leftover-18 / account-delete — not taken). Pages unnamed cards stay tab-as-switcher (parked). Documents More menuitem type-null stay behind exhausted Documents More (not taken). Next unique leftover that is **not** leftover-18: Settings sidebar tabs (General / Connected services / Subscription) still omit `type="button"` (visible names already present; implicit submit). Select-gated All / None / Duplicate / Move/Copy / Restore / Delete forever type-null stay behind Select apply. Edit-modules New module type-null stays parked (do not open). Guest 390 drill can hit auth modal — do not invent leftover-18 hosts. Goal stays open.
+
+## Files
+
+- `src/components/AccountSettings.jsx`
+- `debug/scenarios/e2e-account-settings-close-button-type.spec.mjs`
+- `debug/scenarios/e2e-after-account-settings-close-button-type-independent-hunt.spec.mjs`
+- `tests/accountSettingsCloseButtonType.test.mjs`
+- `tests/afterAccountSettingsCloseButtonTypeIndependentHunt.test.mjs`
+- `.planning/logic-audit-2026-08-20/E2E-STATUS.md` (this-pass only)
+- `.planning/logic-audit-2026-08-20/E2E-UNLISTED.md` (this-pass only)
+- this receipt
+
+Goal stays open.
