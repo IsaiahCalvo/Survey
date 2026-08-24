@@ -779,6 +779,7 @@ export default function ProjectsFolderTree({
   const mobileFileSelectRow = mobileDrillProject ? (
     <div className="projects-mobile-select-row mobile-header-select-row">
       <button
+        type="button"
         className="mobile-header-select-button"
         onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
       >
