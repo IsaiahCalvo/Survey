@@ -309,7 +309,7 @@ async function armRectangle(page) {
   await expect(rectangle).toHaveClass(/btn-active|is-active/);
 }
 
-test('independent hunt after Manage Team Invite type', async ({ page }) => {
+test('independent hunt after Manage Team More type', async ({ page }) => {
   test.setTimeout(240_000);
   const inventory = {
     editor: {},
