@@ -262,6 +262,7 @@ export default function ArchiveScreen({
       <span className="archive-item-count"><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
       <span className="archive-select-row mobile-header-select-row">
         <button
+          type="button"
           className="mobile-header-select-button"
           onClick={() => {
             const next = !selectMode;
