@@ -5729,7 +5729,8 @@ const SVGAnnotationLayer = memo(({
               // surface — it must show the corner + edge + rotate handles
               // itself, so drop the mask in that case.
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
-              hideBoundingBox={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup}
+              hideBoundingBox={selectionObj?.data?.type === 'text-markup'
+                || (isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup)}
               padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}

@@ -9,3 +9,7 @@ test('Text Select leaves annotation hit targets inert so native PDF text receive
   assert.doesNotMatch(source, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
   assert.match(source, /activeTool !== 'text-select'\) \? 'auto' : 'none'/);
 });
+
+test('selected text markup shows range handles without an outer bounding box', () => {
+  assert.match(source, /hideBoundingBox=\{selectionObj\?\.data\?\.type === 'text-markup'/);
+});
