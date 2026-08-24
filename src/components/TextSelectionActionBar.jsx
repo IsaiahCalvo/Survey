@@ -6,10 +6,31 @@ import squiggleIconSvg from '../assets/text-markup-squiggle.svg';
 const ACTIONS = [
   { id: 'copy', label: 'Copy', icon: 'copy' },
   { id: 'highlight', label: 'Highlight', iconAsset: highlightIconSvg },
-  { id: 'underline', label: 'Underline', icon: 'underline' },
+  { id: 'underline', label: 'Underline', textGlyph: 'U' },
   { id: 'squiggly', label: 'Squiggle', iconAsset: squiggleIconSvg },
-  { id: 'strikeout', label: 'Strikeout', icon: 'strikeout' },
+  { id: 'strikeout', label: 'Strikeout', textGlyph: 'S' },
 ];
+
+function TextFormatGlyph({ action }) {
+  const underline = action.id === 'underline';
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        color: 'currentColor',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: 15,
+        fontWeight: 600,
+        lineHeight: 1,
+        textDecoration: underline ? 'underline' : 'line-through',
+        textDecorationThickness: '1.5px',
+        textUnderlineOffset: underline ? '2px' : undefined,
+      }}
+    >
+      {action.textGlyph}
+    </span>
+  );
+}
 
 export default function TextSelectionActionBar({ selection, color, opacity, overlapMode, colorPickerOpen = false, onAction, onColorClick, onOverlapModeChange }) {
   if (!selection?.pages?.length || !selection?.anchor) return null;
@@ -35,7 +56,11 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
         border: '1px solid #3a4252', borderRadius: 7, background: '#181b20',
         boxShadow: '0 8px 24px rgba(0,0,0,.45)', color: '#e8e2d4',
       }}
-      onPointerDown={(event) => event.preventDefault()}
+      onPointerDown={(event) => {
+        // Keep the PDF text range active when action buttons are pressed, but
+        // let form controls receive a real pointer press so their menus open.
+        if (!event.target.closest('select')) event.preventDefault();
+      }}
     >
       <button type="button" aria-label="Markup color" onClick={onColorClick} style={{ width: 26, height: 26, border: 0, borderRadius: 4, background: 'transparent', padding: 5 }}>
         <span style={{ display: 'block', width: 16, height: 16, borderRadius: 3, background: color, opacity, border: '1px solid rgba(255,255,255,.45)' }} />
@@ -60,6 +85,8 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
                 display: 'block',
               }}
             />
+          ) : action.textGlyph ? (
+            <TextFormatGlyph action={action} />
           ) : <Icon name={action.icon} size={15} />}
         </button>
       ))}

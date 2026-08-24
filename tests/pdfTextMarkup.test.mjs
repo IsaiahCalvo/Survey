@@ -216,6 +216,26 @@ test('stored text model expands across lines and keeps selected text in sync', (
   assert.deepEqual(getTextMarkupRangeHandlePositions(expanded).mr, { x: 80, y: 35 });
 });
 
+test('resizing one stacked review mark leaves its siblings unchanged', () => {
+  const base = {
+    pageNumber: 1,
+    quads: [
+      { x1: 20, y1: 10, x2: 80, y2: 10, x3: 20, y3: 20, x4: 80, y4: 20 },
+      { x1: 10, y1: 30, x2: 60, y2: 30, x3: 10, y3: 40, x4: 60, y4: 40 },
+    ],
+  };
+  const selected = createTextMarkupAnnotation({ id: 'selected', markupType: 'highlight', ...base });
+  const sibling = createTextMarkupAnnotation({ id: 'sibling', markupType: 'underline', ...base });
+  const siblingBefore = structuredClone(sibling);
+
+  const resized = resizeTextMarkupHorizontalEdge(selected, 'mr', { x: 40, y: 35 }, 100, 100);
+
+  assert.notDeepEqual(resized, selected);
+  assert.deepEqual(sibling, siblingBefore);
+  assert.equal(resized.data.markupType, 'highlight');
+  assert.equal(sibling.data.markupType, 'underline');
+});
+
 test('legacy text marks without a range model cannot drift from their saved text', () => {
   const annotation = createTextMarkupAnnotation({
     id: 'legacy-range', pageNumber: 1, markupType: 'highlight', selectedText: 'saved words',
