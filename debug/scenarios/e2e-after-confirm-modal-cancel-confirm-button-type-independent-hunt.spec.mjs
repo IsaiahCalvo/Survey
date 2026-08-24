@@ -303,7 +303,7 @@ async function armRectangle(page) {
   await expect(rectangle).toHaveClass(/btn-active|is-active/);
 }
 
-test('independent hunt after Rename Cancel / Save type', async ({ page }) => {
+test('independent hunt after Confirm Cancel / Confirm type', async ({ page }) => {
   test.setTimeout(180_000);
   const inventory = {
     editor: {},
@@ -489,6 +489,8 @@ test('independent hunt after Rename Cancel / Save type', async ({ page }) => {
     inventory.confirm.afterCancel = await confirmDialog.count();
     inventory.confirm.wallsKept = await rightRail.locator('.survey-marker-category-main-label', { hasText: /^Walls$/ }).count();
 
+    await openPage(page, { url: SURVEY_PDF });
+    await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
     await page.getByRole('button', { name: 'Survey', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: KAL436 }).click();
