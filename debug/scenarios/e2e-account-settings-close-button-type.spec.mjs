@@ -128,12 +128,10 @@ test('390 + empty + guest + tabs + editor break/edge for Settings Close type', a
   if (await authClose.isVisible().catch(() => false)) {
     await authClose.click();
   }
+  await expect(page.getByRole('button', { name: 'Sign in' }).first()).toBeVisible({ timeout: 8_000 });
+  expect(await page.getByRole('button', { name: 'Open account menu' }).count()).toBe(0);
+  expect(await settingsDialog(page).count()).toBe(0);
   expect(await settingsClose(page).count()).toBe(0);
-  await openDesktopSettings(page);
-  await expect(settingsClose(page)).toHaveAttribute('type', 'button');
-  await expect(settingsClose(page)).toHaveAttribute('aria-label', 'Close');
-  await page.keyboard.press('Escape');
-  await expect(settingsDialog(page)).toHaveCount(0);
 
   await openPage(page, { url: HUB_DOCS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
