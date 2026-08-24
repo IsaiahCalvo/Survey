@@ -872,6 +872,7 @@ export default function ProjectsFolderTree({
           </span>
         ) : (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
@@ -1020,6 +1021,7 @@ export default function ProjectsFolderTree({
                       </span>
                     ) : (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           // Toggle the portalled popup; snapshot the trigger's
@@ -1209,6 +1211,7 @@ export default function ProjectsFolderTree({
                               </span>
                             ) : (
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   // Toggle the portalled file menu, anchored to
@@ -1410,6 +1413,7 @@ export default function ProjectsFolderTree({
                               <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
                             ) : (
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const rect = e.currentTarget.getBoundingClientRect();
@@ -1690,6 +1694,7 @@ export default function ProjectsFolderTree({
                 </span>
               ) : (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -1857,6 +1862,7 @@ export default function ProjectsFolderTree({
                       </span>
                     ) : (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
