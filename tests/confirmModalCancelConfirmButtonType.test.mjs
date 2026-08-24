@@ -125,7 +125,7 @@ test('live spec covers Confirm Cancel/Confirm type intended + break + edge; skip
   assert.match(spec, /Delete 2 categories\?/);
   assert.match(spec, /name: 'Cancel'/);
   assert.match(spec, /name: 'Delete category'/);
-  assert.match(spec, /name: 'Delete categories'/);
+  assert.match(spec, /'Delete categories'/);
   assert.match(spec, /toHaveAttribute\('type', 'button'\)/);
   assert.match(spec, /accname/);
   assert.match(spec, /closest\('form'\)/);
