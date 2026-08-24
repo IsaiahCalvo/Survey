@@ -738,6 +738,7 @@ export default function ProjectsFolderTree({
   const mobileProjectActions = (
     <div className="projects-mobile-select-row mobile-header-select-row">
       <button
+        type="button"
         data-testid="project-select-toggle"
         className="mobile-header-select-button"
         onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
