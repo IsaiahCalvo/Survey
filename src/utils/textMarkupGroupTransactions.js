@@ -2,6 +2,31 @@ import { buildAnnotationHistoryAction } from './annotationLocalHistory.js';
 
 const pageObjects = (page) => (Array.isArray(page?.objects) ? page.objects : []);
 
+const textMarkupRangeFingerprint = (annotation) => {
+  if (!isTextMarkupAnnotation(annotation)) return null;
+  const quads = Array.isArray(annotation.data.quads)
+    ? annotation.data.quads.map((quad) => [
+      quad.x1, quad.y1, quad.x2, quad.y2,
+      quad.x3, quad.y3, quad.x4, quad.y4,
+    ].map((value) => Number(Number(value).toFixed(4))))
+    : [];
+  return JSON.stringify({
+    pageNumber: Number(annotation.data.pageNumber),
+    markupType: String(annotation.data.markupType || annotation.exportType || '').toLowerCase(),
+    textRange: annotation.data.textRange || null,
+    quads,
+    color: String(annotation.stroke || annotation.fill || annotation.data.color || '').toLowerCase(),
+    opacity: Number(Number(annotation.opacity ?? 1).toFixed(4)),
+    overlapMode: annotation.data.overlapMode === 'uniform' ? 'uniform' : 'layered',
+  });
+};
+
+export const isExactTextMarkupDuplicate = (existing, candidate) => {
+  const candidateFingerprint = textMarkupRangeFingerprint(candidate);
+  return candidateFingerprint != null
+    && candidateFingerprint === textMarkupRangeFingerprint(existing);
+};
+
 export const isTextMarkupAnnotation = (annotation) => (
   annotation?.data?.type === 'text-markup'
   && typeof annotation?.data?.selectionGroupId === 'string'
@@ -51,6 +76,7 @@ export function buildTextMarkupGroupCreateTransaction(annotationsByPage, annotat
     if (!Number.isFinite(pageNumber)) continue;
     const current = pageAt(nextByPage, pageNumber);
     const objects = pageObjects(current);
+    if (objects.some((existing) => isExactTextMarkupDuplicate(existing, annotation))) continue;
     nextByPage[String(pageNumber)] = {
       ...current,
       objects: [...objects, annotation],

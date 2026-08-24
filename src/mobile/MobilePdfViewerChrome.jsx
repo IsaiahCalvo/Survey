@@ -1474,7 +1474,13 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
   const openSelectModeMenu = () => {
     const rect = selectModeButtonRef.current?.getBoundingClientRect();
-    if (rect) setSelectModePosition({ left: rect.right + 8, top: Math.max(8, rect.top) });
+    if (rect) {
+      const menuHeight = 118;
+      setSelectModePosition({
+        left: Math.min(window.innerWidth - 188, rect.right + 8),
+        top: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
+      });
+    }
     setSelectModeOpen(true);
   };
 
@@ -1516,7 +1522,11 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
           <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
-          <div ref={selectModeButtonRef} className="mobile-pdf-tools__select-family">
+          <div
+            ref={selectModeButtonRef}
+            className="mobile-pdf-tools__select-family"
+            data-active={activeTool === 'select' || activeTool === 'text-select' ? 'true' : 'false'}
+          >
             <RailButton
               active={activeTool === 'select' || activeTool === 'text-select'}
               label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
@@ -1543,7 +1553,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
               }}
             >
-              <Icon name="chevronDown" size={9} color="currentColor" />
+              <Icon name={selectModeOpen ? 'chevronLeft' : 'chevronRight'} size={8} color="currentColor" />
             </button>
           </div>
           <div className="mobile-pdf-tools__divider" />

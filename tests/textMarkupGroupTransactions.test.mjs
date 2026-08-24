@@ -8,18 +8,67 @@ import {
   buildAtomicTextMarkupPageMutation,
   buildTextMarkupGroupCreateTransaction,
   expandTextMarkupEraseIntent,
+  isExactTextMarkupDuplicate,
 } from '../src/utils/textMarkupGroupTransactions.js';
 
-const mark = (id, pageNumber, group = 'range-1') => ({
+const mark = (id, pageNumber, group = 'range-1', markupType = 'highlight') => ({
   type: 'group',
   data: {
     id,
     type: 'text-markup',
     pageNumber,
     selectionGroupId: group,
-    markupType: 'highlight',
+    markupType,
+    textRange: { start: 5, end: 12 },
+    quads: [{ x1: 10, y1: 20, x2: 60, y2: 20, x3: 10, y3: 30, x4: 60, y4: 30 }],
   },
   meta: { authorId: 'user-1' },
+});
+
+test('the same text range keeps each review type as its own stacked annotation', () => {
+  const highlight = mark('highlight', 1, 'highlight-group', 'highlight');
+  const underline = mark('underline', 1, 'underline-group', 'underline');
+  const squiggly = mark('squiggly', 1, 'squiggly-group', 'squiggly');
+  const strikeout = mark('strikeout', 1, 'strikeout-group', 'strikeout');
+  const tx = buildTextMarkupGroupCreateTransaction(
+    { 1: { objects: [highlight] } },
+    [underline, squiggly, strikeout],
+  );
+
+  assert.deepEqual(
+    tx.nextByPage['1'].objects.map((item) => item.data.markupType),
+    ['highlight', 'underline', 'squiggly', 'strikeout'],
+  );
+  assert.equal(tx.created.length, 3);
+  assert.equal(isExactTextMarkupDuplicate(highlight, underline), false);
+});
+
+test('an exact same-range same-type repeat is not added twice', () => {
+  const first = mark('first', 1, 'first-group', 'highlight');
+  const duplicate = mark('duplicate', 1, 'second-group', 'highlight');
+  const tx = buildTextMarkupGroupCreateTransaction({ 1: { objects: [first] } }, [duplicate]);
+
+  assert.equal(tx, null);
+  assert.equal(isExactTextMarkupDuplicate(first, duplicate), true);
+});
+
+test('same-range same-type marks remain distinct when paint or overlap differs', () => {
+  const first = mark('first', 1, 'first-group', 'highlight');
+  first.stroke = '#ff0000';
+  first.opacity = 0.3;
+  first.data.overlapMode = 'layered';
+  const recolored = { ...mark('recolored', 1, 'color-group', 'highlight'), stroke: '#0000ff', opacity: 0.3 };
+  const uniform = {
+    ...mark('uniform', 1, 'uniform-group', 'highlight'),
+    stroke: '#ff0000',
+    opacity: 0.3,
+    data: { ...mark('uniform', 1, 'uniform-group', 'highlight').data, overlapMode: 'uniform' },
+  };
+  const tx = buildTextMarkupGroupCreateTransaction({ 1: { objects: [first] } }, [recolored, uniform]);
+
+  assert.equal(tx.created.length, 2);
+  assert.equal(isExactTextMarkupDuplicate(first, recolored), false);
+  assert.equal(isExactTextMarkupDuplicate(first, uniform), false);
 });
 
 test('cross-page text markup creation is one document history action', () => {

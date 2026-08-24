@@ -28095,14 +28095,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout'].includes(markupType)) return;
     if (selectedMarkup?.data?.type === 'text-markup') {
-      const pdfAnnotationType = markupType === 'highlight' ? 'Highlight'
-        : markupType === 'underline' ? 'Underline'
-          : markupType === 'squiggly' ? 'Squiggly' : 'StrikeOut';
-      handlePatchSelectedAnnotation({
-        exportType: markupType,
-        pdfAnnotationType,
-        data: { markupType },
+      const sourceGroupId = selectedMarkup.data.selectionGroupId;
+      const sourceMarks = Object.values(annotationsByPageRef.current || {})
+        .flatMap((page) => Array.isArray(page?.objects) ? page.objects : [])
+        .filter((annotation) => (
+          annotation?.data?.type === 'text-markup'
+          && annotation.data.selectionGroupId === sourceGroupId
+        ));
+      const selectionGroupId = generateUUID();
+      const paint = resolveTextMarkupEditPaint(selectedMarkup, strokeColorStateRef.current);
+      const annotations = (sourceMarks.length ? sourceMarks : [selectedMarkup])
+        .map((source) => createTextMarkupAnnotation({
+          id: generateUUID(),
+          pageNumber: source.data.pageNumber,
+          selectionGroupId,
+          markupType,
+          selectedText: source.data.selectedText,
+          textRange: source.data.textRange,
+          textRangeModel: source.data.textRangeModel,
+          quads: source.data.quads,
+          color: paint.color,
+          opacity: Math.max(0.05, Math.min(1, paint.opacity / 100)),
+          overlapMode: source.data.overlapMode || textMarkupOverlapMode,
+          authorId: user?.id || null,
+        }))
+        .filter(Boolean);
+      const transaction = buildTextMarkupGroupCreateTransaction(
+        annotationsByPageRef.current || {},
+        annotations,
+      );
+      const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
+        source: 'text-markup:stack',
+        action: 'text-markup-create',
+        selectionGroupId,
       });
+      const created = committed ? transaction.created : [];
+      if (created.length > 0) {
+        window.requestAnimationFrame(() => setPendingSvgSelection({
+          pageNumber: created[0].pageNumber,
+          annotationIndex: created[0].annotationIndex,
+          tick: Date.now(),
+        }));
+      }
       return;
     }
     const selectionGroupId = generateUUID();
@@ -28147,7 +28181,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         selectCreatedMark();
       }
     }
-  }, [activeTool, activateSelectFamilyMode, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, handlePatchSelectedAnnotation, liveTextSelection, selectedTextMarkupActionSelection, textMarkupOverlapMode, user?.id]);
+  }, [activeTool, activateSelectFamilyMode, capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction, liveTextSelection, selectedTextMarkupActionSelection, textMarkupOverlapMode, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;

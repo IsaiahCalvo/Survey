@@ -370,17 +370,34 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__select-family {
   position: relative;
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 6px;
 }
 
 .mobile-pdf-tools__select-family .mobile-pdf-tools__button {
   position: relative;
+  border-color: transparent;
+}
+
+.mobile-pdf-tools__select-family:hover,
+.mobile-pdf-tools__select-family:focus-within,
+.mobile-pdf-tools__select-family[data-active='true'] {
+  border-color: var(--gold-soft, #b6904a);
+}
+
+.mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button,
+.mobile-pdf-tools__select-family:focus-within .mobile-pdf-tools__button {
+  border-color: transparent;
 }
 
 .mobile-pdf-tools__select-caret {
   position: absolute;
-  right: 1px;
-  bottom: 1px;
-  width: 18px;
+  left: 31px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
   height: 18px;
   display: grid;
   place-items: center;
@@ -402,8 +419,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-select-mode__menu {
   position: fixed;
   z-index: 8999;
-  width: 196px;
-  padding: 5px;
+  width: 180px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -415,8 +432,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-select-mode__menu > button {
-  min-height: 46px;
-  padding: 0 12px;
+  min-height: 34px;
+  padding: 0 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -424,7 +441,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
   text-align: left;
 }
 
