@@ -414,6 +414,7 @@ const BookmarkTreeRow = ({
         )}
         {isEditMode && !isClone && (
           <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
               onDelete?.(item.id);
