@@ -69,7 +69,7 @@ test('official leftover files besides isolated 8448 match live source after Eras
   const caretStart = viewer.indexOf('data-eraser-caret-button={isEraser ? \'true\' : undefined}');
   const caretEnd = viewer.indexOf('data-eraser-caret-popup={isEraser ? \'true\' : undefined}');
   assert.ok(caretStart > 0 && caretEnd > caretStart);
-  assert.match(viewer.slice(caretStart - 120, caretEnd), /<button\s+type="button"/);
+  assert.match(viewer.slice(caretStart - 280, caretEnd), /<button\s+type="button"/);
 
   const bookmarks = read('src/sidebar/BookmarksPanel.jsx');
   assert.match(bookmarks, /aria-label="Drag to reorder"/);

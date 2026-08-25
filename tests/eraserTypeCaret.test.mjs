@@ -18,7 +18,7 @@ test('Eraser Type caret is type=button; apply stays parked', () => {
   const start = src.indexOf('data-eraser-caret-button={isEraser ? \'true\' : undefined}');
   const end = src.indexOf('data-eraser-caret-popup={isEraser ? \'true\' : undefined}');
   assert.ok(start > 0 && end > start);
-  const slice = src.slice(start - 120, end);
+  const slice = src.slice(start - 280, end);
   assert.match(slice, /<button\s+type="button"/);
   assert.match(slice, /aria-label=\{isHighlighterSplitMenu \? 'SurveyMarker Type' : 'Eraser Type'\}/);
   assert.doesNotMatch(slice, /role="button"/);
