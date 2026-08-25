@@ -2034,6 +2034,7 @@ export default function TemplatesEditor({
                         </span>
                       ) : (
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -2530,6 +2531,7 @@ export default function TemplatesEditor({
                             </span>
                           ) : (
                             <button
+                              type="button"
                               title="More" aria-label="More"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -2702,6 +2704,7 @@ export default function TemplatesEditor({
                                 <span className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
                               ) : (
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
