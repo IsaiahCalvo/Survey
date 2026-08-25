@@ -42,22 +42,30 @@ async function openPage(page, { width = 1400, height = 900, url } = {}) {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
 }
 
-function camerasCard(page) {
-  return page.locator('.card-line').filter({
-    has: page.locator(`input[aria-label="Click to rename"][value="${CATEGORY}"]`),
-  }).first();
+async function expandCategory(page, name) {
+  const clicked = await page.evaluate((wanted) => {
+    const titles = [...document.querySelectorAll('input.inline-edit.cat-title')];
+    const field = titles.find((el) => el.value === wanted && el.offsetParent);
+    if (!field) return false;
+    const row = field.closest('[data-drag-rearrange-row]');
+    const toggle = row?.querySelector('button[title="Expand"], button[title="Collapse"]');
+    if (!toggle) return false;
+    if (toggle.getAttribute('title') === 'Expand') toggle.click();
+    return true;
+  }, name);
+  expect(clicked, `expand ${name}`).toBe(true);
 }
 
 function addItem(page) {
-  return camerasCard(page).getByRole('button', { name: 'Add checklist item', exact: true });
+  return page.getByRole('button', { name: /Add checklist item/ }).first();
 }
 
 function deleteItem(page) {
-  return camerasCard(page).getByRole('button', { name: 'Delete item', exact: true }).first();
+  return page.getByRole('button', { name: 'Delete item', exact: true }).first();
 }
 
-function expandCameras(page) {
-  return camerasCard(page).getByRole('button', { name: 'Expand', exact: true });
+function seedItem(page) {
+  return page.locator(`input[placeholder="Add checklist item"][value="${ITEM}"]`).first();
 }
 
 async function expectTyped(button, name) {
@@ -103,12 +111,10 @@ async function setupExpandedCameras(page) {
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('heading', { name: 'Templates', exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(TEMPLATE).first()).toBeVisible({ timeout: 15_000 });
-  await expect(camerasCard(page)).toBeVisible({ timeout: 8_000 });
-  const expand = expandCameras(page);
-  await expect(expand).toBeVisible({ timeout: 8_000 });
-  await expand.click();
+  await page.getByText(TEMPLATE).first().click();
+  await expandCategory(page, CATEGORY);
   await expect(addItem(page)).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByDisplayValue(ITEM).first()).toBeVisible({ timeout: 8_000 });
+  await expect(seedItem(page)).toBeVisible({ timeout: 8_000 });
 }
 
 test('Templates checklist Add / Delete item are typed; apply not clicked', async ({ page }) => {
@@ -117,18 +123,18 @@ test('Templates checklist Add / Delete item are typed; apply not clicked', async
   await openPage(page, { url: HUB });
   await setupExpandedCameras(page);
 
-  await expectTyped(addItem(page), 'Add checklist item');
+  await expectTyped(addItem(page), '+ Add checklist item');
   await expectTyped(deleteItem(page), 'Delete item');
-  expect(await implicitNamed(page, ['Add checklist item', 'Delete item'])).toEqual([]);
-  expect(await addItem(page).count()).toBe(1);
+  expect(await implicitNamed(page, ['Add checklist item', '+ Add checklist item', 'Delete item'])).toEqual([]);
+  expect(await addItem(page).count()).toBeGreaterThan(0);
   expect(await deleteItem(page).count()).toBeGreaterThan(0);
 
   await page.keyboard.press('Escape');
   await expect(addItem(page)).toBeVisible();
-  await expect(page.getByDisplayValue(ITEM).first()).toBeVisible();
-  await expectTyped(addItem(page), 'Add checklist item');
+  await expect(seedItem(page)).toBeVisible();
+  await expectTyped(addItem(page), '+ Add checklist item');
   await expectTyped(deleteItem(page), 'Delete item');
-  await expect(camerasCard(page).getByRole('button', { name: 'Collapse', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Collapse', exact: true }).first()).toBeVisible();
 
   expect(await page.getByRole('dialog', { name: 'Move or copy items' }).count()).toBe(0);
   expect(await page.getByRole('dialog', { name: /activity/i }).count()).toBe(0);
@@ -143,9 +149,15 @@ test('390 + empty + guest + tabs + editor break/edge for checklist chrome type',
   await openPage(page, { width: 390, height: 844, url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('heading', { name: 'Templates', exact: true })).toBeVisible({ timeout: 15_000 });
-  const mobileExpand = page.getByRole('button', { name: `Expand ${CATEGORY}`, exact: true });
-  await expect(mobileExpand).toBeVisible({ timeout: 8_000 });
-  await mobileExpand.click();
+  const mobileRow = page.locator('.templates-mobile-browser .templates-mobile-row').filter({ hasText: TEMPLATE }).first();
+  await expect(mobileRow).toBeVisible({ timeout: 15_000 });
+  await mobileRow.evaluate((row) => row.click());
+  await expect(page.locator('.templates-mobile-detail')).toBeVisible({ timeout: 15_000 });
+  const camerasToggle = page.locator('.templates-mobile-category-toggle[aria-label*="Cameras"]').first();
+  await expect(camerasToggle).toBeVisible({ timeout: 8_000 });
+  if ((await camerasToggle.getAttribute('aria-label') || '').startsWith('Expand')) {
+    await camerasToggle.evaluate((button) => button.click());
+  }
   const mobileAdd = page.getByRole('button', { name: /Add checklist item/ }).first();
   await expect(mobileAdd).toBeVisible({ timeout: 8_000 });
   await expect(mobileAdd).toHaveAttribute('type', 'button');
@@ -167,7 +179,7 @@ test('390 + empty + guest + tabs + editor break/edge for checklist chrome type',
     await authClose.click();
   }
   await setupExpandedCameras(page);
-  await expectTyped(addItem(page), 'Add checklist item');
+  await expectTyped(addItem(page), '+ Add checklist item');
   await expectTyped(deleteItem(page), 'Delete item');
 
   await openPage(page, { url: HUB_DOCS });

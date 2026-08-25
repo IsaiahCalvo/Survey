@@ -52,18 +52,26 @@ async function openPage(page, { width = 1400, height = 900, url } = {}) {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
 }
 
-function camerasCard(page) {
-  return page.locator('.card-line').filter({
-    has: page.locator(`input[aria-label="Click to rename"][value="${CATEGORY}"]`),
-  }).first();
+async function expandCategory(page, name) {
+  const clicked = await page.evaluate((wanted) => {
+    const titles = [...document.querySelectorAll('input.inline-edit.cat-title')];
+    const field = titles.find((el) => el.value === wanted && el.offsetParent);
+    if (!field) return false;
+    const row = field.closest('[data-drag-rearrange-row]');
+    const toggle = row?.querySelector('button[title="Expand"], button[title="Collapse"]');
+    if (!toggle) return false;
+    if (toggle.getAttribute('title') === 'Expand') toggle.click();
+    return true;
+  }, name);
+  expect(clicked, `expand ${name}`).toBe(true);
 }
 
 function addItem(page) {
-  return camerasCard(page).getByRole('button', { name: 'Add checklist item', exact: true });
+  return page.getByRole('button', { name: /Add checklist item/ }).first();
 }
 
 function deleteItem(page) {
-  return camerasCard(page).getByRole('button', { name: 'Delete item', exact: true }).first();
+  return page.getByRole('button', { name: 'Delete item', exact: true }).first();
 }
 
 async function implicitNamed(page, names) {
@@ -98,9 +106,8 @@ test('AFTER_TEMPLATES_CHECKLIST_ITEM_CHROME_BUTTON_TYPE_INDEPENDENT_HUNT invento
   await openPage(page, { url: HUB_TEMPLATES });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(TEMPLATE).first()).toBeVisible({ timeout: 15_000 });
-  const expand = camerasCard(page).getByRole('button', { name: 'Expand', exact: true });
-  await expect(expand).toBeVisible({ timeout: 8_000 });
-  await expand.click();
+  await page.getByText(TEMPLATE).first().click();
+  await expandCategory(page, CATEGORY);
   inventory.templates.addCount = await addItem(page).count();
   inventory.templates.addType = inventory.templates.addCount
     ? await addItem(page).getAttribute('type')
@@ -118,19 +125,23 @@ test('AFTER_TEMPLATES_CHECKLIST_ITEM_CHROME_BUTTON_TYPE_INDEPENDENT_HUNT invento
   inventory.templates.deleteName = inventory.templates.deleteCount
     ? await deleteItem(page).getAttribute('aria-label')
     : null;
-  inventory.templates.implicitSubmit = await implicitNamed(page, ['Add checklist item', 'Delete item']);
-  inventory.templates.seedItem = await page.getByDisplayValue(ITEM).count();
+  inventory.templates.implicitSubmit = await implicitNamed(page, ['Add checklist item', '+ Add checklist item', 'Delete item']);
+  inventory.templates.seedItem = await page.locator(`input[placeholder="Add checklist item"][value="${ITEM}"]`).count();
   await page.keyboard.press('Escape');
   inventory.templates.afterEscapeAdd = await addItem(page).count();
-  inventory.templates.listMoreType = await camerasCard(page).locator('xpath=ancestor::*[contains(@class,"survey-hub")]').count()
-    ? await page.getByRole('button', { name: 'More', exact: true }).first().getAttribute('type')
-    : null;
+  inventory.templates.listMoreType = await page.getByRole('button', { name: 'More', exact: true }).first().getAttribute('type');
 
   await openPage(page, { width: 390, height: 844, url: HUB_TEMPLATES });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  const mobileExpand = page.getByRole('button', { name: `Expand ${CATEGORY}`, exact: true });
-  await expect(mobileExpand).toBeVisible({ timeout: 8_000 });
-  await mobileExpand.click();
+  const mobileRow = page.locator('.templates-mobile-browser .templates-mobile-row').filter({ hasText: TEMPLATE }).first();
+  await expect(mobileRow).toBeVisible({ timeout: 15_000 });
+  await mobileRow.evaluate((row) => row.click());
+  await expect(page.locator('.templates-mobile-detail')).toBeVisible({ timeout: 15_000 });
+  const camerasToggle = page.locator('.templates-mobile-category-toggle[aria-label*="Cameras"]').first();
+  await expect(camerasToggle).toBeVisible({ timeout: 8_000 });
+  if ((await camerasToggle.getAttribute('aria-label') || '').startsWith('Expand')) {
+    await camerasToggle.evaluate((button) => button.click());
+  }
   const mobileAdd = page.getByRole('button', { name: /Add checklist item/ }).first();
   inventory.templates.mobileAddCount = await mobileAdd.count();
   inventory.templates.mobileAddType = inventory.templates.mobileAddCount

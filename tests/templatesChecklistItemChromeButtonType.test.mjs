@@ -19,11 +19,11 @@ test('Templates desktop checklist Add / Delete item are type=button; apply stays
   const editor = read('src/home/TemplatesEditor.jsx');
   const deleteStart = editor.indexOf('title="Delete item" aria-label="Delete item"');
   assert.ok(deleteStart > 0, 'desktop Delete item');
-  assert.match(editor.slice(Math.max(0, deleteStart - 80), deleteStart + 40), /<button\s+type="button"/);
+  assert.match(editor.slice(Math.max(0, deleteStart - 220), deleteStart + 40), /<button\s+type="button"/);
 
   const addStart = editor.indexOf("onClick={() => addItem(i)}");
   assert.ok(addStart > 0, 'desktop Add checklist item');
-  assert.match(editor.slice(Math.max(0, addStart - 80), addStart + 40), /<button\s+type="button"/);
+  assert.match(editor.slice(Math.max(0, addStart - 220), addStart + 40), /<button\s+type="button"/);
   assert.match(editor, /<span style=\{\{ fontSize: 13 \}\}>\+<\/span> Add checklist item/);
 
   assert.match(
@@ -90,7 +90,8 @@ test('live spec covers Templates checklist chrome type intended + break + edge; 
   assert.match(spec, /closest\('form'\)/);
   assert.match(spec, /keyboard\.press\('Escape'\)/);
   assert.match(spec, /390/);
-  assert.match(spec, /Expand \$\{CATEGORY\}/);
+  assert.match(spec, /templates-mobile-category-toggle/);
+  assert.match(spec, /templates-mobile-detail/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);

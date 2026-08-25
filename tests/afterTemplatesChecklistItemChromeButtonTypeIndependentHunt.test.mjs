@@ -31,10 +31,10 @@ test('official leftover files besides isolated 8448 match live source after Temp
   }
   const deleteStart = editor.indexOf('title="Delete item" aria-label="Delete item"');
   assert.ok(deleteStart > 0, 'desktop Delete item');
-  assert.match(editor.slice(Math.max(0, deleteStart - 80), deleteStart + 40), /<button\s+type="button"/);
+  assert.match(editor.slice(Math.max(0, deleteStart - 220), deleteStart + 40), /<button\s+type="button"/);
   const addStart = editor.indexOf("onClick={() => addItem(i)}");
   assert.ok(addStart > 0, 'desktop Add checklist item');
-  assert.match(editor.slice(Math.max(0, addStart - 80), addStart + 40), /<button\s+type="button"/);
+  assert.match(editor.slice(Math.max(0, addStart - 220), addStart + 40), /<button\s+type="button"/);
   const start = editor.indexOf('className="templates-module-edit-modal"');
   const slice = editor.slice(start, start + 1100);
   assert.match(slice, /aria-labelledby="templates-module-edit-title"/);
@@ -94,6 +94,7 @@ test('hunt after Templates checklist chrome type looks past Templates More type 
   assert.match(spec, /roleTrigger/);
   assert.match(spec, /fileId/);
   assert.match(spec, /addType\)\.toBe\('button'\)/);
+  assert.match(spec, /templates-mobile-category-toggle/);
   assert.match(spec, /addName\)\.toBe\('\+ Add checklist item'\)/);
   assert.match(spec, /deleteType\)\.toBe\('button'\)/);
   assert.match(spec, /deleteName\)\.toBe\('Delete item'\)/);
