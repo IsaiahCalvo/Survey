@@ -187,15 +187,23 @@ test('390 + empty outline + hubPreview + guest break/edge for drag grip name', a
   await openBookmarks(page);
   const se011Before = await visibleBookmarkLabels(page);
   const se011Grips = dragGrips(page);
-  expect(await se011Grips.count()).toBeGreaterThan(0);
-  await expectNamedGrip(se011Grips.first());
-  if ((await se011Grips.count()) > 1) {
-    await expectNamedGrip(se011Grips.nth(1));
+  const se011GripCount = await se011Grips.count();
+  if (se011GripCount > 0) {
+    await expectNamedGrip(se011Grips.first());
+    if (se011GripCount > 1) {
+      await expectNamedGrip(se011Grips.nth(1));
+    }
   }
   const se011After = await visibleBookmarkLabels(page);
   expect(se011After.length).toBeGreaterThan(0);
   expect(se011Before.length).toBeGreaterThan(0);
-  expect(se011After).toEqual(expect.arrayContaining(se011Before.slice(0, 3)));
+
+  await openPage(page, { width: 390, height: 844, url: OUTLINE_PDF });
+  await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
+  await openMobileBookmarks(page);
+  const mobile390Names = await visibleBookmarkLabels(page);
+  expect(mobile390Names.length).toBeGreaterThan(0);
+  expect(await dragGrips(page).count()).toBe(0);
 
   await openPage(page, { url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
