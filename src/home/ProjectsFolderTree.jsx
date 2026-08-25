@@ -977,7 +977,17 @@ export default function ProjectsFolderTree({
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open project ${p.name}`}
+                    aria-pressed={jobsEdit ? isSel : undefined}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      e.preventDefault();
+                      if (jobsEdit) toggleProjSel(p.id);
+                      else setOpenId(p.id);
+                    }}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '28px 1fr auto',
