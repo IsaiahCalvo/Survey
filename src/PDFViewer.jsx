@@ -33695,6 +33695,7 @@ ${pageBlocks}
 
 	                        return (
 	                          <button
+	                            type="button"
 	                            key={category.id}
 	                            onClick={() => {
 	                              setSelectedCategoryId(category.id);
