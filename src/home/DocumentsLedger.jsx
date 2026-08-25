@@ -514,8 +514,19 @@ export default function DocumentsLedger({
                   <div
                     key={d.id}
                     data-document-id={d.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Preview ${d.name}`}
+                    aria-pressed={docSelectMode ? isChecked : undefined}
                     onClick={() => { if (docSelectMode) { toggleDocSel(d.id); return; } setSelId(d.id); setPreviewOpen(true); }}
                     onDoubleClick={() => !docSelectMode && onOpenDocument && onOpenDocument(d.raw)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      e.preventDefault();
+                      if (docSelectMode) { toggleDocSel(d.id); return; }
+                      setSelId(d.id);
+                      setPreviewOpen(true);
+                    }}
                     style={{
                       display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
                       borderBottom: '1px solid var(--ink-600)',
