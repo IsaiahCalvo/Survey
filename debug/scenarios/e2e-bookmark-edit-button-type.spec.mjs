@@ -138,17 +138,17 @@ test('outline Bookmarks Edit is typed; rename is not applied', async ({ page }) 
   await expectTypedNamed(done, 'Done');
   expect(await implicitNamed(page, ['Edit', 'Done'])).toEqual([]);
 
-  const renameInputs = page.getByRole('textbox', { name: /^Rename group / });
+  const renameInputs = page.getByRole('textbox', { name: /^Rename (group|bookmark) / });
   await expect(renameInputs.first()).toBeVisible({ timeout: 8_000 });
   const firstLabel = await renameInputs.first().getAttribute('aria-label');
-  const firstOriginal = firstLabel.replace(/^Rename group /, '');
+  const firstOriginal = firstLabel.replace(/^Rename (group|bookmark) /, '');
   const firstValue = await renameInputs.first().inputValue();
   expect(firstValue).toBe(firstOriginal);
 
   const secondCount = await renameInputs.count();
   expect(secondCount).toBeGreaterThan(1);
   const secondLabel = await renameInputs.nth(1).getAttribute('aria-label');
-  const secondOriginal = secondLabel.replace(/^Rename group /, '');
+  const secondOriginal = secondLabel.replace(/^Rename (group|bookmark) /, '');
 
   await renameInputs.first().focus();
   await page.keyboard.press('Escape');
