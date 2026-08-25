@@ -1642,41 +1642,47 @@ export default function App({ devPreviewReturnTab = null }) {
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                   className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
                   aria-label={label}
-                  style={isSelect ? { position: 'relative', paddingRight: '16px' } : undefined}
+                  style={isSelect ? { paddingRight: '16px' } : undefined}
                 >
                   <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />
-                  {isSelect && (
-                    <div
-                      data-select-mode-caret="true"
-                      role="button"
-                      aria-label="Selection mode"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Caret sits on the 34px button center. Eraser's
-                        // caret already arms its tool before toggling;
-                        // Select must do the same or a center click
-                        // leaves Pan sticky and only opens the menu.
-                        bottomToolbarApi.setActiveTool(isTextSelect ? 'text-select' : 'select');
-                        bottomToolbarApi.setActiveCategoryDropdown(null);
-                        setSelectModeMenuOpen((open) => !open);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '2px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '2px',
-                        pointerEvents: 'auto',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Icon name="chevronDown" size={10} color="#8d96a6" />
-                    </div>
-                  )}
                 </button>
+                {isSelect && (
+                  <button
+                    type="button"
+                    data-select-mode-caret="true"
+                    aria-label="Selection mode"
+                    aria-haspopup="menu"
+                    aria-expanded={selectModeMenuOpen}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Caret sits on the 34px button center. Eraser's
+                      // caret already arms its tool before toggling;
+                      // Select must do the same or a center click
+                      // leaves Pan sticky and only opens the menu.
+                      bottomToolbarApi.setActiveTool(isTextSelect ? 'text-select' : 'select');
+                      bottomToolbarApi.setActiveCategoryDropdown(null);
+                      setSelectModeMenuOpen((open) => !open);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: '2px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '2px',
+                      margin: 0,
+                      background: 'transparent',
+                      border: 0,
+                      color: 'inherit',
+                      pointerEvents: 'auto',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Icon name="chevronDown" size={10} color="#8d96a6" />
+                  </button>
+                )}
                 {isSelect && selectModeMenuOpen && createPortal(
                   <div
                     data-select-mode-menu="true"
