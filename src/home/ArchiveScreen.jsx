@@ -186,15 +186,28 @@ export default function ArchiveScreen({
     setSortDir(next.sortDir);
   };
   const arrow = (key) => (sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '');
-  const headerCell = (key, label, extra = {}) => (
-    <span
+  const sortHeaderButton = (key, label, extra = {}) => (
+    <button
+      type="button"
       onClick={() => onHeaderClick(key)}
       style={{
-        cursor: 'pointer', userSelect: 'none',
+        background: 'transparent',
+        border: 0,
+        margin: 0,
+        padding: 0,
+        font: 'inherit',
+        letterSpacing: 'inherit',
+        textTransform: 'inherit',
+        fontWeight: 'inherit',
         color: sortKey === key ? 'var(--bone-100)' : 'inherit',
+        cursor: 'pointer',
+        userSelect: 'none',
+        textAlign: 'left',
         ...extra,
       }}
-    >{label}{arrow(key)}</span>
+    >
+      {label}{arrow(key)}
+    </button>
   );
 
   const { downloadDocument } = useStorage();
@@ -1043,10 +1056,10 @@ export default function ArchiveScreen({
                   {/* The thumbnail column carries no header, exactly as in
                       Documents, so "Name" sits over the name. */}
                   <span></span>
-                  {headerCell('name', 'Name', { padding: '0 14px', display: 'flex', alignItems: 'center' })}
-                  {headerCell('type', 'Type')}
-                  {headerCell('archived', 'Archived')}
-                  {headerCell('days', 'Days remaining')}
+                  {sortHeaderButton('name', 'Name', { padding: '0 14px', display: 'flex', alignItems: 'center' })}
+                  {sortHeaderButton('type', 'Type')}
+                  {sortHeaderButton('archived', 'Archived')}
+                  {sortHeaderButton('days', 'Days remaining')}
                 </div>
                 {error ? errorLine : null}
                 {!error && loading ? skeletonRows : null}
