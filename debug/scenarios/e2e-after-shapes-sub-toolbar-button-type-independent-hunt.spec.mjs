@@ -519,7 +519,6 @@ test('independent hunt after Shapes sub-toolbar type', async ({ page }) => {
     await expect(colorDialog).toHaveCount(0, { timeout: 8_000 });
     inventory.color.afterEscape = await colorDialog.count();
 
-    const draw = page.locator('[data-tool-toolbar="true"]').getByRole('button', { name: 'Draw', exact: true });
     await expect(draw).toBeVisible({ timeout: 8_000 });
     await draw.click();
     const subPen = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Pen', exact: true });
