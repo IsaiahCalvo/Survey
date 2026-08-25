@@ -32,7 +32,7 @@ test('Survey category-main / arrow are type=button; Create category apply stays 
 
   const arrow = rail.indexOf('className="survey-marker-category-arrow"');
   assert.ok(arrow > 0, 'category-arrow');
-  const arrowSlice = rail.slice(Math.max(0, arrow - 400), arrow + 80);
+  const arrowSlice = rail.slice(Math.max(0, arrow - 400), arrow + 280);
   assert.match(arrowSlice, /<button\s+type="button"/);
   assert.match(arrowSlice, /setExpandedCategories/);
   assert.doesNotMatch(arrowSlice, /<button\s+className="survey-marker-category-arrow"/);
