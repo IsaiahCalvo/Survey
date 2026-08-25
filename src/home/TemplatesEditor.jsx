@@ -2581,6 +2581,7 @@ export default function TemplatesEditor({
                               {[['fill', 'Fill'], ['border', 'Border']].map(([k, label], i) => (
                                 <button
                                   key={k}
+                                  type="button"
                                   onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}
                                   style={{
                                     position: 'relative', padding: '7px 0', fontSize: 11,
