@@ -270,6 +270,7 @@ const BookmarkTreeRow = ({
           ☰
         </div>
         <button
+          type="button"
           onClick={(event) => {
             event.stopPropagation();
             onToggle?.(item.id);
@@ -386,6 +387,7 @@ const BookmarkTreeRow = ({
         )}
         {isFolder && !isClone && (
           <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
               onAddChild?.(item.id);
