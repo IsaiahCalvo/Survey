@@ -79,6 +79,7 @@ test('live spec covers 390 Templates category title name intended + break + edge
   const spec = read('debug/scenarios/e2e-templates-390-category-title-name.spec.mjs');
   assert.match(spec, /hubPreview=1&tab=templates/);
   assert.match(spec, /hubPreview=1&empty=1/);
+  assert.match(spec, /templates-mobile-browser/);
   assert.match(spec, /hubPreview=1&guest=1/);
   assert.match(spec, /hubPreview=1&tab=documents/);
   assert.match(spec, /hubPreview=1&tab=archive/);

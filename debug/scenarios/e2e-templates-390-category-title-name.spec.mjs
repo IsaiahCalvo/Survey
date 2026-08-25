@@ -144,7 +144,7 @@ test('desktop sibling + empty + guest + tabs + editor break/edge for 390 categor
 
   await openPage(page, { width: 390, height: 844, url: HUB_EMPTY });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('No templates yet').first()).toBeVisible();
+  await expect(page.locator('.templates-mobile-browser').getByText('No templates yet', { exact: true })).toBeVisible();
   expect(await mobileCategoryTitle(page).count()).toBe(0);
 
   await openPage(page, { width: 390, height: 844, url: HUB_GUEST });
