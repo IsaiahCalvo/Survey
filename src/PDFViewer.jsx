@@ -33043,6 +33043,7 @@ ${pageBlocks}
                   const showCaret = false;
                   const button = (
                     <button
+                      type="button"
                       key={t.id}
                       data-counter-caret-button={isCounter ? 'true' : undefined}
                       onClick={(e) => {
