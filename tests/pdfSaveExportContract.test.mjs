@@ -159,6 +159,31 @@ test('live PDF export writes all four saved text markup subtypes with stored qua
   });
 });
 
+test('live PDF export writes selected-text links and redaction annotations', async () => {
+  const quad = { x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 };
+  const objects = [
+    createTextMarkupAnnotation({
+      id: 'text-link', pageNumber: 1, selectionGroupId: 'link-group', markupType: 'link',
+      selectedText: 'Open docs', linkUrl: 'https://example.com/docs', quads: [quad],
+    }),
+    createTextMarkupAnnotation({
+      id: 'text-redact', pageNumber: 1, selectionGroupId: 'redact-group', markupType: 'redact',
+      selectedText: 'Private text', quads: [{ ...quad, y1: 50, y2: 50, y3: 64, y4: 64 }],
+    }),
+  ];
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-link-redact' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Link', 'Redact']);
+  const [link, redact] = await getPdfAnnotationDicts(bytes);
+  assert.equal(link.lookup(PDFName.of('A')).lookup(PDFName.of('URI')).decodeText(), 'https://example.com/docs');
+  assert.equal(redact.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
+});
+
 test('native text markup export converts rotated PDF.js viewport quads into base PDF coordinates', async () => {
   const viewportSizes = [
     { width: 200, height: 100 },

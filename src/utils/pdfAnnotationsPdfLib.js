@@ -67,6 +67,8 @@ import {
   adaptSquiggly,
   adaptStrikeOut,
   adaptUnderline,
+  adaptLink,
+  adaptRedact,
   getTextMarkupPageGeometry,
   viewportPointToBaseAppPoint,
 } from './pdfNativeExport/adapters/textMarkup.js';
@@ -3284,7 +3286,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       const top = Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
       const bottom = Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
       if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return;
-      if (markupType === 'highlight') {
+      if (markupType === 'redact') {
+        page.drawRectangle({ x: left, y: getPdfY(pageHeight, bottom), width: right - left, height: bottom - top, color: color.color, opacity: 1 });
+      } else if (markupType === 'highlight') {
         page.drawRectangle({ x: left, y: getPdfY(pageHeight, bottom), width: right - left, height: bottom - top, color: color.color, opacity });
       } else if (markupType === 'squiggly') {
         const y = bottom - Math.max(0.6, (bottom - top) * 0.08);
@@ -3824,6 +3828,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
             underline: adaptUnderline,
             squiggly: adaptSquiggly,
             strikeout: adaptStrikeOut,
+            link: adaptLink,
+            redact: adaptRedact,
           };
           const markupType = String(obj?.data?.markupType || obj?.exportType || '').toLowerCase();
           const writer = obj?.data?.type === 'text-markup' ? markupWriters[markupType] : null;

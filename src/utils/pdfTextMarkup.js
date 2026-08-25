@@ -1,4 +1,4 @@
-const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout']);
+const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact']);
 
 const round = (value) => Math.round(Number(value) * 10_000) / 10_000;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
@@ -41,6 +41,46 @@ export function resolveTextMarkupEditPaint(annotation, fallbackColor = '#f4d35e'
 export function normalizeTextMarkupType(value) {
   const type = String(value || '').toLowerCase();
   return MARKUP_TYPES.has(type) ? type : null;
+}
+
+export function normalizeTextLinkUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const candidate = /^[a-z][a-z\d+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildTextMarkupLinkRegions(annotations, pageSize) {
+  const width = Number(pageSize?.width);
+  const height = Number(pageSize?.height);
+  if (!(width > 0) || !(height > 0)) return [];
+  return (annotations || []).flatMap((annotation) => {
+    if (annotation?.data?.type !== 'text-markup' || annotation.data.markupType !== 'link') return [];
+    const url = normalizeTextLinkUrl(annotation.data.linkUrl);
+    if (!url) return [];
+    return (annotation.data.quads || []).map((quad, index) => {
+      const xs = [quad.x1, quad.x2, quad.x3, quad.x4].map(Number);
+      const ys = [quad.y1, quad.y2, quad.y3, quad.y4].map(Number);
+      const left = Math.min(...xs);
+      const right = Math.max(...xs);
+      const top = Math.min(...ys);
+      const bottom = Math.max(...ys);
+      if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return null;
+      return {
+        id: `${annotation.id || annotation.data.id || 'link'}-${index}`,
+        url,
+        left: `${left / width * 100}%`,
+        top: `${top / height * 100}%`,
+        width: `${(right - left) / width * 100}%`,
+        height: `${(bottom - top) / height * 100}%`,
+      };
+    }).filter(Boolean);
+  });
 }
 
 export function clientRectToPageQuad(clientRect, pageRect, pageSize) {
@@ -117,16 +157,21 @@ export function createTextMarkupAnnotation({
   color = '#f4d35e',
   opacity,
   overlapMode = 'layered',
+  linkUrl = null,
   authorId = null,
 }) {
   const type = normalizeTextMarkupType(markupType);
+  const resolvedLinkUrl = type === 'link' ? normalizeTextLinkUrl(linkUrl) : null;
   const mergedQuads = mergeLineQuads(quads);
   const bounds = quadBounds(mergedQuads);
-  if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber))) return null;
-  const resolvedOpacity = clamp01(opacity ?? 0.3);
+  if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber)) || (type === 'link' && !resolvedLinkUrl)) return null;
+  const resolvedColor = type === 'redact' ? '#000000' : type === 'link' ? '#2563eb' : color;
+  const resolvedOpacity = type === 'redact' || type === 'link' ? 1 : clamp01(opacity ?? 0.3);
   const pdfType = type === 'highlight' ? 'Highlight'
     : type === 'underline' ? 'Underline'
-      : type === 'squiggly' ? 'Squiggly' : 'StrikeOut';
+      : type === 'squiggly' ? 'Squiggly'
+        : type === 'strikeout' ? 'StrikeOut'
+          : type === 'link' ? 'Link' : 'Redact';
   return {
     type: 'group',
     id,
@@ -146,8 +191,8 @@ export function createTextMarkupAnnotation({
     lockScalingX: true,
     lockScalingY: true,
     lockRotation: true,
-    fill: color,
-    stroke: color,
+    fill: resolvedColor,
+    stroke: resolvedColor,
     opacity: resolvedOpacity,
     exportType: type,
     pdfAnnotationType: pdfType,
@@ -164,6 +209,7 @@ export function createTextMarkupAnnotation({
       ...(textRangeModel?.runs?.length ? { textRangeModel } : {}),
       quads: mergedQuads,
       overlapMode: overlapMode === 'uniform' ? 'uniform' : 'layered',
+      ...(resolvedLinkUrl ? { linkUrl: resolvedLinkUrl } : {}),
       ...(authorId ? { authorId } : {}),
     },
     meta: authorId ? { authorId } : undefined,
@@ -513,6 +559,33 @@ export function getSelectionPageRanges(selection, pageSizes) {
     });
   }
   return pages.sort((a, b) => a.pageNumber - b.pageNumber);
+}
+
+export function restorePdfjsTextSelection(selectionPayload) {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  const pages = (selectionPayload?.pages || [])
+    .filter((page) => Number.isFinite(page?.textRange?.start) && Number.isFinite(page?.textRange?.end))
+    .slice()
+    .sort((a, b) => Number(a.pageNumber) - Number(b.pageNumber));
+  if (!pages.length) return false;
+  const first = pages[0];
+  const last = pages.at(-1);
+  const firstLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer.is-interactive`);
+  const lastLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer.is-interactive`);
+  const start = boundaryAtTextOffset(firstLayer, first.textRange.start);
+  const end = boundaryAtTextOffset(lastLayer, last.textRange.end);
+  if (!start || !end) return false;
+  try {
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    const nativeSelection = window.getSelection();
+    nativeSelection.removeAllRanges();
+    nativeSelection.addRange(range);
+    return !nativeSelection.isCollapsed;
+  } catch {
+    return false;
+  }
 }
 
 export function computeTextSelectionActionBarPosition(anchor, {

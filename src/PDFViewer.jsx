@@ -66,6 +66,7 @@ import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
+import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import PdfjsTextLayer from './components/PdfjsTextLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
@@ -95,6 +96,7 @@ import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotatio
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
 import {
   buildAtomicTextMarkupPageMutation,
+  buildTextMarkupDocumentAction,
   buildTextMarkupGroupCreateTransaction,
   buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
@@ -379,7 +381,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
-import { createTextMarkupAnnotation, getSelectionPageRanges, quadBounds, resolveTextMarkupEditPaint } from './utils/pdfTextMarkup.js';
+import { createTextMarkupAnnotation, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -3189,6 +3191,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try { return localStorage.getItem('survey:text-markup-overlap-mode') === 'uniform' ? 'uniform' : 'layered'; }
     catch { return 'layered'; }
   });
+  const [textLinkEditorOpen, setTextLinkEditorOpen] = useState(false);
+  const [textLinkUrl, setTextLinkUrl] = useState('');
+  const [textLinkError, setTextLinkError] = useState('');
   const [textAvailabilityByPage, setTextAvailabilityByPage] = useState({});
   const [ocrStateByPage, setOcrStateByPage] = useState({});
   const ocrCacheRef = useRef(new Map());
@@ -27960,7 +27965,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // The color picker lives in a portal. Browser selection can collapse
       // when its controls receive focus, but the user still needs the saved
       // range to apply the chosen pre-creation color and opacity.
-      if (!showAnnotationColorPicker) {
+      if (!showAnnotationColorPicker && !textLinkEditorOpen) {
         liveTextSelectionRef.current = null;
         setLiveTextSelection(null);
       }
@@ -27980,7 +27985,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     liveTextSelectionRef.current = payload;
     setLiveTextSelection(payload);
     return payload;
-  }, [showAnnotationColorPicker]);
+  }, [showAnnotationColorPicker, textLinkEditorOpen]);
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
@@ -28103,7 +28108,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } : null
   ), [annotationsByPage, liveTextMarkupRangeProbes, liveTextSelection]);
 
-  const handleTextSelectionAction = useCallback(async (action) => {
+  const handleTextSelectionAction = useCallback(async (action, options = {}) => {
     const selectedMarkup = activeTool === 'select'
       ? selectedToolbarAnnotationRef.current?.annotation
       : null;
@@ -28136,7 +28141,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     const markupType = action;
-    if (!['highlight', 'underline', 'squiggly', 'strikeout'].includes(markupType)) return;
+    if (!['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'].includes(markupType)) return;
+    if (markupType === 'link' && !options.linkUrl) {
+      setTextLinkUrl(selectedMarkup?.data?.markupType === 'link' ? selectedMarkup.data.linkUrl || '' : '');
+      setTextLinkError('');
+      setTextLinkEditorOpen(true);
+      return;
+    }
+    const linkUrl = markupType === 'link' ? normalizeTextLinkUrl(options.linkUrl) : null;
+    if (markupType === 'link' && !linkUrl) {
+      setTextLinkError('Enter a valid web or email link.');
+      return;
+    }
+    if (markupType === 'link') {
+      setTextLinkEditorOpen(false);
+      setTextLinkError('');
+    }
     if (selectedMarkup?.data?.type === 'text-markup') {
       const sourceGroupId = selectedMarkup.data.selectionGroupId;
       const sourceMarks = Object.values(annotationsByPageRef.current || {})
@@ -28150,7 +28170,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         sourceMarks.length ? sourceMarks : [selectedMarkup],
         markupType,
       );
-      if (toggleOff) {
+      if (toggleOff && markupType !== 'link') {
         const committed = commitTextMarkupDocumentTransaction(toggleOff, {
           source: 'text-markup:toggle-off',
           action: 'text-markup-delete',
@@ -28174,7 +28194,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const selectionGroupId = generateUUID();
       const paint = resolveTextMarkupEditPaint(selectedMarkup, strokeColorStateRef.current);
       const annotations = (sourceMarks.length ? sourceMarks : [selectedMarkup])
-        .map((source) => createTextMarkupAnnotation({
+        .flatMap((source) => (markupType === 'link' ? source.data.quads.map((quad) => [source, [quad]]) : [[source, source.data.quads]]))
+        .map(([source, quads]) => createTextMarkupAnnotation({
           id: generateUUID(),
           pageNumber: source.data.pageNumber,
           selectionGroupId,
@@ -28182,17 +28203,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           selectedText: source.data.selectedText,
           textRange: source.data.textRange,
           textRangeModel: source.data.textRangeModel,
-          quads: source.data.quads,
+          quads,
           color: paint.color,
           opacity: Math.max(0.05, Math.min(1, paint.opacity / 100)),
           overlapMode: source.data.overlapMode || textMarkupOverlapMode,
+          linkUrl,
           authorId: user?.id || null,
         }))
         .filter(Boolean);
-      const transaction = buildTextMarkupGroupCreateTransaction(
-        annotationsByPageRef.current || {},
+      const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
+      let transaction = buildTextMarkupGroupCreateTransaction(
+        transactionBase,
         annotations,
       );
+      if (transaction && toggleOff) {
+        transaction = {
+          ...transaction,
+          action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, transaction.nextByPage),
+        };
+      }
       const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
         source: 'text-markup:stack',
         action: 'text-markup-create',
@@ -28209,7 +28238,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     const selectionGroupId = generateUUID();
-    const annotations = selection.pages.map(({ pageNumber, quads, selectedText, textRange, textRangeModel }) => {
+    const annotations = selection.pages.flatMap(({ pageNumber, quads, selectedText, textRange, textRangeModel }) => (
+      markupType === 'link'
+        ? quads.map((quad) => ({ pageNumber, quads: [quad], selectedText, textRange, textRangeModel }))
+        : [{ pageNumber, quads, selectedText, textRange, textRangeModel }]
+    )).map(({ pageNumber, quads, selectedText, textRange, textRangeModel }) => {
       const id = generateUUID();
       return createTextMarkupAnnotation({
         id,
@@ -28223,19 +28256,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         color: strokeColorStateRef.current || '#f4d35e',
         opacity: Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current) || 30) / 100)),
         overlapMode: textMarkupOverlapMode,
+        linkUrl,
         authorId: user?.id || null,
       });
     }).filter(Boolean);
-    const transaction = buildTextMarkupGroupCreateTransaction(
-      annotationsByPageRef.current || {},
-      annotations,
-    );
     const toggleOff = buildTextMarkupRangeToggleOffTransaction(
       annotationsByPageRef.current || {},
       annotations,
       markupType,
     );
-    if (toggleOff) {
+    if (toggleOff && markupType !== 'link') {
       commitTextMarkupDocumentTransaction(toggleOff, {
         source: 'text-markup:toggle-off-live-selection',
         action: 'text-markup-delete',
@@ -28243,12 +28273,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       return;
     }
+    const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
+    let transaction = buildTextMarkupGroupCreateTransaction(transactionBase, annotations);
+    if (transaction && toggleOff) {
+      transaction = {
+        ...transaction,
+        action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, transaction.nextByPage),
+      };
+    }
     const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
         source: 'text-markup:create',
         action: 'text-markup-create',
         selectionGroupId,
       });
-    if (committed) capturePdfjsTextSelection();
+    if (committed && markupType === 'link') {
+      window.requestAnimationFrame(() => {
+        restorePdfjsTextSelection(selection);
+        capturePdfjsTextSelection();
+      });
+    } else if (committed) capturePdfjsTextSelection();
   }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, selectedTextMarkupActionSelection, textMarkupOverlapMode, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
@@ -31278,6 +31321,11 @@ ${pageBlocks}
                               onInternalNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
                             />
                           )}
+                          <TextMarkupLinkLayer
+                            annotations={pageAnnotationObjects}
+                            pageSize={resolvedPageSize}
+                            interactive={activeTool === 'pan'}
+                          />
                           {true && pdfDoc && (
                             <PdfjsFormLayer
                               pdf={pdfDoc}
@@ -37039,7 +37087,19 @@ ${pageBlocks}
           ? liveTextSelectionActionSelection
           : selectedTextMarkupActionSelection)?.activeMarkupTypes || []}
         colorPickerOpen={showAnnotationColorPicker}
+        linkEditorOpen={textLinkEditorOpen}
+        linkUrl={textLinkUrl}
+        linkError={textLinkError}
         onAction={handleTextSelectionAction}
+        onLinkUrlChange={(value) => {
+          setTextLinkUrl(value);
+          if (textLinkError) setTextLinkError('');
+        }}
+        onLinkSubmit={() => handleTextSelectionAction('link', { linkUrl: textLinkUrl })}
+        onLinkCancel={() => {
+          setTextLinkEditorOpen(false);
+          setTextLinkError('');
+        }}
         onColorClick={() => setShowAnnotationColorPicker(true)}
         onOverlapModeChange={activeTool === 'select'
           ? handleTextMarkupOverlapModeChange

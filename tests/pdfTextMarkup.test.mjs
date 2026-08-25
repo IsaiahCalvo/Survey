@@ -6,6 +6,8 @@ import {
   createTextMarkupAnnotation,
   mapOcrBoxToPage,
   mergeLineQuads,
+  normalizeTextLinkUrl,
+  buildTextMarkupLinkRegions,
   resizeTextMarkupHorizontalEdge,
   getTextMarkupRangeHandlePositions,
   rotatePageQuad,
@@ -74,6 +76,47 @@ for (const type of ['highlight', 'underline', 'squiggly', 'strikeout']) {
     assert.equal(annotation.hasControls, false);
   });
 }
+
+test('text links keep only safe external URLs', () => {
+  assert.equal(normalizeTextLinkUrl('example.com/docs'), 'https://example.com/docs');
+  assert.equal(normalizeTextLinkUrl('https://example.com/docs'), 'https://example.com/docs');
+  assert.equal(normalizeTextLinkUrl('mailto:test@example.com'), 'mailto:test@example.com');
+  assert.equal(normalizeTextLinkUrl('javascript:alert(1)'), null);
+  assert.equal(normalizeTextLinkUrl('data:text/html,bad'), null);
+  const annotation = createTextMarkupAnnotation({
+    id: 'link-safe', pageNumber: 1, markupType: 'link', linkUrl: 'example.com/docs',
+    quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],
+  });
+  assert.equal(annotation.data.linkUrl, 'https://example.com/docs');
+  assert.equal(annotation.pdfAnnotationType, 'Link');
+});
+
+test('each linked text line gets its own exact click region', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'link-lines', pageNumber: 1, markupType: 'link', linkUrl: 'example.com/spec',
+    quads: [
+      { x1: 10, y1: 20, x2: 60, y2: 20, x3: 10, y3: 30, x4: 60, y4: 30 },
+      { x1: 10, y1: 40, x2: 80, y2: 40, x3: 10, y3: 50, x4: 80, y4: 50 },
+    ],
+  });
+  const regions = buildTextMarkupLinkRegions([annotation], { width: 100, height: 200 });
+  assert.equal(regions.length, 2);
+  assert.deepEqual(regions.map(({ left, top, width, height }) => ({ left, top, width, height })), [
+    { left: '10%', top: '10%', width: '50%', height: '5%' },
+    { left: '10%', top: '20%', width: '70%', height: '5%' },
+  ]);
+});
+
+test('redactions use opaque black paint and native Redact identity', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'redact-1', pageNumber: 1, markupType: 'redact', color: '#ff00ff', opacity: 0.2,
+    quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],
+  });
+  assert.equal(annotation.fill, '#000000');
+  assert.equal(annotation.stroke, '#000000');
+  assert.equal(annotation.opacity, 1);
+  assert.equal(annotation.pdfAnnotationType, 'Redact');
+});
 
 test('all new text markup types default to thirty percent opacity', () => {
   for (const markupType of ['highlight', 'underline', 'squiggly', 'strikeout']) {

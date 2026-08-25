@@ -179,3 +179,43 @@ export function adaptStrikeOut(fabricObj, { pdfDoc, page, pageHeight }) {
   if (!dict) return null;
   return registerAnnotationDict(pdfDoc, dict);
 }
+
+export function adaptLink(fabricObj, { pdfDoc, page, pageHeight }) {
+  const dict = buildTextMarkupDict({
+    subtype: 'Link',
+    fabricObj,
+    pageHeight,
+    page,
+    colorFallback: '#2563EB',
+    fallbackPrefix: 'link',
+    useFill: false,
+  });
+  const linkUrl = String(fabricObj?.data?.linkUrl || '').trim();
+  if (!dict || !linkUrl) return null;
+  delete dict.QuadPoints;
+  delete dict.C;
+  delete dict.CA;
+  dict.Border = [0, 0, 0];
+  dict.A = {
+    S: 'URI',
+    URI: pdfStringOrEmpty(linkUrl),
+  };
+  return registerAnnotationDict(pdfDoc, dict);
+}
+
+export function adaptRedact(fabricObj, { pdfDoc, page, pageHeight }) {
+  const dict = buildTextMarkupDict({
+    subtype: 'Redact',
+    fabricObj,
+    pageHeight,
+    page,
+    colorFallback: '#000000',
+    fallbackPrefix: 'redact',
+    useFill: true,
+  });
+  if (!dict) return null;
+  dict.IC = [0, 0, 0];
+  dict.C = [0, 0, 0];
+  dict.CA = 1;
+  return registerAnnotationDict(pdfDoc, dict);
+}

@@ -78,11 +78,25 @@ test('same-range review marks report every active toggle', () => {
   const underline = mark('underline', 1, 'underline-group', 'underline');
   const squiggly = mark('squiggly', 1, 'squiggly-group', 'squiggly');
   const strikeout = mark('strikeout', 1, 'strikeout-group', 'strikeout');
+  const link = mark('link', 1, 'link-group', 'link');
+  link.data.linkUrl = 'https://example.com/one';
+  const redact = mark('redact', 1, 'redact-group', 'redact');
   const types = getTextMarkupRangeTypes({
-    1: { objects: [highlight, underline, squiggly, strikeout] },
+    1: { objects: [highlight, underline, squiggly, strikeout, link, redact] },
   }, [highlight]);
 
-  assert.deepEqual(types, ['highlight', 'underline', 'squiggly', 'strikeout']);
+  assert.deepEqual(types, ['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact']);
+});
+
+test('same-range links with different URLs stay distinct', () => {
+  const first = mark('link-one', 1, 'link-one-group', 'link');
+  first.data.linkUrl = 'https://example.com/one';
+  const second = mark('link-two', 1, 'link-two-group', 'link');
+  second.data.linkUrl = 'https://example.com/two';
+  const tx = buildTextMarkupGroupCreateTransaction({ 1: { objects: [first] } }, [second]);
+
+  assert.equal(tx.created.length, 1);
+  assert.equal(isExactTextMarkupDuplicate(first, second), false);
 });
 
 test('turning off one review toggle removes only that full group', () => {

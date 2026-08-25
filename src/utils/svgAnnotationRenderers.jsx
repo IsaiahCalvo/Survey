@@ -479,7 +479,7 @@ export const renderTextMarkup = (obj, index) => {
   const shapeId = obj.id || data.id || key;
   const lineWidth = Math.max(0.8, Number(data.lineWidth) || 1.2);
 
-  if (type === 'highlight') {
+  if (type === 'highlight' || type === 'redact') {
     const d = quads.map((q) => (
       `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`
     )).join(' ');
@@ -487,12 +487,12 @@ export const renderTextMarkup = (obj, index) => {
       <path
         key={key}
         d={d}
-        fill={color}
+        fill={type === 'redact' ? '#000000' : color}
         fillRule="nonzero"
-        opacity={opacity}
+        opacity={type === 'redact' ? 1 : opacity}
         style={data.overlapMode === 'layered' ? { mixBlendMode: 'multiply' } : undefined}
         data-shape-id={shapeId}
-        data-shape-kind="text-markup-highlight"
+        data-shape-kind={`text-markup-${type}`}
         data-overlap-mode={data.overlapMode || 'layered'}
       />
     );

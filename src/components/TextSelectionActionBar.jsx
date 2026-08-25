@@ -2,6 +2,8 @@ import Icon from '../Icons';
 import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';
 import highlightIconSvg from '../assets/text-markup-highlight.svg';
 import squiggleIconSvg from '../assets/text-markup-squiggle.svg';
+import linkIconSvg from '../assets/text-markup-link.svg';
+import redactIconSvg from '../assets/text-markup-redact.svg';
 
 const ACTIONS = [
   { id: 'copy', label: 'Copy', icon: 'copy' },
@@ -9,6 +11,8 @@ const ACTIONS = [
   { id: 'underline', label: 'Underline', icon: 'underline' },
   { id: 'squiggly', label: 'Squiggle', iconAsset: squiggleIconSvg },
   { id: 'strikeout', label: 'Strikeout', textGlyph: 'S' },
+  { id: 'link', label: 'Add link', iconAsset: linkIconSvg, invertAsset: true },
+  { id: 'redact', label: 'Redact', iconAsset: redactIconSvg, invertAsset: true },
 ];
 
 function TextFormatGlyph({ action }) {
@@ -41,6 +45,7 @@ function ActionIcon({ action }) {
           height: 14,
           display: 'block',
           objectFit: 'contain',
+          filter: action.invertAsset ? 'invert(1)' : undefined,
         }}
       />
     );
@@ -66,7 +71,23 @@ function ActionIcon({ action }) {
   );
 }
 
-export default function TextSelectionActionBar({ selection, color, opacity, overlapMode, activeMarkupTypes = [], colorPickerOpen = false, onAction, onColorClick, onOverlapModeChange }) {
+export default function TextSelectionActionBar({
+  selection,
+  color,
+  opacity,
+  overlapMode,
+  activeMarkupTypes = [],
+  colorPickerOpen = false,
+  linkEditorOpen = false,
+  linkUrl = '',
+  linkError = '',
+  onAction,
+  onColorClick,
+  onOverlapModeChange,
+  onLinkUrlChange,
+  onLinkSubmit,
+  onLinkCancel,
+}) {
   if (!selection?.pages?.length || !selection?.anchor) return null;
   const chromeBottom = Math.max(
     document.getElementById('chrome-top-host')?.getBoundingClientRect?.().bottom || 0,
@@ -93,7 +114,7 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
       onPointerDown={(event) => {
         // Keep the PDF text range active when action buttons are pressed, but
         // let form controls receive a real pointer press so their menus open.
-        if (!event.target.closest('select')) event.preventDefault();
+        if (!event.target.closest('select, input, [data-link-editor-control]')) event.preventDefault();
       }}
     >
       <button type="button" aria-label="Markup color" onClick={onColorClick} style={{ width: 24, height: 24, border: 0, borderRadius: 4, background: 'transparent', padding: 5 }}>
@@ -125,6 +146,33 @@ export default function TextSelectionActionBar({ selection, color, opacity, over
         <option value="layered">Layered</option>
         <option value="uniform">Uniform</option>
       </select>
+      {linkEditorOpen && (
+        <form
+          data-text-link-editor="true"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onLinkSubmit?.();
+          }}
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', alignItems: 'center', gap: 4, padding: 5,
+            border: '1px solid #3a4252', borderRadius: 7, background: '#181b20',
+            boxShadow: '0 8px 24px rgba(0,0,0,.45)',
+          }}
+        >
+          <input
+            autoFocus
+            aria-label="Link URL"
+            value={linkUrl}
+            onChange={(event) => onLinkUrlChange?.(event.target.value)}
+            placeholder="https://example.com"
+            style={{ width: 190, height: 26, border: '1px solid #3a4252', borderRadius: 4, background: '#22262d', color: '#e8e2d4', padding: '0 7px', fontSize: 11 }}
+          />
+          <button data-link-editor-control type="submit" aria-label="Apply link" style={{ height: 26, border: 0, borderRadius: 4, background: '#d8a84e', color: '#181b20', fontSize: 11, fontWeight: 700, padding: '0 8px' }}>Add</button>
+          <button data-link-editor-control type="button" aria-label="Cancel link" onClick={onLinkCancel} style={{ width: 26, height: 26, border: 0, borderRadius: 4, background: 'transparent', color: '#e8e2d4', fontSize: 16 }}>×</button>
+          {linkError && <span role="alert" style={{ position: 'absolute', top: '100%', left: 5, marginTop: 3, color: '#ff8b8b', fontSize: 10, whiteSpace: 'nowrap' }}>{linkError}</span>}
+        </form>
+      )}
     </div>
   );
 }

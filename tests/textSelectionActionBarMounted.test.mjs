@@ -22,7 +22,9 @@ async function loadActionBar() {
     .replace("import Icon from '../Icons';", 'const Icon = ({ name, size }) => <svg data-icon-name={name} width={size} height={size} />;')
     .replace("import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';", 'const computeTextSelectionActionBarPosition = () => ({ left: 100, top: 100 });')
     .replace("import highlightIconSvg from '../assets/text-markup-highlight.svg';", "const highlightIconSvg = 'highlight.svg';")
-    .replace("import squiggleIconSvg from '../assets/text-markup-squiggle.svg';", "const squiggleIconSvg = 'squiggle.svg';");
+    .replace("import squiggleIconSvg from '../assets/text-markup-squiggle.svg';", "const squiggleIconSvg = 'squiggle.svg';")
+    .replace("import linkIconSvg from '../assets/text-markup-link.svg';", "const linkIconSvg = 'link.svg';")
+    .replace("import redactIconSvg from '../assets/text-markup-redact.svg';", "const redactIconSvg = 'redact.svg';");
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-action-bar-test-'));
@@ -41,6 +43,8 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
   globalThis.HTMLElement = dom.window.HTMLElement;
   globalThis.Node = dom.window.Node;
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  dom.window.HTMLElement.prototype.attachEvent = () => {};
+  dom.window.HTMLElement.prototype.detachEvent = () => {};
 
   const { ActionBar, cleanup } = await loadActionBar();
   const changes = [];
@@ -50,15 +54,23 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
   function Harness() {
     const [mode, setMode] = useState('layered');
     const [activeMarkupTypes, setActiveMarkupTypes] = useState(['highlight', 'strikeout']);
+    const [linkOpen, setLinkOpen] = useState(false);
+    const [linkUrl, setLinkUrl] = useState('');
     return React.createElement(ActionBar, {
       selection,
       color: '#ffff00',
       opacity: 0.3,
       overlapMode: mode,
       activeMarkupTypes,
+      linkEditorOpen: linkOpen,
+      linkUrl,
       onAction: (action) => {
         actions.push(action);
         if (action === 'copy') return;
+        if (action === 'link') {
+          setLinkOpen(true);
+          return;
+        }
         setActiveMarkupTypes((current) => (
           current.includes(action)
             ? current.filter((type) => type !== action)
@@ -66,6 +78,9 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
         ));
       },
       onColorClick: () => {},
+      onLinkUrlChange: setLinkUrl,
+      onLinkSubmit: () => setLinkOpen(false),
+      onLinkCancel: () => setLinkOpen(false),
       onOverlapModeChange: (nextMode) => {
         changes.push(nextMode);
         setMode(nextMode);
@@ -89,9 +104,11 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
     assert.equal(document.querySelector('button[aria-label="Highlight"]').getAttribute('aria-pressed'), 'true');
     assert.equal(document.querySelector('button[aria-label="Underline"]').getAttribute('aria-pressed'), 'false');
     assert.equal(document.querySelector('button[aria-label="Strikeout"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(document.querySelectorAll('[data-text-selection-action-icon="true"]').length, 5);
+    assert.equal(document.querySelectorAll('[data-text-selection-action-icon="true"]').length, 7);
     assert.ok(document.querySelector('button[aria-label="Underline"] svg[data-icon-name="underline"]'));
     assert.equal(document.querySelector('button[aria-label="Squiggle"] img')?.getAttribute('src'), 'squiggle.svg');
+    assert.equal(document.querySelector('button[aria-label="Add link"] img')?.getAttribute('src'), 'link.svg');
+    assert.equal(document.querySelector('button[aria-label="Redact"] img')?.getAttribute('src'), 'redact.svg');
     assert.equal(document.querySelector('button[aria-label="Squiggle"] [style*="mask"]'), null);
     assert.equal(document.querySelector('button[aria-label="Strikeout"] [data-text-format-glyph]').textContent, 'S');
     assert.equal(document.querySelector('button[aria-label="Highlight"]').style.background, 'transparent');
@@ -114,6 +131,13 @@ test('mounted overlap select receives pointer input, changes mode, and keeps the
     const buttonPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });
     copyButton.dispatchEvent(buttonPointerDown);
     assert.equal(buttonPointerDown.defaultPrevented, true, 'markup buttons must keep the PDF text range active');
+
+    await act(async () => document.querySelector('button[aria-label="Add link"]').click());
+    const linkInput = document.querySelector('input[aria-label="Link URL"]');
+    assert.ok(linkInput, 'the link action opens its URL field');
+    const inputPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+    linkInput.dispatchEvent(inputPointerDown);
+    assert.equal(inputPointerDown.defaultPrevented, false, 'the URL field must receive focus and text input');
   } finally {
     await act(async () => root.unmount());
     await cleanup();

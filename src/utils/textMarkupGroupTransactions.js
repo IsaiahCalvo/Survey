@@ -18,6 +18,7 @@ const textMarkupRangeFingerprint = (annotation) => {
     color: String(annotation.stroke || annotation.fill || annotation.data.color || '').toLowerCase(),
     opacity: Number(Number(annotation.opacity ?? 1).toFixed(4)),
     overlapMode: annotation.data.overlapMode === 'uniform' ? 'uniform' : 'layered',
+    linkUrl: String(annotation.data.linkUrl || ''),
   });
 };
 
@@ -120,7 +121,7 @@ export function getTextMarkupRangeTypes(annotationsByPage, sourceAnnotations) {
       if (type) types.add(type);
     }
   }
-  const order = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const order = ['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'];
   return order.filter((type) => types.has(type));
 }
 
