@@ -139,6 +139,12 @@ test('outline Bookmarks Delete is typed; delete is not applied', async ({ page }
   const beforeNames = await visibleBookmarkLabels(page);
   expect(beforeNames.length).toBeGreaterThan(0);
 
+  const liveChevron = page.locator('button[aria-label="Expand group"]:not([disabled]), button[aria-label="Collapse group"]:not([disabled])').first();
+  await expect(liveChevron).toBeVisible({ timeout: 8_000 });
+  if ((await liveChevron.getAttribute('aria-label')) === 'Expand group') {
+    await liveChevron.click();
+  }
+
   await expectTypedNamed(panelEdit(page), 'Edit');
   await panelEdit(page).click();
   await expectTypedNamed(panelDone(page), 'Done');
