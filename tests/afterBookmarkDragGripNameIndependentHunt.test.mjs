@@ -656,6 +656,7 @@ test('hunt after Bookmarks drag grip name looks past category-main type and left
   assert.match(spec, /Package%202%20-%20Rev%204%20--%20IC\.pdf/);
   assert.match(spec, /surveyTransitionE2E=1/);
   assert.match(spec, /hubPreview=1/);
+  assert.match(spec, /independent hunt after Bookmarks drag grip name/);
   assert.match(spec, /AFTER_BOOKMARK_DRAG_GRIP_NAME_INDEPENDENT_HUNT/);
   assert.match(spec, /bookmarks\.dragGripCount/);
   assert.match(spec, /bookmarks\.dragGripLabel/);
