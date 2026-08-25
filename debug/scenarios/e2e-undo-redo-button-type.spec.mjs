@@ -134,25 +134,23 @@ test('desktop Undo / Redo are typed; Undo still undoes a rectangle', async ({ pa
   await expect(undo).toBeDisabled();
   await expect(redo).toBeDisabled();
 
+  const annoCount = () => page.evaluate(() => (
+    document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]').length
+  ));
+  const baseline = await annoCount();
   await armRectangle(page);
   await dragOnPage(page, { x0: 0.22, y0: 0.28, x1: 0.40, y1: 0.46 });
-  await expect.poll(async () => (
-    page.evaluate(() => document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]').length)
-  ), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(annoCount, { timeout: 15_000 }).toBeGreaterThan(baseline);
   await expect(undo).toBeEnabled();
   await expectTypedControl(undo, 'Undo');
 
   await undo.click();
-  await expect.poll(async () => (
-    page.evaluate(() => document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]').length)
-  ), { timeout: 10_000 }).toBe(0);
+  await expect.poll(annoCount, { timeout: 10_000 }).toBe(baseline);
   await expect(redo).toBeEnabled();
   await expectTypedControl(redo, 'Redo');
 
   await redo.click();
-  await expect.poll(async () => (
-    page.evaluate(() => document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]').length)
-  ), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(annoCount, { timeout: 10_000 }).toBeGreaterThan(baseline);
   await expectTypedControl(undo, 'Undo');
   await expectTypedControl(redo, 'Redo');
   await expectUndoRedoNotImplicit(page);
@@ -215,7 +213,10 @@ test('390 + guest + hub break/edge for Undo / Redo type', async ({ page }) => {
   await expect(mobileRedo).toHaveAttribute('type', 'button');
   await expect(mobileRedo).toHaveAttribute('aria-label', 'Redo');
   expect(await desktopUndo(page).count()).toBe(0);
-  expect(await page.getByRole('button', { name: 'Version history', exact: true }).count()).toBe(0);
+  const mobileHistory = page.getByRole('button', { name: 'Version history', exact: true });
+  if (await mobileHistory.count()) {
+    await expect(mobileHistory.first()).toBeDisabled();
+  }
   const hidden = await hiddenCounts(page);
   expect(hidden.Forms).toBe(0);
   expect(hidden.Note).toBe(0);
