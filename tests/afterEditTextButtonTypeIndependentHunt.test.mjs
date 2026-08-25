@@ -553,7 +553,7 @@ test('official leftover files besides isolated 8448 match live source after Edit
   assert.match(expanded, /<button\s+type="button"\s+onClick=\{api\.zoomIn\}/);
   assert.match(expanded, /<button\s+type="button"\s+onClick=\{api\.goToPreviousPage\}/);
   assert.doesNotMatch(expanded, /<button\s+onClick=\{api\.zoomOut\}/);
-  const editStart = shell.indexOf('// 2026-05-25: Rich-text edit entry button.');
+  const editStart = shell.indexOf('{/* 2026-05-25: Rich-text edit entry button.');
   assert.ok(editStart > 0, 'Edit text chrome');
   assert.match(
     shell.slice(editStart, editStart + 1800),

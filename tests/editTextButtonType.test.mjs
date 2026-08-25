@@ -19,9 +19,9 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 test('desktop AppShell Edit text is type=button; mobile Text formatting already typed', () => {
   const shell = read('src/AppShell.jsx');
-  const start = shell.indexOf('// 2026-05-25: Rich-text edit entry button.');
+  const start = shell.indexOf('{/* 2026-05-25: Rich-text edit entry button.');
   assert.ok(start > 0, 'Edit text chrome comment');
-  const slice = shell.slice(start, start + 1800);
+  const slice = shell.slice(start, start + 2800);
   assert.match(
     slice,
     /<button\s+type="button"\s+onClick=\{\(\) => bottomToolbarApi\.onEnterTextEdit\(\)\}/,
