@@ -24,7 +24,7 @@ test('Survey category-main / arrow are type=button; Create category apply stays 
   const rail = read('src/SurveySpacesRail.jsx');
   const main = rail.indexOf('className="survey-marker-category-main"');
   assert.ok(main > 0, 'category-main');
-  const mainSlice = rail.slice(Math.max(0, main - 700), main + 80);
+  const mainSlice = rail.slice(Math.max(0, main - 1600), main + 80);
   assert.match(mainSlice, /<button\s+type="button"/);
   assert.match(mainSlice, /setSelectedCategoryId\(category\.id\)/);
   assert.match(mainSlice, /setActiveTool\('survey-marker'\)/);

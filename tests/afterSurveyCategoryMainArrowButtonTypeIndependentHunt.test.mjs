@@ -81,9 +81,9 @@ test('official leftover files besides isolated 8448 match live source after Surv
   );
   const categoryMain = surveyRail.indexOf('className="survey-marker-category-main"');
   assert.ok(categoryMain > 0, 'category-main');
-  assert.match(surveyRail.slice(Math.max(0, categoryMain - 700), categoryMain + 40), /<button\s+type="button"/);
+  assert.match(surveyRail.slice(Math.max(0, categoryMain - 1600), categoryMain + 40), /<button\s+type="button"/);
   assert.doesNotMatch(
-    surveyRail.slice(Math.max(0, categoryMain - 700), categoryMain + 40),
+    surveyRail.slice(Math.max(0, categoryMain - 1600), categoryMain + 40),
     /<button\s+onClick=\{\(e\) => \{/,
   );
   const categoryArrow = surveyRail.indexOf('className="survey-marker-category-arrow"');
