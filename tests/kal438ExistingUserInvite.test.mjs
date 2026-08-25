@@ -7,6 +7,7 @@ import {
 } from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   CANONICAL_ORIGIN,
@@ -91,6 +92,10 @@ async function loadDocumentInviteService({ supabase, sendInviteEmailSmart }) {
     .replace(
       "import { supabase } from '../supabaseClient';",
       `const supabase = globalThis[${JSON.stringify(supabaseKey)}];`,
+    )
+    .replace(
+      "import { interpretInviteAcceptResult } from '../home/documentDeepLink';",
+      `import { interpretInviteAcceptResult } from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/home/documentDeepLink.js')).href)};`,
     )
     .replace(
       /import \{\s*inviteEmailFailureMessage,\s*sendInviteEmailSmart,\s*\} from '\.\/shareEmailService';/,
@@ -473,7 +478,8 @@ test('KAL-438: direct-share email copy describes a first share, not a permission
 test('KAL-438: AppShell consumes the server-built document deep link', () => {
   const appShell = read('src/AppShell.jsx');
   match(appShell, /new URLSearchParams\(window\.location\.search\)\.get\('docId'\)/);
-  match(appShell, /documents\.find\(/);
+  match(appShell, /resolveDeepLinkDocument/);
+  match(appShell, /loadInviteDocument/);
   match(appShell, /handleDocumentSelect\(\s*fileToOpen/);
   match(appShell, /url\.searchParams\.delete\('docId'\)/);
 });

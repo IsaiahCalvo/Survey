@@ -694,6 +694,30 @@ export async function removeDocumentCollaborator(documentId, userId) {
     return { success: false, error };
   }
 
+  await voidDocumentInvitesForRemovedCollaborator(documentId, userId);
+  return { success: true };
+}
+
+export async function voidDocumentInvitesForRemovedCollaborator(documentId, userId) {
+  if (!documentId || !userId) return { success: false };
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('document_invites')
+    .update({ revoked_at: now })
+    .eq('document_id', documentId)
+    .eq('accepted_by', userId)
+    .is('revoked_at', null);
+  if (error) {
+    const { error: deleteError } = await supabase
+      .from('document_invites')
+      .delete()
+      .eq('document_id', documentId)
+      .eq('accepted_by', userId);
+    if (deleteError) {
+      console.error('[AnnotationSync] Error voiding invite rows:', deleteError);
+      return { success: false, error: deleteError };
+    }
+  }
   return { success: true };
 }
 

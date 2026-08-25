@@ -15,6 +15,7 @@
  *   - Invites expire after 7 days; resend refreshes the window.
  */
 import { supabase } from '../supabaseClient';
+import { interpretInviteAcceptResult } from '../home/documentDeepLink';
 import {
   inviteEmailFailureMessage,
   sendInviteEmailSmart,
@@ -454,13 +455,60 @@ export async function acceptDocumentInvite(token) {
     return { status: 'invalid', error: error.message };
   }
   const row = Array.isArray(data) ? data[0] : data;
-  return {
+  const rpcResult = {
     status: row?.status || 'invalid',
     documentId: row?.document_id || null,
     effectiveRole: row?.effective_role || null,
     intendedRole: row?.intended_role || null,
     upgradeRequired: !!row?.upgrade_required,
   };
+  if (rpcResult.status !== 'already_accepted') return rpcResult;
+
+  const { data: authData } = await supabase.auth.getUser();
+  const currentUser = authData?.user || null;
+  const { data: invite } = await supabase
+    .from('document_invites')
+    .select('*')
+    .eq('token', token)
+    .maybeSingle();
+  let hasActiveGrant = false;
+  if (currentUser?.id && rpcResult.documentId) {
+    const { data: grant } = await supabase
+      .from('document_collaborators')
+      .select('role')
+      .eq('document_id', rpcResult.documentId)
+      .eq('user_id', currentUser.id)
+      .eq('status', 'active')
+      .maybeSingle();
+    hasActiveGrant = !!grant?.role;
+  }
+  const interpreted = interpretInviteAcceptResult({
+    rpcStatus: rpcResult.status,
+    invite,
+    currentUserId: currentUser?.id,
+    hasActiveGrant,
+  });
+  if (interpreted.action === 'grant-from-invite' && currentUser?.id && rpcResult.documentId) {
+    const role = normalizeRole(invite?.intended_role || rpcResult.intendedRole || 'viewer');
+    const { error: grantError } = await supabase
+      .from('document_collaborators')
+      .insert({
+        document_id: rpcResult.documentId,
+        user_id: currentUser.id,
+        email: currentUser.email || null,
+        role,
+        status: 'active',
+        invited_by: invite?.created_by || null,
+      });
+    if (!grantError) {
+      return {
+        ...rpcResult,
+        status: 'accepted',
+        effectiveRole: role,
+      };
+    }
+  }
+  return { ...rpcResult, status: interpreted.status };
 }
 
 /**

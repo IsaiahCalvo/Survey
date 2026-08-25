@@ -49,6 +49,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
+import { resolveDeepLinkDocument } from './home/documentDeepLink';
+import { supabase, isSupabaseAvailable } from './supabaseClient';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { FONT_FAMILIES, FONT_SIZE_PRESETS } from './utils/annotationStyleCatalog.js';
@@ -924,31 +926,63 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Existing-user share emails and accepted invites land on ?docId=<id>.
-  // Wait for the authenticated document list, then use the exact same open
-  // path as clicking that document in the dashboard.
+  // Resolve the invite / document row itself — do not only search the
+  // visitor's already-loaded owned list (second invitee otherwise no-ops).
   useEffect(() => {
     const deepLinkDocumentId = deepLinkDocumentIdRef.current;
     if (!deepLinkDocumentId) return;
-    const documentToOpen = documents.find(
-      (document) => String(document?.id) === String(deepLinkDocumentId),
-    );
-    if (!documentToOpen) return;
+    let cancelled = false;
 
-    deepLinkDocumentIdRef.current = null;
-    const fileToOpen = (
-      import.meta.env.DEV
-      && documentToOpen.__localFile instanceof File
-    )
-      ? documentToOpen.__localFile
-      : documentToOpen;
-    handleDocumentSelect(
-      fileToOpen,
-      documentToOpen.filePath || documentToOpen.file_path || null,
-    );
+    const openResolvedDocument = (documentToOpen) => {
+      if (!documentToOpen || cancelled) return;
+      deepLinkDocumentIdRef.current = null;
+      const fileToOpen = (
+        import.meta.env.DEV
+        && documentToOpen.__localFile instanceof File
+      )
+        ? documentToOpen.__localFile
+        : documentToOpen;
+      handleDocumentSelect(
+        fileToOpen,
+        documentToOpen.filePath || documentToOpen.file_path || null,
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.delete('docId');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    };
 
-    const url = new URL(window.location.href);
-    url.searchParams.delete('docId');
-    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    const loadInviteDocument = async (documentId) => {
+      if (
+        import.meta.env.DEV
+        && typeof window !== 'undefined'
+        && window.__documentDeepLinkE2EInvite
+        && String(window.__documentDeepLinkE2EInvite.id) === String(documentId)
+      ) {
+        const invited = window.__documentDeepLinkE2EInvite;
+        window.__documentDeepLinkE2EInvite = null;
+        return invited;
+      }
+      if (!isSupabaseAvailable() || !documentId) return null;
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('id', documentId)
+        .maybeSingle();
+      if (error || !data) return null;
+      return data;
+    };
+
+    void resolveDeepLinkDocument({
+      documents,
+      documentId: deepLinkDocumentId,
+      loadInviteDocument,
+    }).then((resolved) => {
+      openResolvedDocument(resolved?.document);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const returnToDevHubPreview = () => {

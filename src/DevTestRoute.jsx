@@ -185,6 +185,8 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     .get('surveyTemplateWorkflowE2E') === '1';
   const documentDeepLinkE2E = new URLSearchParams(window.location.search)
     .get('documentDeepLinkE2E') === '1';
+  const documentDeepLinkInviteE2E = new URLSearchParams(window.location.search)
+    .get('documentDeepLinkInviteE2E') === '1';
 
   if (surveyTransitionE2E) {
     window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
@@ -214,7 +216,17 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
         if (cancelled) return;
 
-        if (documentDeepLinkE2E) {
+        if (documentDeepLinkInviteE2E) {
+          // Visitor list is empty; the invite resolver supplies the document.
+          window.__documentDeepLinkE2EDocuments = [];
+          window.__documentDeepLinkE2EInvite = {
+            id: 'deep-link-test-document',
+            name: file.name,
+            size: file.size,
+            filePath: '/debug/deep-link-test.pdf',
+            __localFile: file,
+          };
+        } else if (documentDeepLinkE2E) {
           window.__documentDeepLinkE2EDocuments = [{
             id: 'deep-link-test-document',
             name: file.name,
@@ -237,7 +249,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
     loadPdf();
     return () => { cancelled = true; };
-  }, [pdfName, displayName, documentDeepLinkE2E]);
+  }, [pdfName, displayName, documentDeepLinkE2E, documentDeepLinkInviteE2E]);
 
   if (status === 'loading') {
     return (
