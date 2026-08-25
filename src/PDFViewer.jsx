@@ -33477,6 +33477,7 @@ ${pageBlocks}
 
                   const button = (
                     <button
+                      type="button"
                       key={t.id}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       onClick={onMainClick}
