@@ -2757,6 +2757,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       || bottomToolbarApi.contextTool === 'callout'
                       || !!bottomToolbarApi.richTextEditor) && (
                   <button
+                    type="button"
                     onClick={() => bottomToolbarApi.onEnterTextEdit()}
                     onMouseDown={(e) => e.stopPropagation()}
                     disabled={!bottomToolbarApi.canEnterTextEdit}
