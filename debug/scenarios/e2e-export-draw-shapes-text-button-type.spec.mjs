@@ -9,6 +9,9 @@ import { test, expect } from '@playwright/test';
 // Hosted on ?testPdf=clickable-link-test.pdf. Prove the trigger type
 // only: still named, type=button does not empty accname or auto-submit
 // / export, Draw / Shapes / Text still open their menus.
+// implicitSubmit is scoped to chrome-top Export + data-tool-toolbar
+// category siblings so the sub-toolbar Text tool (create-tool catalog)
+// is not treated as this leftover.
 // Do NOT click Export annotated PDF / Invite / Send / Done / Restore /
 // Delete forever / Open file / Share / Upload / Sign out / Delete
 // account / Subscription apply / Start trial / Create project / Save /
@@ -80,7 +83,10 @@ async function expectTypedControl(button, name) {
 
 async function expectChromeNotImplicit(page) {
   const implicit = await page.evaluate(() => (
-    [...document.querySelectorAll('button')]
+    [
+      ...document.querySelectorAll('#chrome-top-host button[aria-label="Export annotated PDF"]'),
+      ...document.querySelectorAll('[data-tool-toolbar="true"] > button, [data-tool-toolbar="true"] > div button'),
+    ]
       .filter((btn) => !btn.getAttribute('type'))
       .map((btn) => (btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.innerText || '').replace(/\s+/g, ' ').trim())
   ));
