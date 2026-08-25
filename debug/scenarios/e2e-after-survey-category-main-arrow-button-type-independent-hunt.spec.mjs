@@ -338,7 +338,7 @@ async function armRectangle(page) {
   await expect(rectangle).toHaveClass(/btn-active|is-active/);
 }
 
-test('independent hunt after Survey Close type', async ({ page }) => {
+test('independent hunt after Survey category-main / arrow type', async ({ page }) => {
   test.setTimeout(240_000);
   const inventory = {
     editor: {},
