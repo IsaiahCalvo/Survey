@@ -3129,6 +3129,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 return (
                   <div style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid #2a3140', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     <button
+                      type="button"
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}
                       aria-label="Zoom in"
@@ -3138,6 +3139,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     </button>
                     {zoomValue}
                     <button
+                      type="button"
                       onClick={api.zoomOut}
                       {...chromeTip('Zoom out', 'left')}
                       aria-label="Zoom out"
@@ -3150,6 +3152,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
                     {/* Page nav — chevron up/down because vertical layout. */}
                     <button
+                      type="button"
                       onClick={api.goToPreviousPage}
                       disabled={atFirstPage}
                       {...chromeTip('Previous page', 'left')}
@@ -3166,6 +3169,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       {api.numPages}
                     </span>
                     <button
+                      type="button"
                       onClick={api.goToNextPage}
                       disabled={atLastPage}
                       {...chromeTip('Next page', 'left')}
@@ -3212,6 +3216,7 @@ export default function App({ devPreviewReturnTab = null }) {
               return (
                 <div style={{ position: 'absolute', right: 0, bottom: 0, width: '320px', boxSizing: 'border-box', zIndex: 2, background: '#12151c', borderTop: '1px solid #2a3140', padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                   <button
+                    type="button"
                     onClick={api.zoomOut}
                     {...chromeTip('Zoom out', 'above')}
                     aria-label="Zoom out"
@@ -3221,6 +3226,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   </button>
                   {zoomValue}
                   <button
+                    type="button"
                     onClick={api.zoomIn}
                     {...chromeTip('Zoom in', 'above')}
                     aria-label="Zoom in"
@@ -3233,6 +3239,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
                   {/* Page nav — left/right chevrons because horizontal row. */}
                   <button
+                    type="button"
                     onClick={api.goToPreviousPage}
                     disabled={atFirstPage}
                     {...chromeTip('Previous page', 'above')}
@@ -3247,6 +3254,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span style={{ color: '#8d96a6' }}>{api.numPages}</span>
                   </span>
                   <button
+                    type="button"
                     onClick={api.goToNextPage}
                     disabled={atLastPage}
                     {...chromeTip('Next page', 'above')}
