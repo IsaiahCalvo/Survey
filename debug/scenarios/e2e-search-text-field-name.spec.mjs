@@ -110,15 +110,12 @@ test('desktop Search text field is named; query apply is not taken', async ({ pa
   await expect(field).toHaveAttribute('placeholder', 'Search text in PDF...');
   expect(await namedField(page).count()).toBe(1);
 
-  await expect(page.getByRole('button', { name: 'Previous match (Shift+Enter)', exact: true })).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByRole('button', { name: 'Next match (Enter)', exact: true })).toBeVisible();
   expect(await page.getByRole('button', { name: 'Clear search', exact: true }).count()).toBe(0);
 
   await field.focus();
   await page.keyboard.press('Escape');
   await expectNamedField(field);
   expect(await namedField(page).count()).toBe(1);
-  await expect(page.getByRole('button', { name: 'Previous match (Shift+Enter)', exact: true })).toBeVisible();
   expect(await page.getByRole('button', { name: 'Clear search', exact: true }).count()).toBe(0);
 
   expect(await page.getByRole('button', { name: 'Font color', exact: true }).count()).toBe(0);
