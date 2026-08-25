@@ -97,16 +97,14 @@ test('Account Settings General local chrome intended / break / edge', async ({ p
   ]);
   await expect(page.locator('.who .name').first()).toContainText('Isaiah Calvo');
 
-  // Break: empty / partial required names stay in the browser validity gate.
+  // Break: empty names are now valid and attempt persist (hubPreview
+  // still previewBlocks). Dedicated clear proof lives in
+  // e2e-profile-name-clear.spec.mjs — do not replay Delete account / Sign out.
   await dialog.getByRole('button', { name: 'Edit profile' }).click();
   await first.fill('');
   await last.fill('');
-  await dialog.getByRole('button', { name: 'Save changes' }).click();
-  expect(await first.evaluate((el) => !el.checkValidity())).toBe(true);
-  await first.fill('Pat');
-  await last.fill('');
-  await dialog.getByRole('button', { name: 'Save changes' }).click();
-  expect(await last.evaluate((el) => !el.checkValidity())).toBe(true);
+  expect(await first.evaluate((el) => el.checkValidity())).toBe(true);
+  expect(await last.evaluate((el) => el.checkValidity())).toBe(true);
 
   // Intended: unchanged Save is a local noop. Name change is previewBlocked.
   await first.fill('Isaiah');

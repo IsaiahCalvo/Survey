@@ -250,9 +250,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
     try {
       // Check if name changed
+      const nextFirstName = (firstName || '').trim();
+      const nextLastName = (lastName || '').trim();
       const nameChanged =
-        firstName !== user?.user_metadata?.first_name ||
-        lastName !== user?.user_metadata?.last_name;
+        nextFirstName !== (user?.user_metadata?.first_name || '') ||
+        nextLastName !== (user?.user_metadata?.last_name || '');
 
       const passwordCheck = validatePasswordForm({
         kind: pwKind,
@@ -299,9 +301,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       if (nameChanged) {
         try {
           await updateProfile({
-            first_name: firstName,
-            last_name: lastName,
-            full_name: `${firstName} ${lastName}`
+            first_name: nextFirstName,
+            last_name: nextLastName,
+            full_name: [nextFirstName, nextLastName].filter(Boolean).join(' '),
           });
           nameSaved = true;
         } catch (err) {
@@ -566,7 +568,6 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             type="text"
                             value={firstName}
                             onChange={(e) => setFirstName(e.target.value)}
-                            required
                             disabled={loading}
                             autoComplete="given-name"
                           />
@@ -579,7 +580,6 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             type="text"
                             value={lastName}
                             onChange={(e) => setLastName(e.target.value)}
-                            required
                             disabled={loading}
                             autoComplete="family-name"
                           />
