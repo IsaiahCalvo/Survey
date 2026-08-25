@@ -1738,6 +1738,7 @@ const SearchTextPanel = ({
             type="text"
             value={internalSearchQuery}
             onChange={(e) => setInternalSearchQuery(e.target.value)}
+            aria-label="Search text in PDF"
             placeholder={mobileMode ? 'Search text' : 'Search text in PDF...'}
             style={{
               width: '100%',
