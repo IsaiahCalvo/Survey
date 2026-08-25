@@ -576,7 +576,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const someSel = selectedIds.size > 0;
 
   const ICON_BTN = (path, title, onClick, color, disabled) => (
-    <button title={title} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
+    <button type="button" title={title} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
       style={{ width: 28, height: 28, borderRadius: 6, padding: 0, background: "transparent", border: `1px solid ${INK_500}`, color: disabled ? INK_300 : color, display: "grid", placeItems: "center", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", flex: "none" }}>
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{path}</svg>
     </button>
@@ -625,7 +625,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
             </div>
             {editMode && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 4, flex: "none" }}>
-                <button onClick={(e) => { e.stopPropagation(); if (allSel) setSelectedIds(new Set()); else setSelectedIds(new Set(selectable.map(m => m.id))); }}
+                <button type="button" onClick={(e) => { e.stopPropagation(); if (allSel) setSelectedIds(new Set()); else setSelectedIds(new Set(selectable.map(m => m.id))); }}
                   style={{ padding: "0 8px", height: 28, fontSize: 11.5, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, cursor: "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{allSel ? "None" : "All"}</button>
                 <div style={{ position: "relative", display: "inline-flex" }}>
                   {ICON_BTN(
@@ -638,7 +638,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   {bulkRoleOpen && someSel && (
                     <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 130, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                       {ROLES.map(r => (
-                        <button key={r} onClick={() => setRoleBulk(r)} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: BONE_100, padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}>{r}</button>
+                        <button key={r} type="button" onClick={() => setRoleBulk(r)} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: BONE_100, padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}>{r}</button>
                       ))}
                     </div>
                   )}
@@ -694,12 +694,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     </div>
                     {editMode && !m.isCreator ? (
                       <div style={{ position: "relative", minWidth: 0 }}>
-                        <button data-kal31-role-trigger="true" onClick={(e) => { e.stopPropagation(); setOpenRoleSel(openRoleSel === m.id ? null : m.id); }}
+                        <button type="button" data-kal31-role-trigger="true" onClick={(e) => { e.stopPropagation(); setOpenRoleSel(openRoleSel === m.id ? null : m.id); }}
                           style={{ background: "transparent", border: 0, padding: "0 14px 0 0", color: BONE_200, font: "inherit", fontFamily: "inherit", fontSize: 11.5, height: 24, lineHeight: "24px", textAlign: "left", cursor: "pointer", width: "max-content", maxWidth: "100%", whiteSpace: "nowrap", backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238d96a6' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>\")", backgroundRepeat: "no-repeat", backgroundPosition: "right center" }}>{m.role}</button>
                         {openRoleSel === m.id && (
                           <div data-kal31-role-menu="true" data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
                             {ROLES.map(r => (
-                              <button key={r} data-kal31-role-option={r.toLowerCase()} disabled={busy || (lastOwnerLocked && r !== 'Owner')} onClick={() => { setRole(m.id, r); setOpenRoleSel(null); }} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: r === m.role ? GOLD : (lastOwnerLocked && r !== 'Owner' ? INK_300 : BONE_100), padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: busy || (lastOwnerLocked && r !== 'Owner') ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{r}</button>
+                              <button key={r} type="button" data-kal31-role-option={r.toLowerCase()} disabled={busy || (lastOwnerLocked && r !== 'Owner')} onClick={() => { setRole(m.id, r); setOpenRoleSel(null); }} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: r === m.role ? GOLD : (lastOwnerLocked && r !== 'Owner' ? INK_300 : BONE_100), padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: busy || (lastOwnerLocked && r !== 'Owner') ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{r}</button>
                             ))}
                           </div>
                         )}
