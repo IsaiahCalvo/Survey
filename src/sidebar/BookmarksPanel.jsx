@@ -253,6 +253,7 @@ const BookmarkTreeRow = ({
         <div
           {...handleProps}
           {...tip('Drag to reorder', 'below')}
+          aria-label="Drag to reorder"
           style={{
             width: 18,
             height: 22,
