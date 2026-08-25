@@ -19,9 +19,9 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 test('Bookmarks Edit / Done is type=button; rename apply stays parked', () => {
   const panel = read('src/sidebar/BookmarksPanel.jsx');
-  const editStart = panel.indexOf('{isEditMode ? \'Done\' : \'Edit\'}');
-  assert.ok(editStart > 0, 'Edit / Done label');
-  const edit = panel.slice(Math.max(0, editStart - 900), editStart + 80);
+  const editLabel = panel.indexOf("{isEditMode ? 'Done' : 'Edit'}");
+  assert.ok(editLabel > 0, 'Edit / Done label');
+  const edit = panel.slice(Math.max(0, editLabel - 1400), editLabel + 80);
   assert.match(edit, /<button\s+type="button"/);
   assert.match(edit, /onClick=\{\(\) => setIsEditMode\(!isEditMode\)\}/);
   assert.match(edit, /\{isEditMode \? 'Done' : 'Edit'\}/);

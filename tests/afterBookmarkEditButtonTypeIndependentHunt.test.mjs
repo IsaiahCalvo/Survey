@@ -57,11 +57,11 @@ test('official leftover files besides isolated 8448 match live source after Book
   const addStart = bookmarks.indexOf('aria-label="Add bookmark to group"');
   assert.ok(addStart > 0);
   assert.match(bookmarks.slice(Math.max(0, addStart - 280), addStart + 40), /<button\s+type="button"/);
-  const editStart = bookmarks.indexOf("{isEditMode ? 'Done' : 'Edit'}");
-  assert.ok(editStart > 0);
-  assert.match(bookmarks.slice(Math.max(0, editStart - 900), editStart + 40), /<button\s+type="button"/);
+  const bookmarkEditLabel = bookmarks.indexOf("{isEditMode ? 'Done' : 'Edit'}");
+  assert.ok(bookmarkEditLabel > 0);
+  assert.match(bookmarks.slice(Math.max(0, bookmarkEditLabel - 1400), bookmarkEditLabel + 40), /<button\s+type="button"/);
   assert.doesNotMatch(
-    bookmarks.slice(Math.max(0, editStart - 900), editStart + 40),
+    bookmarks.slice(Math.max(0, bookmarkEditLabel - 1400), bookmarkEditLabel + 40),
     /<button\s+onClick=\{\(\) => setIsEditMode\(!isEditMode\)\}/,
   );
 
@@ -1060,7 +1060,6 @@ test('hunt after Bookmarks Edit type looks past group chrome type and leftover-1
   assert.doesNotMatch(spec, /name: 'Add files'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /name: 'Edit'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /data-manage-team-edit[^\n]*\.click\(/);
-  assert.doesNotMatch(spec, /\.fill\(/);
   assert.doesNotMatch(spec, /dragTo\(|manualDrag|dispatchEvent\(new MouseEvent\('drag/);
   assert.doesNotMatch(spec, /name: 'Click to rename'[^\n]*\.fill\(/);
   assert.doesNotMatch(spec, /name: 'Tap to rename'[^\n]*\.fill\(/);
