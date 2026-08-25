@@ -1500,6 +1500,7 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
+                type="button"
                 onClick={bottomToolbarApi.exportAnnotatedPdf}
                 {...chromeTip('Export annotated PDF', 'below')}
                 aria-label="Export annotated PDF"
@@ -1620,6 +1621,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
                 >
                 <button
+                  type="button"
                   onClick={() => {
                     // Activate Select without discarding the mode picked in the
                     // menu (Eraser button does the same with its erase mode).
@@ -1766,6 +1768,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
               {/* Draw category */}
               <button
+                type="button"
                 onClick={() => {
                   const isActive = bottomToolbarApi.activeCategoryDropdown === 'draw';
                   bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'draw');
@@ -1785,6 +1788,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
               {/* Shapes category */}
               <button
+                type="button"
                 onClick={() => {
                   const isActive = bottomToolbarApi.activeCategoryDropdown === 'shape';
                   bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'shape');
@@ -1804,6 +1808,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
               {/* Text category */}
               <button
+                type="button"
                 onClick={() => {
                   const isActive = bottomToolbarApi.activeCategoryDropdown === 'review';
                   bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'review');
