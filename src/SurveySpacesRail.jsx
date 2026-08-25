@@ -1864,6 +1864,7 @@ const SurveySpacesRail = ({
                         </div>
                       )}
                       <button
+                        type="button"
                         onClick={() => {
                           if (mobileMode) {
                             dismissSurveySheet();
