@@ -37,18 +37,18 @@ test('CreateCategory Cancel / Create category are type=button; apply stays parke
     slice,
     /<button\s+onClick=\{handleConfirm\}\s+disabled=\{!canConfirm\}/,
   );
-  assert.match(slice, />Cancel<\/button>/);
-  assert.match(slice, />Create category<\/button>/);
+  assert.match(slice, />\s*Cancel\s*<\/button>/);
+  assert.match(slice, />\s*Create category\s*<\/button>/);
   assert.match(src, /aria-labelledby="create-category-modal-title"/);
   assert.match(src, /id="create-category-modal-title"/);
   assert.match(src, /useFocusTrap\(dialogRef, isOpen, \{ onEscape: onClose \}\)/);
   assert.match(
     rail,
-    /className="survey-marker-category-create-button"[\s\S]{0,80}aria-label="Create category"|aria-label="Create category"[\s\S]{0,80}className="survey-marker-category-create-button"/,
+    /<button\s+type="button"\s+onClick=\{openCreateCategoryModal\}\s+className="survey-marker-category-create-button"/,
   );
   assert.match(
     rail,
-    /<button\s+type="button"\s+onClick=\{openCreateCategoryModal\}\s+className="survey-marker-category-create-button"/,
+    /className="survey-marker-category-create-button"[\s\S]{0,200}aria-label="Create category"/,
   );
   assert.match(
     rail,
