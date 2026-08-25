@@ -211,20 +211,20 @@ export default function InviteAcceptPage() {
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
             {phase === 'needs-auth' && (
-              <button onClick={signIn} style={btnPrimary(accent)}>Sign in to continue</button>
+              <button type="button" onClick={signIn} style={btnPrimary(accent)}>Sign in to continue</button>
             )}
             {phase === 'result' && (
               <>
                 {result?.status === 'accepted' && (
-                  <button onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
+                  <button type="button" onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
                 )}
                 {result?.status === 'already_accepted' && (
-                  <button onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
+                  <button type="button" onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
                 )}
                 {result?.status === 'wrong_account' && (
-                  <button onClick={switchAccount} style={btnPrimary(accent)}>Sign out and switch</button>
+                  <button type="button" onClick={switchAccount} style={btnPrimary(accent)}>Sign out and switch</button>
                 )}
-                <button onClick={goHome} style={btnGhost()}>Back to Survey</button>
+                <button type="button" onClick={goHome} style={btnGhost()}>Back to Survey</button>
               </>
             )}
             {phase === 'loading' && (
