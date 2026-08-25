@@ -94,6 +94,7 @@ export const supabase = {
     const builder = {
       select: () => builder,
       eq: () => builder,
+      is: () => builder,
       maybeSingle: settle,
       single: settle,
       then: (onFulfilled, onRejected) => settle().then(onFulfilled, onRejected),

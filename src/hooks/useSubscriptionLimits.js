@@ -109,7 +109,14 @@ export const useSubscriptionLimits = () => {
         // {data,error}, so error checks below preserve the original throw order.
         const [projectRes, documentRes, storageRes] = await Promise.all([
           supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-          supabase.from('documents').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+          supabase.from('documents').select('*', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            // Same library filters as useDatabase's document-list query:
+            // `archived` is the Free-tier downgrade flag; `user_archived_at`
+            // is the 30-day recoverable Archive. Both must be excluded from
+            // the free-tier 5-document cap (owner-local U-04 receipt).
+            .eq('archived', false)
+            .is('user_archived_at', null),
           // Ground truth: real bytes in the user's storage folder. The RPC is
           // SECURITY DEFINER and self-scopes to auth.uid(), so p_user_id is
           // only a readability aid — a caller cannot read anyone else's total.
