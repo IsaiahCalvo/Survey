@@ -1174,6 +1174,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <div className="account-connected-account-actions">
                     {isMSAuthenticated ? (
                       <button
+                        type="button"
                         className="account-btn-secondary"
                         onClick={async () => {
                           try {
@@ -1188,6 +1189,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </button>
                     ) : microsoftConnectAvailable ? (
                       <button
+                        type="button"
                         className={msNeedsReconnect ? "account-btn-primary" : "account-btn-primary"}
                         onClick={async () => {
                           try {
@@ -1226,6 +1228,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                   <div className="account-connected-account-actions">
                     <button
+                      type="button"
                       className={isGoogleIdentityConnected(user) ? "account-btn-secondary" : "account-btn-primary"}
                       onClick={async () => {
                         try {
