@@ -3478,6 +3478,7 @@ const SurveySpacesRail = ({
 
                                         <div className="survey-marker-category-body">
                                             <button
+                                              type="button"
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 if (isCategorySelectModeActive) {
@@ -3513,6 +3514,7 @@ const SurveySpacesRail = ({
                                             </button>
                                             {surveyMarkerCount > 0 && (
                                               <button
+                                                type="button"
                                                 className="survey-marker-category-arrow"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
