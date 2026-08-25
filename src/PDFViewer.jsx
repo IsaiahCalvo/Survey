@@ -32780,6 +32780,7 @@ ${pageBlocks}
                   const isActive = isHighlighter ? isActiveHighlighter : activeTool === t.id;
                   const button = (
                     <button
+                      type="button"
                       key={t.id}
                       data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
                       onClick={(e) => {
