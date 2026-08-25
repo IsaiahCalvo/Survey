@@ -462,6 +462,7 @@ const CreateCategoryModal = ({
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
+            type="button"
             onClick={onClose}
             style={{
               padding: '8px 16px',
@@ -487,6 +488,7 @@ const CreateCategoryModal = ({
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={!canConfirm}
             style={{
