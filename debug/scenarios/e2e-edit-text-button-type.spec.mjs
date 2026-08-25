@@ -175,14 +175,8 @@ test('390 + guest + hub break/edge for Edit text type', async ({ page }) => {
 
   await openPage(page, { width: 390, height: 844, url: LINK_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
-  const mobileText = page.getByRole('button', { name: 'Text', exact: true }).first();
-  await expect(mobileText).toBeVisible({ timeout: 15_000 });
-  await mobileText.click();
-  const mobileAa = page.getByRole('button', { name: 'Text formatting', exact: true });
-  await expect(mobileAa).toBeVisible({ timeout: 8_000 });
-  await expect(mobileAa).toHaveAttribute('type', 'button');
-  await expect(mobileAa).toHaveAttribute('aria-label', 'Text formatting');
   expect(await desktopEditText(page).count()).toBe(0);
+  expect(await page.getByRole('button', { name: 'Text formatting', exact: true }).count()).toBe(0);
   const mobileHistory = page.getByRole('button', { name: 'Version history', exact: true });
   if (await mobileHistory.count()) {
     await expect(mobileHistory.first()).toBeDisabled();

@@ -412,6 +412,15 @@ test('independent hunt after Edit text type', async ({ page }) => {
     inventory.editor.fontColorIdle = await page.getByRole('button', { name: 'Font color', exact: true }).count();
     inventory.editor.boldIdle = await page.getByRole('button', { name: 'Bold', exact: true }).count();
     inventory.editor.italicIdle = await page.getByRole('button', { name: 'Italic', exact: true }).count();
+    inventory.editor.implicitSubmit = await page.evaluate(() => (
+      [...document.querySelectorAll('button')]
+        .filter((btn) => !btn.getAttribute('type'))
+        .map((btn) => ({
+          name: (btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.innerText || '').replace(/\s+/g, ' ').trim(),
+          className: String(btn.className || ''),
+        }))
+        .filter((row) => row.name)
+    ));
     await text.click();
     const editText = page.getByRole('button', { name: 'Edit text', exact: true });
     await expect(editText).toBeVisible({ timeout: 8_000 });
@@ -422,16 +431,13 @@ test('independent hunt after Edit text type', async ({ page }) => {
     inventory.editor.fontColorAfterText = await page.getByRole('button', { name: 'Font color', exact: true }).count();
     inventory.editor.boldAfterText = await page.getByRole('button', { name: 'Bold', exact: true }).count();
     inventory.editor.italicAfterText = await page.getByRole('button', { name: 'Italic', exact: true }).count();
+    const subText = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Text', exact: true });
+    const subCallout = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: 'Callout', exact: true });
+    inventory.editor.subTextCount = await subText.count();
+    inventory.editor.subTextType = inventory.editor.subTextCount ? await subText.getAttribute('type') : null;
+    inventory.editor.subCalloutCount = await subCallout.count();
+    inventory.editor.subCalloutType = inventory.editor.subCalloutCount ? await subCallout.getAttribute('type') : null;
     inventory.editor.armedImplicitSubmit = await page.evaluate(() => (
-      [...document.querySelectorAll('button')]
-        .filter((btn) => !btn.getAttribute('type'))
-        .map((btn) => ({
-          name: (btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.innerText || '').replace(/\s+/g, ' ').trim(),
-          className: String(btn.className || ''),
-        }))
-        .filter((row) => row.name)
-    ));
-    inventory.editor.implicitSubmit = await page.evaluate(() => (
       [...document.querySelectorAll('button')]
         .filter((btn) => !btn.getAttribute('type'))
         .map((btn) => ({
@@ -1325,6 +1331,8 @@ test('independent hunt after Edit text type', async ({ page }) => {
   expect(inventory.editor.boldAfterText).toBe(0);
   expect(inventory.editor.italicAfterText).toBe(0);
   expect(inventory.editor.armedImplicitSubmit.some((row) => row.name === 'Edit text')).toBe(false);
+  expect(inventory.editor.subTextCount).toBeGreaterThan(0);
+  expect(inventory.editor.subCalloutCount).toBeGreaterThan(0);
   expect(inventory.style.namedDialog).toBe(1);
   expect(inventory.style.unnamedDialogs).toEqual([]);
   expect(inventory.style.afterEscape).toBe(0);

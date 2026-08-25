@@ -591,6 +591,8 @@ test('hunt after Edit text type looks past Zoom / page-nav type and leftover-18'
   assert.match(spec, /editor\.fontColorAfterText/);
   assert.match(spec, /editor\.boldAfterText/);
   assert.match(spec, /editor\.italicAfterText/);
+  assert.match(spec, /editor\.subTextType/);
+  assert.match(spec, /editor\.subCalloutType/);
   assert.match(spec, /armedImplicitSubmit/);
   assert.match(spec, /editTextType\)\.toBe\('button'\)/);
   assert.match(spec, /editTextName\)\.toBe\('Edit text'\)/);

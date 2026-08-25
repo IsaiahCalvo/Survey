@@ -158,6 +158,7 @@ test('live spec covers Edit text type intended + break + edge; skip leftover-18 
   assert.match(spec, /0 0 612 792/);
   assert.match(spec, /390/);
   assert.match(spec, /Text formatting/);
+  assert.match(spec, /name: 'Text formatting', exact: true \}\)\.count\(\)/);
   assert.match(spec, /file\.id/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
