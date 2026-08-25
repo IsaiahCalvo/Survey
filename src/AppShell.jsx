@@ -935,6 +935,9 @@ export default function App({ devPreviewReturnTab = null }) {
 
     const openResolvedDocument = (documentToOpen) => {
       if (!documentToOpen || cancelled) return;
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        window.__documentDeepLinkE2EInvite = null;
+      }
       deepLinkDocumentIdRef.current = null;
       const fileToOpen = (
         import.meta.env.DEV
@@ -958,9 +961,9 @@ export default function App({ devPreviewReturnTab = null }) {
         && window.__documentDeepLinkE2EInvite
         && String(window.__documentDeepLinkE2EInvite.id) === String(documentId)
       ) {
-        const invited = window.__documentDeepLinkE2EInvite;
-        window.__documentDeepLinkE2EInvite = null;
-        return invited;
+        // Do not consume here — DEV StrictMode remounts this effect once
+        // and a cancelled first pass must still resolve on the retry.
+        return window.__documentDeepLinkE2EInvite;
       }
       if (!isSupabaseAvailable() || !documentId) return null;
       const { data, error } = await supabase
