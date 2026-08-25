@@ -32822,36 +32822,6 @@ ${pageBlocks}
                       aria-label={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
-                      {hasSplitMenu && (
-                        <div
-                          data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
-                          data-eraser-caret-button={isEraser ? 'true' : undefined}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isEraser) {
-                              setActiveTool('eraser');
-                              setEraserCaretPopupOpen((open) => !open);
-                            } else {
-                              setActiveTool('highlighter');
-                              setHighlighterCaretPopupOpen((open) => !open);
-                            }
-                          }}
-                          style={{
-                            position: 'absolute',
-                            left: '50%',
-                            top: '50%',
-                            transform: 'translate(12px, -50%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '2px',
-                            pointerEvents: 'auto',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <Icon name="chevronDown" size={12} color="#8d96a6" />
-                        </div>
-                      )}
                     </button>
                   );
 
@@ -32902,6 +32872,42 @@ ${pageBlocks}
                   return (
                     <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       {button}
+                      <button
+                        type="button"
+                        data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
+                        data-eraser-caret-button={isEraser ? 'true' : undefined}
+                        aria-label={isHighlighterSplitMenu ? 'SurveyMarker Type' : 'Eraser Type'}
+                        aria-haspopup="menu"
+                        aria-expanded={popupOpen}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isEraser) {
+                            setActiveTool('eraser');
+                            setEraserCaretPopupOpen((open) => !open);
+                          } else {
+                            setActiveTool('highlighter');
+                            setHighlighterCaretPopupOpen((open) => !open);
+                          }
+                        }}
+                        style={{
+                          position: 'absolute',
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(12px, -50%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '2px',
+                          margin: 0,
+                          background: 'transparent',
+                          border: 0,
+                          color: 'inherit',
+                          pointerEvents: 'auto',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Icon name="chevronDown" size={12} color="#8d96a6" />
+                      </button>
                       {popupOpen && createPortal(
                         <div
                           ref={isHighlighter ? highlighterCaretPopupRef : eraserCaretPopupRef}
