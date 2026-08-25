@@ -2325,6 +2325,7 @@ export default function TemplatesEditor({
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 <button
+                                  type="button"
                                   title="Delete item" aria-label="Delete item"
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
                                   onMouseEnter={(e) => { e.currentTarget.style.color = '#d95a56'; }}
@@ -2337,6 +2338,7 @@ export default function TemplatesEditor({
                             ))}
                             </SortableRearrangeList>
                             <button
+                              type="button"
                               onClick={() => addItem(i)}
                               style={{
                                 width: '100%', padding: '6px 10px', marginTop: 6,
