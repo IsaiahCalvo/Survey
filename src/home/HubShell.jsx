@@ -330,6 +330,18 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
   const [open, setOpen] = useState(false);
   const touchStart = useRef(null);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open]);
+
   if (mode !== 'rail') return null;
 
   const choose = (key, disabled) => {
