@@ -66,13 +66,14 @@ test('leftover-18 hubPreview fail-closed gates (A-01/02/03/05, UL-13/16/20/21/22
 
   const dialog = await openSettings(page);
 
-  // UL-13: empty required names stay blocked; valid save fail-closes.
+  // UL-13: empty names are now valid locally; cloud persist still fail-closes.
   await dialog.getByRole('button', { name: 'General', exact: true }).click();
   await dialog.getByRole('button', { name: 'Edit profile' }).click();
   const first = dialog.locator('#firstName');
   await first.fill('');
+  expect(await first.evaluate((el) => el.checkValidity())).toBe(true);
   await dialog.getByRole('button', { name: 'Save changes' }).click();
-  expect(await first.evaluate((el) => !el.checkValidity())).toBe(true);
+  await expect(dialog.locator('.account-error')).toContainText(/Preview cannot save profile changes/i);
   await first.fill('IsaiahX');
   await dialog.locator('#lastName').fill('Calvo');
   await dialog.getByRole('button', { name: 'Save changes' }).click();
