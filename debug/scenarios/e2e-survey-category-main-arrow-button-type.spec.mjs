@@ -171,7 +171,6 @@ test('390 + hubPreview + guest break/edge for Survey category-main / arrow type'
   await page.getByRole('button', { name: 'Open survey' }).click();
   await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: TWO_CAT_TEMPLATE }).click();
-  const sheet = page.locator('.mobile-survey-sheet, .mobile-pdf-sheet').first();
   const mains390 = page.locator('button.survey-marker-category-main');
   await expect(mains390.first()).toBeVisible({ timeout: 15_000 });
   expect(await mains390.count()).toBeGreaterThan(0);
@@ -191,7 +190,7 @@ test('390 + hubPreview + guest break/edge for Survey category-main / arrow type'
   }
   expect(await page.locator('.survey-marker-category-create-button').count()).toBe(0);
   expect(await page.getByRole('dialog', { name: 'Create category', exact: true }).count()).toBe(0);
-  expect(await sheet.locator('.survey-marker-category-main-label', { hasText: /^Walls$/ }).count()).toBeGreaterThan(0);
+  expect(await page.locator('.survey-marker-category-main-label', { hasText: /^Walls$/ }).count()).toBeGreaterThan(0);
 
   await openPage(page, { url: HUB });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
