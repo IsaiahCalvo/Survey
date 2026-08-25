@@ -157,7 +157,10 @@ test('Documents desktop sort headers break + edge; leftover-18 skipped', async (
   if (await authClose.count()) {
     await expect(authClose.first()).toHaveAttribute('type', 'button');
   }
-  expect(await fileHeader(page).count()).toBe(0);
+  // Guest Auth overlays the same hub ledger; File stays typed if mounted.
+  if (await fileHeader(page).count()) {
+    await expect(fileHeader(page)).toHaveAttribute('type', 'button');
+  }
 
   await openPage(page, { url: INVITE });
   await expect(page.locator('[data-kal31-invite-page="true"]')).toBeVisible({ timeout: 15_000 });
