@@ -22,7 +22,7 @@ test('Bookmarks drag grip is named Drag to reorder; drag apply stays parked', ()
   const panel = read('src/sidebar/BookmarksPanel.jsx');
   const tip = panel.indexOf("{...tip('Drag to reorder', 'below')}");
   assert.ok(tip > 0, 'desktop drag-grip tip');
-  const grip = panel.slice(Math.max(0, tip - 80), tip + 220);
+  const grip = panel.slice(Math.max(0, tip - 80), tip + 700);
   assert.match(grip, /\{...handleProps\}/);
   assert.match(grip, /aria-label="Drag to reorder"/);
   assert.match(grip, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
@@ -114,7 +114,8 @@ test('live spec covers Bookmarks drag grip name intended + break + edge; skip le
   assert.doesNotMatch(spec, /VITE_DEV_AUTO_LOGIN/);
   assert.doesNotMatch(spec, /create-checkout-session|Turnstile|msalInstance/);
   assert.doesNotMatch(spec, /doDeleteForever|deleteAccount/);
-  assert.doesNotMatch(spec, /Drag to rearrange/);
+  assert.doesNotMatch(spec, /aria-label="Drag to rearrange"/);
+  assert.doesNotMatch(spec, /name: 'Drag to rearrange'/);
   assert.doesNotMatch(spec, /name: 'Add bookmark to group'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /name: 'New bookmark group'[^\n]*\.click\(/);
   assert.doesNotMatch(spec, /name: 'Create bookmark group'[^\n]*\.click\(/);

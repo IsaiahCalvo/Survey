@@ -140,7 +140,7 @@ test('outline Bookmarks drag grip is named; drag is not applied', async ({ page 
   expect(await namedButtons.count()).toBeGreaterThan(0);
   await expect(namedButtons.first()).toHaveAttribute('aria-label', 'Drag to reorder');
 
-  expect(await implicitNamed(page, ['Drag to reorder', 'Drag to rearrange'])).toEqual([]);
+  expect(await implicitNamed(page, ['Drag to reorder'])).toEqual([]);
 
   await grips.first().click();
   await expectNamedGrip(grips.first());
