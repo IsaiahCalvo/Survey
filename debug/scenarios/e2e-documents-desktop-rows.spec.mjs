@@ -54,8 +54,8 @@ function desktopRows(page) {
   return desktopCard(page).getByRole('button', { name: /^Preview / });
 }
 
-function previewName(page) {
-  return desktopCard(page).locator('aside').locator('div').nth(1);
+function previewName(page, name) {
+  return desktopCard(page).locator('aside').getByText(name, { exact: true });
 }
 
 function nameHeader(page) {
@@ -98,17 +98,17 @@ test('Documents desktop rows are buttons; Tab reaches them; Escape does not appl
   await expect(desktopRows(page).nth(0)).toBeFocused();
 
   await desktopRows(page).nth(1).click();
-  await expect(previewName(page)).toHaveText(secondName);
+  await expect(previewName(page, secondName)).toBeVisible();
   expect(await page.getByRole('button', { name: 'Open file', exact: true }).count()).toBe(1);
 
   await page.keyboard.press('Escape');
-  await expect(previewName(page)).toHaveText(secondName);
+  await expect(previewName(page, secondName)).toBeVisible();
   expect(await page.getByRole('dialog', { name: 'Move or copy documents' }).count()).toBe(0);
   expect(await page.getByRole('button', { name: 'Open file', exact: true }).count()).toBe(1);
 
   await desktopRows(page).nth(0).focus();
   await page.keyboard.press('Enter');
-  await expect(previewName(page)).toHaveText(firstName);
+  await expect(previewName(page, firstName)).toBeVisible();
   expect(await page.getByRole('button', { name: 'Upload', exact: true }).count()).toBeGreaterThan(0);
 });
 
@@ -129,8 +129,9 @@ test('Documents desktop rows break + edge; leftover-18 skipped', async ({ page }
   await openPage(page, { url: HUB_DOCS });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   await expect(desktopRows(page).first()).toBeVisible();
+  const edgeSecond = (await desktopRows(page).nth(1).getAttribute('aria-label')).replace(/^Preview\s+/, '');
   await desktopRows(page).nth(1).click();
-  await expect(previewName(page)).not.toHaveText('');
+  await expect(previewName(page, edgeSecond)).toBeVisible();
 
   await openPage(page, { url: HUB_ARCHIVE });
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
