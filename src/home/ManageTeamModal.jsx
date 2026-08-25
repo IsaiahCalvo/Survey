@@ -461,6 +461,28 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     else { setSortKey(k); setSortDir(k === "added" ? "desc" : "asc"); }
   };
   const arrow = (k) => sortKey === k ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+  const sortHeaderButton = (key, label) => (
+    <button
+      type="button"
+      onClick={() => onSort(key)}
+      style={{
+        background: "transparent",
+        border: 0,
+        margin: 0,
+        padding: 0,
+        font: "inherit",
+        letterSpacing: "inherit",
+        textTransform: "inherit",
+        fontWeight: "inherit",
+        color: sortKey === key ? BONE_100 : "inherit",
+        cursor: "pointer",
+        userSelect: "none",
+        textAlign: "left",
+      }}
+    >
+      {label}{arrow(key)}
+    </button>
+  );
 
   /* ---- Real mutations (project_collaborators via RLS-gated helpers) ---- */
 
@@ -670,9 +692,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           {/* Column headers */}
           <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700 }}>
             <span></span>
-            <span onClick={() => onSort("name")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "name" ? BONE_100 : "inherit" }}>Users{arrow("name")}</span>
-            <span onClick={() => onSort("role")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "role" ? BONE_100 : "inherit" }}>Role{arrow("role")}</span>
-            <span onClick={() => onSort("added")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "added" ? BONE_100 : "inherit" }}>Added{arrow("added")}</span>
+            {sortHeaderButton("name", "Users")}
+            {sortHeaderButton("role", "Role")}
+            {sortHeaderButton("added", "Added")}
             <span></span>
           </div>
 
