@@ -1532,6 +1532,7 @@ export default function App({ devPreviewReturnTab = null }) {
             gap: '8px'
           }}>
             <button
+              type="button"
               onClick={topToolbarApi.onUndo || (() => {})}
               disabled={!topToolbarApi.canUndo}
               className="btn btn-default btn-sm"
@@ -1549,6 +1550,7 @@ export default function App({ devPreviewReturnTab = null }) {
               <Icon name="undo" size={14} />
             </button>
             <button
+              type="button"
               onClick={topToolbarApi.onRedo || (() => {})}
               disabled={!topToolbarApi.canRedo}
               className="btn btn-default btn-sm"
