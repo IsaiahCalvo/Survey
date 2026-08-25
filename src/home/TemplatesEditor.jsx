@@ -2867,6 +2867,8 @@ export default function TemplatesEditor({
                                   data-mobile-category-id={c.id}
                                   defaultValue={c.name}
                                   key={`mobile-cat-${c.id}:${c.name}`}
+                                  title="Tap to rename"
+                                  aria-label="Tap to rename"
                                   onClick={(e) => e.stopPropagation()}
                                   onBlur={(e) => {
                                     const r = resolveTitleCommit(e.currentTarget.value, c.name);
