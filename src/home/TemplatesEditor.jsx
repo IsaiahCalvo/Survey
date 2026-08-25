@@ -2320,6 +2320,7 @@ export default function TemplatesEditor({
                                   defaultValue={it.text}
                                   key={it.id + ':' + it.text}
                                   placeholder="Add checklist item"
+                                  aria-label="Checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
@@ -2893,6 +2894,7 @@ export default function TemplatesEditor({
                                               defaultValue={it.text}
                                               key={`mobile-item-${it.id}:${it.text}`}
                                               placeholder="Add checklist item"
+                                              aria-label="Checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { deleteItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
