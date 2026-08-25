@@ -268,6 +268,29 @@ export default function DocumentsLedger({
   ];
   const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
 
+  const sortHeaderButton = (key, label, extra = {}) => (
+    <button
+      type="button"
+      onClick={() => onHeaderClick(key)}
+      style={{
+        background: 'transparent',
+        border: 0,
+        margin: 0,
+        font: 'inherit',
+        letterSpacing: 'inherit',
+        textTransform: 'inherit',
+        fontWeight: 'inherit',
+        color: sortKey === key ? 'var(--bone-100)' : 'inherit',
+        cursor: 'pointer',
+        userSelect: 'none',
+        textAlign: 'left',
+        ...extra,
+      }}
+    >
+      {label}{arrow(key)}
+    </button>
+  );
+
   const subtitle = (
     <>
     <DismissBarrier
@@ -463,10 +486,10 @@ export default function DocumentsLedger({
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span></span>
                 <span></span>
-                <span onClick={() => onHeaderClick('name')} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
-                <span onClick={() => onHeaderClick('project')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
-                <span onClick={() => onHeaderClick('edited')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
-                <span onClick={() => onHeaderClick('size')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
+                {sortHeaderButton('name', 'File', { padding: '0 14px', display: 'flex', alignItems: 'center' })}
+                {sortHeaderButton('project', 'Project')}
+                {sortHeaderButton('edited', 'Last edited')}
+                {sortHeaderButton('size', 'Size')}
               </div>
               {docs.length === 0 && (
                 mapped.length === 0 ? (
