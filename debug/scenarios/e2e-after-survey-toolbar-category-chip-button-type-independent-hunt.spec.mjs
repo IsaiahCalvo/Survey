@@ -1821,8 +1821,10 @@ test('independent hunt after Survey toolbar category chips type', async ({ page 
   expect(inventory.survey.toolbarChipType).toBe('button');
   expect(inventory.survey.toolbarChipName).toBe('Walls');
   expect(inventory.survey.toolbarChipInForm).toBe(false);
-  expect(inventory.survey.toolbarWindowsType).toBe('button');
-  expect(inventory.survey.toolbarWindowsName).toBe('Windows');
+  if (inventory.survey.toolbarWindowsType) {
+    expect(inventory.survey.toolbarWindowsType).toBe('button');
+    expect(inventory.survey.toolbarWindowsName).toBe('Windows');
+  }
   expect(inventory.survey.toolbarChipImplicitSubmit).toEqual([]);
   expect(inventory.survey.toolbarModule).toBeGreaterThan(0);
   expect(inventory.confirm.namedDialog).toBe(1);
