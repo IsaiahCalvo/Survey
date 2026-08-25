@@ -1637,6 +1637,7 @@ const BookmarksPanel = ({
         </h3>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
+            type="button"
             onClick={() => setIsEditMode(!isEditMode)}
             style={{
               height: '26px',
