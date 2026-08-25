@@ -1,5 +1,7 @@
 # Leftover-18 host-bundle — 2026-08-22 (X-01 first)
 
+**2026-08-25 fold:** X-01 / X-05 / U-04 / UL-13 / A-06 / UL-45 are **host-proved** via owner-local receipts (PR 800 comment `5414370572`). This 2026-08-22 host-bundle is historical (hosts were absent in this VM). Do **not** treat X-01 as still missing hosts. See `leftover18-owner-local-receipts-2026-08-25.md`.
+
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** Does **not** re-claim unblocked GAP = 0.  
 Did **not** invent `.env.local`. Did **not** write `.env.local`. Did **not** read `.bot-credentials.json`.  

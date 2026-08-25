@@ -1,5 +1,7 @@
 # Leftover-18 legal unblock — 2026-08-21
 
+**2026-08-25 fold:** owner-local receipts in PR 800 comment `5414370572` host-proved X-01, X-05, U-04, UL-13, A-06 / UL-45. Still human-gated: A-01 / UL-15, UL-22, A-02 / X-06 / UL-21, UL-03, UL-16, A-05 / UL-20, A-03 / UL-24. See `leftover18-owner-local-receipts-2026-08-25.md` and `fix-logs/leftover18-owner-local-receipts-fold-2026-08-25.md`. This file stays the fail-closed local-slice record. Do not replay host-proved slices from this VM.
+
 **Branch:** `cursor/cloud-agent-1787327676009-d4ori`  
 **Does not mark the audit goal complete.** All 18 stay parked. No leftover was fully proven.
 

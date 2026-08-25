@@ -1,6 +1,8 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
+**This-pass (2026-08-25 leftover-18 owner-local receipts fold):** leftover-18 table only. Receipt source PR 800 comment `5414370572`. **Host-proved:** X-01, X-05, U-04, UL-13, A-06 / UL-45. **Still human-gated:** A-01 / UL-15, UL-22, A-02 / X-06 / UL-21, UL-03, UL-16, A-05 / UL-20, A-03 / UL-24. New product bugs from that comment (not leftover-18; not claimed fixed here): (a) archived documents still count toward the free-tier 5-document cap; (b) invite `?docId=` false already-accepted + remove-collaborator leaves invite rows; (c) profile first/last cannot clear to blank. Did **not** write a 103-ID refresh. Did **not** hunt. Goal stays open.
+
 **Evidence refresh:** 2026-08-23c completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-23c.md`). Reclassified all 96 unique IDs + leftover-18 against current tree after product SHAs (callout strip-on-import `aeeed41c`, line Restore near-zero, Counter `data.id` Delete + remapped `data.left`) and dedicated leftovers (CCW/180 persist, form persist + `mtr` CCW, remapped `mtr` after page 180, page-2-only rotate). Prior `60e2c706` / `372988cd` refresh is stale. Tree inspect: X-01 names **PRESENT**; process env absent; no lease + no `file.id`. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. Headline extras P2-34/P2-35 stay **6 proved**. Stomps P1-12 / P1-38 / P1-53 still live. Citation drift: P1-15 `:32549`; P1-09 `:24126`; P1-16 `:28700`; P2-34(b) `:23867`. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim leftover-18 GAP = 0. Did **not** claim leftover-18 proved.
 
 **Prior evidence refresh:** 2026-08-23b completion-audit refresh (`fix-logs/completion-audit-refresh-2026-08-23b.md`). Reclassified all 96 unique IDs + leftover-18 against tip `372988cd` after the remapper / leftover-portrait / History-restore / form-widget campaign. Prior `43cefd4f` / `4ab0be92` refresh is stale. Tree inspect: X-01 names **PRESENT**; process env absent; no lease + no `file.id`. **96 proved / 0 stomped / 0 weak / 0 missing.** Leftover-18 still **18** fail-closed local + **18** host-gated. Headline extras P2-34/P2-35 stay **6 proved**. Stomps P1-12 / P1-38 / P1-53 still live. Focused Node **116 / 116**. Citation drift: P1-15 `:32545`; P1-38 `:338`; P1-49 `:7370`; viewBox `:4681`. Did **not** hunt. Did **not** mark `/goal` complete. Did **not** re-claim leftover-18 GAP = 0.
@@ -119,26 +121,29 @@ This refresh did **not** edit high-risk files.
 
 ---
 
-## Leftover-18 (parked — not original 96 IDs)
+## Leftover-18 (not original 96 IDs)
 
 `X-01`, `X-05` persist, `X-06` writeback, `U-04` cloud usage, `A-01` Turnstile, `A-02` live MSAL, `A-03` inbox, `A-05` Stripe, `A-06` roster, `UL-03`, `UL-13`, `UL-15`, `UL-16`, `UL-20`, `UL-21`, `UL-22`, `UL-24`, `UL-45`.
 
-This-pass leftover-18 (still parked; legal slices in `fix-logs/leftover18-unblock-2026-08-21.md`):
+This-pass leftover-18 (2026-08-25 owner-local receipts fold; source PR 800 comment `5414370572`). Fail-closed local slices stay in `fix-logs/leftover18-unblock-2026-08-21.md`. Do **not** replay host-proved slices from this VM.
 
-| ID | Verdict | Still-parked host |
+| ID | Verdict | Host |
 |---|---|---|
-| X-01 | **partial** — no `file.id`; Save version owner-gated; **local `?testPdf=` reload-restore live** (`e2e-testpdf-local-save-reload.spec.mjs`) | identity-churn (`.env.local` names PRESENT; still need lease + `file.id`) |
-| X-05 persist | **partial** — widgets + local fill | saved `file.id` cloud persist |
-| X-06 writeback | **partial** — flag off + xlsx | live sheet host |
-| U-04 cloud | **partial** — hubPreview `i1: 3` seed | Dashboard + Supabase meter |
-| A-01 Turnstile | **partial** — no-token gate | live captcha completion |
-| A-02 MSAL | **partial** — Connect click fail-closed (`Preview cannot start Microsoft login.`; OAuth **0**) | live MSAL |
-| A-03 / UL-24 inbox | **partial** — mint/Send fail-closed | live email delivery |
-| A-05 / UL-20 Stripe | **partial** — Start trial click fail-closed (`Must be signed in`; no invoke) | live signed-in Checkout |
-| A-06 / UL-45 roster | **partial** — `user_id` dedupe | second-account lease tuple |
-| UL-03 | **partial** — web `/` Auth modal + hubPreview Upload fail-closed (`e2e-hub-docs-upload-failclosed.spec.mjs`) | native Electron pick/cancel |
-| UL-13 / UL-15 / UL-16 | **partial** — previewBlocked save + no-token + UL-16 Confirm fail-closed (`e2e-account-settings-delete-account-failclosed.spec.mjs`) | persist / captcha / live wipe |
-| UL-21 / UL-22 | **partial** — Connect click fail-closed (`e2e-account-settings-connect-failclosed.spec.mjs`) | live MSAL / Google OAuth |
+| X-01 | **host-proved** via owner-local receipt | identity-churn on leased bot-1 → bot-2; `file.id` real. Comment `5414370572`. |
+| X-05 persist | **host-proved** via owner-local receipt | cloud persist on real `file.id`. Same comment. |
+| X-06 writeback | **human-gated** | live sheet host / MSAL / Graph |
+| U-04 cloud | **host-proved** via owner-local receipt | Dashboard + Supabase meter on leased bots. Same comment. |
+| A-01 Turnstile | **human-gated** | live captcha completion |
+| A-02 MSAL | **human-gated** | live MSAL / Graph login |
+| A-03 / UL-24 inbox | **human-gated** | live email delivery |
+| A-05 / UL-20 Stripe | **human-gated** | live signed-in Checkout |
+| A-06 / UL-45 roster | **host-proved** via owner-local receipt | two signed-in accounts on one document. Same comment. |
+| UL-03 | **human-gated** | native Electron pick/cancel |
+| UL-13 | **host-proved** via owner-local receipt | real `updateProfile` persist. Same comment. |
+| UL-15 | **human-gated** | live Turnstile password change |
+| UL-16 | **human-gated** | live account wipe (not authorized) |
+| UL-21 | **human-gated** | live MSAL |
+| UL-22 | **human-gated** | live Google OAuth |
 
 ---
 
