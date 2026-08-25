@@ -337,15 +337,20 @@ export default function App({ devPreviewReturnTab = null }) {
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [documents, setDocuments] = useState(() => {
+  const deepLinkSeededDocumentsRef = useRef((() => {
     if (
       import.meta.env.DEV
       && typeof window !== 'undefined'
       && Array.isArray(window.__documentDeepLinkE2EDocuments)
     ) {
-      const seededDocuments = window.__documentDeepLinkE2EDocuments;
+      return window.__documentDeepLinkE2EDocuments;
+    }
+    return null;
+  })());
+  const [documents, setDocuments] = useState(() => {
+    if (deepLinkSeededDocumentsRef.current) {
       window.__documentDeepLinkE2EDocuments = null;
-      return seededDocuments;
+      return deepLinkSeededDocumentsRef.current;
     }
     return [];
   });
@@ -938,6 +943,7 @@ export default function App({ devPreviewReturnTab = null }) {
       if (import.meta.env.DEV && typeof window !== 'undefined') {
         window.__documentDeepLinkE2EInvite = null;
       }
+      deepLinkSeededDocumentsRef.current = null;
       deepLinkDocumentIdRef.current = null;
       const fileToOpen = (
         import.meta.env.DEV
@@ -976,7 +982,9 @@ export default function App({ devPreviewReturnTab = null }) {
     };
 
     void resolveDeepLinkDocument({
-      documents,
+      documents: (documents && documents.length)
+        ? documents
+        : (deepLinkSeededDocumentsRef.current || documents),
       documentId: deepLinkDocumentId,
       loadInviteDocument,
     }).then((resolved) => {
