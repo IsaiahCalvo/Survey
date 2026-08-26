@@ -11,7 +11,7 @@
  *
  * Pure JS — Node test runner imports this directly.
  */
-import { applyScope } from './annotationCreationCommit.js';
+import { applyScope, composeAnnotationColor } from './annotationCreationCommit.js';
 import {
   sanitizeOfferedFontFamily,
   clampFontSize,
@@ -28,6 +28,19 @@ export function dashArrayFromLineBorderStyle(lineBorderStyle) {
   if (lineBorderStyle === 'dashed') return [6, 4];
   if (lineBorderStyle === 'dotted') return [2, 4];
   return null;
+}
+
+/**
+ * Next-draw Color Fill → Fabric backgroundColor.
+ * Empty-default Text (fillOpacity 0 / transparent / missing) stays '' so
+ * first-create does not invent a box fill. User-set Fill (opacity > 0)
+ * stamps the same rgba compose selected-patch already writes.
+ */
+export function boxFillFromToolbar(fillColor, fillOpacity) {
+  if (!fillColor || fillColor === 'transparent') return '';
+  const opacity = Number(fillOpacity);
+  if (!Number.isFinite(opacity) || opacity <= 0) return '';
+  return composeAnnotationColor(fillColor, opacity);
 }
 
 // TEXT_PADDING lives in svgAnnotationRenderers.jsx (a .jsx module the Node
@@ -145,6 +158,7 @@ export function buildNewTextCommitJSON({
   stroke = '#000000',
   strokeWidth = 1,
   strokeDashArray = null,
+  backgroundColor = '',
   // KAL-88 — Decision 11 companion: survey/region scope stamps, same inputs
   // as the shape/line/freehand builders in annotationCreationCommit.js.
   selectedModuleId = null,
@@ -170,6 +184,14 @@ export function buildNewTextCommitJSON({
     strokeDashArray: Array.isArray(strokeDashArray) && strokeDashArray.length > 0
       ? strokeDashArray.map((value) => Number(value) || 0)
       : null,
+    // Next-draw Color Fill must ride the first box. Envelope '' dropped a
+    // user-set Fill until the user touched Fill again (selected-patch
+    // backgroundColor). Empty-default opacity 0 stays '' — do not invent
+    // a first-create Fill on an empty-default textbox.
+    backgroundColor: (typeof backgroundColor === 'string' && backgroundColor
+      && backgroundColor !== 'transparent')
+      ? backgroundColor
+      : '',
     fontSize: 16,
     fontWeight: 'normal',
     fontFamily: 'Helvetica',

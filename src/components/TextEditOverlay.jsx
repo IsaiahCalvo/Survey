@@ -41,6 +41,7 @@ import {
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
   dashArrayFromLineBorderStyle,
+  boxFillFromToolbar,
 } from '../utils/textEditCommit.js';
 import { composeAnnotationColor } from '../utils/annotationCreationCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
@@ -132,6 +133,8 @@ export default function TextEditOverlay({
   strokeColor,
   strokeOpacity,
   strokeWidth,
+  fillColor,
+  fillOpacity,
   lineBorderStyle = null,
   authorId = null,
   // KAL-88 — Decision 11 companion: survey/region scope inputs for NEW text.
@@ -206,6 +209,11 @@ export default function TextEditOverlay({
         // Next-draw Style must ride the first box. Envelope null dropped
         // Dashed/Dotted until the user touched Style again (selected-patch).
         strokeDashArray: dashArrayFromLineBorderStyle(lineBorderStyle),
+        // Next-draw Color Fill must ride the first box. Envelope '' dropped
+        // a user-set Fill until the user touched Fill again (selected-patch
+        // backgroundColor). Empty-default opacity 0 stays '' — do not invent
+        // a first-create Fill on an empty-default textbox.
+        backgroundColor: boxFillFromToolbar(fillColor, fillOpacity),
       }
       : {
         fontSize: Number(src.fontSize) || 16,
@@ -447,6 +455,10 @@ export default function TextEditOverlay({
         // Prefer live toolbar Style at commit. styleRef is mount-once; a
         // missing first-render lineBorderStyle used to freeze envelope null.
         strokeDashArray: dashArrayFromLineBorderStyle(lineBorderStyle) ?? s.strokeDashArray ?? null,
+        // Prefer live toolbar Color Fill at commit. styleRef is mount-once;
+        // a missing first-render fillOpacity used to freeze envelope ''.
+        // Empty-default opacity 0 still stamps ''.
+        backgroundColor: boxFillFromToolbar(fillColor, fillOpacity) || s.backgroundColor || '',
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
           regionId: activeRegionId,
@@ -549,7 +561,7 @@ export default function TextEditOverlay({
       onEditCommit(updated, commitOpts);
     }
     clearDraft();
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor, strokeOpacity, lineBorderStyle,
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor, strokeOpacity, fillColor, fillOpacity, lineBorderStyle,
     // KAL-88 scope-stamp inputs — keep the commit closure stamping from
     // current values (the unmount flush reads via commitRef, which tracks
     // this callback).
@@ -686,6 +698,9 @@ export default function TextEditOverlay({
       data-first-create-dash={isNewText
         ? (dashArrayFromLineBorderStyle(lineBorderStyle) || []).join(',')
         : undefined}
+      data-first-create-fill={isNewText ? ((typeof fillColor === 'string' && fillColor) ? fillColor : '') : undefined}
+      data-first-create-fill-opacity={isNewText ? String(Number.isFinite(Number(fillOpacity)) ? Number(fillOpacity) : 0) : undefined}
+      data-first-create-fill-paint={isNewText ? (boxFillFromToolbar(fillColor, fillOpacity) || '') : undefined}
       style={{
         position: 'absolute',
         inset: 0,

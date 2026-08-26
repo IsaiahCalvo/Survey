@@ -32725,6 +32725,8 @@ ${pageBlocks}
                                   strokeColor={strokeColor}
                                   strokeOpacity={strokeOpacity}
                                   strokeWidth={strokeWidth}
+                                  fillColor={fillColor}
+                                  fillOpacity={fillOpacity}
                                   lineBorderStyle={lineBorderStyle}
                                   zoomGeneration={zoomGeneration}
                                   // Same scale source as every other overlay (the measured
