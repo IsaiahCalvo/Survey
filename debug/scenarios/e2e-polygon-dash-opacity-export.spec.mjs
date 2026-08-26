@@ -244,22 +244,25 @@ async function pickStyle(page, optionName) {
 }
 
 async function applyColorOpacity(page, pct = LIVE_OPACITY) {
+  await dismissChrome(page);
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(color).toBeVisible({ timeout: 8_000 });
-  const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
-  if (!(await presets.isVisible().catch(() => false))) await color.click();
-  await expect(presets).toBeVisible({ timeout: 8_000 });
   const picker = page.locator('[data-annotation-color-picker]');
+  if (!(await picker.isVisible().catch(() => false))) await color.click();
+  await expect(picker).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toBeVisible({ timeout: 8_000 });
   const borderTab = picker.getByRole('button', { name: 'Border', exact: true }).first();
-  if (await borderTab.isVisible().catch(() => false)) await borderTab.click();
-  const field = page.getByRole('spinbutton', { name: 'Opacity percentage', exact: true });
-  await expect(field).toBeVisible({ timeout: 8_000 });
+  await expect(borderTab).toBeVisible({ timeout: 8_000 });
+  await borderTab.click();
+  await expect(page.locator('button[title="Match fill"]')).toBeVisible({ timeout: 8_000 });
+  const field = picker.getByRole('spinbutton', { name: 'Opacity percentage', exact: true });
+  await expect(field).toBeEnabled({ timeout: 8_000 });
   await field.click();
   await field.fill(String(pct));
   await field.press('Enter');
   await expect(field).toHaveValue(String(pct));
   await page.keyboard.press('Escape');
-  await expect(presets).toHaveCount(0, { timeout: 8_000 }).catch(() => {});
+  await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0, { timeout: 8_000 }).catch(() => {});
   await dismissChrome(page);
 }
 
