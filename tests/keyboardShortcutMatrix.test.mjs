@@ -20,9 +20,9 @@ test('overlay catalogs tools/Esc/search/Delete/Bring to front and omits Duplicat
   assert.match(overlay, /keys: \['Delete'\], description: 'Delete selected'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', '\]'\], description: 'Bring to front'/);
   assert.match(overlay, /keys: \['Ctrl', '\]'\], description: 'Bring forward'/);
+  assert.match(overlay, /keys: \['Ctrl', '\['\], description: 'Send backward'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', '\['\], description: 'Send to back'/);
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
-  assert.doesNotMatch(overlay, /description: 'Send backward'/);
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
 });
 

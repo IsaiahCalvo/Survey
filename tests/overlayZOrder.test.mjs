@@ -25,7 +25,6 @@ test('overlay lists Bring to front next to Delete selected', () => {
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
   assert.doesNotMatch(overlay, /Copy|Cut|Paste/);
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
-  assert.doesNotMatch(overlay, /description: 'Send backward'/);
 });
 
 test('Ctrl+Shift+] is a live SVG selected-annotation z-order chord', () => {
@@ -46,7 +45,6 @@ test('live spec covers overlay listing + Bring to front walk + hub + 390 + file.
   assert.match(spec, /Ctrl\+Shift\+\] must place A in front of B/);
   assert.match(spec, /lists Bring to front/);
   assert.match(spec, /must not invent Duplicate/);
-  assert.match(spec, /must not invent Send backward/);
   assert.match(spec, /must not invent Open file/);
   assert.match(spec, /empty-selection Ctrl\+Shift\+\] invents 0/);
   assert.match(spec, /zoom % INPUT does not steal Ctrl\+Shift\+\]/);

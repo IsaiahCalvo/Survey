@@ -167,13 +167,13 @@ function assertOverlayListsSendToBack(text, label) {
   expect(text, `${label} lists Delete selected`).toContain('Delete selected');
   expect(text, `${label} lists Bring to front`).toContain('Bring to front');
   expect(text, `${label} lists Bring forward`).toContain('Bring forward');
+  expect(text, `${label} lists Send backward`).toContain('Send backward');
   expect(text, `${label} lists Send to back`).toContain('Send to back');
   expect(text, `${label} must not invent Backspace`).not.toMatch(/\bBackspace\b/);
   expect(text, `${label} must not invent Ctrl\+Y`).not.toMatch(/Ctrl\+Y|⌘Y|Cmd\+Y/i);
   expect(text, `${label} must not invent Copy\/Cut\/Paste`).not.toMatch(/\b(Copy|Cut|Paste)\b/);
   expect(text, `${label} must not invent Open file`).not.toMatch(/Open file/i);
   expect(text, `${label} must not invent Duplicate`).not.toMatch(/\bDuplicate\b/);
-  expect(text, `${label} must not invent Send backward`).not.toMatch(/Send backward/i);
 }
 
 test('desktop overlay Send to back intended + break + edge', async ({ page }) => {

@@ -18,7 +18,8 @@ import { test, expect } from '@playwright/test';
 // Delete selected is listed next to Undo/Redo (live chord).
 // Bring to front is listed next to Delete (live z-order chord).
 // Bring forward is listed next to Bring to front (live z-order chord).
-// Send to back is listed next to Bring forward (live z-order chord).
+// Send backward is listed next to Bring forward (live z-order chord).
+// Send to back is listed next to Send backward (live z-order chord).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -40,6 +41,7 @@ const LISTED = [
   'Delete selected',
   'Bring to front',
   'Bring forward',
+  'Send backward',
   'Send to back',
   'Search text',
   'Find next',
@@ -62,7 +64,6 @@ const LISTED = [
 
 const OMITTED = [
   /\bDuplicate\b/i,
-  /Send backward/i,
   /Select all/i,
 ];
 

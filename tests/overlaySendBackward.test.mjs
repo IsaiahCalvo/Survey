@@ -1,12 +1,12 @@
-// Overlay leftover: Ctrl+Shift+[ is the live Send to back chord
-// (SVGAnnotationLayer BracketLeft + shift → 'back'), and sibling
-// Action shortcuts were already listed (Bring to front next to
-// Delete selected), but the catalog omitted that z-order chord.
-// Duplicate is not a live annotation chord (Ctrl+D does not clone)
-// — do not invent a Duplicate overlay row. Distinct from leftover-18,
-// inventing Open file / UL-03, inventing clipboard overlay rows,
-// inventing Backspace-alias overlay rows, or inventing Bring
-// forward / Send backward this pass (one sibling gap).
+// Overlay leftover: Ctrl+[ is the live Send backward chord
+// (SVGAnnotationLayer BracketLeft without shift → 'backward'),
+// and sibling Action shortcuts were already listed (Bring
+// forward / Send to back), but the catalog omitted that
+// z-order chord. Duplicate is not a live annotation chord
+// (Ctrl+D does not clone) — do not invent a Duplicate overlay
+// row. Distinct from leftover-18, inventing Open file / UL-03,
+// inventing clipboard overlay rows, inventing Backspace-alias
+// overlay rows, or inventing Duplicate overlay rows.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,11 +14,12 @@ import { join } from 'node:path';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('overlay lists Send to back next to Bring to front', () => {
+test('overlay lists Send backward next to Bring forward', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
-  assert.match(overlay, /keys: \['Ctrl', 'Shift', '\]'\], description: 'Bring to front'/);
+  assert.match(overlay, /keys: \['Ctrl', '\]'\], description: 'Bring forward'/);
+  assert.match(overlay, /keys: \['Ctrl', '\['\], description: 'Send backward'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', '\['\], description: 'Send to back'/);
-  assert.match(overlay, /live Send to back chord/);
+  assert.match(overlay, /live Send backward chord/);
   assert.match(overlay, /sibling z-order chord/);
   assert.match(overlay, /one sibling gap/);
   assert.doesNotMatch(overlay, /description: 'Open file'/);
@@ -27,27 +28,27 @@ test('overlay lists Send to back next to Bring to front', () => {
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
 });
 
-test('Ctrl+Shift+[ is a live SVG selected-annotation z-order chord', () => {
+test('Ctrl+[ is a live SVG selected-annotation z-order chord', () => {
   const svg = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(svg, /code === 'BracketLeft'/);
   assert.match(svg, /e\.shiftKey \? 'back' : 'backward'/);
   assert.match(svg, /onReorderAnnotation\(pageNumber, annotationIndex, e\.shiftKey \? 'back' : 'backward'\)/);
   assert.match(svg, /window\.addEventListener\('keydown', handleKeyDown\)/);
-  assert.match(svg, /Cmd\+Shift\+\[    → Send to Back/);
+  assert.match(svg, /Cmd\+\[          → Send Backward/);
 });
 
-test('live spec covers overlay listing + Send to back walk + hub + 390 + file.id', () => {
-  const spec = read('debug/scenarios/e2e-overlay-send-to-back.spec.mjs');
+test('live spec covers overlay listing + Send backward walk + hub + 390 + file.id', () => {
+  const spec = read('debug/scenarios/e2e-overlay-send-backward.spec.mjs');
   assert.match(spec, /testPdf=clickable-link-test\.pdf/);
   assert.match(spec, /hubPreview=1/);
-  assert.match(spec, /desktop overlay Send to back intended \+ break \+ edge/);
-  assert.match(spec, /390 overlay Send to back intended \+ break \+ edge/);
-  assert.match(spec, /Ctrl\+Shift\+\[ must place B behind A/);
-  assert.match(spec, /lists Send to back/);
+  assert.match(spec, /desktop overlay Send backward intended \+ break \+ edge/);
+  assert.match(spec, /390 overlay Send backward intended \+ break \+ edge/);
+  assert.match(spec, /Ctrl\+\[ must place B behind A/);
+  assert.match(spec, /lists Send backward/);
   assert.match(spec, /must not invent Duplicate/);
   assert.match(spec, /must not invent Open file/);
-  assert.match(spec, /empty-selection Ctrl\+Shift\+\[ invents 0/);
-  assert.match(spec, /zoom % INPUT does not steal Ctrl\+Shift\+\[/);
+  assert.match(spec, /empty-selection Ctrl\+\[ invents 0/);
+  assert.match(spec, /zoom % INPUT does not steal Ctrl\+\[/);
   assert.match(spec, /hubPreview must not mount the overlay/);
   assert.match(spec, /must not stamp file.id/);
   assert.match(spec, /0 0 612 792/);
