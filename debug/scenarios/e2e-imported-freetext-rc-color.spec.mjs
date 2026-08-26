@@ -52,13 +52,19 @@ async function goToPage(page, pageNumber) {
   const edit = page.getByRole('button', { name: 'Edit page number', exact: true }).first();
   if (await edit.isVisible().catch(() => false)) {
     await edit.click();
+    const input = page.locator('[data-page-number-input]').first();
+    if (await input.isVisible().catch(() => false)) {
+      await input.fill(String(pageNumber));
+      await input.press('Enter');
+    }
   }
-  const input = page.locator('[data-page-number-input]').first();
-  await expect(input).toBeVisible({ timeout: 15_000 });
-  await input.fill(String(pageNumber));
-  await input.press('Enter');
+  const pageDiv = page.locator(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+  await pageDiv.scrollIntoViewIfNeeded().catch(() => {});
+  await page.evaluate((n) => {
+    const el = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${n}"]`);
+    el?.scrollIntoView({ block: 'start' });
+  }, pageNumber);
   const layer = page.locator(`[data-svg-annotation-layer="${pageNumber}"]`);
-  await layer.scrollIntoViewIfNeeded().catch(() => {});
   await expect(layer).toBeVisible({ timeout: 45_000 });
 }
 
