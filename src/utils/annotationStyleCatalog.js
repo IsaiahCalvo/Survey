@@ -245,6 +245,42 @@ export function resolveCalloutBoxFill(style = {}) {
   return { hex, opacity, visible: true, paint: `rgba(${r}, ${g}, ${b}, ${opacity})` };
 }
 
+const rgbaPaint = (r, g, b, opacity) => {
+  const hex = `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+  if (opacity <= 0) return { hex, opacity: 0, visible: false, paint: 'transparent' };
+  if (opacity >= 1) return { hex, opacity: 1, visible: true, paint: hex };
+  return { hex, opacity, visible: true, paint: `rgba(${r}, ${g}, ${b}, ${opacity})` };
+};
+
+/**
+ * Live textbox Fill is style.backgroundColor (toolbar patchSelectedFill).
+ * `fill` is the glyph / fontColor — never treat it as a leftover box fill.
+ * New text commits an empty background until Color Fill patches it. Export
+ * /C and print flatten used to miss that live paint (flatten drew glyphs
+ * only; opacity-0 rgba still wrote /C).
+ */
+export function resolveTextboxBoxFill(obj = {}) {
+  const raw = obj?.backgroundColor;
+  if (raw == null || raw === '' || raw === 'transparent') {
+    return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  }
+  if (typeof raw === 'string') {
+    const rgba = raw.match(/^rgba?\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)(?:\s*,\s*([+-]?\d*\.?\d+))?\s*\)$/i);
+    if (rgba) {
+      const r = Math.round(Math.max(0, Math.min(255, Number(rgba[1]))));
+      const g = Math.round(Math.max(0, Math.min(255, Number(rgba[2]))));
+      const b = Math.round(Math.max(0, Math.min(255, Number(rgba[3]))));
+      const opacity = rgba[4] != null && Number.isFinite(Number(rgba[4]))
+        ? Math.max(0, Math.min(1, Number(rgba[4])))
+        : 1;
+      return rgbaPaint(r, g, b, opacity);
+    }
+  }
+  const hex = normalizeHexColor(raw);
+  if (!hex) return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  return { hex, opacity: 1, visible: true, paint: hex };
+}
+
 const clampUnit = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /**

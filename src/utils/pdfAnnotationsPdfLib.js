@@ -45,6 +45,7 @@ import {
   flattenedTextInlineOffset,
   pdfFreeTextQuadding,
   resolveCalloutBoxFill,
+  resolveTextboxBoxFill,
   wrapFlattenedTextLines,
 } from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
@@ -2463,12 +2464,12 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
 
     // UX 2026-07-17: /C on a FreeText annotation is the BACKGROUND/border
     // color per the PDF spec — NOT the glyph color (that lives in /DA above).
-    // Only write it when the annotation really has a background (callout text
-    // boxes pass style.backgroundColor); plain text annotations omit it so
-    // the exported box stays transparent, matching the screen.
-    const background = fabricObj.backgroundColor && fabricObj.backgroundColor !== 'transparent'
-      ? hexToRGB(fabricObj.backgroundColor)
-      : null;
+    // Live toolbar writes textbox Fill as backgroundColor (often rgba() from
+    // composeColorForPatch). Opacity-0 / empty / transparent omit /C so the
+    // exported box stays clear, matching the screen. Callout boxes pass the
+    // already-resolved hex from resolveCalloutBoxFill.
+    const boxFill = resolveTextboxBoxFill(fabricObj);
+    const background = boxFill.visible ? hexToRGB(boxFill.hex) : null;
 
     // /Q quadding (PDF 12.7.4.3): 0 left, 1 center, 2 right. STYLE_KEYS
     // already keeps textAlign on our reimport; Acrobat/Preview read /Q.
@@ -3204,6 +3205,23 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
   const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200) * scaleX);
+  // Live toolbar writes Fill on backgroundColor. Flatten used to draw
+  // glyphs only, so a user-picked box fill never printed.
+  const boxFill = resolveTextboxBoxFill(obj);
+  if (boxFill.visible) {
+    const paint = parsePdfDrawColor(boxFill.paint, boxFill.hex);
+    if (paint) {
+      page.drawRectangle({
+        x: left,
+        y: getPdfY(pageHeight, top + height),
+        width: maxWidth,
+        height,
+        color: paint.color,
+        opacity: paint.opacity,
+        borderWidth: 0,
+      });
+    }
+  }
   // UX 2026-08-20: wrap + draw each line ourselves so underline/strikethrough
   // track every line (pdf-lib has no text-decoration operator). Line height
   // matches pdf-lib's default (font.heightAtSize).
