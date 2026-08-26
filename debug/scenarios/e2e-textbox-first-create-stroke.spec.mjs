@@ -212,6 +212,10 @@ async function createFirstBoxAfterBorder(page, text = 'Y') {
   await page.mouse.up();
   const editor = page.locator('[data-text-edit-overlay] [contenteditable]').first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
+  const overlayStroke = normalizeHex(
+    await page.locator('[data-text-edit-overlay]').first().getAttribute('data-first-create-stroke'),
+  );
+  expect(overlayStroke, 'first-create overlay must read live Color Border').toBe(liveStroke);
   await editor.click();
   if (text) await editor.pressSequentially(text, { delay: 6 });
   await commitEdit(page);

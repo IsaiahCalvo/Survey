@@ -417,7 +417,10 @@ export default function TextEditOverlay({
         naturalInnerHeight: naturalInnerH,
         style: s,
         fill: s.fill,
-        stroke: s.stroke || '#000000',
+        // Prefer live toolbar Color Border at commit. styleRef is mount-once;
+        // a missing first-render strokeColor used to freeze '#000000' even
+        // after the next-draw prop arrived.
+        stroke: (typeof strokeColor === 'string' && strokeColor) ? strokeColor : (s.stroke || '#000000'),
         strokeWidth: s.strokeWidth ?? 1,
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
@@ -521,7 +524,7 @@ export default function TextEditOverlay({
       onEditCommit(updated, commitOpts);
     }
     clearDraft();
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId,
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor,
     // KAL-88 scope-stamp inputs — keep the commit closure stamping from
     // current values (the unmount flush reads via commitRef, which tracks
     // this callback).
@@ -649,6 +652,7 @@ export default function TextEditOverlay({
       ref={wrapperRef}
       data-text-edit-overlay
       data-page-number={pageNumber}
+      data-first-create-stroke={isNewText ? ((typeof strokeColor === 'string' && strokeColor) ? strokeColor : (styleRef.current?.stroke || '')) : undefined}
       style={{
         position: 'absolute',
         inset: 0,

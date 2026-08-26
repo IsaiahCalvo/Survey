@@ -82,6 +82,11 @@ test('first-create overlay reads next-draw strokeColor; PDFViewer already passes
     /stroke: \(typeof strokeColor === 'string' && strokeColor\) \? strokeColor : '#000000'/,
     'first-create must stamp live Color Border, not hardcoded #000000',
   );
+  assert.match(
+    overlay,
+    /stroke: \(typeof strokeColor === 'string' && strokeColor\) \? strokeColor : \(s\.stroke \|\| '#000000'\)/,
+    'commit must prefer live Color Border over mount-time black',
+  );
   assert.equal(
     (overlay.match(/stroke: '#000000',/g) || []).length,
     0,
