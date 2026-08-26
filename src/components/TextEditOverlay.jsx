@@ -47,6 +47,7 @@ import { composeAnnotationColor } from '../utils/annotationCreationCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { setCalloutEditDraft, clearCalloutEditDraft } from '../utils/calloutBlankCommit.js';
+import { sanitizeVerticalAlign } from '../utils/annotationStyleCatalog.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -188,7 +189,13 @@ export default function TextEditOverlay({
         underline: Boolean(newTextStyle?.underline),
         linethrough: Boolean(newTextStyle?.strike),
         textAlign: newTextStyle?.textAlign || 'left',
-        verticalAlign: 'top',
+        // Next-draw 390 Text vertical alignment must ride the first box.
+        // Hardcoding 'top' dropped middle/bottom until alignment was
+        // re-touched (selected-patch). Callout first-create stays top —
+        // do not invent a user-settable callout verticalAlign.
+        verticalAlign: reactCalloutId
+          ? 'top'
+          : sanitizeVerticalAlign(newTextStyle?.verticalAlign),
         lineHeight: 1.16,
         // Plan 15-04 parity: new text's intended look — the SVG preview and
         // the committed annotation both use these.
