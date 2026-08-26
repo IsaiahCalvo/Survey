@@ -36,7 +36,7 @@ Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-underline-
 - Break: hubPreview Color / Width **0**
 - Edge: 390 viewBox **`0 0 612 792`**; `file.id` null; hex / Font chrome **0**
 
-Focused Node `afterUnderlineStrikeSelectFillExportHunt` + leftover18FailClosed **15 / 15**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Isolated 8448 not reached. `graphify` CLI absent.
+Focused Node `afterUnderlineStrikeSelectFillExportHunt` + leftover18FailClosed **15 / 15**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` ran after the product change: standing `annotationContextMenuitem` leftover official vs spec Enter still fails — **not taken, not aligned down**. Isolated 8448 not reached. `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
