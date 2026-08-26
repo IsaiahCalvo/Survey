@@ -197,14 +197,54 @@ async function createRect(page, { fillOpacity = null } = {}) {
   return created;
 }
 
-async function selectShape(page, id) {
-  await activateTool(page, 'Select', 'Select');
-  const selectBtn = page.getByRole('button', { name: 'Select', exact: true }).first();
-  if ((await selectBtn.getAttribute('aria-pressed')) !== 'true') {
-    await selectBtn.click();
+async function selectMode(page) {
+  await blurInputs(page);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) {
+    await page.keyboard.press('Escape');
   }
-  await expect(selectBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 8_000 }).catch(() => {});
-  await page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first().click({ force: true });
+}
+
+async function handlesBelongTo(page, id) {
+  const group = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  const handles = page.locator('[data-resize-handle]');
+  if (!(await handles.count()) || !(await group.count())) return false;
+  const box = await group.boundingBox();
+  if (!box) return false;
+  const points = await handles.evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }));
+  return points.some((point) => (
+    point.x >= box.x - 28 && point.x <= box.x + box.width + 28
+    && point.y >= box.y - 28 && point.y <= box.y + box.height + 28
+  ));
+}
+
+async function selectShape(page, id) {
+  await selectMode(page);
+  if (await handlesBelongTo(page, id)) return;
+  const group = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  await expect(group).toBeVisible({ timeout: 8_000 });
+  const box = await group.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  const points = [
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + Math.min(8, Math.max(3, box.width / 2)), y: box.y + Math.max(3, box.height / 2) },
+    { x: box.x + 4, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + 4 },
+    { x: box.x + box.width - 4, y: box.y + box.height / 2 },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    if (await handlesBelongTo(page, id)) return;
+  }
+  await page.locator(`[data-shape-id="${id}"]`).first().click({ force: true, position: { x: 3, y: 3 } }).catch(() => {});
+  await expect.poll(async () => handlesBelongTo(page, id), {
+    message: `expected selection handles on ${id}`,
+  }).toBeTruthy();
 }
 
 test('desktop selected-shape Fill Opacity 0 stays 0 after Select intended + break', async ({ page }) => {
