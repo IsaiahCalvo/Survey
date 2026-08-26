@@ -185,9 +185,10 @@ test('annotated export writes Cloud /BE and independent fill /ca', async () => {
     idSuffix: 'opaque',
     fillOpacity: 100,
     strokeOpacity: 100,
+    cloudIntensity: 2,
   });
   assert.ok(opaque.dict.get(PDFName.of('BE')), 'opaque Cloud must still write /BE');
-  assert.equal(hasAppearance(opaque.dict), false, 'opaque Cloud must omit /AP so viewers keep native /BE scallops');
+  assert.equal(hasAppearance(opaque.dict), false, 'opaque default-bump Cloud must omit /AP so viewers keep native /BE scallops');
   assert.equal(opaque.dict.get(PDFName.of('CA')), undefined, 'opaque Cloud must omit dict /CA');
 });
 
@@ -206,7 +207,7 @@ test('export host still names the Cloud fade /AP contract; isolated 8448 / 75/25
   assert.match(creation, /pdfCloudIntensity: Math\.max\(1, Number\(cloudIntensity\) \|\| 2\)/);
   assert.match(flatten, /const fabricPathCommandsToPdf = /);
   assert.match(flatten, /Cloudy Square used to skip \/AP so \/BE could generate the scallops/);
-  assert.match(flatten, /if \(needsFade\) \{/);
+  assert.match(flatten, /if \(needsFade \|\| needsOversizedBump\) \{/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
   assert.match(complexity, /p95CommitMs: 75/);

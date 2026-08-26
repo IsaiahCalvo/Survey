@@ -1943,22 +1943,26 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       || fabricObj?.cloudBorder
       || fabricObj?.borderEffect === 'cloudy';
     if (isCloud) {
+      const intensity = Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2);
       annotationDict.BE = pdfDoc.context.obj({
         S: PDFName.of('C'),
-        I: PDFNumber.of(Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2)),
+        I: PDFNumber.of(intensity),
       });
       // Cloudy Square used to skip /AP so /BE could generate the scallops.
       // Independent fill vs stroke fade then never reached Acrobat — /IC
-      // stayed hex-only and flatten already applied /ca. Attach a faded
-      // /AP only when /ca or /CA is needed; opaque clouds still omit /AP
-      // so viewers keep native /BE scallops.
+      // stayed hex-only and flatten already applied /ca. PDF /BE/I is only
+      // 0–2; live Bump offers 1–20. Attach /AP when /ca or /CA is needed
+      // OR when Bump is outside that spec range so Acrobat does not clamp
+      // I=8 down to 2. Opaque default bump 1–2 still omit /AP so viewers
+      // keep native /BE scallops. Stroke /CA already rides needsFade.
       const fillAlpha = fill?.visible ? fill.opacity : 0;
       const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
       const needsFade = Boolean(
         (fill?.visible && fillAlpha < 0.99999)
         || (stroke?.visible && strokeAlpha < 0.99999)
       );
-      if (needsFade) {
+      const needsOversizedBump = intensity > 2;
+      if (needsFade || needsOversizedBump) {
         const cloudCmds = buildCloudPathCommands(
           [
             { x: 0, y: 0 },
@@ -1966,7 +1970,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
             { x: width, y: height },
             { x: 0, y: height },
           ],
-          Number.isFinite(cloudIntensity) ? cloudIntensity : 2,
+          intensity,
           stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 1,
         );
         const pathCommands = fabricPathCommandsToPdf(cloudCmds, { flipHeight: height });
