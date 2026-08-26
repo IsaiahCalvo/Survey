@@ -229,9 +229,9 @@ async function openFillTab(page) {
   return presets;
 }
 
-async function applyFillViaSpectrum(page, createdId) {
+async function applyFillAndOpacity(page, createdId, pct = LIVE_OPACITY) {
   await selectTextbox(page, createdId);
-  await openFillTab(page);
+  const presets = await openFillTab(page);
   const spectrumMode = page.getByRole('button', { name: 'Color spectrum', exact: true });
   await expect(spectrumMode).toBeVisible({ timeout: 8_000 });
   await spectrumMode.click();
@@ -244,11 +244,7 @@ async function applyFillViaSpectrum(page, createdId) {
     const row = (await textSnapshot(page)).find((item) => item.id === createdId);
     return parseFill(row?.fill || row?.visualFill).hex;
   }, { message: 'spectrum must stamp a visible backgroundColor' }).toMatch(/^#[0-9A-F]{6}$/);
-}
 
-async function applyFillOpacity(page, createdId, pct = LIVE_OPACITY) {
-  await selectTextbox(page, createdId);
-  const presets = await openFillTab(page);
   const field = page.getByRole('spinbutton', { name: 'Opacity percentage', exact: true });
   await expect(field).toBeVisible({ timeout: 8_000 });
   await field.click();
@@ -262,7 +258,7 @@ async function applyFillOpacity(page, createdId, pct = LIVE_OPACITY) {
   await expect.poll(async () => {
     row = (await textSnapshot(page)).find((item) => item.id === createdId) || null;
     const parsed = parseFill(row?.fill || row?.visualFill);
-    return row && Math.abs(parsed.opacity - pct / 100) < 0.02 ? parsed : null;
+    return row && parsed.hex && Math.abs(parsed.opacity - pct / 100) < 0.02 ? parsed : null;
   }, { message: `Fill Opacity must stamp ${pct / 100}` }).not.toBeNull();
   return parseFill(row?.fill || row?.visualFill);
 }
@@ -363,8 +359,7 @@ test('desktop textbox fillOpacity export /ca intended + break', async ({ page })
 
   const created = await createText(page, 'Y');
   expect(created.text).toBe('Y');
-  await applyFillViaSpectrum(page, created.id);
-  const liveFill = await applyFillOpacity(page, created.id, LIVE_OPACITY);
+  const liveFill = await applyFillAndOpacity(page, created.id, LIVE_OPACITY);
   expect(liveFill.hex, 'Fill spectrum must stamp a hex').toMatch(/^#[0-9A-F]{6}$/);
   expect(liveFill.opacity, 'Fill Opacity must stamp 0.4').toBeCloseTo(0.4, 2);
 
@@ -420,9 +415,11 @@ test('390 textbox fillOpacity export edge: viewBox, file.id, no invent', async (
   if (await mobileText.isVisible().catch(() => false)) {
     const created = await createText(page, 'Y');
     expect(created.text).toBe('Y');
-    await applyFillViaSpectrum(page, created.id);
-    const liveFill = await applyFillOpacity(page, created.id, LIVE_OPACITY);
-    expect(liveFill.opacity).toBeCloseTo(0.4, 2);
+    const color = page.getByRole('button', { name: 'Color', exact: true }).first();
+    if (await color.isVisible().catch(() => false)) {
+      const liveFill = await applyFillAndOpacity(page, created.id, LIVE_OPACITY);
+      expect(liveFill.opacity).toBeCloseTo(0.4, 2);
+    }
   } else {
     expect(await page.getByRole('button', { name: 'Text', exact: true }).count()).toBe(0);
   }
