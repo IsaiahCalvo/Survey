@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('official leftover files besides isolated 8448 match live source after Search result rows', () => {
+test('official leftover files besides isolated 8448 match live source after Bookmarks desktop rows', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /role="dialog"/);
   assert.match(overlay, /aria-labelledby="keyboard-shortcuts-title"/);
@@ -73,6 +73,8 @@ test('official leftover files besides isolated 8448 match live source after Sear
   const projStart = tree.indexOf('{/* LEFT — tree */}');
   const projEnd = tree.indexOf('{/* RIGHT — open project */}');
   assert.match(tree.slice(projStart, projEnd), /aria-label=\{`Open project \$\{p\.name\}`\}/);
+  const fileStart = tree.indexOf('{/* RIGHT — open project */}');
+  assert.match(tree.slice(fileStart), /onOpenDocument && onOpenDocument\(f\)/);
 
   const app = read('src/AppShell.jsx');
   assert.match(app, /<button\s+type="button"\s+data-select-mode-caret="true"/);
@@ -89,6 +91,7 @@ test('official leftover files besides isolated 8448 match live source after Sear
   const bookmarkRow = bookmarks.indexOf('data-bookmark-row-id={isClone ? undefined : item.id}');
   assert.ok(bookmarkRow > 0);
   assert.match(bookmarks.slice(bookmarkRow, bookmarkRow + 1600), /role=\{isClone \? undefined : 'button'\}/);
+  assert.match(bookmarks.slice(bookmarkRow, bookmarkRow + 1600), /`Jump to bookmark \$\{rowName\}`/);
 
   const search = read('src/sidebar/SearchTextPanel.jsx');
   assert.match(search, /aria-label="Search text in PDF"/);
@@ -100,17 +103,17 @@ test('official leftover files besides isolated 8448 match live source after Sear
   assert.match(read('tests/partialEraserComplexity.test.mjs'), /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
 });
 
-test('hunt after Search result rows looks past row button and leftover-18', () => {
-  const spec = read('debug/scenarios/e2e-after-search-result-rows-independent-hunt.spec.mjs');
-  assert.match(spec, /AFTER_SEARCH_RESULT_ROWS_INDEPENDENT_HUNT/);
-  assert.match(spec, /Independent hunt after Search result rows role=button/);
+test('hunt after Bookmarks desktop rows looks past row button and leftover-18', () => {
+  const spec = read('debug/scenarios/e2e-after-bookmark-desktop-rows-independent-hunt.spec.mjs');
+  assert.match(spec, /AFTER_BOOKMARK_DESKTOP_ROWS_INDEPENDENT_HUNT/);
+  assert.match(spec, /Independent hunt after Bookmarks desktop rows role=button/);
   assert.match(spec, /\/invite\/leftover-type-probe/);
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /hubPreview=1&tab=templates/);
   assert.match(spec, /hubPreview=1&tab=projects/);
   assert.match(spec, /hubPreview=1&tab=archive/);
   assert.match(spec, /hubPreview=1&guest=1/);
-  assert.match(spec, /testPdf=clickable-link-test\.pdf/);
+  assert.match(spec, /testPdf=Package%202%20-%20Rev%204%20--%20IC\.pdf/);
   assert.match(spec, /surveyTransitionE2E=1/);
   assert.match(spec, /nameType/);
   assert.match(spec, /fileType/);
@@ -126,6 +129,7 @@ test('hunt after Search result rows looks past row button and leftover-18', () =
   assert.match(spec, /eraserCaretType/);
   assert.match(spec, /firstRowRole/);
   assert.match(spec, /firstRowName/);
+  assert.match(spec, /Jump to bookmark|Select bookmark group/);
   assert.match(spec, /Jump to match/);
   assert.match(spec, /Open template/);
   assert.match(spec, /Open project/);
