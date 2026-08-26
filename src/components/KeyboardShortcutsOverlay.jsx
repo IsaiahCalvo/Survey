@@ -97,14 +97,13 @@ const KeyboardShortcutsOverlay = () => {
       // Ctrl+Shift+[ is the live Send to back chord
       // (SVGAnnotationLayer BracketLeft + shift → 'back').
       // The overlay already listed Bring to front / Bring
-      // forward / Send to back; omitting the sibling z-order
-      // chord made Send backward undiscoverable from the
-      // catalog the same way Bring forward was missing next
-      // to Bring to front. Duplicate is not a live
-      // annotation chord (Ctrl+D does not clone). Do not
-      // invent Duplicate overlay rows. This pass fills the
-      // last one sibling gap. Do not invent clipboard
-      // overlay rows.
+      // forward / Send to back; omitting the sibling z-order chord
+      // made Send backward undiscoverable from the catalog the
+      // same way Bring forward was missing next to Bring to
+      // front. Duplicate is not a live annotation chord
+      // (Ctrl+D does not clone). Do not invent Duplicate
+      // overlay rows. This pass fills the last one sibling gap.
+      // Do not invent clipboard overlay rows.
       { keys: ['Ctrl', 'Shift', ']'], description: 'Bring to front' },
       { keys: ['Ctrl', ']'], description: 'Bring forward' },
       { keys: ['Ctrl', '['], description: 'Send backward' },
