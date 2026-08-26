@@ -7454,6 +7454,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (toolPrefs.lineBorderStyle !== undefined) {
       setLineBorderStyle(toolPrefs.lineBorderStyle);
     }
+    if (toolPrefs.arrowheadStyle !== undefined) {
+      setArrowheadStyle(toolPrefs.arrowheadStyle);
+    }
   }, [activeTool, pdfId, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
@@ -7727,6 +7730,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { arrowheadStyle: next });
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ arrowheadStyle: next });
       return;
@@ -7738,7 +7742,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       || sel?.annotation?.data?.arrowheadStyle != null);
     if (!isArrow) return;
     handlePatchSelectedAnnotation({ data: { arrowheadStyle: next } });
-  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   // Handle width input changes (allows empty string while typing)
   const handleStrokeWidthInputChange = useCallback((e) => {

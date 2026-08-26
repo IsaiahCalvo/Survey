@@ -84,7 +84,7 @@ test('Text defaults include Width 1; prefs merge per key', () => {
   );
   assert.match(
     db,
-    /callout: \{ strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid' \}/,
+    /callout: \{ strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid', arrowheadStyle: 'solidTriangle' \}/,
     'Callout default Width stays 2 — the same-category leak source',
   );
   assert.match(

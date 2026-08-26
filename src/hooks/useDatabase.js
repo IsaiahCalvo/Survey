@@ -1028,11 +1028,14 @@ const DEFAULT_TOOL_PREFERENCES = {
   // Text / Callout / Rect / Ellipse / Line / Arrow after a sibling
   // switch. Session-shared dash then stamped the sibling's Style until
   // the user touched Style again.
+  // Omitting arrowheadStyle used to let one Arrowhead picker leak across
+  // Callout ↔ Arrow after a sibling switch. Session-shared head then
+  // stamped the sibling's Arrowhead until the user touched Arrowhead again.
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' },
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid' },
-  arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid' },
-  callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid' },
+  arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid', arrowheadStyle: 'solidTriangle' },
+  callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid', arrowheadStyle: 'solidTriangle' },
   // Counter badge: Fill is the pin body, Number is data.numberColor (toolbar
   // stroke). strokeWidth is the badge radius so it shares the Size input.
   // Omitting fillColor/fillOpacity used to let Shapes → Counter inherit

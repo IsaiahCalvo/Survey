@@ -82,7 +82,7 @@ test('Style-capable defaults include Solid; prefs merge per key', () => {
   );
   assert.match(
     db,
-    /callout: \{ strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid' \}/,
+    /callout: \{ strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid', arrowheadStyle: 'solidTriangle' \}/,
     'Callout default Style is Solid — the same-category leak source when omitted',
   );
   assert.match(
@@ -101,7 +101,7 @@ test('Style-capable defaults include Solid; prefs merge per key', () => {
   );
   assert.match(
     db,
-    /arrow: \{ strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid' \}/,
+    /arrow: \{ strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid', arrowheadStyle: 'solidTriangle' \}/,
   );
   assert.match(
     db,
