@@ -2488,13 +2488,43 @@ const polygonWorldPoint = (obj, point) => {
   };
 };
 
+const polygonAppearancePath = (fabricObj, points, { intensity = null, strokeWidth = 1 } = {}) => {
+  const worldPoints = points.map((point) => polygonWorldPoint(fabricObj, point));
+  const appMinX = Math.min(...worldPoints.map((point) => point.x));
+  const appMaxX = Math.max(...worldPoints.map((point) => point.x));
+  const appMinY = Math.min(...worldPoints.map((point) => point.y));
+  const appMaxY = Math.max(...worldPoints.map((point) => point.y));
+  const formWidth = appMaxX - appMinX;
+  const formHeight = appMaxY - appMinY;
+  const localPoints = worldPoints.map((point) => ({
+    x: point.x - appMinX,
+    y: point.y - appMinY,
+  }));
+  const n = pdfNumberText;
+  const fallbackPath = localPoints.map((point, index) => (
+    `${n(point.x)} ${n(formHeight - point.y)} ${index === 0 ? 'm' : 'l'}`
+  )).concat('h');
+  if (!Number.isFinite(intensity)) {
+    return { formWidth, formHeight, pathCommands: fallbackPath };
+  }
+  const cloudCmds = buildCloudPathCommands(localPoints, intensity, strokeWidth);
+  const pathCommands = fabricPathCommandsToPdf(cloudCmds, { flipHeight: formHeight });
+  return {
+    formWidth,
+    formHeight,
+    pathCommands: pathCommands.length ? pathCommands : fallbackPath,
+  };
+};
+
 /**
  * Create Polygon annotation with optional cloud border effect
  */
 const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
-    const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fill = resolveLiveShapeFill(fabricObj);
+    const stroke = resolveLiveShapeStroke(fabricObj);
+    const color = hexToRGB(stroke.hex || fabricObj.stroke || '#000000');
+    const fillColor = fill.visible ? hexToRGB(fill.hex) : null;
 
     // Extract points from Fabric.js polygon
     const points = fabricObj.points || [];
@@ -2528,8 +2558,10 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       P: page.ref,
     };
 
-    // Add fill color if present
-    if (fillColor && fabricObj.fill !== 'transparent') {
+    // Live toolbar writes Fill as rgba fill. /IC stays the fill hex;
+    // opacity-0 rgba must not invent an interior. Independent fade lives
+    // in /AP /ca — same contract as Cloud Square / createSquareAnnotation.
+    if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
@@ -2542,14 +2574,18 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     // attach faded or oversized /AP; opaque bump 1–2 omit /AP so
     // viewers keep native /BE scallops. Do not invent a create-poly
     // tool — this is selected-patch export of an imported polygon.
-    const fill = resolveLiveShapeFill(fabricObj);
-    const stroke = resolveLiveShapeStroke(fabricObj);
     const cloudIntensity = Number(
       fabricObj?.data?.pdfCloudIntensity ?? fabricObj?.cloudIntensity
     );
     const isCloud = Number.isFinite(cloudIntensity)
       || fabricObj?.cloudBorder
       || fabricObj?.borderEffect === 'cloudy';
+    const fillAlpha = fill?.visible ? fill.opacity : 0;
+    const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
+    const needsFade = Boolean(
+      (fill?.visible && fillAlpha < 0.99999)
+      || (stroke?.visible && strokeAlpha < 0.99999)
+    );
     if (isCloud) {
       const intensity = Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2);
       annotationDict.BE = pdfDoc.context.obj({
@@ -2557,57 +2593,27 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
         I: PDFNumber.of(intensity),
       });
       annotationDict.IT = PDFName.of('PolygonCloud');
-      const fillAlpha = fill?.visible ? fill.opacity : 0;
-      const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
-      const needsFade = Boolean(
-        (fill?.visible && fillAlpha < 0.99999)
-        || (stroke?.visible && strokeAlpha < 0.99999)
-      );
       const needsOversizedBump = intensity > 2;
       if (needsFade || needsOversizedBump) {
-        const worldPoints = points.map((point) => polygonWorldPoint(fabricObj, point));
-        const appMinX = Math.min(...worldPoints.map((point) => point.x));
-        const appMaxX = Math.max(...worldPoints.map((point) => point.x));
-        const appMinY = Math.min(...worldPoints.map((point) => point.y));
-        const appMaxY = Math.max(...worldPoints.map((point) => point.y));
-        const formWidth = appMaxX - appMinX;
-        const formHeight = appMaxY - appMinY;
-        const localPoints = worldPoints.map((point) => ({
-          x: point.x - appMinX,
-          y: point.y - appMinY,
-        }));
-        const cloudCmds = buildCloudPathCommands(
-          localPoints,
-          intensity,
-          stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 1,
-        );
-        const pathCommands = fabricPathCommandsToPdf(cloudCmds, { flipHeight: formHeight });
-        const n = pdfNumberText;
-        const fallbackPath = localPoints.map((point, index) => (
-          `${n(point.x)} ${n(formHeight - point.y)} ${index === 0 ? 'm' : 'l'}`
-        )).concat('h');
         attachIndependentShapeAppearance(pdfDoc, annotationDict, {
-          formWidth,
-          formHeight,
+          ...polygonAppearancePath(fabricObj, points, {
+            intensity,
+            strokeWidth: stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 1,
+          }),
           fill,
           stroke,
-          pathCommands: pathCommands.length ? pathCommands : fallbackPath,
         });
       }
     } else {
       // Live toolbar maps selected imported polygon → rect Style dash +
-      // Color Opacity. Screen already honours strokeDashArray, but
-      // AppShell minOpacity 1 locked Border fade at 100 and export wrote
-      // hex /C + /Border width only — Acrobat stayed solid and opaque
-      // until Style / Opacity were re-touched.
-      // Same contract as createPolyLineAnnotation: /C stays the stroke
-      // RGB; /CA carries the fade; dashed/dotted write /BS. Solid +
-      // opaque omit both so default export stays byte-identical. Do not
-      // invent a create-poly tool — this is selected-patch export of an
-      // imported polygon. /IC stays hex; independent fill fade is Cloud
-      // /AP only.
-      const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
-      if (alpha < 0.99999) annotationDict.CA = alpha;
+      // Color Fill / Border Opacity. Screen already honours rgba fill,
+      // but export wrote hex /IC only so Acrobat stayed opaque until
+      // Fill was re-touched. Same class as Cloud Fill /AP /ca: /IC
+      // stays the fill hex; faded fill attaches /AP ExtGState /ca.
+      // Stroke-only fade still rides dict /CA (no fill). Dashed /
+      // Dotted write /BS. Solid + opaque omit /AP /CA /BS so default
+      // export stays byte-identical. Do not invent a create-poly tool
+      // — this is selected-patch export of an imported polygon.
       const dash = Array.isArray(fabricObj.strokeDashArray) && fabricObj.strokeDashArray.length > 0
         ? fabricObj.strokeDashArray.map((v) => Number(v) || 0)
         : null;
@@ -2618,6 +2624,16 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
           S: PDFName.of('D'),
           D: dash,
         };
+      }
+      if (fill?.visible && fillAlpha < 0.99999) {
+        attachIndependentShapeAppearance(pdfDoc, annotationDict, {
+          ...polygonAppearancePath(fabricObj, points),
+          fill,
+          stroke,
+        });
+      } else {
+        const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
+        if (alpha < 0.99999) annotationDict.CA = alpha;
       }
     }
 
