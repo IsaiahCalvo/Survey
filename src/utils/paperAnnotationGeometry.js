@@ -1089,11 +1089,21 @@ const mergeStyledStrokeGeometries = (values) => {
   while (geometries.length > 1) {
     const next = [];
     for (let index = 0; index < geometries.length; index += 2) {
-      next.push(
-        index + 1 < geometries.length
-          ? normalizeMultiPolygon(union(geometries[index], geometries[index + 1]))
-          : geometries[index],
-      );
+      if (index + 1 >= geometries.length) {
+        next.push(geometries[index]);
+        continue;
+      }
+      try {
+        next.push(normalizeMultiPolygon(union(geometries[index], geometries[index + 1])));
+      } catch {
+        // Martinez can throw `depth` on self-touching /AP stroke outlines
+        // (package2 page 9). Keep both polygons instead of leftover-skipping
+        // the page or the ink.
+        next.push(normalizeMultiPolygon([
+          ...geometries[index],
+          ...geometries[index + 1],
+        ]));
+      }
     }
     geometries = next;
   }

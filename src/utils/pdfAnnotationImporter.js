@@ -29,7 +29,6 @@ import {
   intersectPolygonSets,
   normalizeMultiPolygon,
   polygonSetToCommands,
-  styledStrokeCommandsToPolygonSet,
   translatePolygonSet,
 } from './paperAnnotationGeometry.js';
 import {
@@ -3059,6 +3058,7 @@ function buildAppearancePaintLayers(
   const baseOpacity = extractAnnotationOpacity(annotation, 1);
   const layers = [];
   let requiresMaterialization = operations.length > 1;
+  let skippedLiveStroke = false;
 
   const clippedGeometry = (geometry, operation) => {
     if (operation?.clipActive !== true) {
@@ -3125,68 +3125,15 @@ function buildAppearancePaintLayers(
     }
 
     if (operation?.stroke && Number(operation.strokeWidth) > 0) {
-      const strokeMatrix = isFinitePdfMatrix(operation.strokeMatrix)
-        ? Array.from(operation.strokeMatrix, Number)
-        : Array.from(PDF_IDENTITY_MATRIX);
-      const inverseStrokeMatrix = invertPdfMatrix(strokeMatrix);
-      const userPath = inverseStrokeMatrix
-        ? transformPathCommands(operation.path, inverseStrokeMatrix)
-        : operation.path;
-      const effectiveStrokeMatrix = composePdfMatrices(
-        appearanceToViewport,
-        strokeMatrix,
-      );
-      const userOutline = styledStrokeCommandsToPolygonSet(userPath, {
-        strokeWidth: operation.strokeWidth,
-        curveTolerance: curveToleranceForMatrix(effectiveStrokeMatrix),
-        lineCap: operation.lineCap || 'butt',
-        lineJoin: operation.lineJoin || 'miter',
-        miterLimit: Math.max(1, Number(operation.miterLimit) || 10),
-        dashArray: operation.dashArray,
-        dashOffset: operation.dashPhase,
-      });
-      const rootOutline = inverseStrokeMatrix
-        ? transformPolygonSet(userOutline, strokeMatrix)
-        : userOutline;
-      const clipped = clippedGeometry(rootOutline, operation);
-      if (
-        clipped.changed
-        || !isSimilarityMatrix(effectiveStrokeMatrix)
-        || (Array.isArray(operation.dashArray) && operation.dashArray.length > 0)
-      ) {
-        requiresMaterialization = true;
-      }
-      if (clipped.geometry.length > 0) {
-        const worldPolygons = transformAppearancePolygonSetToViewport(
-          clipped.geometry,
-          appearanceToPdf,
-          viewport,
-          scale,
-        );
-        const layer = createFilledAppearanceLayer({
-          annotation,
-          appearance,
-          sourceGeometry,
-          kind: 'stroke',
-          paintOperationIndex,
-          layerIndex: layers.length,
-          paint: operation.strokeColor || annotation?.color,
-          opacity: baseOpacity * (
-            Number.isFinite(operation.strokeAlpha) ? operation.strokeAlpha : 1
-          ),
-          worldPolygons,
-          sourceWidth: (
-            operation.strokeWidth
-            * pdfMatrixAreaScale(composePdfMatrices(appearanceToPdf, strokeMatrix))
-            * viewportAreaScale(viewport, scale)
-          ),
-          fillRule: 'evenodd',
-        });
-        if (layer) layers.push(layer);
-      }
+      // package2 page 9 Ink /AP stroke unions throw martinez `depth` and
+      // leftover-skipped the page. Keep the live path instead of unioning
+      // /AP stroke outlines during import.
+      skippedLiveStroke = true;
+      return;
     }
   });
 
+  if (skippedLiveStroke) return null;
   if (layers.length > 1) requiresMaterialization = true;
   // An empty array is authoritative: the appearance contained supported paint
   // operations, but clipping removed every painted point. Keep that distinct
@@ -3778,15 +3725,29 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     }
   }
 
-  const appearanceLayers = annotation?.appAnnotationMetadata
-    ? null
-    : buildAppearancePaintLayers(
+  // package2 page 9 Ink /AP stroke unions can throw martinez `depth`
+  // (`Cannot read properties of undefined (reading 'depth')`) inside
+  // styledStrokeCommandsToPolygonSet. That used to abort convertInk and
+  // skip the whole page. Keep the live path instead of leftover-dropping
+  // every sibling annotation on the page.
+  let appearanceLayers = null;
+  if (!annotation?.appAnnotationMetadata) {
+    try {
+      appearanceLayers = buildAppearancePaintLayers(
         annotation,
         appearance,
         viewport,
         scale,
         sourceGeometry,
       );
+    } catch (error) {
+      console.warn(
+        '[PDFImport] Ink /AP stroke union failed; keeping live path:',
+        error?.message || error,
+      );
+      appearanceLayers = null;
+    }
+  }
   if (Array.isArray(appearanceLayers)) {
     if (appearanceLayers.length === 0) return null;
     const [primary, ...companions] = appearanceLayers;
@@ -5179,12 +5140,28 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           });
         }
 
-        const converted = convertPdfAnnotationToFabric(
-          annotation,
-          viewport,
-          1,
-          rawMetadata,
-        );
+        let converted = null;
+        try {
+          converted = convertPdfAnnotationToFabric(
+            annotation,
+            viewport,
+            1,
+            rawMetadata,
+          );
+        } catch (error) {
+          // One Ink /AP stroke-union throw must not leftover-skip the page.
+          console.warn(
+            `[PDFImport] annotation ${annotation?.id || annotation?.name || '?'} failed; keeping page:`,
+            error?.message || error,
+          );
+          importedDiag.push(summarizeFabricImportForDiag(
+            null,
+            annotation,
+            'skipped',
+            'converter-threw',
+          ));
+          return;
+        }
         const convertedObjects = converted
           ? [
               converted,
