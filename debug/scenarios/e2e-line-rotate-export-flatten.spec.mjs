@@ -217,7 +217,11 @@ async function selectLine(page, created) {
   if (await target.count()) {
     const targetBox = await target.boundingBox();
     if (targetBox && targetBox.width > 1 && targetBox.height > 1) {
-      await page.mouse.click(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
+      const cx = targetBox.x + targetBox.width / 2;
+      const cy = targetBox.y + targetBox.height / 2;
+      await page.mouse.click(cx, cy);
+      if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+      await page.mouse.dblclick(cx, cy);
       if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
     }
   }
