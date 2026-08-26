@@ -3154,6 +3154,11 @@ function buildAppearancePaintLayers(
           ),
           worldPolygons,
           exactWorldPath,
+          // clickable-link-test 67R already has native /BS/W 18. Import
+          // leftover-omitted sourceWidth so Select Width read leftover 3
+          // until Width was re-touched. Stamp /BS/W only — do not restroke
+          // imported outlines (no paperCenterline).
+          sourceWidth: getBorderWidth(annotation, 0) * scale,
           fillRule: operation.fillRule || 'nonzero',
         });
         if (layer) layers.push(layer);
@@ -3561,6 +3566,12 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
       )
     );
   const inkPaint = hexToRgba(strokeColorHex, strokeOpacity);
+  // clickable-link-test 67R already has native /BS/W 18. Filled-outline
+  // import leftover-omitted sourceWidth (strokeWidth stays 0) so Select
+  // Width chrome leftover-stayed 3 until Width was re-touched. Stamp
+  // /BS/W into sourceWidth only. Do not restroke imported outlines
+  // (no paperCenterline) and do not invent a create-ink tool.
+  const authoredSourceWidth = borderWidth > 0 ? borderWidth * scale : 0;
 
   // Imported FILLED ink converges onto the native paper-ink representation at
   // import time: the exact authored live path plus polygons derived only for
@@ -3703,6 +3714,7 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
       // — export/debug tooling reads it; renderers must not branch on it for
       // converged objects (they ride the evenodd/polygons native branch).
       pdfInkRenderMode: FILLED_PDF_INK_MODE,
+      ...(authoredSourceWidth > 0 ? { sourceWidth: authoredSourceWidth } : {}),
     } : {}),
     // Item-4 convergence: replace the legacy filled-outline fields with the
     // native paper-ink representation (see block above). Keeps provenance.
@@ -3720,6 +3732,7 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
         ? appearanceFillRule
         : 'evenodd',
       paperInkGeometry: 'v1',
+      ...(authoredSourceWidth > 0 ? { sourceWidth: authoredSourceWidth } : {}),
     } : {}),
     layer: 'pdf-annotations'
   };
