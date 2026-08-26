@@ -50,6 +50,7 @@ import {
   resolveShapeStroke,
   resolveTextboxBoxFill,
   resolveTextboxBoxStroke,
+  resolveCounterNumberColor,
   wrapFlattenedTextLines,
 } from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
@@ -1983,16 +1984,21 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       const k = 0.551784;
       const kr = k * radius;
       const n = pdfNumberText;
-      // Live Counter toolbar writes Fill as rgba `fill` (composeColorForPatch
-      // / handleFillOpacityChange). /IC stays the fill hex; a faded pin used
-      // to paint opaque in /AP. Independent fade lives in ExtGState /ca so
-      // the number stays opaque. Opacity-0 rgba must not invent a body from
-      // the stroke fallback.
+      // Live Counter toolbar writes Fill as rgba `fill` and Number as rgba
+      // `data.numberColor` (composeColorForPatch / handleFillOpacityChange /
+      // handleStrokeOpacityChange). /IC stays the fill hex; a faded pin used
+      // to paint opaque in /AP, and a faded Number used to paint hex-only
+      // after the Fill /ca reset. Independent fade lives in ExtGState /ca so
+      // Fill (GS0) and Number (GS1) stay separate. Opacity-0 fill rgba must
+      // not invent a body from the stroke fallback.
       const paintBody = Boolean(fill?.visible && fill.hex);
       const fillAlpha = paintBody ? fill.opacity : 0;
       const needsFillGs = paintBody && fillAlpha < 0.99999;
       const bodyColor = paintBody ? hexToRGB(fill.hex) : null;
-      const numberColor = hexToRGB(fabricObj?.data?.numberColor || '#ffffff');
+      const numberPaint = resolveCounterNumberColor(fabricObj);
+      const numberColor = hexToRGB(numberPaint.hex || '#ffffff');
+      const numberAlpha = numberPaint.visible ? numberPaint.opacity : 0;
+      const needsNumberGs = numberAlpha < 0.99999;
       const label = String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? '');
       const escapedLabel = label.replace(/([\\()])/g, '\\$1');
       const labelLayout = getCounterLabelLayout(radius, label);
@@ -2020,9 +2026,11 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
           `${n(cx - radius)} ${n(cy - kr)} ${n(cx - kr)} ${n(cy - radius)} ${n(cx)} ${n(cy - radius)} c`,
           `${n(cx + kr)} ${n(cy - radius)} ${n(cx + radius)} ${n(cy - kr)} ${n(cx + radius)} ${n(cy)} c h f`,
         );
-        // Reset /ca before the number so Fill opacity does not fade the label.
+        // Reset Fill /ca before the number so pin fade does not leak onto
+        // the label. Number fade is a separate GS1 /ca.
         if (needsFillGs) content.push('Q', 'q');
       }
+      if (needsNumberGs) content.push('/GS1 gs');
       content.push(
         'BT',
         `/F1 ${n(fontSize)} Tf`,
@@ -2039,9 +2047,10 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
         Encoding: 'WinAnsiEncoding',
       }));
       const resources = { Font: { F1: fontRef } };
-      if (needsFillGs) {
+      if (needsFillGs || needsNumberGs) {
         resources.ExtGState = {
-          GS0: { Type: 'ExtGState', ca: fillAlpha },
+          ...(needsFillGs ? { GS0: { Type: 'ExtGState', ca: fillAlpha } } : {}),
+          ...(needsNumberGs ? { GS1: { Type: 'ExtGState', ca: numberAlpha } } : {}),
         };
       }
       const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {

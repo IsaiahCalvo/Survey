@@ -352,6 +352,17 @@ export function resolveShapeFill(obj = {}) {
 }
 
 /**
+ * Live Counter Number color is data.numberColor (toolbar composeColorForPatch
+ * of strokeColor + strokeOpacity on the Number tab). Flatten already honors
+ * parsePdfDrawColor opacity. Export Circle /AP painted the label hex-only
+ * (and Fill /ca reset before the number), so a faded Number reached Acrobat
+ * opaque. Independent of pin-body /ca.
+ */
+export function resolveCounterNumberColor(obj = {}) {
+  return resolvePaintColor(obj?.data?.numberColor || obj?.numberColor || '#ffffff');
+}
+
+/**
  * Live rectangle/ellipse Border is obj.stroke + obj.strokeWidth (toolbar
  * composeAnnotationColor of strokeColor + strokeOpacity). Export omitted
  * stroke /CA and flatten already has borderOpacity — keep them independent.
