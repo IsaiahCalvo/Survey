@@ -182,11 +182,13 @@ async function dragOnPage(page, { x0, y0, x1, y1, pageNumber = 1 }) {
 
 async function userSnapshot(page, pageNumber = 1, { includeImported = false } = {}) {
   return page.evaluate(({ pageNum, includeImported: keepImported }) => {
-    const ids = [...new Set(
-      [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
-        .map((group) => group.getAttribute('data-anno-id'))
-        .filter(Boolean),
-    )];
+    const annoIds = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id]`)]
+      .map((group) => group.getAttribute('data-anno-id'))
+      .filter(Boolean);
+    const calloutIds = [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] [data-callout-id]`)]
+      .map((el) => el.getAttribute('data-callout-id'))
+      .filter(Boolean);
+    const ids = [...new Set([...annoIds, ...calloutIds])];
     return ids.map((id) => {
       const object = window.__phase35GetAnnotationById?.(id) || {};
       const data = object.data || {};
@@ -194,10 +196,14 @@ async function userSnapshot(page, pageNumber = 1, { includeImported = false } = 
       const style = legacy.style || data.style || object.style || {};
       const type = String(object.type || data.type || '').toLowerCase();
       const tool = String(data.tool || object.tool || data.type || '').toLowerCase();
-      const callout = data.type === 'callout' || String(id).startsWith('callout-') || !!legacy.id;
+      const callout = data.type === 'callout'
+        || tool === 'callout'
+        || String(id).startsWith('callout-')
+        || !!legacy.id
+        || !!document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"]`);
       if (object.isPdfImported === true && !keepImported) return null;
-      const group = document.querySelector(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id="${id}"]`)
-        || document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"]`);
+      const group = document.querySelector(`[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"]`)
+        || document.querySelector(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id="${id}"]`);
       const paint = (el) => el
         && el.getAttribute('stroke') !== '#4a90e2'
         && !el.hasAttribute('data-handle');
@@ -272,6 +278,9 @@ async function createAfterSiblingHeads(page) {
   }, { message: 'first Arrow must stamp Arrow Open circle without touching Arrowhead' }).not.toBeNull();
   expect(visualArrowheadKind(arrow), 'first Arrow SVG is Open circle').toBe('openCircle');
   await dismissChrome(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const empty = await pageBox(page);
+  await page.mouse.click(empty.x + 8, empty.y + 8);
 
   await activateTool(page, 'Text', 'Callout');
   await expectArrowhead(page, 'V-shape', 'Callout must stay V-shape after Arrow create');
