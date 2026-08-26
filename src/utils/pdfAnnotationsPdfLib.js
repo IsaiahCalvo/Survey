@@ -42,6 +42,8 @@ import {
   pdfDefaultAppearanceFontName,
   pdfStandardFontGroup,
   flattenedTextBlockOffset,
+  flattenedTextInlineOffset,
+  pdfFreeTextQuadding,
   wrapFlattenedTextLines,
 } from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
@@ -2467,12 +2469,15 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       ? hexToRGB(fabricObj.backgroundColor)
       : null;
 
+    // /Q quadding (PDF 12.7.4.3): 0 left, 1 center, 2 right. STYLE_KEYS
+    // already keeps textAlign on our reimport; Acrobat/Preview read /Q.
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'FreeText',
       Rect: [minX, minY, maxX, maxY],
       Contents: PDFString.of(text),
       DA: PDFString.of(da),
+      Q: pdfFreeTextQuadding(fabricObj.textAlign),
       ...(background ? { C: [background.red, background.green, background.blue] } : {}),
       Border: [0, 0, 0], // No border for text boxes
       P: page.ref,
@@ -2606,6 +2611,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     fontStyle: style.italic ? 'italic' : 'normal',
     fontFamily: style.fontFamily,
     backgroundColor: style.backgroundColor || null,
+    textAlign: style.textAlign,
   }, pageHeight, buildCalloutOptions('text'));
   if (textRef) refs.push(textRef);
 
@@ -3219,9 +3225,16 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const thickness = Math.max(0.5, fontSize / 14);
   lines.forEach((line, i) => {
     const y = baselineY - i * lineHeight;
+    let lineWidth = 0;
+    try {
+      lineWidth = line ? Math.min(maxWidth, measure(line)) : 0;
+    } catch {
+      lineWidth = line ? maxWidth : 0;
+    }
+    const extraLeft = flattenedTextInlineOffset(maxWidth, lineWidth, obj?.textAlign);
     if (line) {
       page.drawText(line, {
-        x: left,
+        x: left + extraLeft,
         y,
         size: fontSize,
         font,
@@ -3230,16 +3243,10 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
       });
     }
     if (!(wantsUnderline || wantsLinethrough)) return;
-    let lineWidth = maxWidth;
-    try {
-      lineWidth = Math.min(maxWidth, measure(line));
-    } catch {
-      /* unencodable glyphs — fall back to the box width */
-    }
     if (!(lineWidth > 0)) return;
     const drawDecorationLine = (lineY) => page.drawLine({
-      start: { x: left, y: lineY },
-      end: { x: left + lineWidth, y: lineY },
+      start: { x: left + extraLeft, y: lineY },
+      end: { x: left + extraLeft + lineWidth, y: lineY },
       color: fill.color,
       thickness,
       opacity: fill.opacity,
@@ -3560,6 +3567,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     underline: style.underline === true,
     strikethrough: style.strikethrough === true,
     fontFamily: style.fontFamily,
+    textAlign: style.textAlign,
   }, pageHeight, fonts);
   return 1;
 };

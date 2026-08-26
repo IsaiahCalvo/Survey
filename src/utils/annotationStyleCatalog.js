@@ -194,6 +194,29 @@ export function flattenedTextBlockOffset(boxHeight, contentHeight, verticalAlign
   return 0;
 }
 
+/**
+ * Extra screen-space X to shift a flattened line so center/right match
+ * renderText. Left, justify (accepted but not offered), and unknown stay 0.
+ */
+export function flattenedTextInlineOffset(boxWidth, lineWidth, textAlign) {
+  const free = Math.max(0, (Number(boxWidth) || 0) - (Number(lineWidth) || 0));
+  const align = sanitizeTextAlign(textAlign);
+  if (align === 'right') return free;
+  if (align === 'center') return free / 2;
+  return 0;
+}
+
+/**
+ * PDF FreeText /Q quadding (spec 12.7.4.3): 0 left, 1 center, 2 right.
+ * Justify has no /Q value — export it as left like flatten.
+ */
+export function pdfFreeTextQuadding(textAlign) {
+  const align = sanitizeTextAlign(textAlign);
+  if (align === 'center') return 1;
+  if (align === 'right') return 2;
+  return 0;
+}
+
 const clampUnit = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /**
