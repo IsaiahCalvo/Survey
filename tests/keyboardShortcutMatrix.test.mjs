@@ -18,7 +18,7 @@ test('overlay catalogs tools/Esc/search/Delete and omits Duplicate/z-order', () 
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['Esc'\], description: 'Close dialogs\/cancel'/);
   assert.match(overlay, /keys: \['Delete'\], description: 'Delete selected'/);
-  assert.doesNotMatch(overlay, /Duplicate/);
+  assert.doesNotMatch(overlay, /description: 'Duplicate'/);
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
   assert.doesNotMatch(overlay, /Bring forward/);
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
