@@ -2533,13 +2533,67 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
-    // Add cloud border effect if specified
-    if (fabricObj.cloudBorder || fabricObj.borderEffect === 'cloudy') {
+    // Live Style Cloud on a selected imported polygon writes
+    // data.pdfCloudIntensity (selection maps to rect Style + Bump).
+    // The writer used to key only on cloudBorder / borderEffect +
+    // fabricObj.cloudIntensity, so Bump 8 never reached /BE and /AP
+    // never attached — Acrobat's native /BE (I is only 0–2) clamped
+    // the scallops to 2. Same contract as createSquareAnnotation:
+    // attach faded or oversized /AP; opaque bump 1–2 omit /AP so
+    // viewers keep native /BE scallops. Do not invent a create-poly
+    // tool — this is selected-patch export of an imported polygon.
+    const fill = resolveLiveShapeFill(fabricObj);
+    const stroke = resolveLiveShapeStroke(fabricObj);
+    const cloudIntensity = Number(
+      fabricObj?.data?.pdfCloudIntensity ?? fabricObj?.cloudIntensity
+    );
+    const isCloud = Number.isFinite(cloudIntensity)
+      || fabricObj?.cloudBorder
+      || fabricObj?.borderEffect === 'cloudy';
+    if (isCloud) {
+      const intensity = Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2);
       annotationDict.BE = pdfDoc.context.obj({
-        S: PDFName.of('C'), // Cloudy
-        I: PDFNumber.of(fabricObj.cloudIntensity || 2)
+        S: PDFName.of('C'),
+        I: PDFNumber.of(intensity),
       });
       annotationDict.IT = PDFName.of('PolygonCloud');
+      const fillAlpha = fill?.visible ? fill.opacity : 0;
+      const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
+      const needsFade = Boolean(
+        (fill?.visible && fillAlpha < 0.99999)
+        || (stroke?.visible && strokeAlpha < 0.99999)
+      );
+      const needsOversizedBump = intensity > 2;
+      if (needsFade || needsOversizedBump) {
+        const worldPoints = points.map((point) => polygonWorldPoint(fabricObj, point));
+        const appMinX = Math.min(...worldPoints.map((point) => point.x));
+        const appMaxX = Math.max(...worldPoints.map((point) => point.x));
+        const appMinY = Math.min(...worldPoints.map((point) => point.y));
+        const appMaxY = Math.max(...worldPoints.map((point) => point.y));
+        const formWidth = appMaxX - appMinX;
+        const formHeight = appMaxY - appMinY;
+        const localPoints = worldPoints.map((point) => ({
+          x: point.x - appMinX,
+          y: point.y - appMinY,
+        }));
+        const cloudCmds = buildCloudPathCommands(
+          localPoints,
+          intensity,
+          stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 1,
+        );
+        const pathCommands = fabricPathCommandsToPdf(cloudCmds, { flipHeight: formHeight });
+        const n = pdfNumberText;
+        const fallbackPath = localPoints.map((point, index) => (
+          `${n(point.x)} ${n(formHeight - point.y)} ${index === 0 ? 'm' : 'l'}`
+        )).concat('h');
+        attachIndependentShapeAppearance(pdfDoc, annotationDict, {
+          formWidth,
+          formHeight,
+          fill,
+          stroke,
+          pathCommands: pathCommands.length ? pathCommands : fallbackPath,
+        });
+      }
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -3749,10 +3803,25 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
-  const d = points.map((point, index) => {
-    const world = polygonWorldPoint(obj, point);
-    return `${index === 0 ? 'M' : 'L'} ${world.x} ${world.y}`;
-  }).join(' ') + (closePath ? ' Z' : '');
+  const worldPoints = points.map((point) => polygonWorldPoint(obj, point));
+  let d = worldPoints.map((world, index) => (
+    `${index === 0 ? 'M' : 'L'} ${world.x} ${world.y}`
+  )).join(' ') + (closePath ? ' Z' : '');
+  // Live Style Cloud on an imported polygon stores pdfCloudIntensity.
+  // Flatten used to stroke the raw vertices so Bump 8 printed as a
+  // straight polygon. Rebuild the scallops the same way cloud-rects do.
+  const cloudIntensity = Number(obj?.data?.pdfCloudIntensity ?? obj?.cloudIntensity);
+  if (closePath && Number.isFinite(cloudIntensity) && worldPoints.length >= 3) {
+    const cloudCmds = buildCloudPathCommands(
+      worldPoints,
+      cloudIntensity,
+      Number(obj?.strokeWidth) || 1,
+    );
+    const cloudPath = Array.isArray(cloudCmds) && cloudCmds.length > 0
+      ? fabricPathToSvgPath(cloudCmds)
+      : '';
+    if (cloudPath) d = cloudPath;
+  }
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const fill = closePath ? parsePdfDrawColor(obj?.fill, '#ffffff') : null;
   page.drawSvgPath(d, {
