@@ -181,12 +181,16 @@ test('desktop overlay Ctrl+S Save document intended + break + edge', async ({ pa
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
   await assertNoErrorBoundary(page);
 
-  await gotoWithRetry(page, HUB);
-  await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
-  expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
-  await blurInputs(page);
-  await page.keyboard.press('?');
-  expect(await overlay(page).count(), 'hubPreview must not mount the overlay').toBe(0);
+  // Fresh page: INPUT Ctrl+S can start Chromium Save-page, which
+  // ERR_ABORTS same-page navigation even after retries.
+  const hubPage = await page.context().newPage();
+  await gotoWithRetry(hubPage, HUB);
+  await expect(hubPage.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
+  expect(await hubPage.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
+  await blurInputs(hubPage);
+  await hubPage.keyboard.press('?');
+  expect(await overlay(hubPage).count(), 'hubPreview must not mount the overlay').toBe(0);
+  await hubPage.close();
 
   console.log('OVERLAY_CTRL_S_SAVE_DESKTOP_PROOF', JSON.stringify({
     listedSave: /Save document/.test(catalog),

@@ -43,6 +43,9 @@ test('live spec covers overlay listing + Ctrl+S save + hub + 390 + file.id', () 
   assert.match(spec, /must not invent Open file/);
   assert.match(spec, /zoom % INPUT does not steal Ctrl\+S/);
   assert.match(spec, /hubPreview must not mount the overlay/);
+  assert.match(spec, /gotoWithRetry/);
+  assert.match(spec, /newPage\(\)/);
+  assert.match(spec, /ERR_ABORTED/);
   assert.match(spec, /must not stamp file.id/);
   assert.match(spec, /0 0 612 792/);
   assert.doesNotMatch(spec, /file\.id\s*=/);
