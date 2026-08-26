@@ -90,18 +90,21 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['Delete'], description: 'Delete selected' },
       // Ctrl+Shift+] is the live Bring to front chord
       // (SVGAnnotationLayer BracketRight + shift → 'front').
+      // Ctrl+] is the live Bring forward chord
+      // (SVGAnnotationLayer BracketRight without shift → 'forward').
       // Ctrl+Shift+[ is the live Send to back chord
       // (SVGAnnotationLayer BracketLeft + shift → 'back').
-      // The overlay already listed Bring to front next to
-      // Delete selected; omitting the sibling z-order chord
-      // made Send to back undiscoverable from the catalog
-      // the same way Bring to front was missing next to
-      // Delete. Duplicate is not a live annotation chord
+      // The overlay already listed Bring to front / Send to
+      // back; omitting the sibling z-order chord made Bring
+      // forward undiscoverable from the catalog the same
+      // way Send to back was missing next to Bring to front.
+      // Duplicate is not a live annotation chord
       // (Ctrl+D does not clone). Do not invent Duplicate
-      // overlay rows. Do not invent Bring forward / Send
-      // backward this pass — one sibling gap. Do not
-      // invent clipboard overlay rows.
+      // overlay rows. Do not invent Send backward this
+      // pass — one sibling gap. Do not invent clipboard
+      // overlay rows.
       { keys: ['Ctrl', 'Shift', ']'], description: 'Bring to front' },
+      { keys: ['Ctrl', ']'], description: 'Bring forward' },
       { keys: ['Ctrl', 'Shift', '['], description: 'Send to back' },
       { keys: [findShortcutModifier, 'F'], description: 'Search text' },
       // F3 is the live Find next chord (SearchTextPanel goToNextMatch).

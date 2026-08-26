@@ -25,7 +25,6 @@ test('overlay lists Send to back next to Bring to front', () => {
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
   assert.doesNotMatch(overlay, /Copy|Cut|Paste/);
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
-  assert.doesNotMatch(overlay, /description: 'Bring forward'/);
   assert.doesNotMatch(overlay, /description: 'Send backward'/);
 });
 
@@ -47,7 +46,6 @@ test('live spec covers overlay listing + Send to back walk + hub + 390 + file.id
   assert.match(spec, /Ctrl\+Shift\+\[ must place B behind A/);
   assert.match(spec, /lists Send to back/);
   assert.match(spec, /must not invent Duplicate/);
-  assert.match(spec, /must not invent Bring forward/);
   assert.match(spec, /must not invent Send backward/);
   assert.match(spec, /must not invent Open file/);
   assert.match(spec, /empty-selection Ctrl\+Shift\+\[ invents 0/);

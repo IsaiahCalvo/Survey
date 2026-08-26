@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 
-// Overlay leftover: Ctrl+Shift+] is the live Bring to front chord
-// (SVGAnnotationLayer BracketRight + shift → 'front'), and sibling
-// Action shortcuts (Delete selected next to Undo/Redo) were already
-// listed, but the catalog omitted that z-order chord. Duplicate is
-// not a live annotation chord — do not invent a Duplicate overlay
-// row. Distinct from leftover-18, inventing Open file / UL-03,
-// inventing clipboard overlay rows, inventing Backspace-alias
-// overlay rows, and inventing Bring forward / Send backward /
-// Send to back this pass (one sibling gap).
+// Overlay leftover: Ctrl+] is the live Bring forward chord
+// (SVGAnnotationLayer BracketRight without shift → 'forward'),
+// and sibling Action shortcuts (Bring to front / Send to back)
+// were already listed, but the catalog omitted that z-order
+// chord. Duplicate is not a live annotation chord — do not
+// invent a Duplicate overlay row. Distinct from leftover-18,
+// inventing Open file / UL-03, inventing clipboard overlay
+// rows, inventing Backspace-alias overlay rows, and inventing
+// Send backward this pass (one sibling gap).
 // Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -163,7 +163,7 @@ function overlay(page) {
   return page.locator('[data-keyboard-shortcuts-modal="true"]');
 }
 
-function assertOverlayListsBringToFront(text, label) {
+function assertOverlayListsBringForward(text, label) {
   expect(text, `${label} lists Delete selected`).toContain('Delete selected');
   expect(text, `${label} lists Bring to front`).toContain('Bring to front');
   expect(text, `${label} lists Bring forward`).toContain('Bring forward');
@@ -176,7 +176,7 @@ function assertOverlayListsBringToFront(text, label) {
   expect(text, `${label} must not invent Send backward`).not.toMatch(/Send backward/i);
 }
 
-test('desktop overlay Bring to front intended + break + edge', async ({ page }) => {
+test('desktop overlay Bring forward intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
   await openEditor(page);
   await blurInputs(page);
@@ -185,11 +185,11 @@ test('desktop overlay Bring to front intended + break + edge', async ({ page }) 
   const idsBefore = await userOrder(page);
   expect(idsBefore, 'fresh editor must invent 0 user marks').toEqual([]);
 
-  // Break — empty-selection Ctrl+Shift+] invents 0 marks.
-  await page.keyboard.press('Control+Shift+]');
-  expect(await userOrder(page), 'empty-selection Ctrl+Shift+] invents 0').toEqual(idsBefore);
+  // Break — empty-selection Ctrl+] invents 0 marks.
+  await page.keyboard.press('Control+]');
+  expect(await userOrder(page), 'empty-selection Ctrl+] invents 0').toEqual(idsBefore);
 
-  // Intended — two overlapping rects; Ctrl+Shift+] brings A in front of B.
+  // Intended — two overlapping rects; Ctrl+] brings A in front of B.
   const rectA = await createRect(page, { x0: 0.20, y0: 0.22, x1: 0.44, y1: 0.44 });
   const rectB = await createRect(page, { x0: 0.30, y0: 0.30, x1: 0.54, y1: 0.52 });
   await blurInputs(page);
@@ -199,20 +199,20 @@ test('desktop overlay Bring to front intended + break + edge', async ({ page }) 
   expect((await userOrder(page)).at(-1), 'B is created on top').toBe(rectB.id);
 
   await selectStroke(page, rectA.id);
-  await page.keyboard.press('Control+Shift+]');
+  await page.keyboard.press('Control+]');
   await expect.poll(async () => {
     const ids = await userOrder(page);
     return ids.indexOf(rectA.id) > ids.indexOf(rectB.id);
-  }, { message: 'Ctrl+Shift+] must place A in front of B' }).toBeTruthy();
+  }, { message: 'Ctrl+] must place A in front of B' }).toBeTruthy();
 
   await blurInputs(page);
   await page.keyboard.press('?');
   const modal = overlay(page);
   await expect(modal).toBeVisible({ timeout: 8_000 });
   const catalog = await modal.innerText();
-  assertOverlayListsBringToFront(catalog, 'desktop overlay');
+  assertOverlayListsBringForward(catalog, 'desktop overlay');
 
-  // Break — Esc dismisses; zoom INPUT Ctrl+Shift+] does not steal; second ? toggles.
+  // Break — Esc dismisses; zoom INPUT Ctrl+] does not steal; second ? toggles.
   await page.keyboard.press('Escape');
   await expect(modal).toHaveCount(0);
 
@@ -222,7 +222,7 @@ test('desktop overlay Bring to front intended + break + edge', async ({ page }) 
   await page.keyboard.press('?');
   await expect(modal, 'second `?` toggles closed').toHaveCount(0);
 
-  const orderAfterFront = await userOrder(page);
+  const orderAfterForward = await userOrder(page);
   await selectStroke(page, rectA.id);
   const zoomBtn = page.getByRole('button', { name: 'Edit zoom percentage', exact: true });
   await expect(zoomBtn).toBeVisible();
@@ -230,16 +230,16 @@ test('desktop overlay Bring to front intended + break + edge', async ({ page }) 
   const zoom = page.getByRole('textbox', { name: 'Zoom percentage', exact: true });
   await expect(zoom).toBeVisible();
   await zoom.click();
-  await page.keyboard.press('Control+Shift+]');
-  expect(await userOrder(page), 'zoom % INPUT does not steal Ctrl+Shift+]').toEqual(orderAfterFront);
+  await page.keyboard.press('Control+]');
+  expect(await userOrder(page), 'zoom % INPUT does not steal Ctrl+]').toEqual(orderAfterForward);
   await page.keyboard.press('Escape').catch(() => {});
   await blurInputs(page);
 
-  // Edge — overlay / Bring to front invent 0 extra marks; viewBox / file.id stay.
-  expect(await userOrder(page), 'overlay Bring to front must keep both rects').toEqual(
+  // Edge — overlay / Bring forward invent 0 extra marks; viewBox / file.id stay.
+  expect(await userOrder(page), 'overlay Bring forward must keep both rects').toEqual(
     expect.arrayContaining([rectA.id, rectB.id]),
   );
-  expect((await userOrder(page)).length, 'overlay Bring to front invents 0 extra marks').toBe(2);
+  expect((await userOrder(page)).length, 'overlay Bring forward invents 0 extra marks').toBe(2);
   const viewBox = await pageViewBox(page);
   expect(viewBox).toBe('0 0 612 792');
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
@@ -254,15 +254,15 @@ test('desktop overlay Bring to front intended + break + edge', async ({ page }) 
   expect(await overlay(hubPage).count(), 'hubPreview must not mount the overlay').toBe(0);
   await hubPage.close();
 
-  console.log('OVERLAY_ZORDER_DESKTOP_PROOF', JSON.stringify({
-    listedBringToFront: /Bring to front/.test(catalog),
+  console.log('OVERLAY_BRING_FORWARD_DESKTOP_PROOF', JSON.stringify({
+    listedBringForward: /Bring forward/.test(catalog),
     frontId: rectA.id,
     viewBox,
     fileId: await fileId(page),
   }));
 });
 
-test('390 overlay Bring to front intended + break + edge', async ({ page }) => {
+test('390 overlay Bring forward intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
   await openEditor(page, { width: 390, height: 844 });
   await blurInputs(page);
@@ -272,14 +272,14 @@ test('390 overlay Bring to front intended + break + edge', async ({ page }) => {
   const modal = overlay(page);
   await expect(modal, '390 overlay exists').toBeVisible({ timeout: 8_000 });
   const catalog = await modal.innerText();
-  assertOverlayListsBringToFront(catalog, '390 overlay');
+  assertOverlayListsBringForward(catalog, '390 overlay');
 
   await page.keyboard.press('Escape');
   await expect(modal).toHaveCount(0);
 
   const idsBefore = await userOrder(page);
-  await page.keyboard.press('Control+Shift+]');
-  expect(await userOrder(page), '390 empty-selection Ctrl+Shift+] invents 0').toEqual(idsBefore);
+  await page.keyboard.press('Control+]');
+  expect(await userOrder(page), '390 empty-selection Ctrl+] invents 0').toEqual(idsBefore);
 
   const viewBox = await pageViewBox(page);
   expect(viewBox).toBe('0 0 612 792');
@@ -287,8 +287,8 @@ test('390 overlay Bring to front intended + break + edge', async ({ page }) => {
   expect(await userOrder(page)).toEqual([]);
   await assertNoErrorBoundary(page);
 
-  console.log('OVERLAY_ZORDER_390_PROOF', JSON.stringify({
-    listedBringToFront: /Bring to front/.test(catalog),
+  console.log('OVERLAY_BRING_FORWARD_390_PROOF', JSON.stringify({
+    listedBringForward: /Bring forward/.test(catalog),
     viewBox,
     fileId: await fileId(page),
   }));

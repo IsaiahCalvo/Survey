@@ -130,7 +130,7 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
 
   // AppShell hides the overlay on the production viewer; DevTestRoute remounts
   // it so '?' is reachable on ?testPdf=. Catalog: tools/Esc/search/Delete/
-  // Bring to front; no Duplicate / Bring-forward rows.
+  // Bring to front / Bring forward; no Duplicate / Send-backward rows.
   await page.keyboard.press('?');
   const overlay = page.locator('[data-keyboard-shortcuts-modal="true"]');
   await expect(overlay).toBeVisible({ timeout: 8_000 });
@@ -141,12 +141,13 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   expect(overlayText).toMatch(/Esc/);
   expect(overlayText).toMatch(/Delete selected/);
   expect(overlayText).toMatch(/Bring to front/);
+  expect(overlayText).toMatch(/Bring forward/);
   expect(overlayText).toMatch(/Send to back/);
   expect(overlayText).not.toMatch(/\bDuplicate\b/i);
-  expect(overlayText).not.toMatch(/Bring forward/i);
+  expect(overlayText).not.toMatch(/Send backward/i);
   await page.keyboard.press('Escape');
   await expect(overlay).toHaveCount(0);
-  hunts.push({ hunt: 'intended — ? overlay lists tools/Esc/Delete/Bring to front; Esc closes; no Duplicate/Bring-forward rows', pass: true });
+  hunts.push({ hunt: 'intended — ? overlay lists tools/Esc/Delete/Bring to front/Bring forward; Esc closes; no Duplicate/Send-backward rows', pass: true });
 
   // Intended — tool letters arm the documented tools (not a replay of P-04
   // C-in-input; that input-guard still stands).

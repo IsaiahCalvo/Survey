@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('overlay catalogs the live chords and omits Duplicate/Bring forward', () => {
+test('overlay catalogs the live chords and omits Duplicate/Send backward', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /Press '\?' to toggle/);
   assert.match(overlay, /useKeyPress\('\?', \(\) => \{/);
@@ -39,6 +39,7 @@ test('overlay catalogs the live chords and omits Duplicate/Bring forward', () =>
   assert.match(overlay, /keys: \['Ctrl', 'Shift', 'Z'\], description: 'Redo'/);
   assert.match(overlay, /keys: \['Delete'\], description: 'Delete selected'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', '\]'\], description: 'Bring to front'/);
+  assert.match(overlay, /keys: \['Ctrl', '\]'\], description: 'Bring forward'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', '\['\], description: 'Send to back'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['F3'\], description: 'Find next'/);
@@ -59,7 +60,6 @@ test('overlay catalogs the live chords and omits Duplicate/Bring forward', () =>
   assert.match(overlay, /keys: \['Esc'\], description: 'Close dialogs\/cancel'/);
 
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
-  assert.doesNotMatch(overlay, /description: 'Bring forward'/);
   assert.doesNotMatch(overlay, /description: 'Send backward'/);
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
 });
@@ -112,6 +112,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Redo/);
   assert.match(spec, /Delete selected/);
   assert.match(spec, /Bring to front/);
+  assert.match(spec, /Bring forward/);
   assert.match(spec, /Send to back/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
