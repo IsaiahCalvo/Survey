@@ -1,11 +1,13 @@
-// Square / rect Rotation must ride /AP /Matrix + flatten cm.
+// Ellipse / Circle Rotation must ride /AP /Matrix + flatten cm.
 // Live Rotation already stamps fabric `angle` and metadata + screen already
-// rotate, but Square /AP stayed axis-aligned and flatten painted the leftover
-// AABB so Acrobat / print stayed unrotated until Rotation was re-touched.
-// Distinct from leftover-18, textbox FreeText /AP /Matrix, and Ellipse /
-// Circle rotation (different writer — do not invent this pass). Angle 0 /
-// absent omit /Matrix and keep leftover /Rect. Do not invent callout
-// Rotation, Line /AP, or Square / Circle /BS.
+// rotate, but live `circle` used createCircleAnnotation with no angle so
+// /AP stayed axis-aligned, and flatten painted the leftover oval so
+// Acrobat / print stayed unrotated until Rotation was re-touched.
+// Imported type `ellipse` already had createEllipseAnnotation /AP /Matrix.
+// Distinct from leftover-18, Square / rect Rotation /AP /Matrix, and
+// textbox FreeText /AP /Matrix. Angle 0 / absent omit /Matrix and keep
+// leftover /Rect. Do not invent callout Rotation, Line /AP, or Square /
+// Circle /BS.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -23,12 +25,38 @@ import {
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-function makeRect(patch = {}) {
+function makeCircle(patch = {}) {
   return {
-    id: `sq-rotate-export-${patch.idSuffix || 'default'}`,
-    type: 'rect',
+    id: `el-rotate-export-${patch.idSuffix || 'default'}`,
+    type: 'circle',
     left: 40,
     top: 50,
+    radius: 20,
+    width: 40,
+    height: 40,
+    fill: composeColorForPatch('#FFFF00', 40),
+    stroke: '#000000',
+    strokeWidth: 2,
+    angle: 45,
+    scaleX: 1,
+    scaleY: 1,
+    data: {
+      id: `el-rotate-export-${patch.idSuffix || 'default'}`,
+      type: 'ellipse',
+      tool: 'ellipse',
+    },
+    ...patch,
+  };
+}
+
+function makeEllipse(patch = {}) {
+  return {
+    id: `el-rotate-export-${patch.idSuffix || 'ellipse'}`,
+    type: 'ellipse',
+    left: 40,
+    top: 50,
+    rx: 40,
+    ry: 20,
     width: 80,
     height: 40,
     fill: composeColorForPatch('#FFFF00', 40),
@@ -38,9 +66,9 @@ function makeRect(patch = {}) {
     scaleX: 1,
     scaleY: 1,
     data: {
-      id: `sq-rotate-export-${patch.idSuffix || 'default'}`,
-      type: 'rect',
-      tool: 'rect',
+      id: `el-rotate-export-${patch.idSuffix || 'ellipse'}`,
+      type: 'ellipse',
+      tool: 'ellipse',
     },
     ...patch,
   };
@@ -51,7 +79,7 @@ async function makePdfFile() {
   doc.addPage([200, 200]);
   const bytes = await doc.save();
   return {
-    name: 'square-rotate-export-ap-source.pdf',
+    name: 'ellipse-rotate-export-ap-source.pdf',
     async arrayBuffer() {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     },
@@ -77,14 +105,13 @@ function readApMatrix(doc, dict) {
   };
 }
 
-async function exportRect(patch) {
-  const box = makeRect(patch);
+async function exportShape(box) {
   const bytes = await savePDFWithAnnotationsPdfLib(
     await makePdfFile(),
     { 1: { objects: [box] } },
     { 1: { width: 200, height: 200 } },
     null,
-    { returnBytes: true, actionType: 'pdf-export', documentId: 'square-rotate-export-ap' },
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'ellipse-rotate-export-ap' },
   );
   const doc = await PDFDocument.load(bytes);
   const page = doc.getPage(0);
@@ -96,19 +123,20 @@ async function exportRect(patch) {
   const metadataText = metadataRaw?.decodeText?.() || '';
   const metadata = parsePdfAppAnnotationMetadata(metadataText);
   const rect = dict.get(PDFName.of('Rect'))?.asArray?.()?.map((n) => n.asNumber?.()) || [];
+  const width = Number(box.rx ? box.rx * 2 : (box.radius || 0) * 2);
+  const height = Number(box.ry ? box.ry * 2 : (box.radius || 0) * 2);
   return {
     box,
     dict,
     subtype: subtype?.decodeText ? subtype.decodeText() : String(subtype || ''),
     rect,
-    leftoverRect: [40, 200 - (50 + 40), 40 + 80, 200 - 50],
+    leftoverRect: [box.left, 200 - (box.top + height), box.left + width, 200 - box.top],
     metadata,
     ...readApMatrix(doc, dict),
   };
 }
 
-async function flattenRect(patch) {
-  const box = makeRect(patch);
+async function flattenShape(box) {
   const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
     await makePdfFile(),
     { 1: { objects: [box] } },
@@ -129,16 +157,16 @@ async function flattenRect(patch) {
   return { box, text };
 }
 
-test('faded rotated square stamps fill 0.4 + angle 45', () => {
-  const box = makeRect({ idSuffix: 'stamp' });
-  assert.match(String(box.type), /rect/i);
+test('faded rotated circle stamps fill 0.4 + angle 45', () => {
+  const box = makeCircle({ idSuffix: 'stamp' });
+  assert.match(String(box.type), /circle/i);
   assert.match(String(box.fill), /0\.4/);
   assert.equal(box.angle, 45);
 });
 
-test('annotated export writes Square /AP /Matrix and expanded /Rect for 45°', async () => {
-  const exported = await exportRect({ idSuffix: 'rot45' });
-  assert.match(String(exported.subtype), /Square/);
+test('annotated export writes Circle /AP /Matrix and expanded /Rect for live circle 45°', async () => {
+  const exported = await exportShape(makeCircle({ idSuffix: 'rot45' }));
+  assert.match(String(exported.subtype), /Circle/);
   assert.ok(exported.hasAp, 'rotated export must attach /AP');
   assert.ok(Array.isArray(exported.matrix) && exported.matrix.length === 6, 'rotated /AP must write /Matrix');
   assert.ok(Math.abs(exported.matrix[0] - Math.SQRT1_2) < 0.001, `Matrix a must be cos(-45) (got ${exported.matrix[0]})`);
@@ -149,34 +177,37 @@ test('annotated export writes Square /AP /Matrix and expanded /Rect for 45°', a
   assert.match(String(exported.metadata?.style?.fill || ''), /0\.4/, 'reimport must keep faded fill');
 });
 
-test('angle 0 export omits /Matrix and keeps leftover /Rect; flatten 45 writes rotate cm', async () => {
-  const zero = await exportRect({ idSuffix: 'rot0', angle: 0 });
-  assert.equal(zero.hasAp, true, 'angle 0 still attaches leftover Square /AP');
-  assert.equal(zero.matrix, null, 'angle 0 must omit /Matrix so leftover Square stays byte-identical');
+test('angle 0 circle omits /Matrix and keeps leftover /Rect; flatten 45 writes rotate cm', async () => {
+  const zero = await exportShape(makeCircle({ idSuffix: 'rot0', angle: 0 }));
+  assert.equal(zero.hasAp, true, 'angle 0 still attaches leftover Circle /AP');
+  assert.equal(zero.matrix, null, 'angle 0 must omit /Matrix so leftover Circle stays byte-identical');
   assert.deepEqual(zero.rect, zero.leftoverRect);
 
-  const flat45 = await flattenRect({ idSuffix: 'flat45', angle: 45 });
-  assert.match(flat45.text, /0\.7071/, 'flatten 45 must write the rotation cm');
-  assert.match(flat45.text, / cm/);
+  const flatCircle45 = await flattenShape(makeCircle({ idSuffix: 'flat45', angle: 45 }));
+  assert.match(flatCircle45.text, /0\.7071/, 'flatten circle 45 must write the rotation cm');
+  assert.match(flatCircle45.text, / cm/);
 
-  const flat0 = await flattenRect({ idSuffix: 'flat0', angle: 0 });
+  const flatEllipse45 = await flattenShape(makeEllipse({ idSuffix: 'flat-el-45', angle: 45 }));
+  assert.match(flatEllipse45.text, /0\.7071/, 'flatten ellipse 45 must write the rotation cm');
+
+  const flat0 = await flattenShape(makeCircle({ idSuffix: 'flat0', angle: 0 }));
   assert.doesNotMatch(flat0.text, /0\.7071/, 'flatten 0 must not invent a 45° cm');
 });
 
-test('export host still names the square rotate /AP contract; isolated 8448 / 75/250 standing', () => {
+test('export host still names the circle rotate /AP contract; isolated 8448 / 75/250 standing', () => {
   const writer = read('src/utils/pdfAnnotationsPdfLib.js');
-  const square = writer.slice(writer.indexOf('const createSquareAnnotation'), writer.indexOf('const createCircleAnnotation'));
-  assert.match(square, /pdfNeedsRotate/);
-  assert.match(square, /pdfRotatedBoxRect/);
-  assert.match(square, /Live Rotation already stamps fabric `angle`/);
+  const circle = writer.slice(writer.indexOf('const createCircleAnnotation'), writer.indexOf('const createEllipseAnnotation'));
+  assert.match(circle, /pdfNeedsRotate/);
+  assert.match(circle, /pdfRotatedBoxRect/);
+  assert.match(circle, /Live Rotation already stamps fabric `angle`/);
   assert.match(writer, /attachIndependentShapeAppearance/);
   const helper = writer.slice(writer.indexOf('const attachIndependentShapeAppearance'));
   assert.match(helper, /pdfRotateMatrixAbout/);
-  assert.match(helper, /Angle 0 \/ absent omit \/Matrix/);
-  const flatten = writer.slice(writer.indexOf("if (type === 'rect')"));
+  assert.match(helper, /default Square \/ Circle export stays/);
+  const flatten = writer.slice(writer.indexOf("if (type === 'circle' || type === 'ellipse')"));
   assert.match(flatten, /concatTransformationMatrix/);
   assert.match(flatten, /popGraphicsState/);
-  assert.match(flatten, /do not invent callout Rotation/);
+  assert.match(flatten, /Do not invent callout Rotation/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
   assert.match(complexity, /p95CommitMs: 75/);

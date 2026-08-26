@@ -348,8 +348,8 @@ const pdfJsonString = (value) => pdfEncodedString(value);
 // matrixTheta = -fabricAngle (PDF y-up CCW is the same visual tilt).
 // Angle 0 / absent stay byte-identical (no /Matrix, leftover /Rect).
 // Callouts share the FreeText writer at angle 0 — do not invent callout
-// bbox/mtr or verticalAlign. Square / rect now uses the same helpers;
-// do not invent live Ellipse / Circle rotation this pass.
+// bbox/mtr or verticalAlign. Square / rect and live Circle / Ellipse
+// flatten now use the same helpers.
 const pdfNeedsRotate = (angle) => Math.abs(Number(angle) || 0) > 0.0001;
 const pdfRotateTheta = (fabricAngleDeg) => (-(Number(fabricAngleDeg) || 0) * Math.PI) / 180;
 const pdfRotateMatrixAbout = (theta, cx, cy) => {
@@ -1962,8 +1962,8 @@ const attachIndependentShapeAppearance = (pdfDoc, annotationDict, {
   // already rotate, but this /AP used to stay axis-aligned so Acrobat
   // painted the leftover box until Rotation was re-touched. Same
   // /Matrix contract as rotated FreeText / ellipse /AP. Angle 0 /
-  // absent omit /Matrix so default Square export stays byte-identical.
-  // Circle / polygon callers leave angle unset.
+  // absent omit /Matrix so default Square / Circle export stays
+  // byte-identical. Polygon callers leave angle unset.
   const needsRotate = pdfNeedsRotate(angle);
   const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
     Type: 'XObject',
@@ -2128,11 +2128,22 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       return null;
     }
 
+    // Live Rotation already stamps fabric `angle` on circle / ellipse.
+    // Leftover /Rect stays the unrotated AABB when angle is 0 / absent.
+    // Tilt expands /Rect to the rotated AABB and /AP /Matrix uses the
+    // same sign as Square / FreeText (matrixTheta = -fabricAngle).
+    // Counters take the pin /AP branch below and lockRotation — do
+    // not invent counter body Rotation. Imported type `ellipse`
+    // already has createEllipseAnnotation /AP /Matrix.
+    const angle = Number(fabricObj.angle) || 0;
+    const needsRotate = pdfNeedsRotate(angle);
+
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = left;
     const minY = pageHeight - (top + ry * 2);
     const maxX = left + rx * 2;
     const maxY = pageHeight - top;
+    const leftoverRect = [minX, minY, maxX, maxY];
 
     let counterAppearance = null;
     let counterRect = null;
@@ -2250,7 +2261,9 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'Circle',
-      Rect: counterRect || [minX, minY, maxX, maxY],
+      Rect: counterRect || (needsRotate
+        ? pdfRotatedBoxRect(left, top, rx * 2, ry * 2, angle, pageHeight)
+        : leftoverRect),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, counterAppearance ? 0 : (stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 0)],
       ...(counterAppearance ? { AP: counterAppearance } : {}),
@@ -2286,6 +2299,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
           `${n(rx + k * rx)} 0 ${n(2 * rx)} ${n(ry - k * ry)} ${n(2 * rx)} ${n(ry)} c`,
           'h',
         ],
+        angle,
       });
     }
 
@@ -4277,8 +4291,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // Rotation was re-touched. Same sign as FreeText / ellipse /AP:
     // rotate about leftover center. Angle 0 / absent skip q/cm/Q so
     // default flatten stays identical. Callout boxes share this branch
-    // at angle 0 — do not invent callout Rotation. Do not invent
-    // Ellipse / Circle flatten rotation this pass.
+    // at angle 0 — do not invent callout Rotation.
     const needsRotate = pdfNeedsRotate(shifted?.angle);
     if (needsRotate) {
       const cx = left + width / 2;
@@ -4360,6 +4373,22 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const ellipseDash = Array.isArray(shifted?.strokeDashArray) && shifted.strokeDashArray.length > 0
       ? shifted.strokeDashArray.map((v) => Number(v) || 0)
       : null;
+    // Live Rotation already stamps fabric `angle`. Flatten used to draw
+    // the leftover axis-aligned oval so print stayed untilted until
+    // Rotation was re-touched. Same sign as Square / FreeText / ellipse
+    // /AP: rotate about leftover center. Angle 0 / absent skip q/cm/Q
+    // so default flatten stays identical. Counters take the pin branch
+    // above. Do not invent callout Rotation.
+    const needsRotate = pdfNeedsRotate(shifted?.angle);
+    if (needsRotate) {
+      const cx = left + xScale;
+      const pdfCy = getPdfY(pageHeight, top + yScale);
+      const [a, b, c, d, e, f] = pdfRotateMatrixAbout(pdfRotateTheta(shifted.angle), cx, pdfCy);
+      page.pushOperators(
+        pushGraphicsState(),
+        concatTransformationMatrix(a, b, c, d, e, f),
+      );
+    }
     page.drawEllipse({
       x: left + xScale,
       y: getPdfY(pageHeight, top + yScale),
@@ -4372,6 +4401,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       borderOpacity: stroke.opacity,
       ...(ellipseDash ? { borderDashArray: ellipseDash, borderDashPhase: 0 } : {}),
     });
+    if (needsRotate) page.pushOperators(popGraphicsState());
     return 1;
   }
   if (type === 'line') {
