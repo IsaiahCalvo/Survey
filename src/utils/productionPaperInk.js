@@ -72,3 +72,49 @@ export function createProductionPaperInk({
       : {}),
   };
 }
+
+/**
+ * Select Width used to patch leftover sourceWidth only. The page / export
+ * paint the baked filled outline (path + polygons), so the screen stayed
+ * the old width until a new stroke was drawn. Restroke from the live
+ * centerline. Skip when there is no centerline (imported outlines) or
+ * when eraser cuts exist (restroking the full centerline would restore
+ * erased bits).
+ */
+export function rebuildProductionPaperInkWidth(annotation, width) {
+  const nextWidth = Number(width);
+  if (!annotation || !Number.isFinite(nextWidth) || nextWidth <= 0) {
+    return { sourceWidth: width };
+  }
+  const centerline = Array.isArray(annotation.paperCenterline)
+    ? annotation.paperCenterline
+    : null;
+  const hasEraser = Boolean(annotation.paperEraserGeometry)
+    || (Array.isArray(annotation.paperEraserCuts) && annotation.paperEraserCuts.length > 0);
+  if (!centerline?.length || hasEraser) {
+    return { sourceWidth: nextWidth };
+  }
+
+  const rebuilt = createProductionPaperInk({
+    id: annotation.id || annotation.data?.id,
+    tool: annotation.tool === 'highlighter' ? 'highlighter' : 'pen',
+    points: centerline,
+    color: annotation.fill,
+    width: nextWidth,
+    data: annotation.data,
+  });
+  if (!rebuilt) return { sourceWidth: nextWidth };
+
+  return {
+    sourceWidth: rebuilt.sourceWidth,
+    path: rebuilt.path,
+    polygons: rebuilt.polygons,
+    width: rebuilt.width,
+    height: rebuilt.height,
+    paperCenterline: rebuilt.paperCenterline,
+    paperInkGeometry: rebuilt.paperInkGeometry,
+    fillRule: rebuilt.fillRule,
+    stroke: 'transparent',
+    strokeWidth: 0,
+  };
+}

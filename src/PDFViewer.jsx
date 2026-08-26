@@ -156,6 +156,7 @@ import { surveyGlobalLogPath, surveyTestLogsDir } from './utils/surveyDiagPaths.
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
+import { rebuildProductionPaperInkWidth } from './utils/productionPaperInk';
 import { resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
@@ -7718,9 +7719,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         top: (Number(annotation.top) || 0) + delta,
       });
     } else if (isPaperInkAnnotation(annotation)) {
-      handlePatchSelectedAnnotation({ sourceWidth: width });
+      // Paper-ink Width lives on sourceWidth, but the page paints the baked
+      // filled outline. Patching metadata alone left leftover polygons.
+      const next = rebuildProductionPaperInkWidth(annotation, width);
+      handlePatchSelectedAnnotation(next);
       setSelectedToolbarAnnotation((prev) => (prev
-        ? { ...prev, annotation: { ...prev.annotation, sourceWidth: width } }
+        ? { ...prev, annotation: { ...prev.annotation, ...next } }
         : prev));
     } else {
       handlePatchSelectedAnnotation({ strokeWidth: width });

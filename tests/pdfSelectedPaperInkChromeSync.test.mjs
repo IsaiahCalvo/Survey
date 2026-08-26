@@ -61,7 +61,7 @@ test('Select chrome + Color patch read paper-ink fill / sourceWidth', () => {
   assert.match(viewer, /paperInk \? annot\.fill : annot\.stroke/);
   assert.match(viewer, /paperInk \? Number\(annot\.sourceWidth\) : Number\(annot\.strokeWidth\)/);
   assert.match(viewer, /isPaperInkAnnotation\(annotation\)[\s\S]*handlePatchSelectedAnnotation\(\{ fill: rgba \}\)/);
-  assert.match(viewer, /isPaperInkAnnotation\(annotation\)[\s\S]*handlePatchSelectedAnnotation\(\{ sourceWidth: width \}\)/);
+  assert.match(viewer, /isPaperInkAnnotation\(annotation\)[\s\S]*rebuildProductionPaperInkWidth\(annotation, width\)/);
 });
 
 test('isolated 8448 / 75/250 stay standing; leftover-18 stay fail-closed', () => {
