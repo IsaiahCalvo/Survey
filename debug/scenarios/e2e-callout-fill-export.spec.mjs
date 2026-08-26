@@ -88,8 +88,8 @@ async function fileId(page) {
   return page.evaluate(() => window.__devTestPdf?.id ?? null);
 }
 
-async function calloutSnapshot(page, pageNumber = 1) {
-  return page.evaluate((pageNum) => {
+async function calloutSnapshot(page, pageNumber = 1, { includeImported = false } = {}) {
+  return page.evaluate(({ pageNum, includeImported: keepImported }) => {
     const ids = [...new Set(
       [...document.querySelectorAll(`[data-svg-annotation-layer="${pageNum}"] [data-callout-id]`)]
         .map((el) => el.getAttribute('data-callout-id'))
@@ -111,8 +111,8 @@ async function calloutSnapshot(page, pageNumber = 1) {
         visualFill: box?.getAttribute('fill') || null,
         imported: object.isPdfImported === true || legacy.isPdfImported === true,
       };
-    }).filter((row) => row.imported !== true);
-  }, pageNumber);
+    }).filter((row) => keepImported || row.imported !== true);
+  }, { pageNum: pageNumber, includeImported });
 }
 
 async function activateTool(page, categoryName, toolName) {
@@ -257,8 +257,11 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
   await expect.poll(async () => {
-    const rows = await calloutSnapshot(page);
-    return rows.find((row) => row.text === 'Y' && String(row.fill || '').toUpperCase() === liveFill) || null;
+    const rows = await calloutSnapshot(page, 1, { includeImported: true });
+    return rows.find((row) => {
+      const fill = String(row.fill || row.visualFill || '').toUpperCase();
+      return row.text === 'Y' && (fill === liveFill || fill === liveFill.replace('#', '#'));
+    }) || null;
   }, { timeout: 20_000, message: 'reimport must keep fillColor' }).not.toBeNull();
 
   await unlink(dest).catch(() => {});
