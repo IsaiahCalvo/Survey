@@ -2840,6 +2840,13 @@ const PDF_DA_FONT_BASEFONT = {
 // (left) so a faded box reached Acrobat left-aligned until Fill was
 // re-touched opaque (which omits /AP so /Q takes over). Left / absent
 // stay at x=4 so default faded-fill export stays byte-identical.
+//
+// Live verticalAlign already rides annotated metadata and flatten
+// flattenedTextBlockOffset, but this /AP used to paint glyphs at
+// y = formHeight - size - 4 (top). There is no /Q counterpart, so a
+// faded middle/bottom box reached Acrobat top-aligned until Fill was
+// re-touched opaque (which omits /AP). Top / absent stay at that y so
+// default faded-fill export stays byte-identical.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -2850,6 +2857,7 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   fontName,
   fontSize,
   textAlign,
+  verticalAlign,
 }) => {
   const fillAlpha = fill?.visible ? fill.opacity : 0;
   if (!fill?.visible || !fill.hex || fillAlpha >= 0.99999) return;
@@ -2861,7 +2869,6 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   const escaped = String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
   const baseFont = PDF_DA_FONT_BASEFONT[fontName] || 'Helvetica';
   const size = Math.max(4, Number(fontSize) || 12);
-  const textY = Math.max(2, formHeight - size - 4);
   // Same 4pt inset the left Tm already used. Courier is fixed 0.6em;
   // Helvetica / Times use the 0.556em glyph contract the counter /AP
   // writer already relies on. Do not invent a font embed just to measure.
@@ -2873,6 +2880,15 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     lineWidth,
     textAlign,
   );
+  // PDF form y is up. extraDown from flattenedTextBlockOffset shifts
+  // middle/bottom away from the leftover top baseline. Top stays
+  // formHeight - size - 4.
+  const extraDown = flattenedTextBlockOffset(
+    Math.max(0, formHeight - 2 * textPad),
+    size,
+    verticalAlign,
+  );
+  const textY = Math.max(2, formHeight - size - textPad - extraDown);
   const content = [
     'q',
     '/GS0 gs',
@@ -3023,6 +3039,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         fontName: daFont,
         fontSize,
         textAlign: fabricObj.textAlign,
+        verticalAlign: fabricObj.verticalAlign,
       });
     }
 
