@@ -1,7 +1,11 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**This-pass (2026-08-26 Style dash after sibling persist):** not leftover-18. Session-shared `lineBorderStyle` leaked Callout / Rect Dashed into Text / Ellipse until Style was touched. Product `c082fc76`. Receipt `fix-logs/style-dash-after-sibling-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+**This-pass (2026-08-26 Text Fill after sibling persist):** not leftover-18. Text prefs omitted `fillColor` / `fillOpacity` so Callout white / 90 and Counter badge red leaked into the Text Color swatch until Fill was touched. Product `63792671`. Receipt `fix-logs/text-fill-after-sibling-2026-08-26.md`. First-create box fill stays empty — not invented. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+
+**Prior-pass (2026-08-26 Arrowhead after sibling persist):** not leftover-18. Session-shared `arrowheadStyle` leaked Callout V-shape into Arrow and Arrow Open circle into Callout until Arrowhead was touched. Product `742dc241`. Receipt `fix-logs/arrowhead-after-sibling-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+
+**Prior-pass (2026-08-26 Style dash after sibling persist):** not leftover-18. Session-shared `lineBorderStyle` leaked Callout / Rect Dashed into Text / Ellipse until Style was touched. Product `c082fc76`. Receipt `fix-logs/style-dash-after-sibling-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
 **Prior-pass (2026-08-26 Counter Number color opacity export):** not leftover-18. Live Counter Number Opacity already rode rgba `data.numberColor` + flatten; export Circle `/AP` painted the label hex-only after the Fill `/ca` reset so a faded Number reached Acrobat opaque. Product `4562beb2`. Receipt `fix-logs/counter-number-color-opacity-export-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
