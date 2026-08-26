@@ -1393,10 +1393,14 @@ function extractAnnotationDashArray(annotation) {
   // Strict gate: only return a dash array when we have explicit evidence that
   // /S is /D. If borderStyleType is missing or anything other than 'D', the
   // annotation is solid — return null and ignore any dash candidates.
-  const borderStyleType = normalizePdfNameToken(
-    annotation?.borderStyle?.style || annotation?.borderStyleType || ''
-  );
-  if (borderStyleType !== 'D') return null;
+  const rawStyle = annotation?.borderStyle?.style ?? annotation?.borderStyleType ?? '';
+  const borderStyleType = normalizePdfNameToken(rawStyle);
+  // pdf.js leftover-surfaces AnnotationBorderStyleType.DASHED as numeric 2
+  // (SOLID is 1). normalizePdfNameToken(2) is null, so native /BS /S /D
+  // leftover-dropped and Square / Circle leftover-omitted strokeDashArray.
+  // Accept 2 as /D. Do not treat leftover [3] on SOLID (style 1 / S) as dash.
+  const isDashed = borderStyleType === 'D' || rawStyle === 2 || rawStyle === '2';
+  if (!isDashed) return null;
 
   const dashCandidates = [
     annotation?.borderDashArray,

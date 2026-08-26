@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
-import { convertPdfAnnotationToFabric } from '../src/utils/pdfAnnotationImporter.js';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { convertPdfAnnotationToFabric, importAnnotationsFromPdf } from '../src/utils/pdfAnnotationImporter.js';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
@@ -120,6 +121,26 @@ test('imported Circle /BS /D stamps strokeDashArray, not leftover solid', () => 
   assert.equal(obj.type, 'circle');
   assert.equal(obj.pdfAnnotationType, 'Circle');
   assert.deepEqual(obj.strokeDashArray, [6, 4]);
+});
+
+test('fixture Square / Circle import via pdf.js stamps [6,4], not leftover solid', async (t) => {
+  const bytes = readFileSync(join(process.cwd(), 'debug', 'fixtures', 'e2e-imported-square-dash.pdf'));
+  const loadingTask = pdfjsLib.getDocument({
+    data: Uint8Array.from(bytes),
+    disableWorker: true,
+    verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+  });
+  t.after(() => loadingTask.destroy());
+  const pdfDoc = await loadingTask.promise;
+  const imported = await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes: bytes });
+  const objects = Object.values(imported.annotationsByPage || {})
+    .flatMap((page) => page?.objects || []);
+  const square = objects.find((object) => object?.pdfAnnotationType === 'Square');
+  const circle = objects.find((object) => object?.pdfAnnotationType === 'Circle');
+  assert.ok(square, 'fixture Square');
+  assert.ok(circle, 'fixture Circle');
+  assert.deepEqual(square.strokeDashArray, [6, 4], `Square leftover-solid: ${JSON.stringify(square.strokeDashArray)}`);
+  assert.deepEqual(circle.strokeDashArray, [6, 4], `Circle leftover-solid: ${JSON.stringify(circle.strokeDashArray)}`);
 });
 
 test('edited imported dashed Square export keeps /AP [6 4] 0 d + Width 8', async () => {
