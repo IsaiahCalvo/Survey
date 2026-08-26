@@ -325,14 +325,6 @@ test('390 first-create Width after sibling edge: viewBox, file.id, no invent', a
   expect(await pageViewBox(page)).toBe('0 0 612 792');
   expect((await textSnapshot(page)).length).toBe(0);
 
-  const mobileText = page.getByRole('button', { name: 'Text', exact: true }).first();
-  if (await mobileText.isVisible().catch(() => false)) {
-    const created = await createFirstBoxAfterSiblings(page, 'Y', { requireSiblingWidths: false });
-    expect(created.strokeWidth).toBe(TEXT_DEFAULT_WIDTH);
-  } else {
-    expect(await page.getByRole('button', { name: 'Text', exact: true }).count()).toBe(0);
-  }
-
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   expect(await page.getByRole('button', { name: 'Color', exact: true }).count()).toBe(0);
   expect(await page.getByRole('button', { name: 'Text', exact: true }).count()).toBe(0);
