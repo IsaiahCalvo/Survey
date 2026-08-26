@@ -2539,6 +2539,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(appAnnotationMetadata ? { appAnnotationMetadata } : {}),
           ...(daText ? { defaultAppearanceString: daText } : {}),
           ...(dsText ? { defaultStyleString: dsText } : {}),
+          ...(rcText ? { richContent: rcText } : {}),
           ...(Object.keys(defaultAppearanceData).length > 0 ? { defaultAppearanceData } : {}),
           ...(appearance ? { appearance } : {})
         };
@@ -2685,6 +2686,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     },
     defaultAppearanceString: annotation.defaultAppearanceString || rawMetadata.defaultAppearanceString || annotation.defaultAppearanceString,
     defaultStyleString: annotation.defaultStyleString || rawMetadata.defaultStyleString || annotation.defaultStyleString,
+    richContent: annotation.richContent || rawMetadata.richContent || annotation.richContent,
     _appearance: rawMetadata.appearance || annotation._appearance || null
   };
 }
@@ -3894,8 +3896,13 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // parse /DA and /DS separately so color-resolution can tell them apart.
   const parsedDa = parseDefaultAppearanceString(annotation.defaultAppearanceString);
   const parsedDs = parseDefaultStyleString(annotation.defaultStyleString);
+  // /RC span color overrides leftover /DA + /DS (se011 4631R: /RC
+  // #1172E8, /DS #9643FC). Preferring /DS painted leftover purple until
+  // Color was re-touched. Do not invent a richTextEditor.
+  const parsedRc = parseRichContentFirstColor(annotation.richContent);
   const daColorHex = parsedDa?.fontColor ? pdfColorToHex(parsedDa.fontColor, annotation) : null;
   const dsColorHex = parsedDs?.fontColor ? pdfColorToHex(parsedDs.fontColor, annotation) : null;
+  const rcColorHex = parsedRc?.fontColor ? pdfColorToHex(parsedRc.fontColor, annotation) : null;
   const lineColor = annotation.lineColor;
   const lineColorHex = lineColor ? pdfColorToHex(lineColor, annotation) : null;
   // UX: Phase 15 UAT-3 (2026-04-18) — only fall through to the black
@@ -3911,7 +3918,8 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // Text color: prefer /DS when it exists (Drawboard writes a distinct text
   // color there); fall through to /DA for Acrobat-style PDFs where /DS is
   // absent and /DA alone carries the text color.
-  const textColor = dsColorHex
+  const textColor = rcColorHex
+    || dsColorHex
     || daColorHex
     || lineColorHex
     || annotationColorHex
