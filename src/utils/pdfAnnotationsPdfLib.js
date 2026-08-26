@@ -2594,6 +2594,30 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
           pathCommands: pathCommands.length ? pathCommands : fallbackPath,
         });
       }
+    } else {
+      // Live toolbar maps selected imported polygon → rect Style dash +
+      // Color Opacity. Screen already honours strokeDashArray and rgba
+      // stroke, but export wrote hex /C + /Border width only — Acrobat
+      // stayed solid and opaque until Style / Opacity were re-touched.
+      // Same contract as createPolyLineAnnotation: /C stays the stroke
+      // RGB; /CA carries the fade; dashed/dotted write /BS. Solid +
+      // opaque omit both so default export stays byte-identical. Do not
+      // invent a create-poly tool — this is selected-patch export of an
+      // imported polygon. /IC stays hex; independent fill fade is Cloud
+      // /AP only.
+      const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
+      if (alpha < 0.99999) annotationDict.CA = alpha;
+      const dash = Array.isArray(fabricObj.strokeDashArray) && fabricObj.strokeDashArray.length > 0
+        ? fabricObj.strokeDashArray.map((v) => Number(v) || 0)
+        : null;
+      if (dash) {
+        annotationDict.BS = {
+          Type: 'Border',
+          W: fabricObj.strokeWidth || 1,
+          S: PDFName.of('D'),
+          D: dash,
+        };
+      }
     }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
