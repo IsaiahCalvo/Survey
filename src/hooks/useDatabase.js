@@ -1029,10 +1029,12 @@ const DEFAULT_TOOL_PREFERENCES = {
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },
-  // Counter (Shottr-style numbered badge) — strokeColor is the circle fill;
-  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares
-  // the bottom toolbar Size input wiring with all other shape tools.
-  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100 },
+  // Counter badge: Fill is the pin body, Number is data.numberColor (toolbar
+  // stroke). strokeWidth is the badge radius so it shares the Size input.
+  // Omitting fillColor/fillOpacity used to let Shapes → Counter inherit
+  // rect's empty fill (#ffffff / 0); first-pin compose then stamped a
+  // transparent pin until the user touched Fill.
+  counter: { strokeColor: '#ffffff', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444', fillOpacity: 100 },
   text: { strokeColor: '#000000', strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
@@ -1151,9 +1153,14 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
     });
   }, [documentId, supabaseDocId, user]);
 
-  // Get preferences for a specific tool (with defaults)
+  // Get preferences for a specific tool (with defaults). Per-key merge so a
+  // saved counter row that predates fillColor/fillOpacity still picks up the
+  // badge fill instead of leaking rect's empty fill into first-pin compose.
   const getToolPreference = useCallback((toolId) => {
-    return toolPreferences[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
+    return {
+      ...(DEFAULT_TOOL_PREFERENCES[toolId] || {}),
+      ...(toolPreferences[toolId] || {}),
+    };
   }, [toolPreferences]);
 
   return {
