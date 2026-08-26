@@ -13,6 +13,7 @@ import { test, expect } from '@playwright/test';
 // next to the Fit siblings (live chord, same class as Shift+E).
 // Ctrl+S Save document is listed next to Search text (live chord).
 // F3 Find next is listed next to Search text (live chord).
+// Shift+F3 Find previous is listed next to Find next (live chord).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -31,6 +32,7 @@ const LISTED = [
   'Save document',
   'Search text',
   'Find next',
+  'Find previous',
   'Select annotations',
   'Select text on the page',
   'Pen',
