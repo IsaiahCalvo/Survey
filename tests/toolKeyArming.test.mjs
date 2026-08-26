@@ -42,12 +42,12 @@ test('PDFViewer wires overlay tool letters and derives the matching category dro
   assert.doesNotMatch(overlay, /keys: \['R'\]/);
 });
 
-test('keyboard leftover stays tool letters; overlay omits rail Previous/Next and Ctrl+2', () => {
+test('keyboard leftover stays tool letters; overlay lists page-nav arrows not rail Previous/Next', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /Previous\/Next page/);
   assert.doesNotMatch(overlay, /description: 'Previous page'/);
-  assert.doesNotMatch(overlay, /Fit height/);
-  assert.doesNotMatch(overlay, /Ctrl', '2'/);
+  assert.match(overlay, /Fit height/);
+  assert.match(overlay, /Ctrl', '2'/);
 
   const toolbar = read('debug/scenarios/e2e-page-nav-toolbar.spec.mjs');
   assert.match(toolbar, /Next page click must move a page/);

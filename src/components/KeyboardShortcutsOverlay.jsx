@@ -50,6 +50,12 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['Ctrl', '+'], description: 'Zoom in' },
       { keys: ['Ctrl', '-'], description: 'Zoom out' },
       { keys: ['Ctrl', '0'], description: 'Fit page' },
+      // Ctrl+0 / Ctrl+1 / Ctrl+2 are the three live fit-mode chords. The
+      // overlay already listed Ctrl+0 Fit page next to Zoom in/out; omitting
+      // the sibling Fit width / Fit height chords made them undiscoverable
+      // from the catalog the same way Shift+E was missing next to E.
+      { keys: ['Ctrl', '1'], description: 'Fit width' },
+      { keys: ['Ctrl', '2'], description: 'Fit height' },
     ]},
     { category: 'Actions', items: [
       { keys: ['Ctrl', 'O'], description: 'Open document' },

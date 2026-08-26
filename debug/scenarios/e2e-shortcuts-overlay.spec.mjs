@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
 // V-05/V-08/E-05 catalog samples, and leftover-18. Do not stamp file.id.
 // Product: `?` toggles; Esc / click-outside / Close dismiss; zoom % and
 // Search keep `?` / do not open the overlay. Catalog is the hardcoded
-// list — Undo/Redo/Delete/Duplicate/z-order/Fit height/Fit width/F3
+// list — Undo/Redo/Delete/Duplicate/z-order/Ctrl+M/F3
 // are live elsewhere and omitted here.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -21,6 +21,8 @@ const LISTED = [
   'Zoom in',
   'Zoom out',
   'Fit page',
+  'Fit width',
+  'Fit height',
   'Open document',
   'Search text',
   'Select annotations',
@@ -47,8 +49,6 @@ const OMITTED = [
   /Bring (to )?front/i,
   /Bring forward/i,
   /Send backward/i,
-  /Fit height/i,
-  /Fit width/i,
   /\bF3\b/,
   /Select all/i,
 ];

@@ -30,6 +30,8 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.match(overlay, /description: 'Zoom in'/);
   assert.match(overlay, /description: 'Zoom out'/);
   assert.match(overlay, /description: 'Fit page'/);
+  assert.match(overlay, /keys: \['Ctrl', '1'\], description: 'Fit width'/);
+  assert.match(overlay, /keys: \['Ctrl', '2'\], description: 'Fit height'/);
   assert.match(overlay, /description: 'Open document'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['V'\], description: 'Select annotations'/);
@@ -53,8 +55,7 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
   assert.doesNotMatch(overlay, /Bring forward/);
   assert.doesNotMatch(overlay, /description: 'Delete'/);
-  assert.doesNotMatch(overlay, /Fit height/);
-  assert.doesNotMatch(overlay, /Fit width/);
+  assert.doesNotMatch(overlay, /Ctrl', 'M'/);
   assert.doesNotMatch(overlay, /\bF3\b/);
 });
 
@@ -96,6 +97,8 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /390 shortcuts overlay intended \+ break \+ edge/);
   assert.match(spec, /lists the real catalog/);
   assert.match(spec, /Partial erase/);
+  assert.match(spec, /Fit width/);
+  assert.match(spec, /Fit height/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);

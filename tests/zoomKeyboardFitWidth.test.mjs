@@ -38,8 +38,8 @@ test('overlay lists Ctrl+/-/0; viewer maps =/+/- and Ctrl+1 Fit width; step is 1
   assert.match(overlay, /description: 'Zoom out'/);
   assert.match(overlay, /keys: \['Ctrl', '0'\]/);
   assert.match(overlay, /description: 'Fit page'/);
-  assert.doesNotMatch(overlay, /keys: \['Ctrl', '1'\]/);
-  assert.doesNotMatch(overlay, /Fit width/);
+  assert.match(overlay, /keys: \['Ctrl', '1'\]/);
+  assert.match(overlay, /description: 'Fit width'/);
 
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /if \(!isFormField && \(e\.metaKey \|\| e\.ctrlKey\)\)/);
