@@ -293,8 +293,9 @@ test('desktop shape fill/stroke opacity export /ca vs /CA intended + break', asy
 
   const dest = await exportAndSave(page, DEST_NAME);
   const exported = await exportedSquareOpacity(dest);
-  const square = exported.find((row) => row.subtype === 'Square');
-  expect(square, 'exported rectangle must write a Square').toBeTruthy();
+  const squares = exported.filter((row) => row.subtype === 'Square');
+  const square = squares.find((row) => Math.abs(Number(row.gs.ca) - 0.4) < 0.02);
+  expect(square, `exported live rect must write Square AP /ca 0.4 (got ${JSON.stringify(squares)})`).toBeTruthy();
   expect(square.ca, 'faded fill must not share dict /CA with the border').toBeUndefined();
   expect(square.gs.ca, 'Square AP /ca must be live fill opacity').toBeCloseTo(0.4, 2);
 
