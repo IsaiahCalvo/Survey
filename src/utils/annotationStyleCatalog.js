@@ -283,8 +283,8 @@ const rgbaPaint = (r, g, b, opacity) => {
  * Live textbox Fill is style.backgroundColor (toolbar patchSelectedFill).
  * `fill` is the glyph / fontColor — never treat it as a leftover box fill.
  * New text commits an empty background until Color Fill patches it. Export
- * /C and print flatten used to miss that live paint (flatten drew glyphs
- * only; opacity-0 rgba still wrote /C).
+ * /C is RGB-only — faded rgba must ride ExtGState /ca on /AP (flatten
+ * already used paint.opacity). Opacity-0 / empty omit /C.
  */
 export function resolveTextboxBoxFill(obj = {}) {
   const raw = obj?.backgroundColor;

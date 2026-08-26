@@ -2592,9 +2592,10 @@ const PDF_DA_FONT_BASEFONT = {
   'Courier-BoldOblique': 'Courier-BoldOblique',
 };
 
-// Callout FreeText /C is RGB-only. Faded style.fillOpacity used to export
-// an opaque box. Independent fade lives in ExtGState /ca so group /CA
-// (borderOpacity) can still fade the whole annotation. Opaque omits /AP.
+// FreeText /C is RGB-only. Faded textbox backgroundColor rgba() and
+// callout style.fillOpacity used to export an opaque box. Independent
+// fade lives in ExtGState /ca so group /CA (borderOpacity / object
+// opacity) can still fade the whole annotation. Opaque omits /AP.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -2725,11 +2726,13 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // byte-identical. /C stays the box fill — not this fade.
     const objectAlpha = paintAlpha('#ffffff', fabricObj.opacity);
     if (objectAlpha < 0.99999) annotationDict.CA = objectAlpha;
-    // Callout Fill Opacity is independent of that group /CA. /C stays the
-    // fill hex; faded fills write ExtGState /ca on /AP so Acrobat does not
-    // paint an opaque box. Opacity-0 already omitted /C. Opaque omits /AP
-    // so default export stays byte-identical.
-    if (options.calloutMetadataJson && boxFill.visible && boxFill.opacity < 0.99999) {
+    // Textbox Fill Opacity (rgba on backgroundColor) and callout Fill
+    // Opacity are independent of that group /CA. /C stays the fill hex;
+    // faded fills write ExtGState /ca on /AP so Acrobat does not paint an
+    // opaque box. Opacity-0 already omitted /C. Opaque omits /AP so default
+    // export stays byte-identical. Used to gate /AP on calloutMetadataJson,
+    // so a faded textbox still reached Acrobat opaque.
+    if (boxFill.visible && boxFill.opacity < 0.99999) {
       attachCalloutFreeTextFillAppearance(pdfDoc, annotationDict, {
         formWidth: width,
         formHeight: height,
