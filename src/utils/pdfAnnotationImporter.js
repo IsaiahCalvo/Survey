@@ -795,6 +795,19 @@ function extractAnnotationStrokeOpacity(annotation, fallback = 1) {
   return fallback;
 }
 
+// Filled Ink /AP ExtGState often restates the same authored fade already on
+// dict /CA (clickable-link-test 67R: both 0.34902). Multiplying leftover
+// dict opacity by leftover AP fillAlpha painted fill 0.12 until Opacity
+// was re-touched.
+function resolveImportedInkPaintOpacity(dictOpacity, appearanceAlpha) {
+  const dict = Number.isFinite(dictOpacity) ? dictOpacity : 1;
+  if (!Number.isFinite(appearanceAlpha)) return dict;
+  if (dict >= 1) return appearanceAlpha;
+  if (appearanceAlpha >= 1) return dict;
+  if (Math.abs(dict - appearanceAlpha) < 1e-3) return dict;
+  return dict * appearanceAlpha;
+}
+
 function hexToRgba(hex, alpha = 1) {
   if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
 
@@ -3453,8 +3466,9 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const appearancePaintAlpha = useFilledAppearancePath
     ? primaryPaintOperation?.fillAlpha
     : primaryPaintOperation?.strokeAlpha;
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1) * (
-    Number.isFinite(appearancePaintAlpha) ? appearancePaintAlpha : 1
+  const strokeOpacity = resolveImportedInkPaintOpacity(
+    extractAnnotationOpacity(annotation, 1),
+    Number.isFinite(appearancePaintAlpha) ? appearancePaintAlpha : null,
   );
 
   let strokeWidth = 0;
