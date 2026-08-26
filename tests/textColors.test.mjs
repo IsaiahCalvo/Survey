@@ -47,7 +47,7 @@ test('desktop Text Color is Fill + Border tabs (transparent on both; no Match Fi
 
   const overlay = read('src/components/TextEditOverlay.jsx');
   assert.match(overlay, /fill: newTextStyle\?\.fontColor \|\| strokeColor \|\| '#007AFF'/);
-  assert.match(overlay, /stroke: '#000000'/);
+  assert.match(overlay, /stroke: \(typeof strokeColor === 'string' && strokeColor\) \? strokeColor : '#000000'/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(mobile, /const FILL_TOOLS = new Set\(\['rect', 'ellipse', 'text', 'callout', 'counter'\]\)/);

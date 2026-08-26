@@ -186,7 +186,10 @@ export default function TextEditOverlay({
         // Plan 15-04 parity: new text's intended look — the SVG preview and
         // the committed annotation both use these.
         fill: newTextStyle?.fontColor || strokeColor || '#007AFF',
-        stroke: '#000000',
+        // Next-draw Color Border must ride the first box. Hardcoding
+        // '#000000' dropped the toolbar until the user touched Border again
+        // (selected-patch).
+        stroke: (typeof strokeColor === 'string' && strokeColor) ? strokeColor : '#000000',
         // Next-draw Width must ride the first box. Hardcoding 1 dropped the
         // toolbar until the user touched Width again (selected-patch).
         strokeWidth: Math.max(1, Number(strokeWidth) || 1),

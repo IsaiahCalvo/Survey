@@ -331,10 +331,11 @@ const resolvePaintColor = (raw) => {
 
 /**
  * Live textbox Border/Width is style.stroke + style.strokeWidth (toolbar
- * patchSelectedStroke / handleStrokeWidthChange). New text commits a 1px
- * black stroke; Color Border + Width patch those keys. Export /Border was
- * hard-coded [0,0,0] and flatten never painted the stroke, so a user-picked
- * box never printed. Glyph `fill` is the font color — never a leftover border.
+ * patchSelectedStroke / handleStrokeWidthChange). First-create stamps
+ * next-draw Color Border + Width; Color Border + Width also patch those
+ * keys after select. Export /Border was hard-coded [0,0,0] and flatten
+ * never painted the stroke, so a user-picked box never printed. Glyph
+ * `fill` is the font color — never a leftover border.
  */
 /**
  * Live rectangle/ellipse Fill is obj.fill (toolbar composeAnnotationColor
