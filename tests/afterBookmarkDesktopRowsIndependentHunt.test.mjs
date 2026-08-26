@@ -91,7 +91,8 @@ test('official leftover files besides isolated 8448 match live source after Book
   const bookmarkRow = bookmarks.indexOf('data-bookmark-row-id={isClone ? undefined : item.id}');
   assert.ok(bookmarkRow > 0);
   assert.match(bookmarks.slice(bookmarkRow, bookmarkRow + 1600), /role=\{isClone \? undefined : 'button'\}/);
-  assert.match(bookmarks.slice(bookmarkRow, bookmarkRow + 1600), /`Jump to bookmark \$\{rowName\}`/);
+  assert.match(bookmarks, /`Jump to bookmark \$\{rowName\}`/);
+  assert.match(bookmarks, /`Select bookmark group \$\{rowName\}`/);
 
   const search = read('src/sidebar/SearchTextPanel.jsx');
   assert.match(search, /aria-label="Search text in PDF"/);
