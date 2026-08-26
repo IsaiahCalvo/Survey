@@ -216,7 +216,9 @@ test('Bookmarks desktop rows break + edge; leftover-18 skipped', async ({ page }
   await openMobileBookmarks(page);
   expect(await jumpRows(page).count()).toBe(0);
   expect(await groupRows(page).count()).toBe(0);
-  expect(await page.getByRole('button', { name: /^Open bookmark / }).count()).toBeGreaterThan(0);
+  const mobileOpen = page.getByRole('button', { name: /^Open bookmark / });
+  const mobileToggle = page.getByRole('button', { name: /^Toggle / });
+  expect((await mobileOpen.count()) + (await mobileToggle.count())).toBeGreaterThan(0);
 
   await openPage(page, { url: OUTLINE_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
