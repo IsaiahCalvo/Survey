@@ -219,6 +219,14 @@ test('mobile shells lock page zoom without disabling app-controlled PDF pinch', 
   assert.match(PDFJS_VIEWER_SOURCE, /event\.touches\.length >= 2/);
 });
 
+test('mobile selected text exposes only the shared text markup toolbar', () => {
+  assert.match(PDF_VIEWER_SOURCE, /hasLiveTextSelection:\s*!!liveTextSelection\?\.pages\?\.length/);
+  assert.match(
+    MOBILE_VIEWER_CHROME_SOURCE,
+    /if \(textMarkup\.active\) \{\s*if \(textMarkup\.sharedToolbarActive\) return null;/,
+  );
+});
+
 test('Expo enforces the zoom lock inside its WebView even when the hosted app is older', () => {
   assert.match(EXPO_APP_SOURCE, /maximum-scale=1\.0, user-scalable=no/);
   assert.match(EXPO_APP_SOURCE, /data-survey-mobile-viewport-lock/);

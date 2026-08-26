@@ -85,6 +85,7 @@ export const getMobileTextMarkupPresentation = (api = {}) => {
   const editingSelection = toolbar.activeTool === 'select' && toolbar.contextTool === 'text-markup';
   const creatingSelection = toolbar.activeTool === 'text-select';
   const active = editingSelection || creatingSelection;
+  const sharedToolbarActive = editingSelection || (creatingSelection && Boolean(toolbar.hasLiveTextSelection));
   const selectedPaint = editingSelection ? toolbar.selectedStrokeColor : null;
   const selectedAlpha = colorAlpha(selectedPaint);
   const rawOpacity = selectedAlpha == null ? Number(toolbar.strokeOpacity) : selectedAlpha * 100;
@@ -92,6 +93,7 @@ export const getMobileTextMarkupPresentation = (api = {}) => {
   return {
     active,
     editingSelection,
+    sharedToolbarActive,
     color: selectedPaint && selectedPaint !== 'transparent'
       ? selectedPaint
       : (toolbar.strokeColor || '#f4d35e'),

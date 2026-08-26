@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -12,6 +13,22 @@ import { transformWithOxc } from 'vite';
 
 const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+
+const LOCKED_ICON_HASHES = {
+  'text-highlight.svg': 'bec73bf6a22f160f84be3ffb0b9ca690204d6c6ba3e40044b18e3b88a35774fb',
+  'text-underline.svg': '50bd6023c5e7b643125591178074aa18be9b4d2745b292397b7b93c6c04d5e3e',
+  'text-squiggle.svg': 'a34b3a2e94e1da54b235cae8558e2154b46a095258c886009a60f69dcc94e73f',
+  'text-strikethrough.svg': 'e2cb9f2a468708a423d5a803bf55e800acb4daf73186875363e300fe626adf3a',
+  'text-hyperlink.svg': '718065400f7b6d76eb2bb7b714a8b4e680fbfea852a8e79a6f3fbe9c9d946ed5',
+  'text-redact.svg': '6ac08792f31d89e479d91c603dbded96e383215de9a9bb1b7aa736dce1f6f4ac',
+};
+
+test('shared text markup icons stay byte-exact to the locked handoff assets', async () => {
+  for (const [fileName, expectedHash] of Object.entries(LOCKED_ICON_HASHES)) {
+    const bytes = await readFile(path.join(repoRoot, 'src/assets/icons', fileName));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash, fileName);
+  }
+});
 
 async function loadActionBar() {
   const componentPath = path.join(repoRoot, 'src/components/TextSelectionActionBar.jsx');
@@ -71,11 +88,12 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     await act(async () => root.render(React.createElement(Harness)));
     const toolbar = document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]');
     assert.ok(toolbar);
-    assert.equal(toolbar.style.gap, 'clamp(4px, 1vw, 16px)');
+    assert.equal(toolbar.style.gap, 'clamp(2px, 0.7vw, 16px)');
     assert.equal(toolbar.style.overflowX, 'auto');
     assert.equal(toolbar.style.justifyContent, 'safe center');
     assert.equal(document.querySelector('[data-text-mark-control="highlight"]').style.padding, '0px');
-    for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Apply Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
+    assert.equal(document.querySelector('button[aria-label="Set Highlight color"]').style.width, '32px');
+    for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
       assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
     assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
@@ -87,8 +105,12 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     await act(async () => document.querySelector('button[aria-label="Set Underline color"]').click());
     assert.deepEqual(focused, ['underline']);
     assert.equal(document.querySelector('[data-text-mark-control="underline"]').style.borderColor, 'rgb(229, 173, 24)');
-    await act(async () => document.querySelector('button[aria-label="Apply Hyperlink"]').click());
-    assert.ok(document.querySelector('form[aria-label="Hyperlink controls"]'));
+    await act(async () => document.querySelector('button[aria-label="Add Hyperlink"]').click());
+    const linkForm = document.querySelector('form[aria-label="Hyperlink controls"]');
+    assert.ok(linkForm);
+    assert.equal(linkForm.style.flexWrap, 'wrap');
+    assert.equal(document.querySelector('input[aria-label="Web address"]').style.flex, '1 1 220px');
+    assert.ok(document.querySelector('[data-text-link-actions="true"]'));
     await act(async () => document.querySelector('form[aria-label="Hyperlink controls"] button[aria-pressed="false"]').click());
     assert.equal(document.querySelector('input[aria-label="Page number"]')?.getAttribute('inputmode'), 'numeric');
   } finally {

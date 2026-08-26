@@ -774,6 +774,7 @@ export function MobileToolProperties({ api }) {
   }
 
   if (textMarkup.active) {
+    if (textMarkup.sharedToolbarActive) return null;
     const markupColor = toHexColor(textMarkup.color, '#f4d35e');
     const markupOpacity = textMarkup.opacity / 100;
     return (

@@ -33,6 +33,7 @@ test('mobile text markup controls cover create and selected-mark editing state',
   }), {
     active: true,
     editingSelection: false,
+    sharedToolbarActive: false,
     color: '#f4d35e',
     opacity: 38,
     overlapMode: 'uniform',
@@ -48,9 +49,16 @@ test('mobile text markup controls cover create and selected-mark editing state',
   });
   assert.equal(selected.active, true);
   assert.equal(selected.editingSelection, true);
+  assert.equal(selected.sharedToolbarActive, true);
   assert.equal(selected.color, 'rgba(74, 144, 226, 0.42)');
   assert.equal(selected.opacity, 42);
   assert.equal(selected.overlapMode, 'layered');
+
+  const liveSelection = getMobileTextMarkupPresentation({
+    activeTool: 'text-select',
+    hasLiveTextSelection: true,
+  });
+  assert.equal(liveSelection.sharedToolbarActive, true);
 
   assert.equal(getMobileTextMarkupPresentation({ activeTool: 'select', contextTool: 'rect' }).active, false);
 });
