@@ -2579,8 +2579,55 @@ const createImportedCaretAnnotation = (pdfDoc, page, fabricObj, pageHeight, opti
 // The subtypes that get identity-preserving re-export when an imported copy
 // was edited. Everything else (Square, Circle, Line, PolyLine, Polygon,
 // FreeText, Ink…) already re-exports as its own subtype via the fabric switch.
+// Underline / StrikeOut share Highlight's rect-proxy QuadPoints + /CA.
+// Select Color Fill already stamped rgba fill + edited, but the writer
+// table leftover-omitted those subtypes so export fell through to Square
+// and leftover-dropped /CA until Fill was re-touched on a real Square.
+const createImportedQuadMarkupAnnotation = (subtype, colorFallback) => (
+  pdfDoc,
+  page,
+  fabricObj,
+  pageHeight,
+  options = {},
+) => {
+  try {
+    const color = hexToRGB(fabricObj.fill || colorFallback);
+    const left = Number(fabricObj.left) || 0;
+    const top = Number(fabricObj.top) || 0;
+    const width = (Number(fabricObj.width) || 0) * Math.abs(Number(fabricObj.scaleX) || 1);
+    const height = (Number(fabricObj.height) || 0) * Math.abs(Number(fabricObj.scaleY) || 1);
+    const minX = left;
+    const minY = pageHeight - (top + height);
+    const maxX = left + width;
+    const maxY = pageHeight - top;
+
+    const annotationDict = {
+      Type: 'Annot',
+      Subtype: subtype,
+      Rect: [minX, minY, maxX, maxY],
+      QuadPoints: [
+        minX, maxY,
+        maxX, maxY,
+        minX, minY,
+        maxX, minY,
+      ].map((value) => PDFNumber.of(value)),
+      C: [color.red, color.green, color.blue],
+      CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
+      Contents: PDFString.of(''),
+      P: page.ref,
+    };
+    applyAppAnnotationMetadataToDict(annotationDict, options);
+    return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
+  } catch (e) {
+    console.error(`Error creating imported ${subtype} annotation:`, e);
+    return null;
+  }
+};
+
 const EDITED_IMPORT_SUBTYPE_WRITERS = {
   Highlight: createImportedHighlightAnnotation,
+  Underline: createImportedQuadMarkupAnnotation('Underline', '#FF0000'),
+  StrikeOut: createImportedQuadMarkupAnnotation('StrikeOut', '#FF0000'),
   Text: createImportedTextNoteAnnotation,
   Caret: createImportedCaretAnnotation,
 };
