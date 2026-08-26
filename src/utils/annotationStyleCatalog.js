@@ -245,6 +245,33 @@ export function resolveCalloutBoxFill(style = {}) {
   return { hex, opacity, visible: true, paint: `rgba(${r}, ${g}, ${b}, ${opacity})` };
 }
 
+/**
+ * Live callout Stroke/Opacity is style.borderColor + style.borderOpacity
+ * (toolbar Color Border + Opacity). lineColor is an import leftover.
+ * Export Line pieces omitted /CA and flatten stroked hex at opacity 1, so a
+ * user-picked Opacity printed and exported opaque. /C stays the stroke hex.
+ */
+export function resolveCalloutBorder(style = {}) {
+  const live = style?.borderColor;
+  const leftover = style?.lineColor;
+  const raw = (live && live !== 'transparent') ? live : (leftover || live || null);
+  if (raw == null || raw === '' || raw === 'transparent') {
+    return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  }
+  const hex = normalizeHexColor(raw);
+  if (!hex) return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  const opacity = Number.isFinite(Number(style?.borderOpacity))
+    ? Math.max(0, Math.min(1, Number(style.borderOpacity)))
+    : 1;
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  if (opacity <= 0) return { hex, opacity: 0, visible: false, paint: `rgba(${r}, ${g}, ${b}, 0)` };
+  if (opacity >= 1) return { hex, opacity: 1, visible: true, paint: hex };
+  return { hex, opacity, visible: true, paint: `rgba(${r}, ${g}, ${b}, ${opacity})` };
+}
+
 const rgbaPaint = (r, g, b, opacity) => {
   const hex = `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
   if (opacity <= 0) return { hex, opacity: 0, visible: false, paint: 'transparent' };

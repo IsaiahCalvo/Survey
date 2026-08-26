@@ -45,6 +45,7 @@ import {
   flattenedTextInlineOffset,
   pdfFreeTextQuadding,
   resolveCalloutBoxFill,
+  resolveCalloutBorder,
   resolveTextboxBoxFill,
   resolveTextboxBoxStroke,
   wrapFlattenedTextLines,
@@ -2377,6 +2378,10 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
     const maxX = Math.max(x1, x2);
     const maxY = Math.max(pageHeight - y1, pageHeight - y2);
 
+    // Live toolbar writes callout Opacity as style.borderOpacity (and line
+    // stroke as rgba). /C stays the stroke RGB; /CA carries the fade so
+    // Acrobat matches the screen instead of printing the leader opaque.
+    const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'Line',
@@ -2387,6 +2392,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       Contents: PDFString.of(''),
       P: page.ref,
     };
+    if (alpha < 0.99999) annotationDict.CA = alpha;
 
     if (options.calloutMetadataJson) {
       annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'line'}`);
@@ -2499,6 +2505,11 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         D: boxStroke.dash,
       };
     }
+    // Callout group Opacity (style.borderOpacity) fades the FreeText the same
+    // way SVG <g opacity> does. Omit /CA when opaque so default export stays
+    // byte-identical. /C stays the box fill — not this fade.
+    const objectAlpha = paintAlpha('#ffffff', fabricObj.opacity);
+    if (objectAlpha < 0.99999) annotationDict.CA = objectAlpha;
 
     if (options.calloutMetadataJson) {
       annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
@@ -2553,7 +2564,14 @@ const resolveCalloutArrowheadStyle = (style) => (
 const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   const refs = [];
   const style = calloutObj?.style || {};
-  const stroke = style.borderColor || style.lineColor || '#1e293b';
+  // Live toolbar writes Stroke/Opacity as style.borderColor + borderOpacity.
+  // lineColor is an import leftover. Writers used the hex only, so a user-
+  // picked Opacity never reached Line /CA or printed flatten.
+  const border = resolveCalloutBorder(style);
+  const stroke = border.hex || style.borderColor || style.lineColor || '#1e293b';
+  const strokeOpacity = Number.isFinite(Number(style?.borderOpacity))
+    ? Math.max(0, Math.min(1, Number(style.borderOpacity)))
+    : 1;
   const strokeWidth = Math.max(1, Number(style.lineThickness || 2));
   const arrowTip = calloutObj?.arrowTip;
   const knee = calloutObj?.knee;
@@ -2591,6 +2609,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     y2: knee.y,
     stroke,
     strokeWidth,
+    opacity: strokeOpacity,
     ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
   }, pageHeight, buildCalloutOptions('line1'));
   if (line1) refs.push(line1);
@@ -2603,6 +2622,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     y2: arrowTip.y,
     stroke,
     strokeWidth,
+    opacity: strokeOpacity,
     ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
     // UX: honor the callout's picked arrowhead style in external viewers via
     // the closest /LE name (see ARROWHEAD_STYLE_TO_PDF_LINE_ENDING above).
@@ -2631,6 +2651,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     // only an import leftover — using it here dropped /C for every on-screen fill.
     backgroundColor: resolveCalloutBoxFill(style).hex,
     textAlign: style.textAlign,
+    opacity: strokeOpacity,
   }, pageHeight, buildCalloutOptions('text'));
   if (textRef) refs.push(textRef);
 
@@ -3558,10 +3579,43 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   return 0;
 };
 
+const paintWithGroupOpacity = (resolved, groupOpacity) => {
+  if (!resolved?.visible || !resolved?.hex) return 'transparent';
+  const group = Number.isFinite(Number(groupOpacity)) ? Math.max(0, Math.min(1, Number(groupOpacity))) : 1;
+  const base = Number.isFinite(Number(resolved.opacity)) ? Number(resolved.opacity) : 1;
+  const opacity = Math.max(0, Math.min(1, base * group));
+  if (opacity <= 0) return 'transparent';
+  if (opacity >= 1) return resolved.hex;
+  const n = parseInt(resolved.hex.slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
+const hexPaintWithOpacity = (hex, opacity) => {
+  const normalized = String(hex || '').trim();
+  if (!normalized || normalized === 'transparent') return normalized || '#1e293b';
+  const group = Number.isFinite(Number(opacity)) ? Math.max(0, Math.min(1, Number(opacity))) : 1;
+  const raw = normalized.startsWith('#') ? normalized.slice(1) : normalized;
+  if (group >= 1) return normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return normalized;
+  const n = parseInt(raw, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${group})`;
+};
+
 const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
   if (!calloutObj) return 0;
   const style = calloutObj.style || {};
-  const stroke = style.borderColor || style.lineColor || '#1e293b';
+  // Live toolbar writes Opacity as style.borderOpacity (SVG <g opacity>).
+  // Flatten used the hex only, so a user-picked fade printed opaque.
+  const border = resolveCalloutBorder(style);
+  const groupOpacity = Number.isFinite(Number(style?.borderOpacity))
+    ? Math.max(0, Math.min(1, Number(style.borderOpacity)))
+    : 1;
+  const stroke = (border.paint && border.paint !== 'transparent')
+    ? border.paint
+    : hexPaintWithOpacity(style.borderColor || style.lineColor || '#1e293b', groupOpacity);
   const strokeWidth = Math.max(1, Number(style.lineThickness || 2));
   const arrowTip = calloutObj.arrowTip;
   const knee = calloutObj.knee;
@@ -3606,7 +3660,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     stroke,
     strokeWidth,
     ...leaderDashProps,
-    fill: resolveCalloutBoxFill(style).paint,
+    fill: paintWithGroupOpacity(resolveCalloutBoxFill(style), groupOpacity),
   }, pageHeight, fonts);
   drawFlattenedText(page, {
     type: 'textbox',
@@ -3615,7 +3669,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     width: Math.max(1, textBox.width - 8),
     height: Math.max(1, textBox.height - 8),
     text: calloutObj.text || '',
-    fill: style.fontColor || '#1e293b',
+    fill: hexPaintWithOpacity(style.fontColor || '#1e293b', groupOpacity),
     fontSize: style.fontSize || 14,
     // UX 2026-07-17: thread the callout text-style booleans through so the
     // printed callout text matches the on-screen bold/italic/underline/
