@@ -244,7 +244,7 @@ async function pickStyle(page, optionName) {
 }
 
 async function applyColorOpacity(page, pct = LIVE_OPACITY) {
-  await dismissChrome(page);
+  await page.keyboard.press('v');
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
   await expect(color).toBeVisible({ timeout: 8_000 });
   const picker = page.locator('[data-annotation-color-picker]');
@@ -259,11 +259,9 @@ async function applyColorOpacity(page, pct = LIVE_OPACITY) {
   await expect(field).toBeEnabled({ timeout: 8_000 });
   await field.click();
   await field.fill(String(pct));
-  await field.press('Enter');
   await expect(field).toHaveValue(String(pct));
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Preset colors', exact: true })).toHaveCount(0, { timeout: 8_000 }).catch(() => {});
-  await dismissChrome(page);
 }
 
 async function exportAndSave(page, destName) {
