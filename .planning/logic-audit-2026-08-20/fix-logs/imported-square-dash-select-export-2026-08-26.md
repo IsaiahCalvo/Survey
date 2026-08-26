@@ -2,7 +2,7 @@
 
 ## Leftover taken
 
-Not leftover-18. Live imported Square with native `/BS` `/S` `/D` `[6 4]` leftover-omitted `strokeDashArray` so the screen painted leftover-solid. Select Width then leftover-replaced native dashed `/BS` with leftover-solid `/AP`. Product now stamps `/D` on Square / Circle import (same contract as Line / PolyLine / Polygon). Distinct from leftover-18, Square rotate (class 16), imported Polygon Width/dash (`c1f129ca`), imported Arrow `/LE` OpenArrow (`c1b2f79f`), and inventing Square / Circle dict `/BS`.
+Not leftover-18. Live imported Square with native `/BS` `/S` `/D` `[6 4]` leftover-omitted `strokeDashArray` so the screen painted leftover-solid. pdf.js leftover-surfaces dashed as numeric style **2**; `extractAnnotationDashArray` leftover-required `'D'` so `/D` leftover-dropped. Select Width then leftover-replaced native dashed `/BS` with leftover-solid `/AP`. Product now stamps `/D` on Square / Circle import and accepts pdf.js style **2** as `/D`. Distinct from leftover-18, Square rotate (class 16), imported Polygon Width/dash (`c1f129ca`), imported Arrow `/LE` OpenArrow (`c1b2f79f`), and inventing Square / Circle dict `/BS`. Did not treat leftover `[3]` on SOLID as dash.
 
 Did **not** invent Circle / Diamond / Butt endings, Line `/AP`, stamp renderer, Note/Link create, create-poly tool, Font family chrome, callout Rotation, user-settable callout `verticalAlign`, a richTextEditor, leftover-18 hosts, or stamp `file.id`. HIGH-RISK files not touched.
 
@@ -33,13 +33,13 @@ HIGH-RISK files not touched. Product writers not in the high-risk list. `file.id
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-imported-square-dash-select-export.spec.mjs` pending this-pass run.
+Fresh Vite `http://127.0.0.1:5177` (HTTP 200; 5173 was a stale Aug-25 server). Playwright `e2e-imported-square-dash-select-export.spec.mjs` **2 / 2 (5.4s)**.
 
 - Intended: imported Square Select Width 8 keeps `/AP` `[6 4] 0 d` (not leftover-solid)
 - Break: hubPreview Color / Width **0**
 - Edge: 390 viewBox **`0 0 612 792`**; `file.id` null; hex / Font chrome **0**
 
-Focused Node `afterImportedSquareDashSelectHunt` + `pdfImportedSquareDashSelectExport` + leftover18FailClosed **20 / 20**. Isolated **8448** still standing. Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Official Square reimport miss stays spec-only flake — not taken, not aligned down. Isolated 8448 not reached. `graphify` CLI absent.
+Focused Node `afterImportedSquareDashSelectHunt` + `pdfImportedSquareDashSelectExport` + leftover18FailClosed **21 / 21**. Isolated **8448** still standing. Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Official Square reimport miss stays spec-only flake — not taken, not aligned down. Isolated 8448 not reached. `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 

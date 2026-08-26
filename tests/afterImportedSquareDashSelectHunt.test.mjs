@@ -14,6 +14,7 @@ test('imported Square / Circle /BS /D stamps dash and export keeps /AP dash', ()
   const importer = read('src/utils/pdfAnnotationImporter.js');
   assert.match(importer, /leftover-omitted strokeDashArray/);
   assert.match(importer, /extractAnnotationDashArray/);
+  assert.match(importer, /AnnotationBorderStyleType.DASHED as numeric 2/);
   assert.match(importer, /Do not invent Square \/ Circle dict \/BS/);
 });
 
