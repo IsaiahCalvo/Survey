@@ -1024,11 +1024,15 @@ const DEFAULT_TOOL_PREFERENCES = {
   highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
   'text-highlight': { strokeColor: '#ffff00', strokeOpacity: 50 },
   eraser: { strokeWidth: 10 },
-  rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
-  ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
-  line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
-  arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
-  callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },
+  // Omitting lineBorderStyle used to let one Style picker leak across
+  // Text / Callout / Rect / Ellipse / Line / Arrow after a sibling
+  // switch. Session-shared dash then stamped the sibling's Style until
+  // the user touched Style again.
+  rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' },
+  ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' },
+  line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid' },
+  arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid' },
+  callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100, lineBorderStyle: 'solid' },
   // Counter badge: Fill is the pin body, Number is data.numberColor (toolbar
   // stroke). strokeWidth is the badge radius so it shares the Size input.
   // Omitting fillColor/fillOpacity used to let Shapes → Counter inherit
@@ -1038,7 +1042,7 @@ const DEFAULT_TOOL_PREFERENCES = {
   // Omitting strokeWidth used to let Callout / Highlighter / Pen → Text
   // inherit the sibling Width (2 / 20 / 3). First-create then stamped
   // that leaked Width until the user touched the Text Width field.
-  text: { strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1 },
+  text: { strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid' },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },

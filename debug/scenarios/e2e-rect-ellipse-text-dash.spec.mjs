@@ -514,6 +514,8 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
   await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dotted');
   await expect.poll(async () => dashKey((await annotationById(page, firstEllipse.id))?.strokeDashArray)).toBe('dotted');
 
+  await activateTool(page, 'Text', 'Text');
+  await pickDesktopOption(page, desktopStyleTrigger(page), 'Style', 'Dotted');
   const textBox = await createText(page, 'Style leftover', {
     x0: 0.34,
     y0: 0.62,
@@ -521,7 +523,7 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
     y1: 0.74,
   });
   expect(isTextRow(textBox)).toBe(true);
-  expectDash(textBox, DASH_STYLES[2], 'Text first-create stamps next-draw Dotted from live Style');
+  expectDash(textBox, DASH_STYLES[2], 'Text first-create stamps next-draw Dotted from Text Style');
   await selectShape(page, textBox.id);
   const selectedTextProof = [];
   for (const style of DASH_STYLES) {

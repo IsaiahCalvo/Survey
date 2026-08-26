@@ -7451,6 +7451,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
+    if (toolPrefs.lineBorderStyle !== undefined) {
+      setLineBorderStyle(toolPrefs.lineBorderStyle);
+    }
   }, [activeTool, pdfId, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
@@ -7690,6 +7693,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { lineBorderStyle: next });
     // UX (2026-07-17, callout line style): a selected callout takes the Style
     // picker too — patch style.lineStyle through the undoable callout patch
     // path (same route as the arrowhead picker). 'cloud' is never offered for
@@ -7713,7 +7717,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } else {
       handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
     }
-  }, [cloudIntensity, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [activeTool, pdfId, updateToolPreference, cloudIntensity, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
