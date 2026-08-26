@@ -3988,7 +3988,17 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     }
   }
   const fontSize = annotation.defaultAppearanceData?.fontSize || 12;
-  const strokeWidth = getBorderWidth(annotation, 0, { allowExplicitZero: true });
+  // se011 4631R has no /BS /W and /AP paints no `w` (PDF default 1pt).
+  // pdf.js leftover-surfaces width 0 for a missing /BS; allowExplicitZero
+  // leftover-treated that as authored 0 so the adapter kept leftover
+  // defaultCalloutStyle.lineThickness 2 until Width was re-touched.
+  // Callout 0/missing uses the annotation default 1 (Survey min is 1).
+  // Plain FreeText still defaults to 0 (no box border unless authored).
+  const strokeWidth = getBorderWidth(
+    annotation,
+    isCalloutIntent ? 1 : 0,
+    { allowExplicitZero: !isCalloutIntent },
+  );
   const fillHex = getShapeFillHex(annotation);
   const fillOpacity = extractAnnotationOpacity(annotation, 1);
   // UX 2026-04-21: PDF spec — callout/textbox fill comes from /IC
