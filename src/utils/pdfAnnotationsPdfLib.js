@@ -3380,6 +3380,32 @@ const resolveExportedLineEnding2 = (fabricObj) => {
   return ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[style] || null;
 };
 
+// Inverse of ARROWHEAD_STYLE_TO_PDF_LINE_ENDING for imported /LE leftovers
+// that never stamped data.arrowheadStyle. Live Arrow already writes the
+// toolbar style on data.arrowheadStyle (buildLineRenderSpec priority 1).
+const PDF_LINE_ENDING_TO_ARROWHEAD_STYLE = {
+  None: ARROWHEAD_STYLES.NONE,
+  OpenArrow: ARROWHEAD_STYLES.OPEN_TRIANGLE,
+  ClosedArrow: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  Circle: ARROWHEAD_STYLES.OPEN_CIRCLE,
+  Slash: ARROWHEAD_STYLES.V_SHAPE,
+  Butt: ARROWHEAD_STYLES.HORIZONTAL_LINE,
+};
+
+// Same resolution as buildLineRenderSpec: explicit toolbar style wins
+// (including 'none'), else Arrow-tool default solid triangle, else imported
+// /LE, else none. Plain Line stays headless. Do not invent Line /AP.
+const resolveFlattenedArrowheadStyle = (obj) => {
+  const explicit = obj?.data?.arrowheadStyle ?? obj?.arrowheadStyle;
+  if (explicit) return explicit;
+  const isArrow = obj?.tool === 'arrow'
+    || obj?.data?.tool === 'arrow'
+    || obj?.data?.annotationType === 'arrow';
+  if (isArrow) return ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  const ending = String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').replace(/^\//, '');
+  return PDF_LINE_ENDING_TO_ARROWHEAD_STYLE[ending] || ARROWHEAD_STYLES.NONE;
+};
+
 // Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
 // renderers: absent style → solid triangle, so legacy callouts keep their
 // historical ClosedArrow export byte-for-byte.
@@ -3960,25 +3986,7 @@ const fabricPathToSvgPath = (pathData) => {
   return parts.join(' ');
 };
 
-const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width, opacity }) => {
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const size = Math.max(6, width * 4);
-  const tipX = x2;
-  const tipY = getPdfY(pageHeight, y2);
-  const leftX = x2 - size * Math.cos(angle - Math.PI / 7);
-  const leftY = getPdfY(pageHeight, y2 - size * Math.sin(angle - Math.PI / 7));
-  const rightX = x2 - size * Math.cos(angle + Math.PI / 7);
-  const rightY = getPdfY(pageHeight, y2 - size * Math.sin(angle + Math.PI / 7));
-  // Live toolbar writes Color Opacity as rgba stroke. Shaft flatten already
-  // honors parsePdfDrawColor opacity; the head used to stroke hex-only so a
-  // faded Arrow printed with an opaque tip.
-  const alpha = Number.isFinite(Number(opacity)) ? Math.max(0, Math.min(1, Number(opacity))) : 1;
-  const line = { color, thickness: width, opacity: alpha };
-  page.drawLine({ start: { x: tipX, y: tipY }, end: { x: leftX, y: leftY }, ...line });
-  page.drawLine({ start: { x: tipX, y: tipY }, end: { x: rightX, y: rightY }, ...line });
-};
-
-// UX (print flatten callout arrowhead): pdf-lib twin of paintArrowheadSpec
+// UX (print flatten callout + Arrow-tool arrowhead): pdf-lib twin of paintArrowheadSpec
 // (annotationCanvasPainter, canvas) and renderArrowheadFromSpec
 // (svgAnnotationRenderers, SVG) — consumes the SAME buildArrowheadRenderSpec
 // output, so the printed head is geometrically identical to the on-screen one
@@ -4077,17 +4085,47 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.map((v) => Number(v) || 0)
     : null;
+  // Live Arrowhead already stamps data.arrowheadStyle and the SVG / canvas
+  // surfaces already paint the 6-style spec. Flatten used leftover
+  // drawArrowHead (two-line V) for every Arrow, so print stayed a leftover
+  // chevron until Arrowhead was re-touched — Open circle / None / Solid
+  // triangle / Horizontal line all printed as that V. Same spec + shaft
+  // shorten callout flatten already uses. Plain Line / callout leaders
+  // pass no style and stay headless. Do not invent Line /AP.
+  const arrowheadStyle = resolveFlattenedArrowheadStyle(obj);
+  const wantsHead = Boolean(arrowheadStyle) && arrowheadStyle !== ARROWHEAD_STYLES.NONE;
+  let shaftX2 = x2;
+  let shaftY2 = y2;
+  if (
+    wantsHead
+    && (arrowheadStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+      || arrowheadStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE)
+  ) {
+    const headSize = Math.max(8, width * 3);
+    const angleRad = Math.atan2(y2 - y1, x2 - x1);
+    shaftX2 = x2 - (headSize / 3) * Math.cos(angleRad);
+    shaftY2 = y2 - (headSize / 3) * Math.sin(angleRad);
+  }
   page.drawLine({
     start: { x: x1, y: getPdfY(pageHeight, y1) },
-    end: { x: x2, y: getPdfY(pageHeight, y2) },
+    end: { x: shaftX2, y: getPdfY(pageHeight, shaftY2) },
     color: stroke.color,
     thickness: width,
     opacity: stroke.opacity,
     ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
   });
-  const ending2 = String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase();
-  const isArrow = ending2.includes('arrow') || obj?.data?.annotationType === 'arrow' || obj?.tool === 'arrow';
-  if (isArrow) drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width, opacity: stroke.opacity });
+  if (wantsHead) {
+    const angleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+    const spec = buildArrowheadRenderSpec(
+      arrowheadStyle,
+      x2,
+      y2,
+      angleDeg,
+      obj?.stroke || '#000000',
+      width,
+    );
+    drawFlattenedArrowheadSpec(page, spec, pageHeight);
+  }
 };
 
 // UX 2026-07-17 (print text style): pick the embedded Helvetica variant that

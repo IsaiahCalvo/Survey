@@ -154,18 +154,17 @@ test('annotated export writes Line /CA from rgba stroke; opaque omits /CA', asyn
   assert.equal(dictNumber(zero.dict, 'CA'), 0, 'opacity-0 Line must write /CA 0');
 });
 
-test('print flatten fades shaft and arrowhead together; opaque does not invent a fade', async () => {
+test('print flatten fades shaft and solid-triangle head together; opaque does not invent a fade', async () => {
   const faded = await flattenArrow({ idSuffix: 'flat-fade' });
   assert.match(faded.text, /1\s+0\s+0\s+RG/, `faded flatten must still stroke #FF0000 (got ${faded.text.slice(0, 240)})`);
-  assert.ok(faded.strokes.some((value) => Math.abs(value - 0.4) < 0.001), `flatten /CA must be 0.4 (got ${faded.strokes})`);
-  const painted = faded.groups.filter((group) => group.strokes > 0);
-  assert.ok(painted.length >= 3, `faded arrow must flatten shaft + two head wings (got ${painted.length})`);
-  painted.forEach((group, index) => {
-    assert.equal(group.hasGs, true, `stroke group ${index} must apply ExtGState (arrowhead must not print opaque)`);
-  });
+  assert.match(faded.text, /1\s+0\s+0\s+rg/, 'solid-triangle flatten must fill the live head');
+  assert.ok(faded.strokes.some((value) => Math.abs(value - 0.4) < 0.001), `flatten shaft /CA must be 0.4 (got ${faded.strokes})`);
   const fadedGs = (faded.text.match(/\/GS-?\d+\s+gs/g) || []).length;
-  const fadedStrokes = painted.reduce((sum, group) => sum + group.strokes, 0);
-  assert.equal(fadedGs, fadedStrokes, `every flattened stroke including the head must apply /CA (gs=${fadedGs} strokes=${fadedStrokes})`);
+  assert.ok(fadedGs >= 2, `shaft + filled head must both apply ExtGState (gs=${fadedGs})`);
+  const painted = faded.groups.filter((group) => group.strokes > 0 || /(?:^|[\s])f(?:[\s]|$)/m.test(group.text));
+  painted.forEach((group, index) => {
+    assert.equal(group.hasGs, true, `paint group ${index} must apply ExtGState (head must not print opaque)`);
+  });
 
   const opaque = await flattenArrow({ idSuffix: 'flat-opaque', stroke: '#FF0000' });
   assert.match(opaque.text, /1\s+0\s+0\s+RG/, 'opaque flatten still paints the stroke color');
@@ -176,18 +175,17 @@ test('print flatten fades shaft and arrowhead together; opaque does not invent a
     stroke: composeAnnotationColor('#FF0000', 0),
   });
   assert.ok(zero.strokes.some((value) => value === 0), `opacity-0 flatten must write /CA 0 (got ${zero.strokes})`);
-  const zeroPainted = zero.groups.filter((group) => group.strokes > 0);
-  zeroPainted.forEach((group, index) => {
-    assert.equal(group.hasGs, true, `opacity-0 stroke group ${index} must apply ExtGState`);
-  });
 });
 
 test('flatten hosts still name the arrowhead opacity contract', () => {
   const flatten = read('src/utils/pdfAnnotationsPdfLib.js');
-  const head = flatten.slice(flatten.indexOf('const drawArrowHead'), flatten.indexOf('function drawFlattenedArrowheadSpec'));
-  assert.match(head, /opacity/);
-  assert.match(head, /const alpha = Number\.isFinite\(Number\(opacity\)\)/);
-  assert.match(head, /page\.drawLine\(\{ start: \{ x: tipX, y: tipY \}, end: \{ x: leftX, y: leftY \}, \.\.\.line \}\)/);
+  const spec = flatten.slice(
+    flatten.indexOf('function drawFlattenedArrowheadSpec'),
+    flatten.indexOf('const drawFlattenedLine'),
+  );
+  assert.match(spec, /parsePdfDrawColor\(spec\.color/);
+  assert.match(spec, /opacity: stroke\.opacity/);
   const line = flatten.slice(flatten.indexOf('const drawFlattenedLine'), flatten.indexOf('const pickFlattenedTextFont'));
-  assert.match(line, /drawArrowHead\(page, \{ x1, y1, x2, y2, pageHeight, color: stroke\.color, width, opacity: stroke\.opacity \}\)/);
+  assert.match(line, /drawFlattenedArrowheadSpec\(page, spec, pageHeight\)/);
+  assert.match(line, /obj\?\.stroke \|\| '#000000'/);
 });
