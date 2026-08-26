@@ -225,8 +225,10 @@ async function exportedCalloutOpacity(dest) {
   return annots.asArray().map((ref) => {
     const dict = doc.context.lookup(ref);
     const subtype = dict.get(PDFName.of('Subtype'));
+    const subject = dict.get(PDFName.of('Subj'));
     return {
       subtype: subtype?.decodeText ? subtype.decodeText() : String(subtype || ''),
+      subject: subject?.decodeText ? subject.decodeText() : String(subject || ''),
       text: dict.get(PDFName.of('Contents'))?.decodeText?.() || '',
       ca: dictNumber(dict, 'CA'),
     };
@@ -266,12 +268,16 @@ test('desktop callout borderOpacity export /CA intended + break', async ({ page 
 
   const dest = await exportAndSave(page, DEST_NAME);
   const exported = await exportedCalloutOpacity(dest);
-  const lines = exported.filter((row) => row.subtype === 'Line');
-  expect(lines.length, 'exported callout must write Line pieces').toBeGreaterThanOrEqual(2);
+  const lines = exported.filter((row) => (
+    row.subtype === 'Line' && row.subject === 'survey-callout'
+  ));
+  expect(lines.length, 'exported callout must write Line pieces').toBe(2);
   lines.forEach((row) => {
     expect(row.ca, 'Line /CA must be live borderOpacity').toBeCloseTo(0.4, 2);
   });
-  const text = exported.find((row) => row.subtype === 'FreeText' && row.text === 'Y');
+  const text = exported.find((row) => (
+    row.subtype === 'FreeText' && row.text === 'Y' && row.subject === 'survey-callout'
+  ));
   expect(text, 'exported FreeText must exist').toBeTruthy();
   expect(text.ca, 'FreeText /CA matches SVG group opacity').toBeCloseTo(0.4, 2);
 
