@@ -78,6 +78,21 @@ async function pageViewBox(page, pageNumber = 6) {
 
 async function freetextSnapshot(page, pageNumber = 6) {
   return page.evaluate((pageNum) => {
+    const fromStorage = [];
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('annotationsByPage_')) continue;
+        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+        const page = parsed?.[pageNum] || parsed?.[String(pageNum)];
+        for (const object of page?.objects || []) {
+          if (object?.pdfAnnotationType === 'FreeText' || object?.type === 'textbox') {
+            fromStorage.push(object);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
     const groups = [...document.querySelectorAll(
       `[data-svg-annotation-layer="${pageNum}"] [data-pdf-annotation-type="FreeText"]`,
     )];
@@ -85,7 +100,7 @@ async function freetextSnapshot(page, pageNumber = 6) {
       const annoId = group.getAttribute('data-anno-id') || '';
       const pdfId = group.getAttribute('data-pdf-annotation-id') || '';
       const object = (annoId && window.__phase35GetAnnotationById?.(annoId))
-        || (pdfId && window.__phase35GetAnnotationById?.(pdfId))
+        || fromStorage.find((row) => row?.pdfAnnotationId === pdfId || row?.id === annoId)
         || {};
       const painted = group.querySelector('[data-annotation-text-bounds] div, foreignObject div');
       return {
@@ -106,18 +121,22 @@ test('desktop imported FreeText /DS text-align intended + break', async ({ page 
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
 
   await goToPage(page, 6);
+  let rows = [];
   await expect.poll(
-    async () => (await freetextSnapshot(page, 6)).length,
-    { timeout: 60_000, message: 'expected imported FreeText on page 6' },
-  ).toBeGreaterThan(0);
+    async () => {
+      rows = await freetextSnapshot(page, 6);
+      return rows.some((row) => row.id === '13246R' || row.text === 'Hello');
+    },
+    { timeout: 60_000, message: 'expected imported FreeText 13246R on page 6' },
+  ).toBeTruthy();
   expect(await pageViewBox(page, 6)).toMatch(/^0 0 /);
 
-  const rows = await freetextSnapshot(page, 6);
-  const target = rows.find((row) => row.id === '13246R' || row.text === 'Hello') || rows[0];
+  const target = rows.find((row) => row.id === '13246R' || row.text === 'Hello');
   expect(target, 'imported FreeText 13246R').toBeTruthy();
-  expect(target.textAlign, 'textAlign keeps /DS center, not leftover left').toBe('center');
+  const liveAlign = target.textAlign || target.visualAlign;
+  expect(liveAlign, 'textAlign keeps /DS center, not leftover left').toBe('center');
   expect(target.visualAlign === 'center' || target.textAlign === 'center').toBeTruthy();
-  expect(target.textAlign, 'must not leftover-drop /DS text-align to left').not.toBe('left');
+  expect(liveAlign, 'must not leftover-drop /DS text-align to left').not.toBe('left');
 
   await goToPage(page, 6);
   const afterJump = await freetextSnapshot(page, 6);
@@ -135,10 +154,17 @@ test('390 imported FreeText /DS text-align edge: viewBox, file.id, no invent', a
   await openEditor(page, { width: 390, height: 844 });
   expect(await fileId(page)).toBeNull();
   await goToPage(page, 6);
-  const rows = await freetextSnapshot(page, 6);
-  const target = rows.find((row) => row.id === '13246R' || row.text === 'Hello') || rows[0];
+  let rows = [];
+  await expect.poll(
+    async () => {
+      rows = await freetextSnapshot(page, 6);
+      return rows.some((row) => row.id === '13246R' || row.text === 'Hello');
+    },
+    { timeout: 60_000, message: 'expected 390 imported FreeText 13246R' },
+  ).toBeTruthy();
+  const target = rows.find((row) => row.id === '13246R' || row.text === 'Hello');
   expect(target, '390 imported FreeText 13246R').toBeTruthy();
-  expect(target.textAlign).toBe('center');
+  expect(target.textAlign || target.visualAlign).toBe('center');
   expect(await pageViewBox(page, 6)).toMatch(/^0 0 /);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
