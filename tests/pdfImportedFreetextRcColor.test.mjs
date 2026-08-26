@@ -89,7 +89,7 @@ test('FreeText converter prefers /RC over leftover /DS; export leftovers stay un
     /const textColor = rcColorHex\s*\|\|\s*dsColorHex\s*\|\|\s*daColorHex/,
   );
   assert.match(importer, /\.\.\.\(rcText \? \{ richContent: rcText \} : \{\}\),/);
-  assert.doesNotMatch(importer, /invent a richTextEditor/);
+  assert.doesNotMatch(importer, /create-ink tool/);
 });
 
 test('isolated 8448 / 75/250 stay standing; leftover-18 stay fail-closed', () => {
