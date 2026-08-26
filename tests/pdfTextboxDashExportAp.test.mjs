@@ -152,7 +152,7 @@ test('export host still names the textbox /AP dash contract; isolated 8448 / 75/
   const writer = read('src/utils/pdfAnnotationsPdfLib.js');
   assert.match(writer, /this \/AP used to paint fill\+text only/);
   assert.match(writer, /stroke\.dash\.map\(n\)\.join\(' '\)\}\] 0 d/);
-  assert.match(writer, /Callout boxes pass no stroke/);
+  assert.match(writer, /Callout boxes pass the live box frame/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
   assert.match(complexity, /p95CommitMs: 75/);

@@ -2832,8 +2832,8 @@ const PDF_DA_FONT_BASEFONT = {
 // but this /AP used to paint fill+text only (`re f`, no stroke) so a
 // faded box reached Acrobat without its dashed / solid frame until
 // Style was re-touched. Same [dash] 0 d contract as Ellipse / Square
-// /AP. Solid / absent omit the dash. Callout boxes pass no stroke —
-// their leaders already write Line /BS — so this stays fill+text.
+// /AP. Solid / absent omit the dash. Callout boxes pass the live box frame
+// (leaders still write Line /BS; do not invent Line /AP).
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -3151,6 +3151,17 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     backgroundColor: boxFill.visible ? boxFill.paint : 'transparent',
     textAlign: style.textAlign,
     opacity: strokeOpacity,
+    // Live Style dash + Border already ride the SVG box and flatten
+    // borderDashArray, but this FreeText used to pass no stroke so faded
+    // fill /AP painted fill+text only (`re f`) and opaque fill omitted
+    // /Border. Acrobat stayed unframed until Style was re-touched.
+    // Same [dash] 0 d contract as textbox faded-fill /AP. Solid / absent
+    // omit the dash. Leaders already write Line /BS — do not invent Line /AP.
+    ...(border.visible ? {
+      stroke: border.paint,
+      strokeWidth,
+      ...(leaderDash ? { strokeDashArray: leaderDash } : {}),
+    } : {}),
   }, pageHeight, buildCalloutOptions('text'));
   if (textRef) refs.push(textRef);
 
