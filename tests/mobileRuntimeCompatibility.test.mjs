@@ -469,6 +469,16 @@ test('mobile viewer rails do not mix flex shorthand with flexShrink during reren
   assert.match(APP_SHELL_SOURCE, /id="chrome-left-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '44px' : '48px',[\s\S]{0,100}flexShrink: 0/);
   assert.match(APP_SHELL_SOURCE, /id="chrome-right-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '0px' : '48px',[\s\S]{0,100}flexShrink: 0/);
   assert.doesNotMatch(APP_SHELL_SOURCE, /flex: isMobileViewer \? '0 0 (?:0|44)px' : '0 0 48px'/);
+  assert.match(
+    APP_SHELL_SOURCE,
+    /id="chrome-sub-toolbar-host"[\s\S]{0,320}display: isViewerVisible[\s\S]{0,180}activeTool === 'text-select'[\s\S]{0,180}contextTool === 'text-markup'/,
+    'mobile text selection and existing text markup must expose the shared full-width action bar',
+  );
+  assert.match(
+    APP_SHELL_SOURCE,
+    /zIndex: isMobileViewer && \([\s\S]{0,180}activeTool === 'text-select'[\s\S]{0,120}contextTool === 'text-markup'[\s\S]{0,80}\) \? 5800 : 5400/,
+    'the mobile text action bar must sit above the old mobile property strip',
+  );
 });
 
 test('mobile Survey and Spaces drawers follow their content', () => {

@@ -5,6 +5,9 @@ import textItalicUrl from './assets/icons/text-italic.svg';
 import textUnderlineUrl from './assets/icons/text-underline.svg';
 import textStrikethroughUrl from './assets/icons/text-strikethrough.svg';
 import textHighlightUrl from './assets/icons/text-highlight.svg';
+import textSquiggleUrl from './assets/icons/text-squiggle.svg';
+import textHyperlinkUrl from './assets/icons/text-hyperlink.svg';
+import textRedactUrl from './assets/icons/text-redact.svg';
 import panHandUrl from './assets/icons/pan-hand.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
@@ -265,26 +268,6 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    underline: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M6 3V12C6 14.1217 7.87827 16 10 16C12.1217 16 14 14.1217 14 12V3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M4 21H20" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-
-    strikeout: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M4 12H20" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M6 3V12C6 14.1217 7.87827 16 10 16C12.1217 16 14 14.1217 14 12V3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-
-    squiggly: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M4 12C4 12 6 10 8 12C10 14 12 10 14 12C16 14 18 10 20 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
-      </svg>
-    ),
-
     note: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -490,6 +473,9 @@ const ICON_RENDERERS = {
     formatUnderline: (size, color, style, className) => renderMaskIcon(textUnderlineUrl, size, color, style, className, size * 0.89),
     formatStrikethrough: (size, color, style, className) => renderMaskIcon(textStrikethroughUrl, size, color, style, className, size * 1.04),
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
+    formatSquiggle: (size, color, style, className) => renderMaskIcon(textSquiggleUrl, size, color, style, className),
+    formatHyperlink: (size, color, style, className) => renderMaskIcon(textHyperlinkUrl, size, color, style, className),
+    formatRedact: (size, color, style, className) => renderMaskIcon(textRedactUrl, size, color, style, className),
     formatPan: (size, color, style, className) => renderMaskIcon(panHandUrl, size, color, style, className, size * 0.88),
     filter: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
@@ -605,6 +591,11 @@ const ICON_RENDERERS = {
 const ICON_ALIASES = {
   highlighter: 'formatHighlight',
   pan: 'formatPan',
+  underline: 'formatUnderline',
+  strikeout: 'formatStrikethrough',
+  squiggly: 'formatSquiggle',
+  hyperlink: 'formatHyperlink',
+  redact: 'formatRedact',
 };
 
 const DEFAULT_CONTENT_TYPE_BY_ICON = {

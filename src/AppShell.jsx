@@ -2760,14 +2760,21 @@ export default function App({ devPreviewReturnTab = null }) {
               id="chrome-sub-toolbar-host"
               data-chrome-strip="true"
               style={{
-                display: isViewerVisible && !isMobileViewer ? 'block' : 'none',
+                display: isViewerVisible && (
+                  !isMobileViewer
+                  || bottomToolbarApi?.activeTool === 'text-select'
+                  || bottomToolbarApi?.contextTool === 'text-markup'
+                ) ? 'block' : 'none',
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 right: 0,
                 background: '#181c24',
                 cursor: 'default',
-                zIndex: 5400
+                zIndex: isMobileViewer && (
+                  bottomToolbarApi?.activeTool === 'text-select'
+                  || bottomToolbarApi?.contextTool === 'text-markup'
+                ) ? 5800 : 5400
               }}
             />
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>

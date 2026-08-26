@@ -73,15 +73,14 @@ test('text markup selection chrome exposes only left and right range handles', (
 });
 
 test('text action bar uses the locked SVG assets for every text markup action', () => {
-  assert.match(textActionBarSource, /text-markup-highlight\.svg/);
-  assert.match(textActionBarSource, /text-markup-underline\.svg/);
-  assert.match(textActionBarSource, /text-markup-squiggle\.svg/);
-  assert.match(textActionBarSource, /text-markup-strike\.svg/);
-  assert.match(textActionBarSource, /text-markup-link\.svg/);
-  assert.match(textActionBarSource, /text-markup-redact\.svg/);
+  assert.match(textActionBarSource, /import Icon from '\.\.\/Icons'/);
+  for (const iconName of ['formatHighlight', 'formatUnderline', 'formatSquiggle', 'formatStrikethrough', 'formatHyperlink', 'formatRedact']) {
+    assert.match(textActionBarSource, new RegExp(iconName));
+  }
+  assert.doesNotMatch(textActionBarSource, /text-markup-[a-z-]+\.svg/);
   assert.doesNotMatch(textActionBarSource, /WebkitMask|mask: `url/);
   assert.match(textActionBarSource, /function ToolIcon/);
-  assert.match(textActionBarSource, /width: 24, height: 24/);
+  assert.match(textActionBarSource, /size=\{24\}/);
 });
 
 test('mobile delete long-press targets exposed annotation body instead of transform handles', () => {

@@ -17,12 +17,10 @@ async function loadActionBar() {
   const componentPath = path.join(repoRoot, 'src/components/TextSelectionActionBar.jsx');
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
-  for (const name of ['highlight', 'underline', 'squiggle', 'strike', 'link', 'redact']) {
-    source = source.replace(
-      new RegExp(`import (\\w+) from '\\.\\./assets/text-markup-${name}\\.svg';`),
-      (_match, binding) => `const ${binding} = '${name}.svg';`,
-    );
-  }
+  source = source.replace(
+    "import Icon from '../Icons';",
+    "const Icon = ({ name, color, style }) => <span data-icon-name={name} data-icon-color={color} style={style} />;",
+  );
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-action-bar-test-'));
@@ -71,10 +69,17 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
   }
   try {
     await act(async () => root.render(React.createElement(Harness)));
-    assert.ok(document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]'));
-    for (const [label, asset] of [['Remove Highlight', 'highlight.svg'], ['Apply Underline', 'underline.svg'], ['Apply Squiggle', 'squiggle.svg'], ['Remove Strike Through', 'strike.svg'], ['Apply Hyperlink', 'link.svg'], ['Apply Redact', 'redact.svg']]) {
-      assert.equal(document.querySelector(`button[aria-label="${label}"] img`)?.getAttribute('src'), asset);
+    const toolbar = document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]');
+    assert.ok(toolbar);
+    assert.equal(toolbar.style.gap, 'clamp(4px, 1vw, 16px)');
+    assert.equal(toolbar.style.overflowX, 'auto');
+    assert.equal(toolbar.style.justifyContent, 'safe center');
+    assert.equal(document.querySelector('[data-text-mark-control="highlight"]').style.padding, '0px');
+    for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Apply Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
+      assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
+    assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
+    assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
     const underline = document.querySelector('button[aria-label="Apply Underline"]');
     await act(async () => underline.click());
     assert.deepEqual(actions, ['underline']);
