@@ -23474,11 +23474,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Color swatch so a Border of 0–19 or Fill of 0–7 looked like 20% /
         // 8% until the picker was re-touched, even though persist / export /
         // flatten and the page view already kept the 0–1 value.
+        // Multiplying Fill by leftover Border then dropped a Fill of 90
+        // to 9% whenever Border was 10, until Fill was re-touched.
         const borderOpacity = Math.max(0, Math.min(1, Number(style.borderOpacity ?? 1)));
         const fillOpacityValue = Math.max(0, Math.min(1, Number(style.fillOpacity ?? 0.4)));
         return {
           stroke: effectivePreviewColor(border, borderOpacity),
-          fill: effectivePreviewColor(fill, borderOpacity * fillOpacityValue),
+          fill: effectivePreviewColor(fill, fillOpacityValue),
         };
       }
       if (!currentSelectedAnnot || !selectionMappedTool) return { fill: null, stroke: null };
