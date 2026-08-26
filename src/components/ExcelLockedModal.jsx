@@ -10,6 +10,7 @@
 import { useRef } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
+import Icon from '../Icons';
 
 const ExcelLockedModal = ({
   isOpen,
@@ -76,9 +77,7 @@ const ExcelLockedModal = ({
             justifyContent: 'center',
             flexShrink: 0,
           }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.status.warning} strokeWidth="2">
-              <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <Icon name="warningCircle" size={20} color={COLORS.status.warning} />
           </div>
           <h3 style={{
             margin: 0,

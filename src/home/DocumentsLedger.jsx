@@ -370,7 +370,7 @@ export default function DocumentsLedger({
     const isChecked = selDocs.has(d.id);
     return (
       <span style={{ width: size, height: size, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {isChecked && <span style={{ color: '#15110a', fontSize: 11, lineHeight: 1 }}>✓</span>}
+        {isChecked && <Icon name="check" size={11} color="#15110a" />}
       </span>
     );
   };
@@ -483,7 +483,7 @@ export default function DocumentsLedger({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
                       {docSelectMode ? (
                         <span style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {isChecked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                          {isChecked && <Icon name="check" size={10} color="#15110a" />}
                         </span>
                       ) : (
                         <button

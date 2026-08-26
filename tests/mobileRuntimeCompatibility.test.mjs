@@ -333,7 +333,7 @@ test('unsupported annotation notice is compact above the mobile dock and expands
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(\(expanded\) => !expanded\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /event\.stopPropagation\(\); handleDismiss\(\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-label="Information"/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /<circle cx="10" cy="10" r="8"/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /<Icon name="infoCircle" size=\{20\}/);
   assert.doesNotMatch(UNSUPPORTED_NOTICE_SOURCE, /M2 10C4\.1 6\.6/);
 });
 

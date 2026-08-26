@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DismissBarrier from './DismissBarrier';
+import Icon from '../Icons';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -316,16 +317,10 @@ function Dropdown({ value, options, onChange, width }) {
 // them without a text label. Sized to feel touch-comfortable but still
 // compact inside the right-rail orientation row.
 const CcwArrow = () => (
-  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-    <path d="M4 12a8 8 0 1 0 2.4-5.7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    <polyline points="3 3 3 8 8 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
+  <Icon name="rotateCcw" size={14} />
 );
 const CwArrow = () => (
-  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-    <path d="M20 12a8 8 0 1 1-2.4-5.7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    <polyline points="21 3 21 8 16 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
+  <Icon name="rotateCw" size={14} />
 );
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1184,9 +1179,9 @@ export default function PrintPanel({
         </div>
         <div className="pp-copies-row">
           <div className="pp-stepper">
-            <button type="button" onClick={() => setCopies((c) => Math.max(1, c - 1))} aria-label="Fewer copies">−</button>
+            <button type="button" onClick={() => setCopies((c) => Math.max(1, c - 1))} aria-label="Fewer copies"><Icon name="minus" size={16} /></button>
             <input value={copies} onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value, 10) || 1))} />
-            <button type="button" onClick={() => setCopies((c) => Math.min(999, c + 1))} aria-label="More copies">+</button>
+            <button type="button" onClick={() => setCopies((c) => Math.min(999, c + 1))} aria-label="More copies"><Icon name="plus" size={16} /></button>
           </div>
           <Toggle on={collate} onChange={setCollate}>Collate</Toggle>
           <Toggle on={duplex} onChange={setDuplex}>Duplex</Toggle>
@@ -1313,7 +1308,7 @@ export default function PrintPanel({
             <span className="pp-title-count">· {totalPages} pages</span>
           </div>
           <div className="pp-title-actions">
-            <button className="pp-close" onClick={() => handleCancel('button')} aria-label="Close print panel">✕</button>
+            <button className="pp-close" onClick={() => handleCancel('button')} aria-label="Close print panel"><Icon name="close" size={18} /></button>
           </div>
         </header>
 
@@ -1519,13 +1514,13 @@ export default function PrintPanel({
                 <span className="pp-bigprev-title-trail">&nbsp;of {totalPages}&nbsp;<span style={{ opacity: 0.6 }}>({isLandscapePage ? 'landscape' : 'portrait'})</span></span>
               </div>
               <div className="pp-bigprev-zoom">
-                <button onClick={() => setBigPreviewZoom((z) => Math.max(0.25, z - 0.25))}>−</button>
+                <button onClick={() => setBigPreviewZoom((z) => Math.max(0.25, z - 0.25))} aria-label="Zoom out"><Icon name="minus" size={16} /></button>
                 <span>{Math.round(bigPreviewZoom * 100)}%</span>
-                <button onClick={() => setBigPreviewZoom((z) => Math.min(6, z + 0.25))}>+</button>
+                <button onClick={() => setBigPreviewZoom((z) => Math.min(6, z + 0.25))} aria-label="Zoom in"><Icon name="plus" size={16} /></button>
                 <button onClick={() => setBigPreviewZoom(1)} style={{ width: 'auto', padding: '0 10px' }}>Fit</button>
                 {/* UX 2026-04-23: the close affordance is just an X icon to
                     mirror the panel title bar and standard modal pattern. */}
-                <button className="pp-bigprev-close" onClick={() => setBigPreviewOpen(false)} aria-label="Close bigger preview">✕</button>
+                <button className="pp-bigprev-close" onClick={() => setBigPreviewOpen(false)} aria-label="Close bigger preview"><Icon name="close" size={18} /></button>
               </div>
             </div>
             <div className="pp-bigprev-stage" ref={bigStageRef} onClick={(e) => e.stopPropagation()}>

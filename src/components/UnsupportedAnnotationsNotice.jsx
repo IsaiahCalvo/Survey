@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';
+import Icon from '../Icons';
 
 const COLLAPSED_DISMISS_MS = 3000;
 const EXPANDED_DISMISS_MS = 5000;
@@ -127,6 +128,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     >
       {/* Circled information mark: explanatory notice, not visibility toggle. */}
       <div
+        aria-label="Information"
         style={{
           flexShrink: 0,
           width: 20,
@@ -136,18 +138,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           justifyContent: 'center',
         }}
       >
-        <svg
-          aria-label="Information"
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle cx="10" cy="10" r="8" stroke="#d8a84e" strokeWidth="1.5" />
-          <circle cx="10" cy="6.2" r="1" fill="#d8a84e" />
-          <path d="M10 9V14" stroke="#d8a84e" strokeWidth="1.7" strokeLinecap="round" />
-        </svg>
+        <Icon name="infoCircle" size={20} color="#d8a84e" />
       </div>
 
       {/* Message */}
@@ -193,20 +184,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         title="Dismiss"
         aria-label="Dismiss"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M4 4L12 12M12 4L4 12"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
+        <Icon name="close" size={16} />
       </button>
     </div>
   );

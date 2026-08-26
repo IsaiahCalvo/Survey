@@ -94,7 +94,7 @@ const SurveyMarkerLeadingSelect = ({
       }}
     >
       <span className="survey-marker-leading-checkbox" aria-hidden="true">
-        {selected && <span className="survey-marker-leading-checkmark">✓</span>}
+        {selected && <Icon name="check" size={12} className="survey-marker-leading-checkmark" />}
       </span>
     </button>
   );
@@ -185,7 +185,7 @@ const ExcelUnplacedRows = ({
               aria-label={`Dismiss ${row.itemName || 'this row'}`}
               onClick={() => onDismiss?.(row.key)}
             >
-              ×
+              <Icon name="close" size={14} />
             </button>
           </li>
         ))}
@@ -2616,7 +2616,7 @@ const SurveySpacesRail = ({
                               )}
                             >
                               <span style={{ fontSize: '14px' }}>
-                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? '✓' : '!') : '○'}
+                                {verifying ? '...' : verdict ? (liveSyncVerify.ready ? <Icon name="check" size={14} /> : '!') : '○'}
                               </span>
                               Verify Live Sync
                             </div>

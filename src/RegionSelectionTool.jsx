@@ -3562,18 +3562,7 @@ const RegionSelectionTool = ({
             zIndex: 100002
           }}
         >
-          <span
-            style={{
-              color: '#000',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              lineHeight: '1',
-              fontFamily: FONT_FAMILY,
-              textShadow: '0 0 3px rgba(255, 255, 255, 0.8), 0 0 6px rgba(255, 255, 255, 0.6)'
-            }}
-          >
-            +
-          </span>
+          <Icon name="plus" size={16} color="#000" style={{ filter: 'drop-shadow(0 0 3px rgba(255, 255, 255, 0.8))' }} />
         </div>
       )}
 
@@ -3589,18 +3578,7 @@ const RegionSelectionTool = ({
             zIndex: 100002
           }}
         >
-          <span
-            style={{
-              color: '#000',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              lineHeight: '1',
-              fontFamily: FONT_FAMILY,
-              textShadow: '0 0 3px rgba(255, 255, 255, 0.8), 0 0 6px rgba(255, 255, 255, 0.6)'
-            }}
-          >
-            −
-          </span>
+          <Icon name="minus" size={16} color="#000" style={{ filter: 'drop-shadow(0 0 3px rgba(255, 255, 255, 0.8))' }} />
         </div>
       )}
     </>

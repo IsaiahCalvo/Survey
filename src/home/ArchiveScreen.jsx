@@ -328,7 +328,7 @@ export default function ArchiveScreen({
           onClick={() => { setFilter(key); setMenuOpen(false); }}
         >
           <span>{label}</span>
-          <span>{filter === key ? '✓' : ''}</span>
+          <span>{filter === key ? <AppIcon name="check" size={12} /> : null}</span>
         </button>
       ))}
       <div className="archive-sort-menu-label" role="presentation">Sort by</div>
@@ -392,7 +392,7 @@ export default function ArchiveScreen({
       background: checked ? 'var(--gold)' : 'transparent',
       borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      {checked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+      {checked && <AppIcon name="check" size={10} color="#15110a" />}
     </span>
   );
 

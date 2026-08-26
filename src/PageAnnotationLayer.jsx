@@ -14,6 +14,7 @@ import { debugMark } from './utils/debugBridge';
 import * as contextMenuBridge from './utils/contextMenuBridge';
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './components/CompactColorPicker';
+import Icon from './Icons';
 
 // Patch getContext BEFORE importing Fabric.js so only Fabric canvases opt into willReadFrequently.
 // A global unconditional patch can slow PDF page rendering by disabling GPU acceleration.
@@ -9396,7 +9397,7 @@ const PageAnnotationLayer = memo(({
               onMouseEnter={(e) => e.currentTarget.style.color = '#ddd'}
               onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
             >
-              ×
+              <Icon name="close" size={16} />
             </button>
           </div>
 
