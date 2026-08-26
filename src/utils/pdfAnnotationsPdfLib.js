@@ -2266,6 +2266,17 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     if (stroke.visible) content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
     if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
     if (stroke.visible) content.push(`${n(strokeWidth)} w`);
+    // Live Style dash on Ellipse (and imported rotated Circle) stores
+    // strokeDashArray. Flatten already writes borderDashArray and Square
+    // /AP already writes dash via attachIndependentShapeAppearance, but
+    // this writer stroked the oval solid so Acrobat stayed solid until
+    // Style was re-touched. Same [dash] 0 d contract. Solid / absent
+    // omit the dash so default export stays byte-identical. Do not
+    // invent a Square/Circle /BS leftover — Survey reimport already
+    // keeps dash via metadata; this writes the existing /AP stream.
+    if (stroke.visible && Array.isArray(stroke.dash) && stroke.dash.length > 0) {
+      content.push(`[${stroke.dash.map(n).join(' ')}] 0 d`);
+    }
     content.push(
       `${n(2 * rx)} ${n(ry)} m`,
       `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
