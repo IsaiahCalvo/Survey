@@ -42,7 +42,7 @@ HIGH-RISK files not touched. Product writers not changed. `file.id` not stamped.
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-hex-opacity-unopened-audit-id-hunt.spec.mjs` **pending**.
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-hex-opacity-unopened-audit-id-hunt.spec.mjs` **2 / 2 (6.3s)**.
 
 - Intended: P1-38 Fill 40 + Match Fill selected **2px**; viewBox / `file.id`
 - Break: empty reload invents 0; hubPreview Color / Hex **0**
