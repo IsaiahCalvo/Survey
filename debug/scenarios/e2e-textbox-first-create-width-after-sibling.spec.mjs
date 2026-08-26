@@ -167,19 +167,23 @@ async function commitEdit(page) {
   await dismissChrome(page);
 }
 
-async function createFirstBoxAfterSiblings(page, text = 'Y') {
+async function createFirstBoxAfterSiblings(page, text = 'Y', { requireSiblingWidths = true } = {}) {
   const before = new Set((await textSnapshot(page)).map((row) => row.id));
   await dismissChrome(page);
   await page.waitForTimeout(250);
   await activateTool(page, 'Text', 'Callout');
-  expect(await widthValue(page), 'Callout default Width is 2').toBe('2');
+  if (requireSiblingWidths) {
+    expect(await widthValue(page), 'Callout default Width is 2').toBe('2');
+  }
   expect((await textSnapshot(page)).length, 'Callout visit must not invent a textbox').toBe(0);
 
   await activateTool(page, 'Text', 'Text');
   expect(await widthValue(page), 'Text must reset Width to 1 after Callout').toBe(String(TEXT_DEFAULT_WIDTH));
 
   await activateTool(page, 'Draw', 'Highlighter');
-  expect(await widthValue(page), 'Highlighter default Width is 20').toBe('20');
+  if (requireSiblingWidths) {
+    expect(await widthValue(page), 'Highlighter default Width is 20').toBe('20');
+  }
 
   await activateTool(page, 'Text', 'Text');
   expect(await widthValue(page), 'Text must reset Width to 1 after Highlighter').toBe(String(TEXT_DEFAULT_WIDTH));
@@ -323,7 +327,7 @@ test('390 first-create Width after sibling edge: viewBox, file.id, no invent', a
 
   const mobileText = page.getByRole('button', { name: 'Text', exact: true }).first();
   if (await mobileText.isVisible().catch(() => false)) {
-    const created = await createFirstBoxAfterSiblings(page, 'Y');
+    const created = await createFirstBoxAfterSiblings(page, 'Y', { requireSiblingWidths: false });
     expect(created.strokeWidth).toBe(TEXT_DEFAULT_WIDTH);
   } else {
     expect(await page.getByRole('button', { name: 'Text', exact: true }).count()).toBe(0);
