@@ -3,6 +3,8 @@
 // hardcode stroke: '#000000', so a next-draw Color never reached persist /
 // reimport / export until Border was touched again (selected-patch).
 // Callout first-create already stamps borderColor from strokeColor.
+// Text-tool DEFAULT_TOOL_PREFERENCES.strokeColor is already '#000000', so
+// the leftover only shows after next-draw Color Border leaves that default.
 // Distinct from leftover-18, textbox first-create Width (866693f6), and
 // textbox stroke /Border export of an already-patched box (99a07184).
 import test from 'node:test';
