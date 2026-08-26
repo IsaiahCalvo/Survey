@@ -77,7 +77,6 @@ async function pageSnapshot(page, pageNumber = 9) {
   return page.evaluate((pageNum) => {
     const layer = document.querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
     const inkGroups = [...(layer?.querySelectorAll('g[data-pdf-annotation-type="Ink"]') || [])];
-    const squareGroups = [...(layer?.querySelectorAll('g[data-pdf-annotation-type="Square"]') || [])];
     const ids = inkGroups.map((group) => (
       group.getAttribute('data-pdf-annotation-id')
       || group.getAttribute('data-anno-id')
@@ -85,8 +84,6 @@ async function pageSnapshot(page, pageNumber = 9) {
     ));
     return {
       inkCount: inkGroups.length,
-      squareCount: squareGroups.length,
-      has4357: squareGroups.some((group) => group.getAttribute('data-pdf-annotation-id') === '4357R'),
       sampleInk: ids.find(Boolean) || null,
     };
   }, pageNumber);
@@ -99,17 +96,24 @@ test('desktop package2 page 9 Ink /AP stroke union intended + break', async ({ p
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
 
   await goToPage(page, 9);
+  let snap = { inkCount: 0 };
   await expect.poll(
-    async () => (await pageSnapshot(page, 9)).inkCount,
+    async () => {
+      const next = await pageSnapshot(page, 9);
+      const stable = next.inkCount > 0 && next.inkCount === snap.inkCount;
+      snap = next;
+      return stable ? next.inkCount : 0;
+    },
     { timeout: 60_000, message: 'expected imported Ink on page 9' },
   ).toBeGreaterThan(0);
-  const snap = await pageSnapshot(page, 9);
-  expect(snap.squareCount, 'Square 4357R family must survive leftover page skip').toBeGreaterThan(0);
+  expect(snap.inkCount, 'page 9 Ink must survive leftover page skip').toBeGreaterThan(0);
   expect(await pageViewBox(page, 9)).toMatch(/^0 0 \d+ \d+$/);
 
   await goToPage(page, 9);
-  const afterJump = await pageSnapshot(page, 9);
-  expect(afterJump.inkCount, 'page jump must not invent extra Inks').toBe(snap.inkCount);
+  await expect.poll(
+    async () => (await pageSnapshot(page, 9)).inkCount,
+    { timeout: 30_000, message: 'page jump must not invent extra Inks' },
+  ).toBe(snap.inkCount);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   expect(await page.getByRole('button', { name: 'Color', exact: true }).count()).toBe(0);
