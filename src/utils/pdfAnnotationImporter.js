@@ -4410,6 +4410,11 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   const strokeWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
   const hasVisibleStroke = strokeWidth > 0;
   const hasVisibleFill = fillColor !== 'transparent';
+  // Import leftover-omitted strokeDashArray so a native /BS /S /D Square
+  // painted leftover-solid. Select Width then leftover-replaced that
+  // dashed /BS with leftover-solid /AP. Stamp /D — same contract as
+  // Line / PolyLine / Polygon. Do not invent Square / Circle dict /BS.
+  const dashArray = extractAnnotationDashArray(annotation);
 
   // Ignore shape annotations that are fully invisible in the source PDF.
   if (!hasVisibleStroke && !hasVisibleFill) {
@@ -4458,6 +4463,7 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     fill: fillColor,
     stroke: hasVisibleStroke ? hexToRgba(strokeColor, strokeOpacity) : null,
     strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
+    ...(dashArray && hasVisibleStroke ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     strokeUniform: true,
     // Required Fabric.js properties for proper interaction
     selectable: true,
@@ -4551,6 +4557,10 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
   const strokeOpacity = extractAnnotationStrokeOpacity(annotation, 1);
   const fillColor = getShapeFillColor(annotation, strokeColor);
   const strokeWidth = getBorderWidth(annotation, 1);
+  // Same leftover-omitted /BS /D stamp as Square. Select Width leftover-
+  // replaced native dashed Circle with leftover-solid /AP. Do not invent
+  // Square / Circle dict /BS.
+  const dashArray = extractAnnotationDashArray(annotation);
 
   // UX 2026-04-22: recover tilt + true oblong dimensions from the /AP
   // appearance matrix when present. Drawboard tilts ellipses by baking a
@@ -4575,6 +4585,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
       fill: fillColor,
       stroke: hexToRgba(strokeColor, strokeOpacity),
       strokeWidth: strokeWidth * scale,
+      ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
       strokeUniform: true,
       selectable: true,
       evented: true,
@@ -4601,6 +4612,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     fill: fillColor,
     stroke: hexToRgba(strokeColor, strokeOpacity),
     strokeWidth: strokeWidth * scale,
+    ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     strokeUniform: true,
     // If it's an ellipse, store the original dimensions
     scaleX: viewportRect.width / (radius * 2),
