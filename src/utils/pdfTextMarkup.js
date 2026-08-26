@@ -62,7 +62,8 @@ export function buildTextMarkupLinkRegions(annotations, pageSize) {
   return (annotations || []).flatMap((annotation) => {
     if (annotation?.data?.type !== 'text-markup' || annotation.data.markupType !== 'link') return [];
     const url = normalizeTextLinkUrl(annotation.data.linkUrl);
-    if (!url) return [];
+    const pageNumber = Math.trunc(Number(annotation.data.linkPageNumber));
+    if (!url && !(pageNumber > 0)) return [];
     return (annotation.data.quads || []).map((quad, index) => {
       const xs = [quad.x1, quad.x2, quad.x3, quad.x4].map(Number);
       const ys = [quad.y1, quad.y2, quad.y3, quad.y4].map(Number);
@@ -73,7 +74,9 @@ export function buildTextMarkupLinkRegions(annotations, pageSize) {
       if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return null;
       return {
         id: `${annotation.id || annotation.data.id || 'link'}-${index}`,
+        mode: pageNumber > 0 ? 'page' : 'web',
         url,
+        pageNumber: pageNumber > 0 ? pageNumber : null,
         left: `${left / width * 100}%`,
         top: `${top / height * 100}%`,
         width: `${(right - left) / width * 100}%`,
@@ -158,13 +161,17 @@ export function createTextMarkupAnnotation({
   opacity,
   overlapMode = 'layered',
   linkUrl = null,
+  linkPageNumber = null,
   authorId = null,
 }) {
   const type = normalizeTextMarkupType(markupType);
   const resolvedLinkUrl = type === 'link' ? normalizeTextLinkUrl(linkUrl) : null;
+  const resolvedLinkPageNumber = type === 'link' && Number(linkPageNumber) >= 1
+    ? Math.trunc(Number(linkPageNumber))
+    : null;
   const mergedQuads = mergeLineQuads(quads);
   const bounds = quadBounds(mergedQuads);
-  if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber)) || (type === 'link' && !resolvedLinkUrl)) return null;
+  if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber)) || (type === 'link' && !resolvedLinkUrl && !resolvedLinkPageNumber)) return null;
   const resolvedColor = type === 'redact' ? '#000000' : type === 'link' ? '#2563eb' : color;
   const resolvedOpacity = type === 'redact' || type === 'link' ? 1 : clamp01(opacity ?? 0.3);
   const pdfType = type === 'highlight' ? 'Highlight'
@@ -210,6 +217,7 @@ export function createTextMarkupAnnotation({
       quads: mergedQuads,
       overlapMode: overlapMode === 'uniform' ? 'uniform' : 'layered',
       ...(resolvedLinkUrl ? { linkUrl: resolvedLinkUrl } : {}),
+      ...(resolvedLinkPageNumber ? { linkPageNumber: resolvedLinkPageNumber } : {}),
       ...(authorId ? { authorId } : {}),
     },
     meta: authorId ? { authorId } : undefined,
@@ -314,7 +322,14 @@ const textOffsetAtClientPoint = (root, clientX, clientY) => {
   return bestBase + bestOffset;
 };
 
-const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer) => {
+const orderedOffsets = (candidate, fixedOffset, storedRange, handleId) => {
+  const fixed = Number.isFinite(Number(fixedOffset))
+    ? Number(fixedOffset)
+    : (handleId === 'ml' ? Number(storedRange.end) : Number(storedRange.start));
+  return { start: Math.min(candidate, fixed), end: Math.max(candidate, fixed) };
+};
+
+const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOffset) => {
   const storedRange = annotation?.data?.textRange;
   const model = annotation?.data?.textRangeModel;
   const runs = Array.isArray(model?.runs) ? model.runs : [];
@@ -334,8 +349,7 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer) => {
   const ratio = Math.max(0, Math.min(1, (pointer.x - target.left) / (target.right - target.left)));
   const visualRatio = target.rtl ? 1 - ratio : ratio;
   const candidate = target.start + Math.round((target.end - target.start) * visualRatio);
-  const start = handleId === 'ml' ? Math.min(candidate, storedRange.end) : storedRange.start;
-  const end = handleId === 'mr' ? Math.max(candidate, storedRange.start) : storedRange.end;
+  const { start, end } = orderedOffsets(candidate, fixedOffset, storedRange, handleId);
   if (end <= start) return null;
   const quads = [];
   for (const run of runs) {
@@ -371,7 +385,7 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer) => {
   };
 };
 
-const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth, pageHeight) => {
+const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth, pageHeight, fixedOffset) => {
   if (typeof document === 'undefined' || !Number.isFinite(pointer.y)) return null;
   const storedRange = annotation?.data?.textRange;
   const pageNumber = Number(annotation?.data?.pageNumber);
@@ -384,8 +398,7 @@ const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth,
   const clientY = pageRect.top + pointer.y * pageRect.height / pageHeight;
   const candidate = textOffsetAtClientPoint(textLayer, clientX, clientY);
   if (!Number.isFinite(candidate)) return null;
-  const start = handleId === 'ml' ? Math.min(candidate, storedRange.end) : storedRange.start;
-  const end = handleId === 'mr' ? Math.max(candidate, storedRange.start) : storedRange.end;
+  const { start, end } = orderedOffsets(candidate, fixedOffset, storedRange, handleId);
   if (end <= start) return null;
   const startBoundary = boundaryAtTextOffset(textLayer, start);
   const endBoundary = boundaryAtTextOffset(textLayer, end);
@@ -410,7 +423,7 @@ const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth,
   };
 };
 
-export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, pageWidth, pageHeight) {
+export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, pageWidth, pageHeight, fixedTextOffset) {
   if (annotation?.data?.type !== 'text-markup' || !['ml', 'mr'].includes(handleId)) return annotation;
   const quads = Array.isArray(annotation.data.quads)
     ? annotation.data.quads.map((quad) => ({ ...quad }))
@@ -419,9 +432,9 @@ export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, p
     ? { x: Number(pointerX?.x), y: Number(pointerX?.y) }
     : { x: Number(pointerX), y: Number.NaN };
   if (quads.length === 0 || !Number.isFinite(pointer.x)) return annotation;
-  const storedModelResult = resizeTextMarkupFromStoredModel(annotation, handleId, pointer);
+  const storedModelResult = resizeTextMarkupFromStoredModel(annotation, handleId, pointer, fixedTextOffset);
   if (storedModelResult) return storedModelResult;
-  const textLayerResult = resizeTextMarkupFromTextLayer(annotation, handleId, pointer, pageWidth, pageHeight);
+  const textLayerResult = resizeTextMarkupFromTextLayer(annotation, handleId, pointer, pageWidth, pageHeight, fixedTextOffset);
   if (textLayerResult) return textLayerResult;
   // Old saved marks do not contain a stable text boundary model. Changing
   // their quads would leave Copy/PDF export tied to stale selectedText.

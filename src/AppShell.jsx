@@ -2051,7 +2051,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
                   <>
-                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'text-markup') ? (
+                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'text-markup' || bottomToolbarApi.contextTool === 'text-select') ? (
                   /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
                      line). Checker pattern shows through low-opacity strokes
                      and a faint hairline ring lifts pure black off the dark

@@ -206,6 +206,7 @@ export function useSVGInteraction({
     currentAngle: undefined, // rotate: current angle during drag
     originalTextMarkup: null,
     currentTextMarkup: null,
+    fixedTextOffset: null,
     groupOriginals: null, // group-move: { [idx]: { left, top } } for all selected annotations
     // UX: 2026-04-20 — callout originals captured alongside annotation
     // originals when the multi-selection includes callouts. Live-painted
@@ -236,6 +237,7 @@ export function useSVGInteraction({
     lastSafeCalloutPositions: null,
     diagGestureId: null,
   });
+  const textMarkupCycleRef = useRef(null);
   const interactionStateRef = useRef('idle');
 
   // UX: Phase 19 — AutoCAD marquee state. Separate from dragStateRef so
@@ -600,6 +602,46 @@ export function useSVGInteraction({
         return next;
       });
       return; // Don't initiate drag on shift-click toggle
+    }
+
+    const clickedTextMarkup = annotations?.objects?.[index];
+    if (clickedTextMarkup?.data?.type === 'text-markup') {
+      const rangeKey = JSON.stringify({
+        pageNumber: clickedTextMarkup.data.pageNumber,
+        textRange: clickedTextMarkup.data.textRange || null,
+        quads: clickedTextMarkup.data.quads || [],
+      });
+      const candidates = (annotations?.objects || [])
+        .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+        .filter(({ candidate }) => candidate?.data?.type === 'text-markup')
+        .filter(({ candidate }) => JSON.stringify({
+          pageNumber: candidate.data.pageNumber,
+          textRange: candidate.data.textRange || null,
+          quads: candidate.data.quads || [],
+        }) === rangeKey)
+        .map(({ candidateIndex }) => candidateIndex);
+      const previous = textMarkupCycleRef.current;
+      const samePoint = previous
+        && previous.rangeKey === rangeKey
+        && Math.hypot(Number(e.clientX) - previous.clientX, Number(e.clientY) - previous.clientY) <= 4;
+      const currentPosition = samePoint
+        ? Math.max(0, candidates.indexOf(previous.selectedIndex))
+        : Math.max(0, candidates.indexOf(index));
+      const targetIndex = samePoint && candidates.length > 1
+        ? candidates[(currentPosition + 1) % candidates.length]
+        : index;
+      textMarkupCycleRef.current = {
+        rangeKey,
+        clientX: Number(e.clientX),
+        clientY: Number(e.clientY),
+        selectedIndex: targetIndex,
+      };
+      selectAnnotation(targetIndex, false);
+      onSelectedCalloutIdsChange?.(new Set());
+      dragStateRef.current = { ...dragStateRef.current, active: false };
+      setVisualTransform(null);
+      e.preventDefault();
+      return;
     }
 
     const wasAlreadySelected = selectedIds.has(index);
@@ -2215,6 +2257,7 @@ export function useSVGInteraction({
         svgPoint,
         pageWidth,
         pageHeight,
+        ds.fixedTextOffset,
       );
       ds.currentTextMarkup = preview;
       setVisualTransform({
@@ -3863,7 +3906,7 @@ export function useSVGInteraction({
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
       originalPoints: null, vertexIndex: null,
-      originalTextMarkup: null, currentTextMarkup: null,
+      originalTextMarkup: null, currentTextMarkup: null, fixedTextOffset: null,
       currentAnnotations: null,
       diagGestureId: null,
     };
@@ -3882,6 +3925,7 @@ export function useSVGInteraction({
       mode: null,
       originalTextMarkup: null,
       currentTextMarkup: null,
+      fixedTextOffset: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
@@ -4195,6 +4239,7 @@ export function useSVGInteraction({
         pointerId: e.pointerId,
         originalTextMarkup: deepClone(obj),
         currentTextMarkup: null,
+        fixedTextOffset: handleId === 'ml' ? obj.data?.textRange?.end : obj.data?.textRange?.start,
       };
       setInteractionState('resizing');
       return;

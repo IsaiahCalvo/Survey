@@ -184,6 +184,30 @@ test('live PDF export writes selected-text links and redaction annotations', asy
   assert.equal(redact.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
 });
 
+test('live PDF export writes selected-text page links as GoTo actions', async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([200, 200]);
+  doc.addPage([200, 200]);
+  const sourceBytes = await doc.save();
+  const file = { name: 'page-link.pdf', async arrayBuffer() { return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength); } };
+  const link = createTextMarkupAnnotation({
+    id: 'text-page-link', pageNumber: 1, selectionGroupId: 'page-link-group', markupType: 'link',
+    selectedText: 'Next page', linkPageNumber: 2,
+    quads: [{ x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 }],
+  });
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    file,
+    { 1: { objects: [link] } },
+    { 1: { width: 200, height: 200 }, 2: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-page-link' },
+  );
+  const [dict] = await getPdfAnnotationDicts(bytes);
+  const action = dict.lookup(PDFName.of('A'));
+  assert.equal(action.lookup(PDFName.of('S')), PDFName.of('GoTo'));
+  assert.equal(action.lookup(PDFName.of('D')).asArray()[1], PDFName.of('Fit'));
+});
+
 test('native text markup export converts rotated PDF.js viewport quads into base PDF coordinates', async () => {
   const viewportSizes = [
     { width: 200, height: 100 },

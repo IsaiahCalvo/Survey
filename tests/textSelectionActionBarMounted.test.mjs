@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-
 import { JSDOM } from 'jsdom';
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -18,134 +17,79 @@ async function loadActionBar() {
   const componentPath = path.join(repoRoot, 'src/components/TextSelectionActionBar.jsx');
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
-  source = source
-    .replace("import Icon from '../Icons';", 'const Icon = ({ name, size }) => <svg data-icon-name={name} width={size} height={size} />;')
-    .replace("import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';", 'const computeTextSelectionActionBarPosition = () => ({ left: 100, top: 100 });')
-    .replace("import highlightIconSvg from '../assets/text-markup-highlight.svg';", "const highlightIconSvg = 'highlight.svg';")
-    .replace("import squiggleIconSvg from '../assets/text-markup-squiggle.svg';", "const squiggleIconSvg = 'squiggle.svg';")
-    .replace("import linkIconSvg from '../assets/text-markup-link.svg';", "const linkIconSvg = 'link.svg';")
-    .replace("import redactIconSvg from '../assets/text-markup-redact.svg';", "const redactIconSvg = 'redact.svg';");
+  for (const name of ['highlight', 'underline', 'squiggle', 'strike', 'link', 'redact']) {
+    source = source.replace(
+      new RegExp(`import (\\w+) from '\\.\\./assets/text-markup-${name}\\.svg';`),
+      (_match, binding) => `const ${binding} = '${name}.svg';`,
+    );
+  }
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-action-bar-test-'));
   const modulePath = path.join(tempDir, 'TextSelectionActionBar.mjs');
   await writeFile(modulePath, executable);
-  return {
-    ActionBar: (await import(pathToFileURL(modulePath).href)).default,
-    cleanup: () => rm(tempDir, { recursive: true, force: true }),
-  };
+  return { ActionBar: (await import(pathToFileURL(modulePath).href)).default, cleanup: () => rm(tempDir, { recursive: true, force: true }) };
 }
 
-test('mounted overlap select receives pointer input, changes mode, and keeps the action bar mounted', async () => {
+test('mounted text markup strip stacks marks, focuses paint, and opens both link modes', async () => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
-  globalThis.window = dom.window;
-  globalThis.document = dom.window.document;
-  globalThis.HTMLElement = dom.window.HTMLElement;
-  globalThis.Node = dom.window.Node;
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true });
   dom.window.HTMLElement.prototype.attachEvent = () => {};
   dom.window.HTMLElement.prototype.detachEvent = () => {};
-
   const { ActionBar, cleanup } = await loadActionBar();
-  const changes = [];
   const actions = [];
-  const selection = { pages: [{ pageNumber: 1 }], anchor: { left: 100, top: 100 } };
+  const focused = [];
   const root = createRoot(document.getElementById('root'));
   function Harness() {
-    const [mode, setMode] = useState('layered');
-    const [activeMarkupTypes, setActiveMarkupTypes] = useState(['highlight', 'strikeout']);
+    const [active, setActive] = useState(['highlight', 'strikeout']);
+    const [focus, setFocus] = useState('highlight');
     const [linkOpen, setLinkOpen] = useState(false);
-    const [linkUrl, setLinkUrl] = useState('');
+    const [mode, setMode] = useState('web');
+    const [value, setValue] = useState('');
     return React.createElement(ActionBar, {
-      selection,
-      color: '#ffff00',
-      opacity: 0.3,
-      overlapMode: mode,
-      activeMarkupTypes,
+      selection: { pages: [{ pageNumber: 1 }] },
+      activeMarkupTypes: active,
+      focusedPaintMark: focus,
+      paintByMark: {
+        highlight: { color: '#f5c229', opacity: 30 }, underline: { color: '#ef3029', opacity: 100 },
+        squiggly: { color: '#f0f1f4', opacity: 100 }, strikeout: { color: '#3d63dc', opacity: 100 },
+      },
       linkEditorOpen: linkOpen,
-      linkUrl,
+      linkMode: mode,
+      linkValue: value,
       onAction: (action) => {
         actions.push(action);
-        if (action === 'copy') return;
-        if (action === 'link') {
-          setLinkOpen(true);
-          return;
-        }
-        setActiveMarkupTypes((current) => (
-          current.includes(action)
-            ? current.filter((type) => type !== action)
-            : [...current, action]
-        ));
+        if (action === 'link') return setLinkOpen((open) => !open);
+        setActive((current) => current.includes(action) ? current.filter((type) => type !== action) : [...current, action]);
       },
-      onColorClick: () => {},
-      onLinkUrlChange: setLinkUrl,
+      onFocusPaint: (mark) => { focused.push(mark); setFocus(mark); },
+      onLinkModeChange: setMode,
+      onLinkValueChange: setValue,
       onLinkSubmit: () => setLinkOpen(false),
       onLinkCancel: () => setLinkOpen(false),
-      onOverlapModeChange: (nextMode) => {
-        changes.push(nextMode);
-        setMode(nextMode);
-      },
     });
   }
-
   try {
     await act(async () => root.render(React.createElement(Harness)));
-    const select = document.querySelector('select[aria-label="Highlight overlap mode"]');
-    const selectPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });
-    select.dispatchEvent(selectPointerDown);
-    assert.equal(selectPointerDown.defaultPrevented, false, 'the native select press must not be blocked');
-
-    select.value = 'uniform';
-    await act(async () => select.dispatchEvent(new dom.window.Event('change', { bubbles: true })));
-    assert.deepEqual(changes, ['uniform']);
-    assert.equal(document.querySelector('select[aria-label="Highlight overlap mode"]').value, 'uniform');
-    assert.ok(document.querySelector('[data-text-selection-action-bar="true"]'));
-
-    assert.equal(document.querySelector('button[aria-label="Highlight"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(document.querySelector('button[aria-label="Underline"]').getAttribute('aria-pressed'), 'false');
-    assert.equal(document.querySelector('button[aria-label="Strikeout"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(document.querySelectorAll('[data-text-selection-action-icon="true"]').length, 7);
-    assert.ok(document.querySelector('button[aria-label="Underline"] svg[data-icon-name="underline"]'));
-    assert.equal(document.querySelector('button[aria-label="Squiggle"] img')?.getAttribute('src'), 'squiggle.svg');
-    assert.equal(document.querySelector('button[aria-label="Add link"] img')?.getAttribute('src'), 'link.svg');
-    assert.equal(document.querySelector('button[aria-label="Redact"] img')?.getAttribute('src'), 'redact.svg');
-    assert.equal(document.querySelector('button[aria-label="Squiggle"] [style*="mask"]'), null);
-    assert.equal(document.querySelector('button[aria-label="Strikeout"] [data-text-format-glyph]').textContent, 'S');
-    assert.equal(document.querySelector('button[aria-label="Highlight"]').style.background, 'transparent');
-    assert.equal(document.querySelector('button[aria-label="Highlight"]').style.color, 'rgb(216, 168, 78)');
-    assert.equal(document.querySelector('button[aria-label="Underline"]').style.background, 'transparent');
-    assert.equal(document.querySelector('button[aria-label="Underline"]').style.width, '24px');
-    assert.equal(document.querySelector('button[aria-label="Underline"]').style.height, '24px');
-
-    const underlineButton = document.querySelector('button[aria-label="Underline"]');
-    await act(async () => underlineButton.click());
+    assert.ok(document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]'));
+    for (const [label, asset] of [['Remove Highlight', 'highlight.svg'], ['Apply Underline', 'underline.svg'], ['Apply Squiggle', 'squiggle.svg'], ['Remove Strike Through', 'strike.svg'], ['Apply Hyperlink', 'link.svg'], ['Apply Redact', 'redact.svg']]) {
+      assert.equal(document.querySelector(`button[aria-label="${label}"] img`)?.getAttribute('src'), asset);
+    }
+    const underline = document.querySelector('button[aria-label="Apply Underline"]');
+    await act(async () => underline.click());
     assert.deepEqual(actions, ['underline']);
-    assert.equal(underlineButton.getAttribute('aria-pressed'), 'true');
-    assert.ok(document.querySelector('[data-text-selection-action-bar="true"]'), 'turning a mark on keeps the range toolbar open');
-    await act(async () => underlineButton.click());
-    assert.deepEqual(actions, ['underline', 'underline']);
-    assert.equal(underlineButton.getAttribute('aria-pressed'), 'false');
-    assert.ok(document.querySelector('[data-text-selection-action-bar="true"]'), 'turning a mark off keeps the range toolbar open');
-
-    const copyButton = document.querySelector('button[aria-label="Copy"]');
-    const buttonPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });
-    copyButton.dispatchEvent(buttonPointerDown);
-    assert.equal(buttonPointerDown.defaultPrevented, true, 'markup buttons must keep the PDF text range active');
-
-    await act(async () => document.querySelector('button[aria-label="Add link"]').click());
-    const linkInput = document.querySelector('input[aria-label="Link URL"]');
-    assert.ok(linkInput, 'the link action opens its URL field');
-    const inputPointerDown = new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true });
-    linkInput.dispatchEvent(inputPointerDown);
-    assert.equal(inputPointerDown.defaultPrevented, false, 'the URL field must receive focus and text input');
+    assert.equal(document.querySelector('button[aria-label="Remove Underline"]').getAttribute('aria-pressed'), 'true');
+    await act(async () => document.querySelector('button[aria-label="Set Underline color"]').click());
+    assert.deepEqual(focused, ['underline']);
+    assert.equal(document.querySelector('[data-text-mark-control="underline"]').style.borderColor, 'rgb(229, 173, 24)');
+    await act(async () => document.querySelector('button[aria-label="Apply Hyperlink"]').click());
+    assert.ok(document.querySelector('form[aria-label="Hyperlink controls"]'));
+    await act(async () => document.querySelector('form[aria-label="Hyperlink controls"] button[aria-pressed="false"]').click());
+    assert.equal(document.querySelector('input[aria-label="Page number"]')?.getAttribute('inputmode'), 'numeric');
   } finally {
     await act(async () => root.unmount());
     await cleanup();
     dom.window.close();
-    delete globalThis.window;
-    delete globalThis.document;
-    delete globalThis.HTMLElement;
-    delete globalThis.Node;
-    delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+    for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
   }
 });

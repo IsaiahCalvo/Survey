@@ -107,6 +107,19 @@ test('each linked text line gets its own exact click region', () => {
   ]);
 });
 
+test('page links keep an internal page target without inventing a URL', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'link-page', pageNumber: 1, markupType: 'link', linkPageNumber: 3,
+    quads: [{ x1: 10, y1: 20, x2: 50, y2: 20, x3: 10, y3: 30, x4: 50, y4: 30 }],
+  });
+  assert.equal(annotation.data.linkPageNumber, 3);
+  assert.equal(annotation.data.linkUrl, undefined);
+  assert.deepEqual(buildTextMarkupLinkRegions([annotation], { width: 100, height: 100 })[0], {
+    id: 'link-page-0', mode: 'page', url: null, pageNumber: 3,
+    left: '10%', top: '20%', width: '40%', height: '10%',
+  });
+});
+
 test('redactions use opaque black paint and native Redact identity', () => {
   const annotation = createTextMarkupAnnotation({
     id: 'redact-1', pageNumber: 1, markupType: 'redact', color: '#ff00ff', opacity: 0.2,
@@ -257,6 +270,21 @@ test('stored text model expands across lines and keeps selected text in sync', (
   assert.equal(expanded.data.quads.length, 2);
   assert.equal(expanded.data.selectedText, 'one\nline t');
   assert.deepEqual(getTextMarkupRangeHandlePositions(expanded).mr, { x: 80, y: 35 });
+});
+
+test('either range handle can cross the other while pointer ownership stays fixed', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'range-cross', pageNumber: 1, markupType: 'highlight', selectedText: 'cde',
+    textRange: { start: 2, end: 5 },
+    textRangeModel: { text: 'abcdefghij', runs: [{ start: 0, end: 10, left: 0, right: 100, top: 0, bottom: 10 }] },
+    quads: [{ x1: 20, y1: 0, x2: 50, y2: 0, x3: 20, y3: 10, x4: 50, y4: 10 }],
+  });
+  const crossedLeft = resizeTextMarkupHorizontalEdge(annotation, 'ml', { x: 80, y: 5 }, 100, 100, 5);
+  assert.deepEqual(crossedLeft.data.textRange, { start: 5, end: 8 });
+  assert.equal(crossedLeft.data.selectedText, 'fgh');
+  const crossedRight = resizeTextMarkupHorizontalEdge(annotation, 'mr', { x: 10, y: 5 }, 100, 100, 2);
+  assert.deepEqual(crossedRight.data.textRange, { start: 1, end: 2 });
+  assert.equal(crossedRight.data.selectedText, 'b');
 });
 
 test('resizing one stacked review mark leaves its siblings unchanged', () => {

@@ -1,176 +1,77 @@
-import Icon from '../Icons';
-import { computeTextSelectionActionBarPosition } from '../utils/pdfTextMarkup.js';
 import highlightIconSvg from '../assets/text-markup-highlight.svg';
+import underlineIconSvg from '../assets/text-markup-underline.svg';
 import squiggleIconSvg from '../assets/text-markup-squiggle.svg';
+import strikeIconSvg from '../assets/text-markup-strike.svg';
 import linkIconSvg from '../assets/text-markup-link.svg';
 import redactIconSvg from '../assets/text-markup-redact.svg';
 
-const ACTIONS = [
-  { id: 'copy', label: 'Copy', icon: 'copy' },
-  { id: 'highlight', label: 'Highlight', iconAsset: highlightIconSvg },
-  { id: 'underline', label: 'Underline', icon: 'underline' },
-  { id: 'squiggly', label: 'Squiggle', iconAsset: squiggleIconSvg },
-  { id: 'strikeout', label: 'Strikeout', textGlyph: 'S' },
-  { id: 'link', label: 'Add link', iconAsset: linkIconSvg, invertAsset: true },
-  { id: 'redact', label: 'Redact', iconAsset: redactIconSvg, invertAsset: true },
+const GOLD = '#e5ad18';
+const MARKS = [
+  { id: 'highlight', label: 'Highlight', icon: highlightIconSvg },
+  { id: 'underline', label: 'Underline', icon: underlineIconSvg },
+  { id: 'squiggly', label: 'Squiggle', icon: squiggleIconSvg },
+  { id: 'strikeout', label: 'Strike Through', icon: strikeIconSvg },
 ];
 
-function TextFormatGlyph({ action }) {
-  const underline = action.id === 'underline';
-  return (
-    <span
-      data-text-format-glyph={action.id}
-      style={{
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
-        fontSize: 13,
-        fontWeight: 400,
-        lineHeight: 'normal',
-        textDecoration: underline ? 'underline' : 'line-through',
-      }}
-    >
-      {action.textGlyph}
-    </span>
-  );
+const buttonBase = {
+  width: 32, height: 32, display: 'grid', placeItems: 'center', border: 0,
+  borderRadius: 5, background: 'transparent', color: '#e8e2d4', cursor: 'pointer', padding: 4,
+};
+
+function ToolIcon({ src, active = false, invert = false }) {
+  return <img src={src} alt="" aria-hidden="true" style={{ width: 24, height: 24, display: 'block', objectFit: 'contain', opacity: active ? 1 : 0.68, filter: invert ? 'invert(1)' : undefined }} />;
 }
 
-function ActionIcon({ action }) {
-  let content = null;
-  if (action.iconAsset) {
-    content = (
-      <img
-        src={action.iconAsset}
-        alt=""
-        style={{
-          width: 14,
-          height: 14,
-          display: 'block',
-          objectFit: 'contain',
-          filter: action.invertAsset ? 'invert(1)' : undefined,
-        }}
-      />
-    );
-  } else if (action.textGlyph) {
-    content = <TextFormatGlyph action={action} />;
-  } else {
-    content = <Icon name={action.icon} size={14} />;
-  }
+function MarkControl({ mark, active, focused, paint, onToggle, onFocusPaint }) {
   return (
-    <span
-      data-text-selection-action-icon="true"
-      aria-hidden="true"
-      style={{
-        width: 14,
-        height: 14,
-        display: 'grid',
-        placeItems: 'center',
-        flex: '0 0 14px',
-      }}
-    >
-      {content}
-    </span>
+    <div data-text-mark-control={mark.id} style={{ height: 36, display: 'flex', alignItems: 'center', gap: 1, padding: 1, border: `1px solid ${focused ? GOLD : 'transparent'}`, borderRadius: 7, background: focused ? '#20242b' : 'transparent', boxShadow: focused ? '0 0 0 1px #0d0f12 inset' : 'none' }}>
+      <button type="button" aria-label={`${active ? 'Remove' : 'Apply'} ${mark.label}`} aria-pressed={active} onClick={() => onToggle(mark.id)} style={buttonBase}>
+        <ToolIcon src={mark.icon} active={active} />
+      </button>
+      <button type="button" aria-label={`Set ${mark.label} color`} onClick={() => onFocusPaint(mark.id)} style={{ ...buttonBase, width: 30, padding: 5 }}>
+        <span aria-hidden="true" style={{ width: 18, height: 18, display: 'block', border: '1.5px solid #eef0f3', borderRadius: '50%', background: paint?.color || '#f5c229', opacity: Math.max(0.05, Math.min(1, Number(paint?.opacity ?? 30) / 100)), boxShadow: '0 0 0 1px #090b0e' }} />
+      </button>
+    </div>
   );
 }
 
 export default function TextSelectionActionBar({
   selection,
-  color,
-  opacity,
-  overlapMode,
   activeMarkupTypes = [],
-  colorPickerOpen = false,
+  paintByMark = {},
+  focusedPaintMark = null,
   linkEditorOpen = false,
-  linkUrl = '',
+  linkMode = 'web',
+  linkValue = '',
   linkError = '',
   onAction,
-  onColorClick,
-  onOverlapModeChange,
-  onLinkUrlChange,
+  onFocusPaint,
+  onLinkModeChange,
+  onLinkValueChange,
   onLinkSubmit,
   onLinkCancel,
 }) {
-  if (!selection?.pages?.length || !selection?.anchor) return null;
-  const chromeBottom = Math.max(
-    document.getElementById('chrome-top-host')?.getBoundingClientRect?.().bottom || 0,
-    colorPickerOpen
-      ? document.querySelector('[data-annotation-color-picker]')?.getBoundingClientRect?.().bottom || 0
-      : 0,
-  );
-  const { left, top } = computeTextSelectionActionBarPosition(selection.anchor, {
-    viewportWidth: window.innerWidth,
-    viewportHeight: window.innerHeight,
-    chromeBottom,
-  });
+  if (!selection?.pages?.length) return null;
+  const linkActive = activeMarkupTypes.includes('link');
+  const redactActive = activeMarkupTypes.includes('redact');
   return (
-    <div
-      data-text-selection-action-bar="true"
-      role="toolbar"
-      aria-label="Text selection actions"
-      style={{
-        position: 'fixed', left, top, transform: 'translateX(-50%)', zIndex: 100000,
-        display: 'flex', alignItems: 'center', gap: 1, padding: 3,
-        border: '1px solid #3a4252', borderRadius: 7, background: '#181b20',
-        boxShadow: '0 8px 24px rgba(0,0,0,.45)', color: '#e8e2d4',
-      }}
-      onPointerDown={(event) => {
-        // Keep the PDF text range active when action buttons are pressed, but
-        // let form controls receive a real pointer press so their menus open.
-        if (!event.target.closest('select, input, [data-link-editor-control]')) event.preventDefault();
-      }}
-    >
-      <button type="button" aria-label="Markup color" onClick={onColorClick} style={{ width: 24, height: 24, border: 0, borderRadius: 4, background: 'transparent', padding: 5 }}>
-        <span style={{ display: 'block', width: 14, height: 14, borderRadius: 3, background: color, opacity, border: '1px solid rgba(255,255,255,.45)' }} />
-      </button>
-      {ACTIONS.map((action) => {
-        const pressed = action.id !== 'copy' && activeMarkupTypes.includes(action.id);
-        return (
-        <button
-          key={action.id}
-          type="button"
-          title={action.label}
-          aria-label={action.label}
-          aria-pressed={action.id === 'copy' ? undefined : pressed}
-          onClick={() => onAction(action.id)}
-          style={{ width: 24, height: 24, display: 'grid', placeItems: 'center', border: 0, borderRadius: 4, color: pressed ? '#d8a84e' : '#e8e2d4', background: 'transparent', cursor: 'pointer', padding: 5 }}
-        >
-          <ActionIcon action={action} />
-        </button>
-        );
-      })}
-      <select
-        aria-label="Highlight overlap mode"
-        title="Layered keeps editable native PDF highlights. Uniform exports as one flat visual mask so overlaps stay even in other viewers."
-        value={overlapMode}
-        onChange={(event) => onOverlapModeChange(event.target.value)}
-        style={{ height: 24, maxWidth: 72, border: '1px solid #3a4252', borderRadius: 4, background: '#22262d', color: '#e8e2d4', fontSize: 10 }}
-      >
-        <option value="layered">Layered</option>
-        <option value="uniform">Uniform</option>
-      </select>
+    <div data-text-selection-action-bar="true" style={{ width: '100%' }}>
+      <div role="toolbar" aria-label="Text markup toolbar" style={{ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, borderBottom: '1px solid #30353e', background: 'linear-gradient(100deg, #15191f, #1b1f26)', color: '#e8e2d4', boxSizing: 'border-box' }} onPointerDown={(event) => { if (!event.target.closest('input, [data-text-link-control]')) event.preventDefault(); }}>
+        {MARKS.map((mark) => <MarkControl key={mark.id} mark={mark} active={activeMarkupTypes.includes(mark.id)} focused={focusedPaintMark === mark.id} paint={paintByMark[mark.id]} onToggle={onAction} onFocusPaint={onFocusPaint} />)}
+        <button type="button" aria-label={`${linkActive ? 'Remove' : 'Apply'} Hyperlink`} aria-pressed={linkActive} onClick={() => onAction('link')} style={buttonBase}><ToolIcon src={linkIconSvg} active={linkActive} invert /></button>
+        <button type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} style={buttonBase}><ToolIcon src={redactIconSvg} active={redactActive} invert /></button>
+      </div>
       {linkEditorOpen && (
-        <form
-          data-text-link-editor="true"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onLinkSubmit?.();
-          }}
-          style={{
-            position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
-            display: 'flex', alignItems: 'center', gap: 4, padding: 5,
-            border: '1px solid #3a4252', borderRadius: 7, background: '#181b20',
-            boxShadow: '0 8px 24px rgba(0,0,0,.45)',
-          }}
-        >
-          <input
-            autoFocus
-            aria-label="Link URL"
-            value={linkUrl}
-            onChange={(event) => onLinkUrlChange?.(event.target.value)}
-            placeholder="https://example.com"
-            style={{ width: 190, height: 26, border: '1px solid #3a4252', borderRadius: 4, background: '#22262d', color: '#e8e2d4', padding: '0 7px', fontSize: 11 }}
-          />
-          <button data-link-editor-control type="submit" aria-label="Apply link" style={{ height: 26, border: 0, borderRadius: 4, background: '#d8a84e', color: '#181b20', fontSize: 11, fontWeight: 700, padding: '0 8px' }}>Add</button>
-          <button data-link-editor-control type="button" aria-label="Cancel link" onClick={onLinkCancel} style={{ width: 26, height: 26, border: 0, borderRadius: 4, background: 'transparent', color: '#e8e2d4', fontSize: 16 }}>×</button>
-          {linkError && <span role="alert" style={{ position: 'absolute', top: '100%', left: 5, marginTop: 3, color: '#ff8b8b', fontSize: 10, whiteSpace: 'nowrap' }}>{linkError}</span>}
+        <form data-text-link-editor="true" aria-label="Hyperlink controls" onSubmit={(event) => { event.preventDefault(); onLinkSubmit?.(); }} style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, padding: '7px 12px', borderBottom: '1px solid #343942', background: 'linear-gradient(100deg, #171b21, #22262e)', boxShadow: '0 5px 16px rgba(0,0,0,.25)', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', padding: 3, border: '1px solid #474d58', borderRadius: 7, background: '#15181d' }}>
+            {[['web', 'Web address'], ['page', 'Page in document']].map(([mode, label]) => (
+              <button key={mode} data-text-link-control="true" type="button" aria-pressed={linkMode === mode} onClick={() => onLinkModeChange?.(mode)} style={{ height: 30, padding: '0 12px', border: 0, borderRadius: 5, background: linkMode === mode ? '#343a45' : 'transparent', color: linkMode === mode ? '#fff' : '#b9bec7', boxShadow: linkMode === mode ? '0 1px 3px rgba(0,0,0,.5)' : 'none', fontSize: 12, cursor: 'pointer' }}>{label}</button>
+            ))}
+          </div>
+          <input autoFocus aria-label={linkMode === 'page' ? 'Page number' : 'Web address'} inputMode={linkMode === 'page' ? 'numeric' : 'url'} value={linkValue} onChange={(event) => onLinkValueChange?.(event.target.value)} placeholder={linkMode === 'page' ? '1' : 'https://example.com'} style={{ width: 360, maxWidth: '42vw', height: 35, padding: '0 11px', border: `1px solid ${linkError ? '#e45b5b' : '#555b67'}`, borderRadius: 5, outline: 0, background: '#12151a', color: '#f2f3f5', fontSize: 12 }} />
+          <button data-text-link-control="true" type="submit" aria-label="Apply hyperlink" style={{ height: 34, padding: '0 16px', border: '1px solid #d1a125', borderRadius: 6, background: '#d4a11e', color: '#16191e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
+          <button data-text-link-control="true" type="button" aria-label="Cancel hyperlink" onClick={onLinkCancel} style={{ height: 34, padding: '0 16px', border: '1px solid #4d535e', borderRadius: 6, background: '#2b3039', color: '#d9dce2', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+          {linkError && <span role="alert" style={{ color: '#ff8b8b', fontSize: 11 }}>{linkError}</span>}
         </form>
       )}
     </div>

@@ -10,6 +10,7 @@
 // the PDF spec's counter-clockwise order — see the matching block in
 // pdfAnnotationsPdfLib.createHighlightAnnotation.
 
+import { PDFName } from 'pdf-lib';
 import {
   hexToRgbTriplet,
   pdfStringOrEmpty,
@@ -191,15 +192,19 @@ export function adaptLink(fabricObj, { pdfDoc, page, pageHeight }) {
     useFill: false,
   });
   const linkUrl = String(fabricObj?.data?.linkUrl || '').trim();
-  if (!dict || !linkUrl) return null;
+  const linkPageNumber = Math.trunc(Number(fabricObj?.data?.linkPageNumber));
+  if (!dict || (!linkUrl && !(linkPageNumber > 0))) return null;
   delete dict.QuadPoints;
   delete dict.C;
   delete dict.CA;
   dict.Border = [0, 0, 0];
-  dict.A = {
-    S: 'URI',
-    URI: pdfStringOrEmpty(linkUrl),
-  };
+  if (linkPageNumber > 0) {
+    const targetPage = pdfDoc.getPages()[linkPageNumber - 1];
+    if (!targetPage) return null;
+    dict.A = { S: PDFName.of('GoTo'), D: [targetPage.ref, PDFName.of('Fit')] };
+  } else {
+    dict.A = { S: PDFName.of('URI'), URI: pdfStringOrEmpty(linkUrl) };
+  }
   return registerAnnotationDict(pdfDoc, dict);
 }
 

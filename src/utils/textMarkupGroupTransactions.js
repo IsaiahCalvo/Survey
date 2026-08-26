@@ -19,6 +19,7 @@ const textMarkupRangeFingerprint = (annotation) => {
     opacity: Number(Number(annotation.opacity ?? 1).toFixed(4)),
     overlapMode: annotation.data.overlapMode === 'uniform' ? 'uniform' : 'layered',
     linkUrl: String(annotation.data.linkUrl || ''),
+    linkPageNumber: Math.trunc(Number(annotation.data.linkPageNumber)) || null,
   });
 };
 
@@ -109,6 +110,16 @@ const matchingRangeFingerprints = (sourceAnnotations) => new Set(
     .map(textMarkupRangeIdentityFingerprint)
     .filter(Boolean),
 );
+
+export function getTextMarkupRangeAnnotations(annotationsByPage, sourceAnnotations) {
+  const fingerprints = matchingRangeFingerprints(sourceAnnotations);
+  if (fingerprints.size === 0) return [];
+  return Object.entries(annotationsByPage || {}).flatMap(([pageNumber, page]) => (
+    pageObjects(page)
+      .map((annotation, annotationIndex) => ({ pageNumber: Number(pageNumber), annotationIndex, annotation }))
+      .filter(({ annotation }) => fingerprints.has(textMarkupRangeIdentityFingerprint(annotation)))
+  ));
+}
 
 export function getTextMarkupRangeTypes(annotationsByPage, sourceAnnotations) {
   const fingerprints = matchingRangeFingerprints(sourceAnnotations);
