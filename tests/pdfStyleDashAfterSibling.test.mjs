@@ -77,7 +77,7 @@ test('Style-capable defaults include Solid; prefs merge per key', () => {
   const db = read('src/hooks/useDatabase.js');
   assert.match(
     db,
-    /text: \{ strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid' \}/,
+    /text: \{ strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid', fillColor: '#ffffff', fillOpacity: 0 \}/,
     'Text defaults must stamp Style Solid so sibling tools cannot leak Dashed',
   );
   assert.match(
@@ -87,7 +87,7 @@ test('Style-capable defaults include Solid; prefs merge per key', () => {
   );
   assert.match(
     db,
-    /rect: \{ strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' \}/,
+    /rect: \{ strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid', cloudIntensity: 2 \}/,
     'Rect default Style is Solid — the Shapes leak source when omitted',
   );
   assert.match(

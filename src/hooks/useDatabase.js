@@ -1031,7 +1031,10 @@ const DEFAULT_TOOL_PREFERENCES = {
   // Omitting arrowheadStyle used to let one Arrowhead picker leak across
   // Callout ↔ Arrow after a sibling switch. Session-shared head then
   // stamped the sibling's Arrowhead until the user touched Arrowhead again.
-  rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' },
+  // Omitting cloudIntensity used to let Style Cloud persist while Bump
+  // stayed session-only. After remount, Style restored Cloud and first-
+  // create stamped default bump 2 until Bump was touched again.
+  rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid', cloudIntensity: 2 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100, lineBorderStyle: 'solid' },
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid' },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100, lineBorderStyle: 'solid', arrowheadStyle: 'solidTriangle' },

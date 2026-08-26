@@ -7457,6 +7457,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (toolPrefs.arrowheadStyle !== undefined) {
       setArrowheadStyle(toolPrefs.arrowheadStyle);
     }
+    if (toolPrefs.cloudIntensity !== undefined) {
+      setCloudIntensity(Math.max(1, Math.min(20, Number(toolPrefs.cloudIntensity) || 2)));
+    }
   }, [activeTool, pdfId, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
@@ -7724,9 +7727,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleCloudIntensityChange = useCallback((next) => {
     setCloudIntensity(next);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { cloudIntensity: next });
     if (!isEditableShapeSelected()) return;
     handlePatchSelectedAnnotation({ data: { pdfCloudIntensity: Math.max(1, Number(next) || 2) } });
-  }, [handlePatchSelectedAnnotation]);
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation]);
 
   const handleArrowheadStyleChange = useCallback((next) => {
     setArrowheadStyle(next);
