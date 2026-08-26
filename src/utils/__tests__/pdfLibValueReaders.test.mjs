@@ -34,6 +34,7 @@ test('PDF text and name readers normalize values', () => {
   assert.equal(readPdfLibText(text('hello')), 'hello');
   assert.equal(normalizePdfNameToken('  /Ink  '), 'Ink');
   assert.deepEqual(readPdfLibNameArray(array([text('/A'), text('B')])), ['A', 'B']);
+  assert.deepEqual(readPdfLibNameArray(text('/OpenArrow')), ['OpenArrow']);
 });
 
 test('PDF dash arrays and line endings normalize supported forms', () => {

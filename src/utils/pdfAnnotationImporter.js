@@ -41,6 +41,7 @@ import {
   readPdfLibText,
   toUint8Array,
 } from './pdfLibValueReaders.js';
+import { resolveImportedCalloutArrowheadStyle } from './calloutImportAdapter.js';
 import {
   PDF_COUNTER_METADATA_KEY,
   PDF_COUNTER_SUBJECT,
@@ -4000,9 +4001,19 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     ? hexToRgba(fillHex, fillOpacity)
     : 'transparent';
 
+  // se011 4631R already has native /LE OpenArrow. Import leftover-omitted
+  // that ending so the callout leader leftover-painted solidTriangle
+  // until Arrowhead was re-touched. Stamp /LE for the callout adapter.
+  // Do not invent Line /AP.
+  const lineEndings = isCalloutIntent
+    ? normalizePdfLineEndings(annotation.lineEndings)
+    : null;
+  const importedArrowheadStyle = resolveImportedCalloutArrowheadStyle(lineEndings);
+
   const data = {
     ...(isCalloutIntent ? { pdfIntent: intent || 'FreeTextCallout' } : {}),
     ...(calloutPoints.length >= 2 ? { pdfCalloutPoints: calloutPoints } : {}),
+    ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
     ...(appearanceTextBoxRect
       ? {
           // UX: 2026-04-19 — store the textbox rect as Acrobat drew it,
@@ -4037,6 +4048,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
             backgroundColor,
             strokeWidth: strokeWidth * scale,
             textAlign: textAlign || annotation.defaultAppearanceData?.textAlign || null,
+            ...(importedArrowheadStyle ? { arrowheadStyle: importedArrowheadStyle } : {}),
           }
         }
       : {})

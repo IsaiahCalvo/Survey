@@ -3,7 +3,38 @@
 // callouts[] state entry. Importer outputs viewport-at-scale-1 coords; the
 // callouts[] state uses normalized 0..1 coords relative to page width/height.
 
-import { defaultCalloutStyle } from '../components/Callout/types';
+import { ARROWHEAD_STYLES, defaultCalloutStyle } from '../components/Callout/types.js';
+
+// Inverse of ARROWHEAD_STYLE_TO_PDF_LINE_ENDING. se011 4631R already has
+// native /LE OpenArrow; leftover defaultCalloutStyle solidTriangle painted
+// a filled head until Arrowhead was re-touched. FreeTextCallout /LE[0] is
+// the tip (end not attached to the text box). Do not invent Line /AP.
+const PDF_LINE_ENDING_TO_CALLOUT_ARROWHEAD = {
+  None: ARROWHEAD_STYLES.NONE,
+  OpenArrow: ARROWHEAD_STYLES.OPEN_TRIANGLE,
+  ClosedArrow: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  ROpenArrow: ARROWHEAD_STYLES.OPEN_TRIANGLE,
+  RClosedArrow: ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  Circle: ARROWHEAD_STYLES.OPEN_CIRCLE,
+  Slash: ARROWHEAD_STYLES.V_SHAPE,
+  Butt: ARROWHEAD_STYLES.HORIZONTAL_LINE,
+  Square: ARROWHEAD_STYLES.HORIZONTAL_LINE,
+  Diamond: ARROWHEAD_STYLES.OPEN_TRIANGLE,
+};
+
+export function resolveImportedCalloutArrowheadStyle(lineEndings) {
+  if (!Array.isArray(lineEndings) || lineEndings.length === 0) return null;
+  const tip = String(lineEndings[0] || '').replace(/^\//, '');
+  if (tip && PDF_LINE_ENDING_TO_CALLOUT_ARROWHEAD[tip] && tip !== 'None') {
+    return PDF_LINE_ENDING_TO_CALLOUT_ARROWHEAD[tip];
+  }
+  const other = String(lineEndings[1] || '').replace(/^\//, '');
+  if (other && PDF_LINE_ENDING_TO_CALLOUT_ARROWHEAD[other] && other !== 'None') {
+    return PDF_LINE_ENDING_TO_CALLOUT_ARROWHEAD[other];
+  }
+  if (tip === 'None' && (!other || other === 'None')) return ARROWHEAD_STYLES.NONE;
+  return null;
+}
 
 function isImportedCalloutTextbox(obj) {
   if (!obj || obj.type !== 'textbox') return false;
@@ -114,6 +145,11 @@ function convertImportedCalloutToCalloutState(importedObj, pageNumber, pageWidth
   const importedAlign = (data.pdfCalloutStyle?.textAlign || importedObj.textAlign);
   if (importedAlign === 'left' || importedAlign === 'center' || importedAlign === 'right' || importedAlign === 'justify') {
     style.textAlign = importedAlign;
+  }
+  const importedHead = pdfStyle.arrowheadStyle
+    || resolveImportedCalloutArrowheadStyle(data.pdfLineEndings);
+  if (importedHead) {
+    style.arrowheadStyle = importedHead;
   }
 
   const idSuffix = importedObj.pdfAnnotationId

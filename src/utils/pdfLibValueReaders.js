@@ -52,11 +52,18 @@ export function normalizePdfNameToken(rawName) {
 }
 
 export function readPdfLibNameArray(value) {
-  if (!value || typeof value.asArray !== 'function') return null;
-  const values = value.asArray();
-  if (!Array.isArray(values) || values.length === 0) return null;
-  const names = values.map((item) => normalizePdfNameToken(readPdfLibText(item))).filter(Boolean);
-  return names.length === values.length ? names : null;
+  if (!value) return null;
+  if (typeof value.asArray === 'function') {
+    const values = value.asArray();
+    if (!Array.isArray(values) || values.length === 0) return null;
+    const names = values.map((item) => normalizePdfNameToken(readPdfLibText(item))).filter(Boolean);
+    return names.length === values.length ? names : null;
+  }
+  // se011 4631R writes FreeTextCallout /LE as a single name (/OpenArrow),
+  // not an array. Dropping that leftover-defaulted the callout head to
+  // solidTriangle until Arrowhead was re-touched.
+  const single = normalizePdfNameToken(readPdfLibText(value));
+  return single ? [single] : null;
 }
 
 export function readPdfLibDashArray(value) {
