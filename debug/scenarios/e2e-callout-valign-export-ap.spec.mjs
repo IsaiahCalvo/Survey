@@ -114,12 +114,19 @@ async function calloutSnapshot(page, pageNumber = 1, { includeImported = false }
         `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="text"]`,
       );
       const textDiv = textHost?.querySelector('div');
+      const boxEl = document.querySelector(
+        `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="textBox"]`,
+      );
+      const layer = document.querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
+      const pageH = layer?.viewBox?.baseVal?.height || 792;
+      const boxH = boxEl ? Number(boxEl.getAttribute('height')) : 0;
       return {
         id,
         text: String(object.text || legacy.text || data.text || ''),
         fill: style.fillColor || null,
         fillOpacity: style.fillOpacity ?? null,
         textBoxHeight: Number(legacy.textBoxHeight ?? data.textBoxHeight ?? object.textBoxHeight ?? 0),
+        boxHeightNorm: pageH > 0 ? boxH / pageH : 0,
         justifyContent: textDiv
           ? (textDiv.style.justifyContent || getComputedStyle(textDiv).justifyContent || '')
           : '',
@@ -178,7 +185,7 @@ async function applyNextDrawFillOpacity(page, pct = LIVE_OPACITY) {
   await dismissChrome(page);
 }
 
-async function createTallCallout(page, text = 'Hi') {
+async function createTallCallout(page, text = 'Hi', { grow = true } = {}) {
   const before = new Set((await calloutSnapshot(page)).map((row) => row.id));
   await dismissChrome(page);
   await page.waitForTimeout(250);
@@ -208,7 +215,41 @@ async function createTallCallout(page, text = 'Hi') {
       && Math.abs(Number(created.fillOpacity) - 0.4) < 0.02
       ? created
       : null;
-  }, { message: 'expected a new tall faded callout' }).not.toBeNull();
+  }, { message: 'expected a new faded callout' }).not.toBeNull();
+
+  if (!grow) {
+    await dismissChrome(page);
+    return created;
+  }
+
+  // Live create keeps a default ~0.05 box. Resize br so leftover top
+  // and screen-center actually diverge in /AP Tm y.
+  await page.keyboard.press('v');
+  await expect.poll(async () => {
+    const scoped = page.locator(`[data-svg-annotation-layer="1"] [data-callout-id="${created.id}"]`);
+    const boxEl = scoped.locator('[data-callout-part="textBox"]').first();
+    if (await boxEl.count()) {
+      const geom = await boxEl.boundingBox();
+      if (geom) await page.mouse.click(geom.x + geom.width / 2, geom.y + geom.height / 2);
+    }
+    return scoped.locator('[data-callout-part="textBox-br"]').count();
+  }, { timeout: 12_000 }).toBeGreaterThan(0);
+  const handle = page.locator(
+    `[data-svg-annotation-layer="1"] [data-callout-id="${created.id}"] [data-callout-part="textBox-br"]`,
+  ).last();
+  const handleBox = await handle.boundingBox();
+  expect(handleBox, 'textBox-br handle').toBeTruthy();
+  const hx = handleBox.x + handleBox.width / 2;
+  const hy = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx + 24, hy + 260, { steps: 14 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const row = (await calloutSnapshot(page)).find((item) => item.id === created.id);
+    created = row || created;
+    return row && row.boxHeightNorm > 0.25 ? row : null;
+  }, { message: 'br resize must make the callout box tall' }).not.toBeNull();
   await dismissChrome(page);
   return created;
 }
@@ -334,7 +375,7 @@ test('desktop callout screen-center export /AP persist + reimport intended + bre
   expect(created.text).toBe('Hi');
   expect(Number(created.fillOpacity), 'Fill Opacity must stamp 0.4').toBeCloseTo(0.4, 2);
   expect(created.justifyContent, 'screen must keep callout text centered').toMatch(/center/);
-  expect(created.textBoxHeight, 'live box must be tall enough to expose leftover top').toBeGreaterThan(0.25);
+  expect(created.boxHeightNorm, 'live box must be tall enough to expose leftover top').toBeGreaterThan(0.25);
 
   const dest = await exportAndSave(page, DEST_NAME);
   const exported = await exportedFreeTextValign(dest);
@@ -390,7 +431,7 @@ test('390 callout screen-center export /AP edge: viewBox, file.id, no invent', a
 
   const mobileCallout = page.getByRole('button', { name: 'Callout', exact: true }).first();
   if (await mobileCallout.isVisible().catch(() => false)) {
-    const created = await createTallCallout(page, 'Hi');
+    const created = await createTallCallout(page, 'Hi', { grow: false });
     expect(created.text).toBe('Hi');
     expect(Number(created.fillOpacity)).toBeCloseTo(0.4, 2);
   } else {
