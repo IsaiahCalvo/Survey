@@ -2833,7 +2833,8 @@ const PDF_DA_FONT_BASEFONT = {
 // FreeText /C is RGB-only. Faded textbox backgroundColor rgba() and
 // callout style.fillOpacity used to export an opaque box. Independent
 // fade lives in ExtGState /ca so group /CA (borderOpacity / object
-// opacity) can still fade the whole annotation. Opaque omits /AP.
+// opacity) can still fade the whole annotation. Opaque fill + opaque
+// stroke omit /AP.
 //
 // Live Style dash + Border already ride /BS and flatten borderDashArray,
 // but this /AP used to paint fill+text only (`re f`, no stroke) so a
@@ -2861,6 +2862,13 @@ const PDF_DA_FONT_BASEFONT = {
 // opaque (which omits /AP). Single-line / absent stay one Tm + Tj so
 // default faded-fill export stays byte-identical. Callouts share this
 // writer and already wrap on screen — do not invent callout verticalAlign.
+//
+// Live Border Opacity + flatten already honor rgba stroke, but this
+// writer used to attach only when Fill was faded. Empty / opaque Fill
+// then omitted /AP so Acrobat stayed an opaque leftover frame until
+// Fill was re-touched faded (or Border was re-touched opaque, which
+// still omits /AP). Dict /CA would fade the glyphs too — stroke fade
+// stays ExtGState /CA. Opaque stroke / absent still omit /AP.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -2873,13 +2881,14 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   textAlign,
   verticalAlign,
 }) => {
-  const fillAlpha = fill?.visible ? fill.opacity : 0;
-  if (!fill?.visible || !fill.hex || fillAlpha >= 0.99999) return;
+  const fillVisible = Boolean(fill?.visible && fill.hex);
+  const fillAlpha = fillVisible ? fill.opacity : 0;
+  const needsFillGs = fillVisible && fillAlpha < 0.99999;
   const n = pdfNumberText;
-  const rgbFill = hexToRGB(fill.hex);
   const strokeVisible = Boolean(stroke?.visible && stroke.hex);
   const strokeAlpha = strokeVisible ? stroke.opacity : 0;
   const needsStrokeGs = strokeVisible && strokeAlpha < 0.99999;
+  if (!needsFillGs && !needsStrokeGs) return;
   const escapePdfText = (value) => String(value || '')
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
@@ -2909,13 +2918,17 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     verticalAlign,
   );
   const firstY = Math.max(2, formHeight - size - textPad - extraDown);
-  const content = [
-    'q',
-    '/GS0 gs',
-    `${n(rgbFill.red)} ${n(rgbFill.green)} ${n(rgbFill.blue)} rg`,
-    `0 0 ${n(formWidth)} ${n(formHeight)} re f`,
-    'Q',
-  ];
+  const content = [];
+  if (fillVisible) {
+    const rgbFill = hexToRGB(fill.hex);
+    content.push('q');
+    if (needsFillGs) content.push('/GS0 gs');
+    content.push(
+      `${n(rgbFill.red)} ${n(rgbFill.green)} ${n(rgbFill.blue)} rg`,
+      `0 0 ${n(formWidth)} ${n(formHeight)} re f`,
+      'Q',
+    );
+  }
   if (strokeVisible) {
     const rgbStroke = hexToRGB(stroke.hex);
     content.push('q');
@@ -2958,9 +2971,13 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   }));
   const resources = {
     Font: { F1: fontRef },
-    ExtGState: { GS0: { Type: 'ExtGState', ca: fillAlpha } },
   };
-  if (needsStrokeGs) resources.ExtGState.GS1 = { Type: 'ExtGState', CA: strokeAlpha };
+  if (needsFillGs || needsStrokeGs) {
+    resources.ExtGState = {
+      ...(needsFillGs ? { GS0: { Type: 'ExtGState', ca: fillAlpha } } : {}),
+      ...(needsStrokeGs ? { GS1: { Type: 'ExtGState', CA: strokeAlpha } } : {}),
+    };
+  }
   const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
     Type: 'XObject',
     Subtype: 'Form',
@@ -3053,10 +3070,17 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // Textbox Fill Opacity (rgba on backgroundColor) and callout Fill
     // Opacity are independent of that group /CA. /C stays the fill hex;
     // faded fills write ExtGState /ca on /AP so Acrobat does not paint an
-    // opaque box. Opacity-0 already omitted /C. Opaque omits /AP so default
-    // export stays byte-identical. Used to gate /AP on calloutMetadataJson,
-    // so a faded textbox still reached Acrobat opaque.
-    if (boxFill.visible && boxFill.opacity < 0.99999) {
+    // opaque box. Opacity-0 already omitted /C. Live Border Opacity +
+    // flatten already honor rgba stroke, but /AP used to attach only
+    // when Fill was faded — empty / opaque Fill then left Acrobat an
+    // opaque leftover frame. Stroke fade writes ExtGState /CA (not dict
+    // /CA, which would fade the glyphs). Opaque fill + opaque stroke
+    // still omit /AP so default export stays byte-identical. Used to
+    // gate /AP on calloutMetadataJson, so a faded textbox still reached
+    // Acrobat opaque.
+    const needsFillAp = Boolean(boxFill.visible && boxFill.opacity < 0.99999);
+    const needsStrokeAp = Boolean(boxStroke.visible && boxStroke.opacity < 0.99999);
+    if (needsFillAp || needsStrokeAp) {
       attachCalloutFreeTextFillAppearance(pdfDoc, annotationDict, {
         formWidth: width,
         formHeight: height,

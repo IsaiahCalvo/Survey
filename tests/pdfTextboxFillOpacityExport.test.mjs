@@ -185,8 +185,8 @@ test('export/flatten hosts still name the textbox fillOpacity /ca contract', () 
   assert.match(catalog, /export function resolveTextboxBoxFill/);
   assert.match(flatten, /const boxFill = resolveTextboxBoxFill\(fabricObj\)/);
   assert.match(flatten, /attachCalloutFreeTextFillAppearance/);
-  assert.match(flatten, /if \(boxFill\.visible && boxFill\.opacity < 0\.99999\)/);
-  assert.match(flatten, /ExtGState: \{ GS0: \{ Type: 'ExtGState', ca: fillAlpha \} \}/);
+  assert.match(flatten, /needsFillAp = Boolean\(boxFill\.visible && boxFill\.opacity < 0\.99999\)/);
+  assert.match(flatten, /needsFillGs \? \{ GS0: \{ Type: 'ExtGState', ca: fillAlpha \} \}/);
   assert.doesNotMatch(
     flatten,
     /if \(options\.calloutMetadataJson && boxFill\.visible && boxFill\.opacity < 0\.99999\)/,
