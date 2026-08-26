@@ -3,10 +3,18 @@ import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PDFDocument, PDFName } from 'pdf-lib';
-import {
-  PDF_APP_ANNOTATION_METADATA_KEY,
-  parsePdfAppAnnotationMetadata,
-} from '../../src/utils/pdfAppAnnotationMetadata.js';
+
+const PDF_APP_ANNOTATION_METADATA_KEY = 'SurveyAppAnnotation';
+
+function parsePdfAppAnnotationMetadata(rawValue) {
+  if (!rawValue || typeof rawValue !== 'string') return null;
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed?.app === 'SurveyApp' && parsed?.kind && parsed?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 // Unbalanced `)` in textbox text survived on-screen + flatten, but
 // PDFString.of left Contents / SurveyAppAnnotation unescaped so
