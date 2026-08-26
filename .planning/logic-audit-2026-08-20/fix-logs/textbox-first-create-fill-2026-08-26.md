@@ -59,7 +59,7 @@ Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-textbox-first-cr
 
 Node `pdfTextboxFirstCreateFill` proves overlay + PDFViewer pass Fill, `boxFillFromToolbar` stamps user-set and keeps empty default, first-create commit keeps rgba 0.4, export writes `/C` only when Fill is set.
 
-Focused Node `pdfTextboxFirstCreateFill` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` run after HIGH-RISK `PDFViewer.jsx` (2-line prop pass). `graphify` CLI absent.
+Focused Node `pdfTextboxFirstCreateFill` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` fail-stops on pre-existing `annotationContextMenuitem` spec (`keyboard.press('Enter')` vs live spec — not taken; not aligned down). Isolated 8448 not reached because official fail-stops first. `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
