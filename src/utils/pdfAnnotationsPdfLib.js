@@ -41,6 +41,7 @@ import {
 import {
   pdfDefaultAppearanceFontName,
   pdfStandardFontGroup,
+  flattenedTextBlockOffset,
   wrapFlattenedTextLines,
 } from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
@@ -3194,7 +3195,6 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
   const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200) * scaleX);
-  const baselineY = getPdfY(pageHeight, top + Math.min(height, fontSize + 2));
   // UX 2026-08-20: wrap + draw each line ourselves so underline/strikethrough
   // track every line (pdf-lib has no text-decoration operator). Line height
   // matches pdf-lib's default (font.heightAtSize).
@@ -3211,6 +3211,11 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const lineHeight = typeof font.heightAtSize === 'function'
     ? font.heightAtSize(fontSize)
     : fontSize * 1.2;
+  const extraTop = flattenedTextBlockOffset(height, lines.length * lineHeight, obj?.verticalAlign);
+  const baselineY = getPdfY(
+    pageHeight,
+    top + extraTop + Math.min(Math.max(1, height - extraTop), fontSize + 2),
+  );
   const thickness = Math.max(0.5, fontSize / 14);
   lines.forEach((line, i) => {
     const y = baselineY - i * lineHeight;

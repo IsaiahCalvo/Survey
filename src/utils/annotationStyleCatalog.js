@@ -182,6 +182,18 @@ export function sanitizeVerticalAlign(value) {
   return TEXT_ALIGN_VERTICAL.includes(value) ? value : 'top';
 }
 
+/**
+ * Extra screen-space Y to shift the flattened text block so middle/bottom
+ * match renderText. Top (or unknown) stays 0.
+ */
+export function flattenedTextBlockOffset(boxHeight, contentHeight, verticalAlign) {
+  const free = Math.max(0, (Number(boxHeight) || 0) - (Number(contentHeight) || 0));
+  const align = sanitizeVerticalAlign(verticalAlign);
+  if (align === 'bottom') return free;
+  if (align === 'middle') return free / 2;
+  return 0;
+}
+
 const clampUnit = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /**

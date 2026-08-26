@@ -69,6 +69,7 @@ const STYLE_KEYS = [
   'fontWeight',
   'fontStyle',
   'textAlign',
+  'verticalAlign',
   'underline',
   'linethrough',
   'lineHeight',
