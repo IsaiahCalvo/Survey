@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**This-pass (2026-08-26 Callout Fill Opacity below 8% as-is on screen):** not leftover-18. Live Color Fill Opacity already offered 0–100 and persist / export / flatten already honored the 0–1 value, but view / spec / PAL floored `Math.max(..., 0.08)` so a next-draw Fill of 0–7 painted a ghost 8% until Fill was re-touched. Product `02d8a8a8`. Receipt `fix-logs/callout-fill-opacity-screen-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+**This-pass (2026-08-26 selected-callout Color swatch Fill / Border Opacity as-is):** not leftover-18. Live Color Fill / Border already offered 0–100 and persist / export / flatten / page view already honored the 0–1 value, but `PDFViewer` selected-callout toolbar swatch floored `Math.max(..., 0.08)` / `Math.max(..., 0.2)` so a selected Fill of 0–7 or Border of 0–19 painted a ghost 8% / 20% until the picker was re-touched. Product `3f10d86c`. Receipt `fix-logs/callout-toolbar-swatch-opacity-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+
+**Prior-pass (2026-08-26 Callout Fill Opacity below 8% as-is on screen):** not leftover-18. Live Color Fill Opacity already offered 0–100 and persist / export / flatten already honored the 0–1 value, but view / spec / PAL floored `Math.max(..., 0.08)` so a next-draw Fill of 0–7 painted a ghost 8% until Fill was re-touched. Product `02d8a8a8`. Receipt `fix-logs/callout-fill-opacity-screen-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
 **Prior-pass (2026-08-26 Eraser Size persist):** not leftover-18. Live Eraser Type already persisted, but Size stayed session-only so remount dropped first swipe to diameter 20 until Size was touched. Product `53d63a7c`. Receipt `fix-logs/eraser-size-persist-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
