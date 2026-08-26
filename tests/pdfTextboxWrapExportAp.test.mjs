@@ -161,7 +161,7 @@ test('export host still names the textbox /AP wrap contract; isolated 8448 / 75/
   assert.match(writer, /wrapFlattenedTextLines\(/);
   assert.match(writer, /y = formHeight - size - 4 \(top\)/);
   assert.match(writer, /pdfJsonString/);
-  assert.match(writer, /replace\(\/\\\\\/g, '\\\\\\\\'\)/);
+  assert.match(writer, /JSON `\\n` `\\t`/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
   assert.match(complexity, /p95CommitMs: 75/);
