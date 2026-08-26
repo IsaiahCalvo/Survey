@@ -21,7 +21,7 @@ Prefer next live export/flatten/persist bug. Checked `pdfAnnotationsPdfLib.js` +
 | `verticalAlign` | Text alignment 3×3 | Already metadata + flatten — not replayed |
 | **textbox `backgroundColor`** | Color Fill tab | **LIVE leftover** — flatten drew glyphs only; opacity-0 rgba still wrote `/C` |
 
-Did **not** invent envelope extras (`overline`, `direction`, `strokeDashOffset`, `textBackgroundColor`). Did **not** treat glyph `fill` as a leftover box fill. Did **not** take C-01 (one Fill swatch only to seed the live key). Did **not** stamp `file.id`.
+Did **not** invent envelope extras (`overline`, `direction`, `strokeDashOffset`, `textBackgroundColor`). Did **not** treat glyph `fill` as a leftover box fill. Did **not** take C-01 (Fill spectrum only; no swatch / hex / Transparent). Did **not** stamp `file.id`.
 
 ## Product
 
@@ -36,15 +36,15 @@ HIGH-RISK files not touched. `file.id` not stamped. CORS `*` untouched. `zoomGen
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (see this-pass E2E-STATUS). Playwright `e2e-textbox-fill-export.spec.mjs`.
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-textbox-fill-export.spec.mjs` **2 / 2 (10.0s)**.
 
-- Intended: Text + type `Y` + Color Fill `#FFFF00` + Export annotated PDF writes FreeText `/C` `[1,1,0]`; `?testPdf=` reimport keeps `backgroundColor`; `file.id` null; viewBox `0 0 612 792`
+- Intended: Text + type `Y` + Color Fill spectrum + Export annotated PDF writes FreeText `/C` from live `backgroundColor`; `?testPdf=` reimport keeps `backgroundColor`; `file.id` null; viewBox `0 0 612 792`
 - Break: empty export invents 0; hubPreview Color **0**
 - Edge: 390 viewBox / `file.id` / no invent
 
 Node `pdfTextboxFillExport` also proves rgba `#FFFF00` `/C` `[1,1,0]`, empty/opacity-0 omit `/C`, flatten yellow vs no invented white, glyph `fill` ignored.
 
-Focused Node `pdfTextboxFillExport` + leftover18FailClosed. Isolated **8448** still standing. Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). `graphify` CLI absent.
+Focused Node `pdfTextboxFillExport` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing. Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 

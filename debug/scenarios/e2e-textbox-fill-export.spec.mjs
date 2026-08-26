@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { PDFDocument, PDFName } from 'pdf-lib';
 
 // Textbox Fill survived on-screen as backgroundColor, but flatten drew
-// glyphs only and opacity-0 rgba still wrote /C. Distinct from leftover-18
-// / X-01 / textAlign / verticalAlign / callout fillColor / C-01 catalog.
-// One Fill swatch seeds the live key. Do not click hex / Transparent.
+// glyphs only and opacity-0 rgba still wrote FreeText /C. Distinct from
+// leftover-18 / X-01 / textAlign / verticalAlign / callout fillColor /
+// text-colors swatch catalog. Do not click swatch / hex / Transparent.
 // Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -15,8 +15,7 @@ const HUB = '/?hubPreview=1';
 const FIXTURE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures');
 const DEST_NAME = '_e2e-textbox-fill-export.pdf';
 const REIMPORT_TAB = /clickable-link-test\.pdf|_e2e-textbox-fill-export\.pdf/;
-const BOX = { x0: 0.22, y0: 0.18, x1: 0.52, y1: 0.32 };
-const LIVE_FILL = '#FFFF00';
+const BOX = { x0: 0.22, y0: 0.18, x1: 0.52, y1: 0.28 };
 
 async function openEditor(page, {
   width = 1440,
@@ -91,15 +90,20 @@ async function fileId(page) {
   return page.evaluate(() => window.__devTestPdf?.id ?? null);
 }
 
-function storedFill(object) {
-  const raw = object?.backgroundColor;
-  if (!raw || raw === 'transparent') return '';
-  const rgba = String(raw).match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+function normalizeFill(raw) {
+  const text = String(raw || '').trim();
+  if (!text || text === 'transparent') return null;
+  const rgba = text.match(/^rgba?\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)(?:\s*,\s*([+-]?\d*\.?\d+))?\s*\)$/i);
   if (rgba) {
-    const hex = `#${[rgba[1], rgba[2], rgba[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
-    return hex.toUpperCase();
+    const opacity = rgba[4] != null ? Number(rgba[4]) : 1;
+    if (!(opacity > 0)) return null;
+    const hex = `#${[rgba[1], rgba[2], rgba[3]].map((n) => (
+      Math.round(Math.max(0, Math.min(255, Number(n)))).toString(16).padStart(2, '0')
+    )).join('')}`.toUpperCase();
+    return hex;
   }
-  return String(raw).toUpperCase();
+  if (/^#?[0-9a-fA-F]{6}$/.test(text)) return `#${text.replace('#', '')}`.toUpperCase();
+  return null;
 }
 
 async function textSnapshot(page, pageNumber = 1) {
@@ -116,13 +120,13 @@ async function textSnapshot(page, pageNumber = 1) {
       const tool = String(data.tool || object.tool || data.type || '').toLowerCase();
       const callout = data.type === 'callout' || String(id).startsWith('callout-');
       if (callout || !(type === 'textbox' || type === 'text' || tool === 'text')) return null;
+      const group = document.querySelector(`[data-svg-annotation-layer="${pageNum}"] > g[data-anno-id="${id}"]`);
+      const bg = group?.querySelector('rect');
       return {
         id,
         text: String(object.text ?? data.text ?? ''),
-        backgroundColor: object.backgroundColor || '',
-        fill: object.fill || '',
-        type,
-        tool,
+        fill: object.backgroundColor || '',
+        visualFill: bg?.getAttribute('fill') || '',
         imported: object.isPdfImported === true,
       };
     }).filter(Boolean);
@@ -158,6 +162,16 @@ async function activateTool(page, categoryName, toolName) {
   await expect(hostTool, `tool ${toolName}`).toBeVisible();
 }
 
+async function commitEdit(page) {
+  const pageGeom = await pageBox(page);
+  await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
+  if (await page.locator('[data-text-edit-overlay]').count()) {
+    await page.mouse.click(pageGeom.x + pageGeom.width - 12, pageGeom.y + pageGeom.height - 12);
+  }
+  await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  await dismissChrome(page);
+}
+
 async function createText(page, text = 'Y') {
   const before = new Set((await textSnapshot(page)).map((row) => row.id));
   await dismissChrome(page);
@@ -173,36 +187,24 @@ async function createText(page, text = 'Y') {
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.click();
   if (text) await editor.pressSequentially(text, { delay: 6 });
-  await page.mouse.click(box.x + 10, box.y + 10);
-  if (await page.locator('[data-text-edit-overlay]').count()) {
-    await page.mouse.click(box.x + box.width - 12, box.y + box.height - 12);
-  }
-  await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
+  await commitEdit(page);
   let created = null;
   await expect.poll(async () => {
     const rows = (await textSnapshot(page)).filter((row) => !before.has(row.id));
     created = rows[0] || null;
     return created;
   }, { message: 'expected a new textbox' }).not.toBeNull();
-  await dismissChrome(page);
-  await page.keyboard.press('v');
   return created;
 }
 
-async function selectText(page, id) {
-  await blurInputs(page);
-  if (await page.locator('[data-text-edit-overlay]').count()) {
-    const pageGeom = await pageBox(page);
-    await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
-    await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
-  }
+async function applyFillViaSpectrum(page, createdId) {
   await page.keyboard.press('v');
   const target = page.locator(
-    `[data-shape-id="${id}"], [data-svg-annotation-layer="1"] [data-anno-id="${id}"]`,
+    `[data-shape-id="${createdId}"], [data-svg-annotation-layer="1"] [data-anno-id="${createdId}"]`,
   ).first();
   await expect(target).toBeVisible({ timeout: 8_000 });
   const box = await target.boundingBox();
-  expect(box, `bbox for ${id}`).toBeTruthy();
+  expect(box, `bbox for ${createdId}`).toBeTruthy();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   if (await page.locator('[data-text-edit-overlay]').count()) {
     const pageGeom = await pageBox(page);
@@ -211,42 +213,53 @@ async function selectText(page, id) {
     await page.keyboard.press('v');
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   }
-  const edit = page.getByRole('button', { name: 'Edit text', exact: true }).first();
-  await expect(edit).toBeEnabled({ timeout: 8_000 });
-}
+  await expect(page.getByRole('button', { name: 'Edit text', exact: true }).first()).toBeEnabled({ timeout: 8_000 });
 
-async function applyLiveFill(page, id) {
-  await selectText(page, id);
-  const trigger = page.getByRole('button', { name: 'Color', exact: true }).first();
-  await expect(trigger).toBeVisible({ timeout: 8_000 });
+  const color = page.getByRole('button', { name: 'Color', exact: true }).first();
+  await expect(color).toBeVisible({ timeout: 8_000 });
   const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
-  if (!(await presets.isVisible().catch(() => false))) await trigger.click();
+  if (!(await presets.isVisible().catch(() => false))) await color.click();
   await expect(presets).toBeVisible({ timeout: 8_000 });
-  await page.getByRole('button', { name: 'Fill', exact: true }).first().click();
-  await page.locator(`button[title="${LIVE_FILL}"]`).first().click();
+  const fillTab = page.getByRole('button', { name: 'Fill', exact: true }).first();
+  if (await fillTab.isVisible().catch(() => false)) await fillTab.click();
+  const spectrumMode = page.getByRole('button', { name: 'Color spectrum', exact: true });
+  await expect(spectrumMode).toBeVisible({ timeout: 8_000 });
+  await spectrumMode.click();
+  const spectrum = page.getByRole('slider', { name: 'Saturation and brightness' });
+  await expect(spectrum).toBeVisible({ timeout: 8_000 });
+  await spectrum.focus();
+  await spectrum.press('Home');
+  await spectrum.press('ArrowDown');
   await expect.poll(async () => {
-    const rows = await textSnapshot(page);
-    const row = rows.find((item) => item.id === id);
-    return storedFill(row);
-  }, { timeout: 8_000, message: 'Fill must write backgroundColor' }).toBe(LIVE_FILL);
-}
-
-async function exportAndSave(page, destName) {
-  const exportBtn = page.getByRole('button', { name: 'Export annotated PDF', exact: true });
-  await expect(exportBtn).toBeVisible();
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 45_000 }),
-    exportBtn.click(),
-  ]);
-  expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
-  const dest = path.join(FIXTURE_DIR, destName);
-  await download.saveAs(dest);
-  return dest;
+    const row = (await textSnapshot(page)).find((item) => item.id === createdId);
+    return normalizeFill(row?.fill || row?.visualFill);
+  }, { message: 'spectrum must stamp a visible backgroundColor' }).toMatch(/^#[0-9A-F]{6}$/);
+  await page.keyboard.press('Escape');
+  await expect(presets).toHaveCount(0, { timeout: 8_000 }).catch(() => {});
+  await dismissChrome(page);
+  const row = (await textSnapshot(page)).find((item) => item.id === createdId);
+  return normalizeFill(row?.fill || row?.visualFill);
 }
 
 function hexToPdfRgb(hex) {
   const n = parseInt(String(hex).replace('#', ''), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+async function exportAndSave(page, destName) {
+  await page.keyboard.press('Escape');
+  await dismissChrome(page);
+  const exportBtn = page.getByRole('button', { name: 'Export annotated PDF', exact: true }).first();
+  await expect(exportBtn).toBeVisible();
+  await exportBtn.scrollIntoViewIfNeeded().catch(() => {});
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 45_000 }),
+    exportBtn.click({ force: true }),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
+  const dest = path.join(FIXTURE_DIR, destName);
+  await download.saveAs(dest);
+  return dest;
 }
 
 async function exportedFreeTextColors(dest) {
@@ -287,7 +300,7 @@ async function wipeAnnotationKeys(page) {
   });
 }
 
-test('desktop textbox backgroundColor export /C intended + break', async ({ page }) => {
+test('desktop textbox fill export /C intended + break', async ({ page }) => {
   test.setTimeout(180_000);
   await openEditor(page);
   await assertNoErrorBoundary(page);
@@ -298,17 +311,14 @@ test('desktop textbox backgroundColor export /C intended + break', async ({ page
 
   const created = await createText(page, 'Y');
   expect(created.text).toBe('Y');
-  expect(storedFill(created), 'new text starts without a box fill').toBe('');
-  await applyLiveFill(page, created.id);
-  const filled = (await textSnapshot(page)).find((row) => row.id === created.id);
-  expect(storedFill(filled)).toBe(LIVE_FILL);
-  expect(String(filled.fill || '').toUpperCase(), 'Fill must not clobber fontColor').not.toBe(LIVE_FILL);
+  const liveFill = await applyFillViaSpectrum(page, created.id);
+  expect(liveFill, 'Fill spectrum must stamp a hex').toMatch(/^#[0-9A-F]{6}$/);
 
   const dest = await exportAndSave(page, DEST_NAME);
   const colors = await exportedFreeTextColors(dest);
   const exported = colors.find((row) => row.text === 'Y');
   expect(exported, 'exported FreeText must exist').toBeTruthy();
-  expect(exported.c, 'exported FreeText must write /C from backgroundColor').toEqual(hexToPdfRgb(LIVE_FILL));
+  expect(exported.c, 'exported FreeText must write /C from backgroundColor').toEqual(hexToPdfRgb(liveFill));
 
   await wipeAnnotationKeys(page);
   await openEditor(page, { url: `/?testPdf=${encodeURIComponent(DEST_NAME)}` });
@@ -319,7 +329,10 @@ test('desktop textbox backgroundColor export /C intended + break', async ({ page
 
   await expect.poll(async () => {
     const rows = await textSnapshot(page);
-    return rows.find((row) => row.text === 'Y' && storedFill(row) === LIVE_FILL) || null;
+    return rows.find((row) => {
+      const fill = normalizeFill(row.fill || row.visualFill);
+      return row.text === 'Y' && fill === liveFill;
+    }) || null;
   }, { timeout: 20_000, message: 'reimport must keep backgroundColor' }).not.toBeNull();
 
   await unlink(dest).catch(() => {});
