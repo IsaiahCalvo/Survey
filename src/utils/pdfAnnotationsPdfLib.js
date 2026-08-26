@@ -2827,10 +2827,18 @@ const PDF_DA_FONT_BASEFONT = {
 // callout style.fillOpacity used to export an opaque box. Independent
 // fade lives in ExtGState /ca so group /CA (borderOpacity / object
 // opacity) can still fade the whole annotation. Opaque omits /AP.
+//
+// Live Style dash + Border already ride /BS and flatten borderDashArray,
+// but this /AP used to paint fill+text only (`re f`, no stroke) so a
+// faded box reached Acrobat without its dashed / solid frame until
+// Style was re-touched. Same [dash] 0 d contract as Ellipse / Square
+// /AP. Solid / absent omit the dash. Callout boxes pass no stroke —
+// their leaders already write Line /BS — so this stays fill+text.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
   fill,
+  stroke,
   text,
   glyph,
   fontName,
@@ -2840,6 +2848,9 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   if (!fill?.visible || !fill.hex || fillAlpha >= 0.99999) return;
   const n = pdfNumberText;
   const rgbFill = hexToRGB(fill.hex);
+  const strokeVisible = Boolean(stroke?.visible && stroke.hex);
+  const strokeAlpha = strokeVisible ? stroke.opacity : 0;
+  const needsStrokeGs = strokeVisible && strokeAlpha < 0.99999;
   const escaped = String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
   const baseFont = PDF_DA_FONT_BASEFONT[fontName] || 'Helvetica';
   const size = Math.max(4, Number(fontSize) || 12);
@@ -2850,6 +2861,24 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     `${n(rgbFill.red)} ${n(rgbFill.green)} ${n(rgbFill.blue)} rg`,
     `0 0 ${n(formWidth)} ${n(formHeight)} re f`,
     'Q',
+  ];
+  if (strokeVisible) {
+    const rgbStroke = hexToRGB(stroke.hex);
+    content.push('q');
+    if (needsStrokeGs) content.push('/GS1 gs');
+    content.push(
+      `${n(rgbStroke.red)} ${n(rgbStroke.green)} ${n(rgbStroke.blue)} RG`,
+      `${n(Math.max(0, Number(stroke.width) || 1))} w`,
+    );
+    if (Array.isArray(stroke.dash) && stroke.dash.length > 0) {
+      content.push(`[${stroke.dash.map(n).join(' ')}] 0 d`);
+    }
+    content.push(
+      `0 0 ${n(formWidth)} ${n(formHeight)} re S`,
+      'Q',
+    );
+  }
+  content.push(
     'q',
     'BT',
     `/F1 ${n(size)} Tf`,
@@ -2858,22 +2887,24 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     `(${escaped}) Tj`,
     'ET',
     'Q',
-  ];
+  );
   const fontRef = pdfDoc.context.register(pdfDoc.context.obj({
     Type: 'Font',
     Subtype: 'Type1',
     BaseFont: baseFont,
     Encoding: 'WinAnsiEncoding',
   }));
+  const resources = {
+    Font: { F1: fontRef },
+    ExtGState: { GS0: { Type: 'ExtGState', ca: fillAlpha } },
+  };
+  if (needsStrokeGs) resources.ExtGState.GS1 = { Type: 'ExtGState', CA: strokeAlpha };
   const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
     Type: 'XObject',
     Subtype: 'Form',
     FormType: 1,
     BBox: [0, 0, formWidth, formHeight],
-    Resources: {
-      Font: { F1: fontRef },
-      ExtGState: { GS0: { Type: 'ExtGState', ca: fillAlpha } },
-    },
+    Resources: resources,
   });
   annotationDict.AP = pdfDoc.context.obj({ N: pdfDoc.context.register(appearance) });
 };
@@ -2968,6 +2999,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         formWidth: width,
         formHeight: height,
         fill: boxFill,
+        stroke: boxStroke,
         text,
         glyph: color,
         fontName: daFont,
