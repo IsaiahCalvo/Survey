@@ -3233,7 +3233,7 @@ const fabricPathToSvgPath = (pathData) => {
   return parts.join(' ');
 };
 
-const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width }) => {
+const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width, opacity }) => {
   const angle = Math.atan2(y2 - y1, x2 - x1);
   const size = Math.max(6, width * 4);
   const tipX = x2;
@@ -3242,8 +3242,13 @@ const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width }) => {
   const leftY = getPdfY(pageHeight, y2 - size * Math.sin(angle - Math.PI / 7));
   const rightX = x2 - size * Math.cos(angle + Math.PI / 7);
   const rightY = getPdfY(pageHeight, y2 - size * Math.sin(angle + Math.PI / 7));
-  page.drawLine({ start: { x: tipX, y: tipY }, end: { x: leftX, y: leftY }, color, thickness: width });
-  page.drawLine({ start: { x: tipX, y: tipY }, end: { x: rightX, y: rightY }, color, thickness: width });
+  // Live toolbar writes Color Opacity as rgba stroke. Shaft flatten already
+  // honors parsePdfDrawColor opacity; the head used to stroke hex-only so a
+  // faded Arrow printed with an opaque tip.
+  const alpha = Number.isFinite(Number(opacity)) ? Math.max(0, Math.min(1, Number(opacity))) : 1;
+  const line = { color, thickness: width, opacity: alpha };
+  page.drawLine({ start: { x: tipX, y: tipY }, end: { x: leftX, y: leftY }, ...line });
+  page.drawLine({ start: { x: tipX, y: tipY }, end: { x: rightX, y: rightY }, ...line });
 };
 
 // UX (print flatten callout arrowhead): pdf-lib twin of paintArrowheadSpec
@@ -3354,7 +3359,7 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   });
   const ending2 = String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase();
   const isArrow = ending2.includes('arrow') || obj?.data?.annotationType === 'arrow' || obj?.tool === 'arrow';
-  if (isArrow) drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width });
+  if (isArrow) drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width, opacity: stroke.opacity });
 };
 
 // UX 2026-07-17 (print text style): pick the embedded Helvetica variant that
