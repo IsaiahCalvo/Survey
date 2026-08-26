@@ -147,7 +147,7 @@ test('export/flatten hosts still name the callout fillColor contract', () => {
   const flatten = read('src/utils/pdfAnnotationsPdfLib.js');
   const catalog = read('src/utils/annotationStyleCatalog.js');
   assert.match(catalog, /export function resolveCalloutBoxFill/);
-  assert.match(flatten, /backgroundColor: resolveCalloutBoxFill\(style\)\.hex/);
+  assert.match(flatten, /backgroundColor: boxFill\.visible \? boxFill\.paint : 'transparent'/);
   assert.match(flatten, /paintWithGroupOpacity\(resolveCalloutBoxFill\(style\), groupOpacity\)/);
   assert.doesNotMatch(flatten, /fill: style\.backgroundColor \|\| '#ffffff'/);
   assert.doesNotMatch(flatten, /backgroundColor: style\.backgroundColor \|\| null/);

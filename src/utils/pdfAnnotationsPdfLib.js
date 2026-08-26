@@ -2577,6 +2577,75 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
   }
 };
 
+const PDF_DA_FONT_BASEFONT = {
+  Helv: 'Helvetica',
+  'Helvetica-Bold': 'Helvetica-Bold',
+  'Helvetica-Oblique': 'Helvetica-Oblique',
+  'Helvetica-BoldOblique': 'Helvetica-BoldOblique',
+  'Times-Roman': 'Times-Roman',
+  'Times-Bold': 'Times-Bold',
+  'Times-Italic': 'Times-Italic',
+  'Times-BoldItalic': 'Times-BoldItalic',
+  Courier: 'Courier',
+  'Courier-Bold': 'Courier-Bold',
+  'Courier-Oblique': 'Courier-Oblique',
+  'Courier-BoldOblique': 'Courier-BoldOblique',
+};
+
+// Callout FreeText /C is RGB-only. Faded style.fillOpacity used to export
+// an opaque box. Independent fade lives in ExtGState /ca so group /CA
+// (borderOpacity) can still fade the whole annotation. Opaque omits /AP.
+const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
+  formWidth,
+  formHeight,
+  fill,
+  text,
+  glyph,
+  fontName,
+  fontSize,
+}) => {
+  const fillAlpha = fill?.visible ? fill.opacity : 0;
+  if (!fill?.visible || !fill.hex || fillAlpha >= 0.99999) return;
+  const n = pdfNumberText;
+  const rgbFill = hexToRGB(fill.hex);
+  const escaped = String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const baseFont = PDF_DA_FONT_BASEFONT[fontName] || 'Helvetica';
+  const size = Math.max(4, Number(fontSize) || 12);
+  const textY = Math.max(2, formHeight - size - 4);
+  const content = [
+    'q',
+    '/GS0 gs',
+    `${n(rgbFill.red)} ${n(rgbFill.green)} ${n(rgbFill.blue)} rg`,
+    `0 0 ${n(formWidth)} ${n(formHeight)} re f`,
+    'Q',
+    'q',
+    'BT',
+    `/F1 ${n(size)} Tf`,
+    `${n(glyph.red)} ${n(glyph.green)} ${n(glyph.blue)} rg`,
+    `1 0 0 1 ${n(4)} ${n(textY)} Tm`,
+    `(${escaped}) Tj`,
+    'ET',
+    'Q',
+  ];
+  const fontRef = pdfDoc.context.register(pdfDoc.context.obj({
+    Type: 'Font',
+    Subtype: 'Type1',
+    BaseFont: baseFont,
+    Encoding: 'WinAnsiEncoding',
+  }));
+  const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+    Type: 'XObject',
+    Subtype: 'Form',
+    FormType: 1,
+    BBox: [0, 0, formWidth, formHeight],
+    Resources: {
+      Font: { F1: fontRef },
+      ExtGState: { GS0: { Type: 'ExtGState', ca: fillAlpha } },
+    },
+  });
+  annotationDict.AP = pdfDoc.context.obj({ N: pdfDoc.context.register(appearance) });
+};
+
 /**
  * Create FreeText annotation (text box)
  */
@@ -2619,7 +2688,8 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // Live toolbar writes textbox Fill as backgroundColor (often rgba() from
     // composeColorForPatch). Opacity-0 / empty / transparent omit /C so the
     // exported box stays clear, matching the screen. Callout boxes pass the
-    // already-resolved hex from resolveCalloutBoxFill.
+    // resolved paint from resolveCalloutBoxFill — hex-only used to invent
+    // /C when fillOpacity was 0 (visible:false still carries a hex).
     const boxFill = resolveTextboxBoxFill(fabricObj);
     const background = boxFill.visible ? hexToRGB(boxFill.hex) : null;
     // Live toolbar writes Border/Width as stroke + strokeWidth (often rgba()
@@ -2655,6 +2725,21 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // byte-identical. /C stays the box fill — not this fade.
     const objectAlpha = paintAlpha('#ffffff', fabricObj.opacity);
     if (objectAlpha < 0.99999) annotationDict.CA = objectAlpha;
+    // Callout Fill Opacity is independent of that group /CA. /C stays the
+    // fill hex; faded fills write ExtGState /ca on /AP so Acrobat does not
+    // paint an opaque box. Opacity-0 already omitted /C. Opaque omits /AP
+    // so default export stays byte-identical.
+    if (options.calloutMetadataJson && boxFill.visible && boxFill.opacity < 0.99999) {
+      attachCalloutFreeTextFillAppearance(pdfDoc, annotationDict, {
+        formWidth: width,
+        formHeight: height,
+        fill: boxFill,
+        text,
+        glyph: color,
+        fontName: daFont,
+        fontSize,
+      });
+    }
 
     if (options.calloutMetadataJson) {
       annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
@@ -2713,6 +2798,7 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   // lineColor is an import leftover. Writers used the hex only, so a user-
   // picked Opacity never reached Line /CA or printed flatten.
   const border = resolveCalloutBorder(style);
+  const boxFill = resolveCalloutBoxFill(style);
   const stroke = border.hex || style.borderColor || style.lineColor || '#1e293b';
   const strokeOpacity = Number.isFinite(Number(style?.borderOpacity))
     ? Math.max(0, Math.min(1, Number(style.borderOpacity)))
@@ -2792,9 +2878,11 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     fontWeight: style.bold ? 'bold' : 'normal',
     fontStyle: style.italic ? 'italic' : 'normal',
     fontFamily: style.fontFamily,
-    // Live toolbar writes style.fillColor / fillOpacity. backgroundColor is
-    // only an import leftover — using it here dropped /C for every on-screen fill.
-    backgroundColor: resolveCalloutBoxFill(style).hex,
+    // Live toolbar writes style.fillColor / fillOpacity. Passing .hex dropped
+    // fillOpacity (rgba → hex) and invented /C when fillOpacity was 0
+    // (visible:false still has a hex). Pass paint so transparent omits /C
+    // and faded fills keep their alpha for /ca.
+    backgroundColor: boxFill.visible ? boxFill.paint : 'transparent',
     textAlign: style.textAlign,
     opacity: strokeOpacity,
   }, pageHeight, buildCalloutOptions('text'));
