@@ -3028,7 +3028,12 @@ const PDF_DA_FONT_BASEFONT = {
 // reached Acrobat as a single leftover line until Fill was re-touched
 // opaque (which omits /AP). Single-line / absent stay one Tm + Tj so
 // default faded-fill export stays byte-identical. Callouts share this
-// writer and already wrap on screen — do not invent callout verticalAlign.
+// writer. Live callout text is always vertically centered on screen
+// (buildCalloutTextContentStyle justifyContent center) — bake that
+// screen-center contract into faded /AP Tm y + flatten. Do not honor
+// leftover style.verticalAlign (the view ignores it). Do not invent a
+// user-settable callout verticalAlign control. Opaque fill still omits
+// /AP so /BS stays the native path.
 //
 // Live Border Opacity + flatten already honor rgba stroke, but this
 // writer used to attach only when Fill was faded. Empty / opaque Fill
@@ -3501,6 +3506,12 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     // and faded fills keep their alpha for /ca.
     backgroundColor: boxFill.visible ? boxFill.paint : 'transparent',
     textAlign: style.textAlign,
+    // Screen always centers callout glyphs (justifyContent center).
+    // Faded-fill /AP used leftover top (no verticalAlign passed) so
+    // Acrobat stayed top-aligned until Fill was re-touched opaque.
+    // Bake middle — do not invent a user-settable callout
+    // verticalAlign control. Opaque fill still omits /AP.
+    verticalAlign: 'middle',
     opacity: strokeOpacity,
     // Live Style dash + Border already ride the SVG box and flatten
     // borderDashArray, but this FreeText used to pass no stroke so faded
@@ -4677,6 +4688,10 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     strikethrough: style.strikethrough === true,
     fontFamily: style.fontFamily,
     textAlign: style.textAlign,
+    // Same screen-center contract as the faded FreeText /AP Tm y.
+    // Flatten used leftover top so print stayed top-aligned until
+    // Fill was re-touched. Do not invent callout verticalAlign.
+    verticalAlign: 'middle',
   }, pageHeight, fonts);
   return 1;
 };
