@@ -198,6 +198,8 @@ test('export host still names the Polygon /BS /CA contract; isolated 8448 / 75/2
   assert.match(writer, /Flatten used to stroke a solid path so/);
   assert.doesNotMatch(writer, /value: 'polygon'|label: 'Polygon'/);
   const shell = read('src/AppShell.jsx');
+  assert.match(shell, /live fade never reached persist \/ Polygon \/CA/);
+  assert.doesNotMatch(shell, /minOpacity=\{\(shapeOneVisibleRule && !onFillTab\) \? 1 : 0\}/);
   assert.doesNotMatch(shell, /value: 'polygon'|label: 'Polygon'/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);

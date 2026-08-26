@@ -2590,7 +2590,11 @@ export default function App({ devPreviewReturnTab = null }) {
                           firstPreset={(shapeOneVisibleRule && !onFillTab)
                             ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
                             : 'transparent'}
-                          minOpacity={(shapeOneVisibleRule && !onFillTab) ? 1 : 0}
+                          // One-visible is the applyChange bump above, not a
+                          // 100% Border floor. minOpacity 1 locked Color
+                          // Opacity on rect-mapped imported polygons so a
+                          // live fade never reached persist / Polygon /CA.
+                          minOpacity={0}
                           passthroughSelector={COLOR_PICKER_SIBLING_PASSTHROUGH}
                         />
                       </Suspense>

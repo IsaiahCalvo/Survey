@@ -2596,9 +2596,10 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       }
     } else {
       // Live toolbar maps selected imported polygon → rect Style dash +
-      // Color Opacity. Screen already honours strokeDashArray and rgba
-      // stroke, but export wrote hex /C + /Border width only — Acrobat
-      // stayed solid and opaque until Style / Opacity were re-touched.
+      // Color Opacity. Screen already honours strokeDashArray, but
+      // AppShell minOpacity 1 locked Border fade at 100 and export wrote
+      // hex /C + /Border width only — Acrobat stayed solid and opaque
+      // until Style / Opacity were re-touched.
       // Same contract as createPolyLineAnnotation: /C stays the stroke
       // RGB; /CA carries the fade; dashed/dotted write /BS. Solid +
       // opaque omit both so default export stays byte-identical. Do not
