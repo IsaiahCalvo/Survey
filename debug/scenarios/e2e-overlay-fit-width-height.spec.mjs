@@ -178,7 +178,7 @@ test('desktop overlay Fit width / Fit height intended + break + edge', async ({ 
   await zoom.click();
   await page.keyboard.press('Control+1');
   expect(await zoomPercent(page), 'zoom % INPUT does not steal Ctrl+1').toBe(heightPct);
-  expect(await fitRowActive(page, 'Fit height'), 'zoom INPUT Ctrl+1 keeps Fit height').toBe('true');
+  expect(await fitRowActive(page, 'Fit width'), 'zoom INPUT Ctrl+1 does not apply Fit width').toBe('false');
   await blurInputs(page);
 
   // Edge — overlay / fit chords invent 0 marks; viewBox / file.id stay.

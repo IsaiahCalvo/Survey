@@ -49,6 +49,7 @@ test('live spec covers overlay listing + Ctrl+1 / Ctrl+2 + hub + 390 + file.id',
   assert.match(spec, /must not invent Ctrl\+M/);
   assert.match(spec, /must not invent Open file/);
   assert.match(spec, /zoom % INPUT does not steal Ctrl\+1/);
+  assert.match(spec, /zoom INPUT Ctrl\+1 does not apply Fit width/);
   assert.match(spec, /hubPreview must not mount the overlay/);
   assert.match(spec, /must not stamp file.id/);
   assert.match(spec, /0 0 612 792/);
