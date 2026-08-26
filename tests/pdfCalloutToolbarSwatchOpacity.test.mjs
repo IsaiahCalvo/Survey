@@ -71,5 +71,5 @@ test('isolated 8448 / 75/250 stay standing; leftover-18 stay fail-closed', () =>
   assert.match(complexity, /p95CommitMs: 75/);
   assert.match(complexity, /maxCommitMs: 250/);
   const leftover = read('tests/leftover18FailClosed.test.mjs');
-  assert.match(leftover, /Do NOT set file\.id/);
+  assert.match(leftover, /stamp file\.id on \?testPdf=/);
 });
