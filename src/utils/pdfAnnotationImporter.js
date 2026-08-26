@@ -756,6 +756,44 @@ function extractAnnotationOpacity(annotation, fallback = 1) {
   return fallback;
 }
 
+// PDF /CA is stroking alpha; /ca is nonstroking (fill) alpha. A shared
+// leftover reader that prefers /ca painted faded Square / Circle borders
+// (clickable-link-test 55R: /CA 1, /ca ~0.30) until Border was re-touched.
+function extractAnnotationStrokeOpacity(annotation, fallback = 1) {
+  if (!annotation || typeof annotation !== 'object') {
+    return fallback;
+  }
+
+  const dedicated = [
+    annotation.strokeAlpha,
+    annotation.CA,
+  ];
+  for (const candidate of dedicated) {
+    const normalized = normalizeOpacityValue(candidate);
+    if (normalized !== null) {
+      return normalized;
+    }
+  }
+
+  if (
+    normalizeOpacityValue(annotation.ca) === null
+    && normalizeOpacityValue(annotation.fillAlpha) === null
+  ) {
+    const shared = [
+      annotation.opacity,
+      annotation.alpha,
+    ];
+    for (const candidate of shared) {
+      const normalized = normalizeOpacityValue(candidate);
+      if (normalized !== null) {
+        return normalized;
+      }
+    }
+  }
+
+  return fallback;
+}
+
 function hexToRgba(hex, alpha = 1) {
   if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
 
@@ -4277,7 +4315,7 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1);
+  const strokeOpacity = extractAnnotationStrokeOpacity(annotation, 1);
   const fillColor = getShapeFillColor(annotation, strokeColor);
   const strokeWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
   const hasVisibleStroke = strokeWidth > 0;
@@ -4420,7 +4458,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
   }
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1);
+  const strokeOpacity = extractAnnotationStrokeOpacity(annotation, 1);
   const fillColor = getShapeFillColor(annotation, strokeColor);
   const strokeWidth = getBorderWidth(annotation, 1);
 
