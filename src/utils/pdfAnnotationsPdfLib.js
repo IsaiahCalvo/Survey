@@ -44,6 +44,7 @@ import {
   flattenedTextBlockOffset,
   flattenedTextInlineOffset,
   pdfFreeTextQuadding,
+  resolveCalloutBoxFill,
   wrapFlattenedTextLines,
 } from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
@@ -2610,7 +2611,9 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     fontWeight: style.bold ? 'bold' : 'normal',
     fontStyle: style.italic ? 'italic' : 'normal',
     fontFamily: style.fontFamily,
-    backgroundColor: style.backgroundColor || null,
+    // Live toolbar writes style.fillColor / fillOpacity. backgroundColor is
+    // only an import leftover — using it here dropped /C for every on-screen fill.
+    backgroundColor: resolveCalloutBoxFill(style).hex,
     textAlign: style.textAlign,
   }, pageHeight, buildCalloutOptions('text'));
   if (textRef) refs.push(textRef);
@@ -3548,7 +3551,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     stroke,
     strokeWidth,
     ...leaderDashProps,
-    fill: style.backgroundColor || '#ffffff',
+    fill: resolveCalloutBoxFill(style).paint,
   }, pageHeight, fonts);
   drawFlattenedText(page, {
     type: 'textbox',

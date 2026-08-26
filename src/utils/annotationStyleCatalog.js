@@ -217,6 +217,34 @@ export function pdfFreeTextQuadding(textAlign) {
   return 0;
 }
 
+/**
+ * Live callout boxes store Fill as style.fillColor + style.fillOpacity
+ * (toolbar / defaultCalloutStyle). A few import leftovers still carry
+ * style.backgroundColor. Export/flatten used the leftover key and then
+ * defaulted flatten to #ffffff — so a transparent on-screen box printed
+ * white and a user-picked fill never reached FreeText /C.
+ */
+export function resolveCalloutBoxFill(style = {}) {
+  const live = style?.fillColor;
+  const leftover = style?.backgroundColor;
+  const raw = (live && live !== 'transparent') ? live : (leftover || live || null);
+  if (raw == null || raw === '' || raw === 'transparent') {
+    return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  }
+  const hex = normalizeHexColor(raw);
+  if (!hex) return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  const opacity = Number.isFinite(Number(style?.fillOpacity))
+    ? Math.max(0, Math.min(1, Number(style.fillOpacity)))
+    : 1;
+  if (opacity <= 0) return { hex, opacity: 0, visible: false, paint: 'transparent' };
+  if (opacity >= 1) return { hex, opacity: 1, visible: true, paint: hex };
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return { hex, opacity, visible: true, paint: `rgba(${r}, ${g}, ${b}, ${opacity})` };
+}
+
 const clampUnit = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /**
