@@ -123,6 +123,15 @@ const BookmarkTreeRow = ({
     : isGroupAnimationActive
       ? undefined
       : CSS.Translate.toString(transform);
+  const rowName = String(item.name || '').trim() || (isFolder ? 'Untitled group' : 'Untitled bookmark');
+  const rowLabel = isFolder
+    ? `Select bookmark group ${rowName}`
+    : `Jump to bookmark ${rowName}`;
+  const activateRow = () => {
+    if (isClone || isEditMode) return;
+    onSelect?.(item.id);
+    if (!isFolder) onNavigate?.(item);
+  };
 
   const commitName = () => {
     if (skipNameCommitRef.current) {
@@ -215,10 +224,17 @@ const BookmarkTreeRow = ({
     >
       <div
         ref={isClone ? undefined : setDraggableNodeRef}
-        onClick={() => {
+        role={isClone ? undefined : 'button'}
+        tabIndex={isClone || isEditMode ? -1 : 0}
+        aria-label={isClone ? undefined : rowLabel}
+        aria-pressed={isClone ? undefined : isSelected}
+        onClick={activateRow}
+        onKeyDown={(event) => {
           if (isClone || isEditMode) return;
-          onSelect?.(item.id);
-          if (!isFolder) onNavigate?.(item);
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          activateRow();
         }}
         style={{
           transform: isClone ? undefined : sortableTransform,
