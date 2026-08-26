@@ -683,7 +683,7 @@ export function MobileToolProperties({ api }) {
           aria-checked={Boolean(survey.keepCategoryActive)}
           onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
         >
-          <span aria-hidden="true">{survey.keepCategoryActive ? '✓' : ''}</span>
+          <span aria-hidden="true">{survey.keepCategoryActive ? <Icon name="check" size={14} /> : null}</span>
           Keep active
         </button>
       </div>
@@ -728,11 +728,11 @@ export function MobileToolProperties({ api }) {
           }}
         />
         {[
-          ['B', 'bold', 'toggleBold', 'Bold'],
-          ['I', 'italic', 'toggleItalic', 'Italic'],
-          ['U', 'underline', 'toggleUnderline', 'Underline'],
-          ['S', 'strike', 'toggleStrike', 'Strikethrough'],
-        ].map(([label, stateKey, method, title]) => (
+          ['formatBold', 'bold', 'toggleBold', 'Bold'],
+          ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
+          ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
+          ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
+        ].map(([iconName, stateKey, method, title]) => (
           <button
             key={stateKey}
             type="button"
@@ -742,7 +742,7 @@ export function MobileToolProperties({ api }) {
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => editorApi[method]?.()}
           >
-            {label}
+            <Icon name={iconName} size={18} />
           </button>
         ))}
         <MobileStyledSelect
@@ -1187,11 +1187,11 @@ export function MobileToolProperties({ api }) {
                     <strong>Text formatting</strong>
                     <div className="mobile-pdf-text-defaults__format" role="toolbar" aria-label="Text formatting">
                       {[
-                        ['B', 'bold', 'Bold'],
-                        ['I', 'italic', 'Italic'],
-                        ['U', 'underline', 'Underline'],
-                        ['S', 'strike', 'Strikethrough'],
-                      ].map(([label, key, title]) => (
+                        ['formatBold', 'bold', 'Bold'],
+                        ['formatItalic', 'italic', 'Italic'],
+                        ['formatUnderline', 'underline', 'Underline'],
+                        ['formatStrikethrough', 'strike', 'Strikethrough'],
+                      ].map(([iconName, key, title]) => (
                         <button
                           key={key}
                           type="button"
@@ -1200,7 +1200,7 @@ export function MobileToolProperties({ api }) {
                           aria-pressed={Boolean(textDefaults[key])}
                           onClick={() => updateTextDefaults({ [key]: !textDefaults[key] })}
                         >
-                          {label}
+                          <Icon name={iconName} size={18} />
                         </button>
                       ))}
                     </div>

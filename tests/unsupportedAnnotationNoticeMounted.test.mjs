@@ -31,6 +31,10 @@ async function loadNotice() {
     .replace(
       "import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';",
       `import { formatUnsupportedAnnotationNotice } from ${JSON.stringify(formatterUrl)};`,
+    )
+    .replace(
+      "import Icon from '../Icons';",
+      'const Icon = ({ name, size }) => <svg data-icon={name} width={size} height={size} />;',
     );
 
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });

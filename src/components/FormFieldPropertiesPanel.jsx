@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import { buildFormFieldUpdate } from './formDesignerTools';
+import Icon from '../Icons';
 
 // Re-export so existing callers / tests that import from this module keep
 // working. The canonical implementation lives in `formDesignerTools.js`.
@@ -114,7 +115,7 @@ export default function FormFieldPropertiesPanel({
             padding: '2px 6px'
           }}
         >
-          ×
+          <Icon name="close" size={16} />
         </button>
       </div>
 

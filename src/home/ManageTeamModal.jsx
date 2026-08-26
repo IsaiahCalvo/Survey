@@ -559,10 +559,10 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const allSel = selectable.length > 0 && selectable.every(m => selectedIds.has(m.id));
   const someSel = selectedIds.size > 0;
 
-  const ICON_BTN = (path, title, onClick, color, disabled) => (
+  const ICON_BTN = (iconName, title, onClick, color, disabled) => (
     <button title={title} onClick={(e) => { if (disabled) return; e.stopPropagation(); onClick(); }}
       style={{ width: 28, height: 28, borderRadius: 6, padding: 0, background: "transparent", border: `1px solid ${INK_500}`, color: disabled ? INK_300 : color, display: "grid", placeItems: "center", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", flex: "none" }}>
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{path}</svg>
+      <Icon name={iconName} size={13} />
     </button>
   );
 
@@ -612,7 +612,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   style={{ padding: "0 8px", height: 28, fontSize: 11.5, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, cursor: "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{allSel ? "None" : "All"}</button>
                 <div style={{ position: "relative", display: "inline-flex" }}>
                   {ICON_BTN(
-                    <><circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0 1 14 0"/><path d="m17 12 5 0M22 8l-5 8"/></>,
+                    "userRole",
                     "Change role",
                     () => setBulkRoleOpen(o => !o),
                     BONE_100,
@@ -627,7 +627,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   )}
                 </div>
                 {ICON_BTN(
-                  <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
+                  "mail",
                   "Copy email" + (someSel ? "s" : ""),
                   async () => {
                     const emails = memberList.filter(m => selectedIds.has(m.id)).map(m => m.email).filter(Boolean).join(", ");
@@ -639,7 +639,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   !someSel
                 )}
                 {ICON_BTN(
-                  <><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></>,
+                  "trash",
                   "Remove from team",
                   removeSelected,
                   DANGER,
@@ -695,7 +695,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                       m.isCreator ? <span /> : (
                         <span onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
                           style={{ width: 18, height: 18, border: `1.4px solid ${checked ? GOLD : INK_500}`, background: checked ? GOLD : "transparent", borderRadius: 3, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", justifySelf: "center" }}>
-                          {checked && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#15110a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4.5 4.5L20 6"/></svg>}
+                          {checked && <Icon name="check" size={11} color="#15110a" />}
                         </span>
                       )
                     ) : (

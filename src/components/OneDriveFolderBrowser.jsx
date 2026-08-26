@@ -8,6 +8,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
+import Icon from '../Icons';
 import {
   listFolders,
   listDriveItems,
@@ -26,23 +27,15 @@ const SOURCE_TYPES = {
 // identity across OneDriveFolderBrowser renders (defining them inside the body
 // gave React a new type every render, remounting the whole tree).
 const FolderIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
-    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
+  <Icon name="folder" size={20} color={COLORS.text.muted} />
 );
 
 const SiteIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
-    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round"/>
-    <polyline points="9,22 9,12 15,12 15,22" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
+  <Icon name="home" size={20} color={COLORS.text.muted} />
 );
 
 const LibraryIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
-    <path d="M4 19.5A2.5 2.5 0 016.5 17H20" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
+  <Icon name="library" size={20} color={COLORS.text.muted} />
 );
 
 const BackButton = ({ onClick, label }) => (
@@ -68,9 +61,7 @@ const BackButton = ({ onClick, label }) => (
       marginBottom: '8px',
     }}
   >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+    <Icon name="arrowLeft" size={16} />
     {label}
   </button>
 );
@@ -398,7 +389,10 @@ const OneDriveFolderBrowser = ({
             transition: 'all 0.15s ease',
           }}
         >
-          My OneDrive
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <Icon name="oneDrive" size={20} />
+            My OneDrive
+          </span>
         </button>
         <button
           onClick={() => setActiveSource(SOURCE_TYPES.SHAREPOINT)}

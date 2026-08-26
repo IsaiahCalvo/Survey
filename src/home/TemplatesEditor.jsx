@@ -652,7 +652,7 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
                 onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
-                {isSel && <span style={{ color: '#d8a84e', fontSize: 11, flex: 'none' }}>✓</span>}
+                {isSel && <Icon name="check" size={11} color="#d8a84e" />}
               </button>
             );
           })}
@@ -1927,7 +1927,7 @@ export default function TemplatesEditor({
                           onClick={(e) => { e.stopPropagation(); toggleTplSel(t.id); }}
                           style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                         >
-                          {isSel && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                          {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                         </span>
                       ) : (
                         <button
@@ -2024,7 +2024,7 @@ export default function TemplatesEditor({
                       width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       flex: 'none', alignSelf: 'center',
                     }}
-                  ><span style={{ display: 'block', lineHeight: 1, transform: 'translateY(-0.5px)' }}>+</span></button>
+                  ><Icon name="plus" size={12} /></button>
                 </SortableModuleTabs>
               </div>
 
@@ -2151,7 +2151,7 @@ export default function TemplatesEditor({
                             onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
                             style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            {isSel && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                            {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                           </span>
                         )}
                       </div>
@@ -2225,7 +2225,7 @@ export default function TemplatesEditor({
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               }}
                             >
-                              <span style={{ fontSize: 13 }}>+</span> Add checklist item
+                              <Icon name="plus" size={13} /> Add checklist item
                             </button>
 
                             {/* KAL-44 — Archived items live in the template
@@ -2402,7 +2402,7 @@ export default function TemplatesEditor({
                               onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
                               style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                             >
-                              {isSel && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                              {isSel && <Icon name="check" size={10} color="var(--paper)" />}
                             </span>
                           ) : (
                             <button
@@ -2573,7 +2573,7 @@ export default function TemplatesEditor({
                                 </span>
                               </span>
                               {tplEdit ? (
-                                <span className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
+                                <span className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</span>
                               ) : (
                                 <button
                                   onClick={(e) => {
@@ -2734,7 +2734,7 @@ export default function TemplatesEditor({
                                 />
                                 <span title={archivedItems.length ? `${items.length} active, ${archivedItems.length} archived` : `${items.length} active`}>{items.length}{archivedItems.length ? ` +${archivedItems.length}` : ''}</span>
                                 {catEdit ? (
-                                  <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</i>
+                                  <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : null}
                               </div>
                               {open ? (
@@ -2879,7 +2879,7 @@ export default function TemplatesEditor({
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
                                 />
                                 {entityEdit ? (
-                                  <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</i>
+                                  <i className={`templates-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} /> : null}</i>
                                 ) : (
                                   <button
                                     type="button"
@@ -3116,7 +3116,7 @@ export default function TemplatesEditor({
                           isDragging={isDragging}
                         />
                         <span onClick={() => toggleModSel(mod.id)} style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? '#d8a84e' : '#3a4252'}`, background: isSel ? '#d8a84e' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {isSel && <span style={{ color: '#0d0f14', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                          {isSel && <Icon name="check" size={10} color="#0d0f14" />}
                         </span>
                         <input
                           defaultValue={mod.name}
@@ -3135,7 +3135,7 @@ export default function TemplatesEditor({
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
               <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed #3a4252', background: 'transparent', color: '#8d96a6', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <span style={{ fontSize: 13 }}>+</span> New module
+                <Icon name="plus" size={13} /> New module
               </button>
             </div>
             <div className="templates-module-edit-actions" style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>

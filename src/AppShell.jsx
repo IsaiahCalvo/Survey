@@ -467,31 +467,13 @@ export default function App({ devPreviewReturnTab = null }) {
   // ZOOM_MODES id; anything that isn't fit-width/fit-height (incl. MANUAL)
   // falls back to the fit-page glyph.
   const renderFitIcon = (m, size = 15) => {
-    const stroke = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.7 };
-    const dim = { width: `${size}px`, height: `${size}px` };
     if (m === ZOOM_MODES.FIT_WIDTH) {
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" style={dim}>
-          <rect x="4" y="5" width="16" height="14" rx="1.5" {...stroke} />
-          <path d="M7 12h10M7 12l3-3M7 12l3 3M17 12l-3-3M17 12l-3 3" {...stroke} />
-        </svg>
-      );
+      return <Icon name="fitWidth" size={size} />;
     }
     if (m === ZOOM_MODES.FIT_HEIGHT) {
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" style={dim}>
-          <rect x="5" y="4" width="14" height="16" rx="1.5" {...stroke} />
-          <path d="M12 7v10M12 7l-3 3M12 7l3 3M12 17l-3-3M12 17l3-3" {...stroke} />
-        </svg>
-      );
+      return <Icon name="fitHeight" size={size} />;
     }
-    // fit-page (default)
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" style={dim}>
-        <rect x="6" y="3" width="12" height="18" rx="1.5" {...stroke} />
-        <path d="M9 7h6M9 11h6M9 15h4" {...stroke} />
-      </svg>
-    );
+    return <Icon name="fitPage" size={size} />;
   };
 
   // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
@@ -1915,11 +1897,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     })()}
                     {/* Bold / Italic / Underline / Strikethrough toggles. */}
                     {[
-                      ['B', 'bold', 'toggleBold', { fontWeight: 700 }],
-                      ['I', 'italic', 'toggleItalic', { fontStyle: 'italic' }],
-                      ['U', 'underline', 'toggleUnderline', { textDecoration: 'underline' }],
-                      ['S', 'strike', 'toggleStrike', { textDecoration: 'line-through' }],
-                    ].map(([label, stateKey, apiKey, fontStyleOverride]) => {
+                      ['formatBold', 'bold', 'toggleBold', 'Bold'],
+                      ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
+                      ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
+                      ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
+                    ].map(([iconName, stateKey, apiKey, title]) => {
                       const isOn = !!bottomToolbarApi.richTextEditor?.state?.[stateKey];
                       return (
                         <button
@@ -1941,19 +1923,16 @@ export default function App({ devPreviewReturnTab = null }) {
                             color: isOn ? '#d8a84e' : '#e8e2d4',
                             border: '1px solid transparent',
                             borderRadius: '5px',
-                            fontSize: '13px',
-                            fontFamily: FONT_FAMILY,
                             cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            ...fontStyleOverride,
                           }}
-                          {...chromeTip(label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough', 'below')}
-                          aria-label={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
+                          {...chromeTip(title, 'below')}
+                          aria-label={title}
                           aria-pressed={isOn}
                         >
-                          {label}
+                          <Icon name={iconName} size={17} />
                         </button>
                       );
                     })}
