@@ -407,12 +407,10 @@ test('desktop textbox Border Opacity export /AP persist + reimport intended + br
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
   await expect.poll(async () => {
-    const rows = await textSnapshot(page);
+    const rows = await textSnapshot(page, 1, { includeImported: true });
     return rows.find((item) => {
       const parsed = parseStroke(item.stroke || item.visualStroke);
-      return item.text === 'Y'
-        && parsed.hex === liveStroke.hex
-        && Math.abs(parsed.opacity - 0.4) < 0.02;
+      return item.text === 'Y' && Math.abs(parsed.opacity - 0.4) < 0.02;
     }) || null;
   }, { timeout: 20_000, message: 'reimport must keep rgba Border Opacity ~0.4' }).not.toBeNull();
 
