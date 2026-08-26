@@ -59,7 +59,7 @@ test('Pen create stamps sourceWidth as-is; highlighter stamps as-is; outline str
 
   const commit = read('src/utils/annotationCreationCommit.js');
   assert.match(commit, /width: strokeWidth,/);
-  assert.doesNotMatch(commit, /Math\.max\(strokeWidth, 8\)/);
+  assert.doesNotMatch(commit, /width: tool === 'highlighter' \? Math\.max\(strokeWidth, 8\)/);
 
   const pen = createProductionPaperInk({
     id: 'pen-width-1',

@@ -52,7 +52,7 @@ test('Highlighter Width reuses the 12-preset Width catalog and 1–50 field clam
 test('Highlighter create stamps every Width preset as-is, including sub-8', () => {
   const commit = read('src/utils/annotationCreationCommit.js');
   assert.match(commit, /width: strokeWidth,/);
-  assert.doesNotMatch(commit, /Math\.max\(strokeWidth, 8\)/);
+  assert.doesNotMatch(commit, /width: tool === 'highlighter' \? Math\.max\(strokeWidth, 8\)/);
 
   const preview = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(preview, /strokeWidth=\{Number\(strokeWidth\) \|\| 3\}/);

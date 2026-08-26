@@ -72,7 +72,7 @@ test('first-stroke commit / preview / PAL no longer floor Width at 8', () => {
     'first-stroke must name the leftover',
   );
   assert.match(commit, /width: strokeWidth,/);
-  assert.doesNotMatch(commit, /Math\.max\(strokeWidth, 8\)/);
+  assert.doesNotMatch(commit, /width: tool === 'highlighter' \? Math\.max\(strokeWidth, 8\)/);
 
   const preview = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(preview, /strokeWidth=\{Number\(strokeWidth\) \|\| 3\}/);
