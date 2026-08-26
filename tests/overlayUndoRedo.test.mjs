@@ -23,7 +23,6 @@ test('overlay lists Ctrl+Z Undo and Ctrl+Shift+Z Redo next to Save', () => {
   assert.doesNotMatch(overlay, /Ctrl\+Y|⌘Y|Cmd\+Y|keys: \['Y'\]|keys: \['Ctrl', 'Y'\]/);
   assert.doesNotMatch(overlay, /Copy|Cut|Paste/);
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
-  assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
 });
 
 test('Ctrl+Z / Ctrl+Shift+Z are live viewer undo/redo chords', () => {

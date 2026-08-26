@@ -86,9 +86,19 @@ const KeyboardShortcutsOverlay = () => {
       // omitting the sibling Delete chord made it undiscoverable
       // from the catalog the same way Undo/Redo were missing next
       // to Save. Do not invent Backspace-alias overlay rows — those
-      // stay aliases. Do not invent Duplicate / z-order catalog
-      // rows this pass.
+      // stay aliases.
       { keys: ['Delete'], description: 'Delete selected' },
+      // Ctrl+Shift+] is the live Bring to front chord
+      // (SVGAnnotationLayer BracketRight + shift → 'front').
+      // The overlay already listed Delete selected next to
+      // Undo/Redo; omitting the sibling z-order chord made it
+      // undiscoverable from the catalog the same way Delete was
+      // missing next to Undo/Redo. Duplicate is not a live
+      // annotation chord (Ctrl+D does not clone). Do not invent
+      // Duplicate overlay rows. Do not invent the other three
+      // z-order catalog rows this pass — one sibling gap. Do
+      // not invent clipboard overlay rows.
+      { keys: ['Ctrl', 'Shift', ']'], description: 'Bring to front' },
       { keys: [findShortcutModifier, 'F'], description: 'Search text' },
       // F3 is the live Find next chord (SearchTextPanel goToNextMatch).
       // The overlay already listed Ctrl+F Search text in Actions; omitting

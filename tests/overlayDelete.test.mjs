@@ -22,7 +22,6 @@ test('overlay lists Delete selected next to Undo/Redo', () => {
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
   assert.doesNotMatch(overlay, /Copy|Cut|Paste/);
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
-  assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
 });
 
 test('Delete/Backspace are live SVG selected-annotation chords', () => {
