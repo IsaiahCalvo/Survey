@@ -3,7 +3,7 @@
 // Action shortcuts were already listed (Ctrl+O / Ctrl+S), but the catalog
 // omitted Undo+Redo as one listing block. Distinct from leftover-18,
 // E-05 undo/redo apply leftover, inventing Open file / UL-03, inventing
-// Ctrl+Y overlay rows, clipboard overlay rows, or Delete/Duplicate/z-order
+// Ctrl+Y overlay rows, clipboard overlay rows, or Duplicate/z-order
 // overlay rows.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,7 +24,6 @@ test('overlay lists Ctrl+Z Undo and Ctrl+Shift+Z Redo next to Save', () => {
   assert.doesNotMatch(overlay, /Copy|Cut|Paste/);
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
-  assert.doesNotMatch(overlay, /description: 'Delete'/);
 });
 
 test('Ctrl+Z / Ctrl+Shift+Z are live viewer undo/redo chords', () => {

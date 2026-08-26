@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('overlay catalogs tools/Esc/search and omits Delete/Duplicate/z-order', () => {
+test('overlay catalogs tools/Esc/search/Delete and omits Duplicate/z-order', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /keys: \['P'\], description: 'Pen'/);
   assert.match(overlay, /keys: \['V'\], description: 'Select annotations'/);
@@ -17,10 +17,11 @@ test('overlay catalogs tools/Esc/search and omits Delete/Duplicate/z-order', () 
   assert.match(overlay, /keys: \['Shift', 'E'\], description: 'Partial erase'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['Esc'\], description: 'Close dialogs\/cancel'/);
+  assert.match(overlay, /keys: \['Delete'\], description: 'Delete selected'/);
   assert.doesNotMatch(overlay, /Duplicate/);
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
   assert.doesNotMatch(overlay, /Bring forward/);
-  assert.doesNotMatch(overlay, /description: 'Delete'/);
+  assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
 });
 
 test('AppShell hides overlay on viewer; DevTestRoute remounts it; z-order/Delete/tool keys stay live', () => {

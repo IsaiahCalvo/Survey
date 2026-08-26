@@ -77,10 +77,18 @@ const KeyboardShortcutsOverlay = () => {
       // the sibling Edit chords made them undiscoverable from the
       // catalog the same way Ctrl+S was missing next to Search.
       // Undo and Redo share this one listing block. Do not invent
-      // Y-alias overlay rows — those stay aliases. Do not invent
-      // Delete / z-order catalog rows this pass.
+      // Y-alias overlay rows — those stay aliases.
       { keys: ['Ctrl', 'Z'], description: 'Undo' },
       { keys: ['Ctrl', 'Shift', 'Z'], description: 'Redo' },
+      // Delete is the live selected-annotation chord
+      // (SVGAnnotationLayer Delete/Backspace handler). The overlay
+      // already listed Ctrl+Z Undo / Ctrl+Shift+Z Redo in Actions;
+      // omitting the sibling Delete chord made it undiscoverable
+      // from the catalog the same way Undo/Redo were missing next
+      // to Save. Do not invent Backspace-alias overlay rows — those
+      // stay aliases. Do not invent Duplicate / z-order catalog
+      // rows this pass.
+      { keys: ['Delete'], description: 'Delete selected' },
       { keys: [findShortcutModifier, 'F'], description: 'Search text' },
       // F3 is the live Find next chord (SearchTextPanel goToNextMatch).
       // The overlay already listed Ctrl+F Search text in Actions; omitting

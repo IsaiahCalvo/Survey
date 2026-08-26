@@ -8,13 +8,14 @@ import { test, expect } from '@playwright/test';
 // V-05/V-08/E-05 catalog samples, and leftover-18. Do not stamp file.id.
 // Product: `?` toggles; Esc / click-outside / Close dismiss; zoom % and
 // Search keep `?` / do not open the overlay. Catalog is the hardcoded
-// list — Delete/Duplicate/z-order
+// list — Duplicate/z-order
 // are live elsewhere and omitted here. Ctrl+M Manual lock is listed
 // next to the Fit siblings (live chord, same class as Shift+E).
 // Ctrl+S Save document is listed next to Search text (live chord).
 // F3 Find next is listed next to Search text (live chord).
 // Shift+F3 Find previous is listed next to Find next (live chord).
 // Ctrl+Z Undo / Ctrl+Shift+Z Redo are listed next to Save (live chords).
+// Delete selected is listed next to Undo/Redo (live chord).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -33,6 +34,7 @@ const LISTED = [
   'Save document',
   'Undo',
   'Redo',
+  'Delete selected',
   'Search text',
   'Find next',
   'Find previous',
@@ -53,7 +55,6 @@ const LISTED = [
 ];
 
 const OMITTED = [
-  /\bDelete\b/,
   /\bDuplicate\b/i,
   /Bring (to )?front/i,
   /Bring forward/i,

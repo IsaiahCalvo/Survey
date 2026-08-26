@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 
-// Overlay leftover: Ctrl+Z / Ctrl+Shift+Z are live Undo / Redo chords
-// (PDFViewer handleUndo / handleRedo via undoRedoHotkeys), and sibling
-// Action shortcuts (Ctrl+O / Ctrl+S) were already listed, but the catalog
-// omitted Undo+Redo as one listing block. Distinct from leftover-18,
-// E-05 undo/redo apply leftover, inventing Open file / UL-03 for overlay
-// Ctrl+O, inventing Ctrl+Y overlay rows, inventing clipboard overlay
-// rows, and inventing Duplicate/z-order overlay rows.
+// Overlay leftover: Delete is a live selected-annotation chord
+// (SVGAnnotationLayer Delete/Backspace handler), and sibling Action
+// shortcuts (Ctrl+Z Undo / Ctrl+Shift+Z Redo) were already listed, but
+// the catalog omitted Delete. Distinct from leftover-18, inventing
+// Open file / UL-03 for overlay Ctrl+O, inventing Backspace-alias
+// overlay rows, inventing clipboard overlay rows, and inventing
+// Duplicate/z-order overlay rows.
 // Do not stamp file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
@@ -139,21 +139,40 @@ async function createRect(page, coords) {
   return waitForNewUserAnnotation(page, before, isRect);
 }
 
+async function selectStroke(page, id) {
+  await page.keyboard.press('v');
+  const target = page.locator(`[data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  const points = [
+    { x: box.x + Math.min(6, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
+    { x: box.x + 2, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    if (await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count()) return;
+  }
+  expect(await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count()).toBeGreaterThan(0);
+}
+
 function overlay(page) {
   return page.locator('[data-keyboard-shortcuts-modal="true"]');
 }
 
-function assertOverlayListsUndoRedo(text, label) {
-  expect(text, `${label} lists Save document`).toContain('Save document');
+function assertOverlayListsDelete(text, label) {
   expect(text, `${label} lists Undo`).toContain('Undo');
   expect(text, `${label} lists Redo`).toContain('Redo');
-  expect(text, `${label} must not invent Ctrl+Y`).not.toMatch(/Ctrl\+Y|⌘Y|Cmd\+Y/i);
+  expect(text, `${label} lists Delete selected`).toContain('Delete selected');
+  expect(text, `${label} must not invent Backspace`).not.toMatch(/\bBackspace\b/);
+  expect(text, `${label} must not invent Ctrl\+Y`).not.toMatch(/Ctrl\+Y|⌘Y|Cmd\+Y/i);
   expect(text, `${label} must not invent Copy\/Cut\/Paste`).not.toMatch(/\b(Copy|Cut|Paste)\b/);
   expect(text, `${label} must not invent Open file`).not.toMatch(/Open file/i);
   expect(text, `${label} must not invent Duplicate`).not.toMatch(/\bDuplicate\b/);
 }
 
-test('desktop overlay Undo/Redo intended + break + edge', async ({ page }) => {
+test('desktop overlay Delete intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
   await openEditor(page);
   await blurInputs(page);
@@ -162,36 +181,32 @@ test('desktop overlay Undo/Redo intended + break + edge', async ({ page }) => {
   const idsBefore = await userOrder(page);
   expect(idsBefore, 'fresh editor must invent 0 user marks').toEqual([]);
 
-  // Break — empty-stack Ctrl+Z / Ctrl+Shift+Z invent 0 marks.
-  await page.keyboard.press('Control+z');
-  await page.keyboard.press('Control+Shift+z');
-  expect(await userOrder(page), 'empty-stack Ctrl+Z invents 0').toEqual(idsBefore);
+  // Break — empty-selection Delete invents 0 marks.
+  await page.keyboard.press('Delete');
+  expect(await userOrder(page), 'empty-selection Delete invents 0').toEqual(idsBefore);
 
-  // Intended — Ctrl+Z drops a just-created rect; Ctrl+Shift+Z restores it.
-  const rect = await createRect(page, { x0: 0.18, y0: 0.22, x1: 0.40, y1: 0.40 });
+  // Intended — Delete removes the selected rect; sibling stays.
+  const rectA = await createRect(page, { x0: 0.16, y0: 0.20, x1: 0.36, y1: 0.38 });
+  const rectB = await createRect(page, { x0: 0.42, y0: 0.24, x1: 0.62, y1: 0.42 });
   await blurInputs(page);
   await expect.poll(async () => userOrder(page), {
-    message: 'create must leave one user rect',
-  }).toEqual([rect.id]);
+    message: 'create must leave two user rects',
+  }).toEqual(expect.arrayContaining([rectA.id, rectB.id]));
 
-  await page.keyboard.press('Control+z');
+  await selectStroke(page, rectA.id);
+  await page.keyboard.press('Delete');
   await expect.poll(async () => userOrder(page), {
-    message: 'Ctrl+Z must drop the rect',
-  }).toEqual([]);
-
-  await page.keyboard.press('Control+Shift+z');
-  await expect.poll(async () => userOrder(page), {
-    message: 'Ctrl+Shift+Z must restore the rect',
-  }).toEqual([rect.id]);
+    message: 'Delete must remove the selected rect',
+  }).toEqual([rectB.id]);
 
   await blurInputs(page);
   await page.keyboard.press('?');
   const modal = overlay(page);
   await expect(modal).toBeVisible({ timeout: 8_000 });
   const catalog = await modal.innerText();
-  assertOverlayListsUndoRedo(catalog, 'desktop overlay');
+  assertOverlayListsDelete(catalog, 'desktop overlay');
 
-  // Break — Esc dismisses; zoom INPUT Ctrl+Z does not steal; second ? toggles.
+  // Break — Esc dismisses; zoom INPUT Delete does not steal; second ? toggles.
   await page.keyboard.press('Escape');
   await expect(modal).toHaveCount(0);
 
@@ -201,19 +216,20 @@ test('desktop overlay Undo/Redo intended + break + edge', async ({ page }) => {
   await page.keyboard.press('?');
   await expect(modal, 'second `?` toggles closed').toHaveCount(0);
 
+  await selectStroke(page, rectB.id);
   const zoomBtn = page.getByRole('button', { name: 'Edit zoom percentage', exact: true });
   await expect(zoomBtn).toBeVisible();
   await zoomBtn.click();
   const zoom = page.getByRole('textbox', { name: 'Zoom percentage', exact: true });
   await expect(zoom).toBeVisible();
   await zoom.click();
-  await page.keyboard.press('Control+z');
-  expect(await userOrder(page), 'zoom % INPUT does not steal Ctrl+Z').toEqual([rect.id]);
+  await page.keyboard.press('Delete');
+  expect(await userOrder(page), 'zoom % INPUT does not steal Delete').toEqual([rectB.id]);
   await page.keyboard.press('Escape').catch(() => {});
   await blurInputs(page);
 
-  // Edge — overlay / Undo+Redo invent 0 extra marks; viewBox / file.id stay.
-  expect(await userOrder(page), 'overlay Undo/Redo must keep the restored rect').toEqual([rect.id]);
+  // Edge — overlay / Delete invent 0 extra marks; viewBox / file.id stay.
+  expect(await userOrder(page), 'overlay Delete must keep the sibling rect').toEqual([rectB.id]);
   const viewBox = await pageViewBox(page);
   expect(viewBox).toBe('0 0 612 792');
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
@@ -228,16 +244,15 @@ test('desktop overlay Undo/Redo intended + break + edge', async ({ page }) => {
   expect(await overlay(hubPage).count(), 'hubPreview must not mount the overlay').toBe(0);
   await hubPage.close();
 
-  console.log('OVERLAY_UNDO_REDO_DESKTOP_PROOF', JSON.stringify({
-    listedUndo: /Undo/.test(catalog),
-    listedRedo: /Redo/.test(catalog),
-    restoredId: rect.id,
+  console.log('OVERLAY_DELETE_DESKTOP_PROOF', JSON.stringify({
+    listedDelete: /Delete selected/.test(catalog),
+    keptId: rectB.id,
     viewBox,
     fileId: await fileId(page),
   }));
 });
 
-test('390 overlay Undo/Redo intended + break + edge', async ({ page }) => {
+test('390 overlay Delete intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
   await openEditor(page, { width: 390, height: 844 });
   await blurInputs(page);
@@ -247,15 +262,14 @@ test('390 overlay Undo/Redo intended + break + edge', async ({ page }) => {
   const modal = overlay(page);
   await expect(modal, '390 overlay exists').toBeVisible({ timeout: 8_000 });
   const catalog = await modal.innerText();
-  assertOverlayListsUndoRedo(catalog, '390 overlay');
+  assertOverlayListsDelete(catalog, '390 overlay');
 
   await page.keyboard.press('Escape');
   await expect(modal).toHaveCount(0);
 
   const idsBefore = await userOrder(page);
-  await page.keyboard.press('Control+z');
-  await page.keyboard.press('Control+Shift+z');
-  expect(await userOrder(page), '390 empty-stack Ctrl+Z invents 0').toEqual(idsBefore);
+  await page.keyboard.press('Delete');
+  expect(await userOrder(page), '390 empty-selection Delete invents 0').toEqual(idsBefore);
 
   const viewBox = await pageViewBox(page);
   expect(viewBox).toBe('0 0 612 792');
@@ -263,9 +277,8 @@ test('390 overlay Undo/Redo intended + break + edge', async ({ page }) => {
   expect(await userOrder(page)).toEqual([]);
   await assertNoErrorBoundary(page);
 
-  console.log('OVERLAY_UNDO_REDO_390_PROOF', JSON.stringify({
-    listedUndo: /Undo/.test(catalog),
-    listedRedo: /Redo/.test(catalog),
+  console.log('OVERLAY_DELETE_390_PROOF', JSON.stringify({
+    listedDelete: /Delete selected/.test(catalog),
     viewBox,
     fileId: await fileId(page),
   }));

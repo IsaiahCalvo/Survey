@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('overlay catalogs the live chords and omits Delete/Duplicate/z-order', () => {
+test('overlay catalogs the live chords and omits Duplicate/z-order', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /Press '\?' to toggle/);
   assert.match(overlay, /useKeyPress\('\?', \(\) => \{/);
@@ -37,6 +37,7 @@ test('overlay catalogs the live chords and omits Delete/Duplicate/z-order', () =
   assert.match(overlay, /keys: \['Ctrl', 'S'\], description: 'Save document'/);
   assert.match(overlay, /keys: \['Ctrl', 'Z'\], description: 'Undo'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', 'Z'\], description: 'Redo'/);
+  assert.match(overlay, /keys: \['Delete'\], description: 'Delete selected'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['F3'\], description: 'Find next'/);
   assert.match(overlay, /keys: \['Shift', 'F3'\], description: 'Find previous'/);
@@ -58,7 +59,7 @@ test('overlay catalogs the live chords and omits Delete/Duplicate/z-order', () =
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
   assert.doesNotMatch(overlay, /Bring forward/);
-  assert.doesNotMatch(overlay, /description: 'Delete'/);
+  assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
 });
 
 test('useKeyPress ignores INPUT / TEXTAREA / contentEditable; AppShell hides overlay on viewer; DevTestRoute remounts; no file.id', () => {
@@ -107,6 +108,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Find previous/);
   assert.match(spec, /Undo/);
   assert.match(spec, /Redo/);
+  assert.match(spec, /Delete selected/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);
