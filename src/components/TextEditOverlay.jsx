@@ -128,6 +128,7 @@ export default function TextEditOverlay({
   textBoxWidth,
   newTextStyle = null,
   strokeColor,
+  strokeWidth,
   authorId = null,
   // KAL-88 — Decision 11 companion: survey/region scope inputs for NEW text.
   // Same sources of truth as SVGAnnotationLayer's creation commit (survey:
@@ -186,7 +187,9 @@ export default function TextEditOverlay({
         // the committed annotation both use these.
         fill: newTextStyle?.fontColor || strokeColor || '#007AFF',
         stroke: '#000000',
-        strokeWidth: 1,
+        // Next-draw Width must ride the first box. Hardcoding 1 dropped the
+        // toolbar until the user touched Width again (selected-patch).
+        strokeWidth: Math.max(1, Number(strokeWidth) || 1),
       }
       : {
         fontSize: Number(src.fontSize) || 16,

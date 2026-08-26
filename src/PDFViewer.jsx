@@ -32698,6 +32698,7 @@ ${pageBlocks}
                                     handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                   }}
                                   strokeColor={strokeColor}
+                                  strokeWidth={strokeWidth}
                                   zoomGeneration={zoomGeneration}
                                   // Same scale source as every other overlay (the measured
                                   // per-page scale), not the logical React zoom state — the two
