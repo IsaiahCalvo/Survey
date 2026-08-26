@@ -1988,7 +1988,18 @@ export default function TemplatesEditor({
                     {({ attributes, listeners, isDragging }) => (
                     <div
                       data-drag-rearrange-row
+                      data-template-id={t.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open template ${t.name}`}
+                      aria-pressed={tplEdit ? isSel : undefined}
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        if (tplEdit) toggleTplSel(t.id);
+                        else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); }
+                      }}
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '28px 1fr auto',
