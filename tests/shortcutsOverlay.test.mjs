@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-order', () => {
+test('overlay catalogs the live chords and omits Delete/Duplicate/z-order', () => {
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /Press '\?' to toggle/);
   assert.match(overlay, /useKeyPress\('\?', \(\) => \{/);
@@ -35,6 +35,8 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.match(overlay, /keys: \['Ctrl', 'M'\], description: 'Manual lock'/);
   assert.match(overlay, /description: 'Open document'/);
   assert.match(overlay, /keys: \['Ctrl', 'S'\], description: 'Save document'/);
+  assert.match(overlay, /keys: \['Ctrl', 'Z'\], description: 'Undo'/);
+  assert.match(overlay, /keys: \['Ctrl', 'Shift', 'Z'\], description: 'Redo'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['F3'\], description: 'Find next'/);
   assert.match(overlay, /keys: \['Shift', 'F3'\], description: 'Find previous'/);
@@ -53,9 +55,7 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.match(overlay, /description: 'Toggle shortcuts'/);
   assert.match(overlay, /keys: \['Esc'\], description: 'Close dialogs\/cancel'/);
 
-  assert.doesNotMatch(overlay, /\bUndo\b/);
-  assert.doesNotMatch(overlay, /\bRedo\b/);
-  assert.doesNotMatch(overlay, /Duplicate/);
+  assert.doesNotMatch(overlay, /description: 'Duplicate'/);
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
   assert.doesNotMatch(overlay, /Bring forward/);
   assert.doesNotMatch(overlay, /description: 'Delete'/);
@@ -105,6 +105,8 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Save document/);
   assert.match(spec, /Find next/);
   assert.match(spec, /Find previous/);
+  assert.match(spec, /Undo/);
+  assert.match(spec, /Redo/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);

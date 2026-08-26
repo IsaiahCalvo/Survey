@@ -186,8 +186,7 @@ test('desktop undo/redo stack intended + break + edge', async ({ page }) => {
   await redoButton(page).click({ force: true });
   expect(await allAnnotationIds(page), 'disabled toolbar clicks must invent 0').toEqual(importedAtStart);
 
-  // Overlay lists tools; Undo/Redo chords are live but undocumented (same
-  // class as Delete in the 2026-08-21 matrix).
+  // Overlay lists tools plus the live Undo / Redo chords next to Save.
   await blurInputs(page);
   await page.keyboard.press('?');
   const overlay = page.locator('[data-keyboard-shortcuts-modal="true"]');
@@ -195,8 +194,8 @@ test('desktop undo/redo stack intended + break + edge', async ({ page }) => {
   const overlayText = await overlay.innerText();
   expect(overlayText).toMatch(/Pen/);
   expect(overlayText).toMatch(/Esc/);
-  expect(overlayText).not.toMatch(/\bUndo\b/i);
-  expect(overlayText).not.toMatch(/\bRedo\b/i);
+  expect(overlayText).toMatch(/\bUndo\b/);
+  expect(overlayText).toMatch(/\bRedo\b/);
   await page.keyboard.press('Escape');
   await expect(overlay).toHaveCount(0);
 

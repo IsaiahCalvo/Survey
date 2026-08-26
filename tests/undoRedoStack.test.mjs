@@ -76,8 +76,8 @@ test('viewer capture listener + toolbar chrome + new action clears redo', () => 
   assert.match(mobile, /disabled=\{!topToolbarApi\?\.canUndo\}/);
 
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
-  assert.doesNotMatch(overlay, /\bUndo\b/);
-  assert.doesNotMatch(overlay, /\bRedo\b/);
+  assert.match(overlay, /keys: \['Ctrl', 'Z'\], description: 'Undo'/);
+  assert.match(overlay, /keys: \['Ctrl', 'Shift', 'Z'\], description: 'Redo'/);
 });
 
 test('live spec covers Ctrl+Z / Shift+Z / Y + toolbar + empty + input-block + redo-clear', () => {

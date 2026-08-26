@@ -8,12 +8,13 @@ import { test, expect } from '@playwright/test';
 // V-05/V-08/E-05 catalog samples, and leftover-18. Do not stamp file.id.
 // Product: `?` toggles; Esc / click-outside / Close dismiss; zoom % and
 // Search keep `?` / do not open the overlay. Catalog is the hardcoded
-// list — Undo/Redo/Delete/Duplicate/z-order
+// list — Delete/Duplicate/z-order
 // are live elsewhere and omitted here. Ctrl+M Manual lock is listed
 // next to the Fit siblings (live chord, same class as Shift+E).
 // Ctrl+S Save document is listed next to Search text (live chord).
 // F3 Find next is listed next to Search text (live chord).
 // Shift+F3 Find previous is listed next to Find next (live chord).
+// Ctrl+Z Undo / Ctrl+Shift+Z Redo are listed next to Save (live chords).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -30,6 +31,8 @@ const LISTED = [
   'Manual lock',
   'Open document',
   'Save document',
+  'Undo',
+  'Redo',
   'Search text',
   'Find next',
   'Find previous',
@@ -50,8 +53,6 @@ const LISTED = [
 ];
 
 const OMITTED = [
-  /\bUndo\b/i,
-  /\bRedo\b/i,
   /\bDelete\b/,
   /\bDuplicate\b/i,
   /Bring (to )?front/i,
@@ -244,7 +245,7 @@ test('desktop shortcuts overlay intended + break + edge', async ({ page }) => {
 
   console.log('SHORTCUTS_OVERLAY_DESKTOP_PROOF', JSON.stringify({
     listed: LISTED.length,
-    omittedUndoRedo: !/\bUndo\b/i.test(catalog) && !/\bRedo\b/i.test(catalog),
+    listedUndoRedo: /\bUndo\b/.test(catalog) && /\bRedo\b/.test(catalog),
     viewBox,
     fileId: await fileId(page),
   }));

@@ -71,6 +71,16 @@ const KeyboardShortcutsOverlay = () => {
       // Do not invent Open file / UL-03 — Ctrl+O stays Electron File menu
       // only. Do not invent clipboard overlay rows.
       { keys: ['Ctrl', 'S'], description: 'Save document' },
+      // Ctrl+Z / Ctrl+Shift+Z are the live Undo / Redo chords
+      // (PDFViewer handleUndo / handleRedo via undoRedoHotkeys).
+      // The overlay already listed Ctrl+O / Ctrl+S in Actions; omitting
+      // the sibling Edit chords made them undiscoverable from the
+      // catalog the same way Ctrl+S was missing next to Search.
+      // Undo and Redo share this one listing block. Do not invent
+      // Y-alias overlay rows — those stay aliases. Do not invent
+      // Delete / z-order catalog rows this pass.
+      { keys: ['Ctrl', 'Z'], description: 'Undo' },
+      { keys: ['Ctrl', 'Shift', 'Z'], description: 'Redo' },
       { keys: [findShortcutModifier, 'F'], description: 'Search text' },
       // F3 is the live Find next chord (SearchTextPanel goToNextMatch).
       // The overlay already listed Ctrl+F Search text in Actions; omitting
