@@ -16,7 +16,7 @@ test('edited imported Underline / StrikeOut export writers keep subtype + /CA', 
   const writer = read('src/utils/pdfAnnotationsPdfLib.js');
   assert.match(writer, /Underline: createImportedQuadMarkupAnnotation\('Underline'/);
   assert.match(writer, /StrikeOut: createImportedQuadMarkupAnnotation\('StrikeOut'/);
-  assert.match(writer, /CA: paintAlpha\(fabricObj\.fill, fabricObj\.opacity\),/);
+  assert.match(writer, /CA: paintAlpha\(paint, fabricObj\.opacity\),/);
   assert.match(writer, /Subtype: subtype,/);
   assert.doesNotMatch(writer, /Underline: createImportedHighlightAnnotation/);
 });

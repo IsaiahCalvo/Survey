@@ -2583,7 +2583,40 @@ const createImportedCaretAnnotation = (pdfDoc, page, fabricObj, pageHeight, opti
 // Select Color Fill already stamped rgba fill + edited, but the writer
 // table leftover-omitted those subtypes so export fell through to Square
 // and leftover-dropped /CA until Fill was re-touched on a real Square.
-const createImportedQuadMarkupAnnotation = (subtype, colorFallback) => (
+// Squiggly is a path proxy (stroke Color Opacity). Leftover-omitting it
+// fell through to Ink so Select Color leftover-emitted /Ink until Color
+// was re-touched on a real Pen. Path commands are page-space; left/top
+// stay 0 — bounds come from the path, paint from stroke.
+const importedMarkupPathBounds = (fabricObj) => {
+  const commands = Array.isArray(fabricObj?.path) ? fabricObj.path : [];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const cmd of commands) {
+    if (!Array.isArray(cmd)) continue;
+    for (let i = 1; i + 1 < cmd.length; i += 2) {
+      const x = Number(cmd[i]);
+      const y = Number(cmd[i + 1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  const scaleX = Math.abs(Number(fabricObj.scaleX) || 1);
+  const scaleY = Math.abs(Number(fabricObj.scaleY) || 1);
+  return {
+    left: (Number(fabricObj.left) || 0) + minX * scaleX,
+    top: (Number(fabricObj.top) || 0) + minY * scaleY,
+    width: Math.max(1, (maxX - minX) * scaleX),
+    height: Math.max(1, (maxY - minY) * scaleY),
+  };
+};
+
+const createImportedQuadMarkupAnnotation = (subtype, colorFallback, { paintFrom = 'fill' } = {}) => (
   pdfDoc,
   page,
   fabricObj,
@@ -2591,11 +2624,19 @@ const createImportedQuadMarkupAnnotation = (subtype, colorFallback) => (
   options = {},
 ) => {
   try {
-    const color = hexToRGB(fabricObj.fill || colorFallback);
-    const left = Number(fabricObj.left) || 0;
-    const top = Number(fabricObj.top) || 0;
-    const width = (Number(fabricObj.width) || 0) * Math.abs(Number(fabricObj.scaleX) || 1);
-    const height = (Number(fabricObj.height) || 0) * Math.abs(Number(fabricObj.scaleY) || 1);
+    const paint = paintFrom === 'stroke'
+      ? (fabricObj.stroke || fabricObj.fill || colorFallback)
+      : (fabricObj.fill || fabricObj.stroke || colorFallback);
+    const color = hexToRGB(paint || colorFallback);
+    const pathBounds = importedMarkupPathBounds(fabricObj);
+    const left = pathBounds?.left ?? (Number(fabricObj.left) || 0);
+    const top = pathBounds?.top ?? (Number(fabricObj.top) || 0);
+    const width = pathBounds?.width ?? (
+      (Number(fabricObj.width) || 0) * Math.abs(Number(fabricObj.scaleX) || 1)
+    );
+    const height = pathBounds?.height ?? (
+      (Number(fabricObj.height) || 0) * Math.abs(Number(fabricObj.scaleY) || 1)
+    );
     const minX = left;
     const minY = pageHeight - (top + height);
     const maxX = left + width;
@@ -2612,7 +2653,7 @@ const createImportedQuadMarkupAnnotation = (subtype, colorFallback) => (
         maxX, minY,
       ].map((value) => PDFNumber.of(value)),
       C: [color.red, color.green, color.blue],
-      CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
+      CA: paintAlpha(paint, fabricObj.opacity),
       Contents: PDFString.of(''),
       P: page.ref,
     };
@@ -2628,6 +2669,7 @@ const EDITED_IMPORT_SUBTYPE_WRITERS = {
   Highlight: createImportedHighlightAnnotation,
   Underline: createImportedQuadMarkupAnnotation('Underline', '#FF0000'),
   StrikeOut: createImportedQuadMarkupAnnotation('StrikeOut', '#FF0000'),
+  Squiggly: createImportedQuadMarkupAnnotation('Squiggly', '#FF0000', { paintFrom: 'stroke' }),
   Text: createImportedTextNoteAnnotation,
   Caret: createImportedCaretAnnotation,
 };
@@ -5068,9 +5110,10 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
       // UX 2026-07-17 (subtype-preserving export for edited imports): when an
       // EDITED imported copy carries a native subtype whose in-app proxy is a
-      // generic fabric shape (Highlight/Text/Caret), re-emit that subtype so
-      // the re-exported file keeps the annotation's real identity. All other
-      // objects fall through to the fabric-type switch below.
+      // generic fabric shape (Highlight/Text/Caret/Underline/StrikeOut/Squiggly),
+      // re-emit that subtype so the re-exported file keeps the annotation's
+      // real identity. All other objects fall through to the fabric-type
+      // switch below.
       const editedImportSubtypeWriter = item.editedImportedReplacement
         ? EDITED_IMPORT_SUBTYPE_WRITERS[obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType]
         : null;
