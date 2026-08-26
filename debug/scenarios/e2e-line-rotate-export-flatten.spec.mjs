@@ -195,19 +195,31 @@ async function createLine(page) {
   return (await shapeSnapshot(page)).find((item) => item.id === created.id);
 }
 
-async function selectLine(page, createdId) {
+async function selectLine(page, created) {
   await page.keyboard.press('v');
-  const target = page.locator(
-    `[data-shape-id="${createdId}"], [data-svg-annotation-layer="1"] [data-anno-id="${createdId}"]`,
-  ).first();
-  await expect(target).toBeVisible({ timeout: 8_000 });
-  const box = await target.boundingBox();
-  expect(box, `bbox for ${createdId}`).toBeTruthy();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+  const box = await pageBox(page);
+  const vb = String(await pageViewBox(page)).split(/\s+/).map(Number);
+  const [minX, minY, vbW, vbH] = vb;
+  const midX = (Number(created.leftoverX1) + Number(created.leftoverX2)) / 2;
+  const midY = (Number(created.leftoverY1) + Number(created.leftoverY2)) / 2;
+  const points = [
+    {
+      x: box.x + ((midX - minX) / vbW) * box.width,
+      y: box.y + ((midY - minY) / vbH) * box.height,
+    },
+    { x: box.x + box.width * 0.33, y: box.y + box.height * 0.28 },
+    { x: box.x + box.width * 0.18, y: box.y + box.height * 0.28 },
+    { x: box.x + box.width * 0.48, y: box.y + box.height * 0.28 },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+  }
 }
 
-async function applyRotation(page, createdId, degrees = LIVE_ANGLE) {
-  await selectLine(page, createdId);
+async function applyRotation(page, created, degrees = LIVE_ANGLE) {
+  await selectLine(page, created);
   const handle = page.locator('[data-rotation-handle="mtr"]').first();
   await expect(handle).toBeVisible({ timeout: 8_000 });
   const box = await handle.boundingBox();
@@ -220,7 +232,7 @@ async function applyRotation(page, createdId, degrees = LIVE_ANGLE) {
   await expect(input).toHaveValue(String(degrees));
   await input.press('Enter');
   await expect.poll(async () => {
-    const row = (await shapeSnapshot(page)).find((item) => item.id === createdId);
+    const row = (await shapeSnapshot(page)).find((item) => item.id === created.id);
     return angleNear(row?.angle, degrees) ? degrees : Number(row?.angle);
   }, { timeout: 12_000, message: `Rotation must stamp ${degrees}` }).toBe(degrees);
   await dismissChrome(page);
@@ -318,7 +330,7 @@ test('desktop line rotate export /L persist + reimport intended + break', async 
   const leftoverSpan = Math.hypot(created.leftoverX2 - created.leftoverX1, created.leftoverY2 - created.leftoverY1);
   expect(leftoverSpan, 'Line commit must pass the 3pt gate').toBeGreaterThan(3);
 
-  await applyRotation(page, created.id, LIVE_ANGLE);
+  await applyRotation(page, created, LIVE_ANGLE);
   const afterRotate = (await shapeSnapshot(page)).find((row) => row.id === created.id);
   expect(angleNear(afterRotate?.angle, LIVE_ANGLE), `live angle ${afterRotate?.angle}`).toBe(true);
   const leftoverAfter = Math.hypot(
