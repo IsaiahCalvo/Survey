@@ -1035,7 +1035,16 @@ const SearchResultRow = memo(function SearchResultRow({ result, index, isActive,
   return (
     <div
       data-result-index={index}
+      role="button"
+      tabIndex={0}
+      aria-label={`Jump to match ${index + 1} on page ${result.pageNumber}`}
+      aria-pressed={isActive}
       onClick={() => onSelect(result, index)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        onSelect(result, index);
+      }}
       style={{
         padding: '10px 12px',
         background: isActive ? '#3a5070' : '#181c24',
