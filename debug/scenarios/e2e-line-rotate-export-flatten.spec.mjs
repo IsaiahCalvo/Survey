@@ -195,6 +195,17 @@ async function createLine(page) {
   return (await shapeSnapshot(page)).find((item) => item.id === created.id);
 }
 
+async function clickLineMidpoint(page, created) {
+  const box = await pageBox(page);
+  const vb = String(await pageViewBox(page)).split(/\s+/).map(Number);
+  const [minX, minY, vbW, vbH] = vb;
+  const midX = (Number(created.leftoverX1) + Number(created.leftoverX2)) / 2;
+  const midY = (Number(created.leftoverY1) + Number(created.leftoverY2)) / 2;
+  const x = box.x + ((midX - minX) / vbW) * box.width;
+  const y = box.y + ((midY - minY) / vbH) * box.height;
+  return { x, y };
+}
+
 async function selectLine(page, created) {
   await page.keyboard.press('Escape');
   await blurInputs(page);
@@ -210,24 +221,12 @@ async function selectLine(page, created) {
       if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
     }
   }
-  const box = await pageBox(page);
-  const vb = String(await pageViewBox(page)).split(/\s+/).map(Number);
-  const [minX, minY, vbW, vbH] = vb;
-  const midX = (Number(created.leftoverX1) + Number(created.leftoverX2)) / 2;
-  const midY = (Number(created.leftoverY1) + Number(created.leftoverY2)) / 2;
-  const points = [
-    {
-      x: box.x + ((midX - minX) / vbW) * box.width,
-      y: box.y + ((midY - minY) / vbH) * box.height,
-    },
-    { x: box.x + box.width * 0.30, y: box.y + box.height * 0.31 },
-    { x: box.x + box.width * 0.16, y: box.y + box.height * 0.22 },
-    { x: box.x + box.width * 0.44, y: box.y + box.height * 0.40 },
-  ];
-  for (const point of points) {
-    await page.mouse.click(point.x, point.y);
-    if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
-  }
+  const mid = await clickLineMidpoint(page, created);
+  await page.mouse.click(mid.x, mid.y);
+  if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+  // Single-click Line chrome is endpoints only. Live Rotation lives on
+  // the bbox-edit overlay after double-click.
+  await page.mouse.dblclick(mid.x, mid.y);
 }
 
 async function applyRotation(page, created, degrees = LIVE_ANGLE) {
