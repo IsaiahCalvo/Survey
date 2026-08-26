@@ -211,14 +211,18 @@ test('Bookmarks desktop rows break + edge; leftover-18 skipped', async ({ page }
 
   await openPage(page, { width: 390, height: 844, url: OUTLINE_PDF });
   await expect(page.locator('[data-mobile-pdf-header="true"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Jump to page', exact: true })).toBeVisible({ timeout: 60_000 });
   expect(await jumpRows(page).count()).toBe(0);
   expect(await groupRows(page).count()).toBe(0);
   await openMobileBookmarks(page);
   expect(await jumpRows(page).count()).toBe(0);
   expect(await groupRows(page).count()).toBe(0);
+  await expect(page.getByRole('button', { name: /Add bookmark|Cancel new bookmark/ })).toBeVisible();
   const mobileOpen = page.getByRole('button', { name: /^Open bookmark / });
   const mobileToggle = page.getByRole('button', { name: /^Toggle / });
-  expect((await mobileOpen.count()) + (await mobileToggle.count())).toBeGreaterThan(0);
+  await expect.poll(async () => (await mobileOpen.count()) + (await mobileToggle.count()), {
+    timeout: 20_000,
+  }).toBeGreaterThan(0);
 
   await openPage(page, { url: OUTLINE_PDF });
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
