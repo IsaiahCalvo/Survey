@@ -36,6 +36,18 @@ Min-viable:
 
 HIGH-RISK file (`SVGAnnotationLayer.jsx`): min-viable only. `file.id` not stamped. CORS `*` untouched. `zoomGeneration` / viewBox / container-aware scale untouched. Did **not** replay Counter first-pin, textbox fillOpacity, callout fillOpacity, or highlighter highlightColor.
 
+## Live proof
+
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-pen-first-stroke-opacity.spec.mjs` **2 / 2 (8.1s)**.
+
+- Intended: Draw → Pen + Color Opacity `40` **before any stroke** + first stroke writes rgba fill **0.4** without touching Opacity again; Export annotated PDF writes Ink `/CA` **0.4**; `?testPdf=` reimport keeps fill rgba ~0.4; `file.id` null; viewBox `0 0 612 792`
+- Break: empty export invents 0; hubPreview Color **0**
+- Edge: 390 viewBox / `file.id` / no invent
+
+Node `pdfPenFirstStrokeOpacity` proves first-stroke source compose, hex-only is opaque 1, first-stroke-shaped export Ink `/CA` 0.4, highlighter still uses highlightColor.
+
+Focused Node `pdfPenFirstStrokeOpacity` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` fail-stops on pre-existing `annotationContextMenuitem` spec (`keyboard.press('Enter')` vs live spec — not taken; not aligned down). Isolated 8448 not reached because official fail-stops first. `graphify` CLI absent.
+
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
 Almost all gated. Do **not** take MoveCopy Close/Cancel/Confirm. Do **not** take Activity File / Edited. Do **not** take Projects file rows.
