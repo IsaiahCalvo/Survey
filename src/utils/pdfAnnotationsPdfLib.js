@@ -3041,6 +3041,14 @@ const PDF_DA_FONT_BASEFONT = {
 // rotate, but this /AP used to stay axis-aligned (and flatten painted
 // the leftover AABB) so Acrobat / print stayed unrotated until
 // Rotation was re-touched. Angle 0 / absent omit /Matrix.
+//
+// Live edit U / S already stamps underline / linethrough (callout
+// style.underline / style.strikethrough). Screen, metadata, and
+// flatten already draw the decoration, but /DA has no text-decoration
+// operator and this /AP used to paint glyphs only so Acrobat stayed
+// undecorated until Fill was re-touched opaque (which omits /AP).
+// Opaque + no decoration still omit /AP. Do not invent a
+// richTextEditor. Do not invent callout Rotation or Line /AP.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -3053,6 +3061,8 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   textAlign,
   verticalAlign,
   angle,
+  underline,
+  linethrough,
 }) => {
   const fillVisible = Boolean(fill?.visible && fill.hex);
   const fillAlpha = fillVisible ? fill.opacity : 0;
@@ -3062,7 +3072,10 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   const strokeAlpha = strokeVisible ? stroke.opacity : 0;
   const needsStrokeGs = strokeVisible && strokeAlpha < 0.99999;
   const needsRotate = pdfNeedsRotate(angle);
-  if (!needsFillGs && !needsStrokeGs && !needsRotate) return;
+  const wantsUnderline = underline === true;
+  const wantsLinethrough = linethrough === true;
+  const needsDecor = wantsUnderline || wantsLinethrough;
+  if (!needsFillGs && !needsStrokeGs && !needsRotate && !needsDecor) return;
   const escapePdfText = (value) => String(value || '')
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
@@ -3125,18 +3138,42 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     `/F1 ${n(size)} Tf`,
     `${n(glyph.red)} ${n(glyph.green)} ${n(glyph.blue)} rg`,
   );
+  const decorations = [];
   lines.forEach((line, index) => {
-    const textX = textPad + flattenedTextInlineOffset(innerWidth, measure(line), textAlign);
+    const lineWidth = measure(line);
+    const textX = textPad + flattenedTextInlineOffset(innerWidth, lineWidth, textAlign);
     const textY = firstY - index * size;
     content.push(
       `1 0 0 1 ${n(textX)} ${n(textY)} Tm`,
       `(${escapePdfText(line)}) Tj`,
     );
+    if (needsDecor && lineWidth > 0) decorations.push({ textX, textY, lineWidth });
   });
   content.push(
     'ET',
     'Q',
   );
+  // Same offsets as drawFlattenedText. Path ops stay outside BT so
+  // Acrobat paints the live U / S lines the faded /AP used to drop.
+  if (decorations.length) {
+    const thickness = Math.max(0.5, size / 14);
+    content.push(
+      'q',
+      `${n(glyph.red)} ${n(glyph.green)} ${n(glyph.blue)} RG`,
+      `${n(thickness)} w`,
+    );
+    decorations.forEach(({ textX, textY, lineWidth }) => {
+      if (wantsUnderline) {
+        const uy = textY - size * 0.12;
+        content.push(`${n(textX)} ${n(uy)} m ${n(textX + lineWidth)} ${n(uy)} l S`);
+      }
+      if (wantsLinethrough) {
+        const sy = textY + size * 0.28;
+        content.push(`${n(textX)} ${n(sy)} m ${n(textX + lineWidth)} ${n(sy)} l S`);
+      }
+    });
+    content.push('Q');
+  }
   const fontRef = pdfDoc.context.register(pdfDoc.context.obj({
     Type: 'Font',
     Subtype: 'Type1',
@@ -3201,9 +3238,9 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // picked on screen (previously hard-coded to black regular Helvetica).
     // Callers map callout {bold, italic} → fabric-native fontWeight/fontStyle
     // before reaching here. Underline/strikethrough CANNOT be expressed in a
-    // /DA string (no PDF text-decoration operator) — they survive via the app
-    // metadata round-trip and are drawn as real lines in the print-flatten
-    // path (drawFlattenedText); Acrobat renders this annotation without them.
+    // /DA string (no PDF text-decoration operator). Screen, metadata, and
+    // flatten already draw them; faded-fill /AP used to paint glyphs only
+    // so Acrobat stayed undecorated until Fill was re-touched opaque.
     const isBold = fabricObj.fontWeight === 'bold' || Number(fabricObj.fontWeight) >= 600;
     const isItalic = fabricObj.fontStyle === 'italic' || fabricObj.fontStyle === 'oblique';
     const daFont = pdfDefaultAppearanceFontName(fabricObj.fontFamily, { bold: isBold, italic: isItalic });
@@ -3271,8 +3308,13 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // Live Rotation already stamps `angle` and metadata + screen already
     // rotate, but /AP used to attach only for fade and stay axis-aligned
     // so Acrobat / print stayed unrotated until Rotation was re-touched.
-    // Angle 0 / absent still omit /AP when fill + stroke are opaque.
-    if (needsFillAp || needsStrokeAp || needsRotate) {
+    // Angle 0 / absent still omit /AP when fill + stroke are opaque
+    // and there is no live U / S decoration. /DA cannot carry underline
+    // — attach /AP when the live toggle is on so Acrobat keeps the line.
+    const wantsUnderline = fabricObj.underline === true;
+    const wantsLinethrough = fabricObj.linethrough === true
+      || fabricObj.strikethrough === true;
+    if (needsFillAp || needsStrokeAp || needsRotate || wantsUnderline || wantsLinethrough) {
       attachCalloutFreeTextFillAppearance(pdfDoc, annotationDict, {
         formWidth: width,
         formHeight: height,
@@ -3285,6 +3327,8 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         textAlign: fabricObj.textAlign,
         verticalAlign: fabricObj.verticalAlign,
         angle,
+        underline: wantsUnderline,
+        linethrough: wantsLinethrough,
       });
     }
 
@@ -3442,11 +3486,15 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     fontSize: style.fontSize || 14,
     // UX 2026-07-17: map callout {bold, italic} → fabric-native
     // fontWeight/fontStyle (ANNOTATION-CONTRACT.md addendum mapping) so the
-    // exported FreeText /DA picks the matching Helvetica variant. Underline/
-    // strikethrough have no /DA representation — see createFreeTextAnnotation.
+    // exported FreeText /DA picks the matching Helvetica variant. Live
+    // edit U / S stamps style.underline / style.strikethrough — pass
+    // them so faded-fill /AP draws the same decoration flatten already
+    // paints. Do not invent callout Rotation or Line /AP.
     fontWeight: style.bold ? 'bold' : 'normal',
     fontStyle: style.italic ? 'italic' : 'normal',
     fontFamily: style.fontFamily,
+    underline: style.underline === true,
+    linethrough: style.strikethrough === true || style.linethrough === true,
     // Live toolbar writes style.fillColor / fillOpacity. Passing .hex dropped
     // fillOpacity (rgba → hex) and invented /C when fillOpacity was 0
     // (visible:false still has a hex). Pass paint so transparent omits /C
