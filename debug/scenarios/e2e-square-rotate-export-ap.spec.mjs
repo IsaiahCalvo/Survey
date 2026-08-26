@@ -209,13 +209,15 @@ async function applyNextDrawFillOpacity(page, pct = LIVE_OPACITY) {
   await dismissChrome(page);
 }
 
-async function createRect(page) {
+async function createRect(page, { applyFill = true } = {}) {
   const before = new Set((await shapeSnapshot(page)).map((row) => row.id));
   await dismissChrome(page);
   await page.waitForTimeout(250);
   await activateTool(page, 'Shapes', 'Rectangle');
-  await applyNextDrawFillOpacity(page, LIVE_OPACITY);
-  await activateTool(page, 'Shapes', 'Rectangle');
+  if (applyFill) {
+    await applyNextDrawFillOpacity(page, LIVE_OPACITY);
+    await activateTool(page, 'Shapes', 'Rectangle');
+  }
   const box = await pageBox(page);
   await page.mouse.move(box.x + box.width * 0.22, box.y + box.height * 0.18);
   await page.mouse.down();
@@ -413,7 +415,7 @@ test('390 square rotate export /AP edge: viewBox, file.id, no invent', async ({ 
   expect(await pageViewBox(page)).toBe('0 0 612 792');
   expect((await shapeSnapshot(page)).filter(isRectRow).length).toBe(0);
 
-  const created = await createRect(page);
+  const created = await createRect(page, { applyFill: false });
   expect(isRectRow(created)).toBe(true);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
