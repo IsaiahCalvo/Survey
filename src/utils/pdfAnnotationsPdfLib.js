@@ -4066,6 +4066,16 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const yScale = (
       Number(shifted?.ry) || Number(shifted?.radius) || (getObjNumber(shifted, 'height') / 2) || 10
     ) * scaleY;
+    // UX (2026-08-26, ellipse Style dash): dashed/dotted circle and
+    // ellipse borders print with their on-screen strokeDashArray.
+    // Flatten used to call drawEllipse without borderDashArray so Style
+    // Dashed / Dotted printed solid. Same contract as the rect branch
+    // above. Solid / absent omit the dash so default flatten stays
+    // byte-identical. Do not invent a Square/Circle /BS leftover —
+    // Survey reimport already keeps dash via /AP + app metadata.
+    const ellipseDash = Array.isArray(shifted?.strokeDashArray) && shifted.strokeDashArray.length > 0
+      ? shifted.strokeDashArray.map((v) => Number(v) || 0)
+      : null;
     page.drawEllipse({
       x: left + xScale,
       y: getPdfY(pageHeight, top + yScale),
@@ -4076,6 +4086,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       color: fill?.color,
       opacity: fill?.opacity ?? 1,
       borderOpacity: stroke.opacity,
+      ...(ellipseDash ? { borderDashArray: ellipseDash, borderDashPhase: 0 } : {}),
     });
     return 1;
   }
