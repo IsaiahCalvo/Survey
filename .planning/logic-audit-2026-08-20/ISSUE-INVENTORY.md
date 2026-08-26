@@ -1,7 +1,9 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**This-pass (2026-08-26 Counter Number color opacity export):** not leftover-18. Live Counter Number Opacity already rode rgba `data.numberColor` + flatten; export Circle `/AP` painted the label hex-only after the Fill `/ca` reset so a faded Number reached Acrobat opaque. Product `4562beb2`. Receipt `fix-logs/counter-number-color-opacity-export-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+**This-pass (2026-08-26 Style dash after sibling persist):** not leftover-18. Session-shared `lineBorderStyle` leaked Callout / Rect Dashed into Text / Ellipse until Style was touched. Product `c082fc76`. Receipt `fix-logs/style-dash-after-sibling-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+
+**Prior-pass (2026-08-26 Counter Number color opacity export):** not leftover-18. Live Counter Number Opacity already rode rgba `data.numberColor` + flatten; export Circle `/AP` painted the label hex-only after the Fill `/ca` reset so a faded Number reached Acrobat opaque. Product `4562beb2`. Receipt `fix-logs/counter-number-color-opacity-export-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
 **Prior-pass (2026-08-26 Textbox first-create Style persist):** not leftover-18. Live Text Style already rode selected-patch `strokeDashArray`; first-create used envelope null so next-draw Dashed never persisted until Style was re-touched. Product `45acb83d`. Receipt `fix-logs/textbox-first-create-dash-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
