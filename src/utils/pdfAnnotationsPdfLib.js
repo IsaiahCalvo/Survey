@@ -312,12 +312,19 @@ export function buildPrintableRegularAnnotationPayload({
   };
 }
 
-// PDFString.of does not escape `\`. decodeText()/asBytes() then treat
-// JSON `\n` `\t` `\"` `\\` as PDF escapes, so a wrapped textbox's
-// SurveyAppAnnotation blob becomes invalid JSON and reimport drops
-// geometry.text + faded fill. Double backslashes so decodeText restores
-// the original JSON. Same write is used for callout/counter/layer JSON.
-const pdfJsonString = (value) => PDFString.of(String(value ?? '').replace(/\\/g, '\\\\'));
+// PDFString.of does not escape `\`, `(`, or `)`. decodeText()/asBytes()
+// then treat JSON `\n` `\t` `\"` `\\` as PDF escapes, so a wrapped
+// textbox's SurveyAppAnnotation blob becomes invalid JSON and reimport
+// drops geometry.text + faded fill. An unbalanced `)` in Contents /
+// metadata (e.g. "a) Hi") also terminates the literal string so the
+// annot object fails to parse and Survey-to-Survey drops fade + text.
+// Escape `\`, `(`, and `)` so decodeText restores the original JSON /
+// Contents. Same write is used for callout/counter/layer JSON.
+const pdfLiteralString = (value) => String(value ?? '')
+  .replace(/\\/g, '\\\\')
+  .replace(/\(/g, '\\(')
+  .replace(/\)/g, '\\)');
+const pdfJsonString = (value) => PDFString.of(pdfLiteralString(value));
 
 const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   if (!annotationDict || !options.appAnnotationMetadataJson) return;
@@ -2181,7 +2188,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     if (counterMetadataJson) {
       annotationDict.NM = PDFString.of(counterMetadata?.id || fabricObj.data?.id || fabricObj.id || `counter-${Date.now()}`);
       annotationDict.Subj = PDFString.of(PDF_COUNTER_SUBJECT);
-      annotationDict.Contents = PDFString.of(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? ''));
+      annotationDict.Contents = PDFString.of(pdfLiteralString(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? '')));
       annotationDict[PDF_COUNTER_METADATA_KEY] = pdfJsonString(counterMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2407,7 +2414,7 @@ const createImportedTextNoteAnnotation = (pdfDoc, page, fabricObj, pageHeight, o
       C: [color.red, color.green, color.blue],
       CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
       Name: PDFName.of(String(fabricObj?.data?.pdfNoteIcon || 'Note')),
-      Contents: PDFString.of(String(fabricObj?.data?.noteText ?? '')),
+      Contents: PDFString.of(pdfLiteralString(String(fabricObj?.data?.noteText ?? ''))),
       P: page.ref,
     };
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -3047,7 +3054,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Type: 'Annot',
       Subtype: 'FreeText',
       Rect: [minX, minY, maxX, maxY],
-      Contents: PDFString.of(text),
+      Contents: PDFString.of(pdfLiteralString(text)),
       DA: PDFString.of(da),
       Q: pdfFreeTextQuadding(fabricObj.textAlign),
       ...(background ? { C: [background.red, background.green, background.blue] } : {}),
