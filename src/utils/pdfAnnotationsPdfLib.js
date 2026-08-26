@@ -82,7 +82,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
-import { getLineEndpoints } from './svgBoundingBox.js';
+import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -374,6 +374,38 @@ const pdfRotatedBoxRect = (left, top, width, height, fabricAngleDeg, pageHeight)
   const halfH = (Math.abs(width * sin) + Math.abs(height * cos)) / 2;
   const pdfCy = pageHeight - cy;
   return [cx - halfW, pdfCy - halfH, cx + halfW, pdfCy + halfH];
+};
+
+// Live Rotation already stamps fabric `angle` on Line / Arrow (mtr /
+// Rotation pill) and metadata + screen already rotate about the
+// curve-inclusive bbox center. Export / flatten used leftover
+// getLineEndpoints so Acrobat / print stayed untilted until Rotation
+// was re-touched. Native Line has no /AP — bake the tilted world
+// pair into /L (and flatten drawLine) around the same pivot
+// renderLine uses. Angle 0 / absent keep leftover /L so default
+// Line export stays byte-identical. Callout leaders pass world
+// x1..y2 with no angle — do not invent callout Rotation.
+const rotateAppPointAround = (x, y, cx, cy, fabricAngleDeg) => {
+  const rad = (Number(fabricAngleDeg) || 0) * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+};
+
+const getExportLineEndpoints = (obj) => {
+  const leftover = getLineEndpoints(obj);
+  const angle = Number(obj?.angle) || 0;
+  if (!pdfNeedsRotate(angle)) return leftover;
+  const midPt = obj?.data?.midpoint || null;
+  const pivot = computeLineBboxCenter(leftover, midPt);
+  const start = rotateAppPointAround(leftover.x1, leftover.y1, pivot.x, pivot.y, angle);
+  const end = rotateAppPointAround(leftover.x2, leftover.y2, pivot.x, pivot.y, angle);
+  return { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
 };
 
 const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
@@ -2842,8 +2874,10 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
     // Fabric lines store center-relative x1..y2. World endpoints come from
     // getLineEndpoints (left+width/2 + x1). Using raw x1 here exported the
     // center-relative pair as /L — and after a group left/top offset that
-    // is a double-miss, not a double-offset.
-    const ep = getLineEndpoints(fabricObj);
+    // is a double-miss, not a double-offset. Live Rotation stamps `angle`
+    // without baking endpoints (the 2026-04-20 revert); getExportLineEndpoints
+    // applies that tilt so /L matches the screen. Angle 0 stays leftover.
+    const ep = getExportLineEndpoints(fabricObj);
     const x1 = Number(ep.x1) || 0;
     const y1 = Number(ep.y1) || 0;
     const x2 = Number(ep.x2) || 0;
@@ -3908,10 +3942,11 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
   // Same contract as createLineAnnotation / group flatten: world from
-  // getLineEndpoints so a parent left/top offset is applied once. Callout
-  // leaders pass world x1..y2 with no left/width — center is 0 and this
-  // is a no-op.
-  const ep = getLineEndpoints(obj);
+  // getExportLineEndpoints so a parent left/top offset is applied once
+  // and live Rotation `angle` bakes into the printed shaft. Callout
+  // leaders pass world x1..y2 with no left/width and no angle — center
+  // is 0 and this is a no-op. Do not invent callout Rotation.
+  const ep = getExportLineEndpoints(obj);
   const x1 = Number.isFinite(ep.x1) ? ep.x1 : getObjNumber(obj, 'x1');
   const y1 = Number.isFinite(ep.y1) ? ep.y1 : getObjNumber(obj, 'y1');
   const x2 = Number.isFinite(ep.x2) ? ep.x2 : getObjNumber(obj, 'x2');
