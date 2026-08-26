@@ -2631,16 +2631,49 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
   }
 };
 
-// Screen (renderPolygon / renderPolyline): world = left + scaleX*point.x
-// when pathOffset is 0 (importer points are min-relative). Resize commits
-// scaleX/scaleY and leaves points unbaked — export/print must apply scale.
-const polygonWorldPoint = (obj, point) => {
+// Screen (renderPolygon / renderPolyline): leftover world =
+// left + scaleX*point.x when pathOffset is 0 (importer points are
+// min-relative). Resize commits scaleX/scaleY and leaves points
+// unbaked — export/print must apply scale. Live Rotation stamps
+// fabric `angle` (bbox-edit mtr / Rotation pill) about the leftover
+// AABB center — the same pivot renderPolygon uses when pathOffset
+// is 0. Export /Vertices and flatten used leftover world points so
+// Acrobat / print stayed untilted until Rotation was re-touched.
+// Native Polygon / PolyLine have no rotation /AP — bake the tilted
+// world vertices. Angle 0 / absent keep leftover /Vertices so
+// default export stays byte-identical. Metadata keeps leftover
+// points so reimport is not double-rotated. Do not invent a
+// create-poly tool — this is selected-patch export of an imported
+// polygon / polyline.
+const leftoverPolygonWorldPoint = (obj, point) => {
   const sx = Math.abs(Number(obj?.scaleX) || 1);
   const sy = Math.abs(Number(obj?.scaleY) || 1);
   return {
     x: (Number(obj?.left) || 0) + sx * (Number(point?.x) || 0),
     y: (Number(obj?.top) || 0) + sy * (Number(point?.y) || 0),
   };
+};
+
+const polygonRotatePivot = (obj) => {
+  const points = Array.isArray(obj?.points) ? obj.points : [];
+  const leftover = points.map((point) => leftoverPolygonWorldPoint(obj, point));
+  if (!leftover.length) {
+    return { x: Number(obj?.left) || 0, y: Number(obj?.top) || 0 };
+  }
+  const xs = leftover.map((point) => point.x);
+  const ys = leftover.map((point) => point.y);
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+};
+
+const polygonWorldPoint = (obj, point) => {
+  const leftover = leftoverPolygonWorldPoint(obj, point);
+  const angle = Number(obj?.angle) || 0;
+  if (!pdfNeedsRotate(angle)) return leftover;
+  const pivot = polygonRotatePivot(obj);
+  return rotateAppPointAround(leftover.x, leftover.y, pivot.x, pivot.y, angle);
 };
 
 const polygonAppearancePath = (fabricObj, points, { intensity = null, strokeWidth = 1 } = {}) => {
@@ -2687,7 +2720,9 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       return null;
     }
 
-    // Convert points to PDF coordinates (flip Y)
+    // Convert points to PDF coordinates (flip Y). Live Rotation
+    // stamps `angle` without baking leftover points; polygonWorldPoint
+    // applies that tilt so /Vertices match the screen. Angle 0 stays leftover.
     const vertices = [];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -2812,6 +2847,9 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     const vertices = [];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
+    // Live Rotation stamps `angle` without baking leftover points;
+    // polygonWorldPoint applies that tilt so /Vertices match the screen.
+    // Angle 0 stays leftover. Same writer as createPolygonAnnotation.
     points.forEach(point => {
       const world = polygonWorldPoint(fabricObj, point);
       const x = world.x;
@@ -4188,6 +4226,9 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
+  // Live Rotation already stamps fabric `angle`. Flatten used leftover
+  // world points so print stayed untilted. polygonWorldPoint bakes the
+  // tilt; angle 0 stays leftover. Do not invent a create-poly tool.
   const worldPoints = points.map((point) => polygonWorldPoint(obj, point));
   let d = worldPoints.map((world, index) => (
     `${index === 0 ? 'M' : 'L'} ${world.x} ${world.y}`
