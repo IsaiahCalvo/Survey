@@ -1163,7 +1163,11 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   const lineColor = callout.style?.borderColor || callout.style?.lineColor || DEFAULT_CALLOUT_COLOR;
   const lineThickness = Math.max(1, toNumber(callout.style?.lineThickness, 2));
   const fillColor = callout.style?.fillColor || 'transparent';
-  const fillOpacity = Math.max(0.08, Math.min(1, toNumber(callout.style?.fillOpacity, 0.4)));
+  // Live Color Fill Opacity already offers 0–100 (field min 0). The old
+  // Math.max(..., 0.08) floor painted a ghost fill for 0/1/2/3/4/5/6/7
+  // until Fill was re-touched, while persist / export / flatten already
+  // honored the user-set 0–1 value. Missing still defaults to 0.4.
+  const fillOpacity = Math.max(0, Math.min(1, toNumber(callout.style?.fillOpacity, 0.4)));
   const borderOpacity = Math.max(0.2, Math.min(1, toNumber(callout.style?.borderOpacity, 1)));
   const fontSize = Math.max(1, toNumber(callout.style?.fontSize, 12));
   const descenderBuffer = fontSize * 0.35;
