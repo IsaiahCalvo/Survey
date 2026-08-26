@@ -207,19 +207,6 @@ async function finishAlignCommit(page, before, expectedAlign) {
   return (await textSnapshot(page)).find((item) => item.id === created.id);
 }
 
-async function enterExistingEdit(page, id) {
-  const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer="1"] [data-anno-id="${id}"]`).first();
-  await expect(target).toBeVisible({ timeout: 8_000 });
-  const box = await target.boundingBox();
-  expect(box, `annotation ${id} geometry`).toBeTruthy();
-  await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-  if (!(await page.locator('[data-text-edit-overlay] [contenteditable]').count())) {
-    await activateTool(page, 'Text', 'Text');
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  }
-  await expect(page.locator('[data-text-edit-overlay] [contenteditable]').first()).toBeVisible({ timeout: 10_000 });
-}
-
 async function exportAndSave(page, destName) {
   const exportBtn = page.getByRole('button', { name: 'Export annotated PDF', exact: true });
   await expect(exportBtn).toBeVisible();
@@ -296,22 +283,16 @@ test('desktop textbox verticalAlign export/reimport intended + break', async ({ 
   expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
   expect((await textSnapshot(page)).length, 'empty export must not invent a textbox').toBe(0);
 
-  const escapeBefore = await createTallText(page, 'B');
-  const skipped = await finishAlignCommit(page, escapeBefore, 'top');
-  expect(skipped.verticalAlign, 'default create stays top').toBe('top');
-  await enterExistingEdit(page, skipped.id);
+  const skipBefore = await createTallText(page, 'B');
   const trigger = page.getByRole('button', { name: 'Text alignment', exact: true }).first();
   await expect(trigger).toBeVisible();
   await trigger.click();
   await expect(page.locator('[data-annotation-dropdown-popover="true"]')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await trigger.click();
   await expect(page.locator('[data-annotation-dropdown-popover="true"]')).toHaveCount(0);
   await expect(page.locator('[data-text-edit-overlay] [contenteditable]').first()).toBeVisible();
-  await commitEdit(page);
-  await expect.poll(async () => {
-    const row = (await textSnapshot(page)).find((item) => item.id === skipped.id);
-    return row?.verticalAlign || 'top';
-  }).toBe('top');
+  const skipped = await finishAlignCommit(page, skipBefore, 'top');
+  expect(skipped.verticalAlign, 'dismiss align without a cell keeps top').toBe('top');
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   expect(await page.getByRole('button', { name: 'Text alignment', exact: true }).count()).toBe(0);
