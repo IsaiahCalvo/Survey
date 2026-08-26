@@ -1165,10 +1165,15 @@ export const getOpacityFromEntityColor = (color) => {
   // Extract opacity from rgba string
   if (color.startsWith('rgba')) {
     const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (match && match[4]) {
-      // Convert opacity from 0-1 range to 0-100 range
+    // "0" is a valid alpha. `match[4]` is falsy for "0", so Select used to
+    // treat rgba(..., 0) as "no opacity found" and sync Fill / Border to
+    // 100 until the picker was re-touched. Persist / export / flatten /
+    // page view already kept the 0.
+    if (match && match[4] != null && match[4] !== '') {
       const opacity = parseFloat(match[4]);
-      return Math.round(opacity * 100);
+      if (Number.isFinite(opacity)) {
+        return Math.round(opacity * 100);
+      }
     }
   }
 
