@@ -1035,7 +1035,10 @@ const DEFAULT_TOOL_PREFERENCES = {
   // rect's empty fill (#ffffff / 0); first-pin compose then stamped a
   // transparent pin until the user touched Fill.
   counter: { strokeColor: '#ffffff', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444', fillOpacity: 100 },
-  text: { strokeColor: '#000000', strokeOpacity: 100 },
+  // Omitting strokeWidth used to let Callout / Highlighter / Pen → Text
+  // inherit the sibling Width (2 / 20 / 3). First-create then stamped
+  // that leaked Width until the user touched the Text Width field.
+  text: { strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },
