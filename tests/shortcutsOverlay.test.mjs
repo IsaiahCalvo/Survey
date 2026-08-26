@@ -27,6 +27,7 @@ test('overlay catalogs the live chords and omits Duplicate', () => {
   assert.match(overlay, /description: 'Previous\/Next page'/);
   assert.match(overlay, /description: 'First page'/);
   assert.match(overlay, /description: 'Last page'/);
+  assert.match(overlay, /keys: \['Space'\], description: 'Hold to pan'/);
   assert.match(overlay, /description: 'Zoom in'/);
   assert.match(overlay, /description: 'Zoom out'/);
   assert.match(overlay, /description: 'Fit page'/);
@@ -115,6 +116,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Bring forward/);
   assert.match(spec, /Send backward/);
   assert.match(spec, /Send to back/);
+  assert.match(spec, /Hold to pan/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);

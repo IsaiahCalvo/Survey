@@ -20,6 +20,7 @@ import { test, expect } from '@playwright/test';
 // Bring forward is listed next to Bring to front (live z-order chord).
 // Send backward is listed next to Bring forward (live z-order chord).
 // Send to back is listed next to Send backward (live z-order chord).
+// Space Hold to pan is listed next to Last page (live view-pan chord).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -28,6 +29,7 @@ const LISTED = [
   'Previous/Next page',
   'First page',
   'Last page',
+  'Hold to pan',
   'Zoom in',
   'Zoom out',
   'Fit page',

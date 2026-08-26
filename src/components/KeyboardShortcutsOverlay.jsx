@@ -47,6 +47,16 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['←', '→'], description: 'Previous/Next page' },
       { keys: ['Home'], description: 'First page' },
       { keys: ['End'], description: 'Last page' },
+      // Space is the live hold-to-pan chord (PdfjsViewerContainer
+      // activateSpacePan). The overlay already listed page arrows /
+      // Home / End next to Zoom; omitting the sibling view-pan
+      // chord made it undiscoverable from the catalog the same
+      // way Ctrl+[ was missing next to Bring forward. Distinct
+      // from leftover-18, inventing Open file / UL-03, inventing
+      // clipboard overlay rows, and inventing Duplicate /
+      // Backspace / Y / G alias rows. V-01 already proved the
+      // hold-Space behavior; this pass only lists the live chord.
+      { keys: ['Space'], description: 'Hold to pan' },
       { keys: ['Ctrl', '+'], description: 'Zoom in' },
       { keys: ['Ctrl', '-'], description: 'Zoom out' },
       { keys: ['Ctrl', '0'], description: 'Fit page' },
