@@ -274,6 +274,9 @@ test('desktop Eraser Size persist + first swipe intended + break', async ({ page
   await page.mouse.up();
   expect((await userInkIds(page)).length, 'empty swipe must not invent ink').toBe(emptyBefore);
 
+  await page.evaluate(() => {
+    try { sessionStorage.removeItem('e2e-keep-tool-prefs'); } catch { /* ignore */ }
+  });
   await openEditor(page);
   await dismissChrome(page);
   const emptyExport = page.getByRole('button', { name: 'Export annotated PDF', exact: true });
