@@ -2834,6 +2834,12 @@ const PDF_DA_FONT_BASEFONT = {
 // Style was re-touched. Same [dash] 0 d contract as Ellipse / Square
 // /AP. Solid / absent omit the dash. Callout boxes pass the live box frame
 // (leaders still write Line /BS; do not invent Line /AP).
+//
+// Live textAlign already rides FreeText /Q and flatten
+// flattenedTextInlineOffset, but this /AP used to paint glyphs at x=4
+// (left) so a faded box reached Acrobat left-aligned until Fill was
+// re-touched opaque (which omits /AP so /Q takes over). Left / absent
+// stay at x=4 so default faded-fill export stays byte-identical.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -2843,6 +2849,7 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   glyph,
   fontName,
   fontSize,
+  textAlign,
 }) => {
   const fillAlpha = fill?.visible ? fill.opacity : 0;
   if (!fill?.visible || !fill.hex || fillAlpha >= 0.99999) return;
@@ -2855,6 +2862,17 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   const baseFont = PDF_DA_FONT_BASEFONT[fontName] || 'Helvetica';
   const size = Math.max(4, Number(fontSize) || 12);
   const textY = Math.max(2, formHeight - size - 4);
+  // Same 4pt inset the left Tm already used. Courier is fixed 0.6em;
+  // Helvetica / Times use the 0.556em glyph contract the counter /AP
+  // writer already relies on. Do not invent a font embed just to measure.
+  const glyphEm = String(baseFont).startsWith('Courier') ? 0.6 : 0.556;
+  const lineWidth = String(text || '').length * size * glyphEm;
+  const textPad = 4;
+  const textX = textPad + flattenedTextInlineOffset(
+    Math.max(0, formWidth - 2 * textPad),
+    lineWidth,
+    textAlign,
+  );
   const content = [
     'q',
     '/GS0 gs',
@@ -2883,7 +2901,7 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     'BT',
     `/F1 ${n(size)} Tf`,
     `${n(glyph.red)} ${n(glyph.green)} ${n(glyph.blue)} rg`,
-    `1 0 0 1 ${n(4)} ${n(textY)} Tm`,
+    `1 0 0 1 ${n(textX)} ${n(textY)} Tm`,
     `(${escaped}) Tj`,
     'ET',
     'Q',
@@ -3004,6 +3022,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         glyph: color,
         fontName: daFont,
         fontSize,
+        textAlign: fabricObj.textAlign,
       });
     }
 
