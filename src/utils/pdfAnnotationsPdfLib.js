@@ -347,8 +347,9 @@ const pdfJsonString = (value) => pdfEncodedString(value);
 // axis-aligned until Rotation was re-touched. Same sign as ellipse /AP:
 // matrixTheta = -fabricAngle (PDF y-up CCW is the same visual tilt).
 // Angle 0 / absent stay byte-identical (no /Matrix, leftover /Rect).
-// Callouts share this writer at angle 0 — do not invent callout bbox/mtr
-// or verticalAlign. Do not take Square / rect rotation this pass.
+// Callouts share the FreeText writer at angle 0 — do not invent callout
+// bbox/mtr or verticalAlign. Square / rect now uses the same helpers;
+// do not invent live Ellipse / Circle rotation this pass.
 const pdfNeedsRotate = (angle) => Math.abs(Number(angle) || 0) > 0.0001;
 const pdfRotateTheta = (fabricAngleDeg) => (-(Number(fabricAngleDeg) || 0) * Math.PI) / 180;
 const pdfRotateMatrixAbout = (theta, cx, cy) => {
@@ -1919,6 +1920,7 @@ const attachIndependentShapeAppearance = (pdfDoc, annotationDict, {
   fill,
   stroke,
   pathCommands,
+  angle,
 }) => {
   const fillAlpha = fill?.visible ? fill.opacity : 0;
   const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
@@ -1956,12 +1958,22 @@ const attachIndependentShapeAppearance = (pdfDoc, annotationDict, {
       },
     };
   }
+  // Live Rotation already stamps fabric `angle` and metadata + screen
+  // already rotate, but this /AP used to stay axis-aligned so Acrobat
+  // painted the leftover box until Rotation was re-touched. Same
+  // /Matrix contract as rotated FreeText / ellipse /AP. Angle 0 /
+  // absent omit /Matrix so default Square export stays byte-identical.
+  // Circle / polygon callers leave angle unset.
+  const needsRotate = pdfNeedsRotate(angle);
   const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
     Type: 'XObject',
     Subtype: 'Form',
     FormType: 1,
     BBox: [0, 0, formWidth, formHeight],
     Resources: resources,
+    ...(needsRotate
+      ? { Matrix: pdfRotateMatrixAbout(pdfRotateTheta(angle), formWidth / 2, formHeight / 2) }
+      : {}),
   });
   annotationDict.AP = pdfDoc.context.obj({ N: pdfDoc.context.register(appearance) });
   // Annotation /CA is a single fade. Only write it when there is no fill so
@@ -1988,16 +2000,26 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     const height = Math.max(0, (Number(fabricObj.height) || 0) * scaleY);
     if (![left, top, width, height, pageHeight].every(Number.isFinite)) return null;
 
+    // Live Rotation already stamps fabric `angle`. Leftover /Rect stays
+    // the unrotated AABB when angle is 0 / absent. Tilt expands /Rect
+    // to the rotated AABB and /AP /Matrix carries the same sign as
+    // ellipse / FreeText. Do not invent Ellipse / Circle rotation here.
+    const angle = Number(fabricObj.angle) || 0;
+    const needsRotate = pdfNeedsRotate(angle);
+
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = left;
     const minY = pageHeight - (top + height);
     const maxX = left + width;
     const maxY = pageHeight - top;
+    const leftoverRect = [minX, minY, maxX, maxY];
 
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'Square',
-      Rect: [minX, minY, maxX, maxY],
+      Rect: needsRotate
+        ? pdfRotatedBoxRect(left, top, width, height, angle, pageHeight)
+        : leftoverRect,
       C: [color.red, color.green, color.blue],
       Border: [0, 0, stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 0],
       Contents: PDFString.of(''),
@@ -2036,7 +2058,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
         || (stroke?.visible && strokeAlpha < 0.99999)
       );
       const needsOversizedBump = intensity > 2;
-      if (needsFade || needsOversizedBump) {
+      if (needsFade || needsOversizedBump || needsRotate) {
         const cloudCmds = buildCloudPathCommands(
           [
             { x: 0, y: 0 },
@@ -2056,6 +2078,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
           pathCommands: pathCommands.length
             ? pathCommands
             : [`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`],
+          angle,
         });
       }
     } else {
@@ -2065,6 +2088,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
         fill,
         stroke,
         pathCommands: [`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`],
+        angle,
       });
     }
 
@@ -4248,7 +4272,25 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'rect') {
+    // Live Rotation already stamps fabric `angle`. Flatten used to draw
+    // the leftover axis-aligned box so print stayed untilted until
+    // Rotation was re-touched. Same sign as FreeText / ellipse /AP:
+    // rotate about leftover center. Angle 0 / absent skip q/cm/Q so
+    // default flatten stays identical. Callout boxes share this branch
+    // at angle 0 — do not invent callout Rotation. Do not invent
+    // Ellipse / Circle flatten rotation this pass.
+    const needsRotate = pdfNeedsRotate(shifted?.angle);
+    if (needsRotate) {
+      const cx = left + width / 2;
+      const pdfCy = pageHeight - (top + height / 2);
+      const [a, b, c, d, e, f] = pdfRotateMatrixAbout(pdfRotateTheta(shifted.angle), cx, pdfCy);
+      page.pushOperators(
+        pushGraphicsState(),
+        concatTransformationMatrix(a, b, c, d, e, f),
+      );
+    }
     const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity ?? shifted?.cloudIntensity);
+    let drewCloud = false;
     if (Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
       const cloudCmds = buildCloudPathCommands(
         [
@@ -4273,27 +4315,30 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
           borderWidth: strokeWidth,
           borderOpacity: stroke.opacity,
         });
-        return 1;
+        drewCloud = true;
       }
     }
-    // UX (2026-07-17, line style): dashed/dotted rect borders (incl. the
-    // callout text box, which flattens through this branch) print with their
-    // on-screen dash pattern instead of flattening solid.
-    const rectDash = Array.isArray(shifted?.strokeDashArray) && shifted.strokeDashArray.length > 0
-      ? shifted.strokeDashArray.map((v) => Number(v) || 0)
-      : null;
-    page.drawRectangle({
-      x: left,
-      y: getPdfY(pageHeight, top + height),
-      width,
-      height,
-      borderColor: stroke.color,
-      borderWidth: strokeWidth,
-      color: fill?.color,
-      opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
-      borderOpacity: stroke.opacity,
-      ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
-    });
+    if (!drewCloud) {
+      // UX (2026-07-17, line style): dashed/dotted rect borders (incl. the
+      // callout text box, which flattens through this branch) print with their
+      // on-screen dash pattern instead of flattening solid.
+      const rectDash = Array.isArray(shifted?.strokeDashArray) && shifted.strokeDashArray.length > 0
+        ? shifted.strokeDashArray.map((v) => Number(v) || 0)
+        : null;
+      page.drawRectangle({
+        x: left,
+        y: getPdfY(pageHeight, top + height),
+        width,
+        height,
+        borderColor: stroke.color,
+        borderWidth: strokeWidth,
+        color: fill?.color,
+        opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
+        borderOpacity: stroke.opacity,
+        ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
+      });
+    }
+    if (needsRotate) page.pushOperators(popGraphicsState());
     return 1;
   }
   if (type === 'circle' || type === 'ellipse') {
