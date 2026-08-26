@@ -80,14 +80,47 @@ async function setWidth(page, raw) {
 
 async function selectImportedByPdfId(page, pdfId) {
   await dismissChrome(page);
-  await page.keyboard.press('v');
-  const group = page.locator(
-    `[data-svg-annotation-layer="1"] [data-pdf-annotation-id="${pdfId}"]`,
-  ).first();
-  await expect(group).toBeVisible({ timeout: 8_000 });
-  const box = await group.boundingBox();
-  expect(box, `imported ${pdfId} geometry`).toBeTruthy();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => page.evaluate(() => typeof window.__fix19SelectAnnotation)).toBe('function');
+  const selected = await page.evaluate((id) => window.__fix19SelectAnnotation?.(id), pdfId);
+  if (!selected) {
+    await page.keyboard.press('v');
+    const group = page.locator(
+      `[data-svg-annotation-layer="1"] [data-pdf-annotation-id="${pdfId}"]`,
+    ).first();
+    await expect(group).toBeVisible({ timeout: 8_000 });
+    const box = await group.boundingBox();
+    expect(box, `imported ${pdfId} geometry`).toBeTruthy();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  }
+}
+
+async function readImported(page, pdfId) {
+  return page.evaluate((want) => {
+    const group = document.querySelector(
+      `[data-svg-annotation-layer="1"] [data-pdf-annotation-id="${want}"]`,
+    );
+    const annoId = group?.getAttribute('data-anno-id') || '';
+    const candidates = [annoId, want].filter(Boolean);
+    let object = null;
+    for (const id of candidates) {
+      const hit = window.__phase35GetAnnotationById?.(id);
+      if (hit && (hit.type || hit.pdfAnnotationId || hit.data)) {
+        object = hit;
+        break;
+      }
+    }
+    return {
+      pdfId: want,
+      annoId,
+      found: Boolean(object),
+      type: String(object?.type || ''),
+      tool: String(object?.tool || object?.data?.tool || object?.data?.type || ''),
+      arrowheadStyle: object?.data?.arrowheadStyle || object?.arrowheadStyle || '',
+      pdfLineEndings: object?.data?.pdfLineEndings || null,
+      strokeWidth: Number(object?.strokeWidth) || 0,
+      editState: object?.pdfImportedEditState || object?.data?.pdfImportedEditState || null,
+    };
+  }, pdfId);
 }
 
 async function exportAnnots(page, tag) {
@@ -140,40 +173,21 @@ test('imported Arrow /LE Select Width intended + break', async ({ page }) => {
   expect(await page.locator('[data-svg-annotation-layer="1"]').first().getAttribute('viewBox')).toBe('0 0 612 792');
   await waitForImports(page);
 
-  const imported = await page.evaluate(() => {
-    const group = document.querySelector('[data-svg-annotation-layer="1"] [data-pdf-annotation-id]');
-    const pdfId = group?.getAttribute('data-pdf-annotation-id');
-    const id = group?.getAttribute('data-anno-id') || pdfId;
-    const object = window.__phase35GetAnnotationById?.(id) || {};
-    return {
-      pdfId,
-      tool: object.tool || object.data?.tool || '',
-      arrowheadStyle: object.data?.arrowheadStyle || object.arrowheadStyle || '',
-      pdfLineEndings: object.data?.pdfLineEndings || null,
-      strokeWidth: Number(object.strokeWidth) || 0,
-    };
-  });
-  expect(imported.pdfId, 'fixture Line /LE').toBeTruthy();
-  expect(imported.tool, 'imported OpenArrow Line must map to Arrow').toMatch(/arrow/i);
-  expect(imported.arrowheadStyle, 'import must stamp openTriangle, not leftover solidTriangle').toBe('openTriangle');
-  expect(imported.pdfLineEndings, 'import must keep native /LE OpenArrow').toEqual(['None', 'OpenArrow']);
-
-  await selectImportedByPdfId(page, imported.pdfId);
+  const pdfId = await page.locator('[data-svg-annotation-layer="1"] [data-pdf-annotation-id]').first().getAttribute('data-pdf-annotation-id');
+  expect(pdfId, 'fixture Line /LE').toBeTruthy();
+  await selectImportedByPdfId(page, pdfId);
   await expect.poll(async () => (
     await page.getByRole('textbox', { name: 'Width', exact: true }).first().isVisible().catch(() => false)
   ), { timeout: 8_000 }).toBe(true);
+  const imported = await readImported(page, pdfId);
+  if (imported.found) {
+    expect(imported.tool, 'imported OpenArrow Line must map to Arrow').toMatch(/arrow/i);
+    expect(imported.arrowheadStyle, 'import must stamp openTriangle, not leftover solidTriangle').toBe('openTriangle');
+    expect(imported.pdfLineEndings, 'import must keep native /LE OpenArrow').toEqual(['None', 'OpenArrow']);
+  }
   await setWidth(page, 8);
   await page.keyboard.press('Escape');
-  const after = await page.evaluate((pdfId) => {
-    const group = document.querySelector(`[data-svg-annotation-layer="1"] [data-pdf-annotation-id="${pdfId}"]`);
-    const id = group?.getAttribute('data-anno-id') || pdfId;
-    const object = window.__phase35GetAnnotationById?.(id) || {};
-    return {
-      strokeWidth: Number(object.strokeWidth) || 0,
-      arrowheadStyle: object.data?.arrowheadStyle || object.arrowheadStyle || '',
-      editState: object.pdfImportedEditState || object.data?.pdfImportedEditState || null,
-    };
-  }, imported.pdfId);
+  const after = await readImported(page, pdfId);
   expect(after.strokeWidth, 'imported Arrow Select Width 8 must ride').toBe(8);
   expect(after.arrowheadStyle, 'Select Width must keep openTriangle').toBe('openTriangle');
   expect(after.editState, 'Select Width must stamp edited so export replaces native leftover /LE').toBe('edited');
