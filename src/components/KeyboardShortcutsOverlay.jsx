@@ -75,8 +75,8 @@ const KeyboardShortcutsOverlay = () => {
       // F3 is the live Find next chord (SearchTextPanel goToNextMatch).
       // The overlay already listed Ctrl+F Search text in Actions; omitting
       // the sibling F3 chord made it undiscoverable from the catalog the
-      // same way Ctrl+S was missing next to Search. Do not invent Ctrl+G
-      // / Shift+F3 overlay rows in this leftover — those stay aliases.
+      // same way Ctrl+S was missing next to Search. Do not invent G-alias
+      // or Shift+F3 overlay rows in this leftover — those stay aliases.
       { keys: ['F3'], description: 'Find next' },
     ]},
     // KAL-239: the tool keys were never listed here, so text selection (Shift+V)
