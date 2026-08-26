@@ -1983,7 +1983,15 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       const k = 0.551784;
       const kr = k * radius;
       const n = pdfNumberText;
-      const bodyColor = fillColor || color;
+      // Live Counter toolbar writes Fill as rgba `fill` (composeColorForPatch
+      // / handleFillOpacityChange). /IC stays the fill hex; a faded pin used
+      // to paint opaque in /AP. Independent fade lives in ExtGState /ca so
+      // the number stays opaque. Opacity-0 rgba must not invent a body from
+      // the stroke fallback.
+      const paintBody = Boolean(fill?.visible && fill.hex);
+      const fillAlpha = paintBody ? fill.opacity : 0;
+      const needsFillGs = paintBody && fillAlpha < 0.99999;
+      const bodyColor = paintBody ? hexToRGB(fill.hex) : null;
       const numberColor = hexToRGB(fabricObj?.data?.numberColor || '#ffffff');
       const label = String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? '');
       const escapedLabel = label.replace(/([\\()])/g, '\\$1');
@@ -1998,17 +2006,24 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       }
       const textX = cx - approximateTextWidth / 2;
       const textY = cy - fontSize * 0.34;
-      const content = [
-        'q',
-        `${n(bodyColor.red)} ${n(bodyColor.green)} ${n(bodyColor.blue)} rg`,
-        `${n(toX(tipX))} ${n(toY(tipY))} m`,
-        `${n(toX(t1x))} ${n(toY(t1y))} l`,
-        `${n(toX(t2x))} ${n(toY(t2y))} l h f`,
-        `${n(cx + radius)} ${n(cy)} m`,
-        `${n(cx + radius)} ${n(cy + kr)} ${n(cx + kr)} ${n(cy + radius)} ${n(cx)} ${n(cy + radius)} c`,
-        `${n(cx - kr)} ${n(cy + radius)} ${n(cx - radius)} ${n(cy + kr)} ${n(cx - radius)} ${n(cy)} c`,
-        `${n(cx - radius)} ${n(cy - kr)} ${n(cx - kr)} ${n(cy - radius)} ${n(cx)} ${n(cy - radius)} c`,
-        `${n(cx + kr)} ${n(cy - radius)} ${n(cx + radius)} ${n(cy - kr)} ${n(cx + radius)} ${n(cy)} c h f`,
+      const content = ['q'];
+      if (paintBody && bodyColor) {
+        if (needsFillGs) content.push('/GS0 gs');
+        content.push(
+          `${n(bodyColor.red)} ${n(bodyColor.green)} ${n(bodyColor.blue)} rg`,
+          `${n(toX(tipX))} ${n(toY(tipY))} m`,
+          `${n(toX(t1x))} ${n(toY(t1y))} l`,
+          `${n(toX(t2x))} ${n(toY(t2y))} l h f`,
+          `${n(cx + radius)} ${n(cy)} m`,
+          `${n(cx + radius)} ${n(cy + kr)} ${n(cx + kr)} ${n(cy + radius)} ${n(cx)} ${n(cy + radius)} c`,
+          `${n(cx - kr)} ${n(cy + radius)} ${n(cx - radius)} ${n(cy + kr)} ${n(cx - radius)} ${n(cy)} c`,
+          `${n(cx - radius)} ${n(cy - kr)} ${n(cx - kr)} ${n(cy - radius)} ${n(cx)} ${n(cy - radius)} c`,
+          `${n(cx + kr)} ${n(cy - radius)} ${n(cx + radius)} ${n(cy - kr)} ${n(cx + radius)} ${n(cy)} c h f`,
+        );
+        // Reset /ca before the number so Fill opacity does not fade the label.
+        if (needsFillGs) content.push('Q', 'q');
+      }
+      content.push(
         'BT',
         `/F1 ${n(fontSize)} Tf`,
         `${n(numberColor.red)} ${n(numberColor.green)} ${n(numberColor.blue)} rg`,
@@ -2016,19 +2031,25 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
         `(${escapedLabel}) Tj`,
         'ET',
         'Q',
-      ];
+      );
       const fontRef = pdfDoc.context.register(pdfDoc.context.obj({
         Type: 'Font',
         Subtype: 'Type1',
         BaseFont: 'Helvetica-Bold',
         Encoding: 'WinAnsiEncoding',
       }));
+      const resources = { Font: { F1: fontRef } };
+      if (needsFillGs) {
+        resources.ExtGState = {
+          GS0: { Type: 'ExtGState', ca: fillAlpha },
+        };
+      }
       const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
         Type: 'XObject',
         Subtype: 'Form',
         FormType: 1,
         BBox: [0, 0, formWidth, formHeight],
-        Resources: { Font: { F1: fontRef } },
+        Resources: resources,
       });
       const appearanceRef = pdfDoc.context.register(appearance);
       counterAppearance = pdfDoc.context.obj({ N: appearanceRef });
