@@ -49,7 +49,7 @@ Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-selected-paper-i
 
 Node `pdfSelectedPaperInkWidthRebuild` proves rebuild grows leftover height 4 → 20, skips invented centerline / eraser cuts, Select patch calls rebuild, isolated 8448 / 75/250 standing.
 
-Focused Node `pdfSelectedPaperInkWidthRebuild` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` after high-risk `PDFViewer.jsx` — report baseline in E2E-STATUS. `graphify` CLI absent.
+Focused Node `pdfSelectedPaperInkWidthRebuild` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` fail-stops on pre-existing `annotationContextMenuitem` spec (`keyboard.press('Enter')` vs live spec — not taken; not aligned down). Isolated 8448 not reached because official fail-stops first. `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
