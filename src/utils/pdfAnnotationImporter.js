@@ -757,8 +757,9 @@ function extractAnnotationOpacity(annotation, fallback = 1) {
 }
 
 // PDF /CA is stroking alpha; /ca is nonstroking (fill) alpha. A shared
-// leftover reader that prefers /ca painted faded Square / Circle borders
-// (clickable-link-test 55R: /CA 1, /ca ~0.30) until Border was re-touched.
+// leftover reader that prefers /ca painted faded Square / Circle / Polygon
+// borders (clickable-link-test 55R / 63R: /CA 1, /ca ~0.30) until Border
+// was re-touched.
 function extractAnnotationStrokeOpacity(annotation, fallback = 1) {
   if (!annotation || typeof annotation !== 'object') {
     return fallback;
@@ -4169,7 +4170,7 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
   }
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1);
+  const strokeOpacity = extractAnnotationStrokeOpacity(annotation, 1);
   const fillColor = getShapeFillColor(annotation, strokeColor);
   const strokeWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
   const hasVisibleStroke = strokeWidth > 0;
