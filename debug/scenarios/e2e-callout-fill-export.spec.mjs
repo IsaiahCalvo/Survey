@@ -183,31 +183,19 @@ async function createCallout(page, text = 'Y') {
   return created;
 }
 
-async function seedCalloutFill(page, id, fillColor) {
-  const patched = await page.evaluate(({ calloutId, nextFill }) => {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('callouts_')) keys.push(key);
-    }
-    let found = 0;
-    keys.forEach((key) => {
-      let list;
-      try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch { list = []; }
-      if (!Array.isArray(list)) return;
-      const next = list.map((row) => {
-        if (!row || row.id !== calloutId) return row;
-        found += 1;
-        return {
-          ...row,
-          style: { ...(row.style || {}), fillColor: nextFill, fillOpacity: 1 },
-        };
-      });
-      localStorage.setItem(key, JSON.stringify(next));
-    });
-    return { keys, found };
-  }, { calloutId: id, nextFill: fillColor });
-  expect(patched.found, `must seed fill on ${id}`).toBeGreaterThan(0);
+async function seedNextDrawCalloutFill(page, fillColor, fillOpacity = 100) {
+  const documentId = await page.evaluate(() => {
+    const file = window.__devTestPdf;
+    return file?._surveyPdfId || (file ? `${file.name}-${file.size}` : null);
+  });
+  expect(documentId, 'testPdf identity for toolPrefs').toBeTruthy();
+  await page.evaluate(({ id, fill, opacity }) => {
+    const key = `toolPrefs_${id}`;
+    let prefs = {};
+    try { prefs = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch { prefs = {}; }
+    prefs.callout = { ...(prefs.callout || {}), fillColor: fill, fillOpacity: opacity };
+    localStorage.setItem(key, JSON.stringify(prefs));
+  }, { id: documentId, fill: fillColor, opacity: fillOpacity });
 }
 
 async function exportAndSave(page, destName) {
@@ -270,16 +258,12 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
-  const created = await createCallout(page, 'Y');
-  expect(created.text).toBe('Y');
-
-  await seedCalloutFill(page, created.id, '#FFFF00');
+  await seedNextDrawCalloutFill(page, '#FFFF00', 100);
   await reloadEditor(page);
   await assertNoErrorBoundary(page);
-  await expect.poll(async () => {
-    const row = (await calloutSnapshot(page)).find((item) => item.text === 'Y');
-    return row?.fill || null;
-  }, { timeout: 20_000, message: 'seeded fillColor must reload' }).toBe('#FFFF00');
+  const created = await createCallout(page, 'Y');
+  expect(created.text).toBe('Y');
+  expect(String(created.fill || '').toUpperCase()).toBe('#FFFF00');
 
   const dest = await exportAndSave(page, DEST_NAME);
   const colors = await exportedFreeTextColors(dest);
@@ -311,13 +295,10 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
   expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
   expect((await calloutSnapshot(page)).length, 'empty export must not invent a callout').toBe(0);
 
-  const clear = await createCallout(page, 'Z');
-  await seedCalloutFill(page, clear.id, 'transparent');
+  await seedNextDrawCalloutFill(page, 'transparent', 0);
   await reloadEditor(page);
-  await expect.poll(async () => {
-    const row = (await calloutSnapshot(page)).find((item) => item.text === 'Z');
-    return row?.fill || 'transparent';
-  }).toBe('transparent');
+  const clear = await createCallout(page, 'Z');
+  expect(clear.fill === 'transparent' || Number(clear.fillOpacity) === 0).toBeTruthy();
   const clearDest = await exportAndSave(page, '_e2e-callout-fill-export-clear.pdf');
   const clearColors = await exportedFreeTextColors(clearDest);
   const z = clearColors.find((row) => row.text === 'Z');
