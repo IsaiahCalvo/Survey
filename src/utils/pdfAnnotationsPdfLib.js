@@ -3732,6 +3732,31 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const transform = createInkPageTransform(shifted, localPath);
     const path = fabricPathToSvgPath(transformInkPath(localPath, transform));
     if (!path) return 0;
+    // Live toolbar writes Pen / Highlighter Color Opacity as rgba fill
+    // (createProductionPaperInk: stroke 'transparent', strokeWidth 0).
+    // Export Ink /CA + AP /ca already fade the blob. Flatten used to
+    // stroke the outline hex-only: transparent stroke fell back to black
+    // and strokeWidth 0 became 1 (`0 || 1`). Highlighter 40% yellow
+    // printed as an opaque 1pt black stroke.
+    if (isFilledPaperInk(shifted)) {
+      const fillHex = liveFill.hex;
+      const fillColor = fillHex ? hexToRGB(fillHex) : null;
+      const fillOpacity = liveFill.visible
+        ? liveFill.opacity
+        : (Number.isFinite(Number(liveFill.opacity)) ? Number(liveFill.opacity) : 0);
+      if (fillColor) {
+        const useMultiply = shifted.globalCompositeOperation === 'multiply'
+          || shifted.tool === 'highlighter';
+        page.drawSvgPath(path, {
+          x: 0,
+          y: pageHeight,
+          color: fillColor,
+          opacity: fillOpacity,
+          ...(useMultiply ? { blendMode: 'Multiply' } : {}),
+        });
+      }
+      return 1;
+    }
     const inkStrokeWidth = Math.max(
       0.5,
       (Number(shifted?.strokeWidth) || 1)
