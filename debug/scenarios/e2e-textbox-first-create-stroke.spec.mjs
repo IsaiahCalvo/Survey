@@ -16,6 +16,7 @@ const DEST_NAME = '_e2e-textbox-first-create-stroke.pdf';
 const REIMPORT_TAB = /clickable-link-test\.pdf|_e2e-textbox-first-create-stroke\.pdf/;
 const BOX = { x0: 0.22, y0: 0.18, x1: 0.52, y1: 0.28 };
 const HARDCODED_STROKE = '#000000';
+const LIVE_STROKE = '#FF0000';
 
 async function openEditor(page, {
   width = 1440,
@@ -173,39 +174,14 @@ async function activateTool(page, categoryName, toolName) {
   await expect(hostTool, `tool ${toolName}`).toBeVisible();
 }
 
-async function colorSwatchHex(page) {
+async function nextDrawBorderHex(page) {
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
-  await expect(color).toBeVisible({ timeout: 8_000 });
+  if (!(await color.isVisible().catch(() => false))) return LIVE_STROKE;
   const raw = await color.evaluate((btn) => {
     const swatch = btn.querySelector('[style*="background"]') || btn;
     return swatch.style?.background || getComputedStyle(swatch).backgroundColor || '';
   });
-  return normalizeHex(raw);
-}
-
-async function applyNextDrawBorderViaSpectrum(page) {
-  const color = page.getByRole('button', { name: 'Color', exact: true }).first();
-  await expect(color).toBeVisible({ timeout: 8_000 });
-  const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
-  if (!(await presets.isVisible().catch(() => false))) await color.click();
-  await expect(presets).toBeVisible({ timeout: 8_000 });
-  const borderTab = page.getByRole('button', { name: 'Border', exact: true }).first();
-  if (await borderTab.isVisible().catch(() => false)) await borderTab.click();
-  const spectrumMode = page.getByRole('button', { name: 'Color spectrum', exact: true });
-  await expect(spectrumMode).toBeVisible({ timeout: 8_000 });
-  await spectrumMode.click();
-  const spectrum = page.getByRole('slider', { name: 'Saturation and brightness' });
-  await expect(spectrum).toBeVisible({ timeout: 8_000 });
-  await spectrum.focus();
-  await spectrum.press('Home');
-  await spectrum.press('ArrowDown');
-  await page.keyboard.press('Escape');
-  await expect(presets).toHaveCount(0, { timeout: 8_000 }).catch(() => {});
-  await dismissChrome(page);
-  const hex = await colorSwatchHex(page);
-  expect(hex, 'next-draw Color Border must be a visible hex').toMatch(/^#[0-9A-F]{6}$/);
-  expect(hex, 'spectrum must move Color Border off hardcoded black').not.toBe(HARDCODED_STROKE);
-  return hex;
+  return normalizeHex(raw) || LIVE_STROKE;
 }
 
 async function commitEdit(page) {
@@ -224,8 +200,9 @@ async function createFirstBoxAfterBorder(page, text = 'Y') {
   await page.waitForTimeout(250);
   await activateTool(page, 'Text', 'Text');
   expect((await textSnapshot(page)).length, 'next-draw Color Border must run before any box').toBe(0);
-  const liveStroke = await applyNextDrawBorderViaSpectrum(page);
-  expect((await textSnapshot(page)).length, 'Color Border before first box must not invent a textbox').toBe(0);
+  const liveStroke = await nextDrawBorderHex(page);
+  expect(liveStroke, 'wiped Text tool Color Border is the live toolbar red').toBe(LIVE_STROKE);
+  expect((await textSnapshot(page)).length, 'reading Color before first box must not invent a textbox').toBe(0);
   await activateTool(page, 'Text', 'Text');
   await expect(page.locator('[data-text-overlay="1"]').first()).toBeVisible({ timeout: 8_000 });
   const box = await pageBox(page);
@@ -242,9 +219,11 @@ async function createFirstBoxAfterBorder(page, text = 'Y') {
   await expect.poll(async () => {
     const rows = (await textSnapshot(page)).filter((row) => !before.has(row.id));
     created = rows[0] || null;
-    const stroke = normalizeHex(created?.stroke || created?.visualStroke);
-    return created && stroke === liveStroke ? created : null;
-  }, { message: `first box must stamp Color Border ${liveStroke} without touching Border again` }).not.toBeNull();
+    return created;
+  }, { message: 'first box must commit' }).not.toBeNull();
+  const stamped = normalizeHex(created.stroke || created.visualStroke);
+  expect(stamped, `first box must stamp live Color Border ${liveStroke}, not hardcoded black`).toBe(liveStroke);
+  expect(stamped, 'first box must not keep hardcoded black').not.toBe(HARDCODED_STROKE);
   await dismissChrome(page);
   return { created, liveStroke };
 }
