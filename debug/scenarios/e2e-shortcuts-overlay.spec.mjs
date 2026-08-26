@@ -28,6 +28,7 @@ const LISTED = [
   'Pen',
   'Highlighter',
   'Eraser',
+  'Partial erase',
   'Text',
   'Callout',
   'Line',

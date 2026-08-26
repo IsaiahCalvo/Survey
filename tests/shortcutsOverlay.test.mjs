@@ -37,6 +37,7 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.match(overlay, /keys: \['P'\], description: 'Pen'/);
   assert.match(overlay, /keys: \['H'\], description: 'Highlighter'/);
   assert.match(overlay, /keys: \['E'\], description: 'Eraser'/);
+  assert.match(overlay, /keys: \['Shift', 'E'\], description: 'Partial erase'/);
   assert.match(overlay, /keys: \['T'\], description: 'Text'/);
   assert.match(overlay, /keys: \['Q'\], description: 'Callout'/);
   assert.match(overlay, /keys: \['L'\], description: 'Line'/);
@@ -94,6 +95,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /desktop shortcuts overlay intended \+ break \+ edge/);
   assert.match(spec, /390 shortcuts overlay intended \+ break \+ edge/);
   assert.match(spec, /lists the real catalog/);
+  assert.match(spec, /Partial erase/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);

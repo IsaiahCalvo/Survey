@@ -226,7 +226,7 @@ test('eraser: ink is partial-eligible; shapes skip partial and stay entire', () 
 });
 
 test('shortcuts overlay lists every tool key, page nav, search, and Escape', () => {
-  for (const key of ["['V']", "['Shift', 'V']", "['P']", "['H']", "['E']", "['T']", "['Q']", "['L']", "['A']", "['C']"]) {
+  for (const key of ["['V']", "['Shift', 'V']", "['P']", "['H']", "['E']", "['Shift', 'E']", "['T']", "['Q']", "['L']", "['A']", "['C']"]) {
     assert.match(overlay, new RegExp(key.replace(/[[\]]/g, '\\$&')));
   }
   assert.match(overlay, /Previous\/Next page/);

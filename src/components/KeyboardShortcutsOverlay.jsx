@@ -58,13 +58,15 @@ const KeyboardShortcutsOverlay = () => {
     // KAL-239: the tool keys were never listed here, so text selection (Shift+V)
     // would have been undiscoverable from the keyboard. Intended UX: every
     // single-key tool shortcut the viewer listens for is documented in one place,
-    // with the two Select modes shown together so the pairing is obvious.
+    // with the two Select modes shown together so the pairing is obvious, and
+    // Shift+E listed next to E the same way (Partial erase is a live chord).
     { category: 'Tools', items: [
       { keys: ['V'], description: 'Select annotations' },
       { keys: ['Shift', 'V'], description: 'Select text on the page' },
       { keys: ['P'], description: 'Pen' },
       { keys: ['H'], description: 'Highlighter' },
       { keys: ['E'], description: 'Eraser' },
+      { keys: ['Shift', 'E'], description: 'Partial erase' },
       { keys: ['T'], description: 'Text' },
       { keys: ['Q'], description: 'Callout' },
       { keys: ['L'], description: 'Line' },

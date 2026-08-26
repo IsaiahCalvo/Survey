@@ -13,6 +13,8 @@ test('overlay catalogs tools/Esc/search and omits Delete/Duplicate/z-order', () 
   assert.match(overlay, /keys: \['P'\], description: 'Pen'/);
   assert.match(overlay, /keys: \['V'\], description: 'Select annotations'/);
   assert.match(overlay, /keys: \['Shift', 'V'\], description: 'Select text on the page'/);
+  assert.match(overlay, /keys: \['E'\], description: 'Eraser'/);
+  assert.match(overlay, /keys: \['Shift', 'E'\], description: 'Partial erase'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['Esc'\], description: 'Close dialogs\/cancel'/);
   assert.doesNotMatch(overlay, /Duplicate/);
