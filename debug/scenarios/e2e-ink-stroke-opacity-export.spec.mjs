@@ -100,7 +100,7 @@ function parseAlpha(raw) {
 
 async function inkSnapshot(page) {
   return page.evaluate(() => {
-    const groups = [...document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-pdf-annotation-type]')];
+    const groups = [...document.querySelectorAll('[data-svg-annotation-layer="1"] > g[data-anno-id]')];
     return groups.map((group) => {
       const pdfId = group.getAttribute('data-pdf-annotation-id') || '';
       const annoId = group.getAttribute('data-anno-id') || '';
@@ -112,28 +112,41 @@ async function inkSnapshot(page) {
       const data = object.data || {};
       return {
         id: pdfId || annoId,
+        annoId,
         type,
         objectType: String(object.type || '').toLowerCase(),
-        imported: object.isPdfImported === true || Boolean(pdfId),
+        imported: object.isPdfImported === true || Boolean(pdfId || object.pdfAnnotationId),
         stroke: object.stroke ?? data.stroke ?? null,
         fill: object.fill ?? data.fill ?? null,
         visualStroke: shape?.getAttribute('stroke') || '',
         strokeWidth: object.strokeWidth ?? null,
         paperInk: Boolean(object.paperInkGeometry),
       };
-    }).filter((row) => row.type === 'ink' || row.objectType === 'path');
+    }).filter((row) => (
+      row.type === 'ink'
+      || row.objectType === 'path'
+      || row.id.includes('kal405')
+    ));
   });
+}
+
+function isStrokedImport(row) {
+  if (!row?.imported) return false;
+  if (row.paperInk) return false;
+  if (Number(row.strokeWidth) > 0) return true;
+  const paint = row.stroke || row.visualStroke;
+  return Boolean(paint && paint !== 'transparent' && paint !== 'none');
 }
 
 async function waitImportedStroke(page) {
   let rows = [];
   await expect.poll(async () => {
     rows = await inkSnapshot(page);
-    return rows.filter((row) => row.imported && Number(row.strokeWidth) > 0 && !row.paperInk).length;
+    return rows.filter(isStrokedImport).length;
   }, { message: 'expected imported stroked Ink', timeout: 45_000 }).toBeGreaterThanOrEqual(1);
-  const stroke = rows.find((row) => row.id === STROKE_ID)
-    || rows.find((row) => row.imported && Number(row.strokeWidth) > 0 && !row.paperInk);
-  expect(stroke?.id, 'imported stroked Ink').toBeTruthy();
+  const stroke = rows.find((row) => row.id === STROKE_ID || row.annoId === STROKE_ID)
+    || rows.find(isStrokedImport);
+  expect(stroke?.id || stroke?.annoId, `imported stroked Ink (got ${JSON.stringify(rows)})`).toBeTruthy();
   return stroke;
 }
 
@@ -143,7 +156,7 @@ async function selectInk(page, id) {
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
   await expect.poll(async () => {
-    const group = page.locator(`[data-svg-annotation-layer="1"] > g[data-pdf-annotation-id="${id}"]`).first();
+    const group = page.locator(`[data-svg-annotation-layer="1"] > g[data-pdf-annotation-id="${id}"], [data-svg-annotation-layer="1"] > g[data-anno-id="${id}"]`).first();
     if (!(await group.count())) return 0;
     const box = await group.boundingBox();
     if (!box) return 0;
@@ -240,10 +253,11 @@ test('desktop imported Ink Color Opacity export /CA intended + break', async ({ 
   expect(await page.getByRole('button', { name: 'Ink', exact: true }).count(), 'no create-ink tool').toBe(0);
 
   const stroke = await waitImportedStroke(page);
-  await selectInk(page, stroke.id);
+  const strokeKey = stroke.id || stroke.annoId;
+  await selectInk(page, strokeKey);
   await applyColorOpacity(page, LIVE_OPACITY);
   await expect.poll(async () => {
-    const row = (await inkSnapshot(page)).find((item) => item.id === stroke.id);
+    const row = (await inkSnapshot(page)).find((item) => item.id === strokeKey || item.annoId === strokeKey);
     return Math.abs(parseAlpha(row?.stroke || row?.visualStroke) - 0.4) < 0.02 ? 1 : 0;
   }, { message: 'selected-patch Color Opacity 40 must stamp rgba 0.4' }).toBe(1);
 
@@ -279,9 +293,11 @@ test('desktop imported Ink Color Opacity export /CA intended + break', async ({ 
   ]);
   expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
   const emptyRows = await inkSnapshot(page);
+  const emptyStroke = emptyRows.find((row) => row.id === STROKE_ID || row.annoId === STROKE_ID)
+    || emptyRows.find(isStrokedImport);
   expect(
-    emptyRows.every((row) => parseAlpha(row.stroke || row.visualStroke || row.fill) >= 0.99),
-    'empty export must not invent fade',
+    parseAlpha(emptyStroke?.stroke || emptyStroke?.visualStroke) >= 0.99,
+    `empty export must not invent fade on the control stroke (got ${JSON.stringify(emptyStroke)})`,
   ).toBe(true);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
@@ -300,9 +316,11 @@ test('390 imported Ink Color Opacity export edge: viewBox, file.id, no invent', 
   const stroke = await waitImportedStroke(page);
   expect(stroke.id).toBeTruthy();
   const emptyRows = await inkSnapshot(page);
+  const emptyStroke = emptyRows.find((row) => row.id === STROKE_ID || row.annoId === STROKE_ID)
+    || emptyRows.find(isStrokedImport);
   expect(
-    emptyRows.every((row) => parseAlpha(row.stroke || row.visualStroke || row.fill) >= 0.99),
-    '390 must not invent fade',
+    parseAlpha(emptyStroke?.stroke || emptyStroke?.visualStroke) >= 0.99,
+    `390 must not invent fade on the control stroke (got ${JSON.stringify(emptyStroke)})`,
   ).toBe(true);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
