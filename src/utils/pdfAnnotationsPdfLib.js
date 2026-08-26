@@ -3461,14 +3461,6 @@ const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
 };
 
-const resolveExportedLineEnding2 = (fabricObj) => {
-  if (fabricObj?.lineEnding2) return fabricObj.lineEnding2;
-  const style = fabricObj?.data?.arrowheadStyle
-    ?? (fabricObj?.tool === 'arrow' ? ARROWHEAD_STYLES.SOLID_TRIANGLE : null);
-  if (!style) return null;
-  return ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[style] || null;
-};
-
 // Inverse of ARROWHEAD_STYLE_TO_PDF_LINE_ENDING for imported /LE leftovers
 // that never stamped data.arrowheadStyle. Live Arrow already writes the
 // toolbar style on data.arrowheadStyle (buildLineRenderSpec priority 1).
@@ -3481,12 +3473,37 @@ const PDF_LINE_ENDING_TO_ARROWHEAD_STYLE = {
   Butt: ARROWHEAD_STYLES.HORIZONTAL_LINE,
 };
 
+const resolveImportedPdfLineEndingStyle = (endings) => {
+  if (!Array.isArray(endings) || endings.length === 0) return null;
+  const end = String(endings[1] || '').replace(/^\//, '');
+  const start = String(endings[0] || '').replace(/^\//, '');
+  const tip = (end && end !== 'None') ? end : start;
+  if (!tip || tip === 'None') return null;
+  return PDF_LINE_ENDING_TO_ARROWHEAD_STYLE[tip] || null;
+};
+
+const resolveExportedLineEnding2 = (fabricObj) => {
+  if (fabricObj?.lineEnding2) return fabricObj.lineEnding2;
+  // Imported Arrow leftover-omitted arrowheadStyle and kept the ending
+  // only on data.pdfLineEndings. tool==='arrow' then leftover-defaulted
+  // ClosedArrow so Select Width remapped native /LE OpenArrow. Prefer
+  // the imported ending before the live Arrow default. Do not invent
+  // Line /AP. Circle / Diamond / Butt stay out of scope.
+  const style = fabricObj?.data?.arrowheadStyle
+    ?? resolveImportedPdfLineEndingStyle(fabricObj?.data?.pdfLineEndings)
+    ?? (fabricObj?.tool === 'arrow' ? ARROWHEAD_STYLES.SOLID_TRIANGLE : null);
+  if (!style) return null;
+  return ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[style] || null;
+};
+
 // Same resolution as buildLineRenderSpec: explicit toolbar style wins
 // (including 'none'), else Arrow-tool default solid triangle, else imported
 // /LE, else none. Plain Line stays headless. Do not invent Line /AP.
 const resolveFlattenedArrowheadStyle = (obj) => {
   const explicit = obj?.data?.arrowheadStyle ?? obj?.arrowheadStyle;
   if (explicit) return explicit;
+  const importedStyle = resolveImportedPdfLineEndingStyle(obj?.data?.pdfLineEndings);
+  if (importedStyle) return importedStyle;
   const isArrow = obj?.tool === 'arrow'
     || obj?.data?.tool === 'arrow'
     || obj?.data?.annotationType === 'arrow';

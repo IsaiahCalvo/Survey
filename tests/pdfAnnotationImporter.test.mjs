@@ -1056,6 +1056,8 @@ test('convertPdfAnnotationToFabric preserves line endings and callout metadata f
   const obj = convertPdfAnnotationToFabric(annotation, viewport, 1, rawMetadata);
   assert.equal(obj.type, 'line');
   assert.deepEqual(obj.data?.pdfLineEndings, ['None', 'ClosedArrow']);
+  assert.equal(obj.tool, 'arrow');
+  assert.equal(obj.data?.arrowheadStyle, 'solidTriangle');
   assert.equal(obj.data?.pdfIntent, 'LineArrow');
   assert.equal(obj.data?.pdfCalloutPoints?.length, 3);
   assert.deepEqual(obj.strokeDashArray, [4, 2]);

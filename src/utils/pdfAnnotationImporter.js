@@ -4659,8 +4659,22 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
   const endArrow = !!(lineEndings && ARROW_LE.has(lineEndings[1]));
   const detectedArrow = startArrow || endArrow;
   const swapEndpoints = startArrow && !endArrow;
+  // Import leftover-omitted data.arrowheadStyle so SVG (buildLineRenderSpec)
+  // and export (resolveExportedLineEnding2) both fell through to the Arrow
+  // tool default ClosedArrow. Select Width then leftover-replaced native
+  // /LE OpenArrow with ClosedArrow. Stamp the imported ending — same
+  // contract as FreeTextCallout /LE. Circle / Diamond / Butt stay out of
+  // scope. Do not invent Line /AP.
+  const importedArrowheadStyle = detectedArrow
+    ? resolveImportedCalloutArrowheadStyle(
+      swapEndpoints
+        ? [lineEndings?.[1] || 'None', lineEndings?.[0] || 'None']
+        : lineEndings,
+    )
+    : null;
   const data = {
     ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
+    ...(importedArrowheadStyle ? { arrowheadStyle: importedArrowheadStyle } : {}),
     ...(intent ? { pdfIntent: intent } : {}),
     ...(calloutPoints.length >= 2 ? { pdfCalloutPoints: calloutPoints } : {})
   };
