@@ -195,15 +195,20 @@ async function createLine(page) {
   return (await shapeSnapshot(page)).find((item) => item.id === created.id);
 }
 
-async function clickLineMidpoint(page, created) {
+async function clickLineAtT(page, created, t = 0.5) {
   const box = await pageBox(page);
   const vb = String(await pageViewBox(page)).split(/\s+/).map(Number);
   const [minX, minY, vbW, vbH] = vb;
-  const midX = (Number(created.leftoverX1) + Number(created.leftoverX2)) / 2;
-  const midY = (Number(created.leftoverY1) + Number(created.leftoverY2)) / 2;
-  const x = box.x + ((midX - minX) / vbW) * box.width;
-  const y = box.y + ((midY - minY) / vbH) * box.height;
-  return { x, y };
+  const x1 = Number(created.leftoverX1);
+  const y1 = Number(created.leftoverY1);
+  const x2 = Number(created.leftoverX2);
+  const y2 = Number(created.leftoverY2);
+  const pageX = x1 + (x2 - x1) * t;
+  const pageY = y1 + (y2 - y1) * t;
+  return {
+    x: box.x + ((pageX - minX) / vbW) * box.width,
+    y: box.y + ((pageY - minY) / vbH) * box.height,
+  };
 }
 
 async function selectMode(page) {
@@ -234,33 +239,15 @@ async function selectLine(page, created) {
   // justDraggedAtRef swallows native dblclick for 400ms after a drag.
   // bbox-edit also auto-exits unless selectedIds already holds the line.
   await page.waitForTimeout(500);
-  const hit = page.locator(
-    `[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"] [data-shape-hit-target="line"]`,
-  ).first();
   const midpoint = page.locator('[data-handle="midpoint"]');
-  const clickHit = async () => {
-    if (await hit.count()) {
-      await hit.click({ force: true });
-      return;
-    }
-    const mid = await clickLineMidpoint(page, created);
-    await page.mouse.click(mid.x, mid.y);
-  };
-  await clickHit();
-  if (!(await midpoint.count())) {
-    const mid = await clickLineMidpoint(page, created);
-    await page.mouse.click(mid.x, mid.y);
-  }
+  const mid = await clickLineAtT(page, created, 0.5);
+  await page.mouse.click(mid.x, mid.y);
   await expect(midpoint, 'Line single-click chrome (endpoint/midpoint)').toBeVisible({ timeout: 8_000 });
   await page.waitForTimeout(500);
-  // Single-click Line chrome is endpoints only. Live Rotation lives on
-  // the bbox-edit overlay after double-click.
-  if (await hit.count()) {
-    await hit.dblclick({ force: true });
-  } else {
-    const mid = await clickLineMidpoint(page, created);
-    await page.mouse.dblclick(mid.x, mid.y);
-  }
+  // Single-click chrome parks p1 / midpoint / p2 on the leftover stroke.
+  // Double-click at t=0.28 so the event hits the line, not a handle.
+  const offHandle = await clickLineAtT(page, created, 0.28);
+  await page.mouse.dblclick(offHandle.x, offHandle.y);
 }
 
 async function applyRotation(page, created, degrees = LIVE_ANGLE) {
