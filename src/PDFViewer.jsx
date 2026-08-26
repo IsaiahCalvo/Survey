@@ -7460,6 +7460,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (toolPrefs.cloudIntensity !== undefined) {
       setCloudIntensity(Math.max(1, Math.min(20, Number(toolPrefs.cloudIntensity) || 2)));
     }
+    if (toolPrefs.eraserSize !== undefined) {
+      const nextEraserSize = Math.max(1, Math.min(100, Number(toolPrefs.eraserSize) || 20));
+      setEraserSize(nextEraserSize);
+      if (!isEraserSizeFocusedRef.current) {
+        const nextValue = String(nextEraserSize);
+        eraserSizeInputValueRef.current = nextValue;
+        setEraserSizeInputValue(nextValue);
+      }
+    }
   }, [activeTool, pdfId, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
@@ -7807,11 +7816,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // FabricEraserCanvas intentionally snapshots radius at pointer-down.
         // Update the live diameter now so a direct drag after typing cannot
         // capture the previous value while the input's blur is still pending.
-        setEraserSize(Math.min(Math.max(parseInt(value, 10), 1), 100));
+        const next = Math.min(Math.max(parseInt(value, 10), 1), 100);
+        setEraserSize(next);
+        if (pdfId && activeTool === 'eraser') updateToolPreference('eraser', { eraserSize: next });
       }
       publishToolbarDraft('eraserSizeInputValue', value);
     }
-  }, [publishToolbarDraft]);
+  }, [activeTool, pdfId, publishToolbarDraft, updateToolPreference]);
 
   // Commit eraser size value on blur (clamp to valid range)
   const handleEraserSizeInputBlur = useCallback((event) => {
@@ -7826,6 +7837,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setEraserSizeInputValue('1');
       publishToolbarDraft('eraserSizeInputValue', '1');
       setEraserSize(1);
+      if (pdfId && activeTool === 'eraser') updateToolPreference('eraser', { eraserSize: 1 });
     } else {
       const clamped = Math.min(Math.max(parsed, 1), 100);
       const nextValue = String(clamped);
@@ -7833,8 +7845,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setEraserSizeInputValue(nextValue);
       publishToolbarDraft('eraserSizeInputValue', clamped);
       setEraserSize(clamped);
+      if (pdfId && activeTool === 'eraser') updateToolPreference('eraser', { eraserSize: clamped });
     }
-  }, [handleEraserSizeFocusChange, publishToolbarDraft]);
+  }, [activeTool, handleEraserSizeFocusChange, pdfId, publishToolbarDraft, updateToolPreference]);
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }

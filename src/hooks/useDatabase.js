@@ -1023,7 +1023,12 @@ const DEFAULT_TOOL_PREFERENCES = {
   pen: { strokeColor: '#ff0000', strokeWidth: 3, strokeOpacity: 100 },
   highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
   'text-highlight': { strokeColor: '#ffff00', strokeOpacity: 50 },
-  eraser: { strokeWidth: 10 },
+  // Omitting eraserSize used to let Type persist (global eraserMode)
+  // while Size stayed session-only. After remount, first swipe used
+  // default diameter 20 until Size was touched again. strokeWidth: 10
+  // is unused by the live Size field — Pen Width and Eraser Size stay
+  // separate stores.
+  eraser: { strokeWidth: 10, eraserSize: 20 },
   // Omitting lineBorderStyle used to let one Style picker leak across
   // Text / Callout / Rect / Ellipse / Line / Arrow after a sibling
   // switch. Session-shared dash then stamped the sibling's Style until
