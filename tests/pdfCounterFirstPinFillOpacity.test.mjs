@@ -79,13 +79,17 @@ function annotAppearanceGs(doc, dict) {
 }
 
 async function exportFirstPin(patch = {}) {
-  const file = await makePdfFile();
-  const result = await savePDFWithAnnotationsPdfLib(file, {
-    1: { version: '7.4.0', objects: [makeFirstPin(patch)] },
-  });
-  const doc = await PDFDocument.load(result.pdfBytes);
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects: [makeFirstPin(patch)] } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'counter-first-pin-fill-opacity' },
+  );
+  const doc = await PDFDocument.load(bytes);
   const page = doc.getPage(0);
   const annots = page.node.lookup(PDFName.of('Annots'));
+  assert.ok(annots, 'export must write Annots');
   const dict = doc.context.lookup(annots.asArray()[0]);
   return { dict, gs: annotAppearanceGs(doc, dict) };
 }
