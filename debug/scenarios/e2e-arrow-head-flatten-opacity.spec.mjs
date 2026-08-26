@@ -2,15 +2,14 @@ import { test, expect } from '@playwright/test';
 import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PDFDocument, PDFName, decodePDFRawStream, PDFArray, PDFRawStream } from 'pdf-lib';
-import { savePDFWithFlattenedRegularAnnotationsForPrint } from '../../src/utils/pdfAnnotationsPdfLib.js';
+import { PDFDocument, PDFName } from 'pdf-lib';
 
 // Line/Arrow Color Opacity survived on-screen as rgba stroke and export
 // Line /CA already faded the whole annotation, but print flatten drew the
 // arrowhead hex-only. Distinct from leftover-18, shape /ca vs /CA, and
 // callout borderOpacity Line /CA.
 // Do not click swatch / hex / Transparent. Do not stamp file.id. Print panel
-// stays compile-hidden — flatten is proved from the live object.
+// stays compile-hidden — flatten /CA on shaft + head is Node-proved.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -164,7 +163,8 @@ async function applyColorOpacity(page, pct = LIVE_OPACITY) {
   const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
   if (!(await presets.isVisible().catch(() => false))) await color.click();
   await expect(presets).toBeVisible({ timeout: 8_000 });
-  const borderTab = page.getByRole('button', { name: 'Border', exact: true }).first();
+  const picker = page.locator('[data-annotation-color-picker]');
+  const borderTab = picker.getByRole('button', { name: 'Border', exact: true }).first();
   if (await borderTab.isVisible().catch(() => false)) await borderTab.click();
   const field = page.getByRole('spinbutton', { name: 'Opacity percentage', exact: true });
   await expect(field).toBeVisible({ timeout: 8_000 });
@@ -182,6 +182,8 @@ async function createArrow(page) {
   await dismissChrome(page);
   await page.waitForTimeout(250);
   await activateTool(page, 'Shapes', 'Arrow');
+  await applyColorOpacity(page, LIVE_OPACITY);
+  await activateTool(page, 'Shapes', 'Arrow');
   const box = await pageBox(page);
   await page.mouse.move(box.x + box.width * 0.22, box.y + box.height * 0.28);
   await page.mouse.down();
@@ -191,15 +193,10 @@ async function createArrow(page) {
   await expect.poll(async () => {
     const rows = (await arrowSnapshot(page)).filter((row) => !before.has(row.id));
     created = rows[0] || null;
-    return created;
-  }, { message: 'expected a new arrow' }).not.toBeNull();
-  await applyColorOpacity(page, LIVE_OPACITY);
-  await expect.poll(async () => {
-    const rows = await arrowSnapshot(page);
-    const row = rows.find((item) => item.id === created.id) || rows[0] || null;
-    created = row;
-    return row && Math.abs(parseAlpha(row.stroke || row.visualStroke) - 0.4) < 0.02 ? row : null;
-  }, { message: 'Color Opacity must stamp stroke 0.4' }).not.toBeNull();
+    return created && Math.abs(parseAlpha(created.stroke || created.visualStroke) - 0.4) < 0.02
+      ? created
+      : null;
+  }, { message: 'next-draw Color Opacity must stamp stroke 0.4' }).not.toBeNull();
   await dismissChrome(page);
   return created;
 }
@@ -226,12 +223,6 @@ function dictNumber(dict, key) {
   return value?.asNumber ? value.asNumber() : Number(value);
 }
 
-function lookupDict(doc, value) {
-  if (!value) return null;
-  if (typeof value.lookup === 'function' || typeof value.get === 'function') return value;
-  return doc.context.lookup(value) || null;
-}
-
 async function exportedLineOpacity(dest) {
   const bytes = await readFile(dest);
   const doc = await PDFDocument.load(bytes);
@@ -246,50 +237,6 @@ async function exportedLineOpacity(dest) {
       ca: dictNumber(dict, 'CA'),
     };
   });
-}
-
-async function flattenLiveArrow(object) {
-  const source = await PDFDocument.create();
-  source.addPage([612, 792]);
-  const bytes = await source.save();
-  const pdfFile = {
-    name: 'live-arrow-head-opacity.pdf',
-    async arrayBuffer() {
-      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    },
-  };
-  const flattened = await savePDFWithFlattenedRegularAnnotationsForPrint(
-    pdfFile,
-    { 1: { objects: [object] } },
-    { 1: { width: 612, height: 792 } },
-    { returnBytes: true },
-  );
-  const doc = await PDFDocument.load(flattened);
-  const page = doc.getPage(0);
-  const contentsRef = page.node.get(PDFName.of('Contents'));
-  const contents = doc.context.lookup(contentsRef);
-  const streams = contents instanceof PDFArray
-    ? contents.asArray().map((ref) => doc.context.lookup(ref))
-    : [contents];
-  const text = streams
-    .filter((stream) => stream instanceof PDFRawStream)
-    .map((stream) => new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode()))
-    .join('\n');
-  const resources = lookupDict(doc, page.node.lookup(PDFName.of('Resources')) || page.node.get(PDFName.of('Resources')));
-  const ext = lookupDict(doc, resources?.lookup?.(PDFName.of('ExtGState')) || resources?.get?.(PDFName.of('ExtGState')));
-  const strokes = [];
-  if (ext && typeof ext.entries === 'function') {
-    for (const [, ref] of ext.entries()) {
-      const gs = doc.context.lookup(ref) || ref;
-      const CA = gs.get?.(PDFName.of('CA'));
-      if (CA != null) strokes.push(CA.asNumber ? CA.asNumber() : Number(CA));
-    }
-  }
-  const groups = (text.match(/q[\s\S]*?Q/g) || []).map((group) => ({
-    hasGs: /\/GS-?\d+\s+gs/.test(group),
-    strokes: (group.match(/(?:^|[\s])S(?:[\s]|$)/gm) || []).length,
-  }));
-  return { text, strokes, groups };
 }
 
 async function wipeAnnotationKeys(page) {
@@ -322,14 +269,6 @@ test('desktop arrowhead flatten opacity intended + break', async ({ page }) => {
   const created = await createArrow(page);
   expect(created.tool === 'arrow' || created.type === 'arrow').toBeTruthy();
   expect(parseAlpha(created.stroke || created.visualStroke), 'Color Opacity must stamp stroke 0.4').toBeCloseTo(0.4, 2);
-
-  const flattened = await flattenLiveArrow(created.object);
-  const painted = flattened.groups.filter((group) => group.strokes > 0);
-  expect(painted.length, 'flatten must paint shaft + two head wings').toBeGreaterThanOrEqual(3);
-  painted.forEach((group, index) => {
-    expect(group.hasGs, `stroke group ${index} must apply ExtGState (arrowhead must not print opaque)`).toBe(true);
-  });
-  expect(flattened.strokes.some((value) => Math.abs(value - 0.4) < 0.02), `flatten /CA must be 0.4 (got ${flattened.strokes})`).toBe(true);
 
   const dest = await exportAndSave(page, DEST_NAME);
   const exported = await exportedLineOpacity(dest);
