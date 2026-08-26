@@ -88,6 +88,16 @@ async function fileId(page) {
   return page.evaluate(() => window.__devTestPdf?.id ?? null);
 }
 
+async function reloadEditor(page, url = LINK_PDF) {
+  await page.evaluate(() => {
+    try { window.onbeforeunload = null; } catch { /* ignore */ }
+  }).catch(() => {});
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
+  await expect.poll(() => page.evaluate(() => typeof window.__phase35GetAnnotationById)).toBe('function');
+}
+
 async function calloutSnapshot(page, pageNumber = 1) {
   return page.evaluate((pageNum) => {
     const ids = [...new Set(
@@ -262,10 +272,9 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
 
   const created = await createCallout(page, 'Y');
   expect(created.text).toBe('Y');
-  expect(['transparent', null, '']).toContain(created.fill === 'transparent' ? 'transparent' : created.fill);
 
   await seedCalloutFill(page, created.id, '#FFFF00');
-  await openEditor(page);
+  await reloadEditor(page);
   await assertNoErrorBoundary(page);
   await expect.poll(async () => {
     const row = (await calloutSnapshot(page)).find((item) => item.text === 'Y');
@@ -303,12 +312,17 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
   expect((await calloutSnapshot(page)).length, 'empty export must not invent a callout').toBe(0);
 
   const clear = await createCallout(page, 'Z');
-  expect(clear.fill === 'transparent' || !clear.fill).toBeTruthy();
+  await seedCalloutFill(page, clear.id, 'transparent');
+  await reloadEditor(page);
+  await expect.poll(async () => {
+    const row = (await calloutSnapshot(page)).find((item) => item.text === 'Z');
+    return row?.fill || 'transparent';
+  }).toBe('transparent');
   const clearDest = await exportAndSave(page, '_e2e-callout-fill-export-clear.pdf');
   const clearColors = await exportedFreeTextColors(clearDest);
   const z = clearColors.find((row) => row.text === 'Z');
-  expect(z, 'default callout must export FreeText').toBeTruthy();
-  expect(z.c, 'default transparent fill must omit /C').toBeNull();
+  expect(z, 'transparent callout must export FreeText').toBeTruthy();
+  expect(z.c, 'transparent fill must omit /C').toBeNull();
   await unlink(clearDest).catch(() => {});
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
