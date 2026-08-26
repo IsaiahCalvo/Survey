@@ -46,6 +46,7 @@ import {
   pdfFreeTextQuadding,
   resolveCalloutBoxFill,
   resolveTextboxBoxFill,
+  resolveTextboxBoxStroke,
   wrapFlattenedTextLines,
 } from './annotationStyleCatalog.js';
 import { isSurveyMarkerType } from './surveyMarkerType.js';
@@ -2470,6 +2471,12 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // already-resolved hex from resolveCalloutBoxFill.
     const boxFill = resolveTextboxBoxFill(fabricObj);
     const background = boxFill.visible ? hexToRGB(boxFill.hex) : null;
+    // Live toolbar writes Border/Width as stroke + strokeWidth (often rgba()
+    // from composeColorForPatch). Width 0 / empty / opacity-0 keep /Border
+    // [0,0,0] so the exported box stays unframed, matching the screen.
+    // /C stays the box fill (resolveTextboxBoxFill) — not the border color.
+    const boxStroke = resolveTextboxBoxStroke(fabricObj);
+    const borderWidth = boxStroke.visible ? boxStroke.width : 0;
 
     // /Q quadding (PDF 12.7.4.3): 0 left, 1 center, 2 right. STYLE_KEYS
     // already keeps textAlign on our reimport; Acrobat/Preview read /Q.
@@ -2481,9 +2488,17 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       DA: PDFString.of(da),
       Q: pdfFreeTextQuadding(fabricObj.textAlign),
       ...(background ? { C: [background.red, background.green, background.blue] } : {}),
-      Border: [0, 0, 0], // No border for text boxes
+      Border: [0, 0, borderWidth],
       P: page.ref,
     };
+    if (boxStroke.visible && Array.isArray(boxStroke.dash) && boxStroke.dash.length > 0) {
+      annotationDict.BS = {
+        Type: 'Border',
+        W: borderWidth,
+        S: PDFName.of('D'),
+        D: boxStroke.dash,
+      };
+    }
 
     if (options.calloutMetadataJson) {
       annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
@@ -3219,6 +3234,28 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
         color: paint.color,
         opacity: paint.opacity,
         borderWidth: 0,
+      });
+    }
+  }
+  // Live toolbar writes Border/Width on stroke + strokeWidth. Flatten used
+  // to skip the frame entirely (borderWidth: 0), so a user-picked box never
+  // printed. Glyph fill is not a leftover border.
+  const boxStroke = resolveTextboxBoxStroke(obj);
+  if (boxStroke.visible) {
+    const paint = parsePdfDrawColor(boxStroke.paint, boxStroke.hex);
+    if (paint) {
+      const strokeDash = Array.isArray(boxStroke.dash) && boxStroke.dash.length > 0
+        ? boxStroke.dash
+        : null;
+      page.drawRectangle({
+        x: left,
+        y: getPdfY(pageHeight, top + height),
+        width: maxWidth,
+        height,
+        borderColor: paint.color,
+        borderWidth: boxStroke.width,
+        borderOpacity: paint.opacity,
+        ...(strokeDash ? { borderDashArray: strokeDash, borderDashPhase: 0 } : {}),
       });
     }
   }

@@ -281,6 +281,63 @@ export function resolveTextboxBoxFill(obj = {}) {
   return { hex, opacity: 1, visible: true, paint: hex };
 }
 
+const resolvePaintColor = (raw) => {
+  if (raw == null || raw === '' || raw === 'transparent' || raw === 'none') {
+    return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  }
+  if (typeof raw === 'string') {
+    const rgba = raw.match(/^rgba?\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)(?:\s*,\s*([+-]?\d*\.?\d+))?\s*\)$/i);
+    if (rgba) {
+      const r = Math.round(Math.max(0, Math.min(255, Number(rgba[1]))));
+      const g = Math.round(Math.max(0, Math.min(255, Number(rgba[2]))));
+      const b = Math.round(Math.max(0, Math.min(255, Number(rgba[3]))));
+      const opacity = rgba[4] != null && Number.isFinite(Number(rgba[4]))
+        ? Math.max(0, Math.min(1, Number(rgba[4])))
+        : 1;
+      return rgbaPaint(r, g, b, opacity);
+    }
+  }
+  const hex = normalizeHexColor(raw);
+  if (!hex) return { hex: null, opacity: 0, visible: false, paint: 'transparent' };
+  return { hex, opacity: 1, visible: true, paint: hex };
+};
+
+/**
+ * Live textbox Border/Width is style.stroke + style.strokeWidth (toolbar
+ * patchSelectedStroke / handleStrokeWidthChange). New text commits a 1px
+ * black stroke; Color Border + Width patch those keys. Export /Border was
+ * hard-coded [0,0,0] and flatten never painted the stroke, so a user-picked
+ * box never printed. Glyph `fill` is the font color — never a leftover border.
+ */
+export function resolveTextboxBoxStroke(obj = {}) {
+  const width = Number(obj?.strokeWidth);
+  if (!Number.isFinite(width) || width <= 0) {
+    return {
+      hex: null,
+      opacity: 0,
+      visible: false,
+      paint: 'transparent',
+      width: 0,
+      dash: null,
+    };
+  }
+  const paint = resolvePaintColor(obj?.stroke);
+  const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.map((value) => Number(value) || 0)
+    : null;
+  if (!paint.visible) {
+    return {
+      hex: null,
+      opacity: 0,
+      visible: false,
+      paint: 'transparent',
+      width,
+      dash: null,
+    };
+  }
+  return { ...paint, width, dash };
+}
+
 const clampUnit = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /**
