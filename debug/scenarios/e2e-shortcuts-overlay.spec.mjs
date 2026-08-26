@@ -11,6 +11,7 @@ import { test, expect } from '@playwright/test';
 // list — Undo/Redo/Delete/Duplicate/z-order/F3
 // are live elsewhere and omitted here. Ctrl+M Manual lock is listed
 // next to the Fit siblings (live chord, same class as Shift+E).
+// Ctrl+S Save document is listed next to Search text (live chord).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -26,6 +27,7 @@ const LISTED = [
   'Fit height',
   'Manual lock',
   'Open document',
+  'Save document',
   'Search text',
   'Select annotations',
   'Select text on the page',

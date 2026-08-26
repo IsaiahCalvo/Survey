@@ -64,6 +64,13 @@ const KeyboardShortcutsOverlay = () => {
     ]},
     { category: 'Actions', items: [
       { keys: ['Ctrl', 'O'], description: 'Open document' },
+      // Ctrl+S is the live Save document chord (handleSaveDocument). The
+      // overlay already listed Ctrl+O Open document and Ctrl+F Search text
+      // in Actions; omitting the sibling Save chord made it undiscoverable
+      // from the catalog the same way Ctrl+M was missing next to Fit height.
+      // Do not invent Open file / UL-03 — Ctrl+O stays Electron File menu
+      // only. Do not invent clipboard overlay rows.
+      { keys: ['Ctrl', 'S'], description: 'Save document' },
       { keys: [findShortcutModifier, 'F'], description: 'Search text' },
     ]},
     // KAL-239: the tool keys were never listed here, so text selection (Shift+V)

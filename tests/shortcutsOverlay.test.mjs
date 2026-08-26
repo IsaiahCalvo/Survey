@@ -34,6 +34,7 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.match(overlay, /keys: \['Ctrl', '2'\], description: 'Fit height'/);
   assert.match(overlay, /keys: \['Ctrl', 'M'\], description: 'Manual lock'/);
   assert.match(overlay, /description: 'Open document'/);
+  assert.match(overlay, /keys: \['Ctrl', 'S'\], description: 'Save document'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['V'\], description: 'Select annotations'/);
   assert.match(overlay, /keys: \['Shift', 'V'\], description: 'Select text on the page'/);
@@ -100,6 +101,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Fit width/);
   assert.match(spec, /Fit height/);
   assert.match(spec, /Manual lock/);
+  assert.match(spec, /Save document/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);
