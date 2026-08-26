@@ -2627,6 +2627,14 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       maxY = Math.max(maxY, y);
     });
 
+    // Live toolbar maps selected imported polyline → line Style + Color
+    // Opacity. Screen already honours strokeDashArray and rgba stroke, but
+    // export wrote hex /C + /Border width only — Acrobat stayed solid and
+    // opaque until Style / Opacity were re-touched. Same contract as
+    // createLineAnnotation: /C stays the stroke RGB; /CA carries the fade;
+    // dashed/dotted write /BS. Solid + opaque omit both so default export
+    // stays byte-identical. Do not invent a create-poly tool.
+    const alpha = paintAlpha(fabricObj.stroke, fabricObj.opacity);
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'PolyLine',
@@ -2637,8 +2645,21 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Contents: PDFString.of(''),
       P: page.ref,
     };
+    if (alpha < 0.99999) annotationDict.CA = alpha;
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
+
+    const dash = Array.isArray(fabricObj.strokeDashArray) && fabricObj.strokeDashArray.length > 0
+      ? fabricObj.strokeDashArray.map((v) => Number(v) || 0)
+      : null;
+    if (dash) {
+      annotationDict.BS = {
+        Type: 'Border',
+        W: fabricObj.strokeWidth || 1,
+        S: PDFName.of('D'),
+        D: dash,
+      };
+    }
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
   } catch (e) {
@@ -3824,6 +3845,13 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   }
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const fill = closePath ? parsePdfDrawColor(obj?.fill, '#ffffff') : null;
+  // Live Style dash on an imported polyline (and non-cloud polygon)
+  // stores strokeDashArray. Flatten used to stroke a solid path so
+  // Dashed / Dotted printed solid. Same borderDashArray contract as
+  // flattened rects / callout boxes.
+  const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.map((v) => Number(v) || 0)
+    : null;
   page.drawSvgPath(d, {
     x: 0,
     y: pageHeight,
@@ -3832,6 +3860,7 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
     color: fill?.color,
     opacity: fill?.opacity ?? 1,
     borderOpacity: stroke.opacity,
+    ...(dash ? { borderDashArray: dash, borderDashPhase: 0 } : {}),
   });
   return true;
 };
