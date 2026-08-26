@@ -5,6 +5,8 @@ import { test, expect } from '@playwright/test';
 // lifted that floor (2161fa7f). Distinct from leftover-18, Polygon /BS /CA,
 // C-03 Line stroke continuum, and C-06 Match Fill. Do not invent a
 // create-poly tool. Do not click swatch / hex / Transparent apply.
+// No file.id on ?testPdf=.
+// No file.id on ?testPdf=.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const POLY_PDF = '/?testPdf=e2e-poly-vertices.pdf';
@@ -238,6 +240,24 @@ async function createRect(page, coords = { x0: 0.28, y0: 0.30, x1: 0.52, y1: 0.4
   ));
 }
 
+async function selectStroke(page, id) {
+  await page.keyboard.press('v');
+  const target = page.locator(`[data-shape-id="${id}"], [data-svg-annotation-layer] [data-anno-id="${id}"]`).first();
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `bbox for ${id}`).toBeTruthy();
+  const points = [
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + Math.min(6, Math.max(2, box.width / 2)), y: box.y + Math.max(2, box.height / 2) },
+  ];
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    const selected = await page.locator('[data-resize-handle], [data-rotation-handle="mtr"]').count();
+    const chrome = await page.getByRole('button', { name: /^(Color|Fill and border colors|Stroke color|Edit text)$/ }).count();
+    if (selected > 0 || chrome > 0) return;
+  }
+}
+
 function opacityField(page) {
   return page.getByRole('spinbutton', { name: 'Opacity percentage', exact: true })
     .or(page.getByRole('textbox', { name: 'Opacity percentage', exact: true }))
@@ -379,6 +399,7 @@ test('390 rect Border Opacity can leave 100 intended + break + edge', async ({ p
 
   const rect = await createRect(page);
   expect(rect.id).toBeTruthy();
+  await selectStroke(page, rect.id);
   await openStrokePickerFromSheet(page);
 
   const slider = opacitySlider(page);
