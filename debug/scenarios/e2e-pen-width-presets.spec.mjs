@@ -295,7 +295,7 @@ test('Pen Width every preset + unique chrome intended + break + edge', async ({ 
   await expect(field).toHaveValue('1');
   const highlight = await drawInk(page, { yFraction: 0.84, x0: 0.16, x1: 0.40 });
   expect(highlight.tool).toBe('highlighter');
-  expect(highlight.sourceWidth, 'highlighter floors create width at 8').toBe(8);
+  expect(highlight.sourceWidth, 'highlighter stamps create width as-is').toBe(1);
 
   await activateTool(page, 'Draw', 'Pen');
   await setWidthTyped(page, '10');

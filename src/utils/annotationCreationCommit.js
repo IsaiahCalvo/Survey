@@ -295,7 +295,10 @@ export function buildFreehandCommitJSON({
     color: tool === 'highlighter'
       ? (highlightColor || strokeColor)
       : composeAnnotationColor(strokeColor, strokeOpacity),
-    width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
+    // Next-draw Width below 8 must ride the first highlighter stroke.
+    // Math.max(strokeWidth, 8) dropped 1/2/3/4/6/7 until Width was
+    // touched again (the live catalog already offers those presets).
+    width: strokeWidth,
     data: { id },
   });
   if (!json) return null;

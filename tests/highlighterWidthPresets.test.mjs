@@ -7,8 +7,8 @@ import { normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from '../src/uti
 import { buildFreehandCommitJSON } from '../src/utils/annotationCreationCommit.js';
 
 // Source contracts for Highlighter Width catalog (same 12-preset chrome as
-// Pen, unique create floor Math.max(width, 8)). Distinct from Pen as-is
-// sourceWidth, Line/Arrow strokeWidth, Eraser Size, Counter Size.
+// Pen, as-is sourceWidth including sub-8). Distinct from Line/Arrow
+// strokeWidth, Eraser Size, Counter Size.
 // Live proof: debug/scenarios/e2e-highlighter-width-presets.spec.mjs
 
 const WIDTH_PRESETS = [1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 32, 50];
@@ -49,15 +49,18 @@ test('Highlighter Width reuses the 12-preset Width catalog and 1–50 field clam
   assert.equal(sanitizeAnnotationSizeDraft('12.5'), null);
 });
 
-test('Highlighter create floors every sub-8 preset at 8; 8–50 stamp as-is', () => {
+test('Highlighter create stamps every Width preset as-is, including sub-8', () => {
   const commit = read('src/utils/annotationCreationCommit.js');
-  assert.match(commit, /width: tool === 'highlighter' \? Math\.max\(strokeWidth, 8\) : strokeWidth/);
+  assert.match(commit, /width: strokeWidth,/);
+  assert.doesNotMatch(commit, /Math\.max\(strokeWidth, 8\)/);
 
   const preview = read('src/components/SVGAnnotationLayer.jsx');
-  assert.match(preview, /shapeCreation\.tool === 'highlighter'\s*\n\s*\? Math\.max\(Number\(strokeWidth\) \|\| 3, 8\)/);
+  assert.match(preview, /strokeWidth=\{Number\(strokeWidth\) \|\| 3\}/);
+  assert.doesNotMatch(preview, /Math\.max\(Number\(strokeWidth\) \|\| 3, 8\)/);
 
   const pal = read('src/PageAnnotationLayer.jsx');
-  assert.match(pal, /const w = tool === 'highlighter' \? Math\.max\(strokeWidth, 8\) : strokeWidth;/);
+  assert.match(pal, /const w = strokeWidth;/);
+  assert.doesNotMatch(pal, /Math\.max\(strokeWidth, 8\)/);
 
   const defaults = read('src/hooks/useDatabase.js');
   assert.match(defaults, /highlighter: \{ strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 \}/);
@@ -72,7 +75,7 @@ test('Highlighter create floors every sub-8 preset at 8; 8–50 stamp as-is', ()
       strokeWidth: preset,
     });
     assert.equal(json.tool, 'highlighter');
-    assert.equal(json.sourceWidth, Math.max(preset, 8), `preset ${preset}`);
+    assert.equal(json.sourceWidth, preset, `preset ${preset}`);
     assert.equal(json.strokeWidth, 0);
     assert.equal(json.paperInkGeometry, 'v1');
     assert.equal(json.globalCompositeOperation, 'multiply');
@@ -85,7 +88,7 @@ test('Highlighter create floors every sub-8 preset at 8; 8–50 stamp as-is', ()
     strokeColor: '#ffff00',
     strokeWidth: 7,
   });
-  assert.equal(custom7.sourceWidth, 8);
+  assert.equal(custom7.sourceWidth, 7);
 
   const custom9 = buildFreehandCommitJSON({
     id: 'hl-width-9',

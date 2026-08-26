@@ -4598,7 +4598,7 @@ const PageAnnotationLayer = memo(({
     // Update brush properties
     if (canvas.freeDrawingBrush) {
       const c = tool === 'highlighter' ? highlightColor : strokeColor;
-      const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
+      const w = strokeWidth;
       canvas.freeDrawingBrush.color = c;
       canvas.freeDrawingBrush.width = w;
     }
@@ -8038,7 +8038,7 @@ const PageAnnotationLayer = memo(({
       canvas.lowerCanvasEl.style.cursor = '';
     }
     const c = tool === 'highlighter' ? 'rgba(255, 235, 59, 0.35)' : strokeColor;
-    const w = tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth;
+    const w = strokeWidth;
     if (canvas.freeDrawingBrush) {
       canvas.freeDrawingBrush.color = c;
       canvas.freeDrawingBrush.width = w;

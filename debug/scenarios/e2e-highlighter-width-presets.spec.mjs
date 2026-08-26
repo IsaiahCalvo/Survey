@@ -1,17 +1,17 @@
 import { test, expect } from '@playwright/test';
 
-// Highlighter Width catalog — every discrete D-05 preset + unique floor-8
-// chrome. Distinct from Pen Width (as-is sourceWidth; only sampled floor 8),
-// Line/Arrow/shape selected-patch strokeWidth, Eraser Size 1…100, Counter
-// Size 5…64, Cloud bump 1–20, C-03 opacity, and color every-swatch.
-// Leftover-18 / X-01 parked. No file.id.
+// Highlighter Width catalog — every discrete D-05 preset + as-is
+// sourceWidth (including sub-8). Distinct from Pen Width (as-is
+// sourceWidth), Line/Arrow/shape selected-patch strokeWidth, Eraser Size
+// 1…100, Counter Size 5…64, Cloud bump 1–20, C-03 opacity, and color
+// every-swatch. Leftover-18 / X-01 parked. No file.id.
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
 const WIDTH_PRESETS = [1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 32, 50];
 
 function expectedHighlighterSourceWidth(preset) {
-  return Math.max(Number(preset), 8);
+  return Number(preset);
 }
 
 async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
@@ -229,7 +229,7 @@ async function drawInk(page, { yFraction = 0.28, x0 = 0.16, x1 = 0.42 } = {}) {
   return waitForNewInk(page, before, (row) => row.type === 'path');
 }
 
-test('Highlighter Width every preset + floor-8 chrome intended + break + edge', async ({ page }) => {
+test('Highlighter Width every preset + as-is sourceWidth intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
   await openEditor(page);
@@ -259,7 +259,7 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
     expect(row.tool, `preset ${preset} tool`).toBe('highlighter');
     expect(row.paperInk, `preset ${preset} paper ink`).toBe('v1');
     expect(row.multiply, `preset ${preset} multiply`).toBe('multiply');
-    expect(row.sourceWidth, `preset ${preset} sourceWidth floors at 8`).toBe(expected);
+    expect(row.sourceWidth, `preset ${preset} sourceWidth stamps as-is`).toBe(expected);
     expect(row.strokeWidth, `preset ${preset} baked outline uses strokeWidth 0`).toBe(0);
     expect(row.bboxH, `preset ${preset} filled outline has thickness`).toBeGreaterThan(0);
     proven.push(preset);
@@ -274,19 +274,19 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
   }
   expect(proven).toEqual(WIDTH_PRESETS);
   expect(metrics.map((row) => row.sourceWidth)).toEqual(WIDTH_PRESETS.map(expectedHighlighterSourceWidth));
-  const floored = metrics.filter((row) => row.preset < 8);
-  expect(floored.map((row) => row.preset)).toEqual([1, 2, 3, 4, 6]);
-  expect(floored.every((row) => row.sourceWidth === 8), 'presets below 8 all floor to 8').toBe(true);
-  const thin = metrics.find((row) => row.preset === 8);
+  const subEight = metrics.filter((row) => row.preset < 8);
+  expect(subEight.map((row) => row.preset)).toEqual([1, 2, 3, 4, 6]);
+  expect(subEight.map((row) => row.sourceWidth), 'presets below 8 stamp as-is').toEqual([1, 2, 3, 4, 6]);
+  const thin = metrics.find((row) => row.preset === 1);
   const thick = metrics.find((row) => row.preset === 50);
-  expect(thick.bboxH, 'Width 50 outline must be thicker than floored Width 8').toBeGreaterThan(thin.bboxH * 4);
+  expect(thick.bboxH, 'Width 50 outline must be thicker than Width 1').toBeGreaterThan(thin.bboxH * 4);
 
   await activateTool(page, 'Draw', 'Highlighter');
   await setWidthTyped(page, '7');
   await expect(field).toHaveValue('7');
   const custom7 = await drawInk(page, { yFraction: 0.76, x0: 0.16, x1: 0.40 });
   expect(custom7.tool).toBe('highlighter');
-  expect(custom7.sourceWidth, 'custom 7 (not a preset) still floors at 8').toBe(8);
+  expect(custom7.sourceWidth, 'custom 7 (not a preset) stamps as-is').toBe(7);
   expect(custom7.strokeWidth).toBe(0);
 
   await setWidthTyped(page, '9');
@@ -304,7 +304,7 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
   await setWidthTyped(page, '0');
   await expect(field).toHaveValue('1');
   const floorDraw = await drawInk(page, { yFraction: 0.84, x0: 0.16, x1: 0.36 });
-  expect(floorDraw.sourceWidth, 'typed 0 clamps field to 1 then create floors 8').toBe(8);
+  expect(floorDraw.sourceWidth, 'typed 0 clamps field to 1 then create stamps 1').toBe(1);
   await setWidthTyped(page, '999');
   await expect(field).toHaveValue('50');
   await setWidthTyped(page, '');
@@ -317,7 +317,7 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
   expect(penStroke.tool).toBe('pen');
   expect(penStroke.sourceWidth).toBe(4);
   const firstStill = (await userInkSnapshot(page)).find((row) => row.id === metrics[0].id);
-  expect(firstStill.sourceWidth, 'Pen Width 4 must not rewrite first highlighter').toBe(8);
+  expect(firstStill.sourceWidth, 'Pen Width 4 must not rewrite first highlighter').toBe(1);
 
   await activateTool(page, 'Draw', 'Highlighter');
   await setWidthTyped(page, '10');
@@ -338,7 +338,7 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
   const isolation = await drawInk(page, { yFraction: 0.90, x0: 0.52, x1: 0.82 });
   expect(isolation.tool).toBe('highlighter');
   expect(isolation.sourceWidth).toBe(10);
-  expect((await userInkSnapshot(page)).find((row) => row.id === metrics[0].id)?.sourceWidth).toBe(8);
+  expect((await userInkSnapshot(page)).find((row) => row.id === metrics[0].id)?.sourceWidth).toBe(1);
 
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   await expect(undo).toBeEnabled();
@@ -347,7 +347,7 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
     const rows = await userInkSnapshot(page);
     return rows.some((row) => row.id === isolation.id);
   }).toBe(false);
-  expect((await userInkSnapshot(page)).find((row) => row.id === metrics[0].id)?.sourceWidth).toBe(8);
+  expect((await userInkSnapshot(page)).find((row) => row.id === metrics[0].id)?.sourceWidth).toBe(1);
   expect((await userInkSnapshot(page)).find((row) => row.id === custom9.id)?.sourceWidth).toBe(9);
 
   const beforeSelect = (await userInkSnapshot(page)).length;
@@ -383,7 +383,7 @@ test('Highlighter Width every preset + floor-8 chrome intended + break + edge', 
   }));
 });
 
-test('390 Highlighter Width field + floor + clamp intended + break + edge', async ({ page }) => {
+test('390 Highlighter Width field + as-is Width + clamp intended + break + edge', async ({ page }) => {
   test.setTimeout(180_000);
 
   await openEditor(page, { width: 390, height: 844 });
@@ -399,10 +399,10 @@ test('390 Highlighter Width field + floor + clamp intended + break + edge', asyn
 
   await pickWidthPreset(page, 1);
   await expect(field).toHaveValue('1');
-  const floored = await drawInk(page, { yFraction: 0.30, x0: 0.18, x1: 0.62 });
-  expect(floored.tool).toBe('highlighter');
-  expect(floored.sourceWidth, '390 Width 1 next-draw floors at 8').toBe(8);
-  expect(floored.strokeWidth).toBe(0);
+  const thin = await drawInk(page, { yFraction: 0.30, x0: 0.18, x1: 0.62 });
+  expect(thin.tool).toBe('highlighter');
+  expect(thin.sourceWidth, '390 Width 1 next-draw stamps as-is').toBe(1);
+  expect(thin.strokeWidth).toBe(0);
 
   await pickWidthPreset(page, 12);
   await expect(field).toHaveValue('12');
@@ -430,9 +430,9 @@ test('390 Highlighter Width field + floor + clamp intended + break + edge', asyn
   expect(await page.getByRole('button', { name: 'Open fill color picker', exact: true }).count()).toBe(0);
 
   console.log('HIGHLIGHTER_WIDTH_390_PROOF', JSON.stringify({
-    floored: floored.id,
+    thin: thin.id,
     drawn: drawn.id,
-    sourceWidths: { width1: floored.sourceWidth, width12: drawn.sourceWidth },
+    sourceWidths: { width1: thin.sourceWidth, width12: drawn.sourceWidth },
     clamp: { typed999: 50, typed0: 1 },
     viewBox,
     fileId,

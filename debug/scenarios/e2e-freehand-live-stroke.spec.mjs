@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 // D-01 / D-02 leftover: live freehand preview then commit.
 // Prior D-01/D-02 dedicated create-time Width / swatch / 1-dot tap of the
 // committed path. This pass asserts the in-drag `.freehand-creation-preview`
-// polyline, pointerup commit, highlighter multiply + floor-8 preview,
+// polyline, pointerup commit, highlighter multiply + as-is Width preview,
 // zoomGeneration mid-stroke flush, and pointercancel discard.
 // Distinct from leftover-18, E-01 resize, E-02 rotate, E-03 move, V-01 pan,
 // color / Width catalogs. Do not stamp file.id.
@@ -318,7 +318,7 @@ test('desktop freehand live stroke intended + break + edge', async ({ page }) =>
     message: 'redo must restore Pen ink',
   }).toBe(true);
 
-  // Intended — Highlighter: live multiply + floor-8 preview, then commit.
+  // Intended — Highlighter: live multiply + as-is Width preview, then commit.
   await activateTool(page, 'Draw', 'Highlighter');
   await setWidthTyped(page, 4);
   const beforeHi = new Set(await userOrder(page));
@@ -326,14 +326,14 @@ test('desktop freehand live stroke intended + break + edge', async ({ page }) =>
   expect(await userOrder(page), 'Highlighter live drag must not commit yet').toEqual([...beforeHi]);
   const hiLive = await previewInfo(page);
   expect(hiLive?.mix, 'Highlighter live preview uses multiply').toBe('multiply');
-  expect(hiLive?.strokeWidth, 'Highlighter live preview floors Width 4 at 8').toBeGreaterThanOrEqual(8);
+  expect(hiLive?.strokeWidth, 'Highlighter live preview stamps Width 4 as-is').toBe(4);
   await page.mouse.move(hiDrag.end.x, hiDrag.end.y, { steps: 6 });
   await page.mouse.up();
   await expect(livePreview(page), 'Highlighter pointerup must drop the preview').toHaveCount(0);
   const hiInk = await waitForNewUserAnnotation(page, beforeHi, (row) => (
     isInk(row) && (row.tool === 'highlighter' || row.multiply === 'multiply')
   ));
-  expect(hiInk.sourceWidth, 'Highlighter commit floors sourceWidth at 8').toBeGreaterThanOrEqual(8);
+  expect(hiInk.sourceWidth, 'Highlighter commit stamps sourceWidth 4 as-is').toBe(4);
   expect(hiInk.multiply, 'Highlighter commit stamps multiply').toBe('multiply');
   expect((await userOrder(page)).includes(penInk.id), 'Highlighter commit must isolate Pen ink').toBe(true);
 

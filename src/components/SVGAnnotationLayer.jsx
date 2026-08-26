@@ -5080,9 +5080,7 @@ const SVGAnnotationLayer = memo(({
           stroke={shapeCreation.tool === 'highlighter'
             ? highlightColor
             : composeAnnotationColor(strokeColor, strokeOpacity)}
-          strokeWidth={shapeCreation.tool === 'highlighter'
-            ? Math.max(Number(strokeWidth) || 3, 8)
-            : (Number(strokeWidth) || 3)}
+          strokeWidth={Number(strokeWidth) || 3}
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{

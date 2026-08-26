@@ -48,7 +48,7 @@ test('Pen Width catalog is 12 discrete presets, 1–50, labeled Width not Size',
   assert.equal(sanitizeAnnotationSizeDraft('12.5'), null);
 });
 
-test('Pen create stamps sourceWidth as-is; highlighter floors at 8; outline strokeWidth is 0', () => {
+test('Pen create stamps sourceWidth as-is; highlighter stamps as-is; outline strokeWidth is 0', () => {
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : 50/);
   assert.match(viewer, /const \[strokeWidth, setStrokeWidth\] = useState\(3\)/);
@@ -58,7 +58,8 @@ test('Pen create stamps sourceWidth as-is; highlighter floors at 8; outline stro
   assert.match(defaults, /highlighter: \{ strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 \}/);
 
   const commit = read('src/utils/annotationCreationCommit.js');
-  assert.match(commit, /width: tool === 'highlighter' \? Math\.max\(strokeWidth, 8\) : strokeWidth/);
+  assert.match(commit, /width: strokeWidth,/);
+  assert.doesNotMatch(commit, /Math\.max\(strokeWidth, 8\)/);
 
   const pen = createProductionPaperInk({
     id: 'pen-width-1',
@@ -98,7 +99,7 @@ test('Pen create stamps sourceWidth as-is; highlighter floors at 8; outline stro
     strokeWidth: 1,
   });
   assert.equal(highlight.tool, 'highlighter');
-  assert.equal(highlight.sourceWidth, 8);
+  assert.equal(highlight.sourceWidth, 1);
 
   const highlightWide = buildFreehandCommitJSON({
     id: 'hl-width-20',

@@ -11,13 +11,14 @@ import { buildFreehandCommitJSON } from '../src/utils/annotationCreationCommit.j
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('live preview + zoomGeneration flush + highlighter floor stay wired', () => {
+test('live preview + zoomGeneration flush + highlighter Width as-is stay wired', () => {
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /const FREEHAND_CREATION_TOOLS = \['pen', 'highlighter'\]/);
   assert.match(layer, /className="freehand-creation-preview"/);
   assert.match(layer, /data-preview-tick=\{shapeCreation\.tick\}/);
   assert.match(layer, /shapeCreation\.tool === 'highlighter'\s*\n\s*\? highlightColor\s*\n\s*: composeAnnotationColor\(strokeColor, strokeOpacity\)/);
-  assert.match(layer, /Math\.max\(Number\(strokeWidth\) \|\| 3, 8\)/);
+  assert.match(layer, /strokeWidth=\{Number\(strokeWidth\) \|\| 3\}/);
+  assert.doesNotMatch(layer, /Math\.max\(Number\(strokeWidth\) \|\| 3, 8\)/);
   assert.match(layer, /mixBlendMode: 'multiply'/);
   assert.match(layer, /zoomGeneration/);
   assert.match(layer, /FREEHAND_CREATION_TOOLS\.includes\(state\.tool\)/);
@@ -51,7 +52,7 @@ test('live preview + zoomGeneration flush + highlighter floor stay wired', () =>
   });
   assert.ok(hi);
   assert.equal(hi.globalCompositeOperation, 'multiply');
-  assert.equal(hi.sourceWidth, 8);
+  assert.equal(hi.sourceWidth, 4);
 
   const empty = buildFreehandCommitJSON({
     tool: 'pen',
@@ -80,7 +81,7 @@ test('live spec covers preview / commit / highlighter / zoom flush / cancel / 39
   assert.match(spec, /Pen pointerup must drop the preview/);
   assert.match(spec, /Pen pointerup must commit ink/);
   assert.match(spec, /Highlighter live preview uses multiply/);
-  assert.match(spec, /Highlighter live preview floors Width 4 at 8/);
+  assert.match(spec, /Highlighter live preview stamps Width 4 as-is/);
   assert.match(spec, /pointercancel must drop the preview/);
   assert.match(spec, /pointercancel must invent 0/);
   assert.match(spec, /zoom mid-stroke starts uncommitted/);

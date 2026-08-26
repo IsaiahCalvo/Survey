@@ -156,7 +156,7 @@ test('first-stroke-shaped export writes Ink /CA from composed fill', async () =>
   );
 });
 
-test('highlighter first-stroke still uses highlightColor; Width floor stays 8', () => {
+test('highlighter first-stroke still uses highlightColor; Width 4 stamps as-is', () => {
   const hi = buildFreehandCommitJSON({
     tool: 'highlighter',
     id: 'hi-first',
@@ -167,5 +167,5 @@ test('highlighter first-stroke still uses highlightColor; Width floor stays 8', 
     strokeWidth: 4,
   });
   assert.equal(hi.fill, 'rgba(255, 255, 0, 0.5)');
-  assert.equal(hi.sourceWidth, 8);
+  assert.equal(hi.sourceWidth, 4);
 });
