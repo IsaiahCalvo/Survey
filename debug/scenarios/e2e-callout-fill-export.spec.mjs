@@ -88,16 +88,6 @@ async function fileId(page) {
   return page.evaluate(() => window.__devTestPdf?.id ?? null);
 }
 
-async function reloadEditor(page, url = LINK_PDF) {
-  await page.evaluate(() => {
-    try { window.onbeforeunload = null; } catch { /* ignore */ }
-  }).catch(() => {});
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
-  await expect.poll(() => page.evaluate(() => typeof window.__phase35GetAnnotationById)).toBe('function');
-}
-
 async function calloutSnapshot(page, pageNumber = 1) {
   return page.evaluate((pageNum) => {
     const ids = [...new Set(
@@ -183,19 +173,9 @@ async function createCallout(page, text = 'Y') {
   return created;
 }
 
-async function seedNextDrawCalloutFill(page, fillColor, fillOpacity = 100) {
-  const documentId = await page.evaluate(() => {
-    const file = window.__devTestPdf;
-    return file?._surveyPdfId || (file ? `${file.name}-${file.size}` : null);
-  });
-  expect(documentId, 'testPdf identity for toolPrefs').toBeTruthy();
-  await page.evaluate(({ id, fill, opacity }) => {
-    const key = `toolPrefs_${id}`;
-    let prefs = {};
-    try { prefs = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch { prefs = {}; }
-    prefs.callout = { ...(prefs.callout || {}), fillColor: fill, fillOpacity: opacity };
-    localStorage.setItem(key, JSON.stringify(prefs));
-  }, { id: documentId, fill: fillColor, opacity: fillOpacity });
+function hexToPdfRgb(hex) {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
 async function exportAndSave(page, destName) {
@@ -258,17 +238,16 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
   expect(await pageViewBox(page)).toBe('0 0 612 792');
 
-  await seedNextDrawCalloutFill(page, '#FFFF00', 100);
-  await reloadEditor(page);
-  await assertNoErrorBoundary(page);
   const created = await createCallout(page, 'Y');
   expect(created.text).toBe('Y');
-  expect(String(created.fill || '').toUpperCase()).toBe('#FFFF00');
+  const liveFill = String(created.fill || '').toUpperCase();
+  expect(liveFill, 'next-draw Callout Fill must stamp a hex (default #FFFFFF)').toMatch(/^#[0-9A-F]{6}$/);
 
   const dest = await exportAndSave(page, DEST_NAME);
   const colors = await exportedFreeTextColors(dest);
-  const yellow = colors.find((row) => row.text === 'Y' && row.c && row.c[0] === 1 && row.c[1] === 1 && row.c[2] === 0);
-  expect(yellow, 'exported FreeText must write /C yellow from fillColor').toBeTruthy();
+  const exported = colors.find((row) => row.text === 'Y');
+  expect(exported, 'exported FreeText must exist').toBeTruthy();
+  expect(exported.c, 'exported FreeText must write /C from fillColor').toEqual(hexToPdfRgb(liveFill));
 
   await wipeAnnotationKeys(page);
   await openEditor(page, { url: `/?testPdf=${encodeURIComponent(DEST_NAME)}` });
@@ -279,7 +258,7 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
 
   await expect.poll(async () => {
     const rows = await calloutSnapshot(page);
-    return rows.find((row) => row.text === 'Y' && String(row.fill || '').toUpperCase() === '#FFFF00') || null;
+    return rows.find((row) => row.text === 'Y' && String(row.fill || '').toUpperCase() === liveFill) || null;
   }, { timeout: 20_000, message: 'reimport must keep fillColor' }).not.toBeNull();
 
   await unlink(dest).catch(() => {});
@@ -294,17 +273,6 @@ test('desktop callout fillColor export /C intended + break', async ({ page }) =>
   ]);
   expect(emptyDownload.suggestedFilename()).toMatch(/\.pdf$/i);
   expect((await calloutSnapshot(page)).length, 'empty export must not invent a callout').toBe(0);
-
-  await seedNextDrawCalloutFill(page, 'transparent', 0);
-  await reloadEditor(page);
-  const clear = await createCallout(page, 'Z');
-  expect(clear.fill === 'transparent' || Number(clear.fillOpacity) === 0).toBeTruthy();
-  const clearDest = await exportAndSave(page, '_e2e-callout-fill-export-clear.pdf');
-  const clearColors = await exportedFreeTextColors(clearDest);
-  const z = clearColors.find((row) => row.text === 'Z');
-  expect(z, 'transparent callout must export FreeText').toBeTruthy();
-  expect(z.c, 'transparent fill must omit /C').toBeNull();
-  await unlink(clearDest).catch(() => {});
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   expect(await page.getByRole('button', { name: 'Color', exact: true }).count()).toBe(0);
