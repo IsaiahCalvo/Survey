@@ -76,6 +76,7 @@ import {
   inkDotCollapseThreshold,
 } from './inkTapDot.js';
 import { createInkPathAffine } from './inkGeometryTransform.js';
+import { calculateCalloutConnection } from './calloutGeometry.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
@@ -3337,6 +3338,30 @@ const resolveCalloutArrowheadStyle = (style) => (
   style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE
 );
 
+// Live screen routes line1 from the textbox EDGE nearest the knee
+// (calculateCalloutConnection / renderCallout). Export / flatten
+// hardcoded textBox.left + mid-height so Acrobat / print stayed
+// attached to the leftover left-middle until the knee was re-touched.
+// Metadata already keeps stored knee + box so reimport is not
+// double-routed. Live SVG passes borderWidth 0 — match that.
+// Do not invent callout Rotation or Line /AP.
+const resolveCalloutLeaderWorld = (calloutObj) => {
+  const arrowTip = calloutObj?.arrowTip;
+  const knee = calloutObj?.knee;
+  const textBox = calloutObj?.textBox;
+  if (!arrowTip || !knee || !textBox) return null;
+  const connection = calculateCalloutConnection(
+    Number(textBox.left) || 0,
+    Number(textBox.top) || 0,
+    Number(textBox.width) || 0,
+    Number(textBox.height) || 0,
+    { x: Number(knee.x) || 0, y: Number(knee.y) || 0 },
+    { x: Number(arrowTip.x) || 0, y: Number(arrowTip.y) || 0 },
+    0,
+  );
+  return { arrowTip, knee, textBox, connection };
+};
+
 const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   const refs = [];
   const style = calloutObj?.style || {};
@@ -3350,11 +3375,9 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
     ? Math.max(0, Math.min(1, Number(style.borderOpacity)))
     : 1;
   const strokeWidth = Math.max(1, Number(style.lineThickness || 2));
-  const arrowTip = calloutObj?.arrowTip;
-  const knee = calloutObj?.knee;
-  const textBox = calloutObj?.textBox;
-
-  if (!arrowTip || !knee || !textBox) return refs;
+  const leader = resolveCalloutLeaderWorld(calloutObj);
+  if (!leader) return refs;
+  const { arrowTip, textBox, connection } = leader;
 
   const originalCallout = calloutObj.originalCallout || calloutObj;
   const pageNumber = calloutObj.pageNumber || originalCallout.pageNumber || null;
@@ -3380,10 +3403,10 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
 
   const line1 = createLineAnnotation(pdfDoc, page, {
     type: 'line',
-    x1: textBox.left,
-    y1: textBox.top + textBox.height / 2,
-    x2: knee.x,
-    y2: knee.y,
+    x1: connection.line1Start.x,
+    y1: connection.line1Start.y,
+    x2: connection.effectiveKnee.x,
+    y2: connection.effectiveKnee.y,
     stroke,
     strokeWidth,
     opacity: strokeOpacity,
@@ -3393,8 +3416,8 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
 
   const line2 = createLineAnnotation(pdfDoc, page, {
     type: 'line',
-    x1: knee.x,
-    y1: knee.y,
+    x1: connection.line2Start.x,
+    y1: connection.line2Start.y,
     x2: arrowTip.x,
     y2: arrowTip.y,
     stroke,
@@ -4533,23 +4556,33 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     ? border.paint
     : hexPaintWithOpacity(style.borderColor || style.lineColor || '#1e293b', groupOpacity);
   const strokeWidth = Math.max(1, Number(style.lineThickness || 2));
-  const arrowTip = calloutObj.arrowTip;
-  const knee = calloutObj.knee;
-  const textBox = calloutObj.textBox;
-  if (!arrowTip || !knee || !textBox) return 0;
+  const leader = resolveCalloutLeaderWorld(calloutObj);
+  if (!leader) return 0;
+  const { arrowTip, textBox, connection } = leader;
   // UX (2026-07-17, callout line style): style.lineStyle dashes line1/line2
   // AND the box border in print, mirroring the SVG renderer / canvas painter;
   // the arrowhead stays solid (same as the arrow tool). Absent → solid.
   const leaderDash = calloutLineDashArray(style.lineStyle);
   const leaderDashProps = leaderDash ? { strokeDashArray: leaderDash } : {};
-  drawFlattenedLine(page, { type: 'line', x1: textBox.left, y1: textBox.top + textBox.height / 2, x2: knee.x, y2: knee.y, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
+  if (!connection.shouldHideLine1) {
+    drawFlattenedLine(page, {
+      type: 'line',
+      x1: connection.line1Start.x,
+      y1: connection.line1Start.y,
+      x2: connection.effectiveKnee.x,
+      y2: connection.effectiveKnee.y,
+      stroke,
+      strokeWidth,
+      ...leaderDashProps,
+    }, pageHeight);
+  }
   // UX (print flatten callout arrowhead): honor style.arrowheadStyle via the
   // shared arrow-tool spec — same default (solid triangle) and same line2
   // shortening the SVG renderer / canvas painter use, so print matches the
   // screen for every head style. Replaces the old hard-coded ClosedArrow.
   const arrowheadStyle = resolveCalloutArrowheadStyle(style);
   const arrowAngleDeg = (
-    Math.atan2(arrowTip.y - knee.y, arrowTip.x - knee.x) * 180
+    Math.atan2(arrowTip.y - connection.line2Start.y, arrowTip.x - connection.line2Start.x) * 180
   ) / Math.PI;
   const arrowheadSpec = buildArrowheadRenderSpec(
     arrowheadStyle, arrowTip.x, arrowTip.y, arrowAngleDeg, stroke, strokeWidth,
@@ -4565,7 +4598,7 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
     line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
     line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
   }
-  drawFlattenedLine(page, { type: 'line', x1: knee.x, y1: knee.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
+  drawFlattenedLine(page, { type: 'line', x1: connection.line2Start.x, y1: connection.line2Start.y, x2: line2EndX, y2: line2EndY, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
   drawFlattenedArrowheadSpec(page, arrowheadSpec, pageHeight);
   drawFlattenedObject(page, {
     type: 'rect',
