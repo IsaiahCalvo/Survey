@@ -157,6 +157,12 @@ async function widthValue(page) {
   return field.inputValue();
 }
 
+async function expectWidth(page, width, message) {
+  const field = page.getByRole('textbox', { name: 'Width', exact: true }).first();
+  await expect(field).toBeVisible({ timeout: 8_000 });
+  await expect.poll(async () => field.inputValue(), { message }).toBe(String(width));
+}
+
 async function commitEdit(page) {
   const pageGeom = await pageBox(page);
   await page.mouse.click(pageGeom.x + 10, pageGeom.y + 10);
@@ -173,20 +179,20 @@ async function createFirstBoxAfterSiblings(page, text = 'Y', { requireSiblingWid
   await page.waitForTimeout(250);
   await activateTool(page, 'Text', 'Callout');
   if (requireSiblingWidths) {
-    expect(await widthValue(page), 'Callout default Width is 2').toBe('2');
+    await expectWidth(page, 2, 'Callout default Width is 2');
   }
   expect((await textSnapshot(page)).length, 'Callout visit must not invent a textbox').toBe(0);
 
   await activateTool(page, 'Text', 'Text');
-  expect(await widthValue(page), 'Text must reset Width to 1 after Callout').toBe(String(TEXT_DEFAULT_WIDTH));
+  await expectWidth(page, TEXT_DEFAULT_WIDTH, 'Text must reset Width to 1 after Callout');
 
   await activateTool(page, 'Draw', 'Highlighter');
   if (requireSiblingWidths) {
-    expect(await widthValue(page), 'Highlighter default Width is 20').toBe('20');
+    await expectWidth(page, 20, 'Highlighter default Width is 20');
   }
 
   await activateTool(page, 'Text', 'Text');
-  expect(await widthValue(page), 'Text must reset Width to 1 after Highlighter').toBe(String(TEXT_DEFAULT_WIDTH));
+  await expectWidth(page, TEXT_DEFAULT_WIDTH, 'Text must reset Width to 1 after Highlighter');
   expect((await textSnapshot(page)).length, 'sibling switches must not invent a textbox').toBe(0);
 
   await expect(page.locator('[data-text-overlay="1"]').first()).toBeVisible({ timeout: 8_000 });
