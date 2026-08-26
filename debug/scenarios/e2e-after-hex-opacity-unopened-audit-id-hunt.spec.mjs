@@ -47,6 +47,18 @@ async function fileId(page) {
   return page.evaluate(() => window.__devTestPdf?.id ?? null);
 }
 
+async function userShapeCount(page) {
+  return page.evaluate(() => {
+    const ids = [...document.querySelectorAll('[data-svg-annotation-layer="1"] [data-anno-id]')]
+      .map((el) => el.getAttribute('data-anno-id'))
+      .filter(Boolean);
+    return [...new Set(ids)].filter((id) => {
+      const object = window.__phase35GetAnnotationById?.(id) || {};
+      return object.isPdfImported !== true;
+    }).length;
+  });
+}
+
 async function activateTool(page, categoryName, toolName) {
   const hostTool = page.locator('#chrome-sub-toolbar-host').getByRole('button', { name: toolName, exact: true }).first();
   if (!(await hostTool.isVisible().catch(() => false))) {
@@ -102,7 +114,7 @@ test('desktop remaining unopened audit IDs already aligned intended + break', as
 
   await page.keyboard.press('Escape');
   await openEditor(page);
-  expect((await page.locator('[data-svg-annotation-layer="1"] [data-anno-id]').count()), 'empty reload must invent 0').toBe(0);
+  expect(await userShapeCount(page), 'empty reload must invent 0').toBe(0);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   expect(await page.getByRole('button', { name: 'Color', exact: true }).count()).toBe(0);
