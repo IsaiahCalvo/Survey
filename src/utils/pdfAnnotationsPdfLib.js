@@ -10,6 +10,7 @@ import {
   PDFName,
   PDFNumber,
   PDFRef,
+  PDFHexString,
   PDFString,
   StandardFonts,
   rgb,
@@ -312,19 +313,31 @@ export function buildPrintableRegularAnnotationPayload({
   };
 }
 
-// PDFString.of does not escape `\`, `(`, or `)`. decodeText()/asBytes()
-// then treat JSON `\n` `\t` `\"` `\\` as PDF escapes, so a wrapped
-// textbox's SurveyAppAnnotation blob becomes invalid JSON and reimport
-// drops geometry.text + faded fill. An unbalanced `)` in Contents /
-// metadata (e.g. "a) Hi") also terminates the literal string so the
-// annot object fails to parse and Survey-to-Survey drops fade + text.
-// Escape `\`, `(`, and `)` so decodeText restores the original JSON /
-// Contents. Same write is used for callout/counter/layer JSON.
+// PDFString.of uses PDFDocEncoding and does not escape `\`, `(`, or `)`.
+// decodeText()/asBytes() then treat JSON `\n` `\t` `\"` `\\` as PDF
+// escapes, so a wrapped textbox's SurveyAppAnnotation blob becomes
+// invalid JSON and reimport drops geometry.text + faded fill. An
+// unbalanced `)` in Contents / metadata (e.g. "a) Hi") also terminates
+// the literal so the annot fails to parse. Characters outside
+// PDFDocEncoding (emoji 😀, checkmark ✓, CJK, €, NBSP) are remapped
+// or truncated — 😀 injects a NUL and ✓ becomes 0x13, both of which
+// invalidate the JSON, so Survey-to-Survey drops fade + text even
+// though the screen and flatten already kept them.
+// Escape `\`, `(`, and `)` for ASCII literals. When that still would
+// not round-trip, write UTF-16BE via PDFHexString.fromText (same
+// contract as form-field /V). Same write is used for callout /
+// counter / note / layer JSON.
 const pdfLiteralString = (value) => String(value ?? '')
   .replace(/\\/g, '\\\\')
   .replace(/\(/g, '\\(')
   .replace(/\)/g, '\\)');
-const pdfJsonString = (value) => PDFString.of(pdfLiteralString(value));
+const pdfEncodedString = (value) => {
+  const text = String(value ?? '');
+  const literal = PDFString.of(pdfLiteralString(text));
+  if (literal.decodeText() === text) return literal;
+  return PDFHexString.fromText(text);
+};
+const pdfJsonString = (value) => pdfEncodedString(value);
 
 const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   if (!annotationDict || !options.appAnnotationMetadataJson) return;
@@ -2188,7 +2201,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
     if (counterMetadataJson) {
       annotationDict.NM = PDFString.of(counterMetadata?.id || fabricObj.data?.id || fabricObj.id || `counter-${Date.now()}`);
       annotationDict.Subj = PDFString.of(PDF_COUNTER_SUBJECT);
-      annotationDict.Contents = PDFString.of(pdfLiteralString(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? '')));
+      annotationDict.Contents = pdfEncodedString(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? ''));
       annotationDict[PDF_COUNTER_METADATA_KEY] = pdfJsonString(counterMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -2414,7 +2427,7 @@ const createImportedTextNoteAnnotation = (pdfDoc, page, fabricObj, pageHeight, o
       C: [color.red, color.green, color.blue],
       CA: paintAlpha(fabricObj.fill, fabricObj.opacity),
       Name: PDFName.of(String(fabricObj?.data?.pdfNoteIcon || 'Note')),
-      Contents: PDFString.of(pdfLiteralString(String(fabricObj?.data?.noteText ?? ''))),
+      Contents: pdfEncodedString(String(fabricObj?.data?.noteText ?? '')),
       P: page.ref,
     };
     applyAppAnnotationMetadataToDict(annotationDict, options);
@@ -3054,7 +3067,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Type: 'Annot',
       Subtype: 'FreeText',
       Rect: [minX, minY, maxX, maxY],
-      Contents: PDFString.of(pdfLiteralString(text)),
+      Contents: pdfEncodedString(text),
       DA: PDFString.of(da),
       Q: pdfFreeTextQuadding(fabricObj.textAlign),
       ...(background ? { C: [background.red, background.green, background.blue] } : {}),
