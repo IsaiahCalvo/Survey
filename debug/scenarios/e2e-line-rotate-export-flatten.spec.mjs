@@ -181,9 +181,9 @@ async function createLine(page) {
   await page.waitForTimeout(250);
   await activateTool(page, 'Shapes', 'Line');
   const box = await pageBox(page);
-  await page.mouse.move(box.x + box.width * 0.18, box.y + box.height * 0.28);
+  await page.mouse.move(box.x + box.width * 0.16, box.y + box.height * 0.22);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.48, box.y + box.height * 0.28, { steps: 10 });
+  await page.mouse.move(box.x + box.width * 0.44, box.y + box.height * 0.40, { steps: 10 });
   await page.mouse.up();
   let created = null;
   await expect.poll(async () => {
@@ -196,8 +196,20 @@ async function createLine(page) {
 }
 
 async function selectLine(page, created) {
+  await page.keyboard.press('Escape');
+  await blurInputs(page);
   await page.keyboard.press('v');
+  const menu = page.locator('[data-select-mode-menu="true"]');
+  if (await menu.count()) await page.keyboard.press('Escape');
   if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+  const target = page.locator(`[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"]`).first();
+  if (await target.count()) {
+    const targetBox = await target.boundingBox();
+    if (targetBox && targetBox.width > 1 && targetBox.height > 1) {
+      await page.mouse.click(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
+      if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+    }
+  }
   const box = await pageBox(page);
   const vb = String(await pageViewBox(page)).split(/\s+/).map(Number);
   const [minX, minY, vbW, vbH] = vb;
@@ -208,9 +220,9 @@ async function selectLine(page, created) {
       x: box.x + ((midX - minX) / vbW) * box.width,
       y: box.y + ((midY - minY) / vbH) * box.height,
     },
-    { x: box.x + box.width * 0.33, y: box.y + box.height * 0.28 },
-    { x: box.x + box.width * 0.18, y: box.y + box.height * 0.28 },
-    { x: box.x + box.width * 0.48, y: box.y + box.height * 0.28 },
+    { x: box.x + box.width * 0.30, y: box.y + box.height * 0.31 },
+    { x: box.x + box.width * 0.16, y: box.y + box.height * 0.22 },
+    { x: box.x + box.width * 0.44, y: box.y + box.height * 0.40 },
   ];
   for (const point of points) {
     await page.mouse.click(point.x, point.y);
