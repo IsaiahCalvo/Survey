@@ -312,17 +312,24 @@ export function buildPrintableRegularAnnotationPayload({
   };
 }
 
+// PDFString.of does not escape `\`. decodeText()/asBytes() then treat
+// JSON `\n` `\t` `\"` `\\` as PDF escapes, so a wrapped textbox's
+// SurveyAppAnnotation blob becomes invalid JSON and reimport drops
+// geometry.text + faded fill. Double backslashes so decodeText restores
+// the original JSON. Same write is used for callout/counter/layer JSON.
+const pdfJsonString = (value) => PDFString.of(String(value ?? '').replace(/\\/g, '\\\\'));
+
 const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   if (!annotationDict || !options.appAnnotationMetadataJson) return;
   annotationDict.NM = PDFString.of(options.appAnnotationMetadata?.id || options.name || `survey-app-annotation-${Date.now()}`);
   annotationDict.Subj = PDFString.of(PDF_APP_ANNOTATION_SUBJECT);
-  annotationDict[PDF_APP_ANNOTATION_METADATA_KEY] = PDFString.of(options.appAnnotationMetadataJson);
+  annotationDict[PDF_APP_ANNOTATION_METADATA_KEY] = pdfJsonString(options.appAnnotationMetadataJson);
 };
 
 const applyAppLayerStateMetadataToPdf = (pdfDoc, payload) => {
   const json = serializePdfAppLayerStateMetadata(payload);
   if (!pdfDoc || !json) return false;
-  pdfDoc.catalog.set(PDFName.of(PDF_APP_LAYER_STATE_KEY), PDFString.of(json));
+  pdfDoc.catalog.set(PDFName.of(PDF_APP_LAYER_STATE_KEY), pdfJsonString(json));
   return true;
 };
 
@@ -2175,7 +2182,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.NM = PDFString.of(counterMetadata?.id || fabricObj.data?.id || fabricObj.id || `counter-${Date.now()}`);
       annotationDict.Subj = PDFString.of(PDF_COUNTER_SUBJECT);
       annotationDict.Contents = PDFString.of(String(counterMetadata?.displayNumber ?? counterMetadata?.number ?? ''));
-      annotationDict[PDF_COUNTER_METADATA_KEY] = PDFString.of(counterMetadataJson);
+      annotationDict[PDF_COUNTER_METADATA_KEY] = pdfJsonString(counterMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
@@ -2773,7 +2780,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
     if (options.calloutMetadataJson) {
       annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'line'}`);
       annotationDict.Subj = PDFString.of(PDF_CALLOUT_SUBJECT);
-      annotationDict[PDF_CALLOUT_METADATA_KEY] = PDFString.of(options.calloutMetadataJson);
+      annotationDict[PDF_CALLOUT_METADATA_KEY] = pdfJsonString(options.calloutMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
@@ -3067,7 +3074,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     if (options.calloutMetadataJson) {
       annotationDict.NM = PDFString.of(options.name || `${options.calloutMetadata?.id || 'callout'}-${options.calloutMetadata?.part || 'text'}`);
       annotationDict.Subj = PDFString.of(PDF_CALLOUT_SUBJECT);
-      annotationDict[PDF_CALLOUT_METADATA_KEY] = PDFString.of(options.calloutMetadataJson);
+      annotationDict[PDF_CALLOUT_METADATA_KEY] = pdfJsonString(options.calloutMetadataJson);
     } else {
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }

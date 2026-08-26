@@ -16,6 +16,10 @@ import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 import { composeColorForPatch } from '../src/utils/annotationData.js';
 import { wrapFlattenedTextLines } from '../src/utils/annotationStyleCatalog.js';
+import {
+  PDF_APP_ANNOTATION_METADATA_KEY,
+  parsePdfAppAnnotationMetadata,
+} from '../src/utils/pdfAppAnnotationMetadata.js';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
@@ -125,6 +129,12 @@ test('annotated export writes faded wrap as two /AP Tm + Tj', async () => {
   assert.ok(wrapped.tmYs[0] > wrapped.tmYs[1], `second Tm y ${wrapped.tmYs[1]} must sit below first ${wrapped.tmYs[0]}`);
   assert.equal(wrapped.tmYs[0] - wrapped.tmYs[1], 14, 'line step is the live fontSize');
   assert.doesNotMatch(wrapped.apText, /\(Hi\\nGo\)\s*Tj|\(Hi\nGo\)\s*Tj/, 'leftover single Tj must not keep the newline blob');
+  const metadataRaw = wrapped.dict.get(PDFName.of(PDF_APP_ANNOTATION_METADATA_KEY));
+  const metadataText = metadataRaw?.decodeText?.() || '';
+  const metadata = parsePdfAppAnnotationMetadata(metadataText);
+  assert.ok(metadata, `wrapped metadata JSON must survive PDFString decodeText (got ${JSON.stringify(metadataText.slice(0, 180))})`);
+  assert.equal(metadata.geometry?.text, 'Hi\nGo', 'reimport must keep the live wrap in geometry.text');
+  assert.match(String(metadata.style?.backgroundColor || ''), /0\.4/, 'reimport must keep faded fill');
 });
 
 test('faded single-line /AP stays one Tm; opaque wrap omits /AP', async () => {
@@ -150,6 +160,8 @@ test('export host still names the textbox /AP wrap contract; isolated 8448 / 75/
   assert.match(writer, /used to paint the whole Contents as one Tj/);
   assert.match(writer, /wrapFlattenedTextLines\(/);
   assert.match(writer, /y = formHeight - size - 4 \(top\)/);
+  assert.match(writer, /pdfJsonString/);
+  assert.match(writer, /replace\(\/\\\\\/g, '\\\\\\\\'\)/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
   assert.match(complexity, /p95CommitMs: 75/);
