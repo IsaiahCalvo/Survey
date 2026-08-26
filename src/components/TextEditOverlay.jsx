@@ -41,6 +41,7 @@ import {
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
 } from '../utils/textEditCommit.js';
+import { composeAnnotationColor } from '../utils/annotationCreationCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { setCalloutEditDraft, clearCalloutEditDraft } from '../utils/calloutBlankCommit.js';
@@ -128,6 +129,7 @@ export default function TextEditOverlay({
   textBoxWidth,
   newTextStyle = null,
   strokeColor,
+  strokeOpacity,
   strokeWidth,
   authorId = null,
   // KAL-88 — Decision 11 companion: survey/region scope inputs for NEW text.
@@ -186,10 +188,13 @@ export default function TextEditOverlay({
         // Plan 15-04 parity: new text's intended look — the SVG preview and
         // the committed annotation both use these.
         fill: newTextStyle?.fontColor || strokeColor || '#007AFF',
-        // Next-draw Color Border must ride the first box. Hardcoding
-        // '#000000' dropped the toolbar until the user touched Border again
-        // (selected-patch).
-        stroke: (typeof strokeColor === 'string' && strokeColor) ? strokeColor : '#000000',
+        // Next-draw Color Border + Border Opacity must ride the first box.
+        // Hardcoding hex-only dropped the fade until Opacity was re-touched
+        // (selected-patch composeColorForPatch).
+        stroke: composeAnnotationColor(
+          (typeof strokeColor === 'string' && strokeColor) ? strokeColor : '#000000',
+          strokeOpacity,
+        ),
         // Next-draw Width must ride the first box. Hardcoding 1 dropped the
         // toolbar until the user touched Width again (selected-patch).
         strokeWidth: Math.max(1, Number(strokeWidth) || 1),
@@ -417,10 +422,14 @@ export default function TextEditOverlay({
         naturalInnerHeight: naturalInnerH,
         style: s,
         fill: s.fill,
-        // Prefer live toolbar Color Border at commit. styleRef is mount-once;
-        // a missing first-render strokeColor used to freeze '#000000' even
-        // after the next-draw prop arrived.
-        stroke: (typeof strokeColor === 'string' && strokeColor) ? strokeColor : (s.stroke || '#000000'),
+        // Prefer live toolbar Color Border + Opacity at commit. styleRef is
+        // mount-once; a missing first-render strokeColor used to freeze
+        // '#000000' even after the next-draw prop arrived, and hex-only
+        // dropped a next-draw fade.
+        stroke: composeAnnotationColor(
+          (typeof strokeColor === 'string' && strokeColor) ? strokeColor : (s.stroke || '#000000'),
+          strokeOpacity,
+        ),
         strokeWidth: s.strokeWidth ?? 1,
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
@@ -524,7 +533,7 @@ export default function TextEditOverlay({
       onEditCommit(updated, commitOpts);
     }
     clearDraft();
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor,
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor, strokeOpacity,
     // KAL-88 scope-stamp inputs — keep the commit closure stamping from
     // current values (the unmount flush reads via commitRef, which tracks
     // this callback).
@@ -653,6 +662,11 @@ export default function TextEditOverlay({
       data-text-edit-overlay
       data-page-number={pageNumber}
       data-first-create-stroke={isNewText ? ((typeof strokeColor === 'string' && strokeColor) ? strokeColor : (styleRef.current?.stroke || '')) : undefined}
+      data-first-create-stroke-opacity={isNewText ? String(Number.isFinite(Number(strokeOpacity)) ? Number(strokeOpacity) : 100) : undefined}
+      data-first-create-stroke-paint={isNewText ? composeAnnotationColor(
+        (typeof strokeColor === 'string' && strokeColor) ? strokeColor : (styleRef.current?.stroke || '#000000'),
+        strokeOpacity,
+      ) : undefined}
       style={{
         position: 'absolute',
         inset: 0,

@@ -32698,6 +32698,7 @@ ${pageBlocks}
                                     handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                   }}
                                   strokeColor={strokeColor}
+                                  strokeOpacity={strokeOpacity}
                                   strokeWidth={strokeWidth}
                                   zoomGeneration={zoomGeneration}
                                   // Same scale source as every other overlay (the measured
