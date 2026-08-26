@@ -411,10 +411,15 @@ test('desktop textbox verticalAlign export /AP persist + reimport intended + bre
   const row = exported.find((item) => item.text === 'A' && item.ap);
   expect(row, `exported FreeText must write /AP (got ${JSON.stringify(exported.map((item) => ({ text: item.text, ap: item.ap, tmY: item.tmY, leftoverTop: item.leftoverTop })))})`).toBeTruthy();
   expect(row.tmY, 'FreeText /AP must place text').toEqual(expect.any(Number));
+  expect(row.leftoverTop, `leftover top from Rect/DA (formHeight=${row.formHeight})`).toBeGreaterThan(8);
   expect(
     row.tmY,
     `faded bottom /AP Tm y ${row.tmY} must sit below leftover top ${row.leftoverTop}`,
-  ).toBeLessThan(row.leftoverTop - 20);
+  ).toBeLessThan(row.leftoverTop);
+  expect(
+    row.tmY,
+    `faded bottom /AP Tm y ${row.tmY} must sit near the 4pt bottom inset`,
+  ).toBeLessThanOrEqual(8);
 
   await wipeAnnotationKeys(page);
   await openEditor(page, { url: `/?testPdf=${encodeURIComponent(DEST_NAME)}` });
