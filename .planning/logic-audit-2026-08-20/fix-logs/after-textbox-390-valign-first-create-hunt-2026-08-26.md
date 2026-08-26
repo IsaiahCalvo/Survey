@@ -35,13 +35,13 @@ HIGH-RISK files not touched. Product writers not changed. `file.id` not stamped.
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-textbox-390-valign-first-create-hunt.spec.mjs` pending official 2/2 after commit.
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-textbox-390-valign-first-create-hunt.spec.mjs` **2 / 2 (7.1s)**.
 
-- Intended: 390 Text / Callout first-create prefs already ride (not leftovers)
+- Intended: 390 Text Italic / Underline / Strike / size 24 / `#ff0000` / Right first box `Hi` already rides; Callout those styles + Width **8** / Dashed / Open Triangle first box `Yo` already rides; `verticalAlign` stays **null**
 - Break: hubPreview Text formatting **0**
-- Edge: 1440 viewBox / `file.id` / no invent / no 390 sheet
+- Edge: 1440 no 390 sheet; viewBox **`0 0 612 792`**; `file.id` null; Callout invents 0
 
-Focused Node + leftover18 pending official run. Isolated **8448** still standing. Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Isolated 8448 not reached.
+Focused Node `afterTextbox390ValignFirstCreateHunt` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Isolated 8448 not reached. `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
