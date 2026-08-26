@@ -1181,6 +1181,33 @@ export const getOpacityFromEntityColor = (color) => {
   return 100;
 };
 
+/**
+ * Live Pen / Highlighter (and imported filled paper-ink) store Color in
+ * `fill` and Width in `sourceWidth`. stroke is leftover 'transparent' and
+ * strokeWidth is leftover 0. Select chrome used to read those leftovers
+ * so Color / Opacity / Width dropped until the picker was re-touched,
+ * and Color patches wrote leftover stroke so the screen stayed the old fill.
+ * Stroked imported ink (real stroke + no fill) stays on the stroke path.
+ */
+export const isPaperInkAnnotation = (annotation) => {
+  if (!annotation || typeof annotation !== 'object') return false;
+  const type = String(annotation.type || '').toLowerCase();
+  if (type !== 'path') return false;
+  const fill = annotation.fill;
+  const hasFill = typeof fill === 'string'
+    && fill !== ''
+    && fill !== 'transparent'
+    && fill !== 'none';
+  if (!hasFill) return false;
+  const stroke = annotation.stroke;
+  const strokeWidth = Number(annotation.strokeWidth);
+  const strokeUnused = !stroke
+    || stroke === 'transparent'
+    || stroke === 'none'
+    || (Number.isFinite(strokeWidth) && strokeWidth === 0);
+  return strokeUnused;
+};
+
 export const handleModalOptionMouseEnter = (event) => {
   event.currentTarget.style.background = COLORS.modal.panelHover;
   event.currentTarget.style.borderColor = COLORS.modal.borderActive;

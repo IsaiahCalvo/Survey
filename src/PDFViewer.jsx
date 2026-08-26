@@ -332,6 +332,7 @@ import {
   getModuleName,
   getNormalizedWheelDeltas,
   getOpacityFromEntityColor,
+  isPaperInkAnnotation,
   getPDFId,
   getSmoothPdfjsWheelZoom,
   getPdfjsOverlayPrefetchPages,
@@ -3882,7 +3883,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const isFillable = type === 'rect' || type === 'ellipse' || type === 'circle' || type === 'textbox'
       || type === 'polygon' || isCounter;
     const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
-    const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
+    // Paper-ink Color lives on fill; leftover stroke is 'transparent'.
+    // Select used to skip Color / Opacity until the picker was re-touched.
+    const paperInk = isPaperInkAnnotation(annot);
+    const strokeSource = isCounter
+      ? annot.data?.numberColor
+      : (paperInk ? annot.fill : annot.stroke);
     const strokeHex = strokeSource ? getHexFromColor(strokeSource) : null;
     const strokeOp = strokeSource ? getOpacityFromEntityColor(strokeSource) : 100;
     const fillHex = fillSource && fillSource !== 'transparent' ? getHexFromColor(fillSource) : null;
@@ -3899,7 +3905,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setFillOpacity(0);
       }
     }
-    const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
+    // Paper-ink Width lives on sourceWidth; leftover strokeWidth is 0.
+    const sizeValue = isCounter
+      ? Number(annot.radius)
+      : (paperInk ? Number(annot.sourceWidth) : Number(annot.strokeWidth));
     if (Number.isFinite(sizeValue) && sizeValue > 0) {
       const nextWidthInputValue = String(Math.round(sizeValue));
       setStrokeWidth(sizeValue);
@@ -7547,6 +7556,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             },
           }
         : prev));
+    } else if (isPaperInkAnnotation(annotation)) {
+      // Paper-ink Color is fill. Leftover stroke patches left the screen
+      // on the old fill until Color was re-touched on a new stroke.
+      handlePatchSelectedAnnotation({ fill: rgba });
+      setSelectedToolbarAnnotation((prev) => (prev
+        ? { ...prev, annotation: { ...prev.annotation, fill: rgba } }
+        : prev));
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
@@ -7701,6 +7717,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         left: (Number(annotation.left) || 0) + delta,
         top: (Number(annotation.top) || 0) + delta,
       });
+    } else if (isPaperInkAnnotation(annotation)) {
+      handlePatchSelectedAnnotation({ sourceWidth: width });
+      setSelectedToolbarAnnotation((prev) => (prev
+        ? { ...prev, annotation: { ...prev.annotation, sourceWidth: width } }
+        : prev));
     } else {
       handlePatchSelectedAnnotation({ strokeWidth: width });
     }
