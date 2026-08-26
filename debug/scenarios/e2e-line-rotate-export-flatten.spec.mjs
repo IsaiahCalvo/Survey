@@ -232,27 +232,35 @@ async function selectLine(page, created) {
   await selectMode(page);
   if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
   // justDraggedAtRef swallows native dblclick for 400ms after a drag.
+  // bbox-edit also auto-exits unless selectedIds already holds the line.
   await page.waitForTimeout(500);
   const hit = page.locator(
     `[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"] [data-shape-hit-target="line"]`,
   ).first();
-  if (await hit.count()) {
-    // Single-click Line chrome is endpoints only. Live Rotation lives on
-    // the bbox-edit overlay after double-click. force: true so a thin
-    // leftover stroke still receives the event once Select is armed.
-    await hit.dblclick({ force: true });
-    if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
-    await page.evaluate((id) => {
-      const el = document.querySelector(
-        `[data-svg-annotation-layer="1"] [data-anno-id="${id}"] [data-shape-hit-target="line"]`,
-      );
-      if (!el) return;
-      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));
-    }, created.id);
-    if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+  const midpoint = page.locator('[data-handle="midpoint"]');
+  const clickHit = async () => {
+    if (await hit.count()) {
+      await hit.click({ force: true });
+      return;
+    }
+    const mid = await clickLineMidpoint(page, created);
+    await page.mouse.click(mid.x, mid.y);
+  };
+  await clickHit();
+  if (!(await midpoint.count())) {
+    const mid = await clickLineMidpoint(page, created);
+    await page.mouse.click(mid.x, mid.y);
   }
-  const mid = await clickLineMidpoint(page, created);
-  await page.mouse.dblclick(mid.x, mid.y);
+  await expect(midpoint, 'Line single-click chrome (endpoint/midpoint)').toBeVisible({ timeout: 8_000 });
+  await page.waitForTimeout(500);
+  // Single-click Line chrome is endpoints only. Live Rotation lives on
+  // the bbox-edit overlay after double-click.
+  if (await hit.count()) {
+    await hit.dblclick({ force: true });
+  } else {
+    const mid = await clickLineMidpoint(page, created);
+    await page.mouse.dblclick(mid.x, mid.y);
+  }
 }
 
 async function applyRotation(page, created, degrees = LIVE_ANGLE) {
