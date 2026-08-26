@@ -43,7 +43,7 @@ Did **not** invent envelope extras. Did **not** take C-01 (no swatch / hex / Tra
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-ink-flatten-fill.spec.mjs` pending this pass.
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-ink-flatten-fill.spec.mjs` **2 / 2 (8.2s)**.
 
 - Intended: Highlighter Color Opacity 40 → first stroke fill rgba 0.4 → Export annotated PDF writes Ink `/CA` 0.4; `?testPdf=` reimport keeps fill; Node flatten fills `#FFFF00` at `/ca` 0.4 (no black 1pt stroke); `file.id` null; viewBox `0 0 612 792`
 - Break: empty export invents 0; hubPreview Color **0**
@@ -51,7 +51,7 @@ Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-ink-flatten-fill
 
 Node `pdfInkFlattenFill` proves fill-on-create, export `/CA`, flatten fill `/ca` 0.4, opaque pen fill, opacity-0 `/ca` 0.
 
-Focused Node `pdfInkFlattenFill` + leftover18FailClosed pending. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Isolated 8448 not reached.
+Focused Node `pdfInkFlattenFill` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Isolated 8448 not reached.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 

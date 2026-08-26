@@ -1,7 +1,7 @@
 # Logic-audit issue inventory
 
 Written: 2026-08-20 · Wave 1 foundation  
-**This-pass (2026-08-26 filled paper-ink flatten fill):** not leftover-18. Live Highlighter / Pen Color Opacity already rode rgba `fill` + export Ink `/CA`, but print flatten stroked the outline hex-only (black 1pt). Product pending. Receipt `fix-logs/ink-flatten-fill-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
+**This-pass (2026-08-26 filled paper-ink flatten fill):** not leftover-18. Live Highlighter / Pen Color Opacity already rode rgba `fill` + export Ink `/CA`, but print flatten stroked the outline hex-only (black 1pt). Product `4877404f`. Receipt `fix-logs/ink-flatten-fill-2026-08-26.md`. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
 **Prior-pass (2026-08-26 Text Fill after sibling persist):** not leftover-18. Text prefs omitted `fillColor` / `fillOpacity` so Callout white / 90 and Counter badge red leaked into the Text Color swatch until Fill was touched. Product `63792671`. Receipt `fix-logs/text-fill-after-sibling-2026-08-26.md`. First-create box fill stays empty — not invented. Leftover-18 host-proved / human-gated table unchanged. Did **not** write a 103-ID refresh. Goal stays open.
 
