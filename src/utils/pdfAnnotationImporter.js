@@ -41,7 +41,10 @@ import {
   readPdfLibText,
   toUint8Array,
 } from './pdfLibValueReaders.js';
-import { resolveImportedCalloutArrowheadStyle } from './calloutImportAdapter.js';
+import {
+  resolveImportedCalloutArrowheadStyle,
+  resolveImportedCalloutLineStyle,
+} from './calloutImportAdapter.js';
 import {
   PDF_COUNTER_METADATA_KEY,
   PDF_COUNTER_SUBJECT,
@@ -4043,6 +4046,12 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     ? normalizePdfLineEndings(annotation.lineEndings)
     : null;
   const importedArrowheadStyle = resolveImportedCalloutArrowheadStyle(lineEndings);
+  // Native dashed FreeTextCallout already has /BS /S /D. Import leftover-omitted lineStyle
+  // so the adapter leftover-painted solid until Style was re-touched. Select Width then
+  // leftover-replaced native dashed /BS with leftover-solid Line /BS. Stamp /D — same
+  // contract as Square / Circle / Line. Do not invent Line /AP.
+  const dashArray = isCalloutIntent ? extractAnnotationDashArray(annotation) : null;
+  const importedLineStyle = resolveImportedCalloutLineStyle(dashArray);
 
   const data = {
     ...(isCalloutIntent ? { pdfIntent: intent || 'FreeTextCallout' } : {}),
@@ -4083,6 +4092,8 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
             strokeWidth: strokeWidth * scale,
             textAlign: textAlign || annotation.defaultAppearanceData?.textAlign || null,
             ...(importedArrowheadStyle ? { arrowheadStyle: importedArrowheadStyle } : {}),
+            ...(importedLineStyle ? { lineStyle: importedLineStyle } : {}),
+            ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
           }
         }
       : {})

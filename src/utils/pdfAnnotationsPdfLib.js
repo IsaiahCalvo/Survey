@@ -530,6 +530,11 @@ const calloutToExportObject = (callout, pageSize) => {
 const legacyArrowGroupToLine = (obj) => {
   if (String(obj?.type || '').toLowerCase() !== 'group') return null;
   if (obj?.data?.type === 'counter') return null;
+  // Imported dashed FreeTextCallout leftover-mapped through this helper
+  // so Select Width leftover-replaced native /BS /D with leftover-solid
+  // Line (no /BS, no box). Callout groups already export from callouts[].
+  // Do not invent Line /AP.
+  if (obj?.data?.type === 'callout' || obj?.data?.legacyCallout) return null;
   const children = Array.isArray(obj.objects) ? obj.objects : [];
   // fabric 7 toObject() capitalizes child types ('Line', 'Triangle') while
   // legacy fabric-5 saves store lowercase — compare lowercased (CLAUDE.md

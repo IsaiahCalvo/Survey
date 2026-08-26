@@ -3,7 +3,12 @@
 // callouts[] state entry. Importer outputs viewport-at-scale-1 coords; the
 // callouts[] state uses normalized 0..1 coords relative to page width/height.
 
-import { ARROWHEAD_STYLES, defaultCalloutStyle } from '../components/Callout/types.js';
+import {
+  ARROWHEAD_STYLES,
+  CALLOUT_LINE_STYLES,
+  calloutLineStyleFromDash,
+  defaultCalloutStyle,
+} from '../components/Callout/types.js';
 
 // Inverse of ARROWHEAD_STYLE_TO_PDF_LINE_ENDING. se011 4631R already has
 // native /LE OpenArrow; leftover defaultCalloutStyle solidTriangle painted
@@ -33,6 +38,28 @@ export function resolveImportedCalloutArrowheadStyle(lineEndings) {
     return PDF_LINE_ENDING_TO_CALLOUT_ARROWHEAD[other];
   }
   if (tip === 'None' && (!other || other === 'None')) return ARROWHEAD_STYLES.NONE;
+  return null;
+}
+
+// Native dashed FreeTextCallout already has /BS /S /D. Import leftover-omitted lineStyle
+// so defaultCalloutStyle leftover-painted solid until Style was re-touched. Select Width
+// then leftover-replaced native dashed /BS with leftover-solid Line /BS. Stamp /D for
+// the callout adapter. Do not invent Line /AP.
+export function resolveImportedCalloutLineStyle(dashArray, explicitStyle) {
+  const explicit = String(explicitStyle || '').replace(/^\//, '');
+  if (
+    explicit === CALLOUT_LINE_STYLES.DASHED
+    || explicit === CALLOUT_LINE_STYLES.DOTTED
+  ) {
+    return explicit;
+  }
+  const fromDash = calloutLineStyleFromDash(dashArray);
+  if (
+    fromDash === CALLOUT_LINE_STYLES.DASHED
+    || fromDash === CALLOUT_LINE_STYLES.DOTTED
+  ) {
+    return fromDash;
+  }
   return null;
 }
 
@@ -150,6 +177,13 @@ function convertImportedCalloutToCalloutState(importedObj, pageNumber, pageWidth
     || resolveImportedCalloutArrowheadStyle(data.pdfLineEndings);
   if (importedHead) {
     style.arrowheadStyle = importedHead;
+  }
+  const importedLineStyle = resolveImportedCalloutLineStyle(
+    pdfStyle.strokeDashArray || importedObj.strokeDashArray,
+    pdfStyle.lineStyle,
+  );
+  if (importedLineStyle) {
+    style.lineStyle = importedLineStyle;
   }
 
   const idSuffix = importedObj.pdfAnnotationId
