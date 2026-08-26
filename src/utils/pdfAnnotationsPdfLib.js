@@ -2847,6 +2847,13 @@ const PDF_DA_FONT_BASEFONT = {
 // faded middle/bottom box reached Acrobat top-aligned until Fill was
 // re-touched opaque (which omits /AP). Top / absent stay at that y so
 // default faded-fill export stays byte-identical.
+//
+// Live wrap + flatten already use wrapFlattenedTextLines, but this /AP
+// used to paint the whole Contents as one Tj so a faded multi-line box
+// reached Acrobat as a single leftover line until Fill was re-touched
+// opaque (which omits /AP). Single-line / absent stay one Tm + Tj so
+// default faded-fill export stays byte-identical. Callouts share this
+// writer and already wrap on screen — do not invent callout verticalAlign.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -2866,29 +2873,35 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   const strokeVisible = Boolean(stroke?.visible && stroke.hex);
   const strokeAlpha = strokeVisible ? stroke.opacity : 0;
   const needsStrokeGs = strokeVisible && strokeAlpha < 0.99999;
-  const escaped = String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const escapePdfText = (value) => String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
   const baseFont = PDF_DA_FONT_BASEFONT[fontName] || 'Helvetica';
   const size = Math.max(4, Number(fontSize) || 12);
   // Same 4pt inset the left Tm already used. Courier is fixed 0.6em;
   // Helvetica / Times use the 0.556em glyph contract the counter /AP
   // writer already relies on. Do not invent a font embed just to measure.
   const glyphEm = String(baseFont).startsWith('Courier') ? 0.6 : 0.556;
-  const lineWidth = String(text || '').length * size * glyphEm;
+  const measure = (value) => String(value || '').length * size * glyphEm;
   const textPad = 4;
-  const textX = textPad + flattenedTextInlineOffset(
-    Math.max(0, formWidth - 2 * textPad),
-    lineWidth,
-    textAlign,
-  );
+  const innerWidth = Math.max(0, formWidth - 2 * textPad);
+  const innerHeight = Math.max(0, formHeight - 2 * textPad);
+  const lines = wrapFlattenedTextLines(String(text || ''), {
+    measure,
+    maxWidth: innerWidth,
+  });
   // PDF form y is up. extraDown from flattenedTextBlockOffset shifts
   // middle/bottom away from the leftover top baseline. Top stays
-  // formHeight - size - 4.
+  // formHeight - size - 4. Multi-line uses the wrapped block height so
+  // bottom/middle stay the leftover single-line Tm only when there is
+  // one line.
   const extraDown = flattenedTextBlockOffset(
-    Math.max(0, formHeight - 2 * textPad),
-    size,
+    innerHeight,
+    lines.length * size,
     verticalAlign,
   );
-  const textY = Math.max(2, formHeight - size - textPad - extraDown);
+  const firstY = Math.max(2, formHeight - size - textPad - extraDown);
   const content = [
     'q',
     '/GS0 gs',
@@ -2917,8 +2930,16 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     'BT',
     `/F1 ${n(size)} Tf`,
     `${n(glyph.red)} ${n(glyph.green)} ${n(glyph.blue)} rg`,
-    `1 0 0 1 ${n(textX)} ${n(textY)} Tm`,
-    `(${escaped}) Tj`,
+  );
+  lines.forEach((line, index) => {
+    const textX = textPad + flattenedTextInlineOffset(innerWidth, measure(line), textAlign);
+    const textY = firstY - index * size;
+    content.push(
+      `1 0 0 1 ${n(textX)} ${n(textY)} Tm`,
+      `(${escapePdfText(line)}) Tj`,
+    );
+  });
+  content.push(
     'ET',
     'Q',
   );
