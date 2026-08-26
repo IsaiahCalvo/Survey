@@ -102,6 +102,14 @@ test('desktop overlay Hold to pan intended + break + edge', async ({ page }) => 
   const idsBefore = await userAnnotationIds(page);
   expect(idsBefore, 'fresh editor must invent 0 user marks').toEqual([]);
 
+  // Default tool is Pan, which also stamps data-space-pan=armed.
+  // Switch to Select so hold-Space is the only arm (V-01 already
+  // proved the overflow-drag path — this pass only lists the chord).
+  await page.keyboard.press('v');
+  await expect.poll(async () => spacePan(page), {
+    message: 'Select must drop toolbar-Pan space-pan',
+  }).toBe('off');
+
   // Intended — hold Space arms data-space-pan; release restores off.
   await page.keyboard.down('Space');
   await expect.poll(async () => spacePan(page), {
@@ -194,6 +202,10 @@ test('390 overlay Hold to pan intended + break + edge', async ({ page }) => {
   await expect(modal).toHaveCount(0);
 
   const idsBefore = await userAnnotationIds(page);
+  await page.keyboard.press('v');
+  await expect.poll(async () => spacePan(page), {
+    message: '390 Select must drop toolbar-Pan space-pan',
+  }).toBe('off');
   await page.keyboard.down('Space');
   await expect.poll(async () => spacePan(page), {
     message: '390 Space must arm data-space-pan',

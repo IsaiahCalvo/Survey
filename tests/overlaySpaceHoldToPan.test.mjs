@@ -43,6 +43,7 @@ test('live spec covers overlay listing + Space arm + hub + 390 + file.id', () =>
   assert.match(spec, /hubPreview=1/);
   assert.match(spec, /desktop overlay Hold to pan intended \+ break \+ edge/);
   assert.match(spec, /390 overlay Hold to pan intended \+ break \+ edge/);
+  assert.match(spec, /Select must drop toolbar-Pan space-pan/);
   assert.match(spec, /Space must arm data-space-pan/);
   assert.match(spec, /lists Hold to pan/);
   assert.match(spec, /must not invent Duplicate/);
