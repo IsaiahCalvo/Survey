@@ -1168,7 +1168,11 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   // until Fill was re-touched, while persist / export / flatten already
   // honored the user-set 0–1 value. Missing still defaults to 0.4.
   const fillOpacity = Math.max(0, Math.min(1, toNumber(callout.style?.fillOpacity, 0.4)));
-  const borderOpacity = Math.max(0.2, Math.min(1, toNumber(callout.style?.borderOpacity, 1)));
+  // Live Color Border Opacity already offers 0–100 (field min 0). The old
+  // Math.max(..., 0.2) floor painted a ghost border for 0–19 until Border
+  // was re-touched, while persist / export / flatten already honored the
+  // user-set 0–1 value. Missing still defaults to 1.
+  const borderOpacity = Math.max(0, Math.min(1, toNumber(callout.style?.borderOpacity, 1)));
   const fontSize = Math.max(1, toNumber(callout.style?.fontSize, 12));
   const descenderBuffer = fontSize * 0.35;
   const boxHeightWithDescenders = textBox.height + descenderBuffer;

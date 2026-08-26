@@ -1382,7 +1382,11 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   // until Fill was re-touched, while persist / export / flatten already
   // honored the user-set 0–1 value. Missing still defaults to 0.4.
   const fillOpacity = Math.max(0, Math.min(1, Number(callout.style?.fillOpacity ?? 0.4)));
-  const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity ?? 1));
+  // Live Color Border Opacity already offers 0–100 (field min 0). The old
+  // Math.max(..., 0.2) floor painted a ghost border for 0–19 until Border
+  // was re-touched, while persist / export / flatten already honored the
+  // user-set 0–1 value. Missing still defaults to 1.
+  const borderOpacity = Math.max(0, Math.min(1, Number(callout.style?.borderOpacity ?? 1)));
   // UX: single-name fontFamily prevents Fabric.js cursor drift (see CLAUDE.md
   // 2026-04-08 gotcha). sanitizeFontFamily strips CSS fallback stacks.
   const safeFontFamily = sanitizeFontFamily(callout.style?.fontFamily);
