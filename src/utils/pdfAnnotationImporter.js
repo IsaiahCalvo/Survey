@@ -2425,6 +2425,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         const lineEndings = normalizePdfLineEndings(readPdfLibNameArray(dict.get(PDFName.of('LE'))));
         const lineCoordinates = readPdfLibNumberArray(dict.get(PDFName.of('L')));
         const vertices = readPdfLibNumberArray(dict.get(PDFName.of('Vertices')));
+        const quadPoints = readPdfLibNumberArray(dict.get(PDFName.of('QuadPoints')));
         const calloutLine = readPdfLibNumberArray(dict.get(PDFName.of('CL')));
         const rectangleDifferences = readPdfLibNumberArray(dict.get(PDFName.of('RD')));
         // /Q quadding: 0 left, 1 center, 2 right (PDF spec 12.7.4.3)
@@ -2522,6 +2523,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(lineEndings ? { lineEndings } : {}),
           ...(lineCoordinates ? { lineCoordinates } : {}),
           ...(vertices ? { vertices } : {}),
+          ...(quadPoints ? { quadPoints } : {}),
           ...(calloutLine ? { calloutLine } : {}),
           ...(rectangleDifferences ? { rectangleDifferences } : {}),
           ...(iconName ? { iconName } : {}),
@@ -2663,6 +2665,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     // stay in lockstep with what the PDF author wrote.
     lineCoordinates: rawMetadata.lineCoordinates || annotation.lineCoordinates,
     vertices: annotation.vertices || rawMetadata.vertices || annotation.vertices,
+    quadPoints: annotation.quadPoints || rawMetadata.quadPoints || annotation.quadPoints,
     calloutLine: annotation.calloutLine || rawMetadata.calloutLine || annotation.calloutLine,
     rectangleDifferences:
       annotation.rectangleDifferences || rawMetadata.rectangleDifferences || null,
@@ -2788,6 +2791,39 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
     width: right - left,
     height: bottom - top
   };
+}
+
+// se011 Underline 4640R / StrikeOut 4638R already have native /QuadPoints
+// (word AABB). Leftover /Rect is padded ~10pt each side, so import painted
+// leftover-wide bars until the markup was deleted. Prefer /QuadPoints.
+function convertQuadPointsToViewportRect(quadPoints, viewport, scale = 1) {
+  if (!quadPoints) return null;
+  const values = Array.isArray(quadPoints) || ArrayBuffer.isView(quadPoints)
+    ? Array.from(quadPoints)
+    : [];
+  if (values.length < 8 || values.length % 2 !== 0) return null;
+
+  const xs = [];
+  const ys = [];
+  for (let index = 0; index < values.length; index += 2) {
+    const x = Number(values[index]);
+    const y = Number(values[index + 1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const point = convertPdfPointToViewport(x, y, viewport, scale);
+    xs.push(point.x);
+    ys.push(point.y);
+  }
+  if (xs.length < 4) return null;
+
+  const left = Math.min(...xs);
+  const right = Math.max(...xs);
+  const top = Math.min(...ys);
+  const bottom = Math.max(...ys);
+  const width = right - left;
+  const height = bottom - top;
+  if (!(width > 0) || !(height > 0)) return null;
+
+  return { left, right, top, bottom, width, height };
 }
 
 const FILLED_PDF_INK_MODE = 'filled-outline';
@@ -4636,7 +4672,11 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
  * Convert Underline/StrikeOut to Fabric.js Rect (thin rectangle)
  */
 function convertUnderlineToFabricRect(annotation, viewport, scale = 1) {
-  const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
+  // se011 4638R / 4640R already have native /QuadPoints. Leftover /Rect
+  // is padded ~10pt each side so the painted bar was leftover-wide until
+  // the markup was deleted. Prefer /QuadPoints; fall back to /Rect.
+  const viewportRect = convertQuadPointsToViewportRect(annotation.quadPoints, viewport, scale)
+    || convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!viewportRect) {
     return null;
   }
