@@ -74,7 +74,7 @@ test('Text defaults include Width 1; prefs merge per key', () => {
   const db = read('src/hooks/useDatabase.js');
   assert.match(
     db,
-    /text: \{ strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid' \}/,
+    /text: \{ strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid', fillColor: '#ffffff', fillOpacity: 0 \}/,
     'Text defaults must stamp Width 1 so sibling tools cannot leak 2 / 20 / 3',
   );
   assert.match(
@@ -96,7 +96,7 @@ test('Text defaults include Width 1; prefs merge per key', () => {
 
 test('Text default Width is 1; sibling Highlighter / Callout / Pen widths are not', () => {
   const db = read('src/hooks/useDatabase.js');
-  assert.match(db, /strokeWidth: 1, lineBorderStyle: 'solid' \}/);
+  assert.match(db, /strokeWidth: 1, lineBorderStyle: 'solid', fillColor: '#ffffff', fillOpacity: 0 \}/);
   assert.match(db, /strokeWidth: 20/);
   assert.match(db, /strokeWidth: 2/);
   assert.match(db, /pen: \{ strokeColor: '#ff0000', strokeWidth: 3/);

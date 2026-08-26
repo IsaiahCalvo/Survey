@@ -1045,7 +1045,11 @@ const DEFAULT_TOOL_PREFERENCES = {
   // Omitting strokeWidth used to let Callout / Highlighter / Pen → Text
   // inherit the sibling Width (2 / 20 / 3). First-create then stamped
   // that leaked Width until the user touched the Text Width field.
-  text: { strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid' },
+  // Omitting fillColor/fillOpacity used to let Callout (white / 90) and
+  // Counter (badge red / 100) leak into the Text Color Fill chrome after
+  // a sibling switch. First-create box fill stays empty — do not invent
+  // a first-create Fill on an empty-default textbox.
+  text: { strokeColor: '#000000', strokeOpacity: 100, strokeWidth: 1, lineBorderStyle: 'solid', fillColor: '#ffffff', fillOpacity: 0 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },
