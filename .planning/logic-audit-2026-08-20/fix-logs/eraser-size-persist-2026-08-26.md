@@ -50,7 +50,7 @@ Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-eraser-size-pers
 
 Node `pdfEraserSizePersist` proves Eraser default Size 20, prefs merge per key, tool switch restores + persists Size, first swipe still reads `eraserSizeRef`, Pen Width store stays isolated.
 
-Focused Node `pdfEraserSizePersist` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened.
+Focused Node `pdfEraserSizePersist` + leftover18FailClosed **16 / 16**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` fail-stops on pre-existing `annotationContextMenuitem` spec (`keyboard.press('Enter')` vs live spec — not taken; not aligned down). Isolated 8448 not reached because official fail-stops first. `graphify` CLI absent.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
