@@ -849,6 +849,24 @@ function getShapeFillHex(annotation) {
   return pdfColorToHex(fillSource, annotation);
 }
 
+// se011 4631R has no /IC, but /AP paints the box with `0 g` + `B` (black
+// fill, matching /C). Leftover-requiring /IC leftover-painted transparent
+// until Fill was re-touched. Prefer a visible /AP fill for callouts only.
+// Do not fall back to /C — Drawboard leftover-painted the text color as
+// the box. Do not invent a user-settable callout verticalAlign.
+function getImportedCalloutAppearanceFillHex(annotation) {
+  const appearance = annotation?._appearance;
+  if (!appearance || appearance.hasFill !== true || !appearance.fillColor) {
+    return null;
+  }
+  const fillOp = Array.isArray(appearance.paintOperations)
+    ? appearance.paintOperations.find((operation) => operation?.fill === true)
+    : null;
+  const fillAlpha = Number.isFinite(fillOp?.fillAlpha) ? fillOp.fillAlpha : 1;
+  if (fillAlpha <= 0.02) return null;
+  return pdfColorToHex(appearance.fillColor, annotation);
+}
+
 function getShapeFillColor(annotation, strokeHex) {
   const explicitFillHex = getShapeFillHex(annotation);
   const objectOpacity = extractAnnotationOpacity(annotation, 1);
@@ -3999,14 +4017,16 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     isCalloutIntent ? 1 : 0,
     { allowExplicitZero: !isCalloutIntent },
   );
-  const fillHex = getShapeFillHex(annotation);
+  const fillHex = getShapeFillHex(annotation)
+    || (isCalloutIntent ? getImportedCalloutAppearanceFillHex(annotation) : null);
   const fillOpacity = extractAnnotationOpacity(annotation, 1);
   // UX 2026-04-21: PDF spec — callout/textbox fill comes from /IC
   // (interior color) only. /C is the border/line color. The prior fallback
   // that painted /C as the textbox fill when /IC was missing was wrong and
   // caused Drawboard imports to get a red box because PDF.js was surfacing
-  // the text's red color as annotation.color. When /IC is absent, the
-  // textbox must stay clear — matching what Adobe Acrobat renders.
+  // the text's red color as annotation.color. When /IC is absent and /AP
+  // does not paint a fill, the textbox stays clear. se011 4631R /AP does
+  // paint a fill (`0 g` + `B`) — keep that, do not leftover-clear it.
   const backgroundColor = fillHex
     ? hexToRgba(fillHex, fillOpacity)
     : 'transparent';
