@@ -28,7 +28,7 @@ Live 1440. hubPreview Color / Width **0**; `file.id` null; viewBox **`0 0 612 79
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-textbox-rotate-line-ink-hunt.spec.mjs` pending this-pass counts.
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-textbox-rotate-line-ink-hunt.spec.mjs` **2 / 2 (8.2s)**.
 
 - Intended: Textbox rotate then Select keeps `/Matrix` + `/ca`; imported Line Select Width 8 + Dashed export; imported Ink Select Color/Width keeps `/Ink` `/CA`
 - Break: hubPreview Color / Width **0**
