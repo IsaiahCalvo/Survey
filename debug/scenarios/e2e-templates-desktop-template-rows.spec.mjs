@@ -45,8 +45,12 @@ function desktopGrid(page) {
   return page.locator('.templates-editor-grid');
 }
 
+function leftList(page) {
+  return desktopGrid(page).locator('aside').first();
+}
+
 function selectToggle(page) {
-  return desktopGrid(page).getByRole('button', { name: 'Select', exact: true });
+  return leftList(page).getByRole('button', { name: 'Select', exact: true });
 }
 
 function templateRows(page) {

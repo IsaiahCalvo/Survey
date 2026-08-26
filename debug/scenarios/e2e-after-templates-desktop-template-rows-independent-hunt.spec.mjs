@@ -180,7 +180,7 @@ test('AFTER_TEMPLATES_DESKTOP_TEMPLATE_ROWS_INDEPENDENT_HUNT inventories remaini
   inventory.templates.rowCount = await templateRows(page).count();
   inventory.templates.firstRowRole = await templateRows(page).first().getAttribute('role');
   inventory.templates.firstRowName = await templateRows(page).first().getAttribute('aria-label');
-  inventory.templates.selectType = await page.locator('.templates-editor-grid').getByRole('button', { name: 'Select', exact: true }).getAttribute('type');
+  inventory.templates.selectType = await page.locator('.templates-editor-grid aside').first().getByRole('button', { name: 'Select', exact: true }).getAttribute('type');
   await expect(page.getByText(TEMPLATE).first()).toBeVisible({ timeout: 15_000 });
   const desktopField = desktopCategoryTitle(page).first();
   await expect(desktopField).toBeVisible({ timeout: 8_000 });
