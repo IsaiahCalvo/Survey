@@ -1257,6 +1257,7 @@ const SVGAnnotationLayer = memo(({
         authorId: viewerId,
         points,
         strokeColor,
+        strokeOpacity,
         highlightColor,
         strokeWidth: Number(strokeWidth) || 3,
         selectedModuleId,
@@ -5075,7 +5076,9 @@ const SVGAnnotationLayer = memo(({
           data-preview-tick={shapeCreation.tick}
           points={freehandPointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')}
           fill="none"
-          stroke={shapeCreation.tool === 'highlighter' ? highlightColor : strokeColor}
+          stroke={shapeCreation.tool === 'highlighter'
+            ? highlightColor
+            : composeAnnotationColor(strokeColor, strokeOpacity)}
           strokeWidth={shapeCreation.tool === 'highlighter'
             ? Math.max(Number(strokeWidth) || 3, 8)
             : (Number(strokeWidth) || 3)}

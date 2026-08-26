@@ -36,7 +36,7 @@ test('highlighter highlightColor is picker-derived, not hardcoded yellow', () =>
   );
 
   const commit = read('src/utils/annotationCreationCommit.js');
-  assert.match(commit, /color: tool === 'highlighter' \? \(highlightColor \|\| strokeColor\) : strokeColor/);
+  assert.match(commit, /color: tool === 'highlighter'\s*\n\s*\? \(highlightColor \|\| strokeColor\)\s*\n\s*: composeAnnotationColor\(strokeColor, strokeOpacity\)/);
   assert.doesNotMatch(commit, /highlighter used the fixed highlightColor/);
 });
 

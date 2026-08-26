@@ -16,7 +16,7 @@ test('live preview + zoomGeneration flush + highlighter floor stay wired', () =>
   assert.match(layer, /const FREEHAND_CREATION_TOOLS = \['pen', 'highlighter'\]/);
   assert.match(layer, /className="freehand-creation-preview"/);
   assert.match(layer, /data-preview-tick=\{shapeCreation\.tick\}/);
-  assert.match(layer, /shapeCreation\.tool === 'highlighter' \? highlightColor : strokeColor/);
+  assert.match(layer, /shapeCreation\.tool === 'highlighter'\s*\n\s*\? highlightColor\s*\n\s*: composeAnnotationColor\(strokeColor, strokeOpacity\)/);
   assert.match(layer, /Math\.max\(Number\(strokeWidth\) \|\| 3, 8\)/);
   assert.match(layer, /mixBlendMode: 'multiply'/);
   assert.match(layer, /zoomGeneration/);

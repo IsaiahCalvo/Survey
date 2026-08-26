@@ -269,6 +269,7 @@ export function buildFreehandCommitJSON({
   authorId,
   points,
   strokeColor,
+  strokeOpacity,
   highlightColor,
   strokeWidth,
   selectedModuleId,
@@ -287,10 +288,13 @@ export function buildFreehandCommitJSON({
       ? { meta: { authorId } }
       : {}),
     points,
-    // Pen uses strokeColor (opacity is composed by the picker before commit
-    // for selected patches). Highlighter paint is highlightColor, which
-    // PDFViewer derives from the Color picker (strokeColor + strokeOpacity).
-    color: tool === 'highlighter' ? (highlightColor || strokeColor) : strokeColor,
+    // Next-draw Color Opacity must ride the first pen stroke.
+    // Stamping strokeColor hex dropped the toolbar fade until the user
+    // touched Opacity again (selected-patch compose). Highlighter paint is
+    // already highlightColor from PDFViewer (strokeColor + strokeOpacity).
+    color: tool === 'highlighter'
+      ? (highlightColor || strokeColor)
+      : composeAnnotationColor(strokeColor, strokeOpacity),
     width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
     data: { id },
   });
