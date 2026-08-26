@@ -3776,6 +3776,11 @@ function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
 
   const color = pdfColorToHex(annotation.color || [1, 1, 0], annotation); // Default yellow
   const opacity = extractAnnotationOpacity(annotation, 0.3);
+  // se011 4636R already has native /CA 0.399994 and no /ca. Leftover hex
+  // fill + object.opacity split that fade so Select read leftover 100
+  // until Opacity was re-touched. Bake /CA into fill rgba like Square /
+  // Circle / Polygon / Ink — do not leftover-split onto object.opacity
+  // (export would leftover-multiply rgba × opacity).
 
   return {
     type: 'rect',
@@ -3783,8 +3788,7 @@ function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
     top: viewportRect.top,
     width: viewportRect.width,
     height: viewportRect.height,
-    fill: color,
-    opacity,
+    fill: hexToRgba(color, opacity),
     stroke: null,
     strokeWidth: 0,
     // Required Fabric.js properties for proper interaction
