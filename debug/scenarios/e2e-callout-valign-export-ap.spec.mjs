@@ -110,16 +110,19 @@ async function calloutSnapshot(page, pageNumber = 1, { includeImported = false }
       const box = document.querySelector(
         `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="textBox"]`,
       );
-      const textEl = document.querySelector(
+      const textHost = document.querySelector(
         `[data-svg-annotation-layer="${pageNum}"] [data-callout-id="${id}"] [data-callout-part="text"]`,
       );
+      const textDiv = textHost?.querySelector('div');
       return {
         id,
         text: String(object.text || legacy.text || data.text || ''),
         fill: style.fillColor || null,
         fillOpacity: style.fillOpacity ?? null,
         textBoxHeight: Number(legacy.textBoxHeight ?? data.textBoxHeight ?? object.textBoxHeight ?? 0),
-        justifyContent: textEl ? (getComputedStyle(textEl).justifyContent || '') : '',
+        justifyContent: textDiv
+          ? (textDiv.style.justifyContent || getComputedStyle(textDiv).justifyContent || '')
+          : '',
         visualFill: box?.getAttribute('fill') || null,
         imported: object.isPdfImported === true || legacy.isPdfImported === true,
       };

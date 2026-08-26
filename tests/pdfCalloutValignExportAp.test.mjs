@@ -192,11 +192,17 @@ test('faded leftover-top is not used; opaque fill still omits /AP; flatten leave
   assert.deepEqual(opaque.lineAp, [false, false], 'do not invent Line /AP');
 
   const flat = await flattenCallout({ idSuffix: 'flat' });
-  assert.match(flat, /\(Hi\) Tj/, `flatten must still paint glyphs (got ${flat.slice(0, 280)})`);
-  assert.doesNotMatch(
-    flat,
-    new RegExp(`${leftoverTopY(exportedBoxHeight(makeCallout()))}\\s+Td`),
-    'flatten must not park the label at leftover top',
+  assert.match(flat, /<4869> Tj/, `flatten must still paint glyphs (got ${flat.slice(0, 280)})`);
+  const flattenTm = String(flat).match(/1\s+0\s+0\s+1\s+[\d.]+\s+([\d.]+)\s+Tm/);
+  const flattenY = flattenTm ? Number(flattenTm[1]) : null;
+  // Leftover top flatten parks at pageHeight - (boxTop+4 + fontSize+2).
+  // textBox y=0.18 h=0.40 on a 200 page → 200 - (36+4+16) = 144.
+  const leftoverFlattenY = PAGE_SIZES[1].height
+    - (makeCallout().textBoxPosition.y * PAGE_SIZES[1].height + 4 + FONT_SIZE + 2);
+  assert.ok(Number.isFinite(flattenY), 'flatten must place a Tm y');
+  assert.ok(
+    flattenY < leftoverFlattenY - 15,
+    `flatten Tm y ${flattenY} must sit below leftover top ${leftoverFlattenY}`,
   );
 });
 
@@ -204,7 +210,7 @@ test('export host still names the callout screen-center /AP contract; isolated 8
   const writer = read('src/utils/pdfAnnotationsPdfLib.js');
   assert.match(writer, /justifyContent center/);
   assert.match(writer, /verticalAlign: 'middle'/);
-  assert.match(writer, /Do not invent a user-settable callout/);
+  assert.match(writer, /do not invent a user-settable callout/);
   assert.match(writer, /Faded-fill \/AP used leftover top/);
   const complexity = read('tests/partialEraserComplexity.test.mjs');
   assert.match(complexity, /maxAllocatedBytes: 8_448 \* 1024 \* 1024/);
