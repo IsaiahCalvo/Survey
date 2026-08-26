@@ -206,30 +206,52 @@ async function clickLineMidpoint(page, created) {
   return { x, y };
 }
 
-async function selectLine(page, created) {
-  await page.keyboard.press('Escape');
+async function selectMode(page) {
   await blurInputs(page);
+  await page.keyboard.press('Escape').catch(() => {});
+  const scoped = page.locator(
+    'button.btn-icon[aria-label="Select"], button.mobile-pdf-tools__button[aria-label="Select"]',
+  );
+  if (await scoped.count() && await scoped.first().isVisible().catch(() => false)) {
+    await scoped.first().click();
+  } else {
+    const fallback = page.getByRole('button', { name: 'Select', exact: true });
+    if (await fallback.first().isVisible().catch(() => false)) await fallback.first().click();
+  }
   await page.keyboard.press('v');
   const menu = page.locator('[data-select-mode-menu="true"]');
   if (await menu.count()) await page.keyboard.press('Escape');
+  await expect.poll(async () => {
+    const layer = page.locator('[data-svg-annotation-layer="1"]').first();
+    const cls = String(await layer.getAttribute('class') || '');
+    return !cls.includes('tool-crosshair');
+  }, { timeout: 8_000, message: 'Select must drop the Line creation crosshair' }).toBeTruthy();
+}
+
+async function selectLine(page, created) {
+  await selectMode(page);
   if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
-  const target = page.locator(`[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"]`).first();
-  if (await target.count()) {
-    const targetBox = await target.boundingBox();
-    if (targetBox && targetBox.width > 1 && targetBox.height > 1) {
-      const cx = targetBox.x + targetBox.width / 2;
-      const cy = targetBox.y + targetBox.height / 2;
-      await page.mouse.click(cx, cy);
-      if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
-      await page.mouse.dblclick(cx, cy);
-      if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
-    }
+  // justDraggedAtRef swallows native dblclick for 400ms after a drag.
+  await page.waitForTimeout(500);
+  const hit = page.locator(
+    `[data-svg-annotation-layer="1"] [data-anno-id="${created.id}"] [data-shape-hit-target="line"]`,
+  ).first();
+  if (await hit.count()) {
+    // Single-click Line chrome is endpoints only. Live Rotation lives on
+    // the bbox-edit overlay after double-click. force: true so a thin
+    // leftover stroke still receives the event once Select is armed.
+    await hit.dblclick({ force: true });
+    if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
+    await page.evaluate((id) => {
+      const el = document.querySelector(
+        `[data-svg-annotation-layer="1"] [data-anno-id="${id}"] [data-shape-hit-target="line"]`,
+      );
+      if (!el) return;
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));
+    }, created.id);
+    if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
   }
   const mid = await clickLineMidpoint(page, created);
-  await page.mouse.click(mid.x, mid.y);
-  if (await page.locator('[data-rotation-handle="mtr"]').count()) return;
-  // Single-click Line chrome is endpoints only. Live Rotation lives on
-  // the bbox-edit overlay after double-click.
   await page.mouse.dblclick(mid.x, mid.y);
 }
 
