@@ -188,6 +188,9 @@ export default function TextEditOverlay({
         // Plan 15-04 parity: new text's intended look — the SVG preview and
         // the committed annotation both use these.
         fill: newTextStyle?.fontColor || strokeColor || '#007AFF',
+        // Next-draw Color Border must ride the first box. Hardcoding
+        // '#000000' dropped the toolbar until the user touched Border again
+        // (selected-patch).
         // Next-draw Color Border + Border Opacity must ride the first box.
         // Hardcoding hex-only dropped the fade until Opacity was re-touched
         // (selected-patch composeColorForPatch).
