@@ -17,6 +17,7 @@ import { test, expect } from '@playwright/test';
 // Ctrl+Z Undo / Ctrl+Shift+Z Redo are listed next to Save (live chords).
 // Delete selected is listed next to Undo/Redo (live chord).
 // Bring to front is listed next to Delete (live z-order chord).
+// Send to back is listed next to Bring to front (live z-order chord).
 
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
@@ -37,6 +38,7 @@ const LISTED = [
   'Redo',
   'Delete selected',
   'Bring to front',
+  'Send to back',
   'Search text',
   'Find next',
   'Find previous',
@@ -60,7 +62,6 @@ const OMITTED = [
   /\bDuplicate\b/i,
   /Bring forward/i,
   /Send backward/i,
-  /Send to back/i,
   /Select all/i,
 ];
 

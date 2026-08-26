@@ -141,6 +141,7 @@ test('keyboard shortcut matrix: intended + break + edge', async ({ page }) => {
   expect(overlayText).toMatch(/Esc/);
   expect(overlayText).toMatch(/Delete selected/);
   expect(overlayText).toMatch(/Bring to front/);
+  expect(overlayText).toMatch(/Send to back/);
   expect(overlayText).not.toMatch(/\bDuplicate\b/i);
   expect(overlayText).not.toMatch(/Bring forward/i);
   await page.keyboard.press('Escape');

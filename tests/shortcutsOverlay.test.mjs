@@ -39,6 +39,7 @@ test('overlay catalogs the live chords and omits Duplicate/Bring forward', () =>
   assert.match(overlay, /keys: \['Ctrl', 'Shift', 'Z'\], description: 'Redo'/);
   assert.match(overlay, /keys: \['Delete'\], description: 'Delete selected'/);
   assert.match(overlay, /keys: \['Ctrl', 'Shift', '\]'\], description: 'Bring to front'/);
+  assert.match(overlay, /keys: \['Ctrl', 'Shift', '\['\], description: 'Send to back'/);
   assert.match(overlay, /description: 'Search text'/);
   assert.match(overlay, /keys: \['F3'\], description: 'Find next'/);
   assert.match(overlay, /keys: \['Shift', 'F3'\], description: 'Find previous'/);
@@ -60,7 +61,6 @@ test('overlay catalogs the live chords and omits Duplicate/Bring forward', () =>
   assert.doesNotMatch(overlay, /description: 'Duplicate'/);
   assert.doesNotMatch(overlay, /description: 'Bring forward'/);
   assert.doesNotMatch(overlay, /description: 'Send backward'/);
-  assert.doesNotMatch(overlay, /description: 'Send to back'/);
   assert.doesNotMatch(overlay, /keys: \['Backspace'\]/);
 });
 
@@ -112,6 +112,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Redo/);
   assert.match(spec, /Delete selected/);
   assert.match(spec, /Bring to front/);
+  assert.match(spec, /Send to back/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);
