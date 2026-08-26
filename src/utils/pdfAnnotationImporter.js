@@ -3901,6 +3901,15 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // #1172E8, /DS #9643FC). Preferring /DS painted leftover purple until
   // Color was re-touched. Do not invent a richTextEditor.
   const parsedRc = parseRichContentFirstColor(annotation.richContent);
+  // package2 13246R already has native /DS text-align:center and no /Q.
+  // Import leftover-dropped that align so the textbox painted leftover-left
+  // until Text alignment was re-touched. Keep /RC, then merged /Q+/DS, then
+  // a local /DS parse. Do not invent a richTextEditor or a user-settable
+  // callout verticalAlign.
+  const textAlign = parsedRc?.textAlign
+    || annotation.defaultAppearanceData?.textAlign
+    || parsedDs?.textAlign
+    || null;
   const daColorHex = parsedDa?.fontColor ? pdfColorToHex(parsedDa.fontColor, annotation) : null;
   const dsColorHex = parsedDs?.fontColor ? pdfColorToHex(parsedDs.fontColor, annotation) : null;
   const rcColorHex = parsedRc?.fontColor ? pdfColorToHex(parsedRc.fontColor, annotation) : null;
@@ -4014,7 +4023,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
             borderColor,
             backgroundColor,
             strokeWidth: strokeWidth * scale,
-            textAlign: annotation.defaultAppearanceData?.textAlign || null,
+            textAlign: textAlign || annotation.defaultAppearanceData?.textAlign || null,
           }
         }
       : {})
@@ -4064,6 +4073,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
       backgroundColor,
       fontSize: fontSize * scale,
       fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
+      ...(textAlign ? { textAlign } : {}),
       ...(Object.keys(data).length > 0 ? { data } : {}),
       selectable: true,
       evented: true,
@@ -4089,6 +4099,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     backgroundColor,
     fontSize: fontSize * scale,
     fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
+    ...(textAlign ? { textAlign } : {}),
     ...(Object.keys(data).length > 0 ? { data } : {}),
     // Required Fabric.js properties for proper interaction
     selectable: true,
