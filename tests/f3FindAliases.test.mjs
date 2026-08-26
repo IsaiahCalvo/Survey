@@ -22,7 +22,7 @@ test('SearchTextPanel binds F3 and Ctrl/Cmd+G as next/prev, including wrap and 0
   assert.match(panel, /if \(!searchInputRef\.current\) return;/);
 });
 
-test('Search panel stays mounted when hidden; overlay does not list F3/Ctrl+G; Group stays compile-hidden', () => {
+test('Search panel stays mounted when hidden; overlay lists F3 Find next next to Search, not Ctrl+G; Group stays compile-hidden', () => {
   const sidebar = read('src/PDFSidebar.jsx');
   assert.match(sidebar, /Keep all panels mounted but hide inactive ones using display: none/);
   assert.match(sidebar, /display: activeTab === 'search' \? 'flex' : 'none'/);
@@ -30,7 +30,7 @@ test('Search panel stays mounted when hidden; overlay does not list F3/Ctrl+G; G
 
   const overlay = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(overlay, /description: 'Search text'/);
-  assert.doesNotMatch(overlay, /F3/);
+  assert.match(overlay, /keys: \['F3'\], description: 'Find next'/);
   assert.doesNotMatch(overlay, /Ctrl\+G|⌘G|Cmd\+G/);
 
   const svg = read('src/components/SVGAnnotationLayer.jsx');

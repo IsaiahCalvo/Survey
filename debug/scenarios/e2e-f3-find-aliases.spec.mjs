@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // F3 / Shift+F3 / Ctrl+G / Ctrl+Shift+G find-bar next/prev aliases.
-// Overlay lists Ctrl+F only — these chords are live but unlisted.
+// Overlay lists Ctrl+F Search and F3 Find next; Ctrl+G stays unlisted.
 // Not a replay of Search Previous / result-row click / keyboard-matrix
 // (except the NEW F3/G chords). leftover-18 parked.
 
@@ -84,18 +84,20 @@ test('F3 / Ctrl+G find aliases: intended + break + edge', async ({ page }) => {
   const hunts = [];
   await openEditor(page);
 
-  // Overlay catalogs Ctrl+F Search, not F3 / Ctrl+G. Do not invent overlay rows.
+  // Overlay catalogs Ctrl+F Search and the sibling F3 Find next chord.
+  // Do not invent Ctrl+G overlay rows — those stay aliases.
   await page.evaluate(() => document.activeElement?.blur?.());
   await page.keyboard.press('?');
   const overlay = page.locator('[data-keyboard-shortcuts-modal="true"]');
   await expect(overlay).toBeVisible({ timeout: 8_000 });
   const overlayText = await overlay.innerText();
   expect(overlayText).toMatch(/Search text/);
-  expect(overlayText).not.toMatch(/\bF3\b/);
+  expect(overlayText).toMatch(/Find next/);
+  expect(overlayText).toMatch(/\bF3\b/);
   expect(overlayText).not.toMatch(/Ctrl\+G|⌘G|Cmd\+G/i);
   await page.keyboard.press('Escape');
   await expect(overlay).toHaveCount(0);
-  hunts.push({ hunt: 'edge — overlay lists Search, not F3 / Ctrl+G (unlisted live chords)', pass: true });
+  hunts.push({ hunt: 'edge — overlay lists Search + F3 Find next, not Ctrl+G', pass: true });
 
   // Break — F3 with find-bar never opened (Pages tab). Must not invent a find
   // session or throw. SearchTextPanel stays mounted behind display:none after

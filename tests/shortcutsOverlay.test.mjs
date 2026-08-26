@@ -36,6 +36,7 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.match(overlay, /description: 'Open document'/);
   assert.match(overlay, /keys: \['Ctrl', 'S'\], description: 'Save document'/);
   assert.match(overlay, /description: 'Search text'/);
+  assert.match(overlay, /keys: \['F3'\], description: 'Find next'/);
   assert.match(overlay, /keys: \['V'\], description: 'Select annotations'/);
   assert.match(overlay, /keys: \['Shift', 'V'\], description: 'Select text on the page'/);
   assert.match(overlay, /keys: \['P'\], description: 'Pen'/);
@@ -57,7 +58,6 @@ test('overlay catalogs the live chords and omits Undo/Redo/Delete/Duplicate/z-or
   assert.doesNotMatch(overlay, /Bring to [Ff]ront/);
   assert.doesNotMatch(overlay, /Bring forward/);
   assert.doesNotMatch(overlay, /description: 'Delete'/);
-  assert.doesNotMatch(overlay, /\bF3\b/);
 });
 
 test('useKeyPress ignores INPUT / TEXTAREA / contentEditable; AppShell hides overlay on viewer; DevTestRoute remounts; no file.id', () => {
@@ -102,6 +102,7 @@ test('live spec covers open / catalog / Esc / outside / Close / toggle / INPUT n
   assert.match(spec, /Fit height/);
   assert.match(spec, /Manual lock/);
   assert.match(spec, /Save document/);
+  assert.match(spec, /Find next/);
   assert.match(spec, /Esc dismisses/);
   assert.match(spec, /click-outside/);
   assert.match(spec, /Close button dismisses/);
