@@ -56,6 +56,11 @@ const KeyboardShortcutsOverlay = () => {
       // from the catalog the same way Shift+E was missing next to E.
       { keys: ['Ctrl', '1'], description: 'Fit width' },
       { keys: ['Ctrl', '2'], description: 'Fit height' },
+      // Ctrl+M is the live Manual lock chord (ZOOM_MODES.MANUAL at the
+      // current scale). Fit options has no Manual button — this row only
+      // lists the live chord next to the Fit siblings, the same leftover
+      // class as Shift+E / Fit width.
+      { keys: ['Ctrl', 'M'], description: 'Manual lock' },
     ]},
     { category: 'Actions', items: [
       { keys: ['Ctrl', 'O'], description: 'Open document' },

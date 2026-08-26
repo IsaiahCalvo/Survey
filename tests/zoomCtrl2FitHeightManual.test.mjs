@@ -12,7 +12,7 @@ import { ZOOM_MODES } from '../src/utils/zoomController.js';
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), 'utf8');
 
-test('Ctrl+2 wires FIT_HEIGHT; Ctrl+M locks MANUAL at live scale; overlay lists Fit height and omits Ctrl+M', () => {
+test('Ctrl+2 wires FIT_HEIGHT; Ctrl+M locks MANUAL at live scale; overlay lists Fit height and Ctrl+M', () => {
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /if \(key === '2'\)/);
   assert.match(viewer, /handleZoomModeSelectRef\.current\?\.\(ZOOM_MODES\.FIT_HEIGHT\)/);
@@ -28,7 +28,7 @@ test('Ctrl+2 wires FIT_HEIGHT; Ctrl+M locks MANUAL at live scale; overlay lists 
   assert.match(overlay, /Ctrl', '0'[\s\S]*Fit page/);
   assert.match(overlay, /keys: \['Ctrl', '1'\], description: 'Fit width'/);
   assert.match(overlay, /keys: \['Ctrl', '2'\], description: 'Fit height'/);
-  assert.doesNotMatch(overlay, /Ctrl', 'M'/);
+  assert.match(overlay, /keys: \['Ctrl', 'M'\], description: 'Manual lock'/);
 
   assert.equal(ZOOM_MODES.FIT_HEIGHT, 'fitHeight');
   assert.equal(ZOOM_MODES.MANUAL, 'manual');

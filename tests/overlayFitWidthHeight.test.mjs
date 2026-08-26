@@ -17,7 +17,6 @@ test('overlay lists Ctrl+1 Fit width and Ctrl+2 Fit height next to Ctrl+0', () =
   assert.match(overlay, /keys: \['Ctrl', '1'\], description: 'Fit width'/);
   assert.match(overlay, /keys: \['Ctrl', '2'\], description: 'Fit height'/);
   assert.match(overlay, /three live fit-mode chords/);
-  assert.doesNotMatch(overlay, /Ctrl', 'M'/);
   assert.doesNotMatch(overlay, /description: 'Open file'/);
   assert.doesNotMatch(overlay, /Copy|Cut|Paste/);
 });
@@ -46,7 +45,6 @@ test('live spec covers overlay listing + Ctrl+1 / Ctrl+2 + hub + 390 + file.id',
   assert.match(spec, /Ctrl\+2 forces Fit height/);
   assert.match(spec, /lists Fit width/);
   assert.match(spec, /lists Fit height/);
-  assert.match(spec, /must not invent Ctrl\+M/);
   assert.match(spec, /must not invent Open file/);
   assert.match(spec, /zoom % INPUT does not steal Ctrl\+1/);
   assert.match(spec, /zoom INPUT Ctrl\+1 does not apply Fit width/);
