@@ -32334,12 +32334,15 @@ ${pageBlocks}
                                     let seriesColor = activeCounterSeriesColorRef.current;
                                     let seriesAutoCreated = false;
                                     if (!seriesId) {
-                                      seriesColor = fillColor || '#ef4444';
+                                      // Next-draw Fill Opacity must ride the first pin.
+                                      // Stamping fillColor hex dropped the toolbar fade
+                                      // until handleFillOpacityChange patched the series.
+                                      seriesColor = composeColorForPatch(fillColor || '#ef4444', fillOpacity);
                                       seriesId = `series-${Date.now()}`;
                                       activeCounterSeriesIdRef.current = seriesId;
                                       activeCounterSeriesColorRef.current = seriesColor;
                                       seriesAutoCreated = true;
-                                      appDebug(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar fillColor=${fillColor})`);
+                                      appDebug(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar fillColor=${fillColor} fillOpacity=${fillOpacity})`);
                                     }
                                     // seriesStart inherits from the earliest existing pin in
                                     // this seriesId (so re-entry into a series preserves its
