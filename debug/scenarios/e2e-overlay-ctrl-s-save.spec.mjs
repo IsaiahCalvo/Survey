@@ -10,6 +10,27 @@ import { test, expect } from '@playwright/test';
 const LINK_PDF = '/?testPdf=clickable-link-test.pdf';
 const HUB = '/?hubPreview=1';
 
+async function gotoWithRetry(page, url) {
+  // Ctrl+S in a focused INPUT is intentionally not preventDefault'd
+  // (isFormField). Chromium may start a Save-page download that aborts
+  // the next navigation — retry the same way local-save-reload does.
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || error);
+      if (!/ERR_ABORTED|interrupted|destroyed/i.test(message) || attempt === 2) {
+        throw error;
+      }
+      await page.waitForTimeout(400);
+    }
+  }
+  throw lastError;
+}
+
 async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } = {}) {
   await page.addInitScript(() => {
     try {
@@ -30,7 +51,7 @@ async function openEditor(page, { width = 1440, height = 900, url = LINK_PDF } =
     } catch { /* ignore */ }
   });
   await page.setViewportSize({ width, height });
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await gotoWithRetry(page, url);
   await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-svg-annotation-layer="1"]')).toBeVisible({ timeout: 45_000 });
 }
@@ -148,6 +169,7 @@ test('desktop overlay Ctrl+S Save document intended + break + edge', async ({ pa
   await zoom.click();
   const beforeInputSave = saveExportCount(saveHits);
   await page.keyboard.press('Control+s');
+  await page.keyboard.press('Escape').catch(() => {});
   await page.waitForTimeout(400);
   expect(saveExportCount(saveHits), 'zoom % INPUT does not steal Ctrl+S').toBe(beforeInputSave);
   await blurInputs(page);
@@ -159,7 +181,7 @@ test('desktop overlay Ctrl+S Save document intended + break + edge', async ({ pa
   expect(await fileId(page), 'must not stamp file.id').toBeNull();
   await assertNoErrorBoundary(page);
 
-  await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await gotoWithRetry(page, HUB);
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 30_000 });
   expect(await page.getByRole('button', { name: 'Draw', exact: true }).count()).toBe(0);
   await blurInputs(page);
