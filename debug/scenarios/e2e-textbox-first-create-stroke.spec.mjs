@@ -3,7 +3,6 @@ import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PDFDocument, PDFName } from 'pdf-lib';
-import { parsePdfAppAnnotationMetadata } from '../../src/utils/pdfAppAnnotationMetadata.js';
 
 // Textbox first-create used to hardcode stroke '#000000' until Color Border
 // patched the selected box. Distinct from leftover-18, first-create Width,
@@ -89,6 +88,16 @@ async function pageViewBox(page) {
 
 async function fileId(page) {
   return page.evaluate(() => window.__devTestPdf?.id ?? null);
+}
+
+function parseSurveyStroke(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.style?.stroke || '';
+  } catch {
+    return '';
+  }
 }
 
 function normalizeHex(raw) {
@@ -266,11 +275,10 @@ async function exportedFreeTextStrokes(dest) {
     const dict = doc.context.lookup(ref);
     const subtype = dict.get(PDFName.of('Subtype'));
     const metaRaw = dict.get(PDFName.of('SurveyAppAnnotation'));
-    const metadata = parsePdfAppAnnotationMetadata(metaRaw?.decodeText ? metaRaw.decodeText() : null);
     return {
       subtype: subtype?.decodeText ? subtype.decodeText() : String(subtype || ''),
       text: dict.get(PDFName.of('Contents'))?.decodeText?.() || '',
-      stroke: metadata?.style?.stroke || '',
+      stroke: parseSurveyStroke(metaRaw?.decodeText ? metaRaw.decodeText() : null),
     };
   }).filter((row) => row.subtype === 'FreeText');
 }
