@@ -158,7 +158,10 @@ async function createCallout(page, text = 'Y') {
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.click();
   if (text) await editor.pressSequentially(text, { delay: 6 });
-  await page.mouse.click(box.x + 10, box.y + 10);
+  await page.mouse.click(12, 200);
+  if (await page.locator('[data-text-edit-overlay]').count()) {
+    await page.mouse.click(box.x + box.width - 12, box.y + box.height - 12);
+  }
   await expect(page.locator('[data-text-edit-overlay]')).toHaveCount(0, { timeout: 8_000 });
   let created = null;
   await expect.poll(async () => {
