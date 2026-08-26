@@ -1756,6 +1756,17 @@ export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options
       P: page.ref, // Reference to page
     };
 
+    // Live toolbar maps selected imported Ink → pen Color Opacity.
+    // Screen already honours rgba stroke and flatten already applies
+    // borderOpacity, but export wrote hex /C + AP ExtGState only.
+    // Viewers that regenerate from /InkList + /C (and the importer,
+    // which reads dict /CA) stayed opaque until Opacity was re-touched.
+    // Same contract as createLineAnnotation / createPolyLineAnnotation:
+    // /C stays the stroke RGB; /CA carries the fade. Opaque omits /CA
+    // so default export stays byte-identical. Filled paper-ink already
+    // writes dict /CA — do not invent a create-ink tool.
+    if (alpha < 0.99999) annotationDict.CA = alpha;
+
     if (options.name) annotationDict.NM = PDFString.of(String(options.name));
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
