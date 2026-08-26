@@ -253,12 +253,16 @@ function readBsDash(doc, dict) {
 }
 
 function readApStream(doc, dict) {
-  const ap = lookupDict(doc, dict.get(PDFName.of('AP')));
-  if (!ap) return '';
-  const nRef = ap.get(PDFName.of('N'));
-  const normal = lookupDict(doc, nRef);
-  if (!normal) return '';
-  return new TextDecoder('latin1').decode(decodePDFRawStream(normal).decode());
+  try {
+    const ap = lookupDict(doc, dict.get(PDFName.of('AP')));
+    if (!ap || typeof ap.get !== 'function') return '';
+    const nRef = ap.get(PDFName.of('N'));
+    const normal = lookupDict(doc, nRef);
+    if (!normal) return '';
+    return new TextDecoder('latin1').decode(decodePDFRawStream(normal).decode());
+  } catch {
+    return '';
+  }
 }
 
 async function exportedCircleStyle(dest) {
@@ -270,11 +274,13 @@ async function exportedCircleStyle(dest) {
   return annots.asArray().map((ref) => {
     const dict = doc.context.lookup(ref);
     const subtype = dict.get(PDFName.of('Subtype'));
+    const subtypeText = subtype?.decodeText ? subtype.decodeText() : String(subtype || '');
+    const isCircle = /Circle/i.test(subtypeText);
     return {
-      subtype: subtype?.decodeText ? subtype.decodeText() : String(subtype || ''),
-      bs: readBsDash(doc, dict),
+      subtype: subtypeText,
+      bs: isCircle ? readBsDash(doc, dict) : null,
       ap: dict.get(PDFName.of('AP')) != null,
-      apText: readApStream(doc, dict),
+      apText: isCircle ? readApStream(doc, dict) : '',
     };
   });
 }
