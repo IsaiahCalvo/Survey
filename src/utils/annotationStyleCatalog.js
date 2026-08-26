@@ -336,6 +336,40 @@ const resolvePaintColor = (raw) => {
  * hard-coded [0,0,0] and flatten never painted the stroke, so a user-picked
  * box never printed. Glyph `fill` is the font color — never a leftover border.
  */
+/**
+ * Live rectangle/ellipse Fill is obj.fill (toolbar composeAnnotationColor
+ * of fillColor + fillOpacity). Export Square/Circle wrote /IC from the hex
+ * only and a single /CA cannot represent fill vs stroke, so a faded fill
+ * printed and exported opaque. /C stays the stroke hex.
+ */
+export function resolveShapeFill(obj = {}) {
+  return resolvePaintColor(obj?.fill);
+}
+
+/**
+ * Live rectangle/ellipse Border is obj.stroke + obj.strokeWidth (toolbar
+ * composeAnnotationColor of strokeColor + strokeOpacity). Export omitted
+ * stroke /CA and flatten already has borderOpacity — keep them independent.
+ */
+export function resolveShapeStroke(obj = {}) {
+  const width = Number(obj?.strokeWidth);
+  const paint = resolvePaintColor(obj?.stroke);
+  const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.map((value) => Number(value) || 0)
+    : null;
+  if (!Number.isFinite(width) || width <= 0 || !paint.visible) {
+    return {
+      hex: paint.hex,
+      opacity: paint.visible ? paint.opacity : 0,
+      visible: false,
+      paint: 'transparent',
+      width: Number.isFinite(width) ? Math.max(0, width) : 0,
+      dash: null,
+    };
+  }
+  return { ...paint, width, dash };
+}
+
 export function resolveTextboxBoxStroke(obj = {}) {
   const width = Number(obj?.strokeWidth);
   if (!Number.isFinite(width) || width <= 0) {

@@ -46,6 +46,8 @@ import {
   pdfFreeTextQuadding,
   resolveCalloutBoxFill,
   resolveCalloutBorder,
+  resolveShapeFill,
+  resolveShapeStroke,
   resolveTextboxBoxFill,
   resolveTextboxBoxStroke,
   wrapFlattenedTextLines,
@@ -1763,13 +1765,98 @@ export const createInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, options
   }
 };
 
+const withObjectOpacity = (resolved, objectOpacity) => {
+  if (!resolved) {
+    return { hex: null, opacity: 0, visible: false, paint: 'transparent', width: 0, dash: null };
+  }
+  const group = Number.isFinite(Number(objectOpacity)) ? Math.max(0, Math.min(1, Number(objectOpacity))) : 1;
+  const base = Number.isFinite(Number(resolved.opacity)) ? Number(resolved.opacity) : 1;
+  const opacity = Math.max(0, Math.min(1, base * group));
+  if (!resolved.visible || !resolved.hex || opacity <= 0) {
+    return { ...resolved, opacity: 0, visible: false, paint: 'transparent' };
+  }
+  if (opacity >= 1) return { ...resolved, opacity: 1, visible: true, paint: resolved.hex };
+  const n = parseInt(String(resolved.hex).slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return { ...resolved, opacity, visible: true, paint: `rgba(${r}, ${g}, ${b}, ${opacity})` };
+};
+
+const resolveLiveShapeFill = (fabricObj) => (
+  withObjectOpacity(resolveShapeFill(fabricObj), fabricObj?.opacity)
+);
+
+const resolveLiveShapeStroke = (fabricObj) => (
+  withObjectOpacity(resolveShapeStroke(fabricObj), fabricObj?.opacity)
+);
+
+const attachIndependentShapeAppearance = (pdfDoc, annotationDict, {
+  formWidth,
+  formHeight,
+  fill,
+  stroke,
+  pathCommands,
+}) => {
+  const fillAlpha = fill?.visible ? fill.opacity : 0;
+  const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
+  const needsFillGs = Boolean(fill?.visible && fillAlpha < 0.99999);
+  const needsStrokeGs = Boolean(stroke?.visible && strokeAlpha < 0.99999);
+  const needsGs = needsFillGs || needsStrokeGs;
+  const n = pdfNumberText;
+  const content = ['q'];
+  if (needsGs) content.push('/GS0 gs');
+  if (fill?.visible && fill.hex) {
+    const rgb = hexToRGB(fill.hex);
+    content.push(`${n(rgb.red)} ${n(rgb.green)} ${n(rgb.blue)} rg`);
+  }
+  if (stroke?.visible && stroke.hex) {
+    const rgb = hexToRGB(stroke.hex);
+    content.push(`${n(rgb.red)} ${n(rgb.green)} ${n(rgb.blue)} RG`);
+    content.push(`${n(Math.max(0, Number(stroke.width) || 1))} w`);
+    if (Array.isArray(stroke.dash) && stroke.dash.length > 0) {
+      content.push(`[${stroke.dash.map(n).join(' ')}] 0 d`);
+    }
+  }
+  content.push(...pathCommands);
+  if (fill?.visible && stroke?.visible) content.push('B');
+  else if (fill?.visible) content.push('f');
+  else content.push('S');
+  content.push('Q');
+
+  const resources = {};
+  if (needsGs) {
+    resources.ExtGState = {
+      GS0: {
+        Type: 'ExtGState',
+        ...(needsFillGs ? { ca: fillAlpha } : {}),
+        ...(needsStrokeGs ? { CA: strokeAlpha } : {}),
+      },
+    };
+  }
+  const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+    Type: 'XObject',
+    Subtype: 'Form',
+    FormType: 1,
+    BBox: [0, 0, formWidth, formHeight],
+    Resources: resources,
+  });
+  annotationDict.AP = pdfDoc.context.obj({ N: pdfDoc.context.register(appearance) });
+  // Annotation /CA is a single fade. Only write it when there is no fill so
+  // a stroke-only fade still reaches viewers that ignore /AP. Divergent
+  // fill vs stroke lives in ExtGState /ca vs /CA.
+  if (!fill?.visible && needsStrokeGs) annotationDict.CA = strokeAlpha;
+};
+
 /**
  * Create Square annotation (rectangle)
  */
 const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
-    const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fill = resolveLiveShapeFill(fabricObj);
+    const stroke = resolveLiveShapeStroke(fabricObj);
+    const color = hexToRGB(stroke.hex || fabricObj.stroke || '#000000');
+    const fillColor = fill.visible ? hexToRGB(fill.hex) : null;
 
     const scaleX = Math.abs(Number(fabricObj.scaleX) || 1);
     const scaleY = Math.abs(Number(fabricObj.scaleY) || 1);
@@ -1790,13 +1877,14 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       Subtype: 'Square',
       Rect: [minX, minY, maxX, maxY],
       C: [color.red, color.green, color.blue],
-      Border: [0, 0, fabricObj.strokeWidth || 1],
+      Border: [0, 0, stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 0],
       Contents: PDFString.of(''),
       P: page.ref,
     };
 
-    // Add fill color if present
-    if (fillColor && fabricObj.fill !== 'transparent') {
+    // Live toolbar writes Fill as rgba fill. /IC stays the fill hex; opacity-0
+    // rgba must not invent an interior. Independent fade lives in /AP /ca.
+    if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
@@ -1810,6 +1898,14 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.BE = pdfDoc.context.obj({
         S: PDFName.of('C'),
         I: PDFNumber.of(Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2)),
+      });
+    } else {
+      attachIndependentShapeAppearance(pdfDoc, annotationDict, {
+        formWidth: width,
+        formHeight: height,
+        fill,
+        stroke,
+        pathCommands: [`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`],
       });
     }
 
@@ -1827,8 +1923,10 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
  */
 const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
-    const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fill = resolveLiveShapeFill(fabricObj);
+    const stroke = resolveLiveShapeStroke(fabricObj);
+    const color = hexToRGB(stroke.hex || fabricObj.stroke || '#000000');
+    const fillColor = fill.visible ? hexToRGB(fill.hex) : null;
     const counterMetadataJson = options.counterMetadataJson || null;
     const counterMetadata = options.counterMetadata || null;
 
@@ -1942,7 +2040,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       Subtype: 'Circle',
       Rect: counterRect || [minX, minY, maxX, maxY],
       C: [color.red, color.green, color.blue],
-      Border: [0, 0, counterAppearance ? 0 : (fabricObj.strokeWidth || 1)],
+      Border: [0, 0, counterAppearance ? 0 : (stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 0)],
       ...(counterAppearance ? { AP: counterAppearance } : {}),
       Contents: PDFString.of(''),
       P: page.ref,
@@ -1957,9 +2055,26 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
 
-    // Add fill color if present
-    if (fillColor && fabricObj.fill !== 'transparent') {
+    if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
+    }
+    if (!counterAppearance) {
+      const k = 0.551784;
+      const n = pdfNumberText;
+      attachIndependentShapeAppearance(pdfDoc, annotationDict, {
+        formWidth: rx * 2,
+        formHeight: ry * 2,
+        fill,
+        stroke,
+        pathCommands: [
+          `${n(2 * rx)} ${n(ry)} m`,
+          `${n(2 * rx)} ${n(ry + k * ry)} ${n(rx + k * rx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
+          `${n(rx - k * rx)} ${n(2 * ry)} 0 ${n(ry + k * ry)} 0 ${n(ry)} c`,
+          `0 ${n(ry - k * ry)} ${n(rx - k * rx)} 0 ${n(rx)} 0 c`,
+          `${n(rx + k * rx)} 0 ${n(2 * rx)} ${n(ry - k * ry)} ${n(2 * rx)} ${n(ry)} c`,
+          'h',
+        ],
+      });
     }
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
@@ -2005,12 +2120,15 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     const halfH = Math.abs(rx * sin) + Math.abs(ry * cos);
     const pdfCenterY = pageHeight - centerY;
 
-    const strokePaint = fabricObj.stroke || '#000000';
-    const color = hexToRGB(strokePaint);
-    const hasFill = fabricObj.fill && fabricObj.fill !== 'transparent';
-    const fillColor = hasFill ? hexToRGB(fabricObj.fill) : null;
-    const strokeWidth = Number(fabricObj.strokeWidth) || 1;
-    const alpha = paintAlpha(strokePaint, fabricObj.opacity);
+    const fill = resolveLiveShapeFill(fabricObj);
+    const stroke = resolveLiveShapeStroke(fabricObj);
+    const color = hexToRGB(stroke.hex || fabricObj.stroke || '#000000');
+    const fillColor = fill.visible ? hexToRGB(fill.hex) : null;
+    const strokeWidth = stroke.visible ? (stroke.width || Number(fabricObj.strokeWidth) || 1) : 0;
+    const fillAlpha = fill.visible ? fill.opacity : 0;
+    const strokeAlpha = stroke.visible ? stroke.opacity : 0;
+    const needsFillGs = fill.visible && fillAlpha < 0.99999;
+    const needsStrokeGs = stroke.visible && strokeAlpha < 0.99999;
 
     // Un-rotated ellipse (center rx,ry radii rx,ry) as four cubic arcs in
     // form space; the /Matrix applies the tilt.
@@ -2019,10 +2137,10 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     const ky = k * ry;
     const n = pdfNumberText;
     const content = ['q'];
-    if (alpha < 0.99999) content.push('/GS0 gs');
-    content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
+    if (needsFillGs || needsStrokeGs) content.push('/GS0 gs');
+    if (stroke.visible) content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
     if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
-    content.push(`${n(strokeWidth)} w`);
+    if (stroke.visible) content.push(`${n(strokeWidth)} w`);
     content.push(
       `${n(2 * rx)} ${n(ry)} m`,
       `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
@@ -2030,13 +2148,19 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       `0 ${n(ry - ky)} ${n(rx - kx)} 0 ${n(rx)} 0 c`,
       `${n(rx + kx)} 0 ${n(2 * rx)} ${n(ry - ky)} ${n(2 * rx)} ${n(ry)} c`,
       'h',
-      fillColor ? 'B' : 'S',
+      fill.visible && stroke.visible ? 'B' : fill.visible ? 'f' : 'S',
       'Q',
     );
 
     const resources = {};
-    if (alpha < 0.99999) {
-      resources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+    if (needsFillGs || needsStrokeGs) {
+      resources.ExtGState = {
+        GS0: {
+          Type: 'ExtGState',
+          ...(needsFillGs ? { ca: fillAlpha } : {}),
+          ...(needsStrokeGs ? { CA: strokeAlpha } : {}),
+        },
+      };
     }
     const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
       Type: 'XObject',
@@ -2058,12 +2182,12 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
         pdfCenterY + halfH,
       ],
       C: [color.red, color.green, color.blue],
-      CA: alpha,
       Border: [0, 0, strokeWidth],
       AP: pdfDoc.context.obj({ N: appearanceRef }),
       Contents: PDFString.of(''),
       P: page.ref,
     };
+    if (!fill.visible && needsStrokeGs) annotationDict.CA = strokeAlpha;
     if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
@@ -3451,8 +3575,14 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   const shifted = offset.x || offset.y
     ? { ...obj, left: (Number(obj.left) || 0) + offset.x, top: (Number(obj.top) || 0) + offset.y }
     : obj;
-  const stroke = parsePdfDrawColor(shifted?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
-  const fill = parsePdfDrawColor(shifted?.fill, '#ffffff');
+  const liveFill = resolveLiveShapeFill(shifted);
+  const liveStroke = resolveLiveShapeStroke(shifted);
+  const stroke = liveStroke.visible
+    ? { color: hexToRGB(liveStroke.hex), opacity: liveStroke.opacity }
+    : (parsePdfDrawColor(shifted?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000'));
+  const fill = liveFill.visible
+    ? { color: hexToRGB(liveFill.hex), opacity: liveFill.opacity }
+    : null;
   const left = getObjNumber(shifted, 'left');
   const top = getObjNumber(shifted, 'top');
   const scaleX = Math.abs(Number(shifted?.scaleX) || 1);
