@@ -40,6 +40,7 @@ import {
   TEXT_PADDING,
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
+  dashArrayFromLineBorderStyle,
 } from '../utils/textEditCommit.js';
 import { composeAnnotationColor } from '../utils/annotationCreationCommit.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
@@ -131,6 +132,7 @@ export default function TextEditOverlay({
   strokeColor,
   strokeOpacity,
   strokeWidth,
+  lineBorderStyle = null,
   authorId = null,
   // KAL-88 — Decision 11 companion: survey/region scope inputs for NEW text.
   // Same sources of truth as SVGAnnotationLayer's creation commit (survey:
@@ -201,6 +203,9 @@ export default function TextEditOverlay({
         // Next-draw Width must ride the first box. Hardcoding 1 dropped the
         // toolbar until the user touched Width again (selected-patch).
         strokeWidth: Math.max(1, Number(strokeWidth) || 1),
+        // Next-draw Style must ride the first box. Envelope null dropped
+        // Dashed/Dotted until the user touched Style again (selected-patch).
+        strokeDashArray: dashArrayFromLineBorderStyle(lineBorderStyle),
       }
       : {
         fontSize: Number(src.fontSize) || 16,
@@ -327,7 +332,12 @@ export default function TextEditOverlay({
       verticalAlign: s.verticalAlign,
       fontFamily: s.fontFamily,
       fill: s.fill,
-      ...(isNewText ? { stroke: s.stroke, strokeWidth: s.strokeWidth || 1, isCreating: true } : {}),
+      ...(isNewText ? {
+        stroke: s.stroke,
+        strokeWidth: s.strokeWidth || 1,
+        strokeDashArray: s.strokeDashArray || null,
+        isCreating: true,
+      } : {}),
     });
   }, [onLiveTextGrow, isNewText, padY]);
 
@@ -434,6 +444,9 @@ export default function TextEditOverlay({
           strokeOpacity,
         ),
         strokeWidth: s.strokeWidth ?? 1,
+        // Prefer live toolbar Style at commit. styleRef is mount-once; a
+        // missing first-render lineBorderStyle used to freeze envelope null.
+        strokeDashArray: dashArrayFromLineBorderStyle(lineBorderStyle) ?? s.strokeDashArray ?? null,
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
           regionId: activeRegionId,
@@ -536,7 +549,7 @@ export default function TextEditOverlay({
       onEditCommit(updated, commitOpts);
     }
     clearDraft();
-  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor, strokeOpacity,
+  }, [annotations, annotationIndex, isNewText, isCallout, onEditCommit, onEditCancel, onRichTextEditorChange, pad, authorId, strokeColor, strokeOpacity, lineBorderStyle,
     // KAL-88 scope-stamp inputs — keep the commit closure stamping from
     // current values (the unmount flush reads via commitRef, which tracks
     // this callback).
@@ -670,6 +683,9 @@ export default function TextEditOverlay({
         (typeof strokeColor === 'string' && strokeColor) ? strokeColor : (styleRef.current?.stroke || '#000000'),
         strokeOpacity,
       ) : undefined}
+      data-first-create-dash={isNewText
+        ? (dashArrayFromLineBorderStyle(lineBorderStyle) || []).join(',')
+        : undefined}
       style={{
         position: 'absolute',
         inset: 0,

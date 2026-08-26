@@ -330,11 +330,13 @@ const resolvePaintColor = (raw) => {
 };
 
 /**
- * Live textbox Border/Width is style.stroke + style.strokeWidth (toolbar
- * patchSelectedStroke / handleStrokeWidthChange). First-create stamps
- * next-draw Color Border + Width + Opacity (composeAnnotationColor of
- * strokeColor + strokeOpacity, same as selected-patch). Color Border +
- * Width + Opacity also patch those keys after select. Export /Border was
+ * Live textbox Border/Width/Style is style.stroke + style.strokeWidth +
+ * style.strokeDashArray (toolbar patchSelectedStroke /
+ * handleStrokeWidthChange / handleLineBorderStyleChange). First-create
+ * stamps next-draw Color Border + Width + Opacity + Style
+ * (composeAnnotationColor of strokeColor + strokeOpacity, same as
+ * selected-patch; dash from lineBorderStyle). Color Border + Width +
+ * Opacity + Style also patch those keys after select. Export /Border was
  * hard-coded [0,0,0] and flatten never painted the stroke, so a
  * user-picked box never printed. Glyph `fill` is the font color — never
  * a leftover border.

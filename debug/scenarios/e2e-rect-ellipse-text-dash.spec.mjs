@@ -521,7 +521,7 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
     y1: 0.74,
   });
   expect(isTextRow(textBox)).toBe(true);
-  expectDash(textBox, DASH_STYLES[0], 'Text create default Solid (next-draw Fill/dash not stamped)');
+  expectDash(textBox, DASH_STYLES[2], 'Text first-create stamps next-draw Dotted from live Style');
   await selectShape(page, textBox.id);
   const selectedTextProof = [];
   for (const style of DASH_STYLES) {
@@ -561,7 +561,7 @@ test('Rect/Ellipse/Text Style every discrete value intended + break + edge', asy
     x1: 0.54,
     y1: 0.88,
   });
-  expectDash(armedText, DASH_STYLES[0], 'Text next-draw create stays Solid (current product)');
+  expectDash(armedText, DASH_STYLES[1], 'Text first-create stamps next-draw Dashed');
 
   await activateTool(page, 'Draw', 'Pen');
   expect(await desktopStyleTrigger(page).count(), 'Pen-armed Style must hide').toBe(0);

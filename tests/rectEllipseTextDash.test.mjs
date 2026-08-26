@@ -135,7 +135,21 @@ test('buildBoundaryShapeCommitJSON stamps every Rect/Ellipse dash; Cloud is rect
     strokeWidth: 1,
   });
   assert.equal(text.type, 'Textbox');
-  assert.equal(text.strokeDashArray, null, 'Text create envelope stays solid (current product)');
+  assert.equal(text.strokeDashArray, null, 'omitted Style stays solid');
+
+  const dashedText = buildNewTextCommitJSON({
+    text: 'armed dash',
+    left: 20,
+    top: 30,
+    innerWrapWidth: 80,
+    maxLineWidth: 40,
+    lineCount: 1,
+    naturalInnerHeight: 18,
+    stroke: '#000000',
+    strokeWidth: 1,
+    strokeDashArray: [6, 4],
+  });
+  assert.deepEqual(dashedText.strokeDashArray, [6, 4], 'first-create stamps next-draw Dashed');
 });
 
 test('live Rect/Ellipse/Text Style spec covers every style + break + edge', () => {

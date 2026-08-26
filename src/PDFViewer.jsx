@@ -32700,6 +32700,7 @@ ${pageBlocks}
                                   strokeColor={strokeColor}
                                   strokeOpacity={strokeOpacity}
                                   strokeWidth={strokeWidth}
+                                  lineBorderStyle={lineBorderStyle}
                                   zoomGeneration={zoomGeneration}
                                   // Same scale source as every other overlay (the measured
                                   // per-page scale), not the logical React zoom state — the two

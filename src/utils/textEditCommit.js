@@ -19,6 +19,17 @@ import {
   sanitizeVerticalAlign,
 } from './annotationStyleCatalog.js';
 
+/**
+ * Next-draw Style (solid / dashed / dotted) → Fabric strokeDashArray.
+ * Same [6,4] / [2,4] contract as applyBorderStyle. Cloud is rect-only —
+ * treat it as solid here, matching callout first-create.
+ */
+export function dashArrayFromLineBorderStyle(lineBorderStyle) {
+  if (lineBorderStyle === 'dashed') return [6, 4];
+  if (lineBorderStyle === 'dotted') return [2, 4];
+  return null;
+}
+
 // TEXT_PADDING lives in svgAnnotationRenderers.jsx (a .jsx module the Node
 // test runner can't import); the value is the annotation text-gutter contract
 // shared by renderText/renderCallout/FabricEditCanvas since Plan 15-04.
@@ -133,6 +144,7 @@ export function buildNewTextCommitJSON({
   fill = '#007AFF',
   stroke = '#000000',
   strokeWidth = 1,
+  strokeDashArray = null,
   // KAL-88 — Decision 11 companion: survey/region scope stamps, same inputs
   // as the shape/line/freehand builders in annotationCreationCommit.js.
   selectedModuleId = null,
@@ -155,6 +167,9 @@ export function buildNewTextCommitJSON({
     fill,
     stroke,
     strokeWidth,
+    strokeDashArray: Array.isArray(strokeDashArray) && strokeDashArray.length > 0
+      ? strokeDashArray.map((value) => Number(value) || 0)
+      : null,
     fontSize: 16,
     fontWeight: 'normal',
     fontFamily: 'Helvetica',

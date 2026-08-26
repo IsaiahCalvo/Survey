@@ -4895,6 +4895,7 @@ const SVGAnnotationLayer = memo(({
             fill: liveTextEditBounds.fill || '#007AFF',
             stroke: liveTextEditBounds.stroke || '#000000',
             strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
+            strokeDashArray: liveTextEditBounds.strokeDashArray || null,
             text: liveTextEditBounds.text || '',
             opacity: 1,
             // hideText=true (4th arg): TextEditOverlay shows the typed
