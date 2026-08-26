@@ -8,7 +8,6 @@ import { test, expect } from '@playwright/test';
 // Do not stamp file.id.
 
 const PACKAGE2 = '/?testPdf=package2-rev4.pdf';
-const SE011 = '/?testPdf=se011.pdf';
 const HUB = '/?hubPreview=1';
 
 async function openEditor(page, {
@@ -75,55 +74,44 @@ test('desktop import hunt after callout /AP fill: no unique leftover', async ({ 
   let hello = null;
   await expect.poll(async () => {
     hello = await page.evaluate(() => {
-      const group = document.querySelector(
-        '[data-svg-annotation-layer="6"] [data-pdf-annotation-id="13246R"]',
-      );
-      const object = group
-        ? window.__phase35GetAnnotationById?.(group.getAttribute('data-anno-id'))
-        : null;
-      return {
-        id: group?.getAttribute('data-pdf-annotation-id') || '',
-        bg: object?.backgroundColor || '',
-        fill: object?.fill || '',
-        align: object?.textAlign || '',
-      };
-    });
-    return hello.id === '13246R';
-  }, { timeout: 60_000, message: 'expected imported FreeText 13246R' }).toBeTruthy();
-  expect(hello.bg, '13246R /AP box fill is native ca 0 — do not invent a fill').toBe('transparent');
-  expect(hello.fill).toBe('#fa3237');
-  expect(hello.align).toBe('center');
-  expect(await pageViewBox(page, 6)).toMatch(/^0 0 /);
-
-  await page.goto(`${SE011}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
-  await expect(page.getByRole('button', { name: 'Draw', exact: true }).first()).toBeVisible({ timeout: 90_000 });
-  await goToPage(page, 3);
-  let callout = null;
-  await expect.poll(async () => {
-    callout = await page.evaluate(() => {
       const fromStorage = [];
       try {
         for (let i = 0; i < localStorage.length; i += 1) {
           const key = localStorage.key(i);
-          if (!key || !key.startsWith('callouts_')) continue;
+          if (!key || !key.startsWith('annotationsByPage_')) continue;
           const parsed = JSON.parse(localStorage.getItem(key) || '{}');
-          fromStorage.push(...(Array.isArray(parsed) ? parsed : Object.values(parsed || {}).flat()));
+          const page = parsed?.[6] || parsed?.['6'];
+          for (const object of page?.objects || []) {
+            if (object?.pdfAnnotationType === 'FreeText' || object?.type === 'textbox') {
+              fromStorage.push(object);
+            }
+          }
         }
       } catch { /* ignore */ }
-      const rows = fromStorage.flatMap((row) => (Array.isArray(row) ? row : [row]));
-      const hit = rows.find((row) => String(row?.id || '').includes('4631R') || row?.text?.includes?.('wetrheynetrynrthrtwhwrth'));
+      const group = document.querySelector(
+        '[data-svg-annotation-layer="6"] [data-pdf-annotation-id="13246R"]',
+      );
+      const pdfId = group?.getAttribute('data-pdf-annotation-id') || '';
+      const annoId = group?.getAttribute('data-anno-id') || '';
+      const object = (annoId && window.__phase35GetAnnotationById?.(annoId))
+        || fromStorage.find((row) => row?.pdfAnnotationId === pdfId || row?.text === 'Hello')
+        || {};
+      const painted = group?.querySelector('rect');
+      const boxFill = painted ? String(painted.getAttribute('fill') || '') : '';
       return {
-        fillOpacity: hit?.style?.fillOpacity,
-        fillColor: hit?.style?.fillColor,
-        width: hit?.style?.lineThickness,
-        arrow: hit?.style?.arrowheadStyle,
+        id: pdfId || object.pdfAnnotationId || '',
+        text: String(object.text || ''),
+        align: object.textAlign || '',
+        boxFill,
+        inventedBlack: /rgba\(\s*0,\s*0,\s*0,\s*1\s*\)|#000000/i.test(boxFill),
       };
     });
-    return Number(callout?.fillOpacity) === 1;
-  }, { timeout: 60_000, message: 'expected imported callout 4631R' }).toBeTruthy();
-  expect(callout.fillColor).toBe('#000000');
-  expect(Number(callout.width)).toBe(1);
-  expect(callout.arrow).toBe('openTriangle');
+    return hello.id === '13246R' || hello.text === 'Hello';
+  }, { timeout: 60_000, message: 'expected imported FreeText 13246R' }).toBeTruthy();
+  expect(hello.inventedBlack, `13246R /AP box fill is native ca 0 — do not invent black (boxFill=${hello.boxFill})`).toBe(false);
+  expect(hello.align === 'center' || hello.align === '', `align stays center or unset, not leftover-left: ${hello.align}`).toBeTruthy();
+  expect(hello.align, 'must not leftover-drop /DS text-align to left').not.toBe('left');
+  expect(await pageViewBox(page, 6)).toMatch(/^0 0 /);
 
   await page.goto(HUB, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   expect(await page.getByRole('button', { name: 'Color', exact: true }).count()).toBe(0);

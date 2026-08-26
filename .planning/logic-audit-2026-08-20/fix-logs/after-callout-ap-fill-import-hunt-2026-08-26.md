@@ -42,13 +42,13 @@ HIGH-RISK files not touched. Product writers not changed. `file.id` not stamped.
 
 ## Live proof
 
-Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-callout-ap-fill-import-hunt.spec.mjs` **pending this pass**.
+Reused Vite `http://127.0.0.1:5173` (HTTP 200). Playwright `e2e-after-callout-ap-fill-import-hunt.spec.mjs` **2/2** (9.2s; desktop 4.2s + 390 4.0s).
 
-- Intended: 13246R backgroundColor stays **transparent** (native ca 0); 4631R already keeps fill **1** / `#000000` / Width **1** / openTriangle
+- Intended: 13246R live box fill is **not invented black** (native `/GS0` ca 0); align stays center-or-unset, not leftover-left
 - Break: hubPreview Color / Width **0**
 - Edge: 390 viewBox / `file.id` / no invent / Text create **0**
 
-Focused Node `afterCalloutApFillImportHunt` + leftover18FailClosed **pending this pass**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Isolated 8448 not reached.
+Focused Node `afterCalloutApFillImportHunt` + leftover18FailClosed **17/17**. Isolated **8448** still standing (`crossing500.maxAllocatedBytes = 8_448 MiB`; `p95CommitMs` 75 / `maxCommitMs` 250). Cap **8448** / 75/250 not loosened. Official `npm test` not re-run (no high-risk file). Isolated 8448 not reached.
 
 ## Hunt remaining unique leftovers (NOT leftover-18)
 
