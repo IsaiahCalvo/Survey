@@ -13,6 +13,9 @@ import {
   PDFHexString,
   PDFString,
   StandardFonts,
+  concatTransformationMatrix,
+  popGraphicsState,
+  pushGraphicsState,
   rgb,
 } from 'pdf-lib';
 import { deepClone } from './deepClone.js';
@@ -338,6 +341,39 @@ const pdfEncodedString = (value) => {
   return PDFHexString.fromText(text);
 };
 const pdfJsonString = (value) => pdfEncodedString(value);
+
+// Live Rotation already stamps fabric `angle` (screen CW, y-down). Flatten
+// and faded-fill FreeText /AP used to ignore it, so Acrobat / print stayed
+// axis-aligned until Rotation was re-touched. Same sign as ellipse /AP:
+// matrixTheta = -fabricAngle (PDF y-up CCW is the same visual tilt).
+// Angle 0 / absent stay byte-identical (no /Matrix, leftover /Rect).
+// Callouts share this writer at angle 0 — do not invent callout bbox/mtr
+// or verticalAlign. Do not take Square / rect rotation this pass.
+const pdfNeedsRotate = (angle) => Math.abs(Number(angle) || 0) > 0.0001;
+const pdfRotateTheta = (fabricAngleDeg) => (-(Number(fabricAngleDeg) || 0) * Math.PI) / 180;
+const pdfRotateMatrixAbout = (theta, cx, cy) => {
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  return [
+    cos,
+    sin,
+    -sin,
+    cos,
+    cx - cos * cx + sin * cy,
+    cy - sin * cx - cos * cy,
+  ];
+};
+const pdfRotatedBoxRect = (left, top, width, height, fabricAngleDeg, pageHeight) => {
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  const theta = pdfRotateTheta(fabricAngleDeg);
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const halfW = (Math.abs(width * cos) + Math.abs(height * sin)) / 2;
+  const halfH = (Math.abs(width * sin) + Math.abs(height * cos)) / 2;
+  const pdfCy = pageHeight - cy;
+  return [cx - halfW, pdfCy - halfH, cx + halfW, pdfCy + halfH];
+};
 
 const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   if (!annotationDict || !options.appAnnotationMetadataJson) return;
@@ -2889,6 +2925,11 @@ const PDF_DA_FONT_BASEFONT = {
 // Fill was re-touched faded (or Border was re-touched opaque, which
 // still omits /AP). Dict /CA would fade the glyphs too — stroke fade
 // stays ExtGState /CA. Opaque stroke / absent still omit /AP.
+//
+// Live Rotation already stamps `angle` and metadata + screen already
+// rotate, but this /AP used to stay axis-aligned (and flatten painted
+// the leftover AABB) so Acrobat / print stayed unrotated until
+// Rotation was re-touched. Angle 0 / absent omit /Matrix.
 const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -2900,6 +2941,7 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   fontSize,
   textAlign,
   verticalAlign,
+  angle,
 }) => {
   const fillVisible = Boolean(fill?.visible && fill.hex);
   const fillAlpha = fillVisible ? fill.opacity : 0;
@@ -2908,7 +2950,8 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
   const strokeVisible = Boolean(stroke?.visible && stroke.hex);
   const strokeAlpha = strokeVisible ? stroke.opacity : 0;
   const needsStrokeGs = strokeVisible && strokeAlpha < 0.99999;
-  if (!needsFillGs && !needsStrokeGs) return;
+  const needsRotate = pdfNeedsRotate(angle);
+  if (!needsFillGs && !needsStrokeGs && !needsRotate) return;
   const escapePdfText = (value) => String(value || '')
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
@@ -3004,6 +3047,12 @@ const attachCalloutFreeTextFillAppearance = (pdfDoc, annotationDict, {
     FormType: 1,
     BBox: [0, 0, formWidth, formHeight],
     Resources: resources,
+    // Same /Matrix contract as rotated Ellipse /AP: un-rotated /BBox
+    // plus tilt about the form center. Angle 0 / absent omit /Matrix
+    // so leftover faded-fill export stays byte-identical.
+    ...(needsRotate
+      ? { Matrix: pdfRotateMatrixAbout(pdfRotateTheta(angle), formWidth / 2, formHeight / 2) }
+      : {}),
   });
   annotationDict.AP = pdfDoc.context.obj({ N: pdfDoc.context.register(appearance) });
 };
@@ -3020,17 +3069,21 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // Screen (renderText): box = width*|scaleX| × height*|scaleY|. Individual
     // SVG resize + text-edit commit bake scale to 1; group-resize (and leftover
     // fabric objects) leave scale unbaked. fontSize stays unscaled — same as
-    // the renderer. Angle is not invented here (same as polygon).
+    // the renderer. Live Rotation already stamps fabric `angle`; leftover
+    // /Rect stays the unrotated AABB when angle is 0 / absent.
     const width = (fabricObj.width || 100) * Math.abs(Number(fabricObj.scaleX) || 1);
     const height = (fabricObj.height || 20) * Math.abs(Number(fabricObj.scaleY) || 1);
     const text = fabricObj.text || '';
     const fontSize = fabricObj.fontSize || 12;
+    const angle = Number(fabricObj.angle) || 0;
+    const needsRotate = pdfNeedsRotate(angle);
 
     // Calculate bounds (flip Y for PDF coordinate system)
     const minX = left;
     const minY = pageHeight - (top + height);
     const maxX = left + width;
     const maxY = pageHeight - top;
+    const leftoverRect = [minX, minY, maxX, maxY];
 
     // UX 2026-07-17 (text style export): the /DA string carries the GLYPH
     // color + font, so exported text keeps the color/bold/italic the user
@@ -3066,7 +3119,9 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'FreeText',
-      Rect: [minX, minY, maxX, maxY],
+      Rect: needsRotate
+        ? pdfRotatedBoxRect(left, top, width, height, angle, pageHeight)
+        : leftoverRect,
       Contents: pdfEncodedString(text),
       DA: PDFString.of(da),
       Q: pdfFreeTextQuadding(fabricObj.textAlign),
@@ -3095,12 +3150,18 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     // when Fill was faded — empty / opaque Fill then left Acrobat an
     // opaque leftover frame. Stroke fade writes ExtGState /CA (not dict
     // /CA, which would fade the glyphs). Opaque fill + opaque stroke
-    // still omit /AP so default export stays byte-identical. Used to
+    // still omit /AP when angle is 0 so default export stays
+    // byte-identical. Live Rotation attaches /AP /Matrix even when
+    // fill/stroke are opaque so Acrobat keeps the tilt. Used to
     // gate /AP on calloutMetadataJson, so a faded textbox still reached
     // Acrobat opaque.
     const needsFillAp = Boolean(boxFill.visible && boxFill.opacity < 0.99999);
     const needsStrokeAp = Boolean(boxStroke.visible && boxStroke.opacity < 0.99999);
-    if (needsFillAp || needsStrokeAp) {
+    // Live Rotation already stamps `angle` and metadata + screen already
+    // rotate, but /AP used to attach only for fade and stay axis-aligned
+    // so Acrobat / print stayed unrotated until Rotation was re-touched.
+    // Angle 0 / absent still omit /AP when fill + stroke are opaque.
+    if (needsFillAp || needsStrokeAp || needsRotate) {
       attachCalloutFreeTextFillAppearance(pdfDoc, annotationDict, {
         formWidth: width,
         formHeight: height,
@@ -3112,6 +3173,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
         fontSize,
         textAlign: fabricObj.textAlign,
         verticalAlign: fabricObj.verticalAlign,
+        angle,
       });
     }
 
@@ -3864,6 +3926,20 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
   const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200) * scaleX);
+  // Live Rotation already stamps fabric `angle`. Flatten used to draw the
+  // leftover axis-aligned box so print stayed untilted until Rotation was
+  // re-touched. Same sign as ellipse /AP: rotate about leftover center.
+  // Angle 0 / absent skip the q/cm/Q so default flatten stays identical.
+  const needsRotate = pdfNeedsRotate(obj?.angle);
+  if (needsRotate) {
+    const cx = left + maxWidth / 2;
+    const pdfCy = pageHeight - (top + height / 2);
+    const [a, b, c, d, e, f] = pdfRotateMatrixAbout(pdfRotateTheta(obj.angle), cx, pdfCy);
+    page.pushOperators(
+      pushGraphicsState(),
+      concatTransformationMatrix(a, b, c, d, e, f),
+    );
+  }
   // Live toolbar writes Fill on backgroundColor. Flatten used to draw
   // glyphs only, so a user-picked box fill never printed.
   const boxFill = resolveTextboxBoxFill(obj);
@@ -3956,6 +4032,7 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     if (wantsUnderline) drawDecorationLine(y - fontSize * 0.12);
     if (wantsLinethrough) drawDecorationLine(y + fontSize * 0.28);
   });
+  if (needsRotate) page.pushOperators(popGraphicsState());
 };
 
 const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
