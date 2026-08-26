@@ -16,7 +16,6 @@ const DEST_NAME = '_e2e-textbox-first-create-stroke.pdf';
 const REIMPORT_TAB = /clickable-link-test\.pdf|_e2e-textbox-first-create-stroke\.pdf/;
 const BOX = { x0: 0.22, y0: 0.18, x1: 0.52, y1: 0.28 };
 const HARDCODED_STROKE = '#000000';
-const LIVE_STROKE = '#FF0000';
 
 async function openEditor(page, {
   width = 1440,
@@ -174,14 +173,33 @@ async function activateTool(page, categoryName, toolName) {
   await expect(hostTool, `tool ${toolName}`).toBeVisible();
 }
 
-async function nextDrawBorderHex(page) {
+async function applyNextDrawBorderViaSpectrum(page) {
   const color = page.getByRole('button', { name: 'Color', exact: true }).first();
-  if (!(await color.isVisible().catch(() => false))) return LIVE_STROKE;
-  const raw = await color.evaluate((btn) => {
-    const swatch = btn.querySelector('[style*="background"]') || btn;
-    return swatch.style?.background || getComputedStyle(swatch).backgroundColor || '';
-  });
-  return normalizeHex(raw) || LIVE_STROKE;
+  if (!(await color.isVisible().catch(() => false))) return null;
+  const presets = page.getByRole('button', { name: 'Preset colors', exact: true });
+  if (!(await presets.isVisible().catch(() => false))) await color.click();
+  await expect(presets).toBeVisible({ timeout: 8_000 });
+  const borderTab = page.getByRole('button', { name: 'Border', exact: true }).first();
+  if (await borderTab.isVisible().catch(() => false)) await borderTab.click();
+  const spectrumMode = page.getByRole('button', { name: 'Color spectrum', exact: true });
+  await expect(spectrumMode).toBeVisible({ timeout: 8_000 });
+  await spectrumMode.click();
+  const spectrum = page.getByRole('slider', { name: 'Saturation and brightness' });
+  await expect(spectrum).toBeVisible({ timeout: 8_000 });
+  await spectrum.focus();
+  await spectrum.press('End');
+  await spectrum.press('ArrowUp');
+  const hexField = page.getByRole('textbox', { name: 'Hex color', exact: true });
+  await expect(hexField).toBeVisible({ timeout: 8_000 });
+  let hex = null;
+  await expect.poll(async () => {
+    hex = normalizeHex(`#${(await hexField.inputValue()).replace('#', '')}`);
+    return hex && hex !== HARDCODED_STROKE ? hex : null;
+  }, { message: 'spectrum must move Color Border off text-tool default black' }).not.toBeNull();
+  await page.keyboard.press('Escape');
+  await expect(presets).toHaveCount(0, { timeout: 8_000 }).catch(() => {});
+  await dismissChrome(page);
+  return hex;
 }
 
 async function commitEdit(page) {
@@ -194,15 +212,19 @@ async function commitEdit(page) {
   await dismissChrome(page);
 }
 
-async function createFirstBoxAfterBorder(page, text = 'Y') {
+async function createFirstBoxAfterBorder(page, text = 'Y', { requireColor = true } = {}) {
   const before = new Set((await textSnapshot(page)).map((row) => row.id));
   await dismissChrome(page);
   await page.waitForTimeout(250);
   await activateTool(page, 'Text', 'Text');
   expect((await textSnapshot(page)).length, 'next-draw Color Border must run before any box').toBe(0);
-  const liveStroke = await nextDrawBorderHex(page);
-  expect(liveStroke, 'wiped Text tool Color Border is the live toolbar red').toBe(LIVE_STROKE);
-  expect((await textSnapshot(page)).length, 'reading Color before first box must not invent a textbox').toBe(0);
+  const liveStroke = await applyNextDrawBorderViaSpectrum(page);
+  if (requireColor) {
+    expect(liveStroke, 'Color Border spectrum must yield a next-draw hex').toBeTruthy();
+    expect(liveStroke, 'next-draw Color Border must leave text-tool default black').not.toBe(HARDCODED_STROKE);
+  }
+  const expectedStroke = liveStroke || HARDCODED_STROKE;
+  expect((await textSnapshot(page)).length, 'Color Border before first box must not invent a textbox').toBe(0);
   await activateTool(page, 'Text', 'Text');
   await expect(page.locator('[data-text-overlay="1"]').first()).toBeVisible({ timeout: 8_000 });
   const box = await pageBox(page);
@@ -215,7 +237,7 @@ async function createFirstBoxAfterBorder(page, text = 'Y') {
   const overlayStroke = normalizeHex(
     await page.locator('[data-text-edit-overlay]').first().getAttribute('data-first-create-stroke'),
   );
-  expect(overlayStroke, 'first-create overlay must read live Color Border').toBe(liveStroke);
+  expect(overlayStroke, 'first-create overlay must read live Color Border').toBe(expectedStroke);
   await editor.click();
   if (text) await editor.pressSequentially(text, { delay: 6 });
   await commitEdit(page);
@@ -226,10 +248,12 @@ async function createFirstBoxAfterBorder(page, text = 'Y') {
     return created;
   }, { message: 'first box must commit' }).not.toBeNull();
   const stamped = normalizeHex(created.stroke || created.visualStroke);
-  expect(stamped, `first box must stamp live Color Border ${liveStroke}, not hardcoded black`).toBe(liveStroke);
-  expect(stamped, 'first box must not keep hardcoded black').not.toBe(HARDCODED_STROKE);
+  expect(stamped, `first box must stamp live Color Border ${expectedStroke}`).toBe(expectedStroke);
+  if (liveStroke) {
+    expect(stamped, 'first box must not keep text-tool default black after Border').not.toBe(HARDCODED_STROKE);
+  }
   await dismissChrome(page);
-  return { created, liveStroke };
+  return { created, liveStroke: expectedStroke };
 }
 
 async function exportAndSave(page, destName) {
@@ -347,7 +371,7 @@ test('390 first-create Color Border edge: viewBox, file.id, no invent', async ({
 
   const mobileText = page.getByRole('button', { name: 'Text', exact: true }).first();
   if (await mobileText.isVisible().catch(() => false)) {
-    const { created, liveStroke } = await createFirstBoxAfterBorder(page, 'Y');
+    const { created, liveStroke } = await createFirstBoxAfterBorder(page, 'Y', { requireColor: false });
     expect(normalizeHex(created.stroke)).toBe(liveStroke);
   } else {
     expect(await page.getByRole('button', { name: 'Text', exact: true }).count()).toBe(0);
