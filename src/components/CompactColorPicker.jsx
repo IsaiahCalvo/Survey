@@ -160,6 +160,17 @@ const CompactColorPicker = ({
         onChange(hex, localOpacity / 100);
     };
 
+    // P1-39 leftover sibling: the hex field already skips applyHex on
+    // garbage like zzzzzz, but Opacity still called onChange(localHex) so
+    // composeColorForPatch leftover-persisted `#zzzzzz`. Commit opacity
+    // against a normalized hex (typed field, else the live color prop).
+    const commitRememberedOpacity = (nextPct) => {
+        const hex = normalizeHexColor(localHex) || normalizeHexColor(color);
+        setLocalOpacity(nextPct);
+        if (!hex) return;
+        onChange(hex, nextPct / 100);
+    };
+
     // Apply a hex value coming from a preset swatch or the hex field — keeps the
     // spectrum's HSV indicators in step so switching views stays consistent.
     const applyHex = (hex) => {
@@ -507,8 +518,7 @@ const CompactColorPicker = ({
                         onChange={(e) => {
                             if (transparentMode) return;
                             const next = clampOpacityPercent(e.target.value, minOpacity);
-                            setLocalOpacity(next);
-                            onChange(localHex, next / 100);
+                            commitRememberedOpacity(next);
                         }}
                         style={{
                             flex: 1,
@@ -569,8 +579,7 @@ const CompactColorPicker = ({
                             value={Math.round(localOpacity)}
                             onChange={(e) => {
                                 const val = clampOpacityPercent(e.target.value, minOpacity);
-                                setLocalOpacity(val);
-                                onChange(localHex, val / 100);
+                                commitRememberedOpacity(val);
                             }}
                             style={{
                                 background: 'transparent',

@@ -78,6 +78,8 @@ test('CompactColorPicker hex field applies only through normalizeHexColor', () =
   assert.match(picker, /aria-label="Hex color"/);
   assert.match(picker, /const normalized = normalizeHexColor\(val\)/);
   assert.match(picker, /if \(normalized\) applyHex\(normalized\)/);
+  assert.match(picker, /commitRememberedOpacity/);
+  assert.doesNotMatch(picker, /onChange\(localHex,/);
   assert.doesNotMatch(picker, /namedColou?rs|CSS\.supports\(|new Option\(/);
   assert.equal((picker.match(/aria-label="Hex color"/g) || []).length, 1);
 });
