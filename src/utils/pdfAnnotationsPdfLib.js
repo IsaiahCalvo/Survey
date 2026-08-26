@@ -1792,6 +1792,53 @@ const resolveLiveShapeStroke = (fabricObj) => (
   withObjectOpacity(resolveShapeStroke(fabricObj), fabricObj?.opacity)
 );
 
+// Fabric path cmds (M/L/Q/C/Z, y-down) → PDF appearance operators (y-up when
+// flipHeight is the form height). Q is elevated to cubic the same way the
+// ink /AP writer does — PDF has no quadratic operator.
+const fabricPathCommandsToPdf = (pathData, { flipHeight = null } = {}) => {
+  const n = pdfNumberText;
+  const flipY = (y) => (
+    Number.isFinite(Number(flipHeight)) ? Number(flipHeight) - finiteNumber(y) : finiteNumber(y)
+  );
+  const commands = [];
+  let cursor = null;
+  let subpathStart = null;
+  if (!Array.isArray(pathData)) return commands;
+  pathData.forEach((cmd) => {
+    const command = cmd?.[0];
+    if (command === 'M') {
+      cursor = [finiteNumber(cmd[1]), flipY(cmd[2])];
+      subpathStart = cursor;
+      commands.push(`${n(cursor[0])} ${n(cursor[1])} m`);
+    } else if (command === 'L' && cursor) {
+      cursor = [finiteNumber(cmd[1]), flipY(cmd[2])];
+      commands.push(`${n(cursor[0])} ${n(cursor[1])} l`);
+    } else if (command === 'Q' && cursor) {
+      const qx = finiteNumber(cmd[1]);
+      const qy = flipY(cmd[2]);
+      const ex = finiteNumber(cmd[3]);
+      const ey = flipY(cmd[4]);
+      const c1x = cursor[0] + (2 / 3) * (qx - cursor[0]);
+      const c1y = cursor[1] + (2 / 3) * (qy - cursor[1]);
+      const c2x = ex + (2 / 3) * (qx - ex);
+      const c2y = ey + (2 / 3) * (qy - ey);
+      commands.push(`${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(ex)} ${n(ey)} c`);
+      cursor = [ex, ey];
+    } else if (command === 'C' && cursor) {
+      const ex = finiteNumber(cmd[5]);
+      const ey = flipY(cmd[6]);
+      commands.push(
+        `${n(finiteNumber(cmd[1]))} ${n(flipY(cmd[2]))} ${n(finiteNumber(cmd[3]))} ${n(flipY(cmd[4]))} ${n(ex)} ${n(ey)} c`,
+      );
+      cursor = [ex, ey];
+    } else if (command === 'Z' && cursor) {
+      commands.push('h');
+      cursor = subpathStart;
+    }
+  });
+  return commands;
+};
+
 const attachIndependentShapeAppearance = (pdfDoc, annotationDict, {
   formWidth,
   formHeight,
@@ -1900,6 +1947,39 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
         S: PDFName.of('C'),
         I: PDFNumber.of(Math.max(1, Number.isFinite(cloudIntensity) ? cloudIntensity : 2)),
       });
+      // Cloudy Square used to skip /AP so /BE could generate the scallops.
+      // Independent fill vs stroke fade then never reached Acrobat — /IC
+      // stayed hex-only and flatten already applied /ca. Attach a faded
+      // /AP only when /ca or /CA is needed; opaque clouds still omit /AP
+      // so viewers keep native /BE scallops.
+      const fillAlpha = fill?.visible ? fill.opacity : 0;
+      const strokeAlpha = stroke?.visible ? stroke.opacity : 0;
+      const needsFade = Boolean(
+        (fill?.visible && fillAlpha < 0.99999)
+        || (stroke?.visible && strokeAlpha < 0.99999)
+      );
+      if (needsFade) {
+        const cloudCmds = buildCloudPathCommands(
+          [
+            { x: 0, y: 0 },
+            { x: width, y: 0 },
+            { x: width, y: height },
+            { x: 0, y: height },
+          ],
+          Number.isFinite(cloudIntensity) ? cloudIntensity : 2,
+          stroke.visible ? (stroke.width || fabricObj.strokeWidth || 1) : 1,
+        );
+        const pathCommands = fabricPathCommandsToPdf(cloudCmds, { flipHeight: height });
+        attachIndependentShapeAppearance(pdfDoc, annotationDict, {
+          formWidth: width,
+          formHeight: height,
+          fill,
+          stroke,
+          pathCommands: pathCommands.length
+            ? pathCommands
+            : [`0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`],
+        });
+      }
     } else {
       attachIndependentShapeAppearance(pdfDoc, annotationDict, {
         formWidth: width,
