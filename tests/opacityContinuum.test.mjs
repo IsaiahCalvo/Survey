@@ -69,9 +69,9 @@ test('transparentMode remembers slider percent; Match Fill can sit below border 
   assert.equal(clampOpacityPercent(match.opacity * 100, 1), 100);
 });
 
-test('desktop Border tab floors opacity at 100; Fill / Line stay 0–100', () => {
+test('desktop Border tab minOpacity is 0; one-visible stays the applyChange bump', () => {
   const shell = read('src/AppShell.jsx');
-  assert.match(shell, /minOpacity=\{\(shapeOneVisibleRule && !onFillTab\) \? 1 : 0\}/);
+  assert.match(shell, /minOpacity=\{0\}/);
   assert.match(shell, /shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0/);
   const picker = read('src/components/CompactColorPicker.jsx');
   assert.match(picker, /aria-label="Opacity percentage"/);

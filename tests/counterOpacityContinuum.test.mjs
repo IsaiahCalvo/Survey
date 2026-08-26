@@ -26,11 +26,11 @@ test('Counter Fill/Number use the 0–100 continuum (no Border minOpacity=1 floo
     /const shapeOneVisibleRule = bottomToolbarApi\.contextTool === 'rect'\s*\n\s*\|\| bottomToolbarApi\.contextTool === 'ellipse';/,
   );
   assert.ok(oneVisible, 'Counter must not inherit rect/ellipse minOpacity=1');
-  assert.match(shell, /minOpacity=\{\(shapeOneVisibleRule && !onFillTab\) \? 1 : 0\}/);
+  assert.match(shell, /minOpacity=\{0\}/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(mobile, /tool === 'rect' \|\| tool === 'ellipse'/);
-  assert.match(mobile, /minOpacity: 1/);
+  assert.match(mobile, /minOpacity: 0/);
   assert.doesNotMatch(
     mobile,
     /tool === 'counter'[\s\S]{0,80}minOpacity:\s*1/,

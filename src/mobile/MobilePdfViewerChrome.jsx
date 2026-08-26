@@ -877,8 +877,13 @@ export function MobileToolProperties({ api }) {
         showOpacity: typeof api.handleFillOpacityChange === 'function',
         firstPreset: 'transparent',
         onChange: (hex, alpha) => {
+          const next = Math.round((alpha ?? 1) * 100);
+          // One-visible is the bump, not a 100% Border floor. Same AppShell rule.
+          if ((tool === 'rect' || tool === 'ellipse') && next <= 0 && (api.strokeOpacity ?? 100) <= 0) {
+            api.handleStrokeOpacityChange?.(100);
+          }
           api.handleFillColorChange?.(hex);
-          api.handleFillOpacityChange?.(Math.round((alpha ?? 1) * 100));
+          api.handleFillOpacityChange?.(next);
         },
       }
       : colorPicker === 'stroke'
@@ -887,16 +892,22 @@ export function MobileToolProperties({ api }) {
           color: toHexColor(api.strokeColor, '#ff0000'),
           opacity: Math.max(0, Math.min(1, (api.strokeOpacity ?? 100) / 100)),
           showOpacity: typeof api.handleStrokeOpacityChange === 'function',
-          // Rect/ellipse: Match Fill + opaque stroke (same one-visible rule as AppShell).
+          // Rect/ellipse: Match Fill. One-visible is the onChange bump, not a
+          // 100% Border floor. minOpacity 1 locked Color Opacity on
+          // rect-mapped imported polygons so a live fade never reached persist.
           ...(tool === 'rect' || tool === 'ellipse'
             ? {
               firstPreset: { kind: 'match', color: toHexColor(api.fillColor, '#ffffff'), opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)) },
-              minOpacity: 1,
+              minOpacity: 0,
             }
             : { firstPreset: 'transparent' }),
           onChange: (hex, alpha) => {
+            const next = Math.round((alpha ?? 1) * 100);
+            if ((tool === 'rect' || tool === 'ellipse') && next <= 0 && (api.fillOpacity ?? 100) <= 0) {
+              api.handleFillOpacityChange?.(100);
+            }
             api.handleStrokeColorChange?.(hex);
-            api.handleStrokeOpacityChange?.(Math.round((alpha ?? 1) * 100));
+            api.handleStrokeOpacityChange?.(next);
           },
         }
         : null;

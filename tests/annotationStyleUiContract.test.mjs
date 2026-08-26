@@ -71,9 +71,9 @@ test('live CompactColorPicker sites are AppShell, mobile, templates, and legacy 
   assert.match(appShell, /firstPreset="none"/);
   assert.match(appShell, /showOpacity=\{false\}/);
   assert.match(appShell, /firstPreset=\{\(shapeOneVisibleRule && !onFillTab\)/);
-  assert.match(appShell, /minOpacity=\{\(shapeOneVisibleRule && !onFillTab\) \? 1 : 0\}/);
+  assert.match(appShell, /minOpacity=\{0\}/);
   assert.match(mobile, /firstPreset: \{ kind: 'match'/);
-  assert.match(mobile, /minOpacity: 1/);
+  assert.match(mobile, /minOpacity: 0/);
   assert.match(mobile, /minOpacity=\{colorPickerConfig\.minOpacity\}/);
   assert.match(templates, /<CompactColorPicker/);
   assert.match(pal, /<CompactColorPicker/);

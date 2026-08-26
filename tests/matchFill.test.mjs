@@ -48,14 +48,14 @@ test('desktop + 390 Border firstPreset is Match Fill; Fill / Line / Text omit it
   assert.match(shell, /firstPreset=\{\(shapeOneVisibleRule && !onFillTab\)/);
   assert.match(shell, /kind: 'match', color: bottomToolbarApi\.fillColor/);
   assert.match(shell, /opacity: \(bottomToolbarApi\.fillOpacity \?\? 100\) \/ 100/);
-  assert.match(shell, /minOpacity=\{\(shapeOneVisibleRule && !onFillTab\) \? 1 : 0\}/);
+  assert.match(shell, /minOpacity=\{0\}/);
   assert.match(shell, /shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0/);
   assert.match(shell, /const shapeOneVisibleRule = bottomToolbarApi\.contextTool === 'rect'/);
 
   const mobile = read('src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(mobile, /firstPreset: \{ kind: 'match', color: toHexColor\(api\.fillColor/);
   assert.match(mobile, /tool === 'rect' \|\| tool === 'ellipse'/);
-  assert.match(mobile, /minOpacity: 1/);
+  assert.match(mobile, /minOpacity: 0/);
 
   const text = read('tests/textColors.test.mjs');
   assert.match(text, /no Match Fill/);

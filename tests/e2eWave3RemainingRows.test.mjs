@@ -44,10 +44,10 @@ test('font-color picker is opaque: no transparent cell, no opacity slider', () =
   assert.equal(none.kind, 'transparent');
 });
 
-test('stroke pickers pass minOpacity=1 and Match Fill', () => {
-  assert.match(appShell, /minOpacity=\{\(shapeOneVisibleRule && !onFillTab\) \? 1 : 0\}/);
+test('stroke pickers pass minOpacity=0 and Match Fill', () => {
+  assert.match(appShell, /minOpacity=\{0\}/);
   const mobile = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
-  assert.match(mobile, /minOpacity: 1/);
+  assert.match(mobile, /minOpacity: 0/);
   assert.match(mobile, /kind: 'match'/);
   const locked = applyColorPickerSelection({
     input: '#000000',
