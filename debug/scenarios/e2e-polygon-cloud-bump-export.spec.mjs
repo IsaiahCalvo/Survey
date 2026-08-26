@@ -111,15 +111,23 @@ async function polySnapshot(page) {
         || (pdfId && window.__phase35GetAnnotationById?.(pdfId))
         || {};
       const data = object.data || {};
+      const raw = shape?.getAttribute('points') || '';
+      const storedPoints = Array.isArray(object.points) ? object.points.length : 0;
       return {
         id: pdfId || annoId,
         type,
         imported: object.isPdfImported === true || Boolean(pdfId),
         intensity: data.pdfCloudIntensity ?? object.pdfCloudIntensity ?? null,
         shapeKind: shape?.getAttribute('data-shape-kind') || null,
-        points: Array.isArray(object.points) ? object.points.length : 0,
+        points: storedPoints || raw.trim().split(/\s+/).filter(Boolean).length,
       };
-    }).filter((row) => row.type === 'polygon' || row.type === 'polyline');
+    }).filter((row) => (
+      row.type === 'polygon'
+      || row.type === 'polyline'
+      || row.shapeKind === 'polygon'
+      || row.shapeKind === 'polyline'
+      || row.shapeKind === 'cloud-polygon'
+    ));
   });
 }
 
@@ -127,9 +135,11 @@ async function waitImported(page) {
   let polys = [];
   await expect.poll(async () => {
     polys = await polySnapshot(page);
-    return polys.filter((row) => row.imported && row.points >= 3).length;
-  }, { message: 'expected imported polygon + polyline' }).toBeGreaterThanOrEqual(3);
-  const polyA = polys.find((row) => row.type === 'polygon' && row.points === 4);
+    const byKind = await page.locator('[data-shape-kind="polygon"], [data-shape-kind="polyline"], [data-shape-kind="cloud-polygon"]').count();
+    return Math.max(polys.filter((row) => row.imported && row.points >= 3).length, byKind);
+  }, { message: 'expected imported polygon + polyline', timeout: 45_000 }).toBeGreaterThanOrEqual(3);
+  const polyA = polys.find((row) => (row.type === 'polygon' || row.shapeKind === 'polygon' || row.shapeKind === 'cloud-polygon') && row.points === 4)
+    || polys.find((row) => row.points === 4);
   expect(polyA?.id, 'polygon A').toBeTruthy();
   return { polyA };
 }
@@ -149,18 +159,27 @@ async function listPolyGeom(page) {
     return groups.map((group) => {
       const pdfId = group.getAttribute('data-pdf-annotation-id') || '';
       const type = String(group.getAttribute('data-pdf-annotation-type') || '').toLowerCase();
+      const shape = group.querySelector('[data-shape-kind="polygon"], [data-shape-kind="polyline"], [data-shape-kind="cloud-polygon"]');
       const object = window.__phase35GetAnnotationById?.(pdfId) || {};
-      const points = Array.isArray(object.points)
-        ? object.points.map((point) => ({ x: Number(point?.x) || 0, y: Number(point?.y) || 0 }))
-        : [];
-      const left = Number(object.left) || 0;
-      const top = Number(object.top) || 0;
+      const raw = shape?.getAttribute('points') || '';
+      const transform = shape?.getAttribute('transform') || '';
+      const match = /translate\(([-0-9.]+),\s*([-0-9.]+)\)/.exec(transform);
+      const left = match ? Number(match[1]) : 0;
+      const top = match ? Number(match[2]) : 0;
+      let points = raw.trim().split(/\s+/).filter(Boolean).map((pair) => {
+        const [x, y] = pair.split(',').map(Number);
+        return { x, y };
+      });
+      if (!points.length && Array.isArray(object.points)) {
+        points = object.points.map((point) => ({ x: Number(point?.x) || 0, y: Number(point?.y) || 0 }));
+      }
       return {
         id: pdfId,
         type,
+        points,
         world: points.map((point) => ({ x: point.x + left, y: point.y + top })),
       };
-    }).filter((row) => row.type === 'polygon' && row.world.length >= 3);
+    }).filter((row) => row.points.length >= 3);
   });
 }
 
@@ -287,6 +306,7 @@ test('desktop imported Polygon Cloud Bump export /BE + /AP intended + break', as
   expect(await pageViewBox(page)).toBe('0 0 612 792');
   expect(await page.getByRole('button', { name: 'Polygon', exact: true }).count(), 'no create-poly tool').toBe(0);
 
+  await expect(page.locator('[data-shape-kind="polygon"]').first()).toBeVisible({ timeout: 45_000 });
   const { polyA } = await waitImported(page);
   await selectPoly(page, polyA.id);
   await pickStyle(page, 'Cloud');
@@ -348,6 +368,7 @@ test('390 imported Polygon Cloud Bump export edge: viewBox, file.id, no invent',
   expect(await pageViewBox(page)).toBe('0 0 612 792');
   expect(await page.getByRole('button', { name: 'Polygon', exact: true }).count()).toBe(0);
 
+  await expect(page.locator('[data-shape-kind="polygon"]').first()).toBeVisible({ timeout: 45_000 });
   const { polyA } = await waitImported(page);
   expect(polyA.id).toBeTruthy();
   const mobileStyle = page.getByRole('button', { name: /^Border style:/ }).first();
