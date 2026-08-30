@@ -6,6 +6,14 @@ const EPSILON = 1e-7;
 export const LASSO_SAMPLE_GAP_PX = 4;
 export const LASSO_SIMPLIFY_PX = 1.5;
 
+export function getLassoPointerSamples(event) {
+  const liveEvent = event?.nativeEvent || event;
+  const coalesced = liveEvent?.getCoalescedEvents?.();
+  return Array.isArray(coalesced) && coalesced.length > 0
+    ? coalesced
+    : liveEvent ? [liveEvent] : [];
+}
+
 export function getLassoModeFromTrail(points, threshold = 5) {
   if (!Array.isArray(points) || points.length < 2) return null;
   const startX = Number(points[0]?.x);

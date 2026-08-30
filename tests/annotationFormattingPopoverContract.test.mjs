@@ -60,3 +60,17 @@ test('annotation context changes dismiss the color panel and formatting peers', 
     'selection/tool context must be the dismissal dependency',
   );
 });
+
+test('text markup swatches anchor the shared color panel below the top sub-toolbar', () => {
+  assert.match(appShell, /const isTextMarkupPalette = \['text-markup', 'text-select'\]\.includes\(bottomToolbarApi\.contextTool\)/);
+  assert.match(appShell, /document\.getElementById\('chrome-sub-toolbar-host'\)\?\.getBoundingClientRect\?\.\(\)/);
+  assert.match(appShell, /position: isTextMarkupPalette \? 'fixed' : 'absolute'/);
+  assert.match(appShell, /zIndex: isTextMarkupPalette \? 5900 : 2000/);
+});
+
+test('desktop overlap mode stays available while creating or editing text marks', () => {
+  assert.match(
+    appShell,
+    /\{\['text-markup', 'text-select'\]\.includes\(bottomToolbarApi\.contextTool\) && bottomToolbarApi\.setTextMarkupOverlapMode/,
+  );
+});

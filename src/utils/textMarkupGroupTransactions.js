@@ -105,6 +105,33 @@ export function buildTextMarkupGroupCreateTransaction(annotationsByPage, annotat
   return action ? { action, nextByPage, created } : null;
 }
 
+export function buildRequestedRedactionSnapshot(annotationsByPage, createdEntries) {
+  const requestedAnnotations = new Set(
+    (createdEntries || [])
+      .map((entry) => entry?.annotation)
+      .filter(Boolean),
+  );
+  const requestedIds = new Set(
+    [...requestedAnnotations]
+      .map((annotation) => annotation?.data?.id || annotation?.id)
+      .filter(Boolean)
+      .map(String),
+  );
+
+  return Object.fromEntries(Object.entries(annotationsByPage || {}).map(([pageKey, page]) => {
+    const objects = pageObjects(page);
+    const filtered = objects.filter((annotation) => {
+      const isRedaction = isTextMarkupAnnotation(annotation)
+        && String(annotation.data.markupType || '').toLowerCase() === 'redact';
+      if (!isRedaction) return true;
+      if (requestedAnnotations.has(annotation)) return true;
+      const annotationId = annotation?.data?.id || annotation?.id;
+      return annotationId != null && requestedIds.has(String(annotationId));
+    });
+    return [pageKey, filtered.length === objects.length ? page : { ...page, objects: filtered }];
+  }));
+}
+
 const matchingRangeFingerprints = (sourceAnnotations) => new Set(
   (sourceAnnotations || [])
     .map(textMarkupRangeIdentityFingerprint)

@@ -13,6 +13,7 @@ import {
   adaptUnderline,
   adaptSquiggly,
   adaptStrikeOut,
+  adaptRedact,
   resolveAdapter,
 } from '../../../src/utils/pdfNativeExport/adapters/index.js';
 
@@ -244,6 +245,22 @@ test('adaptUnderline, adaptSquiggly, adaptStrikeOut share quad-point math', asyn
     );
     assert.equal(readSubtype(ctx.pdfDoc, ref), subtype);
   }
+});
+
+test('adaptRedact writes an opaque black appearance stream', async () => {
+  const ctx = await setupContext();
+  const ref = adaptRedact({
+    id: 'redact', type: 'group', exportType: 'redact', left: 10, top: 20, width: 80, height: 14,
+    fill: '#000000', opacity: 1,
+    data: {
+      selectedText: 'Private text',
+      quads: [{ x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 }],
+    },
+  }, ctx);
+  const dict = readDict(ctx.pdfDoc, ref);
+  assert.equal(dict.get(PDFName.of('Subtype')).decodeText(), 'Redact');
+  assert.deepEqual(readNumberArray(dict, 'IC'), [0, 0, 0]);
+  assert.ok(dict.lookup(PDFName.of('AP')).lookup(PDFName.of('N')), 'redaction must render in standard PDF viewers');
 });
 
 test('resolveAdapter picks the right per-type adapter', () => {

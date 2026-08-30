@@ -5,10 +5,15 @@ import textItalicUrl from './assets/icons/text-italic.svg';
 import textUnderlineUrl from './assets/icons/text-underline.svg';
 import textStrikethroughUrl from './assets/icons/text-strikethrough.svg';
 import textHighlightUrl from './assets/icons/text-highlight.svg';
+import highlighterToolUrl from './assets/icons/highlighter-tool.svg';
+import selectionCursorUrl from './assets/icons/selection-cursor-rounded.svg';
+import lassoSelectUrl from './assets/icons/lasso-select-rounded.svg';
+import textSelectUrl from './assets/icons/text-select-rounded.svg';
 import textSquiggleUrl from './assets/icons/text-squiggle.svg';
 import textHyperlinkUrl from './assets/icons/text-hyperlink.svg';
 import textRedactUrl from './assets/icons/text-redact.svg';
-import panHandUrl from './assets/icons/pan-hand.svg';
+import panHandUrl from './assets/icons/pan-hand-closed.svg';
+import counterIconUrl from './assets/icons/counter.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
@@ -261,12 +266,7 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    counter: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <circle cx="13" cy="11" r="8" stroke={color} strokeWidth="1.5" fill="none" />
-        <text x="13" y="11" fill={color} fontSize="10" fontWeight="700" fontFamily="-apple-system, system-ui, sans-serif" textAnchor="middle" dominantBaseline="central">1</text>
-      </svg>
-    ),
+    counter: (size, color, style, className) => renderMaskIcon(counterIconUrl, size, color, style, className),
 
     note: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
@@ -473,6 +473,10 @@ const ICON_RENDERERS = {
     formatUnderline: (size, color, style, className) => renderMaskIcon(textUnderlineUrl, size, color, style, className, size * 0.89),
     formatStrikethrough: (size, color, style, className) => renderMaskIcon(textStrikethroughUrl, size, color, style, className, size * 1.04),
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
+    highlighterTool: (size, color, style, className) => renderMaskIcon(highlighterToolUrl, size, color, style, className),
+    selectCursor: (size, color, style, className) => renderMaskIcon(selectionCursorUrl, size, color, style, className),
+    lassoSelect: (size, color, style, className) => renderMaskIcon(lassoSelectUrl, size, color, style, className),
+    textSelect: (size, color, style, className) => renderMaskIcon(textSelectUrl, size, color, style, className),
     formatSquiggle: (size, color, style, className) => renderMaskIcon(textSquiggleUrl, size, color, style, className),
     formatHyperlink: (size, color, style, className) => renderMaskIcon(textHyperlinkUrl, size, color, style, className),
     formatRedact: (size, color, style, className) => renderMaskIcon(textRedactUrl, size, color, style, className),
@@ -589,7 +593,7 @@ const ICON_RENDERERS = {
 };
 
 const ICON_ALIASES = {
-  highlighter: 'formatHighlight',
+  highlighter: 'highlighterTool',
   pan: 'formatPan',
   underline: 'formatUnderline',
   strikeout: 'formatStrikethrough',

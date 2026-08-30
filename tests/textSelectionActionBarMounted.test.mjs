@@ -14,20 +14,31 @@ import { transformWithOxc } from 'vite';
 const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
-const LOCKED_ICON_HASHES = {
-  'text-highlight.svg': 'bec73bf6a22f160f84be3ffb0b9ca690204d6c6ba3e40044b18e3b88a35774fb',
-  'text-underline.svg': '50bd6023c5e7b643125591178074aa18be9b4d2745b292397b7b93c6c04d5e3e',
-  'text-squiggle.svg': 'a34b3a2e94e1da54b235cae8558e2154b46a095258c886009a60f69dcc94e73f',
-  'text-strikethrough.svg': 'e2cb9f2a468708a423d5a803bf55e800acb4daf73186875363e300fe626adf3a',
-  'text-hyperlink.svg': '718065400f7b6d76eb2bb7b714a8b4e680fbfea852a8e79a6f3fbe9c9d946ed5',
+const ACCEPTED_ICON_HASHES = {
+  'pan-hand-closed.svg': '0d4771fd7ba8908ce964de0c36b556194496e53ba0a25db314ac0b082119c2e5',
+  'text-highlight.svg': 'bfe4a937890f2bd90e59aa3eb8d2f9e3e0224bd77c9c7a2f3e75919f21e6e932',
+  'text-underline.svg': '55c5967c981f7ccaf9389884ccde723f1cd3334564424f10b83a8c12d89c9f88',
+  'text-squiggle.svg': '5d758e7ceef171af4c6a20d10844dec95860144d93e6fa6a0225c95ba9fa6c40',
+  'text-strikethrough.svg': 'b159301bb729612e95870d663bc2fbae256ee3022f94ff89354a923f93a173ba',
+  'text-hyperlink.svg': 'bea3b7fc712ed3c0729016b565c9392769dd4a697a1eae63b1dc0418ba127020',
   'text-redact.svg': '6ac08792f31d89e479d91c603dbded96e383215de9a9bb1b7aa736dce1f6f4ac',
 };
 
-test('shared text markup icons stay byte-exact to the locked handoff assets', async () => {
-  for (const [fileName, expectedHash] of Object.entries(LOCKED_ICON_HASHES)) {
+test('shared accepted icons stay byte-exact to the accepted icon lineup', async () => {
+  for (const [fileName, expectedHash] of Object.entries(ACCEPTED_ICON_HASHES)) {
     const bytes = await readFile(path.join(repoRoot, 'src/assets/icons', fileName));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash, fileName);
   }
+});
+
+test('pan icon uses the approved closed-wrist asset and inset size', async () => {
+  const iconsSource = await readFile(path.join(repoRoot, 'src/Icons.jsx'), 'utf8');
+  assert.match(iconsSource, /import panHandUrl from '.\/assets\/icons\/pan-hand-closed\.svg'/);
+  assert.doesNotMatch(iconsSource, /import panHandUrl from '.\/assets\/icons\/pan-hand\.svg'/);
+  assert.match(
+    iconsSource,
+    /formatPan:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(panHandUrl, size, color, style, className, size \* 0\.88\)/,
+  );
 });
 
 async function loadActionBar() {
@@ -36,7 +47,7 @@ async function loadActionBar() {
   let source = await readFile(componentPath, 'utf8');
   source = source.replace(
     "import Icon from '../Icons';",
-    "const Icon = ({ name, color, style }) => <span data-icon-name={name} data-icon-color={color} style={style} />;",
+    "const Icon = ({ name, color, size, style }) => <span data-icon-name={name} data-icon-color={color} data-icon-size={size} style={style} />;",
   );
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
@@ -88,23 +99,38 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     await act(async () => root.render(React.createElement(Harness)));
     const toolbar = document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]');
     assert.ok(toolbar);
-    assert.equal(toolbar.style.gap, 'clamp(2px, 0.7vw, 16px)');
+    assert.equal(toolbar.style.height, '35px');
+    assert.equal(toolbar.style.minHeight, '35px');
+    assert.equal(toolbar.style.gap, 'clamp(1px, 0.6vw, 12px)');
     assert.equal(toolbar.style.overflowX, 'auto');
     assert.equal(toolbar.style.justifyContent, 'safe center');
-    assert.equal(document.querySelector('[data-text-mark-control="highlight"]').style.padding, '0px');
-    assert.equal(document.querySelector('button[aria-label="Set Highlight color"]').style.width, '32px');
+    const highlightControl = document.querySelector('[data-text-mark-control="highlight"]');
+    assert.equal(highlightControl.style.height, '31px');
+    assert.equal(highlightControl.style.padding, '0px');
+    assert.equal(highlightControl.style.borderColor, 'transparent');
+    assert.equal(highlightControl.style.background, 'transparent');
+    assert.equal(document.querySelector('button[aria-label="Set Highlight color"]').style.width, '28px');
     for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
       assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
     assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
     assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
+    await act(async () => document.querySelector('button[aria-label="Remove Highlight"]').click());
+    assert.equal(document.querySelector('button[aria-label="Apply Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
+    await act(async () => document.querySelector('button[aria-label="Apply Highlight"]').click());
+    assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
+    for (const icon of document.querySelectorAll('[data-icon-name]:not([data-icon-name="formatRedact"])')) {
+      assert.equal(icon.getAttribute('data-icon-size'), '18');
+    }
+    assert.equal(document.querySelector('[data-icon-name="formatRedact"]').getAttribute('data-icon-size'), '21');
+    assert.equal(document.querySelector('button[aria-label*="redaction"][aria-label*="permanently"]'), null);
     const underline = document.querySelector('button[aria-label="Apply Underline"]');
     await act(async () => underline.click());
-    assert.deepEqual(actions, ['underline']);
+    assert.deepEqual(actions, ['highlight', 'highlight', 'underline']);
     assert.equal(document.querySelector('button[aria-label="Remove Underline"]').getAttribute('aria-pressed'), 'true');
     await act(async () => document.querySelector('button[aria-label="Set Underline color"]').click());
     assert.deepEqual(focused, ['underline']);
-    assert.equal(document.querySelector('[data-text-mark-control="underline"]').style.borderColor, 'rgb(229, 173, 24)');
+    assert.equal(document.querySelector('[data-text-mark-control="underline"]').style.borderColor, 'transparent');
     await act(async () => document.querySelector('button[aria-label="Add Hyperlink"]').click());
     const linkForm = document.querySelector('form[aria-label="Hyperlink controls"]');
     assert.ok(linkForm);
@@ -113,6 +139,27 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.ok(document.querySelector('[data-text-link-actions="true"]'));
     await act(async () => document.querySelector('form[aria-label="Hyperlink controls"] button[aria-pressed="false"]').click());
     assert.equal(document.querySelector('input[aria-label="Page number"]')?.getAttribute('inputmode'), 'numeric');
+  } finally {
+    await act(async () => root.unmount());
+    await cleanup();
+    dom.window.close();
+    for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
+  }
+});
+
+test('the text markup strip is hidden after text selection is dismissed and has no separate Apply Redactions button', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true });
+  const { ActionBar, cleanup } = await loadActionBar();
+  const root = createRoot(document.getElementById('root'));
+  try {
+    await act(async () => root.render(React.createElement(ActionBar, {
+      selection: null,
+      pendingRedactionCount: 1,
+      onApplyRedactions: () => {},
+    })));
+    assert.equal(document.querySelector('[data-text-selection-action-bar="true"]'), null);
+    assert.equal(document.querySelector('button[aria-label*="redaction"][aria-label*="permanently"]'), null);
   } finally {
     await act(async () => root.unmount());
     await cleanup();

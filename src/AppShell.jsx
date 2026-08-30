@@ -42,7 +42,7 @@ import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
-import { getSelectFamilyLabel, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -1473,7 +1473,7 @@ export default function App({ devPreviewReturnTab = null }) {
               }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
-                { id: 'select', label: 'Select', iconName: 'cursor' }
+                { id: 'select', label: 'Select', iconName: 'selectCursor' }
               ].map(t => {
                 // Select-family modes share one list with mobile so the main
                 // button and menu stay ready for future modes. The button keeps working
@@ -1528,7 +1528,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     borderBottomRightRadius: 0,
                   } : undefined}
                 >
-                  <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />
+                  <Icon name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName} size={16} />
                 </button>
                 {isSelect && (
                   <button
@@ -1637,7 +1637,10 @@ export default function App({ devPreviewReturnTab = null }) {
                           onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}
                           style={optionStyle}
                         >
-                          <span>{opt.label}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Icon name={getSelectModeIconName(opt.mode)} size={16} color="currentColor" />
+                            <span>{opt.label}</span>
+                          </span>
                           <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
                         </button>
                       );
@@ -2369,6 +2372,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     || bottomToolbarApi.contextTool === 'ellipse';
                   const currentColor = onFillTab ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor;
                   const currentOpacity = onFillTab ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : (bottomToolbarApi.strokeOpacity / 100);
+                  const isTextMarkupPalette = ['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool);
+                  const textMarkupPaletteHostRect = isTextMarkupPalette
+                    ? document.getElementById('chrome-sub-toolbar-host')?.getBoundingClientRect?.()
+                    : null;
                   const applyChange = (hex, alpha) => {
                     if (onFillTab) {
                       const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
@@ -2388,12 +2395,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   };
                   return (
                     <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
-                      position: 'absolute',
-                      top: '100%',
+                      position: isTextMarkupPalette ? 'fixed' : 'absolute',
+                      top: isTextMarkupPalette ? (textMarkupPaletteHostRect?.bottom || 35) + 8 : '100%',
                       left: '50%',
-                      marginTop: '10px',
+                      marginTop: isTextMarkupPalette ? 0 : '10px',
                       transform: 'translate(-50%, 0)',
-                      zIndex: 2000
+                      zIndex: isTextMarkupPalette ? 5900 : 2000
                     }}>
                       {isShape && (
                         <div style={{
@@ -2459,7 +2466,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     </div>
                   );
                 })()}
-                {bottomToolbarApi.contextTool === 'text-markup' && bottomToolbarApi.setTextMarkupOverlapMode && (
+                {['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool) && bottomToolbarApi.setTextMarkupOverlapMode && (
                   <select
                     aria-label="Highlight overlap mode"
                     title="Layered keeps editable native PDF highlights. Uniform keeps one visual strength and exports as a flat mask so other PDF viewers match Survey."

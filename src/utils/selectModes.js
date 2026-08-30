@@ -8,6 +8,16 @@ export const SELECT_MODE_STORAGE_KEY = 'lastSelectMode';
 
 const isSelectMode = (mode) => SELECT_MODE_OPTIONS.some((option) => option.mode === mode);
 
+export function getSelectModeIconName(mode = 'rectangle') {
+  if (mode === 'lasso') return 'lassoSelect';
+  if (mode === 'text') return 'textSelect';
+  return 'selectCursor';
+}
+
+export function getSelectFamilyIconName(activeTool, selectionMode = 'rectangle') {
+  return getSelectModeIconName(activeTool === 'text-select' ? 'text' : selectionMode);
+}
+
 export function getSelectFamilyTransition(mode = 'rectangle') {
   const selectionMode = isSelectMode(mode) ? mode : 'rectangle';
   return {

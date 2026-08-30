@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { getCounterRenderGeometry } from '../src/utils/counterGeometry.js';
 
 const read = (relativePath) => {
@@ -13,6 +14,15 @@ const mobileChromeSource = read('../src/mobile/MobilePdfViewerChrome.jsx');
 const colorPickerSource = read('../src/components/CompactColorPicker.jsx');
 const sizeControlSource = read('../src/components/AnnotationSizeControl.jsx');
 const packageSource = read('../package.json');
+const iconsSource = read('../src/Icons.jsx');
+const counterIcon = readFileSync(new URL('../src/assets/icons/counter.svg', import.meta.url));
+
+test('counter tool uses the approved custom icon in every shared toolbar', () => {
+  assert.equal(createHash('sha256').update(counterIcon).digest('hex'), 'c0e643ddfe6689d0bea4428e2f240f69968602eeb8a5e43498248a2a14e27843');
+  assert.match(iconsSource, /import counterIconUrl from '.\/assets\/icons\/counter\.svg'/);
+  assert.match(iconsSource, /counter:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(counterIconUrl, size, color, style, className\)/);
+  assert.doesNotMatch(iconsSource, /<circle cx="13" cy="11" r="8"/);
+});
 
 test('counter pin geometry stays proportional at every supported radius', () => {
   const extensionRatio = (radius) => {

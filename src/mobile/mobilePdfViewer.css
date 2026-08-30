@@ -733,7 +733,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   max-width: none;
   height: 36px;
   min-height: 36px;
-  padding: 0 8px;
+  /* The strip starts after the 44px tool rail, but its controls align with
+     the page navigation in the full-width header above. The extra right
+     padding cancels half of that rail offset. */
+  padding: 0 52px 0 8px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -760,6 +763,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      to it. Anchor the row at its scroll origin so every control is reachable. */
   height: 52px;
   min-height: 52px;
+  padding-right: 8px;
   justify-content: flex-start;
   scroll-padding-inline: 8px;
   touch-action: pan-x;

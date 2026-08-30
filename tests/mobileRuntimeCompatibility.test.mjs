@@ -219,11 +219,11 @@ test('mobile shells lock page zoom without disabling app-controlled PDF pinch', 
   assert.match(PDFJS_VIEWER_SOURCE, /event\.touches\.length >= 2/);
 });
 
-test('mobile selected text exposes only the shared text markup toolbar', () => {
+test('mobile selected text exposes the shared toolbar and its shared color picker', () => {
   assert.match(PDF_VIEWER_SOURCE, /hasLiveTextSelection:\s*!!liveTextSelection\?\.pages\?\.length/);
   assert.match(
     MOBILE_VIEWER_CHROME_SOURCE,
-    /if \(textMarkup\.active\) \{\s*if \(textMarkup\.sharedToolbarActive\) return null;/,
+    /if \(textMarkup\.sharedToolbarActive\) \{[\s\S]*?api\.showAnnotationColorPicker[\s\S]*?<MobileColorPickerSurface/,
   );
 });
 

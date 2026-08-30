@@ -44,6 +44,9 @@ const ALLOWED_LICENSES = new Set([
   'BlueOak-1.0.0',
   'Python-2.0',  // permissive, GPL-compatible — used only by transitive `argparse`
   'Zlib',        // permissive — appears compound with MIT in `pako` (`(MIT AND Zlib)`)
+  // SIL's font license permits bundling, use, and redistribution. It applies
+  // only to EmbedPDF's fallback font files, not to Survey source code.
+  'OFL-1.1',
 ]);
 
 const PACKAGE_NAME_WAIVERS = [];

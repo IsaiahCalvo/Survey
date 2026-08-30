@@ -182,6 +182,7 @@ test('live PDF export writes selected-text links and redaction annotations', asy
   const [link, redact] = await getPdfAnnotationDicts(bytes);
   assert.equal(link.lookup(PDFName.of('A')).lookup(PDFName.of('URI')).decodeText(), 'https://example.com/docs');
   assert.equal(redact.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
+  assert.ok(redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N')), 'exported redaction needs a black appearance');
 });
 
 test('live PDF export writes selected-text page links as GoTo actions', async () => {

@@ -72,4 +72,5 @@ test('mobile text markup toolbar wires color, opacity, overlap, and the action-b
   assert.match(source, /minOpacity=\{0\.05\}/);
   assert.match(source, /ariaLabel="Highlight overlap mode"/);
   assert.match(source, /api\.setTextMarkupOverlapMode\?\.\(value\)/);
+  assert.match(source, /if \(textMarkup\.sharedToolbarActive\) \{[\s\S]*?api\.showAnnotationColorPicker[\s\S]*?<MobileColorPickerSurface/);
 });

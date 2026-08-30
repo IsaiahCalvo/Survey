@@ -8,7 +8,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
-import { getSelectFamilyLabel, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
@@ -774,9 +774,23 @@ export function MobileToolProperties({ api }) {
   }
 
   if (textMarkup.active) {
-    if (textMarkup.sharedToolbarActive) return null;
     const markupColor = toHexColor(textMarkup.color, '#f4d35e');
     const markupOpacity = textMarkup.opacity / 100;
+    if (textMarkup.sharedToolbarActive) {
+      return api.showAnnotationColorPicker ? (
+        <MobileColorPickerSurface
+          title="Text markup color"
+          color={markupColor}
+          opacity={markupOpacity}
+          minOpacity={0.05}
+          onChange={(hex, alpha) => {
+            api.handleStrokeColorChange?.(hex);
+            api.handleStrokeOpacityChange?.(Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100));
+          }}
+          onClose={() => api.setShowAnnotationColorPicker?.(false)}
+        />
+      ) : null;
+    }
     return (
       <>
         <div
@@ -1540,7 +1554,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 );
               }}
             >
-              <Icon name={activeTool === 'text-select' ? 'text' : 'cursor'} size={19} color="currentColor" />
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={19} color="currentColor" />
             </RailButton>
             <button
               ref={selectModeCaretRef}
@@ -1795,7 +1809,10 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                   className={selected ? 'is-active' : ''}
                   onClick={() => chooseSelectMode(option.mode)}
                 >
-                  <span>{option.label}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Icon name={getSelectModeIconName(option.mode)} size={17} color="currentColor" />
+                    <span>{option.label}</span>
+                  </span>
                   {selected && <Icon name="check" size={14} color="currentColor" />}
                 </button>
               );

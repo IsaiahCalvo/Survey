@@ -80,7 +80,8 @@ test('text action bar uses the locked SVG assets for every text markup action', 
   assert.doesNotMatch(textActionBarSource, /text-markup-[a-z-]+\.svg/);
   assert.doesNotMatch(textActionBarSource, /WebkitMask|mask: `url/);
   assert.match(textActionBarSource, /function ToolIcon/);
-  assert.match(textActionBarSource, /size=\{24\}/);
+  assert.match(textActionBarSource, /size = 18/);
+  assert.match(textActionBarSource, /name="formatRedact"[\s\S]{0,80}size=\{21\}/);
 });
 
 test('mobile delete long-press targets exposed annotation body instead of transform handles', () => {

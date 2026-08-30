@@ -45,6 +45,7 @@ import {
 import {
   getLassoPolygonValidation,
   getLassoModeFromTrail,
+  getLassoPointerSamples,
   cycleLassoMode,
   LASSO_SIMPLIFY_PX,
   resolveLassoHits,
@@ -1261,7 +1262,7 @@ export function useSVGInteraction({
     const lasso = lassoStateRef.current;
     if (lasso) {
       if (e.pointerId !== lasso.pointerId) return;
-      const sourceEvents = e.nativeEvent?.getCoalescedEvents?.() || [e];
+      const sourceEvents = getLassoPointerSamples(e);
       const nextPoints = [...lasso.points];
       for (const sourceEvent of sourceEvents) {
         const raw = screenToSVG(svgRef.current, sourceEvent.clientX, sourceEvent.clientY);

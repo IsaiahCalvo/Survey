@@ -70,6 +70,7 @@ import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import PdfjsTextLayer from './components/PdfjsTextLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
+import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
@@ -96,6 +97,7 @@ import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotatio
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
 import {
   buildAtomicTextMarkupPageMutation,
+  buildRequestedRedactionSnapshot,
   buildTextMarkupDocumentAction,
   buildTextMarkupGroupCreateTransaction,
   buildTextMarkupRangeToggleOffTransaction,
@@ -3387,8 +3389,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [counterUITick, setCounterUITick] = useState(0);
   const [highlighterCaretPopupOpen, setHighlighterCaretPopupOpen] = useState(false);
   const highlighterCaretPopupRef = useRef(null);
-  const [eraserCaretPopupOpen, setEraserCaretPopupOpen] = useState(false);
-  const eraserCaretPopupRef = useRef(null);
   const [underlineCaretPopupOpen, setUnderlineCaretPopupOpen] = useState(false);
   const underlineCaretPopupRef = useRef(null);
   const [strikeCaretPopupOpen, setStrikeCaretPopupOpen] = useState(false);
@@ -4244,26 +4244,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [highlighterCaretPopupOpen]);
 
   useEffect(() => {
-    if (!eraserCaretPopupOpen) return undefined;
-    const onDocClick = (e) => {
-      const root = eraserCaretPopupRef.current;
-      if (root && root.contains(e.target)) return;
-      const caret = document.querySelector('[data-eraser-caret-button="true"]');
-      if (caret && caret.contains(e.target)) return;
-      setEraserCaretPopupOpen(false);
-    };
-    const onKey = (e) => {
-      if (e.key === 'Escape') setEraserCaretPopupOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [eraserCaretPopupOpen]);
-
-  useEffect(() => {
     if (!underlineCaretPopupOpen) return undefined;
     const onDocClick = (e) => {
       const root = underlineCaretPopupRef.current;
@@ -4431,6 +4411,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Excel sync modals and state
   const [showExcelLockedModal, setShowExcelLockedModal] = useState(false);
   const [showExcelSyncConfirmModal, setShowExcelSyncConfirmModal] = useState(false);
+  const [applyRedactionsModalOpen, setApplyRedactionsModalOpen] = useState(false);
+  const [pendingRedactionRequest, setPendingRedactionRequest] = useState(null);
+  const [applyRedactionsBusy, setApplyRedactionsBusy] = useState(false);
+  const [applyRedactionsProgress, setApplyRedactionsProgress] = useState(null);
+  const [applyRedactionsError, setApplyRedactionsError] = useState('');
   const [excelLockedFilePath, setExcelLockedFilePath] = useState('');
   const [excelLockedIsOneDrive, setExcelLockedIsOneDrive] = useState(false);
   const [pendingExcelSyncCallback, setPendingExcelSyncCallback] = useState(null);
@@ -21069,6 +21054,95 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     surveyMarkers,
   ]);
 
+  const queuePermanentRedactionConfirmation = useCallback((transaction) => {
+    if (!transaction?.nextByPage || !transaction?.created?.length) return false;
+    setPendingRedactionRequest({
+      redactionCount: transaction.created.length,
+      annotationsByPage: buildRequestedRedactionSnapshot(transaction.nextByPage, transaction.created),
+    });
+    setApplyRedactionsError('');
+    setApplyRedactionsProgress(null);
+    setApplyRedactionsModalOpen(true);
+    return true;
+  }, []);
+
+  const handleApplyPermanentRedactions = useCallback(async () => {
+    if (!pdfFile || applyRedactionsBusy || !pendingRedactionRequest?.redactionCount) return;
+    const redactionAnnotationsByPage = pendingRedactionRequest.annotationsByPage;
+    setApplyRedactionsBusy(true);
+    setApplyRedactionsError('');
+    setApplyRedactionsProgress({ pageNumber: 0, pageCount: numPages || 0 });
+    try {
+      const [{ savePDFWithAnnotationsPdfLib }, { applyPermanentPdfRedactions }] = await Promise.all([
+        import('./utils/pdfAnnotationsPdfLib'),
+        import('./utils/permanentPdfRedaction.js'),
+      ]);
+      const annotatedBytes = await savePDFWithAnnotationsPdfLib(
+        pdfFile,
+        redactionAnnotationsByPage,
+        pageSizes,
+        null,
+        {
+          returnBytes: true,
+          actionType: 'pdf-apply-redactions-source',
+          documentId: pdfFile?.id || null,
+          callouts,
+          surveyMarkers,
+          spaces,
+          deletedPdfAnnotations,
+        },
+      );
+      const baseName = (pdfFile.name || 'document').replace(/\.pdf$/i, '');
+      const outputName = `${baseName}-redacted.pdf`;
+      const redactedBytes = await applyPermanentPdfRedactions({
+        annotatedPdfBytes: annotatedBytes,
+        annotationsByPage: redactionAnnotationsByPage,
+        onProgress: setApplyRedactionsProgress,
+      });
+
+      const api = window.electronAPI;
+      if (api?.saveFile) {
+        const result = await api.saveFile({
+          title: 'Save permanently redacted PDF',
+          defaultPath: outputName,
+          filters: [{ name: 'PDF files', extensions: ['pdf'] }],
+          data: Array.from(new Uint8Array(redactedBytes)),
+        });
+        if (result?.canceled) return;
+        if (result?.error) throw new Error(result.error);
+      } else {
+        const blob = new Blob([redactedBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = outputName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+      setApplyRedactionsModalOpen(false);
+      setPendingRedactionRequest(null);
+      showToast('Permanent redacted copy created. The open PDF was not changed.', 'success');
+    } catch (error) {
+      console.error('[ApplyRedactions] failed:', error);
+      setApplyRedactionsError(error?.message || 'Could not create the permanent redacted copy.');
+    } finally {
+      setApplyRedactionsBusy(false);
+      setApplyRedactionsProgress(null);
+    }
+  }, [
+    applyRedactionsBusy,
+    callouts,
+    deletedPdfAnnotations,
+    numPages,
+    pageSizes,
+    pdfFile,
+    pendingRedactionRequest,
+    spaces,
+    surveyMarkers,
+  ]);
+
   // Subscribe to the File menu item.
   useEffect(() => {
     if (typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
@@ -27971,6 +28045,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [pdfDoc, pdfFile?.id, pdfFile?.name]);
 
+  // Text Select pays the OCR cost only when the user asks for text interaction.
+  // A page with embedded text never starts OCR. A scanned page starts once when
+  // it becomes current, and the cache above prevents repeat work after reload.
+  useEffect(() => {
+    if (activeTool !== 'text-select') return;
+    if (textAvailabilityByPage[pageNum] !== false) return;
+    if (['running', 'complete', 'cancelled', 'error'].includes(ocrStateByPage[pageNum]?.status)) return;
+    recognizeTextOnPage(pageNum);
+  }, [activeTool, ocrStateByPage, pageNum, recognizeTextOnPage, textAvailabilityByPage]);
+
   const cancelTextRecognition = useCallback((pageNumber) => {
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
   }, []);
@@ -28331,6 +28415,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, transaction.nextByPage),
         };
       }
+      if (markupType === 'redact') {
+        queuePermanentRedactionConfirmation(transaction);
+        return;
+      }
       const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
         source: 'text-markup:stack',
         action: 'text-markup-create',
@@ -28376,11 +28464,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       markupType,
     );
     if (toggleOff && markupType !== 'link') {
-      commitTextMarkupDocumentTransaction(toggleOff, {
+      const committed = commitTextMarkupDocumentTransaction(toggleOff, {
         source: 'text-markup:toggle-off-live-selection',
         action: 'text-markup-delete',
         selectionGroupIds: toggleOff.removedSelectionGroupIds,
       });
+      if (committed) {
+        window.requestAnimationFrame(() => {
+          restorePdfjsTextSelection(selection);
+          capturePdfjsTextSelection();
+        });
+      }
       return;
     }
     const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
@@ -28391,18 +28485,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, transaction.nextByPage),
       };
     }
+    if (markupType === 'redact') {
+      queuePermanentRedactionConfirmation(transaction);
+      return;
+    }
     const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
         source: 'text-markup:create',
         action: 'text-markup-create',
         selectionGroupId,
       });
-    if (committed && markupType === 'link') {
+    if (committed) {
       window.requestAnimationFrame(() => {
         restorePdfjsTextSelection(selection);
         capturePdfjsTextSelection();
       });
-    } else if (committed) capturePdfjsTextSelection();
-  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
+    }
+  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -32752,7 +32850,7 @@ ${pageBlocks}
                   // to true only when KAL-240 lands the real implementation.
                   const showTextMarkupHighlightMenu = false;
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
-                  const hasSplitMenu = isEraser || isHighlighterSplitMenu;
+                  const hasSplitMenu = isHighlighterSplitMenu;
                   const isActiveHighlighter = activeTool === 'highlighter';
                   const isActive = isHighlighter ? isActiveHighlighter : activeTool === t.id;
                   const button = (
@@ -32769,12 +32867,10 @@ ${pageBlocks}
                         if (isEraser) {
                           e.stopPropagation();
                           setActiveTool('eraser');
-                          setEraserCaretPopupOpen(false);
                           return;
                         }
                         setActiveTool(t.id);
                         setHighlighterCaretPopupOpen(false);
-                        setEraserCaretPopupOpen(false);
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
@@ -32801,16 +32897,10 @@ ${pageBlocks}
                       {hasSplitMenu && (
                         <div
                           data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
-                          data-eraser-caret-button={isEraser ? 'true' : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isEraser) {
-                              setActiveTool('eraser');
-                              setEraserCaretPopupOpen((open) => !open);
-                            } else {
-                              setActiveTool('highlighter');
-                              setHighlighterCaretPopupOpen((open) => !open);
-                            }
+                            setActiveTool('highlighter');
+                            setHighlighterCaretPopupOpen((open) => !open);
                           }}
                           style={{
                             position: 'absolute',
@@ -32841,8 +32931,8 @@ ${pageBlocks}
 
                   let popupFixedTop = 0;
                   let popupFixedLeft = 0;
-                  const popupOpen = isHighlighterSplitMenu ? highlighterCaretPopupOpen : eraserCaretPopupOpen;
-                  const buttonSelector = isHighlighterSplitMenu ? '[data-highlighter-caret-button="true"]' : '[data-eraser-caret-button="true"]';
+                  const popupOpen = highlighterCaretPopupOpen;
+                  const buttonSelector = '[data-highlighter-caret-button="true"]';
                   if (popupOpen && typeof document !== 'undefined') {
                     const btnEl = document.querySelector(buttonSelector);
                     if (btnEl) {
@@ -32880,9 +32970,8 @@ ${pageBlocks}
                       {button}
                       {popupOpen && createPortal(
                         <div
-                          ref={isHighlighter ? highlighterCaretPopupRef : eraserCaretPopupRef}
+                          ref={highlighterCaretPopupRef}
                           data-highlighter-caret-popup={isHighlighterSplitMenu ? 'true' : undefined}
-                          data-eraser-caret-popup={isEraser ? 'true' : undefined}
                           style={{
                             position: 'fixed',
                             top: `${popupFixedTop}px`,
@@ -32897,7 +32986,7 @@ ${pageBlocks}
                             display: 'flex',
                             flexDirection: 'column',
                             padding: '4px',
-                            minWidth: isHighlighterSplitMenu ? '150px' : '142px',
+                            minWidth: '150px',
                             color: '#e8e2d4',
                             pointerEvents: 'auto',
                             cursor: 'default',
@@ -32914,65 +33003,32 @@ ${pageBlocks}
                             borderBottom: '1px solid #2a3140',
                             marginBottom: '4px'
                           }}>
-                            {isHighlighterSplitMenu ? 'SurveyMarker Type' : 'Eraser Type'}
+                            SurveyMarker Type
                           </div>
-                          {isHighlighterSplitMenu ? (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('highlighter');
-                                  setHighlighterCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(activeTool === 'highlighter')}
-                              >
-                                Freehand highlight
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('text-highlight');
-                                  setHighlighterCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(activeTool === 'text-highlight')}
-                              >
-                                Text highlight
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('eraser');
-                                  setEraserMode('partial');
-                                  setEraserCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'partial' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(eraserMode === 'partial')}
-                              >
-                                Partial erase
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('eraser');
-                                  setEraserMode('entire');
-                                  setEraserCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'entire' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(eraserMode === 'entire')}
-                              >
-                                Full stroke erase
-                              </button>
-                            </>
-                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTool('highlighter');
+                              setHighlighterCaretPopupOpen(false);
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
+                            style={optionStyle(activeTool === 'highlighter')}
+                          >
+                            Freehand highlight
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTool('text-highlight');
+                              setHighlighterCaretPopupOpen(false);
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
+                            style={optionStyle(activeTool === 'text-highlight')}
+                          >
+                            Text highlight
+                          </button>
                         </div>,
                         document.body
                       )}
@@ -37164,6 +37220,23 @@ ${pageBlocks}
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
+      {typeof document !== 'undefined' && createPortal(
+        <ApplyRedactionsModal
+          open={applyRedactionsModalOpen}
+          redactionCount={pendingRedactionRequest?.redactionCount || 0}
+          busy={applyRedactionsBusy}
+          progress={applyRedactionsProgress}
+          error={applyRedactionsError}
+          onCancel={() => {
+            if (applyRedactionsBusy) return;
+            setApplyRedactionsModalOpen(false);
+            setPendingRedactionRequest(null);
+            setApplyRedactionsError('');
+          }}
+          onConfirm={handleApplyPermanentRedactions}
+        />,
+        document.body,
+      )}
 
       {/* Phase 35 Plan 04 — bulk-delete confirmation modal + undo toast layer.
           Modal opens when handleRequestBulkDelete sets pendingDeletePlan to a

@@ -125,6 +125,47 @@ function buildTextMarkupDict({
   };
 }
 
+const pdfNumberText = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '0';
+  return String(Math.round(number * 100_000) / 100_000);
+};
+
+function attachOpaqueRedactAppearance(pdfDoc, dict) {
+  const rect = Array.isArray(dict?.Rect) ? dict.Rect.map(Number) : [];
+  const quadPoints = Array.isArray(dict?.QuadPoints) ? dict.QuadPoints.map(Number) : [];
+  if (rect.length !== 4 || quadPoints.length < 8 || quadPoints.length % 8 !== 0) return;
+  const [minX, minY, maxX, maxY] = rect;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  if (![minX, minY, maxX, maxY, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return;
+
+  const content = ['q', '0 0 0 rg'];
+  for (let index = 0; index < quadPoints.length; index += 8) {
+    const xs = [quadPoints[index], quadPoints[index + 2], quadPoints[index + 4], quadPoints[index + 6]];
+    const ys = [quadPoints[index + 1], quadPoints[index + 3], quadPoints[index + 5], quadPoints[index + 7]];
+    const left = Math.min(...xs) - minX;
+    const bottom = Math.min(...ys) - minY;
+    const quadWidth = Math.max(...xs) - Math.min(...xs);
+    const quadHeight = Math.max(...ys) - Math.min(...ys);
+    if (![left, bottom, quadWidth, quadHeight].every(Number.isFinite) || quadWidth <= 0 || quadHeight <= 0) continue;
+    content.push(`${pdfNumberText(left)} ${pdfNumberText(bottom)} ${pdfNumberText(quadWidth)} ${pdfNumberText(quadHeight)} re f`);
+  }
+  content.push('Q');
+  if (content.length <= 3) return;
+
+  const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+    Type: 'XObject',
+    Subtype: 'Form',
+    FormType: 1,
+    BBox: [0, 0, width, height],
+    Resources: {},
+  });
+  const appearanceRef = pdfDoc.context.register(appearance);
+  dict.AP = pdfDoc.context.obj({ N: appearanceRef });
+  dict.Border = [0, 0, 0];
+}
+
 export function adaptHighlight(fabricObj, { pdfDoc, page, pageHeight }) {
   const dict = buildTextMarkupDict({
     subtype: 'Highlight',
@@ -222,5 +263,6 @@ export function adaptRedact(fabricObj, { pdfDoc, page, pageHeight }) {
   dict.IC = [0, 0, 0];
   dict.C = [0, 0, 0];
   dict.CA = 1;
+  attachOpaqueRedactAppearance(pdfDoc, dict);
   return registerAnnotationDict(pdfDoc, dict);
 }

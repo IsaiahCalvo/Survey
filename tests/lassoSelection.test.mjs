@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getLassoPolygonValidation,
   getLassoModeFromTrail,
+  getLassoPointerSamples,
   cycleLassoMode,
   isPointInLasso,
   normalizeLassoPolygon,
@@ -11,6 +12,21 @@ import {
   shouldSampleLassoPoint,
   simplifyLassoPoints,
 } from '../src/utils/lassoSelection.js';
+
+test('lasso pointer sampling falls back to the live move when Chrome returns no coalesced events', () => {
+  const liveMove = { clientX: 42, clientY: 19 };
+  const event = {
+    nativeEvent: {
+      ...liveMove,
+      getCoalescedEvents: () => [],
+    },
+  };
+  assert.deepEqual(getLassoPointerSamples(event), [event.nativeEvent]);
+
+  const coalesced = [{ clientX: 40, clientY: 18 }, liveMove];
+  event.nativeEvent.getCoalescedEvents = () => coalesced;
+  assert.equal(getLassoPointerSamples(event), coalesced);
+});
 
 const box = (left, top, right, bottom) => [
   { x: left, y: top },

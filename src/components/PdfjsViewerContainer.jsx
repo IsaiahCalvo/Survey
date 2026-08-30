@@ -1551,10 +1551,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const isNativeInteractionTarget = (target) => {
-      if (isEditableTarget(target)) return true;
-      if (target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
+      const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
+      if (isEditableTarget(nativeTarget)) return true;
+      if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
       return interactionModeRef.current === 'TextSelection'
-        && Boolean(target?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer'));
+        && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer'));
     };
 
     const onTouchStart = (event) => {
@@ -2098,6 +2099,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       id={viewerId}
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
       data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
+      data-text-selection={interactionMode === 'TextSelection' ? 'true' : 'false'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -2108,9 +2110,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         WebkitOverflowScrolling: 'touch',
         touchAction: isMobileSurface ? 'none' : 'pan-x pan-y pinch-zoom',
         WebkitTouchCallout: isMobileSurface ? 'none' : undefined,
-        WebkitUserSelect: isMobileSurface ? 'none' : undefined,
+        WebkitUserSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         WebkitUserDrag: isMobileSurface ? 'none' : undefined,
-        userSelect: isMobileSurface ? 'none' : undefined,
+        userSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         ...style
       }}
     >
@@ -2172,6 +2174,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           user-select: none !important;
           -webkit-touch-callout: none !important;
           -webkit-user-drag: none !important;
+        }
+        .survey-pdfjs-mobile-surface[data-text-selection='true'] {
+          -webkit-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
         }
         .survey-pdfjs-mobile-surface input,
         .survey-pdfjs-mobile-surface textarea,

@@ -415,22 +415,28 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
         <div className="account-settings-body">
           {/* Sidebar */}
-          <div className="account-settings-sidebar">
+          <div className="account-settings-sidebar" role="tablist" aria-label="Settings sections">
             <button
               onClick={() => setActiveTab('general')}
               className={`account-sidebar-btn ${activeTab === 'general' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'general'}
             >
               General
             </button>
             <button
               onClick={() => setActiveTab('connected-services')}
               className={`account-sidebar-btn ${activeTab === 'connected-services' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'connected-services'}
             >
               Connected services
             </button>
             <button
               onClick={() => setActiveTab('subscription')}
               className={`account-sidebar-btn ${activeTab === 'subscription' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'subscription'}
             >
               {/* UX (KAL-68): "Subscription", not "Manage subscription". The longer
                   label ran to ~175px inside the 200px sidebar, so at a 1.25x OS

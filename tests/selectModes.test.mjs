@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import {
+  getSelectFamilyIconName,
   getSelectFamilyLabel,
+  getSelectModeIconName,
   getSelectFamilyTransition,
   getSelectModeMenuFocusIndex,
   isSelectModeActive,
@@ -34,6 +37,25 @@ test('the stored mode owns the main Select label and checked menu row', () => {
   for (const option of SELECT_MODE_OPTIONS) {
     assert.equal(getSelectFamilyLabel('pan', option.mode), option.label);
     assert.equal(isSelectModeActive(option, option.mode), true);
+  }
+});
+
+test('Select family keeps distinct approved icons without changing its transitions', () => {
+  assert.equal(getSelectModeIconName('rectangle'), 'selectCursor');
+  assert.equal(getSelectModeIconName('lasso'), 'lassoSelect');
+  assert.equal(getSelectModeIconName('text'), 'textSelect');
+  assert.equal(getSelectModeIconName('not-a-mode'), 'selectCursor');
+  assert.equal(getSelectFamilyIconName('select', 'rectangle'), 'selectCursor');
+  assert.equal(getSelectFamilyIconName('select', 'lasso'), 'lassoSelect');
+  assert.equal(getSelectFamilyIconName('text-select', 'rectangle'), 'textSelect');
+
+  for (const [fileName, expectedHash] of [
+    ['selection-cursor-rounded.svg', 'bdccc5826285d0f6b00de134bd0febd34235255cc196f15225b91c0e05428722'],
+    ['lasso-select-rounded.svg', 'f364ce22bb11524edf56e4035a894d67dc61297fd8455e58db8010d5cad974a9'],
+    ['text-select-rounded.svg', 'b84a5baa309abbf8ed10d177f57c2d14f4f7cffe4df67c1785028c46d682b541'],
+  ]) {
+    const bytes = readFileSync(new URL(`../src/assets/icons/${fileName}`, import.meta.url));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash, fileName);
   }
 });
 
@@ -74,6 +96,10 @@ test('creating or toggling a text mark keeps the live Text Select range active',
   assert.doesNotMatch(createHandler, /activateSelectFamilyMode\('rectangle'\)/);
   assert.doesNotMatch(createHandler, /clearLiveTextSelection\(\)/);
   assert.match(createHandler, /text-markup:toggle-off-live-selection/);
+  assert.ok(
+    (createHandler.match(/restorePdfjsTextSelection\(selection\)/g) || []).length >= 2,
+    'both a live toggle-off and a live create must restore the saved browser range',
+  );
 });
 
 test('pan quick-pick leaves a saved Text Select mode in truthful rectangle object selection', () => {
