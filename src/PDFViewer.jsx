@@ -68,7 +68,6 @@ import SearchHighlightLayer from './components/SearchHighlightLayer';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
 import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
-import PdfjsTextLayer from './components/PdfjsTextLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
@@ -31147,6 +31146,7 @@ ${pageBlocks}
                     textMarkupMode={getPdfjsTextMarkupMode(activeTool)}
                     textMarkupColor={strokeColor}
                     textMarkupOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 1))}
+                    textSelectionLayerActive={activeTool === 'text-select'}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}
@@ -31154,6 +31154,7 @@ ${pageBlocks}
                     onZoomPhase={handlePdfjsZoomPhase}
                     onPageRendered={handlePdfjsPageRenderComplete}
                     onTextSelectionEnd={handlePdfjsTextSelectionEnd}
+                    onTextAvailability={handlePdfjsTextAvailability}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
                     onPageContainersChange={handlePdfjsPageContainersChange}
                     onMountedPagesChange={handlePdfjsMountedPagesChange}
@@ -31458,20 +31459,6 @@ ${pageBlocks}
                             <style>
                               {nativePdfAnnotationLayerHideCss}
                             </style>
-                          )}
-                          {true && pdfDoc && activeTool === 'text-select' && (
-                            // Build the selectable text layer ONLY while the text tool is
-                            // active. renderTextLayer + getTextContent per page is costly;
-                            // mounting it on every page during normal viewing/zoom starves
-                            // the page raster. Text selection is an explicit mode, so this
-                            // is the right time to pay for it.
-                            <PdfjsTextLayer
-                              pdf={pdfDoc}
-                              pageNumber={pageNumber}
-                              scale={layerScale}
-                              interactive
-                              onTextAvailability={handlePdfjsTextAvailability}
-                            />
                           )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer

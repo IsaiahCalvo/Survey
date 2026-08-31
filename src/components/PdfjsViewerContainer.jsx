@@ -11,12 +11,11 @@
  *     on settle) — the whole point of owning the renderer
  *   • DPR-correct, double-buffered, cancellable rasters + a deep-zoom detail tile
  *
- * Deliberately LEANER than the prototype: in the real app the overlay layers
- * (annotations, text-select, search, forms) are supplied by PDFViewer's own
- * per-page overlay portal loop, mounted into the page hosts this container
- * exposes. So this container only DRAWS pages + exposes correct page hosts +
- * answers the contract. Features not yet built (search, text-markup select/erase,
- * form state/authoring, print) are SAFE STUBs returning benign values (Stage 4).
+ * Deliberately LEANER than the prototype: this component owns the page raster
+ * and selectable pdf.js text layer. Annotation, search, link, and form overlays
+ * stay in PDFViewer's per-page portal loop. Features not yet built (search,
+ * text-markup select/erase, form state/authoring, print) are SAFE STUBs returning
+ * benign values (Stage 4).
  *
  * INVARIANTS honored: imports the pdf.js worker the production-proven way; never
  * statically imports from src/prototype; introduces NO JavaScript zoom
@@ -40,6 +39,7 @@ import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
+import PdfjsTextLayer from './PdfjsTextLayer';
 import {
   getDocumentMinimumScale,
   getWheelZoomScale,
@@ -552,6 +552,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   textMarkupColor = null,
   // eslint-disable-next-line no-unused-vars
   textMarkupOpacity = null,
+  textSelectionLayerActive = false,
   className = '',
   style = {},
   // eslint-disable-next-line no-unused-vars
@@ -565,6 +566,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   onPageRendered,
   // eslint-disable-next-line no-unused-vars
   onTextSelectionEnd,
+  onTextAvailability,
   onPDFBookmarksAvailable,
   onPageContainersChange,
   onMountedPagesChange,
@@ -2274,6 +2276,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                       scrollerRef={scrollerRef}
                       isMobileSurface={isMobileSurface}
                     />
+                    {textSelectionLayerActive && (
+                      <PdfjsTextLayer
+                        pdf={pdfRef.current}
+                        pageNumber={i + 1}
+                        scale={scale}
+                        rotation={rotation}
+                        interactive
+                        onTextAvailability={onTextAvailability}
+                      />
+                    )}
                   </>
                 ) : (
                   <div style={{ width: '100%', height: '100%', background: '#fff' }} />
