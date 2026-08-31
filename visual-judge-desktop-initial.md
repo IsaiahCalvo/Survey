@@ -1,0 +1,76 @@
+- generic [ref=e3] [box=0,0,1440,1000]:
+  - generic [ref=e5] [box=0,0,1440,32]:
+    - generic "Home" [ref=e9] [box=30,10,107,14]
+    - button "text-selection-rotation-matrix.pdf" [ref=e11] [box=148,0,261,32]:
+      - button [ref=e13] [cursor=pointer] [box=381,9,17,17]
+    - status [ref=e17] [box=-1,-1,1,1]
+  - generic [ref=e18] [box=0,33,1440,44]:
+    - button "Export annotated PDF" [ref=e20] [cursor=pointer] [box=1398,40,30,30]
+    - generic [ref=e24] [box=12,33,72,44]:
+      - button "Undo" [disabled] [ref=e25] [box=12,42,32,26]
+      - button "Redo" [disabled] [ref=e29] [box=52,41,32,26]
+    - generic [ref=e33] [box=654,41,132,28]:
+      - generic [ref=e34] [box=551,41,103,28]:
+        - button "Pan" [ref=e36] [cursor=pointer] [box=551,41,28,28]
+        - generic [ref=e38] [box=585,41,46,28]:
+          - button "Rectangle Select" [ref=e39] [cursor=pointer] [box=585,41,28,28]
+          - button "Selection mode" [ref=e41] [cursor=pointer] [box=613,41,18,28]
+      - button "Draw" [ref=e45] [cursor=pointer] [box=654,41,40,28]
+      - button "Shapes" [ref=e49] [cursor=pointer] [box=700,41,40,28]
+      - button "Text" [ref=e52] [cursor=pointer] [box=746,41,40,28]
+  - generic [ref=e57] [box=0,77,1440,923]:
+    - generic [ref=e59] [box=0,77,48,923]:
+      - button [ref=e61] [cursor=pointer] [box=15,82,24,24]
+      - generic [ref=e64] [box=0,112,47,808]:
+        - button "Pages" [ref=e66] [cursor=pointer] [box=8,120,31,40]
+        - button "Search text" [ref=e71] [cursor=pointer] [box=8,164,31,40]
+        - button "Bookmarks" [ref=e76] [cursor=pointer] [box=8,208,31,40]
+        - button "Spaces" [ref=e80] [cursor=pointer] [box=8,252,31,40]
+      - generic [ref=e85] [box=0,920,47,80]:
+        - button "Syncing.... Survey is checking whether this document uses live collaboration. Keep this document open while backup finishes." [ref=e87] [cursor=pointer] [box=10,931,28,28]
+        - generic [ref=e89] [box=15,969,18,21]: DT
+    - generic [ref=e96] [box=48,77,1344,923]:
+      - complementary [ref=e97] [box=48,77,148,923]:
+        - generic [ref=e98] [box=58,93,127,21]: Survey
+        - navigation [ref=e100] [box=58,132,127,90]:
+          - button "Documents" [ref=e101] [cursor=pointer] [box=58,132,127,29]
+          - button "Projects" [ref=e106] [cursor=pointer] [box=58,163,127,29]
+          - button "Templates" [ref=e110] [cursor=pointer] [box=58,194,127,29]
+        - navigation [ref=e115] [box=58,889,127,29]:
+          - button "Archive" [ref=e116] [cursor=pointer] [box=58,889,127,29]
+        - button "Open account menu" [ref=e122] [cursor=pointer] [box=58,939,127,45]:
+          - generic [ref=e123] [box=64,949,24,24]: DT
+          - generic [ref=e124] [box=95,943,84,37]:
+            - generic [ref=e125] [box=95,943,84,13]: Dev Test User
+            - generic [ref=e126] [box=95,956,84,24]: Synced · Developer
+      - main [ref=e127] [box=196,77,1196,923]:
+        - generic [ref=e128] [box=196,77,1196,65]:
+          - generic [ref=e129] [box=214,92,104,42]:
+            - heading "Documents" [level=1] [ref=e130] [box=214,92,104,20]
+            - generic [ref=e132] [box=214,118,74,16]
+          - generic [ref=e137] [box=1052,89,322,28]:
+            - generic [ref=e139] [box=1052,89,240,28]
+            - button "Upload" [ref=e145] [cursor=pointer] [box=1298,89,76,28]
+        - generic [ref=e152] [box=205,143,1178,340]:
+          - generic [ref=e153] [box=205,143,1178,32]:
+            - generic [ref=e156] [cursor=pointer] [box=291,151,437,15]: File
+            - generic [ref=e157] [cursor=pointer] [box=728,151,218,15]: Project
+            - generic [ref=e158] [cursor=pointer] [box=946,151,218,15]: Last edited ↓
+            - generic [ref=e159] [cursor=pointer] [box=1165,151,218,15]: Size
+          - generic [ref=e161] [box=205,271,1178,212]:
+            - generic [ref=e166] [box=687,365,215,40]
+            - button "Upload PDF" [ref=e169] [cursor=pointer] [box=743,415,102,28]
+    - generic [ref=e194] [box=1392,77,48,923]:
+      - generic [ref=e195] [box=1392,77,48,923]:
+        - button "Expand Survey panel" [ref=e197] [cursor=pointer] [box=1401,82,24,24]
+        - button "Survey" [ref=e202] [cursor=pointer] [box=1401,120,31,40]
+      - generic [ref=e205] [box=1392,751,48,249]:
+        - button "Zoom in" [ref=e206] [cursor=pointer] [box=1402,760,28,28]
+        - button "Edit zoom percentage" [ref=e208] [cursor=pointer] [box=1399,792,35,12]: 112%
+        - button "Zoom out" [ref=e209] [cursor=pointer] [box=1402,808,28,28]
+        - button "Previous page" [disabled] [ref=e212] [box=1404,853,24,24]
+        - button "Edit page number" [ref=e215] [cursor=pointer] [box=1409,881,14,13]: "1"
+        - generic [ref=e216] [box=1414,898,4,7]: ·
+        - generic [ref=e217] [box=1413,909,6,10]: "7"
+        - button "Next page" [ref=e218] [cursor=pointer] [box=1404,923,24,24]
+        - button "Fit options" [ref=e223] [cursor=pointer] [box=1398,964,36,28]

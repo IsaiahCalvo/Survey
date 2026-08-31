@@ -1,0 +1,4 @@
+Total messages: 26 (Errors: 0, Warnings: 1)
+Returning 1 messages for level "warning"
+
+[WARNING] Supabase credentials not found. Running in offline mode. @ http://127.0.0.1:5187/@vite/client:524
