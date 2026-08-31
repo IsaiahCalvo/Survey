@@ -46,6 +46,7 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
+import { openExternalDestination } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -3741,6 +3742,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       downAt = null;
       if (!start) return;
       if (activeTool !== 'pan') return;
+      if (e.target?.closest?.('[data-text-markup-link]')) return;
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
@@ -28434,7 +28436,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'].includes(markupType)) return;
-    if (markupType === 'link' && !options.commit) {
+    if (markupType === 'link' && !options.commit && !options.remove) {
       const selectedLink = selectedTextMarkupActionSelection?.sourceMarks?.find(
         (mark) => mark?.data?.markupType === 'link',
       ) || (selectedMarkup?.data?.markupType === 'link' ? selectedMarkup : null);
@@ -28445,6 +28447,43 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : String(selectedLink?.data?.linkUrl || ''));
       setTextLinkError('');
       setTextLinkEditorOpen((open) => !open);
+      return;
+    }
+    if (markupType === 'link' && options.remove) {
+      const linkedMarks = (selection.sourceMarks || []).filter(
+        (mark) => mark?.data?.type === 'text-markup' && mark.data.markupType === 'link',
+      );
+      const toggleOff = buildTextMarkupRangeToggleOffTransaction(
+        annotationsByPageRef.current || {},
+        linkedMarks,
+        'link',
+      );
+      const committed = toggleOff && commitTextMarkupDocumentTransaction(toggleOff, {
+        source: 'text-markup:remove-link',
+        action: 'text-markup-delete',
+        selectionGroupIds: toggleOff.removedSelectionGroupIds,
+      });
+      if (committed) {
+        setTextLinkEditorOpen(false);
+        setTextLinkError('');
+        const next = toggleOff.remaining[0];
+        setSelectedToolbarAnnotation(next ? {
+          pageNumber: next.pageNumber,
+          annotationIndex: next.annotationIndex,
+          annotation: next.annotation,
+        } : null);
+        setPendingSvgSelection({
+          pageNumber: next?.pageNumber || selectedToolbarAnnotationRef.current?.pageNumber,
+          annotationIndex: next?.annotationIndex ?? null,
+          tick: Date.now(),
+        });
+        if (!selectedMarkup) {
+          window.requestAnimationFrame(() => {
+            restorePdfjsTextSelection(selection);
+            capturePdfjsTextSelection();
+          });
+        }
+      }
       return;
     }
     const requestedLinkMode = options.linkMode === 'page' ? 'page' : 'web';
@@ -31679,8 +31718,16 @@ ${pageBlocks}
                           <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
                             pageSize={resolvedPageSize}
-                            interactive={activeTool === 'pan'}
+                            interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' ? 'select' : 'disabled'}
                             onPageNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
+                            onSelectLink={(region) => {
+                              const annotation = pageAnnotationObjects[region.annotationIndex];
+                              if (!annotation) return;
+                              const nextSelection = { pageNumber, annotationIndex: region.annotationIndex, annotation };
+                              selectedToolbarAnnotationRef.current = nextSelection;
+                              setSelectedToolbarAnnotation(nextSelection);
+                              setPendingSvgSelection({ pageNumber, annotationIndex: region.annotationIndex, tick: Date.now() });
+                            }}
                           />
                           {true && pdfDoc && (
                             <PdfjsFormLayer
@@ -32944,7 +32991,8 @@ ${pageBlocks}
                           </div>
                           {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs', annotationVisualCoverActive)}
                         </div>,
-                        portalTarget
+                        portalTarget,
+                        `pdfjs-overlay-${pageNumber}`,
                       );
                     });
                 })()}
@@ -37449,6 +37497,18 @@ ${pageBlocks}
             linkMode: textLinkMode,
             linkValue: textLinkUrl,
           })}
+          onLinkOpen={() => {
+            const link = (selectedTextMarkupActionSelection || liveTextSelectionActionSelection)
+              ?.sourceMarks?.find((mark) => mark?.data?.markupType === 'link');
+            if (link?.data?.linkPageNumber) {
+              goToPage(link.data.linkPageNumber, { fallback: 'nearest' });
+            } else if (link?.data?.linkUrl) {
+              void openExternalDestination(link.data.linkUrl).catch((error) => {
+                showToast(error?.message || 'Could not open link.', 'error');
+              });
+            }
+          }}
+          onLinkRemove={() => handleTextSelectionAction('link', { remove: true })}
           onLinkCancel={() => {
             setTextLinkEditorOpen(false);
             setTextLinkError('');

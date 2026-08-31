@@ -66,6 +66,8 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
   const { ActionBar, cleanup } = await loadActionBar();
   const actions = [];
   const focused = [];
+  const openedLinks = [];
+  const removedLinks = [];
   const root = createRoot(document.getElementById('root'));
   function Harness() {
     const [active, setActive] = useState(['highlight', 'strikeout']);
@@ -86,13 +88,18 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
       linkValue: value,
       onAction: (action) => {
         actions.push(action);
-        if (action === 'link') return setLinkOpen((open) => !open);
+        if (action === 'link') {
+          setActive((current) => current.includes('link') ? current : [...current, 'link']);
+          return setLinkOpen((open) => !open);
+        }
         setActive((current) => current.includes(action) ? current.filter((type) => type !== action) : [...current, action]);
       },
       onFocusPaint: (mark) => { focused.push(mark); setFocus(mark); },
       onLinkModeChange: setMode,
       onLinkValueChange: setValue,
       onLinkSubmit: () => setLinkOpen(false),
+      onLinkOpen: () => openedLinks.push('open'),
+      onLinkRemove: () => removedLinks.push('remove'),
       onLinkCancel: () => setLinkOpen(false),
     });
   }
@@ -153,6 +160,12 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(linkForm.className, 'text-selection-action-bar__link-form');
     assert.equal(document.querySelector('input[aria-label="Web address"]').className, 'text-selection-action-bar__link-input');
     assert.ok(document.querySelector('[data-text-link-actions="true"]'));
+    assert.ok(document.querySelector('button[aria-label="Open link"]'));
+    assert.ok(document.querySelector('button[aria-label="Remove link"]'));
+    await act(async () => document.querySelector('button[aria-label="Open link"]').click());
+    await act(async () => document.querySelector('button[aria-label="Remove link"]').click());
+    assert.deepEqual(openedLinks, ['open']);
+    assert.deepEqual(removedLinks, ['remove']);
     await act(async () => document.querySelector('form[aria-label="Hyperlink controls"] button[aria-pressed="false"]').click());
     assert.equal(document.querySelector('input[aria-label="Page number"]')?.getAttribute('inputmode'), 'numeric');
   } finally {

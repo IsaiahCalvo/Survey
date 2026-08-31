@@ -101,6 +101,21 @@ test('same-range links with different URLs stay distinct', () => {
   assert.equal(isExactTextMarkupDuplicate(first, second), false);
 });
 
+test('removing a link keeps the other marks on the same text', () => {
+  const highlight = mark('highlight', 1, 'highlight-group', 'highlight');
+  const link = mark('link', 1, 'link-group', 'link');
+  link.data.linkUrl = 'https://example.com/docs';
+  const tx = buildTextMarkupRangeToggleOffTransaction(
+    { 1: { objects: [highlight, link] } },
+    [link],
+    'link',
+  );
+
+  assert.ok(tx);
+  assert.deepEqual(tx.removedSelectionGroupIds, ['link-group']);
+  assert.deepEqual(tx.nextByPage['1'].objects, [highlight]);
+});
+
 test('turning off one review toggle removes only that full group', () => {
   const pageOneHighlight = mark('highlight-1', 1, 'highlight-group', 'highlight');
   const pageTwoHighlight = mark('highlight-2', 2, 'highlight-group', 'highlight');

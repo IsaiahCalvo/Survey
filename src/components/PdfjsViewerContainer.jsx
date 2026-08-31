@@ -1444,7 +1444,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,
       // click, and change sequence entirely on desktop.
       if (isEditableTarget(event.target)
-        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return;
+        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')) return;
       event.preventDefault();
       event.stopPropagation();
       panPointerRef.current = {

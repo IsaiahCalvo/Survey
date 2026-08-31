@@ -95,9 +95,15 @@ for (const type of ['highlight', 'underline', 'squiggly', 'strikeout']) {
 test('text links keep only safe external URLs', () => {
   assert.equal(normalizeTextLinkUrl('example.com/docs'), 'https://example.com/docs');
   assert.equal(normalizeTextLinkUrl('https://example.com/docs'), 'https://example.com/docs');
+  assert.equal(normalizeTextLinkUrl('http://localhost:5173/docs'), 'http://localhost:5173/docs');
+  assert.equal(normalizeTextLinkUrl('https://127.0.0.1/docs'), 'https://127.0.0.1/docs');
+  assert.equal(normalizeTextLinkUrl('https://[::1]/docs'), 'https://[::1]/docs');
   assert.equal(normalizeTextLinkUrl('mailto:test@example.com'), 'mailto:test@example.com');
   assert.equal(normalizeTextLinkUrl('javascript:alert(1)'), null);
   assert.equal(normalizeTextLinkUrl('data:text/html,bad'), null);
+  assert.equal(normalizeTextLinkUrl('not a url at all'), null);
+  assert.equal(normalizeTextLinkUrl('...'), null);
+  assert.equal(normalizeTextLinkUrl('https://not%20a%20host.example'), null);
   const annotation = createTextMarkupAnnotation({
     id: 'link-safe', pageNumber: 1, markupType: 'link', linkUrl: 'example.com/docs',
     quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],
@@ -130,7 +136,8 @@ test('page links keep an internal page target without inventing a URL', () => {
   assert.equal(annotation.data.linkPageNumber, 3);
   assert.equal(annotation.data.linkUrl, undefined);
   assert.deepEqual(buildTextMarkupLinkRegions([annotation], { width: 100, height: 100 })[0], {
-    id: 'link-page-0', mode: 'page', url: null, pageNumber: 3,
+    id: 'link-page-0', annotationId: 'link-page', annotationIndex: 0,
+    mode: 'page', url: null, pageNumber: 3,
     left: '10%', top: '20%', width: '40%', height: '10%',
   });
 });
