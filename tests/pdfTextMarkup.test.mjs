@@ -300,6 +300,103 @@ test('either range handle can cross the other while pointer ownership stays fixe
   });
 });
 
+test('wrapped range handles stay live when crossing at the page text boundaries', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'wrapped-boundary-cross', pageNumber: 1, markupType: 'highlight',
+    selectedText: 'line one\nline two',
+    textRange: { start: 0, end: 17 },
+    textRangeModel: {
+      text: 'line one\nline two',
+      runs: [
+        { start: 0, end: 8, left: 10, right: 90, top: 0, bottom: 10, rtl: false },
+        { start: 8, end: 17, left: 10, right: 100, top: 20, bottom: 30, rtl: false },
+      ],
+    },
+    quads: [
+      { x1: 10, y1: 0, x2: 90, y2: 0, x3: 10, y3: 10, x4: 90, y4: 10 },
+      { x1: 10, y1: 20, x2: 100, y2: 20, x3: 10, y3: 30, x4: 100, y4: 30 },
+    ],
+  });
+
+  const startPastEnd = resizeTextMarkupHorizontalEdge(
+    annotation,
+    'ml',
+    { x: 120, y: 25 },
+    120,
+    40,
+    17,
+  );
+  assert.notStrictEqual(startPastEnd, annotation);
+  assert.deepEqual(startPastEnd.data.textRange, { start: 16, end: 17 });
+  assert.equal(startPastEnd.data.selectedText, 'o');
+  assert.equal(startPastEnd._textRangeHandleCrossed, true);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(startPastEnd), {
+    ml: { x: 100, y: 25 },
+    mr: { x: 90, y: 25 },
+  });
+
+  const endPastStart = resizeTextMarkupHorizontalEdge(
+    annotation,
+    'mr',
+    { x: -10, y: 5 },
+    120,
+    40,
+    0,
+  );
+  assert.notStrictEqual(endPastStart, annotation);
+  assert.deepEqual(endPastStart.data.textRange, { start: 0, end: 1 });
+  assert.equal(endPastStart.data.selectedText, 'l');
+  assert.equal(endPastStart._textRangeHandleCrossed, true);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(endPastStart), {
+    ml: { x: 20, y: 5 },
+    mr: { x: 10, y: 5 },
+  });
+});
+
+test('wrapped range handles keep the full text between the fixed edge and crossed pointer', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'wrapped-full-cross', pageNumber: 1, markupType: 'underline', selectedText: 'lm',
+    textRange: { start: 11, end: 13 },
+    textRangeModel: {
+      text: 'abcdefghijklmnopqrstuvwx',
+      runs: [
+        { start: 0, end: 8, left: 0, right: 80, top: 0, bottom: 10, rtl: false },
+        { start: 8, end: 16, left: 0, right: 80, top: 20, bottom: 30, rtl: false },
+        { start: 16, end: 24, left: 0, right: 80, top: 40, bottom: 50, rtl: false },
+      ],
+    },
+    quads: [{ x1: 30, y1: 20, x2: 50, y2: 20, x3: 30, y3: 30, x4: 50, y4: 30 }],
+  });
+
+  const startAcrossEnd = resizeTextMarkupHorizontalEdge(
+    annotation, 'ml', { x: 60, y: 45 }, 80, 50, 13,
+  );
+  assert.deepEqual(startAcrossEnd.data.textRange, { start: 13, end: 22 });
+  assert.equal(startAcrossEnd.data.selectedText, 'nopqrstuv');
+  assert.deepEqual(startAcrossEnd.data.quads, [
+    { x1: 50, y1: 20, x2: 80, y2: 20, x3: 50, y3: 30, x4: 80, y4: 30 },
+    { x1: 0, y1: 40, x2: 60, y2: 40, x3: 0, y3: 50, x4: 60, y4: 50 },
+  ]);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(startAcrossEnd), {
+    ml: { x: 60, y: 45 },
+    mr: { x: 50, y: 25 },
+  });
+
+  const endAcrossStart = resizeTextMarkupHorizontalEdge(
+    annotation, 'mr', { x: 20, y: 5 }, 80, 50, 11,
+  );
+  assert.deepEqual(endAcrossStart.data.textRange, { start: 2, end: 11 });
+  assert.equal(endAcrossStart.data.selectedText, 'cdefghijk');
+  assert.deepEqual(endAcrossStart.data.quads, [
+    { x1: 20, y1: 0, x2: 80, y2: 0, x3: 20, y3: 10, x4: 80, y4: 10 },
+    { x1: 0, y1: 20, x2: 30, y2: 20, x3: 0, y3: 30, x4: 30, y4: 30 },
+  ]);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(endAcrossStart), {
+    ml: { x: 30, y: 25 },
+    mr: { x: 20, y: 5 },
+  });
+});
+
 test('range resize release uses the final pointer even when the last move stopped beside the fixed edge', () => {
   const annotation = createTextMarkupAnnotation({
     id: 'range-release-cross', pageNumber: 1, markupType: 'underline', selectedText: 'cde',

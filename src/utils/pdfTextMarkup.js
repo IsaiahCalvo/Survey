@@ -374,9 +374,11 @@ const orderedOffsets = (candidate, fixedOffset, storedRange, handleId) => {
   return { start: Math.min(candidate, fixed), end: Math.max(candidate, fixed) };
 };
 
-const textRangeDragState = (handleId, candidate, fixed) => ({
+const textRangeDragState = (handleId, candidate, fixed, crossedOverride) => ({
   _textRangeDragHandle: handleId,
-  _textRangeHandleCrossed: handleId === 'ml' ? candidate > fixed : candidate < fixed,
+  _textRangeHandleCrossed: typeof crossedOverride === 'boolean'
+    ? crossedOverride
+    : (handleId === 'ml' ? candidate > fixed : candidate < fixed),
 });
 
 const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOffset) => {
@@ -398,11 +400,31 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOff
   if (!target || target.end <= target.start || target.right <= target.left) return null;
   const ratio = Math.max(0, Math.min(1, (pointer.x - target.left) / (target.right - target.left)));
   const visualRatio = target.rtl ? 1 - ratio : ratio;
-  const candidate = target.start + Math.round((target.end - target.start) * visualRatio);
+  const rawCandidate = target.start + (target.end - target.start) * visualRatio;
+  let candidate = Math.round(rawCandidate);
   const fixed = Number.isFinite(Number(fixedOffset))
     ? Number(fixedOffset)
     : (handleId === 'ml' ? Number(storedRange.end) : Number(storedRange.start));
-  const { start, end } = orderedOffsets(candidate, fixed, storedRange, handleId);
+  if (candidate === fixed && rawCandidate !== fixed) {
+    candidate = rawCandidate > fixed ? Math.ceil(rawCandidate) : Math.floor(rawCandidate);
+  }
+  let { start, end } = orderedOffsets(candidate, fixed, storedRange, handleId);
+  const textLength = String(model.text || '').length;
+  const pointerPastTargetEnd = target.rtl ? pointer.x <= target.left : pointer.x >= target.right;
+  const pointerPastTargetStart = target.rtl ? pointer.x >= target.right : pointer.x <= target.left;
+  const crossedAtTextBoundary = candidate === fixed && (
+    (handleId === 'ml' && fixed === textLength && target.end === textLength && pointerPastTargetEnd)
+    || (handleId === 'mr' && fixed === 0 && target.start === 0 && pointerPastTargetStart)
+  );
+  if (end <= start && crossedAtTextBoundary) {
+    if (handleId === 'ml' && fixed > 0) {
+      start = fixed - 1;
+      end = fixed;
+    } else if (handleId === 'mr' && fixed < textLength) {
+      start = fixed;
+      end = fixed + 1;
+    }
+  }
   if (end <= start) return null;
   const quads = [];
   for (const run of runs) {
@@ -425,7 +447,7 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOff
   if (!bounds) return null;
   return {
     ...annotation,
-    ...textRangeDragState(handleId, candidate, fixed),
+    ...textRangeDragState(handleId, candidate, fixed, crossedAtTextBoundary ? true : undefined),
     left: bounds.left,
     top: bounds.top,
     width: bounds.width,
