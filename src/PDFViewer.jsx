@@ -60,6 +60,7 @@ import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
 import PrintPanel from './components/PrintPanel';
+import BrowserPrintDocument from './components/BrowserPrintDocument.jsx';
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
@@ -37265,6 +37266,14 @@ ${pageBlocks}
           handleExcelSyncConfirmChoice(choice);
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
+      />
+      <BrowserPrintDocument
+        pdfFile={pdfFile}
+        annotationsByPage={annotationsByPage}
+        callouts={callouts}
+        surveyMarkers={surveyMarkers}
+        spaces={spaces}
+        pageSizes={pageSizes}
       />
       {typeof document !== 'undefined' && createPortal(
         <ApplyRedactionsModal

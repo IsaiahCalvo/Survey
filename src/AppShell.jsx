@@ -42,6 +42,7 @@ import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
+import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -990,12 +991,7 @@ export default function App({ devPreviewReturnTab = null }) {
     });
   }, [selectedPDF]);
 
-  // Hardening (audit 2026-04-30 #3): track per-tab "has any annotations" so
-  // the beforeunload guard below can warn the user before they close a
-  // local-only PDF (no Supabase row) with annotations on it. Distinct from
-  // hasUnsavedAnnotations because we want to warn even after a localStorage
-  // save — closing the window/tab on a local-only PDF with annotations is
-  // always a "you might be losing work" moment until the file is exported.
+  // Track whether each tab has any annotations for tab UI and diagnostics.
   const handleAnnotationsExistChange = useCallback((hasAny, targetTabId) => {
     if (!targetTabId) return;
     setTabs(prev =>
@@ -1005,22 +1001,13 @@ export default function App({ devPreviewReturnTab = null }) {
     );
   }, []);
 
-  // Hardening (audit 2026-04-30 #3): warn before window unload when the
-  // active tab is a local-only PDF (no cloud row) that has annotations.
-  // Browsers show a generic "leave site?" prompt and let the user cancel.
-  // Cloud-synced PDFs are out of scope here — their work is already
-  // persisted server-side, so the warning would be noise.
+  // Warn only for unsaved local edits. A successful Cmd/Ctrl+S clears the
+  // tab's dirty bit, so a clean reload must not show a false data-loss prompt.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handler = (event) => {
       const activeTab = tabs.find((t) => t.id === activeTabId);
-      if (!activeTab || activeTab.isHome) return undefined;
-      const file = activeTab.file;
-      if (!file) return undefined;
-      // Only warn for local-only PDFs (no Supabase row). Cloud PDFs are
-      // already persisted; their work survives a window close.
-      if (file.id) return undefined;
-      if (!activeTab.hasAnyAnnotations) return undefined;
+      if (!shouldWarnBeforeUnloadForTab(activeTab)) return undefined;
       // Modern browsers ignore the returned string and show their own
       // generic message; the truthy returnValue is what triggers the
       // confirm dialog.
