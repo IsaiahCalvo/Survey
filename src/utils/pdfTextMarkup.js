@@ -1,5 +1,12 @@
 const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact']);
 
+export const TEXT_MARKUP_DEFAULT_PAINT = Object.freeze({
+  highlight: Object.freeze({ color: '#f5c229', opacity: 30 }),
+  underline: Object.freeze({ color: '#ef3029', opacity: 30 }),
+  squiggly: Object.freeze({ color: '#f0f1f4', opacity: 30 }),
+  strikeout: Object.freeze({ color: '#3d63dc', opacity: 30 }),
+});
+
 const round = (value) => Math.round(Number(value) * 10_000) / 10_000;
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
 

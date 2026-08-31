@@ -97,7 +97,7 @@ export const getMobileTextMarkupPresentation = (api = {}) => {
     color: selectedPaint && selectedPaint !== 'transparent'
       ? selectedPaint
       : (toolbar.strokeColor || '#f4d35e'),
-    opacity: Math.max(5, Math.min(100, Number.isFinite(rawOpacity) ? rawOpacity : 38)),
+    opacity: Math.max(5, Math.min(100, Number.isFinite(rawOpacity) ? rawOpacity : 30)),
     overlapMode: toolbar.textMarkupOverlapMode === 'uniform' ? 'uniform' : 'layered',
   };
 };

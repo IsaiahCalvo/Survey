@@ -135,12 +135,6 @@ import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebu
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
 
-const TEXT_MARKUP_DEFAULT_PAINT = Object.freeze({
-  highlight: Object.freeze({ color: '#f5c229', opacity: 30 }),
-  underline: Object.freeze({ color: '#ef3029', opacity: 100 }),
-  squiggly: Object.freeze({ color: '#f0f1f4', opacity: 100 }),
-  strikeout: Object.freeze({ color: '#3d63dc', opacity: 100 }),
-});
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
@@ -390,7 +384,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
-import { createTextMarkupAnnotation, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection } from './utils/pdfTextMarkup.js';
+import { createTextMarkupAnnotation, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,

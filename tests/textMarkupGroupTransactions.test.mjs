@@ -149,6 +149,36 @@ test('cross-page text markup creation is one document history action', () => {
   assert.equal(redone['2'].objects[0].data.id, 'b');
 });
 
+test('undo and redo keep each stacked mark paint and overlap mode', () => {
+  const paints = [
+    ['highlight', '#ff0000', 0.3, 'layered'],
+    ['underline', '#00ff00', 0.45, 'uniform'],
+    ['squiggly', '#0000ff', 0.6, 'layered'],
+    ['strikeout', '#ffff00', 0.75, 'uniform'],
+  ];
+  const marks = paints.map(([markupType, color, opacity, overlapMode], index) => {
+    const annotation = mark(`paint-${index}`, 1, `paint-group-${index}`, markupType);
+    annotation.fill = color;
+    annotation.stroke = color;
+    annotation.opacity = opacity;
+    annotation.data.overlapMode = overlapMode;
+    return annotation;
+  });
+  const tx = buildTextMarkupGroupCreateTransaction({}, marks);
+  const undone = applyAnnotationHistoryAction(tx.nextByPage, invertAnnotationHistoryAction(tx.action));
+  const redone = applyAnnotationHistoryAction(undone, tx.action);
+
+  assert.deepEqual(redone['1'].objects.map((annotation) => ({
+    markupType: annotation.data.markupType,
+    fill: annotation.fill,
+    stroke: annotation.stroke,
+    opacity: annotation.opacity,
+    overlapMode: annotation.data.overlapMode,
+  })), paints.map(([markupType, color, opacity, overlapMode]) => ({
+    markupType, fill: color, stroke: color, opacity, overlapMode,
+  })));
+});
+
 test('deleting one page member deletes the full selection group as one action', () => {
   const keep = { type: 'rect', data: { id: 'keep' }, meta: { authorId: 'user-1' } };
   const before = {

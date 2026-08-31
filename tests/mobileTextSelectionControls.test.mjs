@@ -28,14 +28,14 @@ test('mobile text markup controls cover create and selected-mark editing state',
   assert.deepEqual(getMobileTextMarkupPresentation({
     activeTool: 'text-select',
     strokeColor: '#f4d35e',
-    strokeOpacity: 38,
+    strokeOpacity: 30,
     textMarkupOverlapMode: 'uniform',
   }), {
     active: true,
     editingSelection: false,
     sharedToolbarActive: false,
     color: '#f4d35e',
-    opacity: 38,
+    opacity: 30,
     overlapMode: 'uniform',
   });
 
@@ -59,6 +59,7 @@ test('mobile text markup controls cover create and selected-mark editing state',
     hasLiveTextSelection: true,
   });
   assert.equal(liveSelection.sharedToolbarActive, true);
+  assert.equal(liveSelection.opacity, 30);
 
   assert.equal(getMobileTextMarkupPresentation({ activeTool: 'select', contextTool: 'rect' }).active, false);
 });

@@ -12,6 +12,7 @@ import {
   getTextMarkupRangeHandlePositions,
   rotatePageQuad,
   resolveTextMarkupEditPaint,
+  TEXT_MARKUP_DEFAULT_PAINT,
 } from '../src/utils/pdfTextMarkup.js';
 import { serializeFabricObjectToRow, deserializeRowToFabricObject } from '../src/services/annotationTypeSerializers.js';
 import { getEraserOperation } from '../src/utils/eraserPolicy.js';
@@ -133,6 +134,7 @@ test('redactions use opaque black paint and native Redact identity', () => {
 
 test('all new text markup types default to thirty percent opacity', () => {
   for (const markupType of ['highlight', 'underline', 'squiggly', 'strikeout']) {
+    assert.equal(TEXT_MARKUP_DEFAULT_PAINT[markupType].opacity, 30);
     const annotation = createTextMarkupAnnotation({
       id: `default-${markupType}`, pageNumber: 1, markupType,
       quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],

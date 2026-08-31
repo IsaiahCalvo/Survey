@@ -125,16 +125,18 @@ test('PDF export can generate bytes without writing a local file', async () => {
   }
 });
 
-test('live PDF export writes all four saved text markup subtypes with stored quads', async () => {
+test('live PDF export keeps all four saved text markup colors, opacities, and quads', async () => {
   const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00'];
+  const opacities = [0.3, 0.45, 0.6, 0.75];
   const objects = types.map((markupType, index) => createTextMarkupAnnotation({
     id: `text-mark-${markupType}`,
     pageNumber: 1,
     selectionGroupId: 'text-group',
     markupType,
     selectedText: `selected ${markupType}`,
-    color: '#0080ff',
-    opacity: 0.35,
+    color: colors[index],
+    opacity: opacities[index],
     quads: [{
       x1: 10, y1: 10 + index * 25,
       x2: 90, y2: 10 + index * 25,
@@ -155,7 +157,13 @@ test('live PDF export writes all four saved text markup subtypes with stored qua
   dicts.forEach((dict, index) => {
     assert.equal(dict.get(PDFName.of('Contents')).decodeText(), `selected ${types[index]}`);
     assert.equal(dict.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
-    assert.equal(dict.lookup(PDFName.of('CA')).asNumber(), 0.35);
+    assert.equal(dict.lookup(PDFName.of('CA')).asNumber(), opacities[index]);
+    assert.deepEqual(
+      dict.lookup(PDFName.of('C')).asArray().map((entry) => entry.asNumber()),
+      index === 0 ? [1, 0, 0]
+        : index === 1 ? [0, 1, 0]
+          : index === 2 ? [0, 0, 1] : [1, 1, 0],
+    );
   });
 });
 
@@ -282,19 +290,25 @@ test('Uniform export converts rotated PDF.js viewport quads before flattening pa
   assert.match(contents[3], /180 10 m\s+180 30 l\s+160 30 l\s+160 10 l/);
 });
 
-test('print helper flattens saved text markup into visible page content', async () => {
-  const mark = createTextMarkupAnnotation({
-    id: 'print-highlight',
+test('print helper flattens all four saved text mark paints into visible page content', async () => {
+  const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const marks = types.map((markupType, index) => createTextMarkupAnnotation({
+    id: `print-${markupType}`,
     pageNumber: 1,
-    markupType: 'highlight',
-    selectedText: 'printed highlight',
-    color: '#ffff00',
-    opacity: 0.4,
-    quads: [{ x1: 20, y1: 30, x2: 100, y2: 30, x3: 20, y3: 45, x4: 100, y4: 45 }],
-  });
+    markupType,
+    selectedText: `printed ${markupType}`,
+    color: ['#ffcc00', '#ff0000', '#0000ff', '#00aa00'][index],
+    opacity: [0.3, 0.45, 0.6, 0.75][index],
+    quads: [{
+      x1: 20, y1: 20 + index * 30,
+      x2: 100, y2: 20 + index * 30,
+      x3: 20, y3: 35 + index * 30,
+      x4: 100, y4: 35 + index * 30,
+    }],
+  }));
   const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
     await makePdfFile(),
-    { 1: { objects: [mark] } },
+    { 1: { objects: marks } },
     { 1: { width: 200, height: 200 } },
   );
   assert.equal(await pageHasContentStream(bytes), true);
