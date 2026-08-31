@@ -5,8 +5,8 @@ export const TEXT_MARKUP_DEFAULT_PAINT = Object.freeze({
   highlight: Object.freeze({ color: '#f5c229', opacity: 40 }),
   // UX default: underline strokes stay opaque so thin page-unit lines remain clear.
   underline: Object.freeze({ color: '#ef3029', opacity: 100 }),
-  // UX default: squiggles use the shared palette green at full strength so they show on white.
-  squiggly: Object.freeze({ color: '#00FF80', opacity: 100 }),
+  // UX default: squiggles use a deep green (5.5:1 on white) — the preset greens are all neon and vanish on paper; distinct from underline red and strike blue.
+  squiggly: Object.freeze({ color: '#15803d', opacity: 100 }),
   // UX default: strike-through strokes stay opaque so thin page-unit lines remain clear.
   strikeout: Object.freeze({ color: '#3d63dc', opacity: 100 }),
 });

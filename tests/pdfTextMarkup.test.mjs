@@ -150,7 +150,7 @@ test('new text marks use the visible app defaults', () => {
   const expected = {
     highlight: { color: '#f5c229', opacity: 40 },
     underline: { color: '#ef3029', opacity: 100 },
-    squiggly: { color: '#00FF80', opacity: 100 },
+    squiggly: { color: '#15803d', opacity: 100 },
     strikeout: { color: '#3d63dc', opacity: 100 },
   };
   for (const [markupType, paint] of Object.entries(expected)) {

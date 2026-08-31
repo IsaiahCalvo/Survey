@@ -79,7 +79,7 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
       focusedPaintMark: focus,
       paintByMark: {
         highlight: { color: '#f5c229', opacity: 40 }, underline: { color: '#ef3029', opacity: 100 },
-        squiggly: { color: '#00FF80', opacity: 100 }, strikeout: { color: '#3d63dc', opacity: 100 },
+        squiggly: { color: '#15803d', opacity: 100 }, strikeout: { color: '#3d63dc', opacity: 100 },
       },
       linkEditorOpen: linkOpen,
       linkMode: mode,
