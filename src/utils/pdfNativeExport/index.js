@@ -9,6 +9,7 @@
 
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { resolveAdapter, buildAdapterRegistry } from './adapters/index.js';
+import { sanitizeUnappliedRedactionsForExport } from '../pdfRedactionSafety.js';
 
 const adapters = new Map();
 
@@ -149,6 +150,7 @@ export async function bakeAnnotationsIntoPdf(pdfBytes, annotationsByPage, option
     }
   }
 
+  sanitizeUnappliedRedactionsForExport(pdfDoc);
   const bytes = await pdfDoc.save();
   if (options.returnAudit) return { bytes, audit };
   return bytes;

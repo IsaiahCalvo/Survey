@@ -15,7 +15,8 @@
  */
 
 // Plain-English names for native PDF annotation types the app does not
-// display. [singular, plural]. Anything not listed here (Screen, PrinterMark,
+// display, except Redact which gets a visible warning overlay. [singular,
+// plural]. Anything not listed here (Screen, PrinterMark,
 // TrapNet, exotic/unknown subtypes) falls into the "don't recognize" bucket
 // rather than leaking jargon into the UI.
 // "Text" (sticky note) is normally imported and displayed as a note proxy, so
@@ -87,12 +88,21 @@ function joinParts(parts) {
  * @returns {string|null}
  */
 export function formatUnsupportedAnnotationNotice(counts) {
-  const { parts, total } = summarizeUnsupportedCounts(counts);
-  if (total === 0) return null;
+  const redactionCount = Number(counts?.Redact) > 0 ? Number(counts.Redact) : 0;
+  const otherCounts = { ...(counts || {}) };
+  delete otherCounts.Redact;
+  const { parts, total } = summarizeUnsupportedCounts(otherCounts);
+  const redactionMessage = redactionCount > 0
+    ? `${redactionCount} redaction ${redactionCount === 1 ? 'mark is' : 'marks are'} shown with an outline. The covered text is still readable until the ${redactionCount === 1 ? 'redaction is' : 'redactions are'} applied. Exporting an annotated PDF does not apply ${redactionCount === 1 ? 'it' : 'them'}.`
+    : '';
+  if (total === 0) return redactionMessage || null;
 
   const list = joinParts(parts);
+  let unsupportedMessage;
   if (total === 1) {
-    return `${list} in this document isn’t displayed. It’s not deleted — it stays in the file and will still be included when you export.`;
+    unsupportedMessage = `${list} in this document isn’t displayed. It’s not deleted — it stays in the file and will still be included when you export.`;
+  } else {
+    unsupportedMessage = `${list} in this document aren’t displayed. They’re not deleted — they stay in the file and will still be included when you export.`;
   }
-  return `${list} in this document aren’t displayed. They’re not deleted — they stay in the file and will still be included when you export.`;
+  return redactionMessage ? `${redactionMessage} ${unsupportedMessage}` : unsupportedMessage;
 }

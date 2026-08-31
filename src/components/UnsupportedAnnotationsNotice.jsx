@@ -8,10 +8,8 @@
  * aren't displayed. They're not deleted — they stay in the file and will
  * still be included when you export.") and buckets anything unnameable as
  * "annotations of a type we don't recognize" — never raw PDF subtype jargon.
- * Only genuinely-invisible types trigger it; annotations imported as visible
- * (even locked) proxies — sticky notes, underline/strikeout/squiggly — never
- * do. No action buttons; compact notices auto-dismiss after 3s, expanded
- * notices after 5s, and the X dismisses immediately.
+ * Redaction marks get a stronger warning because their covered text remains
+ * readable. The notice stays until the user dismisses it.
  *
  * Default export UnsupportedAnnotationsNotice takes `unsupportedCounts`
  * ({ Stamp: 2, ... } from the importer) and `onDismiss`.
@@ -39,6 +37,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([type, count]) => `${type}:${count}`)
     .join('|');
+  const hasRedactions = Number(unsupportedCounts?.Redact) > 0;
 
   const clearDismissCompletion = useCallback(() => {
     if (dismissCompletionRef.current !== null) {
@@ -76,14 +75,13 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   }, [clearDismissCompletion, noticeIdentity]);
 
   useEffect(() => {
-    if (!isVisible || isExiting) return undefined;
+    if (!isVisible || isExiting || hasRedactions) return undefined;
     const dismissAfter = isMobile && !isExpanded
       ? COLLAPSED_DISMISS_MS
       : EXPANDED_DISMISS_MS;
     const timer = setTimeout(handleDismiss, dismissAfter);
-
     return () => clearTimeout(timer);
-  }, [handleDismiss, isExpanded, isExiting, isMobile, isVisible, noticeIdentity]);
+  }, [handleDismiss, hasRedactions, isExpanded, isExiting, isMobile, isVisible, noticeIdentity]);
 
   const message = formatUnsupportedAnnotationNotice(unsupportedCounts);
   if (!isVisible || !message) {
@@ -152,7 +150,9 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
             whiteSpace: isMobile && !isExpanded ? 'nowrap' : 'normal',
           }}
         >
-          {isMobile ? 'Unsupported annotation' : 'Some annotations aren’t displayed'}
+          {hasRedactions
+            ? 'Redactions are not applied'
+            : (isMobile ? 'Unsupported annotation' : 'Some annotations aren’t displayed')}
         </div>
         {(!isMobile || isExpanded) && (
           <div

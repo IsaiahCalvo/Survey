@@ -332,12 +332,12 @@ test('mobile PDF load paints page one before refining remaining page sizes', () 
   assert.match(PDF_VIEWER_SOURCE, /survey_pdf_first_page_ready/);
 });
 
-test('unsupported annotation notice is compact above the mobile dock and expands for details', () => {
+test('redaction warning is compact, persistent, and expands for details', () => {
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /Unsupported annotation/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /--mobile-viewer-dock-height/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-expanded/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /COLLAPSED_DISMISS_MS = 3000/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /EXPANDED_DISMISS_MS = 5000/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /if \(!isVisible \|\| isExiting \|\| hasRedactions\) return undefined/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /The notice stays until the user dismisses it/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(\(expanded\) => !expanded\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /event\.stopPropagation\(\); handleDismiss\(\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-label="Information"/);

@@ -24,6 +24,13 @@ test('single known type, singular wording', () => {
   );
 });
 
+test('redaction warning says covered text stays readable until redactions are applied', () => {
+  assert.equal(
+    formatUnsupportedAnnotationNotice({ Redact: 1 }),
+    '1 redaction mark is shown with an outline. The covered text is still readable until the redaction is applied. Exporting an annotated PDF does not apply it.'
+  );
+});
+
 test('multiple known types use plural friendly names and plural tail', () => {
   assert.equal(
     formatUnsupportedAnnotationNotice({ Sound: 1, Stamp: 2 }),
