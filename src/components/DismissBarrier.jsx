@@ -11,7 +11,7 @@ const resolvesInside = (target, insideRefs, insideSelector) => {
   if (insideSelector && element.closest(insideSelector)) return true;
   return insideRefs.some((entry) => {
     const node = entry?.current || entry;
-    return !!node && node.contains(element);
+    return typeof node?.contains === 'function' && node.contains(element);
   });
 };
 
