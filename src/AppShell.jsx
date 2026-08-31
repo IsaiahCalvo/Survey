@@ -23,6 +23,7 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import BodyPortal from './components/BodyPortal.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
@@ -2392,7 +2393,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
                     }
                   };
-                  return (
+                  const picker = (
                     <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
                       position: isTextMarkupPalette ? 'fixed' : 'absolute',
                       top: isTextMarkupPalette ? textMarkupPickerPosition.top : '100%',
@@ -2464,6 +2465,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       </Suspense>
                     </div>
                   );
+                  return isTextMarkupPalette ? <BodyPortal>{picker}</BodyPortal> : picker;
                 })()}
                 {['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool) && bottomToolbarApi.setTextMarkupOverlapMode && (
                   <select
