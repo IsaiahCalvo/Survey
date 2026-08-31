@@ -32240,6 +32240,7 @@ ${pageBlocks}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
                                 style={optionStyle(activeTool === 'text-highlight')}
                               >
+                                <Icon name="formatHighlight" size={18} />
                                 Text highlight
                               </button>
                             </>
