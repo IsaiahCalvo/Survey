@@ -10,6 +10,7 @@ import {
   buildTextMarkupLinkRegions,
   resizeTextMarkupHorizontalEdge,
   getTextMarkupRangeHandlePositions,
+  getTextMarkupStackAtPoint,
   rotatePageQuad,
   resolveTextMarkupEditPaint,
   TEXT_MARKUP_DEFAULT_PAINT,
@@ -284,9 +285,33 @@ test('either range handle can cross the other while pointer ownership stays fixe
   const crossedLeft = resizeTextMarkupHorizontalEdge(annotation, 'ml', { x: 80, y: 5 }, 100, 100, 5);
   assert.deepEqual(crossedLeft.data.textRange, { start: 5, end: 8 });
   assert.equal(crossedLeft.data.selectedText, 'fgh');
+  assert.deepEqual(getTextMarkupRangeHandlePositions(crossedLeft), {
+    ml: { x: 80, y: 5 },
+    mr: { x: 50, y: 5 },
+  });
   const crossedRight = resizeTextMarkupHorizontalEdge(annotation, 'mr', { x: 10, y: 5 }, 100, 100, 2);
   assert.deepEqual(crossedRight.data.textRange, { start: 1, end: 2 });
   assert.equal(crossedRight.data.selectedText, 'b');
+  assert.deepEqual(getTextMarkupRangeHandlePositions(crossedRight), {
+    ml: { x: 20, y: 5 },
+    mr: { x: 10, y: 5 },
+  });
+});
+
+test('stack cycling finds every visible text mark under the press after active-only resize', () => {
+  const commonQuad = { x1: 20, y1: 10, x2: 80, y2: 10, x3: 20, y3: 20, x4: 80, y4: 20 };
+  const extendedQuad = { x1: 20, y1: 10, x2: 95, y2: 10, x3: 20, y3: 20, x4: 95, y4: 20 };
+  const annotations = [
+    createTextMarkupAnnotation({ id: 'highlight', pageNumber: 1, markupType: 'highlight', quads: [extendedQuad] }),
+    createTextMarkupAnnotation({ id: 'underline', pageNumber: 1, markupType: 'underline', quads: [commonQuad] }),
+    createTextMarkupAnnotation({ id: 'squiggly', pageNumber: 1, markupType: 'squiggly', quads: [commonQuad] }),
+    createTextMarkupAnnotation({ id: 'strikeout', pageNumber: 1, markupType: 'strikeout', quads: [commonQuad] }),
+  ];
+  annotations[2].visible = false;
+
+  assert.deepEqual(getTextMarkupStackAtPoint(annotations, { x: 50, y: 15 }), [0, 1, 3]);
+  assert.deepEqual(getTextMarkupStackAtPoint(annotations, { x: 90, y: 15 }), [0]);
+  assert.deepEqual(getTextMarkupStackAtPoint(annotations, { x: 98, y: 15 }), []);
 });
 
 test('resizing one stacked review mark leaves its siblings unchanged', () => {

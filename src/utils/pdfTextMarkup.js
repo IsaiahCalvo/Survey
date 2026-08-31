@@ -248,10 +248,34 @@ export function getTextMarkupRangeHandlePositions(annotation) {
     Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4))
     + Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4))
   ) / 2;
-  return {
+  const positions = {
     ml: { x: Math.min(Number(first.x1), Number(first.x3)), y: centerY(first) },
     mr: { x: Math.max(Number(last.x2), Number(last.x4)), y: centerY(last) },
   };
+  if (annotation?._textRangeHandleCrossed) {
+    return { ml: positions.mr, mr: positions.ml };
+  }
+  return positions;
+}
+
+export function getTextMarkupStackAtPoint(annotations, point, tolerance = 2) {
+  const x = Number(point?.x);
+  const y = Number(point?.y);
+  const pad = Math.max(0, Number(tolerance) || 0);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+  return (annotations || []).flatMap((annotation, index) => {
+    if (annotation?.data?.type !== 'text-markup' || annotation.visible === false) return [];
+    const hit = (annotation.data.quads || []).some((quad) => {
+      const xs = [quad.x1, quad.x2, quad.x3, quad.x4].map(Number);
+      const ys = [quad.y1, quad.y2, quad.y3, quad.y4].map(Number);
+      if (![...xs, ...ys].every(Number.isFinite)) return false;
+      return x >= Math.min(...xs) - pad
+        && x <= Math.max(...xs) + pad
+        && y >= Math.min(...ys) - pad
+        && y <= Math.max(...ys) + pad;
+    });
+    return hit ? [index] : [];
+  });
 }
 
 const textNodesFor = (root) => {
@@ -336,6 +360,11 @@ const orderedOffsets = (candidate, fixedOffset, storedRange, handleId) => {
   return { start: Math.min(candidate, fixed), end: Math.max(candidate, fixed) };
 };
 
+const textRangeDragState = (handleId, candidate, fixed) => ({
+  _textRangeDragHandle: handleId,
+  _textRangeHandleCrossed: handleId === 'ml' ? candidate > fixed : candidate < fixed,
+});
+
 const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOffset) => {
   const storedRange = annotation?.data?.textRange;
   const model = annotation?.data?.textRangeModel;
@@ -356,7 +385,10 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOff
   const ratio = Math.max(0, Math.min(1, (pointer.x - target.left) / (target.right - target.left)));
   const visualRatio = target.rtl ? 1 - ratio : ratio;
   const candidate = target.start + Math.round((target.end - target.start) * visualRatio);
-  const { start, end } = orderedOffsets(candidate, fixedOffset, storedRange, handleId);
+  const fixed = Number.isFinite(Number(fixedOffset))
+    ? Number(fixedOffset)
+    : (handleId === 'ml' ? Number(storedRange.end) : Number(storedRange.start));
+  const { start, end } = orderedOffsets(candidate, fixed, storedRange, handleId);
   if (end <= start) return null;
   const quads = [];
   for (const run of runs) {
@@ -379,6 +411,7 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOff
   if (!bounds) return null;
   return {
     ...annotation,
+    ...textRangeDragState(handleId, candidate, fixed),
     left: bounds.left,
     top: bounds.top,
     width: bounds.width,
@@ -405,7 +438,10 @@ const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth,
   const clientY = pageRect.top + pointer.y * pageRect.height / pageHeight;
   const candidate = textOffsetAtClientPoint(textLayer, clientX, clientY);
   if (!Number.isFinite(candidate)) return null;
-  const { start, end } = orderedOffsets(candidate, fixedOffset, storedRange, handleId);
+  const fixed = Number.isFinite(Number(fixedOffset))
+    ? Number(fixedOffset)
+    : (handleId === 'ml' ? Number(storedRange.end) : Number(storedRange.start));
+  const { start, end } = orderedOffsets(candidate, fixed, storedRange, handleId);
   if (end <= start) return null;
   const startBoundary = boundaryAtTextOffset(textLayer, start);
   const endBoundary = boundaryAtTextOffset(textLayer, end);
@@ -422,6 +458,7 @@ const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth,
   if (!bounds) return null;
   return {
     ...annotation,
+    ...textRangeDragState(handleId, candidate, fixed),
     left: bounds.left,
     top: bounds.top,
     width: bounds.width,

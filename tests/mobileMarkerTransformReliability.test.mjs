@@ -64,12 +64,27 @@ test('text markup selection chrome exposes only left and right range handles', (
     2,
     'move and up must reject a second pointer',
   );
+  assert.equal(
+    (interactionSource.match(/activeTextRangeDrag\?\.mode === 'text-markup-horizontal'/g) || []).length,
+    2,
+    'root and handle pointerdown must not let a second touch steal the active endpoint',
+  );
   assert.match(
     interactionSource,
     /ds\.pointerId != null && e\.pointerId != null && ds\.pointerId !== e\.pointerId/,
     'cancel must reject a second pointer',
   );
   assert.match(annotationLayerSource, /onPointerCancel=\{isInteractive[\s\S]{0,180}handlePointerCancel\(e\)/);
+  assert.match(
+    interactionSource,
+    /getTextMarkupStackAtPoint\(annotations\?\.objects, svgPoint/,
+    'stack cycling must use every text range under the pointer, even after one range changes',
+  );
+  assert.match(
+    interactionSource,
+    /delete committedTextMarkup\._textRangeDragHandle;[\s\S]{0,120}delete committedTextMarkup\._textRangeHandleCrossed;/,
+    'drag-only handle state must never enter save, history, or export data',
+  );
 });
 
 test('text action bar uses the locked SVG assets for every text markup action', () => {

@@ -78,7 +78,7 @@ import {
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag.js';
 import { isTransformLockedAnnotation } from '../utils/annotationSelectionEligibility.js';
-import { resizeTextMarkupHorizontalEdge } from '../utils/pdfTextMarkup.js';
+import { getTextMarkupStackAtPoint, resizeTextMarkupHorizontalEdge } from '../utils/pdfTextMarkup.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -615,20 +615,10 @@ export function useSVGInteraction({
 
     const clickedTextMarkup = annotations?.objects?.[index];
     if (clickedTextMarkup?.data?.type === 'text-markup') {
-      const rangeKey = JSON.stringify({
-        pageNumber: clickedTextMarkup.data.pageNumber,
-        textRange: clickedTextMarkup.data.textRange || null,
-        quads: clickedTextMarkup.data.quads || [],
-      });
-      const candidates = (annotations?.objects || [])
-        .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
-        .filter(({ candidate }) => candidate?.data?.type === 'text-markup')
-        .filter(({ candidate }) => JSON.stringify({
-          pageNumber: candidate.data.pageNumber,
-          textRange: candidate.data.textRange || null,
-          quads: candidate.data.quads || [],
-        }) === rangeKey)
-        .map(({ candidateIndex }) => candidateIndex);
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const pointCandidates = getTextMarkupStackAtPoint(annotations?.objects, svgPoint);
+      const candidates = pointCandidates.includes(index) ? pointCandidates : [index];
+      const rangeKey = candidates.join(',');
       const previous = textMarkupCycleRef.current;
       const samePoint = previous
         && previous.rangeKey === rangeKey
@@ -949,6 +939,16 @@ export function useSVGInteraction({
       return 'lasso-started';
     }
 
+    const activeTextRangeDrag = dragStateRef.current;
+    if (
+      activeTextRangeDrag?.mode === 'text-markup-horizontal'
+      && activeTextRangeDrag.active
+      && activeTextRangeDrag.pointerId != null
+      && e.pointerId !== activeTextRangeDrag.pointerId
+    ) {
+      e.preventDefault();
+      return 'text-markup-secondary-pointer';
+    }
     // UX: Phase 14 CALL-10 — callout hit-test via data-attribute delegation.
     // Same pattern as v2.2 Phase 13 rotation-handle delegation
     // (SVGAnnotationLayer.jsx:225-340). The data-callout-* namespace is
@@ -3454,7 +3454,10 @@ export function useSVGInteraction({
       }
     } else if (ds.mode === 'text-markup-horizontal' && ds.currentTextMarkup) {
       const updatedAnnotations = deepClone(annotations);
-      updatedAnnotations.objects[ds.annotationIndex] = ds.currentTextMarkup;
+      const committedTextMarkup = deepClone(ds.currentTextMarkup);
+      delete committedTextMarkup._textRangeDragHandle;
+      delete committedTextMarkup._textRangeHandleCrossed;
+      updatedAnnotations.objects[ds.annotationIndex] = committedTextMarkup;
       onSaveAnnotations(updatedAnnotations, {
         source: 'text-markup:range-resize',
         action: 'text-range-resize',
@@ -3964,6 +3967,16 @@ export function useSVGInteraction({
    */
   const handleHandlePointerDown = useCallback((e, handleId) => {
     e.stopPropagation();
+    const activeTextRangeDrag = dragStateRef.current;
+    if (
+      activeTextRangeDrag?.mode === 'text-markup-horizontal'
+      && activeTextRangeDrag.active
+      && activeTextRangeDrag.pointerId != null
+      && e.pointerId !== activeTextRangeDrag.pointerId
+    ) {
+      e.preventDefault();
+      return;
+    }
     // KAL-75 (G4): locked/read-only documents — resize/rotate handles are a
     // pure transform surface; never arm the gesture. (Whole-shape move is
     // guarded in handlePointerMove, which all drag modes flow through.)
