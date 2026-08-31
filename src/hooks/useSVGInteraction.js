@@ -46,6 +46,7 @@ import {
   getLassoPolygonValidation,
   getLassoModeFromTrail,
   getLassoPointerSamples,
+  getLassoGestureIntent,
   cycleLassoMode,
   LASSO_SIMPLIFY_PX,
   resolveLassoHits,
@@ -146,6 +147,8 @@ export function useSVGInteraction({
   // Phase 19 — current tool. Marquee only activates when tool === 'select'.
   activeTool,
   selectionMode = 'rectangle',
+  lassoTouchOperation = 'replace',
+  lassoTouchMode = 'window',
   // Phase 35 Plan 03 — per-user delete authority. Threads the current Supabase
   // auth user id and the active document's owner id through to canModify at
   // every selection-resolve site (marquee post-filter + click hit-test gates).
@@ -357,6 +360,12 @@ export function useSVGInteraction({
     window.addEventListener('survey-pdfjs-pinch-start', onPinchStart);
     return () => window.removeEventListener('survey-pdfjs-pinch-start', onPinchStart);
   }, [cancelLasso]);
+
+  // UX: a tool switch ends the old gesture at once. This prevents a hotkey
+  // from arming a second tool while the lasso still owns pointer capture.
+  useEffect(() => {
+    if (activeTool !== 'select' || selectionMode !== 'lasso') cancelLasso();
+  }, [activeTool, selectionMode, cancelLasso]);
 
   // ---------------------------------------------------------------------------
   // Inverse scale via ResizeObserver (container-aware, NOT zoom percentage)
@@ -910,40 +919,6 @@ export function useSVGInteraction({
    * and the SVG root catches clicks anywhere inside them.
    */
   const handleSvgPointerDown = useCallback((e) => {
-    // Lasso Select owns the page gesture, even when the press starts on a
-    // rendered annotation or callout. Dispatch this before object drag/select
-    // hit testing so a real freehand loop can start anywhere on the page.
-    if (activeTool === 'select' && selectionMode === 'lasso') {
-      if (e.button != null && e.button !== 0) return;
-      const current = lassoStateRef.current;
-      if (current && current.pointerId !== e.pointerId) {
-        // A pen keeps ownership when a stray palm touch lands. Two touch
-        // pointers still hand off to the viewer's pinch gesture.
-        if (current.pointerType === 'pen' && (e.pointerType || 'mouse') === 'touch') {
-          e.preventDefault();
-          return 'pen-owned';
-        }
-        cancelLasso();
-        return 'pinch-handoff';
-      }
-      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
-      applyLassoState({
-        points: [{
-          x: Math.max(0, Math.min(pageWidth, svgPoint.x)),
-          y: Math.max(0, Math.min(pageHeight, svgPoint.y)),
-        }],
-        shiftHeld: !!e.shiftKey,
-        altHeld: !!e.altKey,
-        modeOverride: null,
-        mode: null,
-        pointerId: e.pointerId,
-        pointerType: e.pointerType || 'mouse',
-      });
-      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
-      e.preventDefault();
-      return 'lasso-started';
-    }
-
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -1243,6 +1218,37 @@ export function useSVGInteraction({
       }
     }
 
+    // UX: Lasso starts only on bare page space. Marks, callouts, group move
+    // zones, and resize handles keep the same hit paths as Rectangle Select,
+    // so a lasso-made selection stays safe and fully editable.
+    if (e.target === svgRef.current && activeTool === 'select' && selectionMode === 'lasso') {
+      if (e.button != null && e.button !== 0) return;
+      const current = lassoStateRef.current;
+      if (current && current.pointerId !== e.pointerId) {
+        if (current.pointerType === 'pen' && (e.pointerType || 'mouse') === 'touch') {
+          e.preventDefault();
+          return 'pen-owned';
+        }
+        cancelLasso();
+        return 'pinch-handoff';
+      }
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const intent = getLassoGestureIntent(e, lassoTouchOperation, lassoTouchMode);
+      applyLassoState({
+        points: [{
+          x: Math.max(0, Math.min(pageWidth, svgPoint.x)),
+          y: Math.max(0, Math.min(pageHeight, svgPoint.y)),
+        }],
+        ...intent,
+        mode: null,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+      });
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      e.preventDefault();
+      return 'lasso-started';
+    }
+
     // UX: Phase 19 — AutoCAD marquee. When the Select tool is active and
     // the click originated on the SVG root itself (truly empty space),
     // start tracking a potential marquee. The rect is NOT drawn until the
@@ -1276,7 +1282,7 @@ export function useSVGInteraction({
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -4915,6 +4921,8 @@ export function useSVGInteraction({
     lassoMode: lassoState?.points?.length
       ? (lassoState.modeOverride || lassoState.mode || getLassoModeFromTrail(lassoState.points) || 'window')
       : null,
+    lassoPointerType: lassoState?.pointerType || null,
+    lassoOperation: lassoState?.altHeld ? 'subtract' : lassoState?.shiftHeld ? 'add' : 'replace',
     cancelLasso,
     shouldHandoffLassoPointer,
     shouldIgnoreLassoPointer,

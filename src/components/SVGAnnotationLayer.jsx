@@ -297,6 +297,8 @@ const SVGAnnotationLayer = memo(({
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
+  lassoTouchOperation = 'replace',
+  lassoTouchMode = 'window',
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
   // UX 2026-04-19: editType of the current edit session ('text' | 'callout' | 'bbox' | null).
   // 'bbox' means the user double-clicked a counter / line / arrow / polygon / polyline and
@@ -512,12 +514,16 @@ const SVGAnnotationLayer = memo(({
     marqueeDirection,
     lassoMode,
     lassoPoints,
+    lassoPointerType,
+    lassoOperation,
     cancelLasso,
     shouldHandoffLassoPointer,
     shouldIgnoreLassoPointer,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
+    lassoTouchOperation,
+    lassoTouchMode,
     // UX: Phase 14 CALL-10 — wire the callout drag machinery. The hook
     // reads `callouts` to look up the original React callout by id at
     // drag-start (for whole-move delta math), dispatches selection changes
@@ -1399,11 +1405,13 @@ const SVGAnnotationLayer = memo(({
   const initialZoomGenRef = useRef(zoomGeneration);
   useEffect(() => {
     if (zoomGeneration === initialZoomGenRef.current) return;
+    initialZoomGenRef.current = zoomGeneration;
+    cancelLasso();
     const state = shapeCreationRef.current;
     if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
       commitShapeCreationRef.current(null);
     }
-  }, [zoomGeneration]);
+  }, [zoomGeneration, cancelLasso]);
 
   // A second finger means the user is pinching the PDF, not finishing a mark —
   // cancel (never commit) the first finger's partial gesture. Parity with the
@@ -4723,15 +4731,6 @@ const SVGAnnotationLayer = memo(({
               : undefined,
       }}
       preserveAspectRatio="none"
-      onPointerDownCapture={isInteractive ? (e) => {
-        // Annotation paths and transform handles stop pointerdown while
-        // bubbling. Capture lets Lasso Select own the page gesture before
-        // those child handlers can turn it into an object move or resize.
-        if (activeTool === 'select' && selectionMode === 'lasso') {
-          e.stopPropagation();
-          handleSvgPointerDown(e);
-        }
-      } : undefined}
       onPointerDown={(e) => {
         if (isInteractive) {
           if (shouldIgnoreLassoPointer?.(e.pointerId, e.pointerType)) {
@@ -4791,13 +4790,6 @@ const SVGAnnotationLayer = memo(({
               }
               e.preventDefault();
             }
-            return;
-          }
-          // In Lasso Select, the page gesture owns pointerdown even when it
-          // begins over an annotation or callout child. The hook applies the
-          // page lock, modifier snapshot, and pointer capture.
-          if (activeTool === 'select' && selectionMode === 'lasso') {
-            handleSvgPointerDown(e);
             return;
           }
           const annotationWrapper = e.target?.closest?.('[data-annotation-index]');
@@ -5181,6 +5173,36 @@ const SVGAnnotationLayer = memo(({
           />
         </g>
       )}
+      {lassoPoints?.length > 0 && (() => {
+        const lastPoint = lassoPoints.at(-1);
+        const usesTouchControls = lassoPointerType === 'touch' || lassoPointerType === 'pen';
+        const modeLabel = lassoMode === 'crossing' ? 'Crossing' : lassoMode === 'fence' ? 'Fence' : 'Window';
+        const operationLabel = lassoOperation === 'add' ? 'Add' : lassoOperation === 'subtract' ? 'Subtract' : 'Replace';
+        const hint = usesTouchControls
+          ? `${modeLabel} · ${operationLabel}`
+          : `${modeLabel} · Space to change · Shift add · Alt subtract`;
+        const chipWidth = usesTouchControls ? 116 : 304;
+        const chipX = Math.max(4 * inverseScale, Math.min(
+          width - (chipWidth + 4) * inverseScale,
+          lastPoint.x + 12 * inverseScale,
+        ));
+        const chipY = Math.max(4 * inverseScale, Math.min(
+          height - 28 * inverseScale,
+          lastPoint.y + 12 * inverseScale,
+        ));
+        // UX: the chip makes the hidden lasso modes clear while the hand is
+        // still moving. It stays small and follows the trail without taking input.
+        return (
+          <g
+            data-lasso-gesture-hint="true"
+            pointerEvents="none"
+            transform={`translate(${chipX} ${chipY}) scale(${inverseScale})`}
+          >
+            <rect width={chipWidth} height={24} rx={6} fill="rgba(18, 21, 28, 0.92)" stroke="rgba(216, 168, 78, 0.72)" />
+            <text x={8} y={16} fill="#f0eadc" fontSize={11} fontWeight={600}>{hint}</text>
+          </g>
+        );
+      })()}
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles.
           UX: Phase 19 follow-up — suppress this when a callout is also

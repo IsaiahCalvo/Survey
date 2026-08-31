@@ -62,6 +62,7 @@ const KeyboardShortcutsOverlay = () => {
     // with the two Select modes shown together so the pairing is obvious.
     { category: 'Tools', items: [
       { keys: ['V'], description: 'Select annotations' },
+      { keys: ['Alt', 'V'], description: 'Lasso Select' },
       { keys: ['Shift', 'V'], description: 'Select text on the page' },
       { keys: ['P'], description: 'Pen' },
       { keys: ['H'], description: 'Highlighter' },
@@ -71,6 +72,13 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['L'], description: 'Line' },
       { keys: ['A'], description: 'Arrow' },
       { keys: ['C'], description: 'Counter' },
+    ]},
+    // UX: these keys act during a lasso, so list them by result instead of
+    // hiding them under the main tool shortcut.
+    { category: 'Lasso Select', items: [
+      { keys: ['Space'], description: 'Cycle Window, Crossing, and Fence' },
+      { keys: ['Shift'], description: 'Add hits to the selection' },
+      { keys: ['Alt'], description: 'Remove hits from the selection' },
     ]},
     { category: 'Interface', items: [
       { keys: ['?'], description: 'Toggle shortcuts' },

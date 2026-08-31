@@ -30,6 +30,22 @@ export function cycleLassoMode(mode) {
   return mode === 'window' ? 'crossing' : mode === 'crossing' ? 'fence' : 'window';
 }
 
+export function getLassoGestureIntent(event = {}, touchOperation = 'replace', touchMode = null) {
+  const usesOnScreenControls = event.pointerType === 'touch' || event.pointerType === 'pen';
+  if (usesOnScreenControls) {
+    return {
+      shiftHeld: touchOperation === 'add',
+      altHeld: touchOperation === 'subtract',
+      modeOverride: ['window', 'crossing', 'fence'].includes(touchMode) ? touchMode : null,
+    };
+  }
+  return {
+    shiftHeld: !!event.shiftKey && !event.altKey,
+    altHeld: !!event.altKey,
+    modeOverride: null,
+  };
+}
+
 const samePoint = (a, b) => Math.abs(a.x - b.x) <= EPSILON && Math.abs(a.y - b.y) <= EPSILON;
 const orientation = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 
@@ -129,6 +145,7 @@ export function getLassoPolygonValidation(points) {
     Math.abs(orientation(point, polygon[(index + 1) % polygon.length], polygon[(index + 2) % polygon.length])) > EPSILON
   ));
   if (Math.abs(twiceArea) <= EPSILON && !hasTurn) return { polygon: null, issue: 'zero-area' };
+  if (polygonSelfIntersects(polygon)) return { polygon: null, issue: 'self-intersection' };
   return { polygon, issue: null };
 }
 
