@@ -56,7 +56,19 @@ export function normalizeTextLinkUrl(value) {
   const candidate = /^[a-z][a-z\d+.-]*:/i.test(raw) ? raw : `https://${raw}`;
   try {
     const url = new URL(candidate);
-    return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : null;
+    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) return null;
+    if (url.protocol === 'mailto:') return url.href;
+    const hostname = url.hostname.toLowerCase();
+    if (!hostname || hostname.includes('%')) return null;
+    const isLocalhost = hostname === 'localhost';
+    const isIpv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+      && hostname.split('.').every((part) => Number(part) <= 255);
+    const isIpv6 = /^\[[\da-f:.]+\]$/i.test(hostname) && hostname.includes(':');
+    const labels = hostname.split('.');
+    const isDomain = labels.length > 1
+      && labels.every((label) => /^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i.test(label))
+      && /^(?:[a-z]{2,}|xn--[a-z\d-]{2,})$/i.test(labels.at(-1));
+    return isLocalhost || isIpv4 || isIpv6 || isDomain ? url.href : null;
   } catch {
     return null;
   }
@@ -66,7 +78,7 @@ export function buildTextMarkupLinkRegions(annotations, pageSize) {
   const width = Number(pageSize?.width);
   const height = Number(pageSize?.height);
   if (!(width > 0) || !(height > 0)) return [];
-  return (annotations || []).flatMap((annotation) => {
+  return (annotations || []).flatMap((annotation, annotationIndex) => {
     if (annotation?.data?.type !== 'text-markup' || annotation.data.markupType !== 'link') return [];
     const url = normalizeTextLinkUrl(annotation.data.linkUrl);
     const pageNumber = Math.trunc(Number(annotation.data.linkPageNumber));
@@ -81,6 +93,8 @@ export function buildTextMarkupLinkRegions(annotations, pageSize) {
       if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return null;
       return {
         id: `${annotation.id || annotation.data.id || 'link'}-${index}`,
+        annotationId: annotation.id || annotation.data.id || null,
+        annotationIndex,
         mode: pageNumber > 0 ? 'page' : 'web',
         url,
         pageNumber: pageNumber > 0 ? pageNumber : null,

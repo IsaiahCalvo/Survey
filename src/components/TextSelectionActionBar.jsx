@@ -50,6 +50,8 @@ export default function TextSelectionActionBar({
   onLinkModeChange,
   onLinkValueChange,
   onLinkSubmit,
+  onLinkOpen,
+  onLinkRemove,
   onLinkCancel,
 }) {
   const hasSelection = Boolean(selection?.pages?.length);
@@ -96,6 +98,8 @@ export default function TextSelectionActionBar({
           <input className="text-selection-action-bar__link-input" autoFocus aria-label={linkMode === 'page' ? 'Page number' : 'Web address'} inputMode={linkMode === 'page' ? 'numeric' : 'url'} value={linkValue} onChange={(event) => onLinkValueChange?.(event.target.value)} placeholder={linkMode === 'page' ? '1' : 'https://example.com'} style={{ borderColor: linkError ? '#e45b5b' : '#555b67' }} />
           <div className="text-selection-action-bar__link-actions" data-text-link-actions="true">
             <button data-text-link-control="true" type="submit" aria-label="Apply hyperlink" style={{ height: 34, padding: '0 16px', border: '1px solid #d1a125', borderRadius: 6, background: '#d4a11e', color: '#16191e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
+            {linkActive && <button data-text-link-control="true" type="button" aria-label="Open link" onClick={onLinkOpen} style={{ height: 34, padding: '0 12px', border: '1px solid #4d535e', borderRadius: 6, background: '#343a45', color: '#f2f4f7', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Open link</button>}
+            {linkActive && <button data-text-link-control="true" type="button" aria-label="Remove link" onClick={onLinkRemove} style={{ height: 34, padding: '0 12px', border: '1px solid #7c4545', borderRadius: 6, background: '#3a2528', color: '#ffb4b4', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Remove link</button>}
             <button data-text-link-control="true" type="button" aria-label="Cancel hyperlink" onClick={onLinkCancel} style={{ height: 34, padding: '0 16px', border: '1px solid #4d535e', borderRadius: 6, background: '#2b3039', color: '#d9dce2', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
           </div>
           {linkError && <span role="alert" style={{ width: '100%', color: '#ff8b8b', fontSize: 11, textAlign: 'center' }}>{linkError}</span>}
