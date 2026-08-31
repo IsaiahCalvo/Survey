@@ -117,6 +117,29 @@ const selectionMatchesSnapshot = (selection, snapshot) => Boolean(
   && selection.isCollapsed === snapshot.isCollapsed
 );
 
+const sameBoundary = (boundary, node, offset) => Boolean(
+  boundary?.node
+  && boundary.node === node
+  && boundary.offset === offset
+);
+
+const endpointDragFixedBoundary = (selectionSnapshot, startBoundary) => {
+  if (!selectionSnapshot || selectionSnapshot.isCollapsed || selectionSnapshot.rangeCount < 1) return null;
+  if (sameBoundary(startBoundary, selectionSnapshot.anchorNode, selectionSnapshot.anchorOffset)) {
+    return {
+      node: selectionSnapshot.focusNode,
+      offset: selectionSnapshot.focusOffset,
+    };
+  }
+  if (sameBoundary(startBoundary, selectionSnapshot.focusNode, selectionSnapshot.focusOffset)) {
+    return {
+      node: selectionSnapshot.anchorNode,
+      offset: selectionSnapshot.anchorOffset,
+    };
+  }
+  return null;
+};
+
 // Chromium can paint and hit a rotated pdf.js span correctly, yet still leave
 // the browser Selection empty or unchanged at pointerup. Keep native selection
 // as the main path; only rebuild the Range when this drag did not create one.
@@ -129,8 +152,9 @@ export function repairCollapsedTextDragSelection({
 } = {}) {
   const selection = windowRef?.getSelection?.();
   if (!selection) return false;
+  const fixedBoundary = endpointDragFixedBoundary(selectionSnapshot, startBoundary);
   const hasNativeRange = !selection.isCollapsed && String(selection.toString() || '').length > 0;
-  if (hasNativeRange && !selectionMatchesSnapshot(selection, selectionSnapshot)) return false;
+  if (!fixedBoundary && hasNativeRange && !selectionMatchesSnapshot(selection, selectionSnapshot)) return false;
   const textLayer = interactiveTextLayerForNode(startBoundary?.node);
   if (!startBoundary || !textLayer) return false;
   const endBoundary = getCaretBoundaryFromClientPoint(
@@ -141,16 +165,26 @@ export function repairCollapsedTextDragSelection({
   );
   if (!endBoundary) return false;
   try {
-    const [start, end] = orderedBoundaries(documentRef, startBoundary, endBoundary);
+    const movingStart = fixedBoundary || startBoundary;
+    const [start, end] = orderedBoundaries(documentRef, movingStart, endBoundary);
     if (start.node === end.node && start.offset === end.offset) return false;
     const range = documentRef.createRange();
     range.setStart(start.node, start.offset);
     range.setEnd(end.node, end.offset);
     if (!String(range.toString() || '').length) return false;
-    selection.removeAllRanges();
-    selection.addRange(range);
+    if (fixedBoundary && typeof selection.setBaseAndExtent === 'function') {
+      selection.setBaseAndExtent(
+        fixedBoundary.node,
+        fixedBoundary.offset,
+        endBoundary.node,
+        endBoundary.offset,
+      );
+    } else {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
     documentRef.dispatchEvent?.(new windowRef.Event('selectionchange'));
-    return !selection.isCollapsed;
+    return !selection.isCollapsed && String(selection.toString() || '').length > 0;
   } catch {
     return false;
   }
