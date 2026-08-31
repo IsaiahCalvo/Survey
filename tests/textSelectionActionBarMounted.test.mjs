@@ -78,8 +78,8 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
       activeMarkupTypes: active,
       focusedPaintMark: focus,
       paintByMark: {
-        highlight: { color: '#f5c229', opacity: 30 }, underline: { color: '#ef3029', opacity: 100 },
-        squiggly: { color: '#f0f1f4', opacity: 100 }, strikeout: { color: '#3d63dc', opacity: 100 },
+        highlight: { color: '#f5c229', opacity: 40 }, underline: { color: '#ef3029', opacity: 100 },
+        squiggly: { color: '#15803d', opacity: 100 }, strikeout: { color: '#3d63dc', opacity: 100 },
       },
       linkEditorOpen: linkOpen,
       linkMode: mode,
@@ -102,14 +102,20 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.ok(toolbar);
     assert.equal(toolbar.className, 'text-selection-action-bar__toolbar');
     assert.equal(toolbar.getAttribute('aria-orientation'), 'horizontal');
-    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.children.length, 6);
+    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.children.length, 7);
+    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.firstElementChild?.getAttribute('aria-label'), 'Copy');
     const highlightControl = document.querySelector('[data-text-mark-control="highlight"]');
     assert.equal(highlightControl.className, 'text-selection-action-bar__mark');
     assert.equal(highlightControl.getAttribute('data-focused'), 'true');
     assert.ok(document.querySelector('button[aria-label="Set Highlight color"]').classList.contains('text-selection-action-bar__button'));
-    for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
+    for (const [label, iconName] of [['Copy', 'copy'], ['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
       assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
+    const highlightSwatch = document.querySelector('button[aria-label="Set Highlight color"] span');
+    assert.equal(highlightSwatch.style.background, 'rgb(245, 194, 41)');
+    assert.equal(highlightSwatch.style.opacity, '1');
+    await act(async () => document.querySelector('button[aria-label="Copy"]').click());
+    assert.deepEqual(actions, ['copy']);
     assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
     assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
     await act(async () => document.querySelector('button[aria-label="Remove Highlight"]').click());
@@ -123,12 +129,12 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(document.querySelector('button[aria-label*="redaction"][aria-label*="permanently"]'), null);
     const underline = document.querySelector('button[aria-label="Apply Underline"]');
     await act(async () => underline.click());
-    assert.deepEqual(actions, ['highlight', 'highlight', 'underline']);
+    assert.deepEqual(actions, ['copy', 'highlight', 'highlight', 'underline']);
     assert.equal(document.querySelector('button[aria-label="Remove Underline"]').getAttribute('aria-pressed'), 'true');
     const squiggleTouch = new dom.window.Event('touchend', { bubbles: true, cancelable: true });
     await act(async () => document.querySelector('button[aria-label="Apply Squiggle"]').dispatchEvent(squiggleTouch));
     assert.equal(squiggleTouch.defaultPrevented, true);
-    assert.deepEqual(actions, ['highlight', 'highlight', 'underline', 'squiggly']);
+    assert.deepEqual(actions, ['copy', 'highlight', 'highlight', 'underline', 'squiggly']);
     assert.equal(document.querySelector('button[aria-label="Remove Squiggle"]').getAttribute('aria-pressed'), 'true');
     const squigglePaintTouch = new dom.window.Event('touchend', { bubbles: true, cancelable: true });
     await act(async () => document.querySelector('button[aria-label="Set Squiggle color"]').dispatchEvent(squigglePaintTouch));

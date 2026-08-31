@@ -44,6 +44,7 @@ import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -2363,6 +2364,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   const textMarkupPaletteHostRect = isTextMarkupPalette
                     ? document.getElementById('chrome-sub-toolbar-host')?.getBoundingClientRect?.()
                     : null;
+                  const textMarkupPickerPosition = isTextMarkupPalette
+                    ? computeTextMarkupPickerPosition(bottomToolbarApi.textMarkupSelectionRect, {
+                        viewportWidth: window.innerWidth,
+                        viewportHeight: window.innerHeight,
+                        hostBottom: textMarkupPaletteHostRect?.bottom || 35,
+                      })
+                    : null;
                   const applyChange = (hex, alpha) => {
                     if (isTextMarkupPalette && bottomToolbarApi.handleTextMarkupPaintChange) {
                       bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100));
@@ -2387,10 +2395,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   return (
                     <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
                       position: isTextMarkupPalette ? 'fixed' : 'absolute',
-                      top: isTextMarkupPalette ? (textMarkupPaletteHostRect?.bottom || 35) + 8 : '100%',
-                      left: '50%',
+                      top: isTextMarkupPalette ? textMarkupPickerPosition.top : '100%',
+                      left: isTextMarkupPalette ? textMarkupPickerPosition.left : '50%',
                       marginTop: isTextMarkupPalette ? 0 : '10px',
-                      transform: 'translate(-50%, 0)',
+                      transform: isTextMarkupPalette ? 'none' : 'translate(-50%, 0)',
                       zIndex: isTextMarkupPalette ? 5900 : 2000
                     }}>
                       {isShape && (
