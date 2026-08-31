@@ -3,6 +3,9 @@ import { mapOcrBoxToPage } from './pdfTextMarkup.js';
 export const OCR_ENGINE_VERSION = 'tesseract-js-7-eng-v1';
 export const OCR_ENGINE_NAME = 'Tesseract.js 7';
 export const OCR_ENGINE_LICENSE = 'Apache-2.0';
+export const OCR_CACHE_BUDGET_BYTES = 3 * 1024 * 1024;
+
+const OCR_CACHE_PREFIX = 'survey:ocr:';
 
 export function hasUsableEmbeddedText(textContent, minimumCharacters = 2) {
   const text = (textContent?.items || []).map((item) => String(item?.str || '')).join('').replace(/\s/g, '');
@@ -13,25 +16,65 @@ export function buildOcrCacheKey({ documentFingerprint, pageNumber, language = '
   return [documentFingerprint || 'unknown', Number(pageNumber) || 0, language, engineVersion].join(':');
 }
 
-const storageKeyForCache = (cacheKey) => `survey:ocr:${cacheKey}`;
+const storageKeyForCache = (cacheKey) => `${OCR_CACHE_PREFIX}${cacheKey}`;
+const storageBytes = (key, value) => (String(key).length + String(value).length) * 2;
+
+const listCachedOcrEntries = (storage, excludedKey) => {
+  if (!Number.isFinite(Number(storage?.length)) || typeof storage?.key !== 'function') return [];
+  const entries = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key?.startsWith(OCR_CACHE_PREFIX) || key === excludedKey) continue;
+    const serialized = storage.getItem(key);
+    if (serialized == null) continue;
+    let cachedAt = 0;
+    try { cachedAt = Number(JSON.parse(serialized)?.cachedAt) || 0; } catch { /* evict invalid legacy data first */ }
+    entries.push({ key, bytes: storageBytes(key, serialized), cachedAt });
+  }
+  return entries.sort((left, right) => left.cachedAt - right.cachedAt);
+};
 
 export function loadCachedOcrResult(cacheKey, storage = globalThis?.localStorage) {
   if (!cacheKey || !storage?.getItem) return null;
   try {
     const value = JSON.parse(storage.getItem(storageKeyForCache(cacheKey)) || 'null');
-    return value?.engineVersion === OCR_ENGINE_VERSION && Array.isArray(value?.words) ? value : null;
+    const result = value?.result || value;
+    return result?.engineVersion === OCR_ENGINE_VERSION && Array.isArray(result?.words) ? result : null;
   } catch {
     return null;
   }
 }
 
-export function saveCachedOcrResult(cacheKey, result, storage = globalThis?.localStorage) {
+export function saveCachedOcrResult(cacheKey, result, storage = globalThis?.localStorage, budgetBytes = OCR_CACHE_BUDGET_BYTES) {
   if (!cacheKey || !storage?.setItem || !result) return false;
+  const key = storageKeyForCache(cacheKey);
+  const serialized = JSON.stringify({ cachedAt: Date.now(), result });
+  const entryBytes = storageBytes(key, serialized);
+  if (entryBytes > budgetBytes) return false;
+  const entries = listCachedOcrEntries(storage, key);
+  let totalBytes = entryBytes + entries.reduce((total, entry) => total + entry.bytes, 0);
+  const remainingEntries = [];
+  entries.forEach((entry) => {
+    if (totalBytes > budgetBytes && storage?.removeItem) {
+      storage.removeItem(entry.key);
+      totalBytes -= entry.bytes;
+    } else {
+      remainingEntries.push(entry);
+    }
+  });
   try {
-    storage.setItem(storageKeyForCache(cacheKey), JSON.stringify(result));
+    storage.setItem(key, serialized);
     return true;
   } catch {
-    return false;
+    if (!storage?.removeItem) return false;
+    storage.removeItem(key);
+    if (remainingEntries.length) storage.removeItem(remainingEntries[0].key);
+    try {
+      storage.setItem(key, serialized);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -80,7 +123,24 @@ export function extractTesseractWords(data) {
   return words;
 }
 
-export function createTesseractOcrProvider(loadModule = () => import('tesseract.js')) {
+async function loadBundledOcrAssets() {
+  const [{ default: workerAsset }, { default: coreAsset }] = await Promise.all([
+    import('tesseract.js/dist/worker.min.js?url'),
+    import('tesseract.js-core/tesseract-core-lstm.wasm.js?url'),
+  ]);
+  const pageUrl = globalThis?.location?.href || import.meta.url;
+  const appBaseUrl = new URL(import.meta.env.BASE_URL || './', pageUrl);
+  return {
+    workerPath: new URL(workerAsset, pageUrl).href,
+    corePath: new URL(coreAsset, pageUrl).href,
+    langPath: new URL('ocr', appBaseUrl).href.replace(/\/$/, ''),
+  };
+}
+
+export function createTesseractOcrProvider(
+  loadModule = () => import('tesseract.js'),
+  loadAssets = loadBundledOcrAssets,
+) {
   return {
     id: OCR_ENGINE_VERSION,
     name: OCR_ENGINE_NAME,
@@ -96,15 +156,25 @@ export function createTesseractOcrProvider(loadModule = () => import('tesseract.
       signal?.addEventListener?.('abort', terminate, { once: true });
       try {
         if (signal?.aborted) throw new DOMException('OCR cancelled', 'AbortError');
-        const module = await loadModule();
-        const api = module?.createWorker ? module : module?.default;
-        if (!api?.createWorker) throw new Error('Tesseract.js failed to load.');
-        worker = await api.createWorker(language, api.OEM?.LSTM_ONLY ?? 1, {
-          logger: (message) => onProgress?.({
-            phase: message?.status || 'recognizing',
-            progress: Number.isFinite(Number(message?.progress)) ? Number(message.progress) : 0,
-          }),
-        });
+        try {
+          const [module, assetPaths] = await Promise.all([loadModule(), loadAssets()]);
+          const api = module?.createWorker ? module : module?.default;
+          if (!api?.createWorker) throw new Error('Tesseract.js failed to load.');
+          worker = await api.createWorker(language, api.OEM?.LSTM_ONLY ?? 1, {
+            ...assetPaths,
+            logger: (message) => onProgress?.({
+              phase: message?.status || 'recognizing',
+              progress: Number.isFinite(Number(message?.progress)) ? Number(message.progress) : 0,
+            }),
+            // Tesseract also rejects its load promise. Supplying this hook stops
+            // its message handler from throwing the same worker error again.
+            errorHandler: () => {},
+          });
+        } catch (cause) {
+          const error = new Error('Text recognition assets failed to load.', { cause });
+          error.code = 'OCR_ASSET_LOAD_FAILED';
+          throw error;
+        }
         if (terminateRequested || signal?.aborted) {
           if (!terminatePromise) terminatePromise = worker.terminate();
           await terminatePromise;

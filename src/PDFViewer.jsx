@@ -31546,14 +31546,14 @@ ${pageBlocks}
                                 <button
                                   type="button"
                                   onClick={() => recognizeTextOnPage(pageNumber)}
-                                  title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. First use downloads the OCR engine and language data.`}
+                                  title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`}
                                   style={{ padding: '7px 10px', border: '1px solid #3a4252', borderRadius: 5, background: '#181b20', color: '#e8e2d4', cursor: 'pointer' }}
                                 >
                                   Recognize text on this page
                                 </button>
                               )}
                               <span style={{ color: '#9ca3af', fontSize: 10 }}>
-                                Local {OCR_ENGINE_NAME} - {OCR_ENGINE_LICENSE}. First use downloads engine files.
+                                Local {OCR_ENGINE_NAME} - {OCR_ENGINE_LICENSE}. Works offline.
                               </span>
                               {ocrStateByPage[pageNumber]?.status === 'error' && (
                                 <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: '#181b20', color: '#fca5a5', fontSize: 11 }}>
