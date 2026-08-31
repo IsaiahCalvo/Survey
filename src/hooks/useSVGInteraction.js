@@ -3963,6 +3963,30 @@ export function useSVGInteraction({
     setInteractionState('idle');
   }, []);
 
+  // Pointer capture normally sends the release back to this page's SVG. At
+  // low zoom, a drag can cross into a sibling page before the browser grants
+  // or retains capture. Observe the window in capture phase so the page that
+  // started the lasso still owns its matching release. The page-local handler
+  // remains the one place that validates the trail and applies selection.
+  useEffect(() => {
+    const onLassoWindowPointerUp = (e) => {
+      const current = lassoStateRef.current;
+      if (!current || current.pointerId !== e.pointerId) return;
+      handlePointerUp(e);
+    };
+    const onLassoWindowPointerCancel = (e) => {
+      const current = lassoStateRef.current;
+      if (!current || current.pointerId !== e.pointerId) return;
+      cancelLasso(e.pointerId);
+    };
+    window.addEventListener('pointerup', onLassoWindowPointerUp, true);
+    window.addEventListener('pointercancel', onLassoWindowPointerCancel, true);
+    return () => {
+      window.removeEventListener('pointerup', onLassoWindowPointerUp, true);
+      window.removeEventListener('pointercancel', onLassoWindowPointerCancel, true);
+    };
+  }, [handlePointerUp, cancelLasso]);
+
   /**
    * Handle pointer down on a selection handle (resize/rotate).
    * Sets up drag state for resize (corner/edge handles) or rotation (mtr handle).

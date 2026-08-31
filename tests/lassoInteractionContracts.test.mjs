@@ -17,6 +17,24 @@ test('lasso keeps pen ownership, hands touch pairs to pinch, and cancels lost ca
   assert.match(layerSource, /onLostPointerCapture=\{isInteractive[\s\S]*cancelLasso\?\.\(e\.pointerId\)/);
 });
 
+test('lasso release stays owned by its starting page across sibling page roots', () => {
+  assert.match(
+    hookSource,
+    /window\.addEventListener\('pointerup', onLassoWindowPointerUp, true\)/,
+    'the starting page must observe release before a sibling page can consume it',
+  );
+  assert.match(
+    hookSource,
+    /const onLassoWindowPointerUp = \(e\) => \{[\s\S]*current\.pointerId !== e\.pointerId[\s\S]*handlePointerUp\(e\)/,
+    'only the starting pointer may finish the originating page lasso',
+  );
+  assert.match(
+    hookSource,
+    /const onLassoWindowPointerCancel = \(e\) => \{[\s\S]*current\.pointerId !== e\.pointerId[\s\S]*cancelLasso\(e\.pointerId\)/,
+    'pointer cancellation must clear only its originating lasso',
+  );
+});
+
 test('lasso modifier snapshot covers add and subtract for shapes and callouts', () => {
   assert.match(hookSource, /shiftHeld: !!e\.shiftKey,[\s\S]*altHeld: !!e\.altKey/);
   assert.match(hookSource, /if \(lasso\.altHeld\)[\s\S]*annotationIndices\.forEach\(\(index\) => next\.delete\(index\)\)[\s\S]*rawHits\.calloutIds\.forEach\(\(id\) => nextCallouts\.delete\(id\)\)/);
