@@ -48,18 +48,42 @@ const orderedBoundaries = (documentRef, first, second) => {
     : [second, first];
 };
 
+export function captureNativeSelectionSnapshot(selection) {
+  if (!selection) return null;
+  return {
+    anchorNode: selection.anchorNode,
+    anchorOffset: selection.anchorOffset,
+    focusNode: selection.focusNode,
+    focusOffset: selection.focusOffset,
+    rangeCount: selection.rangeCount,
+    isCollapsed: selection.isCollapsed,
+  };
+}
+
+const selectionMatchesSnapshot = (selection, snapshot) => Boolean(
+  snapshot
+  && selection.anchorNode === snapshot.anchorNode
+  && selection.anchorOffset === snapshot.anchorOffset
+  && selection.focusNode === snapshot.focusNode
+  && selection.focusOffset === snapshot.focusOffset
+  && selection.rangeCount === snapshot.rangeCount
+  && selection.isCollapsed === snapshot.isCollapsed
+);
+
 // Chromium can paint and hit a rotated pdf.js span correctly, yet still leave
-// the browser Selection empty at pointerup. Keep native selection as the main
-// path; only rebuild the same browser Range from the two caret hit points when
-// that native path failed.
+// the browser Selection empty or unchanged at pointerup. Keep native selection
+// as the main path; only rebuild the Range when this drag did not create one.
 export function repairCollapsedTextDragSelection({
   documentRef = globalThis.document,
   windowRef = globalThis.window,
+  selectionSnapshot,
   startBoundary,
   endClientPoint,
 } = {}) {
   const selection = windowRef?.getSelection?.();
-  if (!selection || (!selection.isCollapsed && String(selection.toString() || '').length > 0)) return false;
+  if (!selection) return false;
+  const hasNativeRange = !selection.isCollapsed && String(selection.toString() || '').length > 0;
+  if (hasNativeRange && !selectionMatchesSnapshot(selection, selectionSnapshot)) return false;
   if (!startBoundary || !interactiveTextLayerForNode(startBoundary.node)) return false;
   const endBoundary = getCaretBoundaryFromClientPoint(
     documentRef,

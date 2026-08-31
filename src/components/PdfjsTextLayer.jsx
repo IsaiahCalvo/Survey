@@ -14,6 +14,7 @@
 import { useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
+  captureNativeSelectionSnapshot,
   getCaretBoundaryFromClientPoint,
   repairCollapsedTextDragSelection,
 } from '../utils/nativeTextDragSelection';
@@ -132,6 +133,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       drag = {
         pointerId: event.pointerId,
         boundary,
+        selectionSnapshot: captureNativeSelectionSnapshot(window.getSelection?.()),
         x: event.clientX,
         y: event.clientY,
       };
@@ -146,6 +148,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
         repairCollapsedTextDragSelection({
           documentRef: document,
           windowRef: window,
+          selectionSnapshot: completedDrag.selectionSnapshot,
           startBoundary: completedDrag.boundary,
           endClientPoint: { x: event.clientX, y: event.clientY },
         });
