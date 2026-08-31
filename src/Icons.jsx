@@ -5,7 +5,8 @@ import textItalicUrl from './assets/icons/text-italic.svg';
 import textUnderlineUrl from './assets/icons/text-underline.svg';
 import textStrikethroughUrl from './assets/icons/text-strikethrough.svg';
 import textHighlightUrl from './assets/icons/text-highlight.svg';
-import panHandUrl from './assets/icons/pan-hand.svg';
+import highlighterToolUrl from './assets/icons/highlighter-tool.svg';
+import panHandUrl from './assets/icons/pan-hand-closed.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
@@ -490,6 +491,7 @@ const ICON_RENDERERS = {
     formatUnderline: (size, color, style, className) => renderMaskIcon(textUnderlineUrl, size, color, style, className, size * 0.89),
     formatStrikethrough: (size, color, style, className) => renderMaskIcon(textStrikethroughUrl, size, color, style, className, size * 1.04),
     formatHighlight: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
+    highlighter: (size, color, style, className) => renderMaskIcon(highlighterToolUrl, size, color, style, className),
     formatPan: (size, color, style, className) => renderMaskIcon(panHandUrl, size, color, style, className, size * 0.88),
     filter: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
@@ -603,7 +605,6 @@ const ICON_RENDERERS = {
 };
 
 const ICON_ALIASES = {
-  highlighter: 'formatHighlight',
   pan: 'formatPan',
 };
 
