@@ -255,6 +255,26 @@ Deno.serve(async (req) => {
                     `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
             }),
 
+            // Sent the moment a user schedules a cancellation (owner-reported
+            // 2026-08-30: cancelling produced no confirmation at all until the
+            // plan actually lapsed weeks later). Distinct from
+            // 'subscription-canceled', which fires when the plan really ends.
+            'subscription-cancel-scheduled': (data: any) => renderEmailLayout({
+                heading: 'Cancellation confirmed',
+                preheader: `Your Pro plan stays active until ${data.endDate || 'the end of your billing period'}.`,
+                footerReason: `You're receiving this because you canceled your Survey subscription.`,
+                bodyHtml:
+                    `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
+                    `<p style="${P}">Your cancellation went through. No further charges will be made.</p>` +
+                    `<ul style="${LIST}">` +
+                    `<li>You keep <strong>Pro</strong> until <strong>${data.endDate || 'the end of your current billing period'}</strong> — you already paid for it</li>` +
+                    `<li>After that you move to the Free plan automatically</li>` +
+                    `<li>Your documents and data stay exactly where they are</li>` +
+                    `</ul>` +
+                    emailButton('Manage subscription', data.portalUrl) +
+                    `<p style="${MUTED}" class="em-mut">Changed your mind? You can resume your plan any time before ${data.endDate || 'it ends'} from Account Settings.</p>`,
+            }),
+
             'subscription-canceled': (data: any) => renderEmailLayout({
                 heading: 'Subscription canceled',
                 preheader: `You've been moved to the Free plan.`,

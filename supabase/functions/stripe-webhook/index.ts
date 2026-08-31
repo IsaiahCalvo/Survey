@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
             case 'customer.subscription.created':
             case 'customer.subscription.updated': {
                 const subscription = event.data.object as Stripe.Subscription;
-                await handleSubscriptionUpdate(supabase, subscription);
+                await handleSubscriptionUpdate(supabase, subscription, event.data.previous_attributes);
                 break;
             }
 
@@ -293,7 +293,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
 }
 
 // Handle subscription updates
-async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subscription, previousAttributes?: Record<string, unknown>) {
     const userId = subscription.metadata?.user_id;
 
     if (!userId) {
@@ -317,7 +317,7 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
     // Check for downgrade
     const { data: currentSubscription } = await supabase
         .from('user_subscriptions')
-        .select('tier, user_id')
+        .select('tier, user_id, metadata')
         .eq('stripe_subscription_id', subscription.id)
         .single();
 
@@ -335,6 +335,15 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
 
         // Update subscription with null-safe date handling
         const period = subscriptionPeriod(subscription);
+        // A portal cancellation does NOT end the subscription — it schedules the
+        // end (cancel_at / cancel_at_period_end) while status stays 'active'.
+        // Persist that schedule in metadata so the app can say "ends on X, won't
+        // renew" instead of the false "renews on X" (owner-hit 2026-08-30).
+        const cancelAtTs = (subscription as any).cancel_at
+            ?? (subscription.cancel_at_period_end ? period.end : null);
+        const mergedMetadata = { ...(currentSubscription.metadata || {}) } as Record<string, unknown>;
+        if (cancelAtTs) mergedMetadata.cancel_at = new Date(cancelAtTs * 1000).toISOString();
+        else delete mergedMetadata.cancel_at;
         const { error } = await supabase
             .from('user_subscriptions')
             .update({
@@ -344,8 +353,35 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
                 trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
                 current_period_start: period.start ? new Date(period.start * 1000).toISOString() : null,
                 current_period_end: period.end ? new Date(period.end * 1000).toISOString() : null,
+                metadata: mergedMetadata,
             })
             .eq('stripe_subscription_id', subscription.id);
+
+        // Confirmation email the moment cancellation is SCHEDULED. Stripe's
+        // previous_attributes lists only fields this event changed, so keying
+        // on it fires exactly once per scheduling and never on the other
+        // subscription.updated chatter (owner-reported gap 2026-08-30: the only
+        // cancellation email used to arrive when the plan lapsed weeks later).
+        const becameScheduled = Boolean(cancelAtTs) && Boolean(previousAttributes) && (
+            'cancel_at' in (previousAttributes as object) || 'cancel_at_period_end' in (previousAttributes as object)
+        );
+        if (becameScheduled) {
+            const actorId = userId || currentSubscription.user_id;
+            const { data: user } = await supabase.auth.admin.getUserById(actorId);
+            if (user?.user?.email) {
+                const endDate = new Date(cancelAtTs * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                await sendEmail(
+                    'subscription-cancel-scheduled',
+                    user.user.email,
+                    `Cancellation confirmed — Pro until ${endDate}`,
+                    {
+                        firstName: user.user.user_metadata?.firstName || user.user.user_metadata?.first_name,
+                        endDate,
+                        portalUrl: 'https://surveytool.app',
+                    }
+                );
+            }
+        }
 
         if (error) {
             console.error('Error updating subscription:', error);

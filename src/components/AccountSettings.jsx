@@ -729,6 +729,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         text = `Pro trial — you won't be charged if you cancel before ${fmt(subscription.trial_ends_at)}.`;
                       } else if (subscription.status === 'past_due') {
                         text = 'Your last payment failed — update your card in Manage Billing & Payments.';
+                      } else if (subscription.status === 'active' && subscription.metadata?.cancel_at) {
+                        // Cancellation scheduled: saying "renews" here would be
+                        // false — the user cancelled (owner-hit 2026-08-30).
+                        const tierName = subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1);
+                        text = `${tierName} plan — ends ${fmt(subscription.metadata.cancel_at)} and won't renew.`;
                       } else if (subscription.status === 'active' && subscription.current_period_end) {
                         const tierName = subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1);
                         text = `${tierName} plan — renews ${fmt(subscription.current_period_end)}.`;
