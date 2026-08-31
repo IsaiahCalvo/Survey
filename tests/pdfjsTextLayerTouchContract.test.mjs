@@ -18,6 +18,13 @@ test('interactive PDF text keeps selection and pan while allowing native pinch z
   );
 });
 
+test('interactive PDF text repairs one-finger WebKit drags without claiming pinch', () => {
+  assert.match(source, /document\.addEventListener\('touchstart', onTouchStart, true\)/);
+  assert.match(source, /document\.addEventListener\('touchend', onTouchEnd, true\)/);
+  assert.match(source, /if \(event\.touches\.length !== 1\) \{ clearDrag\(\); return; \}/);
+  assert.doesNotMatch(source, /const onTouch(?:Start|Move|End) = [\s\S]{0,800}?preventDefault\(\)/);
+});
+
 test('rotated PDF text layers follow the pdf.js root rotation contract', () => {
   assert.match(source, /\.pdfjsTextLayer\[data-main-rotation="90"\] \{ transform: rotate\(90deg\) translateY\(-100%\); \}/);
   assert.match(source, /\.pdfjsTextLayer\[data-main-rotation="180"\] \{ transform: rotate\(180deg\) translate\(-100%, -100%\); \}/);

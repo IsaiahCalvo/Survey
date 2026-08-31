@@ -10,7 +10,51 @@ const clampBoundaryOffset = (node, rawOffset) => {
   return Math.max(0, Math.min(maximum, Number(rawOffset) || 0));
 };
 
-export function getCaretBoundaryFromClientPoint(documentRef, clientX, clientY) {
+const distanceToRect = (rect, clientX, clientY) => Math.hypot(
+  Math.max(rect.left - clientX, 0, clientX - rect.right),
+  Math.max(rect.top - clientY, 0, clientY - rect.bottom),
+);
+
+const geometryBoundaryFromPoint = (documentRef, root, clientX, clientY) => {
+  if (!root?.querySelectorAll || !documentRef?.createRange) return null;
+  let nearestSpan = null;
+  for (const span of root.querySelectorAll('span')) {
+    const node = Array.from(span.childNodes || [])
+      .find((child) => child.nodeType === 3 && String(child.nodeValue || '').trim());
+    const rect = span.getBoundingClientRect?.();
+    if (!node || !rect || (!rect.width && !rect.height)) continue;
+    const distance = distanceToRect(rect, clientX, clientY);
+    if (!nearestSpan || distance < nearestSpan.distance) nearestSpan = { distance, node };
+  }
+  if (!nearestSpan || nearestSpan.distance > 32) return null;
+
+  let best = null;
+  for (const node of [nearestSpan.node]) {
+    const text = String(node.nodeValue || '');
+    if (!text.trim()) continue;
+    for (let offset = 0; offset < text.length; offset += 1) {
+      try {
+        const range = documentRef.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, offset + 1);
+        const rect = range.getBoundingClientRect?.();
+        if (!rect || (!rect.width && !rect.height)) continue;
+        const distance = distanceToRect(rect, clientX, clientY);
+        if (best && distance >= best.distance) continue;
+        const vertical = rect.height > rect.width * 1.5;
+        const after = vertical
+          ? clientY >= rect.top + rect.height / 2
+          : clientX >= rect.left + rect.width / 2;
+        best = { distance, node, offset: offset + (after ? 1 : 0) };
+      } catch { /* skip an invalid glyph range */ }
+    }
+  }
+  return best && best.distance <= 32
+    ? { node: best.node, offset: best.offset }
+    : null;
+};
+
+export function getCaretBoundaryFromClientPoint(documentRef, clientX, clientY, root = null) {
   if (!documentRef || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
   let node = null;
   let offset = 0;
@@ -26,8 +70,11 @@ export function getCaretBoundaryFromClientPoint(documentRef, clientX, clientY) {
       offset = range?.startOffset;
     } catch { /* unsupported point */ }
   }
-  if (!node || !interactiveTextLayerForNode(node)) return null;
-  return { node, offset: clampBoundaryOffset(node, offset) };
+  const nativeLayer = interactiveTextLayerForNode(node);
+  if (node && nativeLayer && (!root || (root === nativeLayer && node !== root))) {
+    return { node, offset: clampBoundaryOffset(node, offset) };
+  }
+  return geometryBoundaryFromPoint(documentRef, root, clientX, clientY);
 }
 
 const collapsedRangeAt = (documentRef, boundary) => {
@@ -84,11 +131,13 @@ export function repairCollapsedTextDragSelection({
   if (!selection) return false;
   const hasNativeRange = !selection.isCollapsed && String(selection.toString() || '').length > 0;
   if (hasNativeRange && !selectionMatchesSnapshot(selection, selectionSnapshot)) return false;
-  if (!startBoundary || !interactiveTextLayerForNode(startBoundary.node)) return false;
+  const textLayer = interactiveTextLayerForNode(startBoundary?.node);
+  if (!startBoundary || !textLayer) return false;
   const endBoundary = getCaretBoundaryFromClientPoint(
     documentRef,
     Number(endClientPoint?.x),
     Number(endClientPoint?.y),
+    textLayer,
   );
   if (!endBoundary) return false;
   try {

@@ -129,6 +129,24 @@ test('uses the WebKit caret range API when caretPositionFromPoint is absent', ()
   });
 });
 
+test('falls back to text glyph geometry when WebKit returns the clear layer div', () => {
+  const { document, textNode } = setup();
+  const layer = document.querySelector('.pdfjsTextLayer');
+  layer.querySelector('span').getBoundingClientRect = () => ({ left: 10, right: 30, top: 5, bottom: 15, width: 20, height: 10 });
+  document.caretPositionFromPoint = () => ({ offsetNode: layer, offset: 0 });
+  const nativeCreateRange = document.createRange.bind(document);
+  document.createRange = () => {
+    const range = nativeCreateRange();
+    range.getBoundingClientRect = () => ({ left: 10, right: 30, top: 5, bottom: 15, width: 20, height: 10 });
+    return range;
+  };
+
+  assert.deepEqual(getCaretBoundaryFromClientPoint(document, 28, 10, layer), {
+    node: textNode,
+    offset: 1,
+  });
+});
+
 test('does not create a range outside an interactive PDF text layer', () => {
   const { dom, document, textNode } = setup();
   const outside = document.createElement('div');

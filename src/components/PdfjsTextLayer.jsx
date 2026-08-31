@@ -18,6 +18,7 @@ import {
   getCaretBoundaryFromClientPoint,
   repairCollapsedTextDragSelection,
 } from '../utils/nativeTextDragSelection';
+import { readPdfjsTextContent } from '../utils/pdfjsTextContent';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 let stylesInjected = false;
@@ -92,7 +93,7 @@ function ensureTextLayerStyles() {
        the gaps between words. */
     /* Keep one-finger pan and native text selection, while allowing the page
        host to receive the browser's two-finger pinch gesture. */
-    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; -webkit-user-select: text !important; user-select: text !important; touch-action: pan-x pan-y pinch-zoom; }
+    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; z-index: 40; -webkit-user-select: text !important; user-select: text !important; touch-action: pan-x pan-y pinch-zoom; }
     .pdfjsTextLayer.is-interactive :is(span, br) { -webkit-user-select: text !important; user-select: text !important; -webkit-touch-callout: default !important; }
     .pdfjsTextLayer:not(.is-interactive) { pointer-events: none; }
     .pdfjsTextLayer:not(.is-interactive) :is(span, br) { -webkit-user-select: none; user-select: none; }
@@ -126,9 +127,22 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
     let drag = null;
     let repairTimer = 0;
     const clearDrag = () => { drag = null; };
+    const completeDrag = (completedDrag, clientX, clientY) => {
+      if (Math.hypot(clientX - completedDrag.x, clientY - completedDrag.y) < 2) return;
+      window.clearTimeout(repairTimer);
+      repairTimer = window.setTimeout(() => {
+        repairCollapsedTextDragSelection({
+          documentRef: document,
+          windowRef: window,
+          selectionSnapshot: completedDrag.selectionSnapshot,
+          startBoundary: completedDrag.boundary,
+          endClientPoint: { x: clientX, y: clientY },
+        });
+      }, 0);
+    };
     const onPointerDown = (event) => {
       if (event.isPrimary === false || event.button !== 0 || event.pointerType === 'touch') return;
-      const boundary = getCaretBoundaryFromClientPoint(document, event.clientX, event.clientY);
+      const boundary = getCaretBoundaryFromClientPoint(document, event.clientX, event.clientY, el);
       if (!boundary || !el.contains(boundary.node)) return;
       drag = {
         pointerId: event.pointerId,
@@ -142,26 +156,44 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       if (!drag || event.pointerId !== drag.pointerId) return;
       const completedDrag = drag;
       clearDrag();
-      if (Math.hypot(event.clientX - completedDrag.x, event.clientY - completedDrag.y) < 2) return;
-      window.clearTimeout(repairTimer);
-      repairTimer = window.setTimeout(() => {
-        repairCollapsedTextDragSelection({
-          documentRef: document,
-          windowRef: window,
-          selectionSnapshot: completedDrag.selectionSnapshot,
-          startBoundary: completedDrag.boundary,
-          endClientPoint: { x: event.clientX, y: event.clientY },
-        });
-      }, 0);
+      completeDrag(completedDrag, event.clientX, event.clientY);
+    };
+    const onTouchStart = (event) => {
+      if (event.touches.length !== 1) { clearDrag(); return; }
+      const touch = event.touches[0];
+      const boundary = getCaretBoundaryFromClientPoint(document, touch.clientX, touch.clientY, el);
+      if (!boundary || !el.contains(boundary.node)) return;
+      drag = {
+        touchId: touch.identifier,
+        boundary,
+        selectionSnapshot: captureNativeSelectionSnapshot(window.getSelection?.()),
+        x: touch.clientX,
+        y: touch.clientY,
+      };
+    };
+    const onTouchEnd = (event) => {
+      if (!drag || drag.touchId == null) return;
+      const touch = Array.from(event.changedTouches || [])
+        .find((candidate) => candidate.identifier === drag.touchId);
+      if (!touch) return;
+      const completedDrag = drag;
+      clearDrag();
+      completeDrag(completedDrag, touch.clientX, touch.clientY);
     };
     el.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', clearDrag, true);
+    document.addEventListener('touchstart', onTouchStart, true);
+    document.addEventListener('touchend', onTouchEnd, true);
+    document.addEventListener('touchcancel', clearDrag, true);
     return () => {
       window.clearTimeout(repairTimer);
       el.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointerup', onPointerUp, true);
       document.removeEventListener('pointercancel', clearDrag, true);
+      document.removeEventListener('touchstart', onTouchStart, true);
+      document.removeEventListener('touchend', onTouchEnd, true);
+      document.removeEventListener('touchcancel', clearDrag, true);
     };
   }, [interactive]);
 
@@ -174,7 +206,10 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       try {
         const page = await pdf.getPage(pageNumber);
         if (cancelled || !ref.current) return;
-        const textContent = await page.getTextContent();
+        // WebKit's ReadableStream lacks async iteration on some supported iOS
+        // builds. pdf.js getTextContent() uses `for await`, so read the same
+        // public stream through its widely supported reader API instead.
+        const textContent = await readPdfjsTextContent(page);
         onTextAvailability?.(pageNumber, textContent);
         if (cancelled || !ref.current) return;
         const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
