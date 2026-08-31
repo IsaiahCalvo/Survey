@@ -277,6 +277,14 @@ export function useSVGInteraction({
     return !!current && current.pointerId !== pointerId;
   }, []);
 
+  const shouldIgnoreLassoPointer = useCallback((pointerId, pointerType) => {
+    const current = lassoStateRef.current;
+    return !!current
+      && current.pointerId !== pointerId
+      && current.pointerType === 'pen'
+      && pointerType === 'touch';
+  }, []);
+
   // UX: when a drag commits (move or group-move with > 2px delta), stamp
   // this ref with `Date.now()`. The browser's native `dblclick` event fires
   // when two pointerdowns land on the same target within ~300-500ms — a
@@ -907,6 +915,40 @@ export function useSVGInteraction({
    * and the SVG root catches clicks anywhere inside them.
    */
   const handleSvgPointerDown = useCallback((e) => {
+    // Lasso Select owns the page gesture, even when the press starts on a
+    // rendered annotation or callout. Dispatch this before object drag/select
+    // hit testing so a real freehand loop can start anywhere on the page.
+    if (activeTool === 'select' && selectionMode === 'lasso') {
+      if (e.button != null && e.button !== 0) return;
+      const current = lassoStateRef.current;
+      if (current && current.pointerId !== e.pointerId) {
+        // A pen keeps ownership when a stray palm touch lands. Two touch
+        // pointers still hand off to the viewer's pinch gesture.
+        if (current.pointerType === 'pen' && (e.pointerType || 'mouse') === 'touch') {
+          e.preventDefault();
+          return 'pen-owned';
+        }
+        cancelLasso();
+        return 'pinch-handoff';
+      }
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      applyLassoState({
+        points: [{
+          x: Math.max(0, Math.min(pageWidth, svgPoint.x)),
+          y: Math.max(0, Math.min(pageHeight, svgPoint.y)),
+        }],
+        shiftHeld: !!e.shiftKey,
+        altHeld: !!e.altKey,
+        modeOverride: null,
+        mode: null,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+      });
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      e.preventDefault();
+      return 'lasso-started';
+    }
+
     // UX: Phase 14 CALL-10 — callout hit-test via data-attribute delegation.
     // Same pattern as v2.2 Phase 13 rotation-handle delegation
     // (SVGAnnotationLayer.jsx:225-340). The data-callout-* namespace is
@@ -1203,29 +1245,6 @@ export function useSVGInteraction({
     // sub-threshold clicks still behave like plain empty-space clicks and
     // fall through to the existing deselect-on-release path. Shift is
     // captured here so the release handler can decide replace vs union.
-    if (e.target === svgRef.current && activeTool === 'select' && selectionMode === 'lasso') {
-      if (lassoStateRef.current && lassoStateRef.current.pointerId !== e.pointerId) {
-        cancelLasso();
-        return 'pinch-handoff';
-      }
-      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
-      applyLassoState({
-        points: [{
-          x: Math.max(0, Math.min(pageWidth, svgPoint.x)),
-          y: Math.max(0, Math.min(pageHeight, svgPoint.y)),
-        }],
-        shiftHeld: !!e.shiftKey,
-        altHeld: !!e.altKey,
-        modeOverride: null,
-        mode: null,
-        pointerId: e.pointerId,
-        pointerType: e.pointerType || 'mouse',
-      });
-      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
-      e.preventDefault();
-      return 'lasso-started';
-    }
-
     if (e.target === svgRef.current && activeTool === 'select') {
       const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
       applyMarqueeState({
@@ -2915,6 +2934,13 @@ export function useSVGInteraction({
             annotationIndices.forEach((index) => next.delete(index));
             return next;
           });
+        }
+        if (rawHits.calloutIds.length && onSelectedCalloutIdsChange) {
+          const nextCallouts = new Set(
+            selectedCalloutIds instanceof Set ? selectedCalloutIds : selectedCalloutIds || [],
+          );
+          rawHits.calloutIds.forEach((id) => nextCallouts.delete(id));
+          onSelectedCalloutIdsChange(nextCallouts);
         }
       } else if (lasso.shiftHeld) {
         if (annotationIndices.length) {
@@ -4833,5 +4859,6 @@ export function useSVGInteraction({
       : null,
     cancelLasso,
     shouldHandoffLassoPointer,
+    shouldIgnoreLassoPointer,
   };
 }

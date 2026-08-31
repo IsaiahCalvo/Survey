@@ -513,6 +513,7 @@ const SVGAnnotationLayer = memo(({
     lassoPoints,
     cancelLasso,
     shouldHandoffLassoPointer,
+    shouldIgnoreLassoPointer,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
@@ -4712,8 +4713,22 @@ const SVGAnnotationLayer = memo(({
               : undefined,
       }}
       preserveAspectRatio="none"
+      onPointerDownCapture={isInteractive ? (e) => {
+        // Annotation paths and transform handles stop pointerdown while
+        // bubbling. Capture lets Lasso Select own the page gesture before
+        // those child handlers can turn it into an object move or resize.
+        if (activeTool === 'select' && selectionMode === 'lasso') {
+          e.stopPropagation();
+          handleSvgPointerDown(e);
+        }
+      } : undefined}
       onPointerDown={(e) => {
         if (isInteractive) {
+          if (shouldIgnoreLassoPointer?.(e.pointerId, e.pointerType)) {
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+          }
           if (shouldHandoffLassoPointer?.(e.pointerId)) {
             cancelLasso?.();
             return;
@@ -4768,6 +4783,13 @@ const SVGAnnotationLayer = memo(({
             }
             return;
           }
+          // In Lasso Select, the page gesture owns pointerdown even when it
+          // begins over an annotation or callout child. The hook applies the
+          // page lock, modifier snapshot, and pointer capture.
+          if (activeTool === 'select' && selectionMode === 'lasso') {
+            handleSvgPointerDown(e);
+            return;
+          }
           const annotationWrapper = e.target?.closest?.('[data-annotation-index]');
           if (annotationWrapper && svgRef.current?.contains?.(annotationWrapper)) {
             const annotationIndex = Number(annotationWrapper.getAttribute('data-annotation-index'));
@@ -4800,6 +4822,9 @@ const SVGAnnotationLayer = memo(({
           surveyMarkerDragRef.current = null;
           setSurveyMarkerPreviewBounds(null);
         }
+      } : undefined}
+      onLostPointerCapture={isInteractive ? (e) => {
+        cancelLasso?.(e.pointerId);
       } : undefined}
       // UX: Phase 15 UAT #1 — double-click anywhere inside a callout (text
       // foreignObject, connector segments, arrowTip, knee) must enter edit
