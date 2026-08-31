@@ -375,6 +375,7 @@ const SVGAnnotationLayer = memo(({
   // visible annotation context changes so stale selection chrome disappears
   // without saving or deleting any annotation data.
   selectionClearToken = 0,
+  selectionOwnerPageNumber = null,
   onSelectionChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
   // listener in pan mode and, via resolveAnnotationAt, broadcasts
@@ -606,6 +607,15 @@ const SVGAnnotationLayer = memo(({
     setSurveyMarkerPreviewBounds(null);
     surveyMarkerDragRef.current = null;
   }, [selectionClearToken, deselectAll]);
+
+  useLayoutEffect(() => {
+    if (selectionOwnerPageNumber != null && selectionOwnerPageNumber !== pageNumber) {
+      deselectAll();
+      setSelectedSurveyMarkerId(null);
+      setSurveyMarkerPreviewBounds(null);
+      surveyMarkerDragRef.current = null;
+    }
+  }, [selectionOwnerPageNumber, pageNumber, deselectAll]);
 
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
   // OR targets a different page, clear this layer's hoveredId (a previously

@@ -31755,7 +31755,9 @@ ${pageBlocks}
                                 }
                               } catch (_e) { /* swallow */ }
                             }
-                            const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                            // Native Text Select must own the pointer path, including over
+                            // existing marks, so users can add a new stacked range.
+                            const svgInteractive = activeTool === 'select';
                             // UX: callout creation has NO Fabric canvas — the drag that
                             // places arrowTip→textBox starts on the SVG layer itself
                             // (SVGAnnotationLayer isCreationTool / onPointerDown callout
@@ -32133,6 +32135,7 @@ ${pageBlocks}
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
+                                  selectionOwnerPageNumber={selectedToolbarAnnotation?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
