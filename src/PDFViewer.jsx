@@ -1078,6 +1078,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // canceling throws all settings away so the source PDF is never modified.
   const [printPanelOpen, setPrintPanelOpen] = useState(false);
   const [printPanelPrinters, setPrintPanelPrinters] = useState([]);
+  const browserPrintDocumentRef = useRef(null);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
   // KAL-21: in-app PDF load failure state — replaces browser alerts when the
   // pdf-lib rewrite/retry path or Pdfjs render path can't recover.
@@ -29631,12 +29632,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       if (!PRINT_PANEL_ENABLED) {
-        // UX 2026-04-25: two-path print. Default Cmd/Ctrl+P hands the
-        // original PDF straight to the OS/browser PDF viewer via a blob URL.
-        // Cmd/Ctrl+Shift+P (or "Print PDF with Annotations…" in the File menu)
-        // builds a temporary annotated PDF with regular document annotations
-        // only, then prints that temporary PDF. Survey, region, space, and
-        // survey-region scoped annotations are intentionally excluded.
+        if (!withMarkup) {
+          browserPrintDocumentRef.current?.print();
+          return;
+        }
+        // Default Cmd/Ctrl+P prepares the marked-up browser print document
+        // before opening the system dialog. Cmd/Ctrl+Shift+P (or "Print PDF
+        // with Annotations…" in the File menu) keeps the temporary-PDF path.
         const printPdfBlob = (blob, logLabel) => {
           const blobUrl = URL.createObjectURL(blob);
           console.log(logLabel);
@@ -29788,8 +29790,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       unsubscribeMarkup = window.electronAPI.onPrintPdfMarkup(() => openPanel('electron menu:print-pdf-markup (regular annotations)', { withMarkup: true }));
     }
 
-    // Safety net: intercept Cmd/Ctrl+P (base PDF print) and Cmd/Ctrl+Shift+P
-    // (regular annotation print) at the renderer level so both shortcuts
+    // Safety net: intercept Cmd/Ctrl+P (lazy browser print) and Cmd/Ctrl+Shift+P
+    // (temporary annotated PDF) at the renderer level so both shortcuts
     // work even if the Electron menu accelerator doesn't round-trip during HMR.
     const keyHandler = (e) => {
       const isP = e.key === 'p' || e.key === 'P' || e.keyCode === 80;
@@ -29800,7 +29802,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         e.stopPropagation();
         openPanel('window keydown shift', { withMarkup: true });
       } else {
-        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)');
+        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted');
         e.preventDefault();
         e.stopPropagation();
         openPanel('window keydown');
@@ -30724,9 +30726,23 @@ ${pageBlocks}
   // KAL-21: in-app failure state — replaces the old browser alerts when the
   // PDF parse path or Pdfjs render path cannot recover. Pre-empts the
   // loading/spinner branch so we never leave the viewer blank.
+  const browserPrintDocument = (
+    <BrowserPrintDocument
+      key="browser-print-document"
+      ref={browserPrintDocumentRef}
+      pdfFile={pdfFile}
+      annotationsByPage={annotationsByPage}
+      callouts={callouts}
+      surveyMarkers={surveyMarkers}
+      spaces={spaces}
+      pageSizes={pageSizes}
+    />
+  );
+
   if (pdfLoadError) {
     const docName = pdfFile?.name || 'this document';
     return (
+      <>
       <div style={{
         height: '100vh',
         display: 'flex',
@@ -30828,12 +30844,15 @@ ${pageBlocks}
           </div>
         </div>
       </div>
+      {browserPrintDocument}
+      </>
     );
   }
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
     return (
+      <>
       <div style={{
         height: '100vh',
         display: 'flex',
@@ -30867,6 +30886,8 @@ ${pageBlocks}
           )}
         </div>
       </div>
+      {browserPrintDocument}
+      </>
     );
   }
 
@@ -37277,14 +37298,7 @@ ${pageBlocks}
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
-      <BrowserPrintDocument
-        pdfFile={pdfFile}
-        annotationsByPage={annotationsByPage}
-        callouts={callouts}
-        surveyMarkers={surveyMarkers}
-        spaces={spaces}
-        pageSizes={pageSizes}
-      />
+      {browserPrintDocument}
       {typeof document !== 'undefined' && createPortal(
         <ApplyRedactionsModal
           open={applyRedactionsModalOpen}
