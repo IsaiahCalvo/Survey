@@ -51,6 +51,35 @@ export const isTextMarkupAnnotation = (annotation) => (
   && annotation.data.selectionGroupId.length > 0
 );
 
+export function preserveTextMarkupRangeResizeSiblings({
+  previousPage,
+  nextPage,
+  activeAnnotationId,
+  activeAnnotationIndex,
+}) {
+  const previousObjects = pageObjects(previousPage);
+  const nextObjects = pageObjects(nextPage);
+  if (previousObjects.length !== nextObjects.length) return nextPage;
+
+  const requestedId = activeAnnotationId == null ? '' : String(activeAnnotationId);
+  const idIndex = requestedId
+    ? nextObjects.findIndex((annotation) => String(annotation?.data?.id || annotation?.id || '') === requestedId)
+    : -1;
+  const fallbackIndex = Number.isInteger(activeAnnotationIndex) ? activeAnnotationIndex : -1;
+  const resolvedIndex = idIndex >= 0 ? idIndex : fallbackIndex;
+  if (resolvedIndex < 0 || resolvedIndex >= nextObjects.length) return nextPage;
+
+  const nextActive = nextObjects[resolvedIndex];
+  if (!isTextMarkupAnnotation(nextActive)) return nextPage;
+
+  return {
+    ...nextPage,
+    objects: nextObjects.map((annotation, index) => (
+      index === resolvedIndex ? annotation : previousObjects[index]
+    )),
+  };
+}
+
 const pageAt = (annotationsByPage, pageNumber) => (
   annotationsByPage?.[pageNumber]
   || annotationsByPage?.[String(pageNumber)]

@@ -105,6 +105,7 @@ import {
   expandTextMarkupEraseIntent,
   getTextMarkupRangeAnnotations,
   getTextMarkupRangeTypes,
+  preserveTextMarkupRangeResizeSiblings,
 } from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
@@ -24016,6 +24017,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(
       markedIncomingJson,
     );
+    const rangeResizeIncomingAnnotations = source === 'text-markup:range-resize'
+      ? preserveTextMarkupRangeResizeSiblings({
+        previousPage: identityNormalizedCurrentAnnotations,
+        nextPage: markedIncomingJson,
+        activeAnnotationId: normalizedSaveContext?.annotationId,
+        activeAnnotationIndex: normalizedSaveContext?.annotationIndex,
+      })
+      : null;
     const isEraserCommit = source === 'eraser:commit' || normalizedSaveContext?.tool === 'eraser';
     const eraserDeletedIds = Array.isArray(normalizedSaveContext?.finalDeletedAnnotationIds)
       ? normalizedSaveContext.finalDeletedAnnotationIds.filter(Boolean)
@@ -24422,10 +24431,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : null;
     // During pre-hydration/offline fallback, retain the existing one-render
     // transport envelope so useAnnotationDoc can capture it when ready.
+    const stateIncomingAnnotations = rangeResizeIncomingAnnotations || finalIncomingAnnotations;
     const committedIncomingAnnotations = materializedEraserPage || (
       eraserMutation
-        ? { ...finalIncomingAnnotations, eraserMutation }
-        : finalIncomingAnnotations
+        ? { ...stateIncomingAnnotations, eraserMutation }
+        : stateIncomingAnnotations
     );
     const requireMutationAck = Boolean(materializedEraserPage);
 

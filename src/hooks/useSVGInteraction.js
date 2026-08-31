@@ -3462,6 +3462,8 @@ export function useSVGInteraction({
         source: 'text-markup:range-resize',
         action: 'text-range-resize',
         checkpointPolicy: 'normal',
+        annotationIndex: ds.annotationIndex,
+        annotationId: committedTextMarkup?.data?.id || committedTextMarkup?.id || null,
       });
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const {

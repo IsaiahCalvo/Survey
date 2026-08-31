@@ -12,6 +12,7 @@ import {
   expandTextMarkupEraseIntent,
   getTextMarkupRangeTypes,
   isExactTextMarkupDuplicate,
+  preserveTextMarkupRangeResizeSiblings,
 } from '../src/utils/textMarkupGroupTransactions.js';
 
 const mark = (id, pageNumber, group = 'range-1', markupType = 'highlight') => ({
@@ -219,6 +220,55 @@ test('editing the active stacked mark paint leaves every sibling byte-identical'
   const redone = applyAnnotationHistoryAction(undone, tx.action);
   assert.deepEqual(redone, tx.nextByPage);
   assert.deepEqual(JSON.parse(JSON.stringify(redone)), tx.nextByPage);
+});
+
+test('resizing one stacked range leaves every sibling record byte-identical', () => {
+  const interactionFlags = {
+    selectable: true,
+    evented: true,
+    hasControls: false,
+    hasBorders: true,
+    lockMovementX: true,
+    lockMovementY: true,
+  };
+  const siblings = ['highlight', 'underline', 'squiggly', 'strikeout'].map((markupType, index) => ({
+    ...mark(`range-resize-${index}`, 1, `${markupType}-group`, markupType),
+    ...interactionFlags,
+  }));
+  const before = { objects: siblings };
+  const activeIndex = 2;
+  const resizedActive = {
+    ...siblings[activeIndex],
+    data: {
+      ...siblings[activeIndex].data,
+      textRange: { start: 2, end: 15 },
+      quads: [{ x1: 4, y1: 20, x2: 78, y2: 20, x3: 4, y3: 30, x4: 78, y4: 30 }],
+    },
+  };
+  const incoming = {
+    objects: siblings.map((annotation, index) => (
+      index === activeIndex ? resizedActive : structuredClone(annotation)
+    )),
+  };
+  const siblingBytes = siblings.map((annotation) => JSON.stringify(annotation));
+
+  const next = preserveTextMarkupRangeResizeSiblings({
+    previousPage: before,
+    nextPage: incoming,
+    activeAnnotationId: resizedActive.data.id,
+    activeAnnotationIndex: activeIndex,
+  });
+
+  siblings.forEach((annotation, index) => {
+    if (index === activeIndex) return;
+    assert.equal(next.objects[index], annotation);
+    assert.equal(JSON.stringify(next.objects[index]), siblingBytes[index]);
+  });
+  assert.deepEqual(next.objects[activeIndex], resizedActive);
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(interactionFlags).map((key) => [key, next.objects[activeIndex][key]])),
+    interactionFlags,
+  );
 });
 
 test('deleting one page member deletes the full selection group as one action', () => {
