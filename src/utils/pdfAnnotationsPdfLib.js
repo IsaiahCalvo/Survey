@@ -71,6 +71,7 @@ import {
   adaptRedact,
   getTextMarkupPageGeometry,
   viewportPointToBaseAppPoint,
+  viewportPointToPdfPoint,
 } from './pdfNativeExport/adapters/textMarkup.js';
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
 
@@ -3280,6 +3281,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const color = parsePdfDrawColor(obj.fill || obj.stroke || '#f4d35e', '#f4d35e');
     const opacity = Math.max(0.05, Math.min(1, Number(obj.opacity ?? 1)));
     const markupType = String(obj.data.markupType || obj.exportType || 'highlight').toLowerCase();
+    const geometry = getTextMarkupPageGeometry(page, pageHeight);
     let count = 0;
     obj.data.quads.forEach((quad) => {
       const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
@@ -3287,17 +3289,32 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       const top = Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
       const bottom = Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
       if (![left, right, top, bottom].every(Number.isFinite) || right <= left || bottom <= top) return;
-      if (markupType === 'redact') {
-        page.drawRectangle({ x: left, y: getPdfY(pageHeight, bottom), width: right - left, height: bottom - top, color: color.color, opacity: 1 });
-      } else if (markupType === 'highlight') {
-        page.drawRectangle({ x: left, y: getPdfY(pageHeight, bottom), width: right - left, height: bottom - top, color: color.color, opacity });
+      if (markupType === 'redact' || markupType === 'highlight') {
+        const points = [
+          { x: quad.x1, y: quad.y1 },
+          { x: quad.x2, y: quad.y2 },
+          { x: quad.x4, y: quad.y4 },
+          { x: quad.x3, y: quad.y3 },
+        ].map((point) => viewportPointToBaseAppPoint(point, geometry));
+        const path = `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
+        page.drawSvgPath(path, {
+          x: geometry.x,
+          y: geometry.y + geometry.height,
+          color: color.color,
+          opacity: markupType === 'redact' ? 1 : opacity,
+        });
       } else if (markupType === 'squiggly') {
         const y = bottom - Math.max(0.6, (bottom - top) * 0.08);
         const step = Math.max(1.5, (bottom - top) * 0.2);
         for (let x = left; x < right; x += step) {
+          const start = viewportPointToPdfPoint({ x, y }, geometry);
+          const end = viewportPointToPdfPoint({
+            x: Math.min(right, x + step),
+            y: y + (Math.floor((x - left) / step) % 2 === 0 ? -step * 0.35 : step * 0.35),
+          }, geometry);
           page.drawLine({
-            start: { x, y: getPdfY(pageHeight, y) },
-            end: { x: Math.min(right, x + step), y: getPdfY(pageHeight, y + (Math.floor((x - left) / step) % 2 === 0 ? -step * 0.35 : step * 0.35)) },
+            start,
+            end,
             thickness: Math.max(0.6, (bottom - top) * 0.06),
             color: color.color,
             opacity,
@@ -3306,8 +3323,8 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       } else {
         const y = markupType === 'strikeout' ? (top + bottom) / 2 : bottom - Math.max(0.6, (bottom - top) * 0.08);
         page.drawLine({
-          start: { x: left, y: getPdfY(pageHeight, y) },
-          end: { x: right, y: getPdfY(pageHeight, y) },
+          start: viewportPointToPdfPoint({ x: left, y }, geometry),
+          end: viewportPointToPdfPoint({ x: right, y }, geometry),
           thickness: Math.max(0.6, (bottom - top) * 0.06),
           color: color.color,
           opacity,
