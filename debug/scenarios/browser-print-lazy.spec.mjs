@@ -6,7 +6,7 @@ const shortcut = process.platform === 'darwin' ? 'Meta+P' : 'Control+P';
 
 async function openEditor(page) {
   await page.goto(FIXTURE);
-  await page.locator('.survey-pdfjs-viewer-container').waitFor({
+  await page.locator('.survey-pdfjs-page-div[data-page-number]').first().waitFor({
     state: 'visible',
     timeout: 60_000,
   });
