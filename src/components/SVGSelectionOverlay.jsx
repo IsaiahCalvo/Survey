@@ -112,6 +112,7 @@ const SVGSelectionOverlay = memo(({
   const vPillW = handleMetrics.vPillW;
   const vPillH = handleMetrics.vPillH;
   const pillRx = handleMetrics.pillRx;
+  const textRangeHitSize = 44 * visualInverseScale;
 
   return (
     <g
@@ -214,28 +215,52 @@ const SVGSelectionOverlay = memo(({
               ? horizontalHandlePositions[id]
               : handles[id];
             return (
-              <rect
-                key={`pill-${id}`}
-                data-resize-handle={id}
-                data-text-range-handle={horizontalResizeOnly ? id : undefined}
-                x={pos.x - vPillW / 2}
-                y={pos.y - vPillH / 2}
-                width={vPillW}
-                height={vPillH}
-                rx={pillRx}
-                fill={HANDLE_FILL}
-                stroke={HANDLE_RING}
-                strokeWidth={1 * is}
-                style={{
-                  filter: pillShadow,
-                  cursor: getCursorForHandle(id, angle || 0),
-                  pointerEvents: 'auto',
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onHandleDrag?.(e, id);
-                }}
-              />
+              <g key={`pill-${id}`}>
+                {horizontalResizeOnly && (
+                  <rect
+                    data-resize-handle={id}
+                    data-text-range-handle={id}
+                    data-text-range-handle-hit-target="true"
+                    x={pos.x - textRangeHitSize / 2}
+                    y={pos.y - textRangeHitSize / 2}
+                    width={textRangeHitSize}
+                    height={textRangeHitSize}
+                    rx={textRangeHitSize / 2}
+                    fill="transparent"
+                    style={{
+                      cursor: getCursorForHandle(id, angle || 0),
+                      pointerEvents: 'auto',
+                      touchAction: 'none',
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onHandleDrag?.(e, id);
+                    }}
+                  />
+                )}
+                <rect
+                  data-resize-handle={id}
+                  data-text-range-handle-visual={horizontalResizeOnly ? id : undefined}
+                  x={pos.x - vPillW / 2}
+                  y={pos.y - vPillH / 2}
+                  width={vPillW}
+                  height={vPillH}
+                  rx={pillRx}
+                  fill={HANDLE_FILL}
+                  stroke={HANDLE_RING}
+                  strokeWidth={1 * is}
+                  style={{
+                    filter: pillShadow,
+                    cursor: getCursorForHandle(id, angle || 0),
+                    pointerEvents: horizontalResizeOnly ? 'none' : 'auto',
+                  }}
+                  onPointerDown={horizontalResizeOnly ? undefined : (e) => {
+                    e.stopPropagation();
+                    onHandleDrag?.(e, id);
+                  }}
+                />
+              </g>
             );
           })}
 

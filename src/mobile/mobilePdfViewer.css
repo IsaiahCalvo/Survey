@@ -419,7 +419,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-select-mode__menu {
   position: fixed;
   z-index: 8999;
-  width: 180px;
+  width: min(180px, calc(100vw - 16px));
+  max-height: min(152px, calc(100dvh - 16px));
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -429,10 +430,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 1px solid #3c424d;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .mobile-pdf-select-mode__menu > button {
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 9px;
   display: flex;
   align-items: center;
@@ -444,6 +447,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-size: 13px;
   font-weight: 600;
   text-align: left;
+}
+
+.mobile-pdf-select-mode__menu > button:focus-visible,
+.mobile-pdf-tools__select-caret:focus-visible {
+  outline: 2px solid var(--accent-primary, #d8a84e);
+  outline-offset: -2px;
 }
 
 .mobile-pdf-select-mode__menu > button.is-active {

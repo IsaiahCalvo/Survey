@@ -5139,24 +5139,36 @@ const SVGAnnotationLayer = memo(({
         />
       )}
       {lassoPoints?.length > 0 && (
-        <path
-          data-lasso-selection-trail="true"
-          data-lasso-mode={lassoMode || 'window'}
-          d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
-          fill={lassoMode === 'window'
-            ? 'rgba(0, 100, 255, 0.12)'
-            : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.12)' : 'none'}
-          stroke={lassoMode === 'window'
-            ? 'rgba(0, 100, 255, 0.9)'
-            : lassoMode === 'crossing' ? 'rgba(0, 180, 90, 0.95)' : 'rgba(245, 158, 11, 0.95)'}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
-          fillRule="evenodd"
-          vectorEffect="non-scaling-stroke"
-          pointerEvents="none"
-        />
+        <g data-lasso-selection-preview="true" pointerEvents="none">
+          <path
+            data-lasso-selection-halo="true"
+            d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
+            fill="none"
+            stroke="rgba(8, 12, 18, 0.72)"
+            strokeWidth={4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            data-lasso-selection-trail="true"
+            data-lasso-mode={lassoMode || 'window'}
+            d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
+            fill={lassoMode === 'window'
+              ? 'rgba(0, 100, 255, 0.12)'
+              : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.12)' : 'none'}
+            stroke={lassoMode === 'window'
+              ? 'rgba(72, 145, 255, 1)'
+              : lassoMode === 'crossing' ? 'rgba(30, 210, 120, 1)' : 'rgba(245, 174, 38, 1)'}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
+            fillRule="evenodd"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
       )}
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles.

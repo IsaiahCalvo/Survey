@@ -1490,14 +1490,45 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const openSelectModeMenu = () => {
     const rect = selectModeButtonRef.current?.getBoundingClientRect();
     if (rect) {
-      const menuHeight = 118;
+      const menuWidth = Math.min(180, Math.max(0, window.innerWidth - 16));
+      const menuHeight = 152;
       setSelectModePosition({
-        left: Math.min(window.innerWidth - 188, rect.right + 8),
+        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right + 8)),
         top: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
       });
     }
     setSelectModeOpen(true);
   };
+
+  useEffect(() => {
+    if (!selectModeOpen) return undefined;
+    const reposition = () => {
+      const rect = selectModeButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewport = window.visualViewport;
+      const viewportWidth = viewport?.width || window.innerWidth;
+      const viewportHeight = viewport?.height || window.innerHeight;
+      const viewportLeft = viewport?.offsetLeft || 0;
+      const viewportTop = viewport?.offsetTop || 0;
+      const menuWidth = Math.min(180, Math.max(0, viewportWidth - 16));
+      const menuHeight = 152;
+      setSelectModePosition({
+        left: Math.max(viewportLeft + 8, Math.min(viewportLeft + viewportWidth - menuWidth - 8, rect.right + 8)),
+        top: Math.max(viewportTop + 8, Math.min(viewportTop + viewportHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
+      });
+    };
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('orientationchange', reposition);
+    window.visualViewport?.addEventListener?.('resize', reposition);
+    window.visualViewport?.addEventListener?.('scroll', reposition);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('orientationchange', reposition);
+      window.visualViewport?.removeEventListener?.('resize', reposition);
+      window.visualViewport?.removeEventListener?.('scroll', reposition);
+    };
+  }, [selectModeOpen]);
 
   const chooseSelectMode = (mode) => {
     bottomToolbarApi?.setSelectionMode?.(mode);

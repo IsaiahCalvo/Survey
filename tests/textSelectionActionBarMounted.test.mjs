@@ -49,6 +49,7 @@ async function loadActionBar() {
     "import Icon from '../Icons';",
     "const Icon = ({ name, color, size, style }) => <span data-icon-name={name} data-icon-color={color} data-icon-size={size} style={style} />;",
   );
+  source = source.replace("import './TextSelectionActionBar.css';", '');
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-action-bar-test-'));
@@ -99,17 +100,13 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     await act(async () => root.render(React.createElement(Harness)));
     const toolbar = document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]');
     assert.ok(toolbar);
-    assert.equal(toolbar.style.height, '35px');
-    assert.equal(toolbar.style.minHeight, '35px');
-    assert.equal(toolbar.style.gap, 'clamp(1px, 0.6vw, 12px)');
-    assert.equal(toolbar.style.overflowX, 'auto');
-    assert.equal(toolbar.style.justifyContent, 'safe center');
+    assert.equal(toolbar.className, 'text-selection-action-bar__toolbar');
+    assert.equal(toolbar.getAttribute('aria-orientation'), 'horizontal');
+    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.children.length, 6);
     const highlightControl = document.querySelector('[data-text-mark-control="highlight"]');
-    assert.equal(highlightControl.style.height, '31px');
-    assert.equal(highlightControl.style.padding, '0px');
-    assert.equal(highlightControl.style.borderColor, 'transparent');
-    assert.equal(highlightControl.style.background, 'transparent');
-    assert.equal(document.querySelector('button[aria-label="Set Highlight color"]').style.width, '28px');
+    assert.equal(highlightControl.className, 'text-selection-action-bar__mark');
+    assert.equal(highlightControl.getAttribute('data-focused'), 'true');
+    assert.ok(document.querySelector('button[aria-label="Set Highlight color"]').classList.contains('text-selection-action-bar__button'));
     for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
       assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
@@ -130,12 +127,16 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(document.querySelector('button[aria-label="Remove Underline"]').getAttribute('aria-pressed'), 'true');
     await act(async () => document.querySelector('button[aria-label="Set Underline color"]').click());
     assert.deepEqual(focused, ['underline']);
-    assert.equal(document.querySelector('[data-text-mark-control="underline"]').style.borderColor, 'transparent');
+    assert.equal(document.querySelector('[data-text-mark-control="underline"]').getAttribute('data-focused'), 'true');
+    const firstToolbarButton = document.querySelector('button[aria-label="Remove Highlight"]');
+    firstToolbarButton.focus();
+    await act(async () => toolbar.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })));
+    assert.equal(document.activeElement.getAttribute('aria-label'), 'Set Highlight color');
     await act(async () => document.querySelector('button[aria-label="Add Hyperlink"]').click());
     const linkForm = document.querySelector('form[aria-label="Hyperlink controls"]');
     assert.ok(linkForm);
-    assert.equal(linkForm.style.flexWrap, 'wrap');
-    assert.equal(document.querySelector('input[aria-label="Web address"]').style.flex, '1 1 220px');
+    assert.equal(linkForm.className, 'text-selection-action-bar__link-form');
+    assert.equal(document.querySelector('input[aria-label="Web address"]').className, 'text-selection-action-bar__link-input');
     assert.ok(document.querySelector('[data-text-link-actions="true"]'));
     await act(async () => document.querySelector('form[aria-label="Hyperlink controls"] button[aria-pressed="false"]').click());
     assert.equal(document.querySelector('input[aria-label="Page number"]')?.getAttribute('inputmode'), 'numeric');
