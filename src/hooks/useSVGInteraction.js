@@ -78,7 +78,12 @@ import {
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag.js';
 import { isTransformLockedAnnotation } from '../utils/annotationSelectionEligibility.js';
-import { getTextMarkupStackAtPoint, resizeTextMarkupHorizontalEdge } from '../utils/pdfTextMarkup.js';
+import {
+  finalizeTextMarkupHorizontalEdge,
+  getTextMarkupRangeFixedOffset,
+  getTextMarkupStackAtPoint,
+  resizeTextMarkupHorizontalEdge,
+} from '../utils/pdfTextMarkup.js';
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -3452,19 +3457,33 @@ export function useSVGInteraction({
           }
         }
       }
-    } else if (ds.mode === 'text-markup-horizontal' && ds.currentTextMarkup) {
-      const updatedAnnotations = deepClone(annotations);
-      const committedTextMarkup = deepClone(ds.currentTextMarkup);
-      delete committedTextMarkup._textRangeDragHandle;
-      delete committedTextMarkup._textRangeHandleCrossed;
-      updatedAnnotations.objects[ds.annotationIndex] = committedTextMarkup;
-      onSaveAnnotations(updatedAnnotations, {
-        source: 'text-markup:range-resize',
-        action: 'text-range-resize',
-        checkpointPolicy: 'normal',
-        annotationIndex: ds.annotationIndex,
-        annotationId: committedTextMarkup?.data?.id || committedTextMarkup?.id || null,
-      });
+    } else if (ds.mode === 'text-markup-horizontal') {
+      const releasePoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const finalizedTextMarkup = finalizeTextMarkupHorizontalEdge(
+        ds.originalTextMarkup,
+        ds.currentTextMarkup,
+        ds.handleId,
+        releasePoint,
+        pageWidth,
+        pageHeight,
+        ds.fixedTextOffset,
+      );
+      if (finalizedTextMarkup !== ds.originalTextMarkup) {
+        const updatedAnnotations = deepClone(annotations);
+        const committedTextMarkup = deepClone(finalizedTextMarkup);
+        const textRangeHandleCrossed = committedTextMarkup._textRangeHandleCrossed === true;
+        delete committedTextMarkup._textRangeDragHandle;
+        delete committedTextMarkup._textRangeHandleCrossed;
+        committedTextMarkup.data.textRangeHandleCrossed = textRangeHandleCrossed;
+        updatedAnnotations.objects[ds.annotationIndex] = committedTextMarkup;
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'text-markup:range-resize',
+          action: 'text-range-resize',
+          checkpointPolicy: 'normal',
+          annotationIndex: ds.annotationIndex,
+          annotationId: committedTextMarkup?.data?.id || committedTextMarkup?.id || null,
+        });
+      }
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const {
         newScaleX,
@@ -4305,7 +4324,7 @@ export function useSVGInteraction({
         pointerId: e.pointerId,
         originalTextMarkup: deepClone(obj),
         currentTextMarkup: null,
-        fixedTextOffset: handleId === 'ml' ? obj.data?.textRange?.end : obj.data?.textRange?.start,
+        fixedTextOffset: getTextMarkupRangeFixedOffset(obj, handleId),
       };
       setInteractionState('resizing');
       return;

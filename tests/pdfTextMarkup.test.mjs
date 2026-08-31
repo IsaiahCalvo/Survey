@@ -8,8 +8,10 @@ import {
   mergeLineQuads,
   normalizeTextLinkUrl,
   buildTextMarkupLinkRegions,
+  finalizeTextMarkupHorizontalEdge,
   resizeTextMarkupHorizontalEdge,
   getTextMarkupRangeHandlePositions,
+  getTextMarkupRangeFixedOffset,
   getTextMarkupStackAtPoint,
   rotatePageQuad,
   resolveTextMarkupEditPaint,
@@ -295,6 +297,54 @@ test('either range handle can cross the other while pointer ownership stays fixe
   assert.deepEqual(getTextMarkupRangeHandlePositions(crossedRight), {
     ml: { x: 20, y: 5 },
     mr: { x: 10, y: 5 },
+  });
+});
+
+test('range resize release uses the final pointer even when the last move stopped beside the fixed edge', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'range-release-cross', pageNumber: 1, markupType: 'underline', selectedText: 'cde',
+    textRange: { start: 2, end: 5 },
+    textRangeModel: { text: 'abcdefghij', runs: [{ start: 0, end: 10, left: 0, right: 100, top: 0, bottom: 10 }] },
+    quads: [{ x1: 20, y1: 0, x2: 50, y2: 0, x3: 20, y3: 10, x4: 50, y4: 10 }],
+  });
+  const stalePreview = resizeTextMarkupHorizontalEdge(annotation, 'ml', { x: 49, y: 5 }, 100, 100, 5);
+  const crossed = finalizeTextMarkupHorizontalEdge(
+    annotation,
+    stalePreview,
+    'ml',
+    { x: 80, y: 5 },
+    100,
+    100,
+    5,
+  );
+
+  assert.deepEqual(crossed.data.textRange, { start: 5, end: 8 });
+  assert.equal(crossed.data.selectedText, 'fgh');
+  assert.equal(crossed._textRangeDragHandle, 'ml');
+  assert.deepEqual(getTextMarkupRangeHandlePositions(crossed), {
+    ml: { x: 80, y: 5 },
+    mr: { x: 50, y: 5 },
+  });
+
+  const committedCrossed = {
+    ...crossed,
+    _textRangeHandleCrossed: undefined,
+    data: { ...crossed.data, textRangeHandleCrossed: true },
+  };
+  assert.equal(getTextMarkupRangeFixedOffset(committedCrossed, 'ml'), 5);
+  const crossedBack = resizeTextMarkupHorizontalEdge(
+    committedCrossed,
+    'ml',
+    { x: 30, y: 5 },
+    100,
+    100,
+    getTextMarkupRangeFixedOffset(committedCrossed, 'ml'),
+  );
+  assert.deepEqual(crossedBack.data.textRange, { start: 3, end: 5 });
+  assert.equal(crossedBack._textRangeHandleCrossed, false);
+  assert.deepEqual(getTextMarkupRangeHandlePositions(crossedBack), {
+    ml: { x: 30, y: 5 },
+    mr: { x: 50, y: 5 },
   });
 });
 

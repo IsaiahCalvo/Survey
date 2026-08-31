@@ -252,10 +252,24 @@ export function getTextMarkupRangeHandlePositions(annotation) {
     ml: { x: Math.min(Number(first.x1), Number(first.x3)), y: centerY(first) },
     mr: { x: Math.max(Number(last.x2), Number(last.x4)), y: centerY(last) },
   };
-  if (annotation?._textRangeHandleCrossed) {
+  const crossed = typeof annotation?._textRangeHandleCrossed === 'boolean'
+    ? annotation._textRangeHandleCrossed
+    : annotation?.data?.textRangeHandleCrossed === true;
+  if (crossed) {
     return { ml: positions.mr, mr: positions.ml };
   }
   return positions;
+}
+
+export function getTextMarkupRangeFixedOffset(annotation, handleId) {
+  const range = annotation?.data?.textRange;
+  if (!Number.isFinite(Number(range?.start)) || !Number.isFinite(Number(range?.end))) return undefined;
+  const crossed = typeof annotation?._textRangeHandleCrossed === 'boolean'
+    ? annotation._textRangeHandleCrossed
+    : annotation?.data?.textRangeHandleCrossed === true;
+  if (handleId === 'ml') return crossed ? Number(range.start) : Number(range.end);
+  if (handleId === 'mr') return crossed ? Number(range.end) : Number(range.start);
+  return undefined;
 }
 
 export function getTextMarkupStackAtPoint(annotations, point, tolerance = 2) {
@@ -535,6 +549,28 @@ export function resizeTextMarkupHorizontalEdge(annotation, handleId, pointerX, p
     height: bounds.height,
     data: { ...annotation.data, quads: nextQuads },
   };
+}
+
+export function finalizeTextMarkupHorizontalEdge(
+  annotation,
+  currentPreview,
+  handleId,
+  releasePointer,
+  pageWidth,
+  pageHeight,
+  fixedTextOffset,
+) {
+  const releasePreview = resizeTextMarkupHorizontalEdge(
+    annotation,
+    handleId,
+    releasePointer,
+    pageWidth,
+    pageHeight,
+    fixedTextOffset,
+  );
+  return releasePreview === annotation
+    ? (currentPreview || annotation)
+    : releasePreview;
 }
 
 export function mapOcrBoxToPage(box, sourceSize, pageSize, rotation = 0) {
