@@ -27,6 +27,11 @@ test('Select family keeps rectangle, lasso, and text in one stable mode list', (
     activeTool: 'select',
     selectionMode: 'lasso',
   });
+  assert.deepEqual(SELECT_MODE_OPTIONS.map(({ mode, hint }) => ({ mode, hint })), [
+    { mode: 'rectangle', hint: 'V' },
+    { mode: 'lasso', hint: 'Alt+V' },
+    { mode: 'text', hint: '⇧V' },
+  ]);
   assert.deepEqual(getSelectFamilyTransition('not-a-mode'), {
     activeTool: 'select',
     selectionMode: 'rectangle',

@@ -1411,6 +1411,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
+  const [hasTouchPointer, setHasTouchPointer] = useState(false);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
   // back + 170ms slide-down exit before unmount (inv-demo §17).
@@ -1442,6 +1443,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     leftRailApi?.cloudSyncQueueSize,
     leftRailApi?.cloudSyncEnabled !== false,
   ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled]);
+
+  useEffect(() => {
+    const coarseQuery = window.matchMedia?.('(pointer: coarse)');
+    const update = () => setHasTouchPointer(
+      !!coarseQuery?.matches || (navigator.maxTouchPoints || 0) > 0,
+    );
+    update();
+    coarseQuery?.addEventListener?.('change', update);
+    return () => coarseQuery?.removeEventListener?.('change', update);
+  }, []);
 
   useEffect(() => {
     if (sync.state === 'synced') setSyncDetailsOpen(false);
@@ -1807,6 +1818,37 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
         </div>
       </aside>
+      {hasTouchPointer && activeTool === 'select' && bottomToolbarApi?.selectionMode === 'lasso' && (
+        // UX: touch has no Shift, Alt, or Space key. This small group gives
+        // phone and tablet users the same lasso choices before they draw.
+        <div className="mobile-pdf-lasso-controls" role="group" aria-label="Lasso options" data-mobile-lasso-controls="true">
+          <button
+            type="button"
+            aria-pressed={bottomToolbarApi?.lassoTouchOperation === 'add'}
+            className={bottomToolbarApi?.lassoTouchOperation === 'add' ? 'is-active' : ''}
+            onClick={() => bottomToolbarApi?.setLassoTouchOperation?.(
+              bottomToolbarApi?.lassoTouchOperation === 'add' ? 'replace' : 'add',
+            )}
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            aria-pressed={bottomToolbarApi?.lassoTouchOperation === 'subtract'}
+            className={bottomToolbarApi?.lassoTouchOperation === 'subtract' ? 'is-active' : ''}
+            onClick={() => bottomToolbarApi?.setLassoTouchOperation?.(
+              bottomToolbarApi?.lassoTouchOperation === 'subtract' ? 'replace' : 'subtract',
+            )}
+          >
+            Subtract
+          </button>
+          <button type="button" onClick={() => bottomToolbarApi?.cycleLassoTouchMode?.()}>
+            {bottomToolbarApi?.lassoTouchMode === 'crossing'
+              ? 'Crossing'
+              : bottomToolbarApi?.lassoTouchMode === 'fence' ? 'Fence' : 'Window'}
+          </button>
+        </div>
+      )}
       {selectModeOpen && selectModePosition && typeof document !== 'undefined' && createPortal(
         <>
           <div

@@ -235,6 +235,7 @@ import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
@@ -2903,6 +2904,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
   const [selectionMode, setSelectionMode] = useState(loadSelectMode);
+  const [lassoTouchOperation, setLassoTouchOperation] = useState('replace');
+  const [lassoTouchMode, setLassoTouchMode] = useState('window');
+  const cycleLassoTouchMode = useCallback(() => {
+    setLassoTouchMode((current) => cycleLassoMode(current));
+  }, []);
   const activateSelectFamilyMode = useCallback((mode) => {
     const next = getSelectFamilyTransition(mode);
     setSelectionMode(next.selectionMode);
@@ -23272,6 +23278,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       activeTool,
       selectionMode,
       setSelectionMode,
+      lassoTouchOperation,
+      setLassoTouchOperation,
+      lassoTouchMode,
+      cycleLassoTouchMode,
       contextTool,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
       activeCategoryDropdown,
@@ -23397,6 +23407,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     activeTool,
     liveTextSelection,
     selectionMode,
+    lassoTouchOperation,
+    lassoTouchMode,
+    cycleLassoTouchMode,
     annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
@@ -23535,6 +23548,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Prevent default behavior and switch to select tool
         e.preventDefault();
         activateSelectFamilyMode('rectangle');
+        return;
+      }
+
+      // UX: L is already the Line tool, so Alt+V opens Lasso Select without
+      // taking a key from an existing tool. `code` also works with Option on Mac.
+      if ((e.code === 'KeyV' || e.key === 'v' || e.key === 'V') && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        if (isFormField) return;
+        e.preventDefault();
+        activateSelectFamilyMode('lasso');
         return;
       }
 
@@ -32155,6 +32177,8 @@ ${pageBlocks}
                                   }}
                                   activeTool={activeTool}
                                   selectionMode={selectionMode}
+                                  lassoTouchOperation={lassoTouchOperation}
+                                  lassoTouchMode={lassoTouchMode}
                                   editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
                                   onRequestExitEdit={() => setEditingAnnotation(null)}

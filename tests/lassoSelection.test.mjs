@@ -5,6 +5,7 @@ import {
   getLassoPolygonValidation,
   getLassoModeFromTrail,
   getLassoPointerSamples,
+  getLassoGestureIntent,
   cycleLassoMode,
   isPointInLasso,
   normalizeLassoPolygon,
@@ -44,6 +45,21 @@ test('lasso direction latches from the first stable horizontal move and Space cy
   assert.equal(cycleLassoMode('fence'), 'window');
 });
 
+test('touch lasso controls map to the same add, subtract, and catch state as keys', () => {
+  assert.deepEqual(getLassoGestureIntent({ pointerType: 'mouse', shiftKey: true }), {
+    shiftHeld: true, altHeld: false, modeOverride: null,
+  });
+  assert.deepEqual(getLassoGestureIntent({ pointerType: 'mouse', altKey: true }, 'add', 'fence'), {
+    shiftHeld: false, altHeld: true, modeOverride: null,
+  });
+  assert.deepEqual(getLassoGestureIntent({ pointerType: 'touch' }, 'add', 'crossing'), {
+    shiftHeld: true, altHeld: false, modeOverride: 'crossing',
+  });
+  assert.deepEqual(getLassoGestureIntent({ pointerType: 'pen' }, 'subtract', 'fence'), {
+    shiftHeld: false, altHeld: true, modeOverride: 'fence',
+  });
+});
+
 test('screen-space sampling stays constant when page zoom changes', () => {
   assert.equal(shouldSampleLassoPoint({ x: 0, y: 0 }, { x: 3, y: 0 }, 1, 4), false);
   assert.equal(shouldSampleLassoPoint({ x: 0, y: 0 }, { x: 5, y: 0 }, 1, 4), true);
@@ -71,12 +87,15 @@ test('concave lasso uses the concave polygon, not its bounds', () => {
   assert.equal(isPointInLasso({ x: 9, y: 9 }, polygon), false);
 });
 
-test('self-crossing lasso stays usable with the even-odd fill rule', () => {
+test('self-crossing lasso is rejected before it can replace the selection', () => {
   const points = [
     { x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 },
   ];
-  assert.deepEqual(normalizeLassoPolygon(points), points);
-  assert.equal(getLassoPolygonValidation(points).issue, null);
+  assert.equal(normalizeLassoPolygon(points), null);
+  assert.deepEqual(getLassoPolygonValidation(points), {
+    polygon: null,
+    issue: 'self-intersection',
+  });
 });
 
 test('crossing lasso selects geometry touched by the closed lasso', () => {

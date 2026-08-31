@@ -1,6 +1,6 @@
 export const SELECT_MODE_OPTIONS = Object.freeze([
   Object.freeze({ tool: 'select', mode: 'rectangle', label: 'Rectangle Select', hint: 'V' }),
-  Object.freeze({ tool: 'select', mode: 'lasso', label: 'Lasso Select', hint: '' }),
+  Object.freeze({ tool: 'select', mode: 'lasso', label: 'Lasso Select', hint: 'Alt+V' }),
   Object.freeze({ tool: 'text-select', mode: 'text', label: 'Text Select', hint: '⇧V' }),
 ]);
 
