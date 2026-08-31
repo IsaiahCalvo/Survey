@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <title>Survey</title>
-  <!-- Email sender avatar. SVG Tiny PS: no scripts, no external refs, no raster,
-       solid background required. This is the one file allowed to carry a plate.
-       Replaces the previous docs/brand/bimi-logo.svg. -->
-  <rect x="0" y="0" width="512" height="512" fill="#ffffff"/>
+  <!-- Primary mark, oxidised brass. For light grounds — gold on cream is only 1.95:1.
+       Module 48 on a 512 grid: one stroke weight throughout, and the gap between
+       the two bars (56) is wider than the stroke that makes them. Never tighten it. -->
   <g fill="none" stroke="#654500" stroke-width="48" stroke-linecap="round">
   <circle cx="256" cy="256" r="216"/>
   <line x1="256" y1="44" x2="256" y2="100"/>

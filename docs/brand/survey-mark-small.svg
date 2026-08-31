@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Survey</title>
+  <!-- Small cut: the same drawing pushed edge to edge. Favicon, 22px sidebar, square tiles.
+       Do NOT use inside a circular crop — it is tangent to the crop circle.
+       Module 48 on a 512 grid: one stroke weight throughout, and the gap between
+       the two bars (56) is wider than the stroke that makes them. Never tighten it. -->
+  <g fill="none" stroke="currentColor" stroke-width="52" stroke-linecap="round">
+  <circle cx="256" cy="256" r="230"/>
+  <line x1="256" y1="30" x2="256" y2="90"/>
+  <line x1="256" y1="482" x2="256" y2="422"/>
+  <line x1="30" y1="256" x2="90" y2="256"/>
+  <line x1="482" y1="256" x2="422" y2="256"/>
+  <line x1="192" y1="200" x2="320" y2="200"/>
+  <line x1="192" y1="312" x2="269" y2="312"/>
+  </g>
+</svg>
