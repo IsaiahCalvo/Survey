@@ -5058,7 +5058,6 @@ const SVGAnnotationLayer = memo(({
           opacity: 1,
           data: { strokeRenderContract: 'drawn-centered-stroke' },
         };
-        const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
         return (
           <g className="shape-creation-preview" style={{ pointerEvents: 'none' }}>
             {shapeCreation.tool === 'ellipse'
@@ -5358,6 +5357,8 @@ const SVGAnnotationLayer = memo(({
             },
           };
         }
+
+        const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         let bbox = getAnnotationBBox(selectionObj);
