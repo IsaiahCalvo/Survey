@@ -125,8 +125,17 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     await act(async () => underline.click());
     assert.deepEqual(actions, ['highlight', 'highlight', 'underline']);
     assert.equal(document.querySelector('button[aria-label="Remove Underline"]').getAttribute('aria-pressed'), 'true');
+    const squiggleTouch = new dom.window.Event('touchend', { bubbles: true, cancelable: true });
+    await act(async () => document.querySelector('button[aria-label="Apply Squiggle"]').dispatchEvent(squiggleTouch));
+    assert.equal(squiggleTouch.defaultPrevented, true);
+    assert.deepEqual(actions, ['highlight', 'highlight', 'underline', 'squiggly']);
+    assert.equal(document.querySelector('button[aria-label="Remove Squiggle"]').getAttribute('aria-pressed'), 'true');
+    const squigglePaintTouch = new dom.window.Event('touchend', { bubbles: true, cancelable: true });
+    await act(async () => document.querySelector('button[aria-label="Set Squiggle color"]').dispatchEvent(squigglePaintTouch));
+    assert.equal(squigglePaintTouch.defaultPrevented, true);
+    assert.deepEqual(focused, ['squiggly']);
     await act(async () => document.querySelector('button[aria-label="Set Underline color"]').click());
-    assert.deepEqual(focused, ['underline']);
+    assert.deepEqual(focused, ['squiggly', 'underline']);
     assert.equal(document.querySelector('[data-text-mark-control="underline"]').getAttribute('data-focused'), 'true');
     const firstToolbarButton = document.querySelector('button[aria-label="Remove Highlight"]');
     firstToolbarButton.focus();

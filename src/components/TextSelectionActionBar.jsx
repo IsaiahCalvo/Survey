@@ -17,13 +17,19 @@ function ToolIcon({ name, emphasized = false, size = 18 }) {
   return <Icon name={name} size={size} color={emphasized ? GOLD : '#e8e2d4'} style={{ display: 'block', opacity: emphasized ? 1 : 0.68 }} />;
 }
 
+function activateFromTouch(event, activate) {
+  event.preventDefault();
+  event.stopPropagation();
+  activate();
+}
+
 function MarkControl({ mark, active, focused, paint, onToggle, onFocusPaint }) {
   return (
     <div className="text-selection-action-bar__mark" data-text-mark-control={mark.id} data-focused={focused ? 'true' : 'false'}>
-      <button className="text-selection-action-bar__button" type="button" aria-label={`${active ? 'Remove' : 'Apply'} ${mark.label}`} aria-pressed={active} onClick={() => onToggle(mark.id)} style={buttonBase}>
+      <button className="text-selection-action-bar__button" type="button" aria-label={`${active ? 'Remove' : 'Apply'} ${mark.label}`} aria-pressed={active} onClick={() => onToggle(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onToggle(mark.id))} style={buttonBase}>
         <ToolIcon name={mark.icon} emphasized={active} />
       </button>
-      <button className="text-selection-action-bar__button" type="button" aria-label={`Set ${mark.label} color`} onClick={() => onFocusPaint(mark.id)} style={{ ...buttonBase, padding: 4 }}>
+      <button className="text-selection-action-bar__button" type="button" aria-label={`Set ${mark.label} color`} onClick={() => onFocusPaint(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onFocusPaint(mark.id))} style={{ ...buttonBase, padding: 4 }}>
         <span aria-hidden="true" style={{ width: 14, height: 14, display: 'block', border: '1px solid #eef0f3', borderRadius: '50%', background: paint?.color || '#f5c229', opacity: Math.max(0.05, Math.min(1, Number(paint?.opacity ?? 30) / 100)), boxShadow: '0 0 0 1px #090b0e' }} />
       </button>
     </div>
@@ -76,8 +82,8 @@ export default function TextSelectionActionBar({
       >
         <div className="text-selection-action-bar__tools">
           {MARKS.map((mark) => <MarkControl key={mark.id} mark={mark} active={activeMarkupTypes.includes(mark.id)} focused={focusedPaintMark === mark.id} paint={paintByMark[mark.id]} onToggle={onAction} onFocusPaint={onFocusPaint} />)}
-          <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} aria-pressed={linkActive} onClick={() => onAction('link')} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
-          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} size={21} /></button>
+          <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} aria-pressed={linkActive} onClick={() => onAction('link')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('link'))} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
+          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} size={21} /></button>
         </div>
       </div>
       {hasSelection && linkEditorOpen && (
