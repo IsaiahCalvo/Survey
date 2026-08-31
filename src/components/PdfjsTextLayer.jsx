@@ -13,6 +13,10 @@
 // ----------------------------------------------------------------------------
 import { useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import {
+  getCaretBoundaryFromClientPoint,
+  repairCollapsedTextDragSelection,
+} from '../utils/nativeTextDragSelection';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 let stylesInjected = false;
@@ -113,6 +117,49 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
     }
     wasInteractiveRef.current = interactive;
+  }, [interactive]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!interactive || !el || typeof document === 'undefined') return undefined;
+    let drag = null;
+    let repairTimer = 0;
+    const clearDrag = () => { drag = null; };
+    const onPointerDown = (event) => {
+      if (event.isPrimary === false || event.button !== 0 || event.pointerType === 'touch') return;
+      const boundary = getCaretBoundaryFromClientPoint(document, event.clientX, event.clientY);
+      if (!boundary || !el.contains(boundary.node)) return;
+      drag = {
+        pointerId: event.pointerId,
+        boundary,
+        x: event.clientX,
+        y: event.clientY,
+      };
+    };
+    const onPointerUp = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const completedDrag = drag;
+      clearDrag();
+      if (Math.hypot(event.clientX - completedDrag.x, event.clientY - completedDrag.y) < 2) return;
+      window.clearTimeout(repairTimer);
+      repairTimer = window.setTimeout(() => {
+        repairCollapsedTextDragSelection({
+          documentRef: document,
+          windowRef: window,
+          startBoundary: completedDrag.boundary,
+          endClientPoint: { x: event.clientX, y: event.clientY },
+        });
+      }, 0);
+    };
+    el.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('pointercancel', clearDrag, true);
+    return () => {
+      window.clearTimeout(repairTimer);
+      el.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('pointercancel', clearDrag, true);
+    };
   }, [interactive]);
 
   useEffect(() => {

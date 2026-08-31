@@ -50,6 +50,24 @@ async function buildRotationFixture() {
   const width = hebrewFont.widthOfTextAtSize(rtlText, 22);
   rtlPage.drawText(rtlText, { x: 452 - width, y: 350, size: 22, font: hebrewFont });
 
+  const cropPage = pdf.addPage([640, 500]);
+  cropPage.setCropBox(24, 36, 592, 428);
+  cropPage.drawText('CROPBOX OFFSET - TWO COLUMNS', { x: 48, y: 425, size: 18, font: bold });
+  cropPage.drawText('Left column line one.', { x: 48, y: 375, size: 15, font: helvetica });
+  cropPage.drawText('Left column wrapped', { x: 48, y: 348, size: 15, font: helvetica });
+  cropPage.drawText('onto its next line.', { x: 48, y: 327, size: 15, font: helvetica });
+  cropPage.drawText('Right column line one.', { x: 330, y: 375, size: 15, font: helvetica });
+  cropPage.drawText('Right column line two.', { x: 330, y: 348, size: 15, font: helvetica });
+  cropPage.drawText('Near left crop edge.', { x: 26, y: 80, size: 13, font: helvetica });
+  cropPage.drawText('Near right crop edge.', { x: 480, y: 80, size: 13, font: helvetica });
+
+  const rotatedCropPage = pdf.addPage([700, 460]);
+  rotatedCropPage.setCropBox(32, 28, 620, 392);
+  rotatedCropPage.setRotation(degrees(90));
+  rotatedCropPage.drawText('ROTATED CROPBOX OFFSET', { x: 60, y: 385, size: 18, font: bold });
+  rotatedCropPage.drawText('Rotated cropped selectable text.', { x: 60, y: 335, size: 15, font: helvetica });
+  rotatedCropPage.drawText('Rotated cropped edge text.', { x: 60, y: 55, size: 13, font: helvetica });
+
   await writeFile(new URL('text-selection-rotation-matrix.pdf', fixtureRoot), await pdf.save());
 }
 
@@ -73,5 +91,6 @@ async function buildScannedFixture() {
   await writeFile(new URL('ocr-scan-clear.pdf', fixtureRoot), await pdf.save());
 }
 
-await buildRotationFixture();
-await buildScannedFixture();
+const fixture = process.argv[2] || 'all';
+if (fixture === 'all' || fixture === 'rotation') await buildRotationFixture();
+if (fixture === 'all' || fixture === 'scan') await buildScannedFixture();
