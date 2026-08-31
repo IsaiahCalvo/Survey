@@ -9,7 +9,7 @@
   border: 1px solid transparent;
   border-radius: 5px;
   box-sizing: border-box;
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .annotation-size-control:focus-within {
@@ -64,7 +64,7 @@
   border: 1px solid #3a4252;
   border-radius: 8px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   z-index: 6500;
   animation: annotation-size-popover-in 120ms ease-out;
 }
@@ -161,7 +161,7 @@
 @media (max-width: 720px) {
   .annotation-size-control {
     height: 30px;
-    background: #444;
+    background: #1f2430;
   }
 
   .annotation-size-control > input {

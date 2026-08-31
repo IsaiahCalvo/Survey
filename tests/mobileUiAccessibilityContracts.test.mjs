@@ -10,22 +10,70 @@ const documents = read('../src/home/DocumentsLedger.jsx');
 const templates = read('../src/home/TemplatesEditor.jsx');
 const hubCss = read('../src/home/hub.css');
 
-test('live text formatting uses only app-styled menus', () => {
-  const start = mobileChrome.indexOf('if (api.richTextEditor)');
-  const end = mobileChrome.indexOf("if (api.activeTool === 'pan'", start);
-  const liveTextFormatting = mobileChrome.slice(start, end);
-  assert.doesNotMatch(liveTextFormatting, /<select\b/);
-  assert.match(liveTextFormatting, /ariaLabel="Font"/);
-  assert.match(liveTextFormatting, /ariaLabel="Text alignment"/);
+test('shared mobile properties pane uses app-styled menus and names its state', () => {
+  const start = mobileChrome.indexOf('export function MobileToolProperties');
+  const end = mobileChrome.indexOf('export function MobilePdfViewerToolRail', start);
+  const propertiesPane = mobileChrome.slice(start, end);
+  assert.doesNotMatch(propertiesPane, /<select\b/);
+  assert.match(propertiesPane, /ariaLabel="Font"/);
+  assert.match(propertiesPane, /<strong>\{sheetTitle\} properties<\/strong>/);
+  assert.doesNotMatch(propertiesPane, /Next mark defaults|Current selection|Editing text|Changes apply now/);
+  assert.doesNotMatch(propertiesPane, />Reset</);
+  assert.doesNotMatch(propertiesPane, />Done</);
+  assert.match(propertiesPane, /aria-label="Close annotation properties"/);
+  assert.doesNotMatch(propertiesPane, /Open \$\{sheetTitle\} properties|isTextTool \? 'Aa' : '•••'/);
+  assert.match(propertiesPane, /isTextTool \? ' has-mode-tabs'/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults\.is-shape:not\(\.has-mode-tabs\)/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults\.has-mode-tabs \{\s*height: min\(calc\(560px \+ var\(--mobile-bottom-inset\)\)/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults\.is-text \.mobile-pdf-text-card__font-size > div \{\s*width: auto;\s*grid-template-columns: 148px 52px;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults__tabs > button\.is-active \{[\s\S]{0,180}box-shadow: inset 0 0 0 1px/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults__tabs > button:first-child \{\s*border-radius: 16px 0 0 16px;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults__tabs > button:last-child \{\s*border-radius: 0 16px 16px 0;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-card__color-tabs > button:first-child \{\s*border-radius: 16px 0 0 16px;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-card__color-tabs > button:last-child \{\s*border-radius: 0 16px 16px 0;/);
   assert.match(mobileCss, /\.mobile-styled-select__trigger \{[\s\S]{0,160}min-height: 44px/);
   assert.match(mobileCss, /\.mobile-styled-select__menu > button \{[\s\S]{0,120}min-height: 44px/);
 });
 
-test('compact eraser and shape selects keep 24px visuals with unclipped 44px targets', () => {
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,700}overflow: visible/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,100}height: 24px;[\s\S]{0,50}min-height: 24px/);
-  assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,250}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -10px/);
-  assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select[\s\S]{0,180}height: 44px;[\s\S]{0,50}min-height: 44px/);
+test('compact format entry and pane controls keep 44px touch targets', () => {
+  assert.match(mobileCss, /\.mobile-pdf-properties--entry \{[\s\S]{0,120}height: 44px;[\s\S]{0,50}min-height: 44px/);
+  assert.match(mobileCss, /\.mobile-pdf-properties__open,[\s\S]{0,180}min-width: 44px;[\s\S]{0,50}min-height: 44px/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults__format > button \{[\s\S]{0,100}width: 44px;[\s\S]{0,50}height: 44px/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults__alignments > button \{[\s\S]{0,80}min-height: 44px/);
+});
+
+test('mobile width field matches its neighboring strip controls', () => {
+  assert.match(mobileCss, /\.mobile-pdf-properties > \.mobile-pdf-properties__size-control \{\s*height: 24px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties > \.mobile-pdf-properties__size-control > input \{[\s\S]{0,120}height: 22px;[\s\S]{0,40}line-height: 22px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties > \.mobile-pdf-properties__size-control > \.annotation-size-control__trigger \{[\s\S]{0,120}height: 22px;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults\.is-shape \.mobile-pdf-text-card--split \.mobile-styled-select,[\s\S]{0,240}height: 30px;[\s\S]{0,40}min-height: 30px;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults\.is-shape \.mobile-pdf-text-card--split \.mobile-styled-select \{\s*width: 112px;[\s\S]{0,40}max-width: 100%;/);
+  assert.match(mobileCss, /\.mobile-pdf-text-defaults\.is-shape \.mobile-pdf-text-card--split \.annotation-size-control > input,[\s\S]{0,180}height: 28px;[\s\S]{0,40}line-height: 28px;/);
+});
+
+test('active left-rail tools use a gold icon without a gold border', () => {
+  assert.match(mobileCss, /\.mobile-pdf-tools__button\.is-active \{[\s\S]{0,120}color: var\(--accent-primary,[\s\S]{0,80}border-color: transparent;/);
+});
+
+test('mobile rail exposes export directly without a zoom menu', () => {
+  const start = mobileChrome.indexOf('export function MobilePdfViewerToolRail');
+  const end = mobileChrome.indexOf('export function MobilePdfViewerDock', start);
+  const toolRail = mobileChrome.slice(start, end);
+  assert.match(toolRail, /icon="download"\s+label="Export annotated PDF"/);
+  assert.match(toolRail, /onClick=\{\(\) => bottomToolbarApi\?\.exportAnnotatedPdf\?\.\(\)\}/);
+  assert.doesNotMatch(toolRail, /More document options/);
+  assert.doesNotMatch(toolRail, /Zoom out|Zoom in/);
+});
+
+test('mobile viewer uses the shared navy and Helvetica design tokens', () => {
+  assert.match(mobileCss, /--mobile-ink-900: #0d0f14;/);
+  assert.match(mobileCss, /--mobile-ink-800: #12151c;/);
+  assert.match(mobileCss, /--mobile-ink-700: #181c24;/);
+  assert.match(mobileCss, /--mobile-font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;/);
+  assert.match(mobileCss, /\.mobile-pdf-header \{[\s\S]{0,700}background: var\(--mobile-ink-900\);/);
+  assert.match(mobileCss, /\.mobile-pdf-tools \{[\s\S]{0,300}background: var\(--mobile-ink-800\);/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,700}background: var\(--mobile-ink-700\);/);
+  assert.match(mobileCss, /\.mobile-pdf-dock \{[\s\S]{0,500}background: var\(--mobile-ink-900\);/);
 });
 
 test('shared color picker uses captured pointer gestures for touch and mouse', () => {

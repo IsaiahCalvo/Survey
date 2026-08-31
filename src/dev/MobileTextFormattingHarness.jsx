@@ -14,14 +14,28 @@ const INITIAL_STATE = {
 };
 
 export default function MobileTextFormattingHarness() {
-  const mode = new URLSearchParams(window.location.search).get('mobileTextFormattingHarness') || 'text';
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mobileTextFormattingHarness') || 'text';
+  const selected = params.get('selected') === '1';
   const [formatting, setFormatting] = useState(INITIAL_STATE);
-  const [strip, setStrip] = useState({ eraserMode: 'partial', borderStyle: 'solid', arrowheadStyle: 'solidTriangle' });
+  const [strip, setStrip] = useState({
+    eraserMode: 'partial',
+    eraserSize: '24',
+    borderStyle: 'solid',
+    arrowheadStyle: 'solidTriangle',
+    strokeWidth: '4',
+    strokeColor: '#ff0000',
+    strokeOpacity: 100,
+    fillColor: '#ffffff',
+    fillOpacity: 100,
+    counterSeriesId: 'series-a',
+    counterStart: 1,
+  });
   const update = (patch) => setFormatting((current) => ({ ...current, ...patch }));
   const api = useMemo(() => {
     if (mode === '1' || mode === 'text') {
       return {
-        activeTool: 'text',
+        activeTool: selected ? 'select' : 'text',
         contextTool: 'text',
         richTextEditor: {
           state: formatting,
@@ -40,26 +54,40 @@ export default function MobileTextFormattingHarness() {
       };
     }
     return {
-      activeTool: mode,
+      activeTool: selected ? 'select' : mode,
       contextTool: mode,
       eraserMode: strip.eraserMode,
-      eraserSizeInputValue: '24',
+      eraserSizeInputValue: strip.eraserSize,
       setEraserMode: (eraserMode) => setStrip((current) => ({ ...current, eraserMode })),
-      handleEraserSizeInputChange: () => {},
-      handleEraserSizeInputBlur: () => {},
-      strokeWidthInputValue: '4',
-      strokeColor: '#ff0000',
-      fillColor: '#ffffff',
-      handleStrokeWidthInputChange: () => {},
-      handleStrokeWidthInputBlur: () => {},
-      handleStrokeColorChange: () => {},
-      handleFillColorChange: () => {},
+      handleEraserSizeInputChange: ({ target }) => setStrip((current) => ({ ...current, eraserSize: String(target.value) })),
+      handleEraserSizeInputBlur: ({ currentTarget }) => setStrip((current) => ({ ...current, eraserSize: String(currentTarget.value) })),
+      strokeWidthInputValue: strip.strokeWidth,
+      strokeColor: strip.strokeColor,
+      strokeOpacity: strip.strokeOpacity,
+      fillColor: strip.fillColor,
+      fillOpacity: strip.fillOpacity,
+      handleStrokeWidthInputChange: ({ target }) => setStrip((current) => ({ ...current, strokeWidth: String(target.value) })),
+      handleStrokeWidthInputBlur: ({ currentTarget }) => setStrip((current) => ({ ...current, strokeWidth: String(currentTarget.value) })),
+      handleStrokeColorChange: (strokeColor) => setStrip((current) => ({ ...current, strokeColor })),
+      handleStrokeOpacityChange: (strokeOpacity) => setStrip((current) => ({ ...current, strokeOpacity })),
+      handleFillColorChange: (fillColor) => setStrip((current) => ({ ...current, fillColor })),
+      handleFillOpacityChange: (fillOpacity) => setStrip((current) => ({ ...current, fillOpacity })),
       lineBorderStyle: strip.borderStyle,
       setLineBorderStyle: (borderStyle) => setStrip((current) => ({ ...current, borderStyle })),
       arrowheadStyle: strip.arrowheadStyle,
       setArrowheadStyle: (arrowheadStyle) => setStrip((current) => ({ ...current, arrowheadStyle })),
+      activeCounterSeriesId: strip.counterSeriesId,
+      counterSeriesList: [
+        { seriesId: 'series-a', label: 'Doors', count: 1, color: '#ff0000' },
+        { seriesId: 'series-b', label: 'Windows', count: 4, color: '#4A90E2' },
+      ],
+      onNewCounterSeries: () => setStrip((current) => ({ ...current, counterSeriesId: 'series-new' })),
+      onSwitchCounterSeries: (counterSeriesId) => setStrip((current) => ({ ...current, counterSeriesId })),
+      selectedCounterSeriesSize: 1,
+      selectedCounterSeriesStart: strip.counterStart,
+      onSelectedCounterSeriesStartChange: (counterStart) => setStrip((current) => ({ ...current, counterStart: Number(counterStart) })),
     };
-  }, [formatting, mode, strip]);
+  }, [formatting, mode, selected, strip]);
 
   return (
     <main style={{ width: 390, minHeight: 180, marginTop: 24, position: 'relative', background: '#0d0f14' }}>

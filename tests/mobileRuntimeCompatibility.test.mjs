@@ -435,13 +435,15 @@ test('mobile viewer exposes the preserved dynamic tool and page controls', () =>
   assert.match(PAGES_PANEL_SOURCE, /mobileSelectMode \? 'Done' : 'Select'/);
 });
 
-test('mobile live text formatting stays scroll-reachable with 44px touch targets', () => {
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text \{[\s\S]{0,420}justify-content: flex-start;[\s\S]{0,160}touch-action: pan-x;/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-properties--text > button,[\s\S]{0,180}min-width: 44px;[\s\S]{0,80}min-height: 44px;/);
-  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /aria-label="Font color"[\s\S]{0,120}onPointerDown=\{\(event\) => event\.preventDefault\(\)\}[\s\S]{0,100}setColorPicker\('fontColorLive'\)/);
+test('mobile live text formatting uses the keyboard-safe shared pane', () => {
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults \{[\s\S]{0,450}height: min\([\s\S]{0,180}100dvh/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-text-defaults__scroll \{[\s\S]{0,180}min-height: 0;[\s\S]{0,100}flex: 1 1 auto;[\s\S]{0,220}overflow-y: auto/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /hadLiveTextEditorRef[\s\S]{0,300}setTextDefaultsOpen\(true\)/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /data-rich-text-toolbar="true"/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Font"/);
 });
 
-test('mobile annotation settings retain the preserved app geometry and controls', () => {
+test('mobile annotation settings expose one pane for every supported property group', () => {
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /MOBILE_ANNOTATION_COLORS/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Shape settings/);
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Text alignment/);
@@ -451,11 +453,31 @@ test('mobile annotation settings retain the preserved app geometry and controls'
   // <select> retired); it emits the same runtime aria-label from its ariaLabel
   // prop. Guard the control's presence via that prop.
   assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Arrowhead"/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /height: calc\(432px \+ var\(--mobile-bottom-inset\)\)/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /is-shape:not\(\.is-callout\)[\s\S]{0,100}height: calc\(368px \+ var\(--mobile-bottom-inset\)\)/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /is-shape\.is-callout[\s\S]{0,100}height: calc\(448px \+ var\(--mobile-bottom-inset\)\)/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--shape-color[\s\S]{0,120}height: 150px/);
-  assert.match(MOBILE_VIEWER_CSS_SOURCE, /mobile-pdf-text-card--arrowhead[\s\S]{0,80}height: 85px/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Eraser mode"/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ariaLabel="Counter set"/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /First number/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Next mark defaults/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Current selection/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /Editing text/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /padding: 0 4px calc\(16px \+ var\(--mobile-bottom-inset\)\) 0/);
+});
+
+test('selected pen and highlighter colors update the SVG ink and saved stroke', () => {
+  assert.match(
+    PDF_VIEWER_SOURCE,
+    /type === 'path'[\s\S]{0,260}handlePatchSelectedAnnotation\(\{ stroke: rgba, fill: rgba \}\)/,
+  );
+});
+
+test('mobile page navigation fits 999/999 and the Safari dock reserves its own row', () => {
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /mobile-pdf-header__page-total">\/\{bottomToolbarApi\?\.numPages \|\| 1\}/);
+  assert.match(MOBILE_VIEWER_CHROME_SOURCE, /ref=\{bottomToolbarApi\?\.pageInputRef\}/);
+  assert.match(PDF_VIEWER_SOURCE, /pageInputValue,\s*pageInputRef,\s*numPages/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-header__page-pill \{[\s\S]{0,100}width: 84px/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-header__page-frac \{[\s\S]{0,100}min-width: 52px/);
+  assert.match(MOBILE_VIEWER_CSS_SOURCE, /\.mobile-pdf-dock \{[\s\S]{0,520}position: relative/);
+  assert.doesNotMatch(MOBILE_VIEWER_CHROME_SOURCE, /mobile-pdf-dock__surface/);
+  assert.doesNotMatch(MOBILE_VIEWER_CSS_SOURCE, /var\(--gold-bg, #2a2218\)/);
 });
 
 test('native mobile home remains viewport-contained with a solid full-width tab bar', () => {

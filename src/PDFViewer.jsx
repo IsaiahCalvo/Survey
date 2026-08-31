@@ -7449,7 +7449,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   };
   const patchSelectedStroke = (rgba) => {
-    const { isCounter, annotation } = getSelectedShapeMeta();
+    const { type, isCounter, annotation } = getSelectedShapeMeta();
     if (isCounter && annotation?.data?.seriesId) {
       handleCounterGroupUpdateRef.current?.(annotation.data.seriesId, { numberColor: rgba });
       setSelectedToolbarAnnotation((prev) => (prev
@@ -7461,6 +7461,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             },
           }
         : prev));
+    } else if (type === 'path') {
+      // SVG-era pen and highlighter paths paint their visible ink from fill;
+      // keep stroke in sync for older saved paths and native export readers.
+      handlePatchSelectedAnnotation({ stroke: rgba, fill: rgba });
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
@@ -23126,6 +23130,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       manualZoomScale,
       pageNum,
       pageInputValue,
+      pageInputRef,
       numPages,
       // [InteractionDiag] route toolbar tool selection through the logged
       // wrapper so every tool-button click emits a tool-intent marker.

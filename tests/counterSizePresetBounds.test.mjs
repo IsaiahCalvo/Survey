@@ -15,7 +15,7 @@ test('every counter size control accepts presets through 76 without widening oth
   );
   assert.match(
     mobileSource,
-    /const sizeMax = isEraser \? 100 : tool === 'counter' \? COUNTER_SIZE_MAX : 50;/,
+    /label="Size"[\s\S]{0,180}value=\{api\.eraserSizeInputValue\}[\s\S]{0,80}max=\{100\}/,
   );
   assert.match(
     mobileSource,

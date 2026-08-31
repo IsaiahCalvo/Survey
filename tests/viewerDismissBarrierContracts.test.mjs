@@ -27,8 +27,8 @@ test('mobile viewer popovers consume the first outside gesture through the share
   assert.match(mobileChrome, /import DismissBarrier from '\.\.\/components\/DismissBarrier'/);
   assert.match(styledSelect, /active=\{open\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
   assert.match(header, /active=\{pageEditing \|\| zoomOpen\}[\s\S]*insideRefs=\{dismissInsideRefs\}/);
-  assert.match(toolProperties, /active=\{counterMenuOpen\}[\s\S]*insideRefs=\{counterMenuInsideRefs\}/);
-  assert.match(toolRail, /active=\{moreOpen \|\| syncDetailsOpen\}[\s\S]*insideRefs=\{popoverInsideRefs\}/);
+  assert.match(toolProperties, /ariaLabel="Counter set"/);
+  assert.match(toolRail, /active=\{syncDetailsOpen\}[\s\S]*insideRefs=\{popoverInsideRefs\}/);
 
   for (const source of [styledSelect, header, toolProperties, toolRail]) {
     assert.doesNotMatch(source, /document\.addEventListener\(['"](?:pointerdown|mousedown|click)/);

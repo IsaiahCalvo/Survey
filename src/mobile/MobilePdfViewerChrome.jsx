@@ -90,6 +90,7 @@ const MOBILE_FOCUSABLE_SELECTOR = [
 const TOOL_LABELS = {
   pen: 'Pen',
   highlighter: 'Highlighter',
+  eraser: 'Eraser',
   rect: 'Rectangle',
   ellipse: 'Ellipse',
   line: 'Line',
@@ -114,10 +115,11 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
       <button
         type="button"
         className="mobile-pdf-colorpicker-backdrop"
+        data-rich-text-toolbar="true"
         aria-label={`Close ${title || 'color'} picker`}
         onClick={onClose}
       />
-      <div className="mobile-pdf-colorpicker-surface" role="dialog" aria-label={`${title || 'Color'} picker`}>
+      <div className="mobile-pdf-colorpicker-surface" data-rich-text-toolbar="true" role="dialog" aria-label={`${title || 'Color'} picker`}>
         <CompactColorPicker
           color={color}
           opacity={opacity}
@@ -271,6 +273,7 @@ function MobileStyledSelect({ value, options, onChange, ariaLabel, disabled = fa
         <div
           ref={menuRef}
           className="mobile-styled-select__menu"
+          data-rich-text-toolbar="true"
           role="listbox"
           aria-label={ariaLabel}
           data-modal-focus-layer="true"
@@ -485,6 +488,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           {pageEditing ? (
             <span className="mobile-pdf-header__page-frac">
               <input
+                ref={bottomToolbarApi?.pageInputRef}
                 className="mobile-pdf-header__page-input"
                 aria-label="Page number"
                 inputMode="numeric"
@@ -502,7 +506,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                   setPageEditing(false);
                 }}
               />
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+              <span className="mobile-pdf-header__page-total">/{bottomToolbarApi?.numPages || 1}</span>
             </span>
           ) : (
             /* UX: the WHOLE "n / N" fraction is the page-jump tap zone (owner
@@ -515,7 +519,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               onClick={openPageEdit}
             >
               {bottomToolbarApi?.pageNum || 1}
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.numPages || 1}</span>
+              <span className="mobile-pdf-header__page-total">/{bottomToolbarApi?.numPages || 1}</span>
             </button>
           )}
           <button
@@ -599,11 +603,12 @@ export function MobileToolProperties({ api }) {
   const [counterMenuOpen, setCounterMenuOpen] = useState(false);
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
-  // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
+  // Replaces the old OS <input type=color> swatches so
   // every mobile colour control reuses the app's one shared picker (project
   // rule: color_picker_unified).
   const [colorPicker, setColorPicker] = useState(null);
   const [textDefaultsOpen, setTextDefaultsOpen] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   // Phase F (motion & feel): the text-defaults sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle, dy>82/vy>0.65 dismiss, spring-
   // back, and a 170ms slide-down exit before the portal unmounts (demo
@@ -612,9 +617,13 @@ export function MobileToolProperties({ api }) {
     motionStyle: textSheetMotionStyle,
     dragHandlers: textSheetDragHandlers,
     requestClose: requestTextSheetClose,
-  } = useMobileSheetMotion(() => setTextDefaultsOpen(false));
+  } = useMobileSheetMotion(() => {
+    setTextDefaultsOpen(false);
+    setIsDirty(false);
+  });
   const [textDefaultsTab, setTextDefaultsTab] = useState('text');
   const [textShapeColorSection, setTextShapeColorSection] = useState('fill');
+  const hadLiveTextEditorRef = useRef(false);
   const counterMenuRef = useRef(null);
   const counterMenuInsideRefs = useMemo(() => [counterMenuRef], []);
   const tool = api?.contextTool || api?.activeTool;
@@ -625,7 +634,17 @@ export function MobileToolProperties({ api }) {
     setCounterMenuOpen(false);
     setColorPicker(null);
     setTextDefaultsOpen(false);
+    setIsDirty(false);
   }, [tool]);
+
+  useEffect(() => {
+    const active = Boolean(api?.richTextEditor);
+    if (active && !hadLiveTextEditorRef.current) {
+      setTextDefaultsTab('text');
+      setTextDefaultsOpen(true);
+    }
+    hadLiveTextEditorRef.current = active;
+  }, [api?.richTextEditor]);
 
   if (!api) return null;
 
@@ -686,89 +705,6 @@ export function MobileToolProperties({ api }) {
     );
   }
 
-  if (api.richTextEditor) {
-    const editor = api.richTextEditor;
-    const state = editor.state || {};
-    const editorApi = editor.api || {};
-    const alignment = `${state.verticalAlign || 'top'}|${state.textAlign || 'left'}`;
-    return (
-      <>
-      <div className="mobile-pdf-properties mobile-pdf-properties--text" data-mobile-tool-properties="true" role="toolbar" aria-label="Text formatting">
-        {/* UX 2026-07-12 (Phase E, demo parity): font-colour swatch opens the
-            app's shared CompactColorPicker takeover, not an OS colour input. */}
-        <button
-          type="button"
-          className="mobile-pdf-properties__color"
-          aria-label="Font color"
-          title="Font color"
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={() => setColorPicker('fontColorLive')}
-        >
-          <span style={{ background: toHexColor(state.fontColor, '#1e293b') }} />
-        </button>
-        <MobileStyledSelect
-          ariaLabel="Font"
-          value={state.fontFamily || 'Arial'}
-          options={['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => ({ value: family, label: family }))}
-          onChange={(family) => editorApi.setFontFamily?.(family)}
-          minWidth={96}
-        />
-        <input
-          className="mobile-pdf-properties__font-size"
-          aria-label="Font size"
-          inputMode="numeric"
-          value={state.fontSize ?? 16}
-          onChange={(event) => {
-            const size = Number.parseInt(event.target.value, 10);
-            if (Number.isFinite(size)) editorApi.setFontSize?.(Math.max(1, Math.min(200, size)));
-          }}
-        />
-        {[
-          ['B', 'bold', 'toggleBold', 'Bold'],
-          ['I', 'italic', 'toggleItalic', 'Italic'],
-          ['U', 'underline', 'toggleUnderline', 'Underline'],
-          ['S', 'strike', 'toggleStrike', 'Strikethrough'],
-        ].map(([label, stateKey, method, title]) => (
-          <button
-            key={stateKey}
-            type="button"
-            className={`mobile-pdf-properties__format${state[stateKey] ? ' is-active' : ''}`}
-            aria-label={title}
-            aria-pressed={Boolean(state[stateKey])}
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => editorApi[method]?.()}
-          >
-            {label}
-          </button>
-        ))}
-        <MobileStyledSelect
-          ariaLabel="Text alignment"
-          value={alignment}
-          options={['top', 'middle', 'bottom'].flatMap((vertical) => ['left', 'center', 'right'].map((horizontal) => ({
-            value: `${vertical}|${horizontal}`,
-            label: `${vertical} ${horizontal}`,
-          })))}
-          onChange={(nextAlignment) => {
-            const [vertical, horizontal] = nextAlignment.split('|');
-            editorApi.setTextAlign?.(horizontal);
-            editorApi.setVerticalAlign?.(vertical);
-          }}
-          minWidth={104}
-        />
-      </div>
-      {colorPicker === 'fontColorLive' && (
-        <MobileColorPickerSurface
-          title="Font color"
-          color={toHexColor(state.fontColor, '#1e293b')}
-          showOpacity={false}
-          onChange={(hex) => editorApi.setFontColor?.(hex)}
-          onClose={() => setColorPicker(null)}
-        />
-      )}
-      </>
-    );
-  }
-
   if (api.activeTool === 'pan' || (api.activeTool === 'select' && (!api.contextTool || api.contextTool === 'select'))) return null;
 
   const isEraser = tool === 'eraser';
@@ -801,7 +737,7 @@ export function MobileToolProperties({ api }) {
 
   if (!isEraser && !showStroke && !showFill && !showBorderStyle && !showArrowhead) return null;
 
-  const textDefaults = api.textStyleDefaults || {
+  const baseTextDefaults = api.textStyleDefaults || {
     fontColor: '#1e293b',
     fontFamily: 'Arial',
     fontSize: 16,
@@ -812,7 +748,25 @@ export function MobileToolProperties({ api }) {
     textAlign: 'left',
     verticalAlign: 'top',
   };
-  const updateTextDefaults = (patch) => api.onTextStyleDefaultsChange?.({ ...textDefaults, ...patch });
+  const liveTextEditor = api.richTextEditor || null;
+  const textDefaults = liveTextEditor?.state || baseTextDefaults;
+  const updateTextDefaults = (patch) => {
+    setIsDirty(true);
+    if (!liveTextEditor) {
+      api.onTextStyleDefaultsChange?.({ ...baseTextDefaults, ...patch });
+      return;
+    }
+    const editorApi = liveTextEditor.api || {};
+    if (patch.fontColor != null) editorApi.setFontColor?.(patch.fontColor);
+    if (patch.fontFamily != null) editorApi.setFontFamily?.(patch.fontFamily);
+    if (patch.fontSize != null) editorApi.setFontSize?.(patch.fontSize);
+    if (patch.textAlign != null) editorApi.setTextAlign?.(patch.textAlign);
+    if (patch.verticalAlign != null) editorApi.setVerticalAlign?.(patch.verticalAlign);
+    if (patch.bold != null && patch.bold !== Boolean(textDefaults.bold)) editorApi.toggleBold?.();
+    if (patch.italic != null && patch.italic !== Boolean(textDefaults.italic)) editorApi.toggleItalic?.();
+    if (patch.underline != null && patch.underline !== Boolean(textDefaults.underline)) editorApi.toggleUnderline?.();
+    if (patch.strike != null && patch.strike !== Boolean(textDefaults.strike)) editorApi.toggleStrike?.();
+  };
   // 2026-07-12 (Phase E, demo parity — matrix §6): the full edit sheet now
   // opens for EVERY annotation tool (demo AnnotationEditPanel), not just
   // text/callout. Non-text tools show only the shape-side cards.
@@ -834,11 +788,25 @@ export function MobileToolProperties({ api }) {
     if (shapeSection === 'fill') api.handleFillColorChange?.(color);
     else api.handleStrokeColorChange?.(color);
   };
-  // Open the edit sheet from a strip swatch, focused on the tapped colour
-  // section (demo: swatch → AnnotationEditPanel focused on that colour).
-  const openSheet = (section) => {
-    if (section === 'fill' || section === 'stroke') setTextShapeColorSection(section);
-    setTextDefaultsTab('shape');
+  const restoreLiveTextFocus = () => {
+    if (!liveTextEditor || typeof document === 'undefined') return;
+    requestAnimationFrame(() => {
+      document.querySelector('[data-text-edit-overlay] [contenteditable]')?.focus?.({ preventScroll: true });
+    });
+  };
+  const markDirty = (callback) => (...args) => {
+    setIsDirty(true);
+    callback?.(...args);
+    restoreLiveTextFocus();
+  };
+  const openProperties = (section = isTextTool ? 'text' : 'shape') => {
+    setIsDirty(false);
+    if (section === 'fill' || section === 'stroke') {
+      setTextShapeColorSection(section);
+      setTextDefaultsTab('shape');
+    } else {
+      setTextDefaultsTab(section);
+    }
     setTextDefaultsOpen(true);
   };
   // Config for the shared CompactColorPicker takeover, per open target.
@@ -856,9 +824,11 @@ export function MobileToolProperties({ api }) {
         opacity: Math.max(0, Math.min(1, (api.fillOpacity ?? 100) / 100)),
         showOpacity: typeof api.handleFillOpacityChange === 'function',
         firstPreset: 'transparent',
-        onChange: (hex, alpha) => {
-          api.handleFillColorChange?.(hex);
-          api.handleFillOpacityChange?.(Math.round((alpha ?? 1) * 100));
+          onChange: (hex, alpha) => {
+            setIsDirty(true);
+            api.handleFillColorChange?.(hex);
+            api.handleFillOpacityChange?.(Math.round((alpha ?? 1) * 100));
+            restoreLiveTextFocus();
         },
       }
       : colorPicker === 'stroke'
@@ -869,8 +839,10 @@ export function MobileToolProperties({ api }) {
           showOpacity: typeof api.handleStrokeOpacityChange === 'function',
           firstPreset: 'transparent',
           onChange: (hex, alpha) => {
+            setIsDirty(true);
             api.handleStrokeColorChange?.(hex);
             api.handleStrokeOpacityChange?.(Math.round((alpha ?? 1) * 100));
+            restoreLiveTextFocus();
           },
         }
         : null;
@@ -882,7 +854,13 @@ export function MobileToolProperties({ api }) {
       insideRefs={counterMenuInsideRefs}
       onDismiss={() => setCounterMenuOpen(false)}
     />
-    <div className="mobile-pdf-properties" data-mobile-tool-properties="true" role="toolbar" aria-label={`${tool || 'Annotation'} formatting`}>
+    <div
+      className="mobile-pdf-properties"
+      data-mobile-tool-properties="true"
+      data-rich-text-toolbar="true"
+      role="toolbar"
+      aria-label={`${tool || 'Annotation'} formatting`}
+    >
       {isEraser && api.setEraserMode && (
         <MobileStyledSelect
           ariaLabel="Eraser mode"
@@ -896,26 +874,22 @@ export function MobileToolProperties({ api }) {
         />
       )}
       {!isEraser && showStroke && (
-        <div className="mobile-pdf-properties__color-anchor">
-          {/* UX 2026-07-12 (Phase E, demo parity — matrix §6 "Stroke color
-              swatch"/"Fill+border swatch"): the strip swatch opens the full
-              edit sheet focused on the tapped colour (demo AFB swatch →
-              AnnotationEditPanel), which hosts the shared CompactColorPicker.
-              Replaces the OS <input type=color> (project rule: one shared
-              colour picker, never the native OS picker). */}
-          <button
-            type="button"
-            className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}`}
-            aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Fill and border colors') : 'Stroke color'}
-            style={{
-              '--mobile-swatch-fill': showFill ? toHexColor(api.fillColor, '#ff0000') : toHexColor(api.strokeColor, '#ff0000'),
-              '--mobile-swatch-stroke': toHexColor(api.strokeColor, '#ff0000'),
-            }}
-            onClick={() => openSheet(showFill ? 'fill' : 'stroke')}
-          >
-            {tool === 'counter' ? '1' : null}
-          </button>
-        </div>
+        <button
+          type="button"
+          className={`mobile-pdf-properties__swatch${tool === 'counter' ? ' is-counter' : ''}`}
+          aria-label={showFill ? (tool === 'counter' ? 'Counter colors' : 'Fill and border colors') : 'Stroke color'}
+          aria-expanded={textDefaultsOpen}
+          style={{
+            '--mobile-swatch-fill': showFill ? toHexColor(api.fillColor, '#ff0000') : toHexColor(api.strokeColor, '#ff0000'),
+            '--mobile-swatch-stroke': toHexColor(api.strokeColor, '#ff0000'),
+          }}
+          onPointerDown={(event) => {
+            if (liveTextEditor) event.preventDefault();
+          }}
+          onClick={() => openProperties(showFill ? 'fill' : 'stroke')}
+        >
+          {tool === 'counter' ? '1' : null}
+        </button>
       )}
       {showWidth && tool !== 'counter' && (
         <AnnotationSizeControl
@@ -977,7 +951,7 @@ export function MobileToolProperties({ api }) {
       {showBorderStyle && (
         <MobileStyledSelect
           ariaLabel="Border style"
-          minWidth={82}
+          minWidth={76}
           value={api.lineBorderStyle || 'solid'}
           options={[
             { value: 'solid', label: 'Solid' },
@@ -1005,28 +979,11 @@ export function MobileToolProperties({ api }) {
       {showArrowhead && (
         <MobileStyledSelect
           ariaLabel="Arrowhead style"
-          minWidth={124}
+          minWidth={110}
           value={api.arrowheadStyle || 'solidTriangle'}
           options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
           onChange={(value) => api.setArrowheadStyle(value)}
         />
-      )}
-      {api.onEnterTextEdit && (tool === 'text' || tool === 'callout' || api.richTextEditor) && (
-        <button
-          type="button"
-          className={`mobile-pdf-properties__edit${api.richTextEditor ? ' is-active' : ''}`}
-          aria-label="Text formatting"
-          aria-expanded={textDefaultsOpen}
-          onClick={() => {
-            if (api.canEnterTextEdit || api.richTextEditor) api.onEnterTextEdit();
-            else {
-              setTextDefaultsTab('text');
-              setTextDefaultsOpen(true);
-            }
-          }}
-        >
-          Aa
-        </button>
       )}
       {api.canEnterBBoxEdit && api.onEnterBBoxEdit && (
         <button
@@ -1044,13 +1001,22 @@ export function MobileToolProperties({ api }) {
         <button
           type="button"
           className="mobile-pdf-sheet-backdrop"
-          aria-label="Close text formatting"
+          data-rich-text-toolbar="true"
+          aria-label="Close annotation properties"
+          onPointerDown={(event) => {
+            if (liveTextEditor) event.preventDefault();
+          }}
           onClick={requestTextSheetClose}
         />
         <section
-          className={`mobile-pdf-text-defaults is-${sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
+          className={`mobile-pdf-text-defaults is-${sheetTab}${isTextTool ? ' has-mode-tabs' : ''}${tool === 'callout' ? ' is-callout' : ''}`}
           aria-label={`${sheetTitle} settings`}
+          data-rich-text-toolbar="true"
+          data-dirty={isDirty ? 'true' : 'false'}
           style={textSheetMotionStyle}
+          onPointerDown={(event) => {
+            if (liveTextEditor && event.target.closest?.('button')) event.preventDefault();
+          }}
         >
           <div
             className="mobile-pdf-sheet__handle"
@@ -1060,12 +1026,8 @@ export function MobileToolProperties({ api }) {
           />
           <header>
             <div>
-              <strong>{sheetTitle} settings</strong>
-              <span>Focused on {sheetTab === 'text' ? 'Text' : 'Shape'}</span>
+              <strong>{sheetTitle} properties</strong>
             </div>
-            <button type="button" aria-label="Close annotation settings" onClick={requestTextSheetClose}>
-              <Icon name="close" size={17} color="currentColor" />
-            </button>
           </header>
           {/* Text/Shape segmented control only for text & callout — pen/shape/
               counter show shape-side cards directly (demo AnnotationEditPanel
@@ -1152,18 +1114,26 @@ export function MobileToolProperties({ api }) {
                     </div>
                   </div>
                   <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
-                  <label className="mobile-pdf-text-card__pane mobile-pdf-text-card__size">
-                    <strong>Text size</strong>
-                    <input
-                      inputMode="numeric"
-                      aria-label="Font size"
-                      value={textDefaults.fontSize ?? 16}
-                      onChange={(event) => {
-                        const fontSize = Number.parseInt(event.target.value, 10);
-                        if (Number.isFinite(fontSize)) updateTextDefaults({ fontSize: Math.max(1, Math.min(200, fontSize)) });
-                      }}
-                    />
-                  </label>
+                  <div className="mobile-pdf-text-card__pane mobile-pdf-text-card__font-size">
+                    <strong>Font and size</strong>
+                    <div>
+                      <MobileStyledSelect
+                        ariaLabel="Font"
+                        value={textDefaults.fontFamily || 'Arial'}
+                        options={['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'].map((family) => ({ value: family, label: family }))}
+                        onChange={(fontFamily) => updateTextDefaults({ fontFamily })}
+                      />
+                      <input
+                        inputMode="numeric"
+                        aria-label="Font size"
+                        value={textDefaults.fontSize ?? 16}
+                        onChange={(event) => {
+                          const fontSize = Number.parseInt(event.target.value, 10);
+                          if (Number.isFinite(fontSize)) updateTextDefaults({ fontSize: Math.max(1, Math.min(200, fontSize)) });
+                        }}
+                      />
+                    </div>
+                  </div>
                 </section>
 
                 <section className="mobile-pdf-text-card mobile-pdf-text-card--alignment">
@@ -1200,6 +1170,35 @@ export function MobileToolProperties({ api }) {
               </>
             ) : (
               <>
+                {isEraser ? (
+                  <section className="mobile-pdf-text-card mobile-pdf-text-card--eraser">
+                    <strong>Erase mode</strong>
+                    <MobileStyledSelect
+                      ariaLabel="Eraser mode"
+                      value={api.eraserMode || 'partial'}
+                      options={[
+                        { value: 'partial', label: 'Partial Erase' },
+                        { value: 'entire', label: 'Full Stroke' },
+                      ]}
+                      onChange={markDirty(api.setEraserMode)}
+                    />
+                    <strong>Size</strong>
+                    <AnnotationSizeControl
+                      label="Size"
+                      value={api.eraserSizeInputValue}
+                      min={1}
+                      max={100}
+                      presets={ANNOTATION_SIZE_PRESETS.eraser}
+                      onValueChange={(value) => {
+                        setIsDirty(true);
+                        api.handleEraserSizeInputChange?.({ target: { value } });
+                      }}
+                      onValueCommit={(value) => api.handleEraserSizeInputBlur?.({ currentTarget: { value } })}
+                      onFocusChange={(focused) => api.setIsEraserSizeFocused?.(focused)}
+                    />
+                  </section>
+                ) : (
+                <>
                 <section className={`mobile-pdf-text-card mobile-pdf-text-card--color mobile-pdf-text-card--shape-color${hasFillSheet ? '' : ' mobile-pdf-text-card--stroke-only'}`}>
                   {/* Fill/Stroke sub-tabs only for tools that HAVE a fill
                       (rect/ellipse/counter). Pen/highlighter/line/arrow show a
@@ -1247,7 +1246,11 @@ export function MobileToolProperties({ api }) {
                         aria-label={`Set ${shapeSection === 'fill' ? 'Fill' : 'Stroke'} color ${color}`}
                         aria-pressed={color.toLowerCase() === shapeColor.toLowerCase()}
                         className={color.toLowerCase() === shapeColor.toLowerCase() ? 'is-active' : ''}
-                        onClick={() => applyShapeColor(color)}
+                        onClick={() => {
+                          setIsDirty(true);
+                          applyShapeColor(color);
+                          restoreLiveTextFocus();
+                        }}
                       >
                         <span style={{ backgroundColor: color }} />
                       </button>
@@ -1271,7 +1274,7 @@ export function MobileToolProperties({ api }) {
                             { value: 'dotted', label: 'Dotted' },
                             ...(tool === 'rect' ? [{ value: 'cloud', label: 'Cloud' }] : []),
                           ]}
-                          onChange={(value) => api.setLineBorderStyle?.(value)}
+                          onChange={markDirty(api.setLineBorderStyle)}
                         />
                       </div>
                       <span className="mobile-pdf-text-card__divider" aria-hidden="true" />
@@ -1285,7 +1288,10 @@ export function MobileToolProperties({ api }) {
                       min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
                       max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
                       presets={tool === 'counter' ? ANNOTATION_SIZE_PRESETS.counter : ANNOTATION_SIZE_PRESETS.width}
-                      onValueChange={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
+                      onValueChange={(value) => {
+                        setIsDirty(true);
+                        api.handleStrokeWidthInputChange?.({ target: { value } });
+                      }}
                       onValueCommit={(value) => api.handleStrokeWidthInputBlur?.({ currentTarget: { value } })}
                       onFocusChange={(focused) => api.setIsStrokeWidthFocused?.(focused)}
                     />
@@ -1300,9 +1306,40 @@ export function MobileToolProperties({ api }) {
                       ariaLabel="Arrowhead"
                       value={api.arrowheadStyle || 'solidTriangle'}
                       options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
-                      onChange={(value) => api.setArrowheadStyle?.(value)}
+                      onChange={markDirty(api.setArrowheadStyle)}
                     />
                   </section>
+                )}
+                {tool === 'counter' && (
+                  <section className="mobile-pdf-text-card mobile-pdf-text-card--counter">
+                    <strong>Counter set</strong>
+                    <MobileStyledSelect
+                      ariaLabel="Counter set"
+                      value={api.activeCounterSeriesId || ''}
+                      placeholder="Choose a set"
+                      options={(api.counterSeriesList || []).map((series) => ({
+                        value: series.seriesId,
+                        label: `${series.label} · ${series.count}`,
+                      }))}
+                      onChange={markDirty(api.onSwitchCounterSeries)}
+                    />
+                    <button type="button" onClick={markDirty(api.onNewCounterSeries)}>New counter set</button>
+                    {api.selectedCounterSeriesStart != null && (
+                      <label>
+                        <span>First number</span>
+                        <input
+                          type="number"
+                          min="1"
+                          disabled={api.selectedCounterSeriesSize !== 1}
+                          value={api.selectedCounterSeriesStart}
+                          onChange={(event) => markDirty(api.onSelectedCounterSeriesStartChange)(event.target.value)}
+                        />
+                        {api.selectedCounterSeriesSize !== 1 && <small>Locked after the second counter</small>}
+                      </label>
+                    )}
+                  </section>
+                )}
+                </>
                 )}
               </>
             )}
@@ -1328,7 +1365,6 @@ export function MobileToolProperties({ api }) {
 
 export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange }) {
   const [openCategory, setOpenCategory] = useState(null);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
@@ -1340,10 +1376,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     dragHandlers: usersSheetDragHandlers,
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false));
-  const popoverRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
-  const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
+  const popoverInsideRefs = useMemo(() => [syncDetailsRef], []);
   const presenceUsers = useMemo(() => normalizeMobilePresence({
     presence: leftRailApi?.presence,
     currentUserId: leftRailApi?.currentUserId,
@@ -1366,7 +1401,6 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   }, [sync.state]);
 
   const activateSyncStatus = () => {
-    setMoreOpen(false);
     setPresenceOpen(false);
     if (sync.state === 'synced') {
       setSyncDetailsOpen(false);
@@ -1419,10 +1453,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   return (
     <>
       <DismissBarrier
-        active={moreOpen || syncDetailsOpen}
+        active={syncDetailsOpen}
         insideRefs={popoverInsideRefs}
         onDismiss={() => {
-          setMoreOpen(false);
           setSyncDetailsOpen(false);
         }}
       />
@@ -1540,12 +1573,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
           )}
         </div>
 
-        <div className="mobile-pdf-tools__footer" ref={popoverRef}>
+        <div className="mobile-pdf-tools__footer">
           <RailButton
-            icon="more"
-            label="More document options"
-            active={moreOpen}
-            onClick={() => { setMoreOpen((open) => !open); setPresenceOpen(false); }}
+            icon="download"
+            label="Export annotated PDF"
+            disabled={!bottomToolbarApi?.exportAnnotatedPdf}
+            onClick={() => bottomToolbarApi?.exportAnnotatedPdf?.()}
           />
           <div className="mobile-pdf-tools__footer-stack">
             <button
@@ -1567,62 +1600,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
               disabled={!leftRailApi?.documentId}
               onClick={() => {
                 setPresenceOpen(false);
-                setMoreOpen(false);
                 onOpenPanel?.('history');
               }}
             />
             <RailButton
               label={`${presenceCount} active user${presenceCount === 1 ? '' : 's'}`}
               active={presenceOpen}
-              onClick={() => { setPresenceOpen((open) => !open); setMoreOpen(false); }}
+              onClick={() => setPresenceOpen((open) => !open)}
             >
               <span className="mobile-pdf-tools__avatar">{userInitial}</span>
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
             </RailButton>
           </div>
-
-          {moreOpen && (
-            <div className="mobile-pdf-tools__popover is-more">
-              <button
-                type="button"
-                disabled={!bottomToolbarApi?.exportAnnotatedPdf}
-                onClick={() => {
-                  setMoreOpen(false);
-                  bottomToolbarApi?.exportAnnotatedPdf?.();
-                }}
-              >
-                <Icon name="download" size={16} color="currentColor" />
-                Export annotated PDF
-              </button>
-              {typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoreOpen(false);
-                    const buffer = window.__consoleLogBuffer;
-                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-                      detail: {
-                        consoleText: Array.isArray(buffer) && buffer.length > 0
-                          ? buffer.join('\n')
-                          : '(no console output captured)',
-                      },
-                    }));
-                  }}
-                >
-                  <Icon name="document" size={16} color="currentColor" />
-                  Save log
-                </button>
-              )}
-              <button type="button" onClick={() => { bottomToolbarApi?.zoomOut?.(); setMoreOpen(false); }}>
-                <Icon name="minus" size={16} color="currentColor" />
-                Zoom out
-              </button>
-              <button type="button" onClick={() => { bottomToolbarApi?.zoomIn?.(); setMoreOpen(false); }}>
-                <Icon name="plus" size={16} color="currentColor" />
-                Zoom in
-              </button>
-            </div>
-          )}
 
         </div>
       </aside>
@@ -1702,7 +1691,6 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
   const hubIcons = { pages: 'document', search: 'search', bookmarks: 'bookmark' };
   return (
     <nav className="mobile-pdf-dock" aria-label="Document panels">
-      <div className="mobile-pdf-dock__surface" aria-hidden="true" />
       <button
         type="button"
         className={`mobile-pdf-dock__side${spacesActive ? ' is-active' : ''}`}

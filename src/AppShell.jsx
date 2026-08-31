@@ -2694,7 +2694,7 @@ export default function App({ devPreviewReturnTab = null }) {
               flexShrink: 0,
               minWidth: isMobileViewer ? '44px' : '48px',
               alignSelf: 'stretch',
-              background: isMobileViewer ? '#20242c' : '#12151c',
+              background: '#12151c',
               color: '#e8e2d4',
               fontFamily: FONT_FAMILY,
               overflow: 'visible',

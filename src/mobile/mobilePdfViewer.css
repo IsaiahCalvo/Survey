@@ -1,5 +1,16 @@
 :root {
   --mobile-bottom-inset: max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  --mobile-viewer-dock-height: 52px;
+  --mobile-ink-900: #0d0f14;
+  --mobile-ink-800: #12151c;
+  --mobile-ink-700: #181c24;
+  --mobile-ink-600: #1f2430;
+  --mobile-ink-500: #2a3140;
+  --mobile-ink-400: #3a4252;
+  --mobile-font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+html[data-native-shell="expo"] {
   --mobile-viewer-dock-height: calc(52px + var(--mobile-bottom-inset));
 }
 
@@ -44,9 +55,9 @@ html.survey-viewer-open #root {
   display: block;
   flex: 0 0 auto;
   color: #f2f2f2;
-  background: #1e1e1e;
-  border-bottom: 1px solid #3a3a3a;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  background: var(--mobile-ink-900);
+  border-bottom: 1px solid var(--mobile-ink-500);
+  font-family: var(--mobile-font-family);
   position: relative;
   z-index: 5900;
 }
@@ -78,7 +89,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   /* UX 2026-07-12 (matrix §9 title-pill overlap fix): cap the title group so it
      stops short of the centred page cluster (its left edge is ~50% - 60px), no
      matter the device width. Prevents the title colliding with "1 / 1" at 390px. */
-  max-width: calc(50% - 68px);
+  max-width: calc(50% - 76px);
   gap: 4px;
 }
 
@@ -107,7 +118,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__icon:disabled { color: #6f7785; opacity: 0.56; }
-.mobile-pdf-header__icon:not(:disabled):active { background: #2a2b31; }
+.mobile-pdf-header__icon:not(:disabled):active { background: var(--mobile-ink-600); }
 
 .mobile-pdf-header__title {
   height: 25px;
@@ -118,7 +129,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   overflow: hidden;
   color: #f2f2f2;
-  background: #2a2b31;
+  background: var(--mobile-ink-600);
   border: 0;
   border-radius: 5px;
   font-size: 13px;
@@ -183,11 +194,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-header__page-nav:disabled { color: #535b68; }
-.mobile-pdf-header__page-nav:not(:disabled):active { background: #2a2b31; }
+.mobile-pdf-header__page-nav:not(:disabled):active { background: var(--mobile-ink-600); }
 
-/* Demo pill geometry: 68x24, radius 5, tabular-nums, gold active border. */
+/* Holds the full seven-character 999/999 case plus the separate fit chevron. */
 .mobile-pdf-header__page-pill {
-  width: 68px;
+  width: 84px;
   height: 24px;
   padding: 0 4px;
   display: flex;
@@ -195,16 +206,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   justify-content: center;
   gap: 2px;
   color: #f2f2f2;
-  background: #171a20;
-  border: 1px solid #343b46;
+  background: var(--mobile-ink-700);
+  border: 1px solid var(--mobile-ink-500);
   border-radius: 5px;
-  font: 800 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 800 11px/1 var(--mobile-font-family);
   font-variant-numeric: tabular-nums;
 }
 
 .mobile-pdf-header__page-pill.is-open {
   border-color: var(--gold-soft, #b6904a);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
 }
 
 /* Tap zone 1 — the whole "n / N" fraction → inline page-jump input.
@@ -212,6 +223,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    comfortable (owner decision 2), not just the ordinal digit. */
 .mobile-pdf-header__page-frac {
   flex: 1;
+  min-width: 52px;
   height: 100%;
   padding: 0 2px 0 4px;
   display: flex;
@@ -223,16 +235,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 0;
   font: inherit;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .mobile-pdf-header__page-input {
-  width: 22px;
+  width: 26px;
   height: 20px;
   padding: 0;
   color: #f2f2f2;
   background: transparent;
   border: 0;
-  font: 800 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 800 11px/1 var(--mobile-font-family);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -270,8 +283,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex-direction: column;
   gap: 2px;
   color: #f2f2f2;
-  background: #181b20;
-  border: 1px solid #3c424d;
+  background: var(--mobile-ink-700);
+  border: 1px solid var(--mobile-ink-500);
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
   z-index: 7200;
@@ -318,19 +331,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-header__zoom-menu > button.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
 }
 
 .mobile-pdf-tools {
   width: 44px;
   height: 100%;
-  padding: 7px 4px calc(var(--mobile-viewer-dock-height) + 28px);
+  padding: 7px 4px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   color: #f2f2f2;
-  background: #20242c;
-  border-right: 1px solid #3a3a3a;
+  background: var(--mobile-ink-800);
+  border-right: 1px solid var(--mobile-ink-500);
   position: relative;
   z-index: 5750;
 }
@@ -362,8 +375,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__button.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: #111820;
-  border-color: var(--gold-soft, #b6904a);
+  background: transparent;
+  border-color: transparent;
 }
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
@@ -373,7 +386,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 1px;
   min-height: 1px;
   margin: 3px 0;
-  background: #4a4f59;
+  background: var(--mobile-ink-600);
 }
 
 .mobile-pdf-tools__divider.is-short { width: 20px; }
@@ -385,7 +398,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  background: #1a1e25;
+  background: var(--mobile-ink-700);
   border: 1px solid #323844;
   border-radius: 8px;
 }
@@ -403,7 +416,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  background: #1a1e25;
+  background: var(--mobile-ink-700);
   border: 1px solid #323844;
   border-radius: 8px;
 }
@@ -413,7 +426,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 28px;
   padding: 0;
   color: #f2f2f2;
-  background: #2a2d34;
+  background: var(--mobile-ink-600);
   border: 1px solid #555c68;
   border-radius: 50%;
   font-size: 9px;
@@ -433,7 +446,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  background: #1a1e25;
+  background: var(--mobile-ink-700);
   border: 1px solid #323844;
   border-radius: 8px;
 }
@@ -450,7 +463,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-tools__survey-entities button.is-active {
-  background: #111820;
+  background: var(--mobile-ink-800);
   border-color: var(--accent-primary, #d8a84e);
 }
 
@@ -470,12 +483,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   gap: 0;
   position: relative;
-  transform: translateY(34px);
+  transform: none;
 }
 
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button {
-  height: 18px;
-  min-height: 18px;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
 }
 
 .mobile-pdf-tools__footer-stack {
@@ -484,7 +498,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  transform: translateY(-5px);
+  transform: none;
 }
 
 .mobile-pdf-tools__footer-stack .mobile-pdf-tools__button {
@@ -492,7 +506,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 34px;
   min-height: 34px;
   position: relative;
-  transform: translateY(-3px);
+  transform: none;
 }
 
 .mobile-pdf-tools__sync {
@@ -560,7 +574,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #e8e2d4;
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border: 1px solid var(--accent-primary, #d8a84e);
   border-radius: 50%;
   font-size: 10px;
@@ -598,8 +612,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 7200;
 }
 
-.mobile-pdf-tools__popover.is-more { bottom: calc(var(--mobile-viewer-dock-height) + 80px); }
-.mobile-pdf-tools__popover.is-presence { bottom: calc(var(--mobile-viewer-dock-height) + 8px); }
+.mobile-pdf-tools__popover.is-more { bottom: 80px; }
+.mobile-pdf-tools__popover.is-presence { bottom: 8px; }
 
 .mobile-pdf-tools__popover button {
   width: 100%;
@@ -617,7 +631,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   text-align: left;
 }
 
-.mobile-pdf-tools__popover button:active { background: #282e38; }
+.mobile-pdf-tools__popover button:active { background: var(--mobile-ink-600); }
 .mobile-pdf-tools__popover strong { display: block; padding: 5px 7px 8px; font-size: 12px; }
 
 .mobile-pdf-tools__popover > div {
@@ -655,14 +669,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 5px;
   /* Compact strips are only 36px tall. Keep vertical overflow visible so a
      control can expose a 44px hit target without painting a 44px-tall visual
      or having that target clipped by the strip's scroll container. The
      combinations used by eraser/shapes/arrows fit this width at 390px. */
   overflow: visible;
   color: #f2f2f2;
-  background: #202126;
+  background: var(--mobile-ink-700);
   border: 0;
   border-bottom: 1px solid #090a0d;
   border-radius: 0;
@@ -685,6 +699,70 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overflow-y: hidden;
 }
 
+.mobile-pdf-properties--entry {
+  height: 44px;
+  min-height: 44px;
+  padding-inline: 10px;
+  justify-content: flex-end;
+  overflow: hidden;
+  background: var(--mobile-ink-800);
+}
+
+.mobile-pdf-properties__scope {
+  min-width: 0;
+  margin-right: auto;
+  display: grid;
+  gap: 1px;
+  line-height: 1.1;
+}
+
+.mobile-pdf-properties__scope b {
+  overflow: hidden;
+  color: #f2f2f2;
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-pdf-properties__scope span {
+  color: #a8b0bf;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mobile-pdf-properties__open,
+.mobile-pdf-properties--entry > .mobile-pdf-properties__edit {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #f2f2f2;
+  background: var(--mobile-ink-600);
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mobile-pdf-properties__open > span {
+  color: var(--accent-primary, #d8a84e);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.mobile-pdf-properties__open.is-active {
+  color: var(--accent-primary, #d8a84e);
+  background: transparent;
+  border: 1px solid var(--gold-soft, #b6904a);
+}
+
+.mobile-pdf-properties__open.is-active > span { color: var(--accent-primary, #d8a84e); }
+
 .mobile-pdf-properties--actions,
 .mobile-pdf-properties--survey {
   gap: 8px;
@@ -697,7 +775,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0 9px;
   flex: 0 0 auto;
   color: #f2f2f2;
-  background: #2a2d34;
+  background: var(--mobile-ink-600);
   border: 1px solid #3f4652;
   border-radius: 6px;
   font-size: 12px;
@@ -757,7 +835,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties__keep.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border-color: var(--gold-soft, #b6904a);
 }
 
@@ -799,10 +877,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-properties__swatch {
   width: 24px;
   height: 24px;
+  flex: 0 0 24px;
   padding: 0;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
   color: var(--mobile-swatch-stroke, #1e293b);
   background:
     linear-gradient(var(--mobile-swatch-fill, #ff0000), var(--mobile-swatch-fill, #ff0000)) padding-box,
@@ -822,6 +901,38 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
+.mobile-pdf-properties__swatch,
+.mobile-pdf-properties__edit,
+.mobile-pdf-properties__text-button {
+  position: relative;
+}
+
+.mobile-pdf-properties__swatch::after,
+.mobile-pdf-properties__edit::after,
+.mobile-pdf-properties__text-button::after {
+  content: '';
+  position: absolute;
+  inset-block: -10px;
+  inset-inline: -5px;
+}
+
+.mobile-pdf-properties > .mobile-pdf-properties__size-control > input {
+  width: 38px;
+  min-width: 38px;
+  height: 22px;
+  line-height: 22px;
+}
+
+.mobile-pdf-properties > .mobile-pdf-properties__size-control > .annotation-size-control__trigger {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+}
+
+.mobile-pdf-properties > .mobile-pdf-properties__size-control {
+  height: 24px;
+}
+
 .mobile-pdf-properties__number {
   flex: 0 0 auto;
 }
@@ -833,7 +944,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0 4px;
   box-sizing: border-box;
   color: #ddd;
-  background: #444;
+  background: var(--mobile-ink-600);
   border: 0;
   border-radius: 5px;
   font-size: 12px;
@@ -869,7 +980,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0 3px;
   box-sizing: border-box;
   color: #e8e2d4;
-  background: #101319;
+  background: var(--mobile-ink-900);
   border: 1px solid #3a4250;
   border-radius: 4px;
   font-size: 11px;
@@ -887,8 +998,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0 8px;
   flex: 0 0 auto;
   color: #ddd;
-  background: #444;
-  border: 0;
+  background: var(--mobile-ink-600);
+  border: 1px solid transparent;
   border-radius: 5px;
   font-size: 12px;
   font-weight: 700;
@@ -914,7 +1025,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   justify-content: space-between;
   gap: 6px;
   color: #ddd;
-  background: #444;
+  background: var(--mobile-ink-600);
   border: 0;
   border-radius: 5px;
   font-size: 12px;
@@ -956,7 +1067,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-styled-select__trigger.is-open {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
+  border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-styled-select__trigger:disabled { color: #8a8f98; opacity: 0.7; }
@@ -969,7 +1081,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   max-height: 244px;
   overflow-y: auto;
   color: #e8e2d4;
-  background: #181b20;
+  background: var(--mobile-ink-700);
   border: 1px solid #3c424d;
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
@@ -994,7 +1106,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-styled-select__menu > button.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
 }
 
 .mobile-pdf-properties__font-size {
@@ -1004,7 +1116,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-sizing: border-box;
   flex: 0 0 auto;
   color: #e8e2d4;
-  background: #252a33;
+  background: var(--mobile-ink-600);
   border: 1px solid #3a4250;
   border-radius: 5px;
   font-size: 10px;
@@ -1017,7 +1129,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0;
   flex: 0 0 auto;
   color: #ddd;
-  background: #444;
+  background: var(--mobile-ink-600);
   border: 0;
   border-radius: 5px;
   font-size: 11px;
@@ -1026,7 +1138,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-properties__format.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
+  border: 1px solid var(--gold-soft, #b6904a);
 }
 
 /* Live text formatting is intentionally a single horizontal strip. Keep its
@@ -1087,12 +1200,16 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-properties__menu > button:first-of-type { grid-template-columns: 1fr; }
-.mobile-pdf-properties__menu > button.is-active { color: var(--accent-primary, #d8a84e); background: var(--gold-bg, #2a2218); }
+.mobile-pdf-properties__menu > button.is-active { color: var(--accent-primary, #d8a84e); background: transparent; }
 .mobile-pdf-properties__menu i { width: 9px; height: 9px; border-radius: 50%; }
 .mobile-pdf-properties__menu b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-properties__menu em { color: #919aa8; font-style: normal; }
 
-.mobile-pdf-properties__edit.is-active { color: var(--accent-primary, #d8a84e); background: var(--gold-bg, #2a2218); }
+.mobile-pdf-properties__edit.is-active {
+  color: var(--accent-primary, #d8a84e);
+  background: transparent;
+  border-color: var(--gold-soft, #b6904a);
+}
 .mobile-pdf-properties__edit:disabled { opacity: 0.4; }
 
 .mobile-pdf-text-defaults {
@@ -1101,28 +1218,31 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   right: 0;
   bottom: 0;
   z-index: 6500;
-  height: calc(432px + var(--mobile-bottom-inset));
+  height: min(calc(480px + var(--mobile-bottom-inset)), calc(100dvh - var(--app-chrome-top, 34px) - 18px));
   max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px);
   padding: 0 16px var(--mobile-bottom-inset);
   box-sizing: border-box;
   color: #f2f2f2;
-  background: #24272d;
-  border-top: 1px solid #444b57;
+  background: var(--mobile-ink-700);
+  border-top: 1px solid var(--mobile-ink-500);
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   animation: mobilePdfSheetIn 180ms ease-out;
 }
 
-.mobile-pdf-text-defaults.is-shape:not(.is-callout) {
-  height: calc(368px + var(--mobile-bottom-inset));
+.mobile-pdf-text-defaults.is-shape:not(.has-mode-tabs) {
+  height: min(calc(390px + var(--mobile-bottom-inset)), calc(100dvh - var(--app-chrome-top, 34px) - 18px));
 }
 
-.mobile-pdf-text-defaults.is-shape.is-callout {
-  height: calc(448px + var(--mobile-bottom-inset));
+.mobile-pdf-text-defaults.has-mode-tabs {
+  height: min(calc(560px + var(--mobile-bottom-inset)), calc(100dvh - var(--app-chrome-top, 34px) - 18px));
 }
 
 .mobile-pdf-text-defaults > header {
-  height: 40px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1133,47 +1253,34 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
 }
 
-.mobile-pdf-text-defaults > header > div {
+.mobile-pdf-text-defaults > header > div:first-child {
   min-width: 0;
   display: grid;
   gap: 3px;
   transform: translateY(-4px);
 }
 
-.mobile-pdf-text-defaults > header span {
+.mobile-pdf-text-defaults > header > div:first-child span {
   color: #a8b0bf;
   font-size: 11px;
   font-weight: 700;
   order: 2;
 }
 
-.mobile-pdf-text-defaults > header strong {
+.mobile-pdf-text-defaults > header > div:first-child strong {
   font-size: 16px;
   font-weight: 800;
 }
 
-.mobile-pdf-text-defaults > header > button {
-  width: 18px;
-  height: 30px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: #f2f2f2;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  transform: translateY(-3px);
-}
-
 .mobile-pdf-text-defaults__tabs {
   width: 224px;
-  height: 34px;
+  min-height: 44px;
   margin: 5px auto 0;
   display: grid;
   grid-template-columns: 1fr 1px 1fr;
   align-items: center;
   overflow: hidden;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
   border-radius: 17px;
 }
@@ -1189,26 +1296,39 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 900;
 }
 
+.mobile-pdf-text-defaults__tabs > button:first-child {
+  border-radius: 16px 0 0 16px;
+}
+
+.mobile-pdf-text-defaults__tabs > button:last-child {
+  border-radius: 0 16px 16px 0;
+}
+
 .mobile-pdf-text-defaults__tabs > button.is-active {
-  color: #f2f2f2;
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent-primary, #d8a84e);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-text-defaults__tabs > button:focus {
-  outline: 1px solid #d8a84e;
-  outline-offset: -1px;
+  outline: 0;
+}
+
+.mobile-pdf-text-defaults__tabs > button:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-text-defaults__tabs > span {
   width: 1px;
   height: 20px;
-  background: #343a45;
+  background: var(--mobile-ink-600);
 }
 
 .mobile-pdf-text-defaults__scroll {
-  height: 332px;
+  min-height: 0;
+  flex: 1 1 auto;
   margin-top: 12px;
-  padding-bottom: 16px;
+  padding: 0 4px calc(16px + var(--mobile-bottom-inset)) 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1216,14 +1336,6 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-}
-
-.mobile-pdf-text-defaults.is-shape:not(.is-callout) .mobile-pdf-text-defaults__scroll {
-  height: 268px;
-}
-
-.mobile-pdf-text-defaults.is-shape.is-callout .mobile-pdf-text-defaults__scroll {
-  height: 348px;
 }
 
 .mobile-pdf-text-defaults__scroll::-webkit-scrollbar { display: none; }
@@ -1235,19 +1347,19 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
   border-radius: 8px;
 }
 
 .mobile-pdf-text-card--text-color {
-  height: 89px;
+  min-height: 106px;
   padding: 9px;
   gap: 8px;
 }
 
 .mobile-pdf-text-card--shape-color {
-  height: 150px;
+  min-height: 176px;
   padding: 11px;
   gap: 10px;
 }
@@ -1255,7 +1367,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* 2026-07-12 (Phase E): strokes-only tools (pen/highlighter/line/arrow) drop
    the Fill/Stroke sub-tabs, so the colour card is shorter. */
 .mobile-pdf-text-card--shape-color.mobile-pdf-text-card--stroke-only {
-  height: 112px;
+  min-height: 120px;
 }
 
 .mobile-pdf-text-card strong {
@@ -1284,8 +1396,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card__large-swatch {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   flex: 0 0 auto;
   position: relative;
@@ -1297,31 +1409,38 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card--shape-color .mobile-pdf-text-card__large-swatch {
-  width: 42px;
-  height: 42px;
-  border-radius: 21px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
 }
 
 .mobile-pdf-text-card__colors {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0;
+  justify-content: flex-start;
+  gap: 4px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
 }
 
+.mobile-pdf-text-card__colors::-webkit-scrollbar { display: none; }
+
 .mobile-pdf-text-card__colors > button {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
+  aspect-ratio: 1;
+  flex: 0 0 44px;
   padding: 0;
   display: grid;
   place-items: center;
-  background: #15181d;
+  background: var(--mobile-ink-800);
   border: 1px solid #3b424e;
   border-radius: 50%;
 }
 
 .mobile-pdf-text-card__colors > button.is-active {
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border-color: var(--accent-primary, #d8a84e);
 }
 
@@ -1333,8 +1452,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-card--split {
-  height: 81px;
-  min-height: 81px;
+  min-height: 112px;
   padding: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
@@ -1342,8 +1460,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split {
-  height: 85px;
-  min-height: 85px;
+  min-height: 104px;
 }
 
 /* 2026-07-12 (Phase E): tools with no border-style select (pen/highlighter/
@@ -1354,6 +1471,24 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card__pane {
   padding: 11px;
+}
+
+.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split .mobile-styled-select,
+.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split .mobile-styled-select__trigger,
+.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split .annotation-size-control {
+  height: 30px;
+  min-height: 30px;
+}
+
+.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split .mobile-styled-select {
+  width: 112px;
+  max-width: 100%;
+}
+
+.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split .annotation-size-control > input,
+.mobile-pdf-text-defaults.is-shape .mobile-pdf-text-card--split .annotation-size-control__trigger {
+  height: 28px;
+  line-height: 28px;
 }
 
 .mobile-pdf-text-card__pane {
@@ -1369,7 +1504,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__divider {
   width: 1px;
   height: 100%;
-  background: #343a45;
+  background: var(--mobile-ink-600);
 }
 
 .mobile-pdf-text-defaults__format {
@@ -1380,11 +1515,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-defaults__format > button {
-  width: 31px;
-  height: 31px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   color: #f2f2f2;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   border: 1px solid #343a45;
   border-radius: 8px;
   font-size: 12px;
@@ -1396,18 +1531,20 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-defaults__format > button.strike { text-decoration: line-through; }
 
 .mobile-pdf-text-defaults__format > button.is-active {
-  color: #f2f2f2;
-  background: var(--gold-bg, #2a2218);
+  color: var(--accent-primary, #d8a84e);
+  background: transparent;
   border-color: var(--gold-soft, #b6904a);
 }
 
-.mobile-pdf-text-card__size > input {
+.mobile-pdf-text-card__size > input,
+.mobile-pdf-text-card__font-size input,
+.mobile-pdf-text-card--counter input {
   width: 52px;
-  height: 32px;
+  min-height: 44px;
   padding: 0 6px;
   box-sizing: border-box;
   color: #f2f2f2;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   border: 1px solid #3a4250;
   border-radius: 6px;
   font-size: 13px;
@@ -1423,9 +1560,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger {
   width: 100%;
-  height: 32px;
+  min-height: 44px;
   color: #f2f2f2;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   border: 1px solid #3a4250;
   border-radius: 6px;
   font-size: 13px;
@@ -1434,7 +1571,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-text-card__pane > .mobile-styled-select .mobile-styled-select__trigger.is-open,
 .mobile-pdf-text-card--arrowhead > .mobile-styled-select .mobile-styled-select__trigger.is-open {
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border-color: var(--gold-soft, #b6904a);
 }
 
@@ -1444,6 +1581,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 10px;
 }
 
+@media (min-width: 600px) {
+  .mobile-pdf-text-defaults.is-text .mobile-pdf-text-card__font-size > div {
+    width: auto;
+    grid-template-columns: 148px 52px;
+  }
+}
+
 .mobile-pdf-text-defaults__alignments {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1451,28 +1595,28 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 .mobile-pdf-text-defaults__alignments > button {
-  height: 43px;
+  min-height: 44px;
   padding: 0;
   display: grid;
   place-items: center;
   color: #a8b0bf;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   border: 1px solid #343a45;
   border-radius: 8px;
 }
 
 .mobile-pdf-text-defaults__alignments > button.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border-color: var(--gold-soft, #b6904a);
 }
 
 .mobile-pdf-text-card__color-tabs {
-  height: 34px;
+  min-height: 44px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   overflow: hidden;
-  background: #141820;
+  background: var(--mobile-ink-800);
   border: 1px solid #343a45;
   border-radius: 17px;
 }
@@ -1491,8 +1635,83 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 900;
 }
 
+.mobile-pdf-text-card__color-tabs > button:first-child {
+  border-radius: 16px 0 0 16px;
+}
+
+.mobile-pdf-text-card__color-tabs > button:last-child {
+  border-radius: 0 16px 16px 0;
+}
+
+.mobile-pdf-text-card__font-size > div {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-pdf-text-card__font-size .mobile-styled-select,
+.mobile-pdf-text-card__font-size .mobile-styled-select__trigger,
+.mobile-pdf-text-card--eraser .mobile-styled-select,
+.mobile-pdf-text-card--eraser .mobile-styled-select__trigger,
+.mobile-pdf-text-card--counter .mobile-styled-select,
+.mobile-pdf-text-card--counter .mobile-styled-select__trigger {
+  width: 100%;
+}
+
+.mobile-pdf-text-card--eraser,
+.mobile-pdf-text-card--counter {
+  gap: 12px;
+}
+
+.mobile-pdf-text-card--counter > button {
+  min-height: 44px;
+  color: #17120a;
+  background: var(--accent-primary, #d8a84e);
+  border: 0;
+  border-radius: 8px;
+  font-weight: 850;
+}
+
+.mobile-pdf-text-card--counter > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 6px;
+  color: #e8e2d4;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.mobile-pdf-text-card--counter > label > small {
+  grid-column: 1 / -1;
+  color: #a8b0bf;
+  font-weight: 650;
+}
+
+.mobile-pdf-text-card--counter input { width: 64px; }
+
+@media (max-height: 450px) {
+  .mobile-pdf-text-defaults {
+    padding-inline: 12px;
+  }
+
+  .mobile-pdf-text-defaults > header {
+    min-height: 48px;
+  }
+
+  .mobile-pdf-text-defaults__scroll {
+    margin-top: 8px;
+  }
+}
+
 .mobile-pdf-text-card__color-tabs > button + button { border-left: 1px solid #343a45; }
-.mobile-pdf-text-card__color-tabs > button.is-active { color: #f2f2f2; background: var(--gold-bg, #2a2218); }
+.mobile-pdf-text-card__color-tabs > button.is-active {
+  color: var(--accent-primary, #d8a84e);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--gold-soft, #b6904a);
+}
 
 .mobile-pdf-text-card__color-tabs i {
   width: 11px;
@@ -1541,30 +1760,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-dock {
   height: var(--mobile-viewer-dock-height);
   min-height: var(--mobile-viewer-dock-height);
-  padding: 2px 20px 4px;
+  padding: 4px 20px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex: 0 0 auto;
   color: #f2f2f2;
-  background: transparent;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  background: var(--mobile-ink-900);
+  border-top: 1px solid var(--mobile-ink-500);
+  position: relative;
   z-index: 5850;
 }
 
-.mobile-pdf-dock__surface {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(36px + var(--mobile-bottom-inset));
-  background: #1e1e1e;
-  border-top: 1px solid #3a3a3a;
-  pointer-events: none;
+html[data-native-shell="expo"] .mobile-pdf-dock {
+  padding-bottom: calc(4px + var(--mobile-bottom-inset));
 }
 
 .mobile-pdf-dock__side,
@@ -1572,10 +1782,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   position: relative;
   z-index: 1;
   color: #f2f2f2;
-  background: #181a1f;
+  background: transparent;
   border: 1px solid #2e333c;
   box-shadow: none;
-  transform: translateY(4px);
 }
 
 .mobile-pdf-dock__side {
@@ -1590,7 +1799,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-dock__side.is-active,
 .mobile-pdf-dock__center.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border-color: var(--gold-soft, #b6904a);
 }
 
@@ -1602,7 +1811,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: #20242c;
+  background: transparent;
   border-color: #3a4250;
   border-radius: 19px;
   font-size: 12px;
@@ -1628,9 +1837,9 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: var(--mobile-sheet-height, calc(392px + var(--mobile-bottom-inset))) !important;
   max-height: calc(100dvh - var(--app-chrome-top, 34px) - 18px) !important;
   box-sizing: border-box;
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
   border: 0 !important;
-  border-top: 1px solid #444b57 !important;
+  border-top: 1px solid var(--mobile-ink-500) !important;
   border-bottom: 0 !important;
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -15px 38px rgba(0, 0, 0, 0.5);
@@ -1663,7 +1872,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 34px;
   height: 4px;
   border-radius: 2px;
-  background: #68707a;
+  background: var(--mobile-ink-600);
 }
 
 /* UX 2026-07-12 (demo parity, defect #12): the demo's survey + format sheets
@@ -1734,7 +1943,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #333944;
   border-radius: 7px;
 }
@@ -1745,7 +1954,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border: 1px solid var(--accent-primary, #d8a84e);
   border-radius: 50%;
   font-size: 10px;
@@ -1760,7 +1969,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-survey-sheet-header,
 .mobile-survey-picker-header,
 .mobile-survey-module-row {
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
   border-color: #3a3a3a !important;
 }
 
@@ -1825,7 +2034,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   gap: 2px;
   color: #f2f2f2;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #3a4250;
   border-radius: 7px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
@@ -1848,7 +2057,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-survey-template-menu > button.is-active {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
 }
 
 .mobile-survey-sheet-header-actions {
@@ -1886,14 +2095,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: #353a43;
+  background: var(--mobile-ink-600);
   border: 1px solid transparent;
   border-radius: 17px;
 }
 
 .mobile-survey-sheet-export.is-open {
   color: var(--accent-primary, #d8a84e);
-  background: var(--gold-bg, #2a2218);
+  background: transparent;
   border-color: var(--accent-primary, #d8a84e);
 }
 
@@ -1908,7 +2117,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 6px;
   display: grid;
   gap: 5px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
@@ -1927,7 +2136,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 6px;
 }
 
-.mobile-survey-sheet-export-menu > button:active { background: #232833; }
+.mobile-survey-sheet-export-menu > button:active { background: var(--mobile-ink-600); }
 .mobile-survey-sheet-export-menu > button:disabled { opacity: 0.45; }
 .mobile-survey-sheet-export-menu > button > strong { font-size: 13px; font-weight: 900; }
 .mobile-survey-sheet-export-menu > button > span { color: #a8b0bf; font-size: 10px; font-weight: 700; }
@@ -1941,7 +2150,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: #353a43 !important;
+  background: var(--mobile-ink-600) !important;
   border: 0;
   border-radius: 16px !important;
 }
@@ -1955,7 +2164,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    opacity .45 when disabled instead of swapping to darker inline colors
    (styles.ts moduleArrowDisabled). */
 .mobile-survey-module-row > div > button:nth-child(2) {
-  background: #1b1f25 !important;
+  background: var(--mobile-ink-700) !important;
   border-color: #3a4252 !important;
   border-radius: 16px !important;
 }
@@ -1978,7 +2187,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-pdf-sheet .survey-marker-category-card {
   border-radius: 8px;
   border-color: #343a45;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
 }
 
 .mobile-pdf-sheet .survey-marker-category-row {
@@ -2012,7 +2221,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: 42px !important;
   border-radius: 8px !important;
   border-color: #343a45 !important;
-  background: #1b1f25 !important;
+  background: var(--mobile-ink-700) !important;
 }
 
 .mobile-survey-template-row:active {
@@ -2050,14 +2259,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 6px 16px 6px;
   box-sizing: border-box;
   flex: 0 0 44px;
-  background: #24272d;
+  background: var(--mobile-ink-700);
 }
 
 .mobile-survey-exit-footer button {
   width: 100%;
   height: 32px;
   color: #f08a8a;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #51404a;
   border-radius: 7px;
   font-size: 13px;
@@ -2084,7 +2293,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
-.mobile-survey-item-row:active { background: #20242c; }
+.mobile-survey-item-row:active { background: var(--mobile-ink-800); }
 
 .mobile-survey-item-dot {
   width: 10px;
@@ -2128,7 +2337,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: 30px;
   margin-top: 4px;
   border-radius: 7px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
   padding: 0 10px;
   display: flex;
@@ -2161,7 +2370,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 30px;
   flex: 0 0 30px;
   border-radius: 7px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
   display: grid;
   place-items: center;
@@ -2194,7 +2403,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   overflow: visible;
   border-radius: 7px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
 }
 
@@ -2230,7 +2439,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   top: 34px;
   left: 0;
   right: 0;
-  background: #181b20;
+  background: var(--mobile-ink-700);
   border: 1px solid #3c424d;
   border-radius: 8px;
   padding: 5px;
@@ -2263,7 +2472,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   cursor: pointer;
 }
 
-.mobile-survey-detail-menu > button:active { background: #232833; }
+.mobile-survey-detail-menu > button:active { background: var(--mobile-ink-600); }
 
 .mobile-survey-detail-menu > button.is-active { background: #2a3140; }
 
@@ -2318,7 +2527,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 36px;
   flex: 0 0 36px;
   border-radius: 6px;
-  background: #1c2026;
+  background: var(--mobile-ink-700);
   border: 1px solid #333944;
   display: flex;
   align-items: center;
@@ -2348,7 +2557,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-width: 28px;
   height: 24px;
   border-radius: 5px;
-  background: #2a2f38;
+  background: var(--mobile-ink-600);
   border: 1px solid #3a4250;
   color: #a8b0bf;
   font-size: 9px;
@@ -2367,12 +2576,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* Semantic checklist colors — same in demo (styles.ts:3385-3393). */
 .mobile-survey-check-btn.is-yes { background: #2f7d55; }
 .mobile-survey-check-btn.is-no { background: #8c3a42; }
-.mobile-survey-check-btn.is-na { background: #5e6570; }
+.mobile-survey-check-btn.is-na { background: var(--mobile-ink-600); }
 
 .mobile-survey-detail-empty {
   margin-top: 6px;
   border-radius: 6px;
-  background: #1c2026;
+  background: var(--mobile-ink-700);
   border: 1px solid #333944;
   display: grid;
   place-items: center;
@@ -2419,7 +2628,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-survey-notes-card {
   border-radius: 8px;
   border: 1px solid #343a45;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   padding: 10px;
   display: grid;
   gap: 8px;
@@ -2429,7 +2638,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   min-height: 88px;
   border-radius: 7px;
   border: 1px solid #3a4250;
-  background: #15181d;
+  background: var(--mobile-ink-800);
   color: #f2f2f2;
   padding: 9px 10px;
   font-size: 13px;
@@ -2459,7 +2668,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   max-width: 112px;
   border-radius: 7px;
   border: 1px solid #343a45;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   color: #f2f2f2;
   display: inline-flex;
   align-items: center;
@@ -2476,7 +2685,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-survey-notes-attachment {
   min-height: 40px;
   border-radius: 7px;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2545,7 +2754,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-survey-notes-cancel {
   border: 1px solid #3a4250;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   color: #f2f2f2;
 }
 
@@ -2558,7 +2767,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 .mobile-spaces-header {
   height: 58px !important;
   padding: 8px 16px !important;
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
   border-color: #3a3a3a !important;
 }
 
@@ -2585,14 +2794,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 6px 16px;
   box-sizing: border-box;
   flex: 0 0 44px;
-  background: #24272d;
+  background: var(--mobile-ink-700);
 }
 
 .mobile-spaces-exit-footer button {
   width: 100%;
   height: 32px;
   color: #f08a8a;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #51404a;
   border-radius: 7px;
   font-size: 13px;
@@ -2608,7 +2817,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 14px;
   position: relative;
   overflow: visible !important;
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
   border-color: #3a3a3a !important;
 }
 
@@ -2643,22 +2852,22 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid !important;
   place-items: center;
   color: #f2f2f2 !important;
-  background: #353a43 !important;
+  background: var(--mobile-ink-600) !important;
   border: 0 !important;
   border-radius: 16px !important;
 }
 
 .mobile-pages-panel {
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
 }
 
 .mobile-search-panel {
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
 }
 
 .mobile-search-panel__bar {
   padding: 8px 16px 4px !important;
-  background: #24272d !important;
+  background: var(--mobile-ink-700) !important;
   border-bottom: 0 !important;
 }
 
@@ -2666,7 +2875,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 42px !important;
   padding-left: 38px !important;
   color: #f2f2f2 !important;
-  background: #171a20 !important;
+  background: var(--mobile-ink-700) !important;
   border-color: #333944 !important;
   border-radius: 7px !important;
   font-size: 14px !important;
@@ -2674,7 +2883,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-search-panel__results {
   padding: 0 16px 8px !important;
-  background: #24272d;
+  background: var(--mobile-ink-700);
 }
 
 .mobile-search-empty {
@@ -2717,7 +2926,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: #171a20;
+  background: var(--mobile-ink-700);
   border: 1px solid #353b46;
   border-radius: 15px;
   font-size: 13px;
@@ -2750,14 +2959,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #20242b !important;
+  background: var(--mobile-ink-800) !important;
   border: 1px solid #2f3641 !important;
   border-radius: 8px !important;
   scroll-snap-align: start;
 }
 
 .mobile-page-card.is-active {
-  background: var(--gold-bg, #2a2218) !important;
+  background: transparent !important;
   border-color: var(--accent-primary, #d8a84e) !important;
 }
 
@@ -2786,7 +2995,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #11151b;
-  background: #20242b;
+  background: var(--mobile-ink-800);
   border: 1px solid #657080;
   border-radius: 50%;
   box-sizing: border-box;
@@ -2806,7 +3015,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0 8px;
   box-sizing: border-box;
   color: #f2f2f2;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #343a45;
   border-radius: 21px;
 }
@@ -2839,7 +3048,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   width: 1px;
   height: 18px;
   flex: 0 0 1px;
-  background: #343a45;
+  background: var(--mobile-ink-600);
 }
 
 .mobile-page-preview {
@@ -2934,8 +3143,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 7px;
   padding: 10px 16px calc(var(--mobile-bottom-inset, 10px) + 8px);
   overflow-y: auto;
-  background: #24272d;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: var(--mobile-ink-700);
+  font-family: var(--mobile-font-family);
 }
 
 .mobile-bookmark-toolbar {
@@ -2964,7 +3173,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 6px;
   align-items: center;
   padding: 7px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #333944;
   border-radius: 6px;
 }
@@ -2979,7 +3188,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   box-sizing: border-box;
   padding: 0 8px;
   color: #f2f2f2;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   border: 1px solid #3a4252;
   border-radius: 5px;
   font: 700 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
@@ -2997,7 +3206,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   gap: 7px;
   padding: 6px 7px 6px 5px;
   box-sizing: border-box;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #333944;
   border-radius: 6px;
 }
@@ -3021,7 +3230,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   height: 22px;
   display: grid;
   place-items: center;
-  background: #20242c;
+  background: var(--mobile-ink-800);
   border: 1px solid #343a45;
   border-radius: 11px;
 }
@@ -3065,7 +3274,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   display: grid;
   place-items: center;
   color: #f2f2f2;
-  background: #242a33;
+  background: var(--mobile-ink-600);
   border: 0;
   border-radius: 5px;
   cursor: pointer;
@@ -3088,7 +3297,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: #1b1f25;
+  background: var(--mobile-ink-700);
   border: 1px solid #333944;
   border-radius: 7px;
 }
@@ -3105,7 +3314,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
    9px green dot and bolder title of the demo row. --- */
 .mobile-revisions-panel {
   padding: 8px 16px calc(var(--mobile-bottom-inset, 10px) + 8px);
-  background: #24272d;
+  background: var(--mobile-ink-700);
 }
 
 .mobile-revisions-panel > div[role="button"] {
