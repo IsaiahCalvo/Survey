@@ -7442,9 +7442,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     if (activeTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
-    if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
-    if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
-    else if (activeTool === 'text-select') setStrokeOpacity(30);
+    if (activeTool === 'text-select') {
+      const paint = textMarkupPaintByType[focusedTextMarkupPaint]
+        || TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]
+        || TEXT_MARKUP_DEFAULT_PAINT.highlight;
+      setStrokeColor(paint.color);
+      setStrokeOpacity(paint.opacity);
+    } else {
+      if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
+      if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
+    }
     if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
     if (toolPrefs.strokeWidth !== undefined) {
@@ -7461,7 +7468,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
-  }, [activeTool, pdfId, toolPreferences]);
+  }, [activeTool, focusedTextMarkupPaint, pdfId, textMarkupPaintByType, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -7624,7 +7631,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleTextMarkupPaintChange = useCallback((color, opacity) => {
-    const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity) || 30));
+    const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity)
+      || TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]?.opacity
+      || 100));
     strokeColorStateRef.current = color;
     strokeOpacityStateRef.current = normalizedOpacity;
     setStrokeColor(color);
@@ -7639,7 +7648,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         opacity: normalizedOpacity / 100,
       });
     }
-  }, [activeTool, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
+  }, [activeTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
     strokeOpacityStateRef.current = opacity;
@@ -23157,6 +23166,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    const textMarkupSelectionRect = (() => {
+      if (contextTool === 'text-select' && liveTextSelection?.anchor) return liveTextSelection.anchor;
+      if (selectedAnnot?.data?.type !== 'text-markup') return null;
+      const bounds = quadBounds(selectedAnnot.data.quads);
+      const selectedPageNumber = Number(selectedAnnot.data.pageNumber || selectedToolbarAnnotation?.pageNumber);
+      const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${selectedPageNumber}"]`);
+      const pageRect = pageElement?.getBoundingClientRect?.();
+      const pageSize = pageSizesRef.current?.[selectedPageNumber];
+      if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
+      const scaleX = pageRect.width / pageSize.width;
+      const scaleY = pageRect.height / pageSize.height;
+      return {
+        left: pageRect.left + bounds.left * scaleX,
+        top: pageRect.top + bounds.top * scaleY,
+        width: bounds.width * scaleX,
+        height: bounds.height * scaleY,
+      };
+    })();
     const selectedCounterSeriesId = selectionMappedTool === 'counter'
       ? selectedAnnot?.data?.seriesId
       : null;
@@ -23274,6 +23301,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setSelectionMode,
       contextTool,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
+      textMarkupSelectionRect,
       activeCategoryDropdown,
       lastDrawTool,
       lastShapeTool,
@@ -28273,7 +28301,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         textRangeModel,
         quads,
         color: strokeColorStateRef.current || '#f4d35e',
-        opacity: Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current) || 30) / 100)),
+        opacity: Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current)
+          || TEXT_MARKUP_DEFAULT_PAINT.highlight.opacity) / 100)),
         overlapMode: textMarkupOverlapMode,
         authorId: user?.id || null,
       })
@@ -28517,7 +28546,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         textRangeModel,
         quads,
         color: textMarkupPaintByType[markupType]?.color || strokeColorStateRef.current || '#f4d35e',
-        opacity: Math.max(0.05, Math.min(1, Number(textMarkupPaintByType[markupType]?.opacity ?? strokeOpacityStateRef.current ?? 30) / 100)),
+        opacity: Math.max(0.05, Math.min(1, Number(textMarkupPaintByType[markupType]?.opacity
+          ?? strokeOpacityStateRef.current
+          ?? TEXT_MARKUP_DEFAULT_PAINT[markupType]?.opacity
+          ?? 100) / 100)),
         overlapMode: textMarkupOverlapMode,
         linkUrl,
         linkPageNumber,
@@ -28567,6 +28599,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
   }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
+
+  useEffect(() => {
+    if (activeTool !== 'text-select') return undefined;
+    const copySelectedPdfText = (event) => {
+      if (String(event.key).toLowerCase() !== 'c' || (!event.metaKey && !event.ctrlKey) || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+      if (!liveTextSelectionRef.current?.pages?.length) return;
+      // Keep the browser's native copy event, then add the app's proof and toast.
+      void handleTextSelectionAction('copy');
+    };
+    document.addEventListener('keydown', copySelectedPdfText, true);
+    return () => document.removeEventListener('keydown', copySelectedPdfText, true);
+  }, [activeTool, handleTextSelectionAction]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;

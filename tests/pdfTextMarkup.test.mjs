@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clientRectToPageQuad,
   computeTextSelectionActionBarPosition,
+  computeTextMarkupPickerPosition,
   createTextMarkupAnnotation,
   mapOcrBoxToPage,
   mergeLineQuads,
@@ -42,6 +43,16 @@ test('range action bar clears app chrome and stays inside a phone viewport', () 
       { viewportWidth: 390, viewportHeight: 844, chromeBottom: 77 },
     ),
     { left: 252, top: 772 },
+  );
+});
+
+test('text markup picker moves clear of selected text when the center spot covers it', () => {
+  assert.deepEqual(
+    computeTextMarkupPickerPosition(
+      { left: 350, top: 100, width: 200, height: 50 },
+      { viewportWidth: 900, viewportHeight: 700, hostBottom: 50, pickerWidth: 286, pickerHeight: 300 },
+    ),
+    { left: 307, top: 162 },
   );
 });
 
@@ -135,14 +146,21 @@ test('redactions use opaque black paint and native Redact identity', () => {
   assert.equal(annotation.pdfAnnotationType, 'Redact');
 });
 
-test('all new text markup types default to thirty percent opacity', () => {
-  for (const markupType of ['highlight', 'underline', 'squiggly', 'strikeout']) {
-    assert.equal(TEXT_MARKUP_DEFAULT_PAINT[markupType].opacity, 30);
+test('new text marks use the visible app defaults', () => {
+  const expected = {
+    highlight: { color: '#f5c229', opacity: 40 },
+    underline: { color: '#ef3029', opacity: 100 },
+    squiggly: { color: '#00FF80', opacity: 100 },
+    strikeout: { color: '#3d63dc', opacity: 100 },
+  };
+  for (const [markupType, paint] of Object.entries(expected)) {
+    assert.deepEqual(TEXT_MARKUP_DEFAULT_PAINT[markupType], paint);
     const annotation = createTextMarkupAnnotation({
       id: `default-${markupType}`, pageNumber: 1, markupType,
       quads: [{ x1: 1, y1: 2, x2: 11, y2: 2, x3: 1, y3: 7, x4: 11, y4: 7 }],
     });
-    assert.equal(annotation.opacity, 0.3);
+    assert.equal(annotation.fill, paint.color);
+    assert.equal(annotation.opacity, paint.opacity / 100);
   }
 });
 

@@ -530,7 +530,6 @@ export const renderTextMarkup = (obj, index) => {
       strokeLinecap="round"
       strokeLinejoin="round"
       opacity={opacity}
-      vectorEffect="non-scaling-stroke"
       data-shape-id={shapeId}
       data-shape-kind={`text-markup-${type}`}
     />

@@ -1,10 +1,14 @@
 const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact']);
 
 export const TEXT_MARKUP_DEFAULT_PAINT = Object.freeze({
-  highlight: Object.freeze({ color: '#f5c229', opacity: 30 }),
-  underline: Object.freeze({ color: '#ef3029', opacity: 30 }),
-  squiggly: Object.freeze({ color: '#f0f1f4', opacity: 30 }),
-  strikeout: Object.freeze({ color: '#3d63dc', opacity: 30 }),
+  // UX default: highlights stay translucent so the selected text remains easy to read.
+  highlight: Object.freeze({ color: '#f5c229', opacity: 40 }),
+  // UX default: underline strokes stay opaque so thin page-unit lines remain clear.
+  underline: Object.freeze({ color: '#ef3029', opacity: 100 }),
+  // UX default: squiggles use the shared palette green at full strength so they show on white.
+  squiggly: Object.freeze({ color: '#00FF80', opacity: 100 }),
+  // UX default: strike-through strokes stay opaque so thin page-unit lines remain clear.
+  strikeout: Object.freeze({ color: '#3d63dc', opacity: 100 }),
 });
 
 const round = (value) => Math.round(Number(value) * 10_000) / 10_000;
@@ -164,7 +168,7 @@ export function createTextMarkupAnnotation({
   textRange,
   textRangeModel,
   quads,
-  color = '#f4d35e',
+  color,
   opacity,
   overlapMode = 'layered',
   linkUrl = null,
@@ -179,8 +183,11 @@ export function createTextMarkupAnnotation({
   const mergedQuads = mergeLineQuads(quads);
   const bounds = quadBounds(mergedQuads);
   if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber)) || (type === 'link' && !resolvedLinkUrl && !resolvedLinkPageNumber)) return null;
-  const resolvedColor = type === 'redact' ? '#000000' : type === 'link' ? '#2563eb' : color;
-  const resolvedOpacity = type === 'redact' || type === 'link' ? 1 : clamp01(opacity ?? 0.3);
+  const defaultPaint = TEXT_MARKUP_DEFAULT_PAINT[type];
+  const resolvedColor = type === 'redact' ? '#000000' : type === 'link' ? '#2563eb' : (color || defaultPaint?.color);
+  const resolvedOpacity = type === 'redact' || type === 'link'
+    ? 1
+    : clamp01(opacity ?? ((defaultPaint?.opacity ?? 100) / 100));
   const pdfType = type === 'highlight' ? 'Highlight'
     : type === 'underline' ? 'Underline'
       : type === 'squiggly' ? 'Squiggly'
@@ -259,6 +266,18 @@ export function getTextMarkupRangeHandlePositions(annotation) {
     return { ml: positions.mr, mr: positions.ml };
   }
   return positions;
+}
+
+export function getTextMarkupSelectionChrome(annotation) {
+  if (annotation?.data?.type !== 'text-markup') {
+    return { hideBoundingBox: false, hideResizeHandles: false };
+  }
+  const hasRangeModel = Array.isArray(annotation.data.textRangeModel?.runs)
+    && annotation.data.textRangeModel.runs.length > 0;
+  return {
+    hideBoundingBox: hasRangeModel,
+    hideResizeHandles: !hasRangeModel,
+  };
 }
 
 export function getTextMarkupRangeFixedOffset(annotation, handleId) {
@@ -722,6 +741,53 @@ export function computeTextSelectionActionBarPosition(anchor, {
   const preferredTop = above >= minimumTop ? above : below;
   const top = Math.max(minimumTop, Math.min(height - barHeight - margin, preferredTop));
   return { left, top };
+}
+
+export function computeTextMarkupPickerPosition(selectionRect, {
+  viewportWidth,
+  viewportHeight,
+  hostBottom = 0,
+  // UX defaults: match the shared picker shell so placement clears the mark.
+  pickerWidth = 286,
+  pickerHeight = 320,
+  margin = 8,
+  gap = 12,
+} = {}) {
+  const width = Math.max(1, Number(viewportWidth) || 1);
+  const height = Math.max(1, Number(viewportHeight) || 1);
+  const popupWidth = Math.min(Math.max(1, Number(pickerWidth) || 286), Math.max(1, width - margin * 2));
+  const popupHeight = Math.min(Math.max(1, Number(pickerHeight) || 320), Math.max(1, height - margin * 2));
+  const minimumTop = Math.max(margin, Number(hostBottom) + margin);
+  const clampLeft = (left) => Math.max(margin, Math.min(width - popupWidth - margin, left));
+  const clampTop = (top) => Math.max(minimumTop, Math.min(height - popupHeight - margin, top));
+  const fallback = {
+    left: clampLeft((width - popupWidth) / 2),
+    top: clampTop(minimumTop),
+  };
+  const left = Number(selectionRect?.left);
+  const top = Number(selectionRect?.top);
+  const right = Number(selectionRect?.right ?? (left + Number(selectionRect?.width)));
+  const bottom = Number(selectionRect?.bottom ?? (top + Number(selectionRect?.height)));
+  if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top) return fallback;
+  const overlaps = (candidate) => (
+    candidate.left < right
+    && candidate.left + popupWidth > left
+    && candidate.top < bottom
+    && candidate.top + popupHeight > top
+  );
+  if (!overlaps(fallback)) return fallback;
+  const candidates = [
+    { left: left - gap - popupWidth, top: fallback.top },
+    { left: right + gap, top: fallback.top },
+    { left: fallback.left, top: top - gap - popupHeight },
+    { left: fallback.left, top: bottom + gap },
+  ].map((candidate) => ({ left: clampLeft(candidate.left), top: clampTop(candidate.top) }))
+    .filter((candidate) => !overlaps(candidate));
+  candidates.sort((a, b) => (
+    Math.hypot(a.left - fallback.left, a.top - fallback.top)
+    - Math.hypot(b.left - fallback.left, b.top - fallback.top)
+  ));
+  return candidates[0] || fallback;
 }
 
 export const TEXT_MARKUP_TYPES = Object.freeze(Array.from(MARKUP_TYPES));

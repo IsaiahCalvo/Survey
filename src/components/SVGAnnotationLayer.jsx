@@ -9,7 +9,7 @@
  * - Single <svg viewBox="0 0 pageWidth pageHeight"> per page
  * - All coordinates in unscaled PDF page space
  * - Browser handles zoom scaling automatically via viewBox
- * - vector-effect="non-scaling-stroke" keeps stroke widths constant
+ * - Annotation visuals scale with the viewBox; only selection chrome stays screen-constant
  * - mix-blend-mode: multiply for survey marker annotations
  * - pathOffset transform chain for correct pen stroke positioning
  * - Selection handles use inverseScale for constant visual pixel size
@@ -72,7 +72,7 @@ import {
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
-import { getTextMarkupRangeHandlePositions } from '../utils/pdfTextMarkup.js';
+import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
@@ -5066,6 +5066,7 @@ const SVGAnnotationLayer = memo(({
           opacity: 1,
           data: { strokeRenderContract: 'drawn-centered-stroke' },
         };
+        const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
         return (
           <g className="shape-creation-preview" style={{ pointerEvents: 'none' }}>
             {shapeCreation.tool === 'ellipse'
@@ -5776,13 +5777,14 @@ const SVGAnnotationLayer = memo(({
               // surface — it must show the corner + edge + rotate handles
               // itself, so drop the mask in that case.
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
-              hideBoundingBox={selectionObj?.data?.type === 'text-markup'
+              hideBoundingBox={textMarkupSelectionChrome.hideBoundingBox
                 || (isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup)}
               padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
-              hideResizeHandles={selectionObj?.data?.type === 'text-markup'
-                && !selectionObj?.data?.textRangeModel}
+              // Legacy marks have no safe character-offset model for range
+              // handles, so their standard box supplies visible selection feedback.
+              hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles}
               horizontalResizeOnly={selectionObj?.data?.type === 'text-markup' && !isSelectDeleteOnlyPdfTextMarkup}
               horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
                 ? getTextMarkupRangeHandlePositions(selectionObj)
