@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString, decodePDFRawStream, degrees } from 'pdf-lib';
 import {
   buildPdfExportAnnotationPlan,
   buildPrintableRegularAnnotationPayload,
@@ -29,6 +29,8 @@ import {
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import { getCounterLabelLayout } from '../src/utils/counterGeometry.js';
+import { createTextMarkupAnnotation } from '../src/utils/pdfTextMarkup.js';
+import { buildTextMarkupPaintEditTransaction } from '../src/utils/textMarkupGroupTransactions.js';
 
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
   + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
@@ -49,6 +51,65 @@ async function makePdfFile(name = 'source.pdf') {
   };
 }
 
+async function makeRotatedPdfFile(name = 'rotated-source.pdf') {
+  const doc = await PDFDocument.create();
+  for (const rotation of [0, 90, 180, 270]) {
+    const page = doc.addPage([200, 100]);
+    page.setRotation(degrees(rotation));
+  }
+  const bytes = await doc.save();
+  return {
+    name,
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
+async function makePdfFileWithUnsafeImportedRedaction({ includeRect = true } = {}) {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([200, 200]);
+  const opaqueAppearance = doc.context.register(doc.context.flateStream(
+    'q\n0 0 0 rg\n0 0 120 18 re f\nQ\n',
+    {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: [0, 0, 120, 18],
+      Resources: {},
+    },
+  ));
+  const unsafeRedactionDict = {
+    Type: 'Annot',
+    Subtype: 'Redact',
+    C: [0, 0, 0],
+    Contents: PDFString.of('Selectable line one on page 1.'),
+    OverlayText: PDFString.of('Selectable line one on page 1.'),
+    AP: { N: opaqueAppearance },
+    P: page.ref,
+  };
+  if (includeRect) unsafeRedactionDict.Rect = [20, 120, 140, 138];
+  const unsafeRedaction = doc.context.register(doc.context.obj(unsafeRedactionDict));
+  page.node.set(PDFName.of('Annots'), doc.context.obj([unsafeRedaction]));
+  const bytes = await doc.save();
+  return {
+    name: 'unsafe-imported-redaction.pdf',
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
+function makeUnsafeImportedRedactionFixtureFile() {
+  const bytes = readFileSync(new URL('../debug/fixtures/unapplied-redaction-leak.pdf', import.meta.url));
+  return {
+    name: 'unapplied-redaction-leak.pdf',
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
 async function getPdfAnnotationSubtypes(bytes) {
   const doc = await PDFDocument.load(bytes);
   const page = doc.getPage(0);
@@ -63,6 +124,26 @@ async function getPdfAnnotationDicts(bytes) {
   const annots = page.node.lookup(PDFName.of('Annots'));
   if (!annots) return [];
   return annots.asArray().map((ref) => doc.context.lookup(ref));
+}
+
+async function getPdfAnnotationDictsByPage(bytes) {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getPages().map((page) => {
+    const annots = page.node.lookup(PDFName.of('Annots'));
+    return annots ? annots.asArray().map((ref) => doc.context.lookup(ref)) : [];
+  });
+}
+
+async function getPdfPageContentStrings(bytes) {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getPages().map((page) => {
+    const contents = page.node.lookup(PDFName.of('Contents'));
+    const entries = contents?.asArray?.() || (contents ? [contents] : []);
+    return entries.map((entry) => {
+      const stream = doc.context.lookup(entry);
+      return new TextDecoder().decode(decodePDFRawStream(stream).decode());
+    }).join('\n');
+  });
 }
 
 async function pageHasContentStream(bytes) {
@@ -87,6 +168,310 @@ test('PDF export can generate bytes without writing a local file', async () => {
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test('normal export makes imported unapplied redactions non-concealing and removes cleartext notes', async () => {
+  const fixture = makeUnsafeImportedRedactionFixtureFile();
+  const sourceBytes = new Uint8Array(await fixture.arrayBuffer());
+  const [unsafeSourceRedact] = await getPdfAnnotationDicts(sourceBytes);
+  assert.equal(unsafeSourceRedact.get(PDFName.of('Contents')).decodeText(), 'Selectable line one on page 1.');
+  const unsafeAppearance = unsafeSourceRedact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const unsafeAppearanceSource = new TextDecoder().decode(decodePDFRawStream(unsafeAppearance).decode());
+  assert.match(unsafeAppearanceSource, /\bre\s+f\b/, 'the fixture must carry an opaque appearance');
+
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    fixture,
+    {},
+    {},
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-imported-redact' },
+  );
+  const [redact] = await getPdfAnnotationDicts(bytes);
+  assert.equal(redact.get(PDFName.of('Contents')), undefined);
+  assert.equal(redact.get(PDFName.of('OverlayText')), undefined);
+  const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
+  assert.match(appearanceSource, /\bre\s+S\b/, 'the mark should have a hollow outline');
+  assert.doesNotMatch(appearanceSource, /\bre\s+f\b/, 'the mark must not have an opaque fill');
+});
+
+test('normal export drops an unsafe appearance when an imported redaction has no usable rectangle', async () => {
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFileWithUnsafeImportedRedaction({ includeRect: false }),
+    {},
+    {},
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-malformed-redact' },
+  );
+  const [redact] = await getPdfAnnotationDicts(bytes);
+  assert.equal(redact.get(PDFName.of('Contents')), undefined);
+  assert.equal(redact.get(PDFName.of('OverlayText')), undefined);
+  assert.equal(redact.get(PDFName.of('AP')), undefined);
+});
+
+test('live PDF export keeps all four saved text markup colors, opacities, and quads', async () => {
+  const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00'];
+  const opacities = [0.3, 0.45, 0.6, 0.75];
+  const objects = types.map((markupType, index) => createTextMarkupAnnotation({
+    id: `text-mark-${markupType}`,
+    pageNumber: 1,
+    selectionGroupId: 'text-group',
+    markupType,
+    selectedText: `selected ${markupType}`,
+    color: colors[index],
+    opacity: opacities[index],
+    quads: [{
+      x1: 10, y1: 10 + index * 25,
+      x2: 90, y2: 10 + index * 25,
+      x3: 10, y3: 24 + index * 25,
+      x4: 90, y4: 24 + index * 25,
+    }],
+  }));
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-text-markup' },
+  );
+
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Highlight', 'Underline', 'Squiggly', 'StrikeOut']);
+  const dicts = await getPdfAnnotationDicts(bytes);
+  dicts.forEach((dict, index) => {
+    assert.equal(dict.get(PDFName.of('Contents')).decodeText(), `selected ${types[index]}`);
+    assert.equal(dict.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
+    assert.equal(dict.lookup(PDFName.of('CA')).asNumber(), opacities[index]);
+    assert.deepEqual(
+      dict.lookup(PDFName.of('C')).asArray().map((entry) => entry.asNumber()),
+      index === 0 ? [1, 0, 0]
+        : index === 1 ? [0, 1, 0]
+          : index === 2 ? [0, 0, 1] : [1, 1, 0],
+    );
+  });
+});
+
+test('native export uses the edited active mark color and opacity', async () => {
+  const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const objects = types.map((markupType) => createTextMarkupAnnotation({
+    id: `edit-export-${markupType}`,
+    pageNumber: 1,
+    selectionGroupId: `edit-export-${markupType}-group`,
+    markupType,
+    selectedText: 'stacked export edit',
+    color: markupType === 'strikeout' ? '#3d63dc' : '#f5c229',
+    opacity: 0.3,
+    quads: [{ x1: 10, y1: 20, x2: 100, y2: 20, x3: 10, y3: 35, x4: 100, y4: 35 }],
+  }));
+  const transaction = buildTextMarkupPaintEditTransaction({
+    annotationsByPage: { 1: { objects } },
+    annotation: objects[3],
+    color: '#0000FF',
+    opacity: 0.65,
+  });
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    transaction.nextByPage,
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'edited-active-mark-export' },
+  );
+
+  const dicts = await getPdfAnnotationDicts(bytes);
+  assert.equal(dicts[3].lookup(PDFName.of('CA')).asNumber(), 0.65);
+  assert.deepEqual(
+    dicts[3].lookup(PDFName.of('C')).asArray().map((entry) => entry.asNumber()),
+    [0, 0, 1],
+  );
+});
+
+test('live PDF export writes links and non-concealing redaction marks without selected text', async () => {
+  const quad = { x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 };
+  const objects = [
+    createTextMarkupAnnotation({
+      id: 'text-link', pageNumber: 1, selectionGroupId: 'link-group', markupType: 'link',
+      selectedText: 'Open docs', linkUrl: 'https://example.com/docs', quads: [quad],
+    }),
+    createTextMarkupAnnotation({
+      id: 'text-redact', pageNumber: 1, selectionGroupId: 'redact-group', markupType: 'redact',
+      selectedText: 'Private text', quads: [{ ...quad, y1: 50, y2: 50, y3: 64, y4: 64 }],
+    }),
+  ];
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-link-redact' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Link', 'Redact']);
+  const [link, redact] = await getPdfAnnotationDicts(bytes);
+  assert.equal(link.lookup(PDFName.of('A')).lookup(PDFName.of('URI')).decodeText(), 'https://example.com/docs');
+  assert.equal(redact.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
+  assert.equal(redact.get(PDFName.of('Contents')), undefined);
+  const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
+  assert.match(appearanceSource, /\bre\s+S\b/);
+  assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);
+});
+
+test('live PDF export writes selected-text page links as GoTo actions', async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([200, 200]);
+  doc.addPage([200, 200]);
+  const sourceBytes = await doc.save();
+  const file = { name: 'page-link.pdf', async arrayBuffer() { return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength); } };
+  const link = createTextMarkupAnnotation({
+    id: 'text-page-link', pageNumber: 1, selectionGroupId: 'page-link-group', markupType: 'link',
+    selectedText: 'Next page', linkPageNumber: 2,
+    quads: [{ x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 }],
+  });
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    file,
+    { 1: { objects: [link] } },
+    { 1: { width: 200, height: 200 }, 2: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-page-link' },
+  );
+  const [dict] = await getPdfAnnotationDicts(bytes);
+  const action = dict.lookup(PDFName.of('A'));
+  assert.equal(action.lookup(PDFName.of('S')), PDFName.of('GoTo'));
+  assert.equal(action.lookup(PDFName.of('D')).asArray()[1], PDFName.of('Fit'));
+});
+
+test('native text markup export converts rotated PDF.js viewport quads into base PDF coordinates', async () => {
+  const viewportSizes = [
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+  ];
+  const annotationsByPage = Object.fromEntries(viewportSizes.map((_size, index) => [index + 1, {
+    objects: [createTextMarkupAnnotation({
+      id: `rotated-${index}`,
+      pageNumber: index + 1,
+      selectionGroupId: 'rotated-group',
+      markupType: 'highlight',
+      selectedText: `rotation ${index * 90}`,
+      color: '#ffd400',
+      opacity: 0.4,
+      quads: [{ x1: 10, y1: 20, x2: 30, y2: 20, x3: 10, y3: 40, x4: 30, y4: 40 }],
+    })],
+  }]));
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makeRotatedPdfFile(),
+    annotationsByPage,
+    Object.fromEntries(viewportSizes.map((size, index) => [index + 1, size])),
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'rotated-native-export' },
+  );
+  const dicts = await getPdfAnnotationDictsByPage(bytes);
+  const quadValues = dicts.map(([dict]) => (
+    dict.lookup(PDFName.of('QuadPoints')).asArray().map((value) => value.asNumber())
+  ));
+  assert.deepEqual(quadValues, [
+    [10, 80, 30, 80, 10, 60, 30, 60],
+    [20, 10, 20, 30, 40, 10, 40, 30],
+    [190, 20, 170, 20, 190, 40, 170, 40],
+    [180, 90, 180, 70, 160, 90, 160, 70],
+  ]);
+});
+
+test('Uniform export converts rotated PDF.js viewport quads before flattening page content', async () => {
+  const viewportSizes = [
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+    { width: 200, height: 100 },
+    { width: 100, height: 200 },
+  ];
+  const annotationsByPage = Object.fromEntries(viewportSizes.map((_size, index) => [index + 1, {
+    objects: [createTextMarkupAnnotation({
+      id: `uniform-rotated-${index}`,
+      pageNumber: index + 1,
+      selectionGroupId: `uniform-rotated-group-${index}`,
+      markupType: 'highlight',
+      selectedText: `rotation ${index * 90}`,
+      color: '#ffd400',
+      opacity: 0.4,
+      overlapMode: 'uniform',
+      quads: [{ x1: 10, y1: 20, x2: 30, y2: 20, x3: 10, y3: 40, x4: 30, y4: 40 }],
+    })],
+  }]));
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makeRotatedPdfFile(),
+    annotationsByPage,
+    Object.fromEntries(viewportSizes.map((size, index) => [index + 1, size])),
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'rotated-uniform-export' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
+  const contents = await getPdfPageContentStrings(bytes);
+  assert.match(contents[0], /10 20 m\s+30 20 l\s+30 40 l\s+10 40 l/);
+  assert.match(contents[1], /20 90 m\s+20 70 l\s+40 70 l\s+40 90 l/);
+  assert.match(contents[2], /190 80 m\s+170 80 l\s+170 60 l\s+190 60 l/);
+  assert.match(contents[3], /180 10 m\s+180 30 l\s+160 30 l\s+160 10 l/);
+});
+
+test('print helper flattens all four saved text mark paints into visible page content', async () => {
+  const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const marks = types.map((markupType, index) => createTextMarkupAnnotation({
+    id: `print-${markupType}`,
+    pageNumber: 1,
+    markupType,
+    selectedText: `printed ${markupType}`,
+    color: ['#ffcc00', '#ff0000', '#0000ff', '#00aa00'][index],
+    opacity: [0.3, 0.45, 0.6, 0.75][index],
+    quads: [{
+      x1: 20, y1: 20 + index * 30,
+      x2: 100, y2: 20 + index * 30,
+      x3: 20, y3: 35 + index * 30,
+      x4: 100, y4: 35 + index * 30,
+    }],
+  }));
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    await makePdfFile(),
+    { 1: { objects: marks } },
+    { 1: { width: 200, height: 200 } },
+  );
+  assert.equal(await pageHasContentStream(bytes), true);
+  assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
+});
+
+test('Uniform highlight export flattens one visual mask while Layered stays native', async () => {
+  const makeMarks = (overlapMode) => [0, 1].map((index) => createTextMarkupAnnotation({
+    id: `${overlapMode}-${index}`,
+    pageNumber: 1,
+    selectionGroupId: `${overlapMode}-group-${index}`,
+    markupType: 'highlight',
+    selectedText: 'overlap',
+    color: '#ffd400',
+    opacity: 0.4,
+    overlapMode,
+    quads: [{
+      x1: 20 + index * 20, y1: 30,
+      x2: 100 + index * 20, y2: 30,
+      x3: 20 + index * 20, y3: 50,
+      x4: 100 + index * 20, y4: 50,
+    }],
+  }));
+  const uniformBytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects: makeMarks('uniform') } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'uniform-export' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(uniformBytes), []);
+  assert.equal(await pageHasContentStream(uniformBytes), true);
+
+  const layeredBytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    { 1: { objects: makeMarks('layered') } },
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'layered-export' },
+  );
+  assert.deepEqual(await getPdfAnnotationSubtypes(layeredBytes), ['Highlight', 'Highlight']);
 });
 
 test('PDF save helper refuses original-path overwrite unless explicitly allowed', async () => {

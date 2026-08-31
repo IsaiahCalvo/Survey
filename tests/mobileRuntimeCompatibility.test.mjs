@@ -219,6 +219,14 @@ test('mobile shells lock page zoom without disabling app-controlled PDF pinch', 
   assert.match(PDFJS_VIEWER_SOURCE, /event\.touches\.length >= 2/);
 });
 
+test('mobile selected text exposes the shared toolbar and its shared color picker', () => {
+  assert.match(PDF_VIEWER_SOURCE, /hasLiveTextSelection:\s*!!liveTextSelection\?\.pages\?\.length/);
+  assert.match(
+    MOBILE_VIEWER_CHROME_SOURCE,
+    /if \(textMarkup\.sharedToolbarActive\) \{[\s\S]*?api\.showAnnotationColorPicker[\s\S]*?<MobileColorPickerSurface/,
+  );
+});
+
 test('Expo enforces the zoom lock inside its WebView even when the hosted app is older', () => {
   assert.match(EXPO_APP_SOURCE, /maximum-scale=1\.0, user-scalable=no/);
   assert.match(EXPO_APP_SOURCE, /data-survey-mobile-viewport-lock/);
@@ -324,16 +332,16 @@ test('mobile PDF load paints page one before refining remaining page sizes', () 
   assert.match(PDF_VIEWER_SOURCE, /survey_pdf_first_page_ready/);
 });
 
-test('unsupported annotation notice is compact above the mobile dock and expands for details', () => {
+test('redaction warning is compact, persistent, and expands for details', () => {
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /Unsupported annotation/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /--mobile-viewer-dock-height/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-expanded/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /COLLAPSED_DISMISS_MS = 3000/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /EXPANDED_DISMISS_MS = 5000/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /if \(!isVisible \|\| isExiting \|\| hasRedactions\) return undefined/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /The notice stays until the user dismisses it/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /setIsExpanded\(\(expanded\) => !expanded\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /event\.stopPropagation\(\); handleDismiss\(\)/);
   assert.match(UNSUPPORTED_NOTICE_SOURCE, /aria-label="Information"/);
-  assert.match(UNSUPPORTED_NOTICE_SOURCE, /<circle cx="10" cy="10" r="8"/);
+  assert.match(UNSUPPORTED_NOTICE_SOURCE, /<Icon name="infoCircle" size=\{20\}/);
   assert.doesNotMatch(UNSUPPORTED_NOTICE_SOURCE, /M2 10C4\.1 6\.6/);
 });
 
@@ -415,7 +423,7 @@ test('one-finger creation strokes stay touch-compatible on the SVG surface', () 
   // surface must keep them explicitly: one-finger strokes must not scroll the
   // page (touchAction none while a creation tool is armed), and 120Hz styli
   // must not lose samples (coalesced pointer capture into page space).
-  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /touchAction: isCreationTool \? 'none' : undefined/);
+  assert.match(SVG_ANNOTATION_LAYER_SOURCE, /touchAction: \(isCreationTool \|\| \(activeTool === 'select' && selectionMode === 'lasso'\)\) \? 'none' : undefined/);
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /getCoalescedEvents/);
   assert.match(SVG_ANNOTATION_LAYER_SOURCE, /appendCoalescedPagePoints\(e\.nativeEvent\)/);
 });
@@ -469,6 +477,16 @@ test('mobile viewer rails do not mix flex shorthand with flexShrink during reren
   assert.match(APP_SHELL_SOURCE, /id="chrome-left-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '44px' : '48px',[\s\S]{0,100}flexShrink: 0/);
   assert.match(APP_SHELL_SOURCE, /id="chrome-right-host"[\s\S]{0,220}flexGrow: 0,[\s\S]{0,100}flexBasis: isMobileViewer \? '0px' : '48px',[\s\S]{0,100}flexShrink: 0/);
   assert.doesNotMatch(APP_SHELL_SOURCE, /flex: isMobileViewer \? '0 0 (?:0|44)px' : '0 0 48px'/);
+  assert.match(
+    APP_SHELL_SOURCE,
+    /id="chrome-sub-toolbar-host"[\s\S]{0,320}display: isViewerVisible[\s\S]{0,180}activeTool === 'text-select'[\s\S]{0,180}contextTool === 'text-markup'/,
+    'mobile text selection and existing text markup must expose the shared full-width action bar',
+  );
+  assert.match(
+    APP_SHELL_SOURCE,
+    /zIndex: isMobileViewer && \([\s\S]{0,180}activeTool === 'text-select'[\s\S]{0,120}contextTool === 'text-markup'[\s\S]{0,80}\) \? 5800 : 5400/,
+    'the mobile text action bar must sit above the old mobile property strip',
+  );
 });
 
 test('mobile Survey and Spaces drawers follow their content', () => {

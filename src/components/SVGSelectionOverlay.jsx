@@ -50,6 +50,10 @@ const SVGSelectionOverlay = memo(({
   hideResizeHandles = false,
   hideRotationHandle = false,
   selectionGlowOnly = false,
+  // Text marks keep their line height and angle. These two side handles
+  // rewrite only the first/last selected text quad instead of scaling it.
+  horizontalResizeOnly = false,
+  horizontalHandlePositions = null,
 }) => {
   if (!bbox) return null;
 
@@ -108,6 +112,7 @@ const SVGSelectionOverlay = memo(({
   const vPillW = handleMetrics.vPillW;
   const vPillH = handleMetrics.vPillH;
   const pillRx = handleMetrics.pillRx;
+  const textRangeHitSize = 44 * visualInverseScale;
 
   return (
     <g
@@ -151,7 +156,7 @@ const SVGSelectionOverlay = memo(({
       {!isGroupSelection && !moveOnly && !selectionGlowOnly && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
-          {!hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
+          {!horizontalResizeOnly && !hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <circle
@@ -177,7 +182,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Horizontal pills (mt, mb) */}
-          {!hideResizeHandles && ['mt', 'mb'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
+          {!horizontalResizeOnly && !hideResizeHandles && ['mt', 'mb'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <rect
@@ -205,35 +210,62 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Vertical pills (ml, mr) */}
-          {!hideResizeHandles && ['ml', 'mr'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
-            const pos = handles[id];
+          {!hideResizeHandles && ['ml', 'mr'].filter((id) => horizontalResizeOnly || visibleResizeHandles.has(id)).map((id) => {
+            const pos = horizontalResizeOnly && horizontalHandlePositions?.[id]
+              ? horizontalHandlePositions[id]
+              : handles[id];
             return (
-              <rect
-                key={`pill-${id}`}
-                data-resize-handle={id}
-                x={pos.x - vPillW / 2}
-                y={pos.y - vPillH / 2}
-                width={vPillW}
-                height={vPillH}
-                rx={pillRx}
-                fill={HANDLE_FILL}
-                stroke={HANDLE_RING}
-                strokeWidth={1 * is}
-                style={{
-                  filter: pillShadow,
-                  cursor: getCursorForHandle(id, angle || 0),
-                  pointerEvents: 'auto',
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onHandleDrag?.(e, id);
-                }}
-              />
+              <g key={`pill-${id}`}>
+                {horizontalResizeOnly && (
+                  <rect
+                    data-resize-handle={id}
+                    data-text-range-handle={id}
+                    data-text-range-handle-hit-target="true"
+                    x={pos.x - textRangeHitSize / 2}
+                    y={pos.y - textRangeHitSize / 2}
+                    width={textRangeHitSize}
+                    height={textRangeHitSize}
+                    rx={textRangeHitSize / 2}
+                    fill="transparent"
+                    style={{
+                      cursor: getCursorForHandle(id, angle || 0),
+                      pointerEvents: 'auto',
+                      touchAction: 'none',
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onHandleDrag?.(e, id);
+                    }}
+                  />
+                )}
+                <rect
+                  data-resize-handle={id}
+                  data-text-range-handle-visual={horizontalResizeOnly ? id : undefined}
+                  x={pos.x - vPillW / 2}
+                  y={pos.y - vPillH / 2}
+                  width={vPillW}
+                  height={vPillH}
+                  rx={pillRx}
+                  fill={HANDLE_FILL}
+                  stroke={HANDLE_RING}
+                  strokeWidth={1 * is}
+                  style={{
+                    filter: pillShadow,
+                    cursor: getCursorForHandle(id, angle || 0),
+                    pointerEvents: horizontalResizeOnly ? 'none' : 'auto',
+                  }}
+                  onPointerDown={horizontalResizeOnly ? undefined : (e) => {
+                    e.stopPropagation();
+                    onHandleDrag?.(e, id);
+                  }}
+                />
+              </g>
             );
           })}
 
           {/* Rotation handle (mtr) */}
-          {!hideRotationHandle && (
+          {!horizontalResizeOnly && !hideRotationHandle && (
           <g className="rotation-handle" data-rotation-handle="mtr">
             {/* Connector line from top-center of bbox to rotation handle */}
             <line

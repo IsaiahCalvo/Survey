@@ -7,7 +7,8 @@ import CompactColorPicker from '../components/CompactColorPicker';
 import DismissBarrier from '../components/DismissBarrier';
 import { ARROWHEAD_STYLE_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS } from '../viewerShared';
-import { getMobileSyncPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
@@ -326,7 +327,7 @@ const toHexColor = (value, fallback = '#d8a84e') => {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('')}`;
 };
 
-const RailButton = ({ active = false, disabled = false, icon, label, onClick, children }) => (
+const RailButton = ({ active = false, disabled = false, icon, label, onClick, children, ...buttonProps }) => (
   <button
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
@@ -334,6 +335,7 @@ const RailButton = ({ active = false, disabled = false, icon, label, onClick, ch
     title={label}
     disabled={disabled}
     onClick={onClick}
+    {...buttonProps}
   >
     {children || <Icon name={icon} size={19} color="currentColor" />}
   </button>
@@ -618,6 +620,7 @@ export function MobileToolProperties({ api }) {
   const counterMenuRef = useRef(null);
   const counterMenuInsideRefs = useMemo(() => [counterMenuRef], []);
   const tool = api?.contextTool || api?.activeTool;
+  const textMarkup = getMobileTextMarkupPresentation(api);
 
   useEffect(() => {
     // Close every tool-scoped popover/sheet when the active tool changes so a
@@ -625,6 +628,7 @@ export function MobileToolProperties({ api }) {
     setCounterMenuOpen(false);
     setColorPicker(null);
     setTextDefaultsOpen(false);
+    api?.setShowAnnotationColorPicker?.(false);
   }, [tool]);
 
   if (!api) return null;
@@ -679,7 +683,7 @@ export function MobileToolProperties({ api }) {
           aria-checked={Boolean(survey.keepCategoryActive)}
           onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
         >
-          <span aria-hidden="true">{survey.keepCategoryActive ? '✓' : ''}</span>
+          <span aria-hidden="true">{survey.keepCategoryActive ? <Icon name="check" size={14} /> : null}</span>
           Keep active
         </button>
       </div>
@@ -724,11 +728,11 @@ export function MobileToolProperties({ api }) {
           }}
         />
         {[
-          ['B', 'bold', 'toggleBold', 'Bold'],
-          ['I', 'italic', 'toggleItalic', 'Italic'],
-          ['U', 'underline', 'toggleUnderline', 'Underline'],
-          ['S', 'strike', 'toggleStrike', 'Strikethrough'],
-        ].map(([label, stateKey, method, title]) => (
+          ['formatBold', 'bold', 'toggleBold', 'Bold'],
+          ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
+          ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
+          ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
+        ].map(([iconName, stateKey, method, title]) => (
           <button
             key={stateKey}
             type="button"
@@ -738,7 +742,7 @@ export function MobileToolProperties({ api }) {
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => editorApi[method]?.()}
           >
-            {label}
+            <Icon name={iconName} size={18} />
           </button>
         ))}
         <MobileStyledSelect
@@ -765,6 +769,79 @@ export function MobileToolProperties({ api }) {
           onClose={() => setColorPicker(null)}
         />
       )}
+      </>
+    );
+  }
+
+  if (textMarkup.active) {
+    const markupColor = toHexColor(textMarkup.color, '#f4d35e');
+    const markupOpacity = textMarkup.opacity / 100;
+    if (textMarkup.sharedToolbarActive) {
+      return api.showAnnotationColorPicker ? (
+        <MobileColorPickerSurface
+          title="Text markup color"
+          color={markupColor}
+          opacity={markupOpacity}
+          minOpacity={0.05}
+          onChange={(hex, alpha) => {
+            const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
+            if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+            else {
+              api.handleStrokeColorChange?.(hex);
+              api.handleStrokeOpacityChange?.(opacity);
+            }
+          }}
+          onClose={() => api.setShowAnnotationColorPicker?.(false)}
+        />
+      ) : null;
+    }
+    return (
+      <>
+        <div
+          className="mobile-pdf-properties mobile-pdf-properties--text-markup"
+          data-mobile-tool-properties="true"
+          data-mobile-text-markup-controls={textMarkup.editingSelection ? 'edit' : 'create'}
+          role="toolbar"
+          aria-label={textMarkup.editingSelection ? 'Edit text markup' : 'Text markup defaults'}
+        >
+          <button
+            type="button"
+            className="mobile-pdf-properties__color"
+            aria-label="Text markup color and opacity"
+            title="Text markup color and opacity"
+            aria-expanded={Boolean(api.showAnnotationColorPicker)}
+            onClick={() => api.setShowAnnotationColorPicker?.(true)}
+          >
+            <span style={{ background: markupColor, opacity: markupOpacity }} />
+          </button>
+          <MobileStyledSelect
+            ariaLabel="Highlight overlap mode"
+            minWidth={92}
+            value={textMarkup.overlapMode}
+            options={[
+              { value: 'layered', label: 'Layered' },
+              { value: 'uniform', label: 'Uniform' },
+            ]}
+            onChange={(value) => api.setTextMarkupOverlapMode?.(value)}
+          />
+        </div>
+        {api.showAnnotationColorPicker && (
+          <MobileColorPickerSurface
+            title="Text markup color"
+            color={markupColor}
+            opacity={markupOpacity}
+            minOpacity={0.05}
+            onChange={(hex, alpha) => {
+              const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
+              if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+              else {
+                api.handleStrokeColorChange?.(hex);
+                api.handleStrokeOpacityChange?.(opacity);
+              }
+            }}
+            onClose={() => api.setShowAnnotationColorPicker?.(false)}
+          />
+        )}
       </>
     );
   }
@@ -1133,11 +1210,11 @@ export function MobileToolProperties({ api }) {
                     <strong>Text formatting</strong>
                     <div className="mobile-pdf-text-defaults__format" role="toolbar" aria-label="Text formatting">
                       {[
-                        ['B', 'bold', 'Bold'],
-                        ['I', 'italic', 'Italic'],
-                        ['U', 'underline', 'Underline'],
-                        ['S', 'strike', 'Strikethrough'],
-                      ].map(([label, key, title]) => (
+                        ['formatBold', 'bold', 'Bold'],
+                        ['formatItalic', 'italic', 'Italic'],
+                        ['formatUnderline', 'underline', 'Underline'],
+                        ['formatStrikethrough', 'strike', 'Strikethrough'],
+                      ].map(([iconName, key, title]) => (
                         <button
                           key={key}
                           type="button"
@@ -1146,7 +1223,7 @@ export function MobileToolProperties({ api }) {
                           aria-pressed={Boolean(textDefaults[key])}
                           onClick={() => updateTextDefaults({ [key]: !textDefaults[key] })}
                         >
-                          {label}
+                          <Icon name={iconName} size={18} />
                         </button>
                       ))}
                     </div>
@@ -1328,10 +1405,13 @@ export function MobileToolProperties({ api }) {
 
 export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenPanel, onAuxPanelStateChange }) {
   const [openCategory, setOpenCategory] = useState(null);
+  const [selectModeOpen, setSelectModeOpen] = useState(false);
+  const [selectModePosition, setSelectModePosition] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
+  const [hasTouchPointer, setHasTouchPointer] = useState(false);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
   // back + 170ms slide-down exit before unmount (inv-demo §17).
@@ -1341,6 +1421,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     requestClose: requestUsersSheetClose,
   } = useMobileSheetMotion(() => setPresenceOpen(false));
   const popoverRef = useRef(null);
+  const selectModeButtonRef = useRef(null);
+  const selectModeCaretRef = useRef(null);
+  const selectModeMenuRef = useRef(null);
   const syncButtonRef = useRef(null);
   const syncDetailsRef = useRef(null);
   const popoverInsideRefs = useMemo(() => [popoverRef, syncDetailsRef], []);
@@ -1362,8 +1445,28 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
   ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled]);
 
   useEffect(() => {
+    const coarseQuery = window.matchMedia?.('(pointer: coarse)');
+    const update = () => setHasTouchPointer(
+      !!coarseQuery?.matches || (navigator.maxTouchPoints || 0) > 0,
+    );
+    update();
+    coarseQuery?.addEventListener?.('change', update);
+    return () => coarseQuery?.removeEventListener?.('change', update);
+  }, []);
+
+  useEffect(() => {
     if (sync.state === 'synced') setSyncDetailsOpen(false);
   }, [sync.state]);
+
+  useEffect(() => {
+    if (!selectModeOpen) return undefined;
+    const focusFrame = window.requestAnimationFrame(() => {
+      const menu = selectModeMenuRef.current;
+      const selected = menu?.querySelector?.('[role="menuitemradio"][aria-checked="true"]');
+      (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [selectModeOpen]);
 
   const activateSyncStatus = () => {
     setMoreOpen(false);
@@ -1403,6 +1506,61 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
   };
 
+  const openSelectModeMenu = () => {
+    const rect = selectModeButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = Math.min(180, Math.max(0, window.innerWidth - 16));
+      const menuHeight = 152;
+      setSelectModePosition({
+        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right + 8)),
+        top: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
+      });
+    }
+    setSelectModeOpen(true);
+  };
+
+  useEffect(() => {
+    if (!selectModeOpen) return undefined;
+    const reposition = () => {
+      const rect = selectModeButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewport = window.visualViewport;
+      const viewportWidth = viewport?.width || window.innerWidth;
+      const viewportHeight = viewport?.height || window.innerHeight;
+      const viewportLeft = viewport?.offsetLeft || 0;
+      const viewportTop = viewport?.offsetTop || 0;
+      const menuWidth = Math.min(180, Math.max(0, viewportWidth - 16));
+      const menuHeight = 152;
+      setSelectModePosition({
+        left: Math.max(viewportLeft + 8, Math.min(viewportLeft + viewportWidth - menuWidth - 8, rect.right + 8)),
+        top: Math.max(viewportTop + 8, Math.min(viewportTop + viewportHeight - menuHeight - 8, rect.top + (rect.height / 2) - (menuHeight / 2))),
+      });
+    };
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('orientationchange', reposition);
+    window.visualViewport?.addEventListener?.('resize', reposition);
+    window.visualViewport?.addEventListener?.('scroll', reposition);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('orientationchange', reposition);
+      window.visualViewport?.removeEventListener?.('resize', reposition);
+      window.visualViewport?.removeEventListener?.('scroll', reposition);
+    };
+  }, [selectModeOpen]);
+
+  const chooseSelectMode = (mode) => {
+    bottomToolbarApi?.setSelectionMode?.(mode);
+    if (mode === 'text') {
+      selectTool('text-select');
+    } else {
+      selectTool('select');
+    }
+    setOpenCategory(null);
+    setSelectModeOpen(false);
+    window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+  };
+
   const toggleCategory = (groupId) => {
     const group = TOOL_GROUPS[groupId];
     setOpenCategory(groupId);
@@ -1429,7 +1587,40 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
       <aside className="mobile-pdf-tools" aria-label="Document tools">
         <div className="mobile-pdf-tools__main">
           <RailButton active={activeTool === 'pan'} icon="pan" label="Pan" onClick={() => { setOpenCategory(null); selectTool('pan'); }} />
-          <RailButton active={activeTool === 'select'} icon="cursor" label="Select" onClick={() => { setOpenCategory(null); selectTool('select'); }} />
+          <div
+            ref={selectModeButtonRef}
+            className="mobile-pdf-tools__select-family"
+            data-active={activeTool === 'select' || activeTool === 'text-select' ? 'true' : 'false'}
+          >
+            <RailButton
+              active={activeTool === 'select' || activeTool === 'text-select'}
+              label={getSelectFamilyLabel(activeTool, bottomToolbarApi?.selectionMode)}
+              onClick={() => {
+                setOpenCategory(null);
+                selectTool(
+                  activeTool === 'text-select' || bottomToolbarApi?.selectionMode === 'text'
+                    ? 'text-select'
+                    : 'select',
+                );
+              }}
+            >
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={19} color="currentColor" />
+            </RailButton>
+            <button
+              ref={selectModeCaretRef}
+              type="button"
+              className="mobile-pdf-tools__select-caret"
+              aria-label="Selection mode"
+              aria-haspopup="menu"
+              aria-expanded={selectModeOpen}
+              aria-controls="mobile-select-mode-menu"
+              onClick={() => {
+                selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
+              }}
+            >
+              <Icon name={selectModeOpen ? 'chevronLeft' : 'chevronRight'} size={8} color="currentColor" />
+            </button>
+          </div>
           <div className="mobile-pdf-tools__divider" />
           {Object.entries(TOOL_GROUPS).map(([groupId, group]) => (
             <RailButton
@@ -1450,7 +1641,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                     active={activeTool === tool.id}
                     icon={tool.icon}
                     label={tool.label}
-                    onClick={() => selectTool(tool.id)}
+                    disabled={tool.disabled}
+                    onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
                   />
                 ))}
               </div>
@@ -1626,6 +1818,90 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
 
         </div>
       </aside>
+      {hasTouchPointer && activeTool === 'select' && bottomToolbarApi?.selectionMode === 'lasso' && (
+        // UX: touch has no Shift, Alt, or Space key. This small group gives
+        // phone and tablet users the same lasso choices before they draw.
+        <div className="mobile-pdf-lasso-controls" role="group" aria-label="Lasso options" data-mobile-lasso-controls="true">
+          <button
+            type="button"
+            aria-pressed={bottomToolbarApi?.lassoTouchOperation === 'add'}
+            className={bottomToolbarApi?.lassoTouchOperation === 'add' ? 'is-active' : ''}
+            onClick={() => bottomToolbarApi?.setLassoTouchOperation?.(
+              bottomToolbarApi?.lassoTouchOperation === 'add' ? 'replace' : 'add',
+            )}
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            aria-pressed={bottomToolbarApi?.lassoTouchOperation === 'subtract'}
+            className={bottomToolbarApi?.lassoTouchOperation === 'subtract' ? 'is-active' : ''}
+            onClick={() => bottomToolbarApi?.setLassoTouchOperation?.(
+              bottomToolbarApi?.lassoTouchOperation === 'subtract' ? 'replace' : 'subtract',
+            )}
+          >
+            Subtract
+          </button>
+          <button type="button" onClick={() => bottomToolbarApi?.cycleLassoTouchMode?.()}>
+            {bottomToolbarApi?.lassoTouchMode === 'crossing'
+              ? 'Crossing'
+              : bottomToolbarApi?.lassoTouchMode === 'fence' ? 'Fence' : 'Window'}
+          </button>
+        </div>
+      )}
+      {selectModeOpen && selectModePosition && typeof document !== 'undefined' && createPortal(
+        <>
+          <div
+            className="mobile-pdf-select-mode__backdrop"
+            aria-hidden="true"
+            onPointerDown={() => setSelectModeOpen(false)}
+          />
+          <div
+            id="mobile-select-mode-menu"
+            ref={selectModeMenuRef}
+            className="mobile-pdf-select-mode__menu"
+            role="menu"
+            aria-label="Selection mode"
+            style={{ left: selectModePosition.left, top: selectModePosition.top }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setSelectModeOpen(false);
+                window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+                return;
+              }
+              const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitemradio"]'));
+              const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+              const nextIndex = getSelectModeMenuFocusIndex(e.key, currentIndex, items.length);
+              if (nextIndex != null) {
+                e.preventDefault();
+                items[nextIndex]?.focus();
+              }
+            }}
+          >
+            {SELECT_MODE_OPTIONS.map((option) => {
+              const selected = isSelectModeActive(option, bottomToolbarApi?.selectionMode);
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  className={selected ? 'is-active' : ''}
+                  onClick={() => chooseSelectMode(option.mode)}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Icon name={getSelectModeIconName(option.mode)} size={17} color="currentColor" />
+                    <span>{option.label}</span>
+                  </span>
+                  {selected && <Icon name="check" size={14} color="currentColor" />}
+                </button>
+              );
+            })}
+          </div>
+        </>,
+        document.body,
+      )}
       {syncDetailsOpen && sync.state !== 'synced' && syncDetailsPosition && typeof document !== 'undefined' && createPortal(
         <div
           ref={syncDetailsRef}

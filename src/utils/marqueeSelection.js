@@ -27,7 +27,7 @@
  * at PageAnnotationLayer.jsx:7411-7854 exactly.
  */
 
-import { getAnnotationBBox } from './svgBoundingBox.js';
+import { getAnnotationBBox, getAnnotationWorldAABB } from './svgBoundingBox.js';
 import { doesRectIntersectObject, isObjectFullyInRect } from './geometryHitTest.js';
 import { toFabricShape } from './svgToFabricShape.js';
 // Phase 35 Plan 03 — post-filter on marquee hit-test results. Pulled from
@@ -73,7 +73,7 @@ export function isBBoxOverlapping(marquee, bbox) {
 
 function bboxFromAnnotation(obj) {
   try {
-    const b = getAnnotationBBox(obj);
+    const b = getAnnotationWorldAABB(obj);
     if (!b) return null;
     return {
       left: b.left,
@@ -224,6 +224,22 @@ export function resolveMarqueeHits({
       if (!isBBoxOverlapping(marqueeRect, bbox)) {
         emitDiag({ index: i, included: false, reason: 'crossing-bbox-miss', bbox, obj });
         continue;
+      }
+      if (obj?.data?.type === 'text-markup') {
+        const quadHit = (obj.data.quads || []).some((quad) => {
+          const quadBox = {
+            left: Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4)),
+            right: Math.max(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4)),
+            top: Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4)),
+            bottom: Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4)),
+          };
+          return isBBoxOverlapping(marqueeRect, quadBox);
+        });
+        if (quadHit) {
+          emitDiag({ index: i, included: true, reason: 'crossing-text-range-hit', bbox, obj });
+          annotationIndices.push(i);
+          continue;
+        }
       }
       const shape = toFabricShape(obj);
       if (doesRectIntersectObject(marqueeRect, shape)) {

@@ -23,6 +23,7 @@ import Spinner from './components/Spinner';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import BodyPortal from './components/BodyPortal.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
@@ -42,6 +43,9 @@ import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
+import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
+import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -396,8 +400,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
-  // KAL-239: the Select tool's selection-mode menu (annotations vs the PDF's own
-  // text). Intended UX: a caret on the Select button opens a two-item menu, the
+  // KAL-239: the Select tool's selection-mode menu. A caret on the Select button
+  // opens the shared Rectangle / Lasso / Text menu, the
   // same split-button shape the Eraser uses for its erase modes, so the user has
   // an obvious way to reach text selection without a new kind of control. The
   // menu is a fixed-position portal anchored under the button (matching the
@@ -405,6 +409,8 @@ export default function App({ devPreviewReturnTab = null }) {
   const [selectModeMenuOpen, setSelectModeMenuOpen] = useState(false);
   const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
   const selectModeButtonRef = useRef(null);
+  const selectModeCaretRef = useRef(null);
+  const selectModeMenuRef = useRef(null);
   useEffect(() => {
     if (!selectModeMenuOpen) return undefined;
     const el = selectModeButtonRef.current;
@@ -412,14 +418,24 @@ export default function App({ devPreviewReturnTab = null }) {
       const r = el.getBoundingClientRect();
       setSelectModeMenuAnchor({ top: r.bottom + 6, left: r.left + r.width / 2 });
     }
+    const focusFrame = window.requestAnimationFrame(() => {
+      const menu = selectModeMenuRef.current;
+      const selected = menu?.querySelector?.('[role="menuitemradio"][aria-checked="true"]');
+      (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
+    });
     const onDown = (e) => {
       if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-caret]'))) return;
       setSelectModeMenuOpen(false);
     };
-    const onKeyDown = (e) => { if (e.key === 'Escape') setSelectModeMenuOpen(false); };
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      setSelectModeMenuOpen(false);
+      window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+    };
     document.addEventListener('mousedown', onDown, true);
     document.addEventListener('keydown', onKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('mousedown', onDown, true);
       document.removeEventListener('keydown', onKeyDown);
     };
@@ -454,31 +470,13 @@ export default function App({ devPreviewReturnTab = null }) {
   // ZOOM_MODES id; anything that isn't fit-width/fit-height (incl. MANUAL)
   // falls back to the fit-page glyph.
   const renderFitIcon = (m, size = 15) => {
-    const stroke = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.7 };
-    const dim = { width: `${size}px`, height: `${size}px` };
     if (m === ZOOM_MODES.FIT_WIDTH) {
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" style={dim}>
-          <rect x="4" y="5" width="16" height="14" rx="1.5" {...stroke} />
-          <path d="M7 12h10M7 12l3-3M7 12l3 3M17 12l-3-3M17 12l-3 3" {...stroke} />
-        </svg>
-      );
+      return <Icon name="fitWidth" size={size} />;
     }
     if (m === ZOOM_MODES.FIT_HEIGHT) {
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" style={dim}>
-          <rect x="5" y="4" width="14" height="16" rx="1.5" {...stroke} />
-          <path d="M12 7v10M12 7l-3 3M12 7l3 3M12 17l-3-3M12 17l3-3" {...stroke} />
-        </svg>
-      );
+      return <Icon name="fitHeight" size={size} />;
     }
-    // fit-page (default)
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" style={dim}>
-        <rect x="6" y="3" width="12" height="18" rx="1.5" {...stroke} />
-        <path d="M9 7h6M9 11h6M9 15h4" {...stroke} />
-      </svg>
-    );
+    return <Icon name="fitPage" size={size} />;
   };
 
   // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
@@ -642,7 +640,7 @@ export default function App({ devPreviewReturnTab = null }) {
       if (!insideDropdown) {
         setOpenAnnotationDropdown(null);
       }
-      if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker]')) {
+      if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker], .mobile-pdf-colorpicker-surface')) {
         bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
       }
       if (!insideDropdown && !inside('[data-counter-series-menu], [data-counter-series-context-menu]')) {
@@ -995,12 +993,7 @@ export default function App({ devPreviewReturnTab = null }) {
     });
   }, [selectedPDF]);
 
-  // Hardening (audit 2026-04-30 #3): track per-tab "has any annotations" so
-  // the beforeunload guard below can warn the user before they close a
-  // local-only PDF (no Supabase row) with annotations on it. Distinct from
-  // hasUnsavedAnnotations because we want to warn even after a localStorage
-  // save — closing the window/tab on a local-only PDF with annotations is
-  // always a "you might be losing work" moment until the file is exported.
+  // Track whether each tab has any annotations for tab UI and diagnostics.
   const handleAnnotationsExistChange = useCallback((hasAny, targetTabId) => {
     if (!targetTabId) return;
     setTabs(prev =>
@@ -1010,22 +1003,13 @@ export default function App({ devPreviewReturnTab = null }) {
     );
   }, []);
 
-  // Hardening (audit 2026-04-30 #3): warn before window unload when the
-  // active tab is a local-only PDF (no cloud row) that has annotations.
-  // Browsers show a generic "leave site?" prompt and let the user cancel.
-  // Cloud-synced PDFs are out of scope here — their work is already
-  // persisted server-side, so the warning would be noise.
+  // Warn only for unsaved local edits. A successful Cmd/Ctrl+S clears the
+  // tab's dirty bit, so a clean reload must not show a false data-loss prompt.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handler = (event) => {
       const activeTab = tabs.find((t) => t.id === activeTabId);
-      if (!activeTab || activeTab.isHome) return undefined;
-      const file = activeTab.file;
-      if (!file) return undefined;
-      // Only warn for local-only PDFs (no Supabase row). Cloud PDFs are
-      // already persisted; their work survives a window close.
-      if (file.id) return undefined;
-      if (!activeTab.hasAnyAnnotations) return undefined;
+      if (!shouldWarnBeforeUnloadForTab(activeTab)) return undefined;
       // Modern browsers ignore the returned string and show their own
       // generic message; the truthy returnValue is what triggers the
       // confirm dialog.
@@ -1478,10 +1462,10 @@ export default function App({ devPreviewReturnTab = null }) {
               }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
-                { id: 'select', label: 'Select', iconName: 'cursor' }
+                { id: 'select', label: 'Select', iconName: 'selectCursor' }
               ].map(t => {
-                // KAL-239: the Select tool has TWO modes — annotations (default)
-                // and the PDF's own text. Intended UX: the button keeps working
+                // Select-family modes share one list with mobile so the main
+                // button and menu stay ready for future modes. The button keeps working
                 // exactly as before (click = Select, and it never changes the mode
                 // already chosen in the menu, same as the Eraser button), while a
                 // small caret opens a mode menu. This mirrors the Eraser split menu
@@ -1491,7 +1475,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 const isActive = isSelect
                   ? (bottomToolbarApi.activeTool === 'select' || isTextSelect)
                   : bottomToolbarApi.activeTool === t.id;
-                const label = isSelect && isTextSelect ? 'Select text' : t.label;
+                const label = isSelect
+                  ? getSelectFamilyLabel(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode)
+                  : t.label;
                 return (
                 <div
                   key={t.id}
@@ -1499,10 +1485,16 @@ export default function App({ devPreviewReturnTab = null }) {
                   style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
                 >
                 <button
+                  type="button"
+                  aria-label={label}
                   onClick={() => {
                     // Activate Select without discarding the mode picked in the
                     // menu (Eraser button does the same with its erase mode).
-                    bottomToolbarApi.setActiveTool(isSelect && isTextSelect ? 'text-select' : t.id);
+                    bottomToolbarApi.setActiveTool(
+                      isSelect && (isTextSelect || bottomToolbarApi.selectionMode === 'text')
+                        ? 'text-select'
+                        : t.id,
+                    );
                     bottomToolbarApi.setActiveCategoryDropdown(null);
                     setSelectModeMenuOpen(false);
                   }}
@@ -1518,38 +1510,54 @@ export default function App({ devPreviewReturnTab = null }) {
                   }}
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
                   className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
-                  style={isSelect ? { position: 'relative', paddingRight: '16px' } : undefined}
+                  style={isSelect ? {
+                    position: 'relative',
+                    paddingRight: '4px',
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                  } : undefined}
                 >
-                  <Icon name={isSelect && isTextSelect ? 'text' : t.iconName} size={16} />
-                  {isSelect && (
-                    <div
-                      data-select-mode-caret="true"
-                      role="button"
-                      aria-label="Selection mode"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectModeMenuOpen((open) => !open);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '2px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '2px',
-                        pointerEvents: 'auto',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Icon name="chevronDown" size={10} color="#8d96a6" />
-                    </div>
-                  )}
+                  <Icon name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName} size={16} />
                 </button>
+                {isSelect && (
+                  <button
+                    ref={selectModeCaretRef}
+                    type="button"
+                    data-select-mode-caret="true"
+                    aria-label="Selection mode"
+                    aria-haspopup="menu"
+                    aria-expanded={selectModeMenuOpen}
+                    aria-controls="desktop-select-mode-menu"
+                    onClick={() => setSelectModeMenuOpen((open) => !open)}
+                    style={{
+                      position: 'static', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      width: '18px', height: '28px', padding: 0,
+                      color: 'inherit', background: 'transparent',
+                      border: 0, borderLeft: '1px solid rgba(141, 150, 166, 0.35)',
+                      borderRadius: '0 4px 4px 0',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Icon name="chevronDown" size={10} color="#8d96a6" />
+                  </button>
+                )}
                 {isSelect && selectModeMenuOpen && createPortal(
                   <div
+                    id="desktop-select-mode-menu"
+                    ref={selectModeMenuRef}
                     data-select-mode-menu="true"
+                    role="menu"
+                    aria-label="Selection mode"
+                    onKeyDown={(e) => {
+                      const items = Array.from(e.currentTarget.querySelectorAll('[role="menuitemradio"]'));
+                      const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+                      const nextIndex = getSelectModeMenuFocusIndex(e.key, currentIndex, items.length);
+                      if (nextIndex != null) {
+                        e.preventDefault();
+                        items[nextIndex]?.focus();
+                      }
+                    }}
                     style={{
                       position: 'fixed',
                       top: `${selectModeMenuAnchor.top}px`,
@@ -1583,11 +1591,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     }}>
                       Selection Mode
                     </div>
-                    {[
-                      { tool: 'select', text: 'Select annotations', hint: 'V' },
-                      { tool: 'text-select', text: 'Select text', hint: '⇧V' }
-                    ].map((opt) => {
-                      const selected = bottomToolbarApi.activeTool === opt.tool;
+                    {SELECT_MODE_OPTIONS.map((opt) => {
+                      const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
                       const optionStyle = {
                         display: 'flex',
                         alignItems: 'center',
@@ -1602,22 +1607,29 @@ export default function App({ devPreviewReturnTab = null }) {
                         cursor: 'pointer',
                         fontSize: '12px',
                         fontFamily: 'inherit',
-                        outline: 'none',
                         whiteSpace: 'nowrap'
                       };
                       return (
                         <button
-                          key={opt.tool}
+                          key={opt.mode}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={selected}
                           onClick={(e) => {
                             e.stopPropagation();
+                            bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
                             setSelectModeMenuOpen(false);
+                            window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}
                           style={optionStyle}
                         >
-                          <span>{opt.text}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Icon name={getSelectModeIconName(opt.mode)} size={16} color="currentColor" />
+                            <span>{opt.label}</span>
+                          </span>
                           <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
                         </button>
                       );
@@ -1877,11 +1889,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     })()}
                     {/* Bold / Italic / Underline / Strikethrough toggles. */}
                     {[
-                      ['B', 'bold', 'toggleBold', { fontWeight: 700 }],
-                      ['I', 'italic', 'toggleItalic', { fontStyle: 'italic' }],
-                      ['U', 'underline', 'toggleUnderline', { textDecoration: 'underline' }],
-                      ['S', 'strike', 'toggleStrike', { textDecoration: 'line-through' }],
-                    ].map(([label, stateKey, apiKey, fontStyleOverride]) => {
+                      ['formatBold', 'bold', 'toggleBold', 'Bold'],
+                      ['formatItalic', 'italic', 'toggleItalic', 'Italic'],
+                      ['formatUnderline', 'underline', 'toggleUnderline', 'Underline'],
+                      ['formatStrikethrough', 'strike', 'toggleStrike', 'Strikethrough'],
+                    ].map(([iconName, stateKey, apiKey, title]) => {
                       const isOn = !!bottomToolbarApi.richTextEditor?.state?.[stateKey];
                       return (
                         <button
@@ -1903,19 +1915,16 @@ export default function App({ devPreviewReturnTab = null }) {
                             color: isOn ? '#d8a84e' : '#e8e2d4',
                             border: '1px solid transparent',
                             borderRadius: '5px',
-                            fontSize: '13px',
-                            fontFamily: FONT_FAMILY,
                             cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            ...fontStyleOverride,
                           }}
-                          {...chromeTip(label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough', 'below')}
-                          aria-label={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
+                          {...chromeTip(title, 'below')}
+                          aria-label={title}
                           aria-pressed={isOn}
                         >
-                          {label}
+                          <Icon name={iconName} size={17} />
                         </button>
                       );
                     })}
@@ -2013,7 +2022,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
                   <>
-                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line') ? (
+                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'text-markup' || bottomToolbarApi.contextTool === 'text-select') ? (
                   /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
                      line). Checker pattern shows through low-opacity strokes
                      and a faint hairline ring lifts pure black off the dark
@@ -2352,7 +2361,22 @@ export default function App({ devPreviewReturnTab = null }) {
                     || bottomToolbarApi.contextTool === 'ellipse';
                   const currentColor = onFillTab ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor;
                   const currentOpacity = onFillTab ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : (bottomToolbarApi.strokeOpacity / 100);
+                  const isTextMarkupPalette = ['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool);
+                  const textMarkupPaletteHostRect = isTextMarkupPalette
+                    ? document.getElementById('chrome-sub-toolbar-host')?.getBoundingClientRect?.()
+                    : null;
+                  const textMarkupPickerPosition = isTextMarkupPalette
+                    ? computeTextMarkupPickerPosition(bottomToolbarApi.textMarkupSelectionRect, {
+                        viewportWidth: window.innerWidth,
+                        viewportHeight: window.innerHeight,
+                        hostBottom: textMarkupPaletteHostRect?.bottom || 35,
+                      })
+                    : null;
                   const applyChange = (hex, alpha) => {
+                    if (isTextMarkupPalette && bottomToolbarApi.handleTextMarkupPaintChange) {
+                      bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100));
+                      return;
+                    }
                     if (onFillTab) {
                       const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
                       if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
@@ -2369,14 +2393,14 @@ export default function App({ devPreviewReturnTab = null }) {
                       bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
                     }
                   };
-                  return (
+                  const picker = (
                     <div ref={annotationColorPickerRef} data-annotation-color-picker style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: '50%',
-                      marginTop: '10px',
-                      transform: 'translate(-50%, 0)',
-                      zIndex: 2000
+                      position: isTextMarkupPalette ? 'fixed' : 'absolute',
+                      top: isTextMarkupPalette ? textMarkupPickerPosition.top : '100%',
+                      left: isTextMarkupPalette ? textMarkupPickerPosition.left : '50%',
+                      marginTop: isTextMarkupPalette ? 0 : '10px',
+                      transform: isTextMarkupPalette ? 'none' : 'translate(-50%, 0)',
+                      zIndex: isTextMarkupPalette ? 5900 : 2000
                     }}>
                       {isShape && (
                         <div style={{
@@ -2441,7 +2465,20 @@ export default function App({ devPreviewReturnTab = null }) {
                       </Suspense>
                     </div>
                   );
+                  return isTextMarkupPalette ? <BodyPortal>{picker}</BodyPortal> : picker;
                 })()}
+                {['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool) && bottomToolbarApi.setTextMarkupOverlapMode && (
+                  <select
+                    aria-label="Highlight overlap mode"
+                    title="Layered keeps editable native PDF highlights. Uniform keeps one visual strength and exports as a flat mask so other PDF viewers match Survey."
+                    value={bottomToolbarApi.textMarkupOverlapMode || 'layered'}
+                    onChange={(event) => bottomToolbarApi.setTextMarkupOverlapMode(event.target.value)}
+                    style={{ height: 28, border: '1px solid #3a4252', borderRadius: 4, background: '#181b20', color: '#e8e2d4', fontSize: 11 }}
+                  >
+                    <option value="layered">Layered</option>
+                    <option value="uniform">Uniform</option>
+                  </select>
+                )}
                   </>
                 )}
 
@@ -2731,14 +2768,21 @@ export default function App({ devPreviewReturnTab = null }) {
               id="chrome-sub-toolbar-host"
               data-chrome-strip="true"
               style={{
-                display: isViewerVisible && !isMobileViewer ? 'block' : 'none',
+                display: isViewerVisible && (
+                  !isMobileViewer
+                  || bottomToolbarApi?.activeTool === 'text-select'
+                  || bottomToolbarApi?.contextTool === 'text-markup'
+                ) ? 'block' : 'none',
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 right: 0,
                 background: '#181c24',
                 cursor: 'default',
-                zIndex: 5400
+                zIndex: isMobileViewer && (
+                  bottomToolbarApi?.activeTool === 'text-select'
+                  || bottomToolbarApi?.contextTool === 'text-markup'
+                ) ? 5800 : 5400
               }}
             />
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>

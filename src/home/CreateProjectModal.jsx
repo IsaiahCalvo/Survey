@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { closeButtonStyle } from './hubControls';
 import Spinner from '../components/Spinner';
+import Icon from '../Icons';
 
 const COLORS = {
   card: '#181c24',
@@ -65,7 +66,7 @@ export default function CreateProjectModal({
             <h2 style={{ margin: 0, fontSize: 18 }}>Create project</h2>
             <p style={{ margin: '6px 0 0', color: COLORS.muted, fontSize: 12 }}>Add PDFs now or start with an empty project.</p>
           </div>
-          <button type="button" title="Close" disabled={busy} onClick={onCancel} style={closeButtonStyle({ borderColor: COLORS.rule, color: COLORS.muted })}>×</button>
+          <button type="button" title="Close" disabled={busy} onClick={onCancel} style={closeButtonStyle({ borderColor: COLORS.rule, color: COLORS.muted })}><Icon name="close" size={16} /></button>
         </header>
 
         <div style={{ display: 'grid', gap: 16, padding: 18 }}>
@@ -108,7 +109,7 @@ export default function CreateProjectModal({
               {files.map((file, index) => (
                 <div key={`${file.name}-${file.size}-${index}`} style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 9px', borderRadius: 7, border: `1px solid ${COLORS.rule}`, background: COLORS.deep }}>
                   <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{file.name}</span>
-                  <button type="button" disabled={busy} onClick={() => onRemoveFile?.(index)} style={{ minWidth: 44, minHeight: 44, border: 0, background: 'transparent', color: COLORS.muted, cursor: 'pointer' }} aria-label={`Remove ${file.name}`}>×</button>
+                  <button type="button" disabled={busy} onClick={() => onRemoveFile?.(index)} style={{ minWidth: 44, minHeight: 44, border: 0, background: 'transparent', color: COLORS.muted, cursor: 'pointer' }} aria-label={`Remove ${file.name}`}><Icon name="close" size={16} /></button>
                 </div>
               ))}
             </div>

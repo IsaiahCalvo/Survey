@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Survey</title>
+  <!-- Primary mark, gold. For dark grounds only.
+       Module 48 on a 512 grid: one stroke weight throughout, and the gap between
+       the two bars (56) is wider than the stroke that makes them. Never tighten it. -->
+  <g fill="none" stroke="#d8a84e" stroke-width="48" stroke-linecap="round">
+  <circle cx="256" cy="256" r="216"/>
+  <line x1="256" y1="44" x2="256" y2="100"/>
+  <line x1="256" y1="468" x2="256" y2="412"/>
+  <line x1="44" y1="256" x2="100" y2="256"/>
+  <line x1="468" y1="256" x2="412" y2="256"/>
+  <line x1="196" y1="204" x2="316" y2="204"/>
+  <line x1="196" y1="308" x2="268" y2="308"/>
+  </g>
+</svg>

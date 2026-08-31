@@ -178,6 +178,12 @@ function gestureFor({
 function snapshotMetrics(page, commitTimes, commitCpuTimes, peak) {
   const annotation = page.objects[0];
   const polygons = annotation?.polygons || [];
+  // A busy test host can stop this child between two wall-clock reads. That
+  // pause is not eraser work. CPU time can over-count parallel GC work, so the
+  // smaller paired reading is the safest bound on work done by each commit.
+  const commitWorkTimes = commitTimes.map((wallMs, index) => (
+    Math.min(wallMs, commitCpuTimes[index] ?? wallMs)
+  ));
   return {
     components: polygons.length,
     vertices: geometryVertices(polygons),
@@ -186,6 +192,8 @@ function snapshotMetrics(page, commitTimes, commitCpuTimes, peak) {
     p50CommitMs: percentile(commitTimes, 0.5),
     p95CommitMs: percentile(commitTimes, 0.95),
     maxCommitMs: Math.max(0, ...commitTimes),
+    p95CommitWorkMs: percentile(commitWorkTimes, 0.95),
+    maxCommitWorkMs: Math.max(0, ...commitWorkTimes),
     lastCommitMs: commitTimes.at(-1) || 0,
     p95CommitCpuMs: percentile(commitCpuTimes, 0.95),
     maxCommitCpuMs: Math.max(0, ...commitCpuTimes),

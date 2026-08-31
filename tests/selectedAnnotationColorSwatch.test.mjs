@@ -22,6 +22,33 @@ test('selected annotation swatch colors come from the current saved annotation',
   assert.match(viewerSource, /annotationsByPage,/);
 });
 
+test('selected text markup publishes its own base color and opacity to the edit controls', () => {
+  assert.match(viewerSource, /const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot\?\.data\?\.type === 'text-markup'/);
+  assert.match(viewerSource, /resolveTextMarkupEditPaint\(selectedAnnot, strokeColor\)/);
+  assert.match(viewerSource, /strokeColor: selectedTextMarkupPaint\?\.color \|\| counterToolStrokeColor,/);
+  assert.match(viewerSource, /strokeOpacity: selectedTextMarkupPaint\?\.opacity \?\? counterToolStrokeOpacity,/);
+  assert.match(viewerSource, /strokeColorStateRef\.current = paint\.color;[\s\S]*?strokeOpacityStateRef\.current = paint\.opacity;/);
+  assert.match(viewerSource, /const color = getHexFromColor\(strokeColorStateRef\.current\) \|\| paint\.color;/);
+  assert.match(viewerSource, /handleTextMarkupPaintChange,/);
+  assert.match(appShellSource, /isTextMarkupPalette && bottomToolbarApi\.handleTextMarkupPaintChange/);
+  assert.match(appShellSource, /handleTextMarkupPaintChange\(hex, Math\.round\(alpha \* 100\)\)/);
+});
+
+test('live Text Select paint focus hands the active saved mark to the edit transaction', () => {
+  assert.match(viewerSource, /const liveRangeMarks = getTextMarkupRangeAnnotations\(/);
+  assert.match(viewerSource, /sourceMarks: liveRangeMarks\.map\(\(entry\) => entry\.annotation\)/);
+  assert.match(viewerSource, /const target = selection\?\.sourceMarks\?\.find\(/);
+  assert.match(viewerSource, /selectedToolbarAnnotationRef\.current = nextSelection;[\s\S]*?setSelectedToolbarAnnotation\(nextSelection\)/);
+  assert.match(viewerSource, /selectedToolbarAnnotationRef\.current\?\.annotation\?\.data\?\.type === 'text-markup'[\s\S]*?handlePatchSelectedAnnotation/);
+});
+
+test('mobile text markup picker taps stay inside the shared color popover boundary', () => {
+  assert.match(
+    appShellSource,
+    /\[data-annotation-color-trigger\], \[data-annotation-color-picker\], \.mobile-pdf-colorpicker-surface/,
+  );
+});
+
 test('counter preview publishes the renderer-exact fill and number colors', () => {
   assert.match(
     viewerSource,
@@ -43,12 +70,13 @@ test('selected previews include renderer opacity and every editable rendered typ
   assert.match(viewerSource, /pathAttrs\.stroke[\s\S]*?: pathAttrs\.fill;/);
 });
 
-test('selected preview cannot override an armed drawing tool or mutate picker bases', () => {
+test('selected preview cannot override an armed drawing tool and only text markup hydrates picker bases', () => {
   assert.match(
     viewerSource,
     /if \(activeTool !== 'select'\) return \{ fill: null, stroke: null \};/,
   );
-  assert.match(viewerSource, /strokeColor: counterToolStrokeColor,/);
+  assert.match(viewerSource, /strokeColor: selectedTextMarkupPaint\?\.color \|\| counterToolStrokeColor,/);
+  assert.match(viewerSource, /const selectedTextMarkupPaint = activeTool === 'select'/);
   assert.match(viewerSource, /fillColor: counterToolFillColor,/);
   assert.doesNotMatch(viewerSource, /strokeColor: selectedPreviewColors\.stroke/);
   assert.doesNotMatch(viewerSource, /fillColor: selectedPreviewColors\.fill/);

@@ -120,6 +120,47 @@ test('resolveMarqueeHits crossing mode: annotations whose bbox overlaps are sele
   assert.deepEqual(annotationIndices.sort(), [0, 2]);
 });
 
+test('resolveMarqueeHits crossing mode counts a boundary touch as a hit', () => {
+  const { annotationIndices } = resolveMarqueeHits({
+    marqueeRect: { left: 0, top: 0, right: 100, bottom: 100 },
+    direction: 'crossing',
+    annotations: { objects: [
+      { type: 'rect', left: 100, top: 25, width: 40, height: 40, fill: '#93c5fd', stroke: '#111', strokeWidth: 2 },
+    ] },
+    callouts: [], pageWidth: 1000, pageHeight: 800,
+  });
+  assert.deepEqual(annotationIndices, [0]);
+});
+
+test('resolveMarqueeHits crossing mode touches visible rotated rectangle edges', () => {
+  const annotation = { type: 'rect', left: 100, top: 100, width: 100, height: 60, angle: 45, fill: '#93c5fd', stroke: '#111', strokeWidth: 2 };
+  for (const marqueeRect of [
+    { left: 90, top: 110, right: 95, bottom: 122 },
+    { left: 202, top: 137, right: 210, bottom: 151 },
+    { left: 125, top: 70, right: 142, bottom: 80 },
+  ]) {
+    assert.deepEqual(resolveMarqueeHits({
+      marqueeRect, direction: 'crossing', annotations: { objects: [annotation] },
+      callouts: [], pageWidth: 1000, pageHeight: 800,
+    }).annotationIndices, [0]);
+  }
+});
+
+test('resolveMarqueeHits crossing mode touches one text-range quad', () => {
+  const { annotationIndices } = resolveMarqueeHits({
+    marqueeRect: { left: 78, top: 12, right: 90, bottom: 18 },
+    direction: 'crossing',
+    annotations: { objects: [{
+      type: 'group', left: 10, top: 10, width: 70, height: 30,
+      data: { type: 'text-markup', quads: [
+        { x1: 10, y1: 10, x2: 80, y2: 10, x3: 10, y3: 20, x4: 80, y4: 20 },
+        { x1: 10, y1: 30, x2: 50, y2: 30, x3: 10, y3: 40, x4: 50, y4: 40 },
+      ] },
+    }] }, callouts: [], pageWidth: 100, pageHeight: 100,
+  });
+  assert.deepEqual(annotationIndices, [0]);
+});
+
 test('resolveMarqueeHits crossing mode: unfilled rect blank interior is not selected', () => {
   const marquee = { left: 40, top: 40, right: 60, bottom: 60 };
   const annotations = {

@@ -13,6 +13,12 @@
 // ----------------------------------------------------------------------------
 import { useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import {
+  captureNativeSelectionSnapshot,
+  getCaretBoundaryFromClientPoint,
+  repairCollapsedTextDragSelection,
+} from '../utils/nativeTextDragSelection';
+import { readPdfjsTextContent } from '../utils/pdfjsTextContent';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 let stylesInjected = false;
@@ -59,6 +65,9 @@ function ensureTextLayerStyles() {
       --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
       --min-font-size-inv: calc(1 / var(--min-font-size));
     }
+    .pdfjsTextLayer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+    .pdfjsTextLayer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+    .pdfjsTextLayer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
     .pdfjsTextLayer :is(span, br) {
       color: transparent;
       position: absolute;
@@ -82,7 +91,10 @@ function ensureTextLayerStyles() {
     /* UX: the I-beam covers the WHOLE page in text-selection mode, not just the
        glyph boxes, so the mode reads as "you are selecting text here" even in
        the gaps between words. */
-    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; }
+    /* Keep one-finger pan and native text selection, while allowing the page
+       host to receive the browser's two-finger pinch gesture. */
+    .pdfjsTextLayer.is-interactive { pointer-events: auto; cursor: text; z-index: 40; -webkit-user-select: text !important; user-select: text !important; touch-action: pan-x pan-y pinch-zoom; }
+    .pdfjsTextLayer.is-interactive :is(span, br) { -webkit-user-select: text !important; user-select: text !important; -webkit-touch-callout: default !important; }
     .pdfjsTextLayer:not(.is-interactive) { pointer-events: none; }
     .pdfjsTextLayer:not(.is-interactive) :is(span, br) { -webkit-user-select: none; user-select: none; }
     .pdfjsTextLayer ::selection { background: rgba(58, 122, 254, 0.45); }
@@ -91,11 +103,9 @@ function ensureTextLayerStyles() {
   document.head.appendChild(style);
 }
 
-// NOTE on `rotation`: the pdf.js engine bakes intrinsic /Rotate into the page and
-// applies user rotation by rewriting the PDF bytes (it always renders at rotation 0,
-// same as the canvas, link, and form layers). So the default of 0 is correct — the
-// glyph viewport already inherits the page's baked orientation via `page.rotate`.
-export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false }) {
+// TextLayer sets data-main-rotation from this viewport. The CSS above applies
+// pdf.js's matching root transform so intrinsic /Rotate pages align with the canvas.
+export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, onTextAvailability }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);
 
@@ -112,6 +122,82 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
   }, [interactive]);
 
   useEffect(() => {
+    const el = ref.current;
+    if (!interactive || !el || typeof document === 'undefined') return undefined;
+    let drag = null;
+    let repairTimer = 0;
+    const clearDrag = () => { drag = null; };
+    const completeDrag = (completedDrag, clientX, clientY) => {
+      if (Math.hypot(clientX - completedDrag.x, clientY - completedDrag.y) < 2) return;
+      window.clearTimeout(repairTimer);
+      repairTimer = window.setTimeout(() => {
+        repairCollapsedTextDragSelection({
+          documentRef: document,
+          windowRef: window,
+          selectionSnapshot: completedDrag.selectionSnapshot,
+          startBoundary: completedDrag.boundary,
+          endClientPoint: { x: clientX, y: clientY },
+        });
+      }, 0);
+    };
+    const onPointerDown = (event) => {
+      if (event.isPrimary === false || event.button !== 0 || event.pointerType === 'touch') return;
+      const boundary = getCaretBoundaryFromClientPoint(document, event.clientX, event.clientY, el);
+      if (!boundary || !el.contains(boundary.node)) return;
+      drag = {
+        pointerId: event.pointerId,
+        boundary,
+        selectionSnapshot: captureNativeSelectionSnapshot(window.getSelection?.()),
+        x: event.clientX,
+        y: event.clientY,
+      };
+    };
+    const onPointerUp = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const completedDrag = drag;
+      clearDrag();
+      completeDrag(completedDrag, event.clientX, event.clientY);
+    };
+    const onTouchStart = (event) => {
+      if (event.touches.length !== 1) { clearDrag(); return; }
+      const touch = event.touches[0];
+      const boundary = getCaretBoundaryFromClientPoint(document, touch.clientX, touch.clientY, el);
+      if (!boundary || !el.contains(boundary.node)) return;
+      drag = {
+        touchId: touch.identifier,
+        boundary,
+        selectionSnapshot: captureNativeSelectionSnapshot(window.getSelection?.()),
+        x: touch.clientX,
+        y: touch.clientY,
+      };
+    };
+    const onTouchEnd = (event) => {
+      if (!drag || drag.touchId == null) return;
+      const touch = Array.from(event.changedTouches || [])
+        .find((candidate) => candidate.identifier === drag.touchId);
+      if (!touch) return;
+      const completedDrag = drag;
+      clearDrag();
+      completeDrag(completedDrag, touch.clientX, touch.clientY);
+    };
+    el.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('pointercancel', clearDrag, true);
+    document.addEventListener('touchstart', onTouchStart, true);
+    document.addEventListener('touchend', onTouchEnd, true);
+    document.addEventListener('touchcancel', clearDrag, true);
+    return () => {
+      window.clearTimeout(repairTimer);
+      el.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('pointercancel', clearDrag, true);
+      document.removeEventListener('touchstart', onTouchStart, true);
+      document.removeEventListener('touchend', onTouchEnd, true);
+      document.removeEventListener('touchcancel', clearDrag, true);
+    };
+  }, [interactive]);
+
+  useEffect(() => {
     let cancelled = false;
     let task = null;
     (async () => {
@@ -120,7 +206,11 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       try {
         const page = await pdf.getPage(pageNumber);
         if (cancelled || !ref.current) return;
-        const textContent = await page.getTextContent();
+        // WebKit's ReadableStream lacks async iteration on some supported iOS
+        // builds. pdf.js getTextContent() uses `for await`, so read the same
+        // public stream through its widely supported reader API instead.
+        const textContent = await readPdfjsTextContent(page);
+        onTextAvailability?.(pageNumber, textContent);
         if (cancelled || !ref.current) return;
         const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
         el.innerHTML = '';
@@ -133,7 +223,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       } catch { /* cancelled or unsupported render — ignore */ }
     })();
     return () => { cancelled = true; try { task?.cancel?.(); } catch { /* noop */ } };
-  }, [pdf, pageNumber, scale, rotation]);
+  }, [pdf, pageNumber, scale, rotation, onTextAvailability]);
 
   return <div ref={ref} className={`pdfjsTextLayer${interactive ? ' is-interactive' : ''}`} />;
 }

@@ -16,6 +16,8 @@ import {
   adaptUnderline,
   adaptSquiggly,
   adaptStrikeOut,
+  adaptLink,
+  adaptRedact,
 } from './textMarkup.js';
 
 // Lookup is keyed by the Fabric `type` field with a secondary `exportType`
@@ -39,6 +41,8 @@ const EXPORT_TYPE_ADAPTERS = {
   underline: adaptUnderline,
   squiggly: adaptSquiggly,
   strikeout: adaptStrikeOut,
+  link: adaptLink,
+  redact: adaptRedact,
   freetext: adaptFreeText,
   ink: adaptInk,
   square: adaptSquare,
@@ -80,4 +84,6 @@ export {
   adaptUnderline,
   adaptSquiggly,
   adaptStrikeOut,
+  adaptLink,
+  adaptRedact,
 };

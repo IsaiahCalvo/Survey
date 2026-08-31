@@ -11,6 +11,7 @@
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
+import Icon from './Icons';
 import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
@@ -2459,7 +2460,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               width: 22,
               height: 22,
             }}
-          >×</button>
+          ><Icon name="close" size={14} /></button>
         </div>
       )}
 

@@ -11,6 +11,7 @@ import { getCoalescedOrCurrentEvents } from '../src/utils/eraserPointerSamples.j
 import { preserveTransientPagePresentationState } from '../src/services/annotationDocStore.js';
 
 const VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
 const DEV_TEST_ROUTE_SOURCE = readFileSync(new URL('../src/DevTestRoute.jsx', import.meta.url), 'utf8');
 const SUPABASE_CLIENT_SOURCE = readFileSync(
   new URL('../src/supabaseClient.js', import.meta.url),
@@ -66,12 +67,13 @@ test('eraser preview copies the active detail tile without stretching it over th
   assert.match(ERASER_SOURCE, /pageOffsetY/);
 });
 
-test('production exposes the full and partial eraser menu from the eraser caret', () => {
-  assert.match(VIEWER_SOURCE, /const hasSplitMenu = isEraser \|\| isHighlighterSplitMenu/);
-  assert.match(VIEWER_SOURCE, /data-eraser-caret-button=\{isEraser \? 'true' : undefined\}/);
-  assert.match(VIEWER_SOURCE, /setEraserCaretPopupOpen\(\(open\) => !open\)/);
-  assert.match(VIEWER_SOURCE, />\s*Partial erase\s*</);
-  assert.match(VIEWER_SOURCE, />\s*Full stroke erase\s*</);
+test('production keeps eraser mode in the top toolbar and omits the duplicate draw-strip caret', () => {
+  assert.match(VIEWER_SOURCE, /const hasSplitMenu = isHighlighterSplitMenu/);
+  assert.doesNotMatch(VIEWER_SOURCE, /data-eraser-caret-(?:button|popup)/);
+  assert.doesNotMatch(VIEWER_SOURCE, /setEraserCaretPopupOpen/);
+  assert.match(APP_SHELL_SOURCE, /label="Eraser type"/);
+  assert.match(APP_SHELL_SOURCE, /\{ value: 'partial', label: 'Partial erase' \}/);
+  assert.match(APP_SHELL_SOURCE, /\{ value: 'entire', label: 'Full stroke erase' \}/);
 });
 
 test('production eraser uses only the exact SVG clone for live carving', () => {

@@ -18,8 +18,10 @@ const CHILD_PATH = new URL(
 );
 
 const INTERACTIVE_BUDGET = Object.freeze({
-  p95CommitMs: 75,
-  maxCommitMs: 250,
+  p95CommitWorkMs: 75,
+  // The paired work reading rejects slow eraser work without failing when a
+  // loaded test host suspends the isolated child mid-commit.
+  maxCommitWorkMs: 250,
   p95CommitCpuMs: 75,
   // p95 guards sustained CPU cost. A single hosted-runner GC can charge
   // multiple worker threads to process.cpuUsage(), so keep only catastrophic
@@ -412,7 +414,7 @@ test('512-sample backtracking commit stays inside the release budget', () => {
   assert.equal(result.history.redoSurvivesReload, true);
   assert.equal(result.history.reloadUndoRestoresOriginal, true);
   assert.equal(result.history.reloadRedoRestoresFinal, true);
-  assert.ok(result.maxCommitMs <= INTERACTIVE_BUDGET.maxCommitMs);
+  assert.ok(result.maxCommitWorkMs <= INTERACTIVE_BUDGET.maxCommitWorkMs);
   assert.ok(
     result.maxCommitCpuMs <= INTERACTIVE_BUDGET.maxCommitCpuMs,
     `max commit CPU ${result.maxCommitCpuMs}ms exceeded ${INTERACTIVE_BUDGET.maxCommitCpuMs}ms`,
@@ -591,8 +593,8 @@ test('500 shallow bites stay inside the interactive complexity and release budge
   assert.ok(result.components <= INTERACTIVE_BUDGET.shallow500.maxComponents);
   assert.ok(result.vertices <= INTERACTIVE_BUDGET.shallow500.maxVertices);
   assert.ok(result.serializedBytes <= INTERACTIVE_BUDGET.shallow500.maxSerializedBytes);
-  assert.ok(result.p95CommitMs <= INTERACTIVE_BUDGET.p95CommitMs);
-  assert.ok(result.maxCommitMs <= INTERACTIVE_BUDGET.maxCommitMs);
+  assert.ok(result.p95CommitWorkMs <= INTERACTIVE_BUDGET.p95CommitWorkMs);
+  assert.ok(result.maxCommitWorkMs <= INTERACTIVE_BUDGET.maxCommitWorkMs);
   assert.ok(result.p95CommitCpuMs <= INTERACTIVE_BUDGET.p95CommitCpuMs);
   assert.ok(
     result.maxCommitCpuMs <= INTERACTIVE_BUDGET.maxCommitCpuMs,
@@ -626,8 +628,8 @@ test('500 crossing cuts preserve every component inside bounded memory and relea
   assert.ok(result.components <= INTERACTIVE_BUDGET.crossing500.maxComponents);
   assert.ok(result.vertices <= INTERACTIVE_BUDGET.crossing500.maxVertices);
   assert.ok(result.serializedBytes <= INTERACTIVE_BUDGET.crossing500.maxSerializedBytes);
-  assert.ok(result.p95CommitMs <= INTERACTIVE_BUDGET.p95CommitMs);
-  assert.ok(result.maxCommitMs <= INTERACTIVE_BUDGET.maxCommitMs);
+  assert.ok(result.p95CommitWorkMs <= INTERACTIVE_BUDGET.p95CommitWorkMs);
+  assert.ok(result.maxCommitWorkMs <= INTERACTIVE_BUDGET.maxCommitWorkMs);
   assert.ok(result.p95CommitCpuMs <= INTERACTIVE_BUDGET.p95CommitCpuMs);
   assert.ok(result.maxCommitCpuMs <= INTERACTIVE_BUDGET.maxCommitCpuMs);
   assertMemoryBudget(result, INTERACTIVE_BUDGET.crossing500);

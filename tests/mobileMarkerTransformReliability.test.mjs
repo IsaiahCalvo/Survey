@@ -11,6 +11,18 @@ const selectionSource = fs.readFileSync(
   new URL('../src/components/SVGSelectionOverlay.jsx', import.meta.url),
   'utf8',
 );
+const annotationLayerSource = fs.readFileSync(
+  new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url),
+  'utf8',
+);
+const textActionBarSource = fs.readFileSync(
+  new URL('../src/components/TextSelectionActionBar.jsx', import.meta.url),
+  'utf8',
+);
+const interactionSource = fs.readFileSync(
+  new URL('../src/hooks/useSVGInteraction.js', import.meta.url),
+  'utf8',
+);
 const lifecycleSource = fs.readFileSync(
   new URL('../agent-cli/mobile-annotations/lifecycle.mjs', import.meta.url),
   'utf8',
@@ -39,6 +51,52 @@ test('SVG transform chrome suppresses native touch callouts and context menus', 
   assert.match(selectionSource, /touchAction: 'none'/);
   assert.match(selectionSource, /WebkitTouchCallout: 'none'/);
   assert.match(selectionSource, /onContextMenu=\{\(event\) => \{[\s\S]{0,120}event\.preventDefault\(\)/);
+});
+
+test('text markup selection chrome exposes only left and right range handles', () => {
+  assert.match(selectionSource, /horizontalResizeOnly/);
+  assert.match(selectionSource, /data-text-range-handle/);
+  assert.match(selectionSource, /\['ml', 'mr'\]/);
+  assert.match(annotationLayerSource, /horizontalResizeOnly=\{selectionObj\?\.data\?\.type === 'text-markup'/);
+  assert.match(interactionSource, /const handlePointerCancel = useCallback/);
+  assert.equal(
+    (interactionSource.match(/ds\.mode === 'text-markup-horizontal' && e\.pointerId !== ds\.pointerId/g) || []).length,
+    2,
+    'move and up must reject a second pointer',
+  );
+  assert.equal(
+    (interactionSource.match(/activeTextRangeDrag\?\.mode === 'text-markup-horizontal'/g) || []).length,
+    2,
+    'root and handle pointerdown must not let a second touch steal the active endpoint',
+  );
+  assert.match(
+    interactionSource,
+    /ds\.pointerId != null && e\.pointerId != null && ds\.pointerId !== e\.pointerId/,
+    'cancel must reject a second pointer',
+  );
+  assert.match(annotationLayerSource, /onPointerCancel=\{isInteractive[\s\S]{0,180}handlePointerCancel\(e\)/);
+  assert.match(
+    interactionSource,
+    /getTextMarkupStackAtPoint\(annotations\?\.objects, svgPoint/,
+    'stack cycling must use every text range under the pointer, even after one range changes',
+  );
+  assert.match(
+    interactionSource,
+    /delete committedTextMarkup\._textRangeDragHandle;[\s\S]{0,120}delete committedTextMarkup\._textRangeHandleCrossed;/,
+    'drag-only handle state must never enter save, history, or export data',
+  );
+});
+
+test('text action bar uses the locked SVG assets for every text markup action', () => {
+  assert.match(textActionBarSource, /import Icon from '\.\.\/Icons'/);
+  for (const iconName of ['formatHighlight', 'formatUnderline', 'formatSquiggle', 'formatStrikethrough', 'formatHyperlink', 'formatRedact']) {
+    assert.match(textActionBarSource, new RegExp(iconName));
+  }
+  assert.doesNotMatch(textActionBarSource, /text-markup-[a-z-]+\.svg/);
+  assert.doesNotMatch(textActionBarSource, /WebkitMask|mask: `url/);
+  assert.match(textActionBarSource, /function ToolIcon/);
+  assert.match(textActionBarSource, /size = 18/);
+  assert.match(textActionBarSource, /name="formatRedact"[\s\S]{0,80}size=\{21\}/);
 });
 
 test('mobile delete long-press targets exposed annotation body instead of transform handles', () => {

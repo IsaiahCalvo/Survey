@@ -837,7 +837,7 @@ export default function ProjectsFolderTree({
             onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
             className={`projects-mobile-check ${isChecked ? 'checked' : ''}`}
           >
-            {isChecked ? '✓' : ''}
+            {isChecked ? <Icon name="check" size={11} color="#15110a" /> : null}
           </span>
         ) : (
           <button
@@ -983,7 +983,7 @@ export default function ProjectsFolderTree({
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                         style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
-                        {isSel && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                        {isSel && <Icon name="check" size={10} color="#15110a" />}
                       </span>
                     ) : (
                       <button
@@ -1169,7 +1169,7 @@ export default function ProjectsFolderTree({
                                 onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                                 style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
-                                {isChecked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                                {isChecked && <Icon name="check" size={10} color="#15110a" />}
                               </span>
                             ) : (
                               <button
@@ -1364,7 +1364,7 @@ export default function ProjectsFolderTree({
                               <ProjectTeamSummary memberIds={projMembers} lookupMember={lookupMember} />
                             </span>
                             {jobsEdit ? (
-                              <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
+                              <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="#15110a" /> : null}</span>
                             ) : (
                               <button
                                 onClick={(e) => {
@@ -1436,7 +1436,7 @@ export default function ProjectsFolderTree({
                         >
                           <span>{p.name}</span>
                           <small>{projectFileCount(p.id)} files</small>
-                          {jobsEdit && <i className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</i>}
+                          {jobsEdit && <i className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="#15110a" /> : null}</i>}
                         </button>
                       );
                     })}
@@ -1466,7 +1466,7 @@ export default function ProjectsFolderTree({
                       <small>{projectFileCount(p.id)} files · {projectLastEditedLabel(p.id)}</small>
                     </span>
                     {jobsEdit ? (
-                      <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? '✓' : ''}</span>
+                      <span className={`projects-mobile-check ${isSel ? 'checked' : ''}`}>{isSel ? <Icon name="check" size={11} color="#15110a" /> : null}</span>
                     ) : (
                       <span className="projects-mobile-disclosure">{isOpen ? 'Open' : 'View'}</span>
                     )}
@@ -1641,7 +1641,7 @@ export default function ProjectsFolderTree({
                   onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                   style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--ink-300)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  {isSel && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                  {isSel && <Icon name="check" size={10} color="#15110a" />}
                 </span>
               ) : (
                 <button
@@ -1805,7 +1805,7 @@ export default function ProjectsFolderTree({
                         onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                         style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--ink-300)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                       >
-                        {isChecked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                        {isChecked && <Icon name="check" size={10} color="#15110a" />}
                       </span>
                     ) : (
                       <button

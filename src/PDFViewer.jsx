@@ -46,6 +46,7 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
+import { openExternalDestination } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -60,14 +61,19 @@ import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
 import PrintPanel from './components/PrintPanel';
+import BrowserPrintDocument from './components/BrowserPrintDocument.jsx';
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
+import PdfjsRedactionMarkLayer from './components/PdfjsRedactionMarkLayer';
+import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
-import PdfjsTextLayer from './components/PdfjsTextLayer';
+import TextSelectionActionBar from './components/TextSelectionActionBar';
+import ApplyRedactionsModal from './components/ApplyRedactionsModal';
+import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
@@ -91,6 +97,18 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import {
+  buildAtomicTextMarkupPageMutation,
+  buildRequestedRedactionSnapshot,
+  buildTextMarkupDocumentAction,
+  buildTextMarkupGroupCreateTransaction,
+  buildTextMarkupPaintEditTransaction,
+  buildTextMarkupRangeToggleOffTransaction,
+  expandTextMarkupEraseIntent,
+  getTextMarkupRangeAnnotations,
+  getTextMarkupRangeTypes,
+  preserveTextMarkupRangeResizeSiblings,
+} from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
@@ -121,6 +139,7 @@ import { drainRowIdWritebackQueueLocal } from './services/rowIdLocalWriteback';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
+
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
@@ -217,6 +236,8 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { getSelectFamilyTransition, loadSelectMode, saveSelectMode } from './utils/selectModes.js';
+import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
@@ -369,6 +390,17 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
+import { createTextMarkupAnnotation, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
+import {
+  buildOcrCacheKey,
+  hasUsableEmbeddedText,
+  loadCachedOcrResult,
+  OCR_ENGINE_LICENSE,
+  OCR_ENGINE_NAME,
+  recognizePageLocally,
+  resolveLocalOcrProvider,
+  saveCachedOcrResult,
+} from './utils/localOcrProvider.js';
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -1049,6 +1081,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // canceling throws all settings away so the source PDF is never modified.
   const [printPanelOpen, setPrintPanelOpen] = useState(false);
   const [printPanelPrinters, setPrintPanelPrinters] = useState([]);
+  const browserPrintDocumentRef = useRef(null);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
   // KAL-21: in-app PDF load failure state — replaces browser alerts when the
   // pdf-lib rewrite/retry path or Pdfjs render path can't recover.
@@ -2871,11 +2904,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Select-family mode for annotation gestures. PDF text keeps its existing
+  // activeTool='text-select' path, so this state can grow without changing it.
+  const [selectionMode, setSelectionMode] = useState(loadSelectMode);
+  const [lassoTouchOperation, setLassoTouchOperation] = useState('replace');
+  const [lassoTouchMode, setLassoTouchMode] = useState('window');
+  const cycleLassoTouchMode = useCallback(() => {
+    setLassoTouchMode((current) => cycleLassoMode(current));
+  }, []);
+  const activateSelectFamilyMode = useCallback((mode) => {
+    const next = getSelectFamilyTransition(mode);
+    setSelectionMode(next.selectionMode);
+    setActiveTool(next.activeTool);
+  }, []);
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
   const interactionDiagPrevToolRef = useRef('pan');
   // [InteractionDiag] throttle timestamp for continuous zoom-intent logging.
   const interactionDiagZoomLogAtRef = useRef(0);
+
+  useEffect(() => {
+    saveSelectMode(selectionMode);
+  }, [selectionMode]);
 
   // KAL-47 Forms mode state.
   // - `formMode` toggles Pdfjs's `designerMode`. When true, the
@@ -3150,6 +3200,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     verticalAlign: 'top',
   });
   const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
+  const [liveTextSelection, setLiveTextSelection] = useState(null);
+  const liveTextSelectionRef = useRef(null);
+  const [textMarkupOverlapMode, setTextMarkupOverlapMode] = useState(() => {
+    try { return localStorage.getItem('survey:text-markup-overlap-mode') === 'uniform' ? 'uniform' : 'layered'; }
+    catch { return 'layered'; }
+  });
+  const [textLinkEditorOpen, setTextLinkEditorOpen] = useState(false);
+  const [textLinkMode, setTextLinkMode] = useState('web');
+  const [textLinkUrl, setTextLinkUrl] = useState('');
+  const [textLinkError, setTextLinkError] = useState('');
+  const [focusedTextMarkupPaint, setFocusedTextMarkupPaint] = useState('highlight');
+  const [textMarkupPaintByType, setTextMarkupPaintByType] = useState(() => ({
+    highlight: { ...TEXT_MARKUP_DEFAULT_PAINT.highlight },
+    underline: { ...TEXT_MARKUP_DEFAULT_PAINT.underline },
+    squiggly: { ...TEXT_MARKUP_DEFAULT_PAINT.squiggly },
+    strikeout: { ...TEXT_MARKUP_DEFAULT_PAINT.strikeout },
+  }));
+  const [textAvailabilityByPage, setTextAvailabilityByPage] = useState({});
+  const [ocrStateByPage, setOcrStateByPage] = useState({});
+  const ocrCacheRef = useRef(new Map());
+  const ocrAbortByPageRef = useRef(new Map());
   const handleSelectionForToolbar = useCallback((payload) => {
     if (!payload) {
       setSelectedToolbarAnnotation(null);
@@ -3177,6 +3248,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
+  const commitTextMarkupDocumentTransactionRef = useRef(null);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
@@ -3193,6 +3265,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : sel.annotationIndex;
     const current = pageJSON.objects[currentIndex];
     if (!current) return;
+    if (current.data?.type === 'text-markup'
+      && patch.fill != null
+      && patch.stroke != null
+      && patch.opacity != null) {
+      const transaction = buildTextMarkupPaintEditTransaction({
+        annotationsByPage: annotationsByPageRef.current || {},
+        annotation: current,
+        color: patch.stroke,
+        opacity: patch.opacity,
+      });
+      if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
+        source: 'text-markup:paint-edit',
+        action: 'text-markup-update',
+        selectionGroupIds: transaction.selectionGroupIds,
+      })) {
+        const updated = transaction.updated.find((entry) => (
+          entry.pageNumber === Number(sel.pageNumber)
+          && getAnnotationRenderIdentity(entry.annotation).annotationId === selectedId
+        )) || transaction.updated[0];
+        if (updated) {
+          const nextSelection = {
+            pageNumber: updated.pageNumber,
+            annotationIndex: updated.annotationIndex,
+            annotation: updated.annotation,
+          };
+          selectedToolbarAnnotationRef.current = nextSelection;
+          setSelectedToolbarAnnotation(nextSelection);
+        }
+        return;
+      }
+    }
     const nextObj = {
       ...current,
       ...patch,
@@ -3323,8 +3426,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [counterUITick, setCounterUITick] = useState(0);
   const [highlighterCaretPopupOpen, setHighlighterCaretPopupOpen] = useState(false);
   const highlighterCaretPopupRef = useRef(null);
-  const [eraserCaretPopupOpen, setEraserCaretPopupOpen] = useState(false);
-  const eraserCaretPopupRef = useRef(null);
   const [underlineCaretPopupOpen, setUnderlineCaretPopupOpen] = useState(false);
   const underlineCaretPopupRef = useRef(null);
   const [strikeCaretPopupOpen, setStrikeCaretPopupOpen] = useState(false);
@@ -3641,6 +3742,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       downAt = null;
       if (!start) return;
       if (activeTool !== 'pan') return;
+      if (e.target?.closest?.('[data-text-markup-link]')) return;
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (Math.hypot(dx, dy) > QUICK_CLICK_PX) return; // real pan, not a tap
@@ -3651,13 +3753,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // tool-switch to Select as the plain-annotation branch so followup
       // drags / edits work naturally.
       if (hit.kind === 'callout' && hit.calloutId) {
-        setActiveTool('select');
+        activateSelectFamilyMode('rectangle');
         setSelectedCalloutIds(new Set([hit.calloutId]));
         return;
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
-      setActiveTool('select');
+      activateSelectFamilyMode('rectangle');
       setPendingSvgSelection({
         pageNumber: hit.pageNumber,
         annotationIndex: hit.annotationIndex,
@@ -3670,7 +3772,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool]);
+  }, [activeTool, activateSelectFamilyMode]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
   // show the same blue hover glow the Select tool shows AND switch the
@@ -4180,26 +4282,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [highlighterCaretPopupOpen]);
 
   useEffect(() => {
-    if (!eraserCaretPopupOpen) return undefined;
-    const onDocClick = (e) => {
-      const root = eraserCaretPopupRef.current;
-      if (root && root.contains(e.target)) return;
-      const caret = document.querySelector('[data-eraser-caret-button="true"]');
-      if (caret && caret.contains(e.target)) return;
-      setEraserCaretPopupOpen(false);
-    };
-    const onKey = (e) => {
-      if (e.key === 'Escape') setEraserCaretPopupOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [eraserCaretPopupOpen]);
-
-  useEffect(() => {
     if (!underlineCaretPopupOpen) return undefined;
     const onDocClick = (e) => {
       const root = underlineCaretPopupRef.current;
@@ -4367,6 +4449,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Excel sync modals and state
   const [showExcelLockedModal, setShowExcelLockedModal] = useState(false);
   const [showExcelSyncConfirmModal, setShowExcelSyncConfirmModal] = useState(false);
+  const [applyRedactionsModalOpen, setApplyRedactionsModalOpen] = useState(false);
+  const [pendingRedactionRequest, setPendingRedactionRequest] = useState(null);
+  const [applyRedactionsBusy, setApplyRedactionsBusy] = useState(false);
+  const [applyRedactionsProgress, setApplyRedactionsProgress] = useState(null);
+  const [applyRedactionsError, setApplyRedactionsError] = useState('');
   const [excelLockedFilePath, setExcelLockedFilePath] = useState('');
   const [excelLockedIsOneDrive, setExcelLockedIsOneDrive] = useState(false);
   const [pendingExcelSyncCallback, setPendingExcelSyncCallback] = useState(null);
@@ -5103,7 +5190,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       document.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [activeTool, usePdfjsRenderer]);
+  }, [activeTool, activateSelectFamilyMode, usePdfjsRenderer]);
 
   const [pendingLocationItem, setPendingLocationItem] = useState(null);
   const topToolbarRef = useRef(null);
@@ -7365,8 +7452,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!pdfId) return;
     if (activeTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
-    if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
-    if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
+    if (activeTool === 'text-select') {
+      const paint = textMarkupPaintByType[focusedTextMarkupPaint]
+        || TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]
+        || TEXT_MARKUP_DEFAULT_PAINT.highlight;
+      setStrokeColor(paint.color);
+      setStrokeOpacity(paint.opacity);
+    } else {
+      if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
+      if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
+    }
     if (toolPrefs.fillColor !== undefined) setFillColor(toolPrefs.fillColor);
     if (toolPrefs.fillOpacity !== undefined) setFillOpacity(toolPrefs.fillOpacity);
     if (toolPrefs.strokeWidth !== undefined) {
@@ -7383,7 +7478,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setStrokeWidthInputValue(nextValue);
       }
     }
-  }, [activeTool, pdfId, toolPreferences]);
+  }, [activeTool, focusedTextMarkupPaint, pdfId, textMarkupPaintByType, toolPreferences]);
 
   // Sync strokeWidthInputValue when strokeWidth changes (but not while focused)
   useEffect(() => {
@@ -7412,6 +7507,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { strokeOpacityStateRef.current = strokeOpacity; }, [strokeOpacity]);
   useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
   useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
+  useEffect(() => {
+    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return;
+    const paint = resolveTextMarkupEditPaint(selectedToolbarAnnotation.annotation, strokeColorStateRef.current);
+    strokeColorStateRef.current = paint.color;
+    strokeOpacityStateRef.current = paint.opacity;
+    setStrokeColor(paint.color);
+    setStrokeOpacity(paint.opacity);
+  }, [activeTool, selectedToolbarAnnotation]);
   const getSelectedShapeMeta = () => {
     const sel = selectedToolbarAnnotationRef.current;
     const annotation = sel?.annotation;
@@ -7426,7 +7529,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       || type === 'polygon' || isCounter;
   };
   const isEditableShapeSelected = () => {
-    const { type, isCounter } = getSelectedShapeMeta();
+    const { type, isCounter, annotation } = getSelectedShapeMeta();
+    if (annotation?.data?.type === 'text-markup') return true;
     if (type === 'rect' || type === 'ellipse' || type === 'path'
       || type === 'line' || type === 'textbox'
       || type === 'polygon' || type === 'polyline') return true;
@@ -7461,10 +7565,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             },
           }
         : prev));
+    } else if (annotation?.data?.type === 'text-markup') {
+      const color = getHexFromColor(rgba) || rgba;
+      handlePatchSelectedAnnotation({ fill: color, stroke: color });
     } else {
       handlePatchSelectedAnnotation({ stroke: rgba });
     }
   };
+
+  const handleTextMarkupOverlapModeChange = useCallback((mode) => {
+    const normalized = mode === 'uniform' ? 'uniform' : 'layered';
+    setTextMarkupOverlapMode(normalized);
+    const annotation = selectedToolbarAnnotationRef.current?.annotation;
+    if (activeTool === 'select' && annotation?.data?.type === 'text-markup') {
+      handlePatchSelectedAnnotation({ data: { overlapMode: normalized } });
+    }
+  }, [activeTool, handlePatchSelectedAnnotation]);
 
   const handleSelectedCounterSeriesStartChange = useCallback((value) => {
     const sel = selectedToolbarAnnotationRef.current;
@@ -7517,10 +7633,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderColor: color });
+    } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
+      patchSelectedStroke(nextNumberColor);
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
   }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+
+  const handleTextMarkupPaintChange = useCallback((color, opacity) => {
+    const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity)
+      || TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]?.opacity
+      || 100));
+    strokeColorStateRef.current = color;
+    strokeOpacityStateRef.current = normalizedOpacity;
+    setStrokeColor(color);
+    setStrokeOpacity(normalizedOpacity);
+    if (pdfId && activeTool !== 'select') {
+      updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
+    }
+    if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
+      handlePatchSelectedAnnotation({
+        fill: color,
+        stroke: color,
+        opacity: normalizedOpacity / 100,
+      });
+    }
+  }, [activeTool, focusedTextMarkupPaint, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
     strokeOpacityStateRef.current = opacity;
@@ -7542,6 +7680,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (activeTool !== 'select') return;
     if (isCalloutSelected()) {
       handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
+    } else if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
+      const annotation = selectedToolbarAnnotationRef.current.annotation;
+      const paint = resolveTextMarkupEditPaint(annotation, strokeColorStateRef.current);
+      const color = getHexFromColor(strokeColorStateRef.current) || paint.color;
+      handlePatchSelectedAnnotation({
+        fill: color,
+        stroke: color,
+        opacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)),
+      });
     } else if (isEditableShapeSelected()) {
       patchSelectedStroke(nextNumberColor);
     }
@@ -20972,6 +21119,95 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     surveyMarkers,
   ]);
 
+  const queuePermanentRedactionConfirmation = useCallback((transaction) => {
+    if (!transaction?.nextByPage || !transaction?.created?.length) return false;
+    setPendingRedactionRequest({
+      redactionCount: transaction.created.length,
+      annotationsByPage: buildRequestedRedactionSnapshot(transaction.nextByPage, transaction.created),
+    });
+    setApplyRedactionsError('');
+    setApplyRedactionsProgress(null);
+    setApplyRedactionsModalOpen(true);
+    return true;
+  }, []);
+
+  const handleApplyPermanentRedactions = useCallback(async () => {
+    if (!pdfFile || applyRedactionsBusy || !pendingRedactionRequest?.redactionCount) return;
+    const redactionAnnotationsByPage = pendingRedactionRequest.annotationsByPage;
+    setApplyRedactionsBusy(true);
+    setApplyRedactionsError('');
+    setApplyRedactionsProgress({ pageNumber: 0, pageCount: numPages || 0 });
+    try {
+      const [{ savePDFWithAnnotationsPdfLib }, { applyPermanentPdfRedactions }] = await Promise.all([
+        import('./utils/pdfAnnotationsPdfLib'),
+        import('./utils/permanentPdfRedaction.js'),
+      ]);
+      const annotatedBytes = await savePDFWithAnnotationsPdfLib(
+        pdfFile,
+        redactionAnnotationsByPage,
+        pageSizes,
+        null,
+        {
+          returnBytes: true,
+          actionType: 'pdf-apply-redactions-source',
+          documentId: pdfFile?.id || null,
+          callouts,
+          surveyMarkers,
+          spaces,
+          deletedPdfAnnotations,
+        },
+      );
+      const baseName = (pdfFile.name || 'document').replace(/\.pdf$/i, '');
+      const outputName = `${baseName}-redacted.pdf`;
+      const redactedBytes = await applyPermanentPdfRedactions({
+        annotatedPdfBytes: annotatedBytes,
+        annotationsByPage: redactionAnnotationsByPage,
+        onProgress: setApplyRedactionsProgress,
+      });
+
+      const api = window.electronAPI;
+      if (api?.saveFile) {
+        const result = await api.saveFile({
+          title: 'Save permanently redacted PDF',
+          defaultPath: outputName,
+          filters: [{ name: 'PDF files', extensions: ['pdf'] }],
+          data: Array.from(new Uint8Array(redactedBytes)),
+        });
+        if (result?.canceled) return;
+        if (result?.error) throw new Error(result.error);
+      } else {
+        const blob = new Blob([redactedBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = outputName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+      setApplyRedactionsModalOpen(false);
+      setPendingRedactionRequest(null);
+      showToast('Permanent redacted copy created. The open PDF was not changed.', 'success');
+    } catch (error) {
+      console.error('[ApplyRedactions] failed:', error);
+      setApplyRedactionsError(error?.message || 'Could not create the permanent redacted copy.');
+    } finally {
+      setApplyRedactionsBusy(false);
+      setApplyRedactionsProgress(null);
+    }
+  }, [
+    applyRedactionsBusy,
+    callouts,
+    deletedPdfAnnotations,
+    numPages,
+    pageSizes,
+    pdfFile,
+    pendingRedactionRequest,
+    spaces,
+    surveyMarkers,
+  ]);
+
   // Subscribe to the File menu item.
   useEffect(() => {
     if (typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
@@ -22915,7 +23151,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let selectionMappedTool = null;
     if (selectedToolbarCallout) {
       selectionMappedTool = 'callout';
-    } else if (selectedType === 'rect') selectionMappedTool = 'rect';
+    } else if (selectedAnnot?.data?.type === 'text-markup') selectionMappedTool = 'text-markup';
+    else if (selectedType === 'rect') selectionMappedTool = 'rect';
     else if (selectedType === 'ellipse' || (selectedType === 'circle' && selectedAnnot?.data?.type !== 'counter')) selectionMappedTool = 'ellipse';
     else if (selectedType === 'path') selectionMappedTool = 'pen';
     else if (selectedType === 'textbox' || selectedType === 'i-text' || selectedType === 'text') selectionMappedTool = 'text';
@@ -22939,6 +23176,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const contextTool = (activeTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    const textMarkupSelectionRect = (() => {
+      if (contextTool === 'text-select' && liveTextSelection?.anchor) return liveTextSelection.anchor;
+      if (selectedAnnot?.data?.type !== 'text-markup') return null;
+      const bounds = quadBounds(selectedAnnot.data.quads);
+      const selectedPageNumber = Number(selectedAnnot.data.pageNumber || selectedToolbarAnnotation?.pageNumber);
+      const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${selectedPageNumber}"]`);
+      const pageRect = pageElement?.getBoundingClientRect?.();
+      const pageSize = pageSizesRef.current?.[selectedPageNumber];
+      if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
+      const scaleX = pageRect.width / pageSize.width;
+      const scaleY = pageRect.height / pageSize.height;
+      return {
+        left: pageRect.left + bounds.left * scaleX,
+        top: pageRect.top + bounds.top * scaleY,
+        width: bounds.width * scaleX,
+        height: bounds.height * scaleY,
+      };
+    })();
     const selectedCounterSeriesId = selectionMappedTool === 'counter'
       ? selectedAnnot?.data?.seriesId
       : null;
@@ -23039,6 +23294,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const counterToolFillOpacity = activeTool === 'counter'
       ? getOpacityFromEntityColor(activeCounterSeriesPaint.fill)
       : fillOpacity;
+    const selectedTextMarkupPaint = activeTool === 'select' && selectedAnnot?.data?.type === 'text-markup'
+      ? resolveTextMarkupEditPaint(selectedAnnot, strokeColor)
+      : null;
     onBottomToolbarApiChange({
       // Identifies which PDFViewer instance owns the currently-published API, so
       // an unmounting instance clears only its own (see the clear-on-unmount
@@ -23049,7 +23307,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       zoomMenuRef,
       pageInputRef,
       activeTool,
+      selectionMode,
+      setSelectionMode,
+      lassoTouchOperation,
+      setLassoTouchOperation,
+      lassoTouchMode,
+      cycleLassoTouchMode,
       contextTool,
+      hasLiveTextSelection: !!liveTextSelection?.pages?.length,
+      textMarkupSelectionRect,
       activeCategoryDropdown,
       lastDrawTool,
       lastShapeTool,
@@ -23074,8 +23340,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Keep editable picker values separate from the effective swatch paint:
       // selectedStrokeColor includes object opacity, while these base fields
       // must not or an edit would bake opacity into the color a second time.
-      strokeColor: counterToolStrokeColor,
-      strokeOpacity: counterToolStrokeOpacity,
+      strokeColor: selectedTextMarkupPaint?.color || counterToolStrokeColor,
+      strokeOpacity: selectedTextMarkupPaint?.opacity ?? counterToolStrokeOpacity,
       selectedStrokeColor: selectedPreviewColors.stroke,
       strokeWidthInputValue: strokeWidthInputValueRef.current,
       eraserSizeInputValue: eraserSizeInputValueRef.current,
@@ -23103,6 +23369,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setLineBorderStyle: handleLineBorderStyleChange,
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
+      textMarkupOverlapMode: selectedAnnot?.data?.type === 'text-markup'
+        ? (selectedAnnot.data.overlapMode || 'layered')
+        : textMarkupOverlapMode,
+      setTextMarkupOverlapMode: handleTextMarkupOverlapModeChange,
       counterSeriesList,
       activeCounterSeriesId: activeCounterSeriesIdRef.current,
       onNewCounterSeries: handleNewCounterSeries,
@@ -23135,6 +23405,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setShowAnnotationColorPicker,
       handleStrokeColorChange,
       handleStrokeOpacityChange,
+      handleTextMarkupPaintChange,
       handleStrokeWidthInputChange,
       handleStrokeWidthInputBlur,
       setIsStrokeWidthFocused: handleStrokeWidthFocusChange,
@@ -23166,6 +23437,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    liveTextSelection,
+    selectionMode,
+    lassoTouchOperation,
+    lassoTouchMode,
+    cycleLassoTouchMode,
     annotationsByPage,
     selectedToolbarAnnotation,
     selectedToolbarCallout,
@@ -23203,6 +23479,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleLineBorderStyleChange,
     cloudIntensity,
     handleCloudIntensityChange,
+    textMarkupOverlapMode,
+    handleTextMarkupOverlapModeChange,
     counterSeriesList,
     counterUITick,
     handleNewCounterSeries,
@@ -23224,6 +23502,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setTooltip,
     handleStrokeColorChange,
     handleStrokeOpacityChange,
+    handleTextMarkupPaintChange,
     handleStrokeWidthFocusChange,
     handleStrokeWidthInputChange,
     handleStrokeWidthInputBlur,
@@ -23300,7 +23579,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Prevent default behavior and switch to select tool
         e.preventDefault();
-        setActiveTool('select');
+        activateSelectFamilyMode('rectangle');
+        return;
+      }
+
+      // UX: L is already the Line tool, so Alt+V opens Lasso Select without
+      // taking a key from an existing tool. `code` also works with Option on Mac.
+      if ((e.code === 'KeyV' || e.key === 'v' || e.key === 'V') && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        if (isFormField) return;
+        e.preventDefault();
+        activateSelectFamilyMode('lasso');
         return;
       }
 
@@ -23315,7 +23603,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           return; // Don't trigger tool switch if focused on input
         }
         e.preventDefault();
-        setActiveTool('text-select');
+        activateSelectFamilyMode('text');
         return;
       }
 
@@ -23783,6 +24071,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(
       markedIncomingJson,
     );
+    const rangeResizeIncomingAnnotations = source === 'text-markup:range-resize'
+      ? preserveTextMarkupRangeResizeSiblings({
+        previousPage: identityNormalizedCurrentAnnotations,
+        nextPage: markedIncomingJson,
+        activeAnnotationId: normalizedSaveContext?.annotationId,
+        activeAnnotationIndex: normalizedSaveContext?.annotationIndex,
+      })
+      : null;
     const isEraserCommit = source === 'eraser:commit' || normalizedSaveContext?.tool === 'eraser';
     const eraserDeletedIds = Array.isArray(normalizedSaveContext?.finalDeletedAnnotationIds)
       ? normalizedSaveContext.finalDeletedAnnotationIds.filter(Boolean)
@@ -24189,10 +24485,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : null;
     // During pre-hydration/offline fallback, retain the existing one-render
     // transport envelope so useAnnotationDoc can capture it when ready.
+    const stateIncomingAnnotations = rangeResizeIncomingAnnotations || finalIncomingAnnotations;
     const committedIncomingAnnotations = materializedEraserPage || (
       eraserMutation
-        ? { ...finalIncomingAnnotations, eraserMutation }
-        : finalIncomingAnnotations
+        ? { ...stateIncomingAnnotations, eraserMutation }
+        : stateIncomingAnnotations
     );
     const requireMutationAck = Boolean(materializedEraserPage);
 
@@ -24269,6 +24566,60 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // render's handleSaveAnnotations. Same render-time-assignment pattern as
   // pasteAnnotationAtRef.
   handleSaveAnnotationsRef.current = handleSaveAnnotations;
+
+  const commitTextMarkupDocumentTransaction = useCallback((transaction, saveContext = null) => {
+    if (!transaction?.action || !transaction?.nextByPage) return false;
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const scopedAction = filterAnnotationHistoryActionByOwner(
+      transaction.action,
+      viewerId,
+      documentOwnerId,
+    );
+    if (!scopedAction) return false;
+    pushLocalAnnotationHistoryAction(scopedAction);
+    annotationsByPageRef.current = transaction.nextByPage;
+    try {
+      flushSync(() => setAnnotationsByPage(transaction.nextByPage));
+    } catch (_error) {
+      setAnnotationsByPage(transaction.nextByPage);
+    }
+    pushHistoryDebugEvent('text_markup_document_transaction_applied', {
+      source: saveContext?.source || 'text-markup:document-transaction',
+      action: saveContext?.action || scopedAction.type,
+      selectionGroupIds: transaction.selectionGroupIds || [],
+      pageNumbers: scopedAction.type === 'fabric:document-batch'
+        ? scopedAction.actions.map((action) => action.pageNumber)
+        : [scopedAction.pageNumber],
+    });
+    return true;
+  }, [
+    documentOwnerId,
+    pushHistoryDebugEvent,
+    pushLocalAnnotationHistoryAction,
+    user?.id,
+    yjsUndoCtx?.userId,
+  ]);
+  commitTextMarkupDocumentTransactionRef.current = commitTextMarkupDocumentTransaction;
+
+  const handleSaveAnnotationsWithTextMarkupAtomicity = useCallback((pageNumber, json, saveContext = null) => {
+    const transaction = buildAtomicTextMarkupPageMutation({
+      annotationsByPage: annotationsByPageRef.current || {},
+      pageNumber,
+      nextPage: json,
+    });
+    if (transaction && commitTextMarkupDocumentTransaction(transaction, saveContext)) {
+      setSelectedToolbarAnnotation(null);
+      setPendingSvgSelection({
+        pageNumber: null,
+        annotationIndex: null,
+        clearAll: true,
+        reason: 'text-markup-selection-group-delete',
+        tick: Date.now(),
+      });
+      return { atomicTextMarkupGroup: true };
+    }
+    return handleSaveAnnotations(pageNumber, json, saveContext);
+  }, [commitTextMarkupDocumentTransaction, handleSaveAnnotations]);
 
   // KAL-313: Space restore — re-inserts a deleted space into live spaces state
   // exactly as captured at delete time (full object incl. assignedPages).
@@ -27079,11 +27430,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         mutationId: intent?.mutationId || null,
       };
     }
-    const preparedIntent = prepareEraseIntentForCommit({
+    const groupExpandedIntent = expandTextMarkupEraseIntent(
       intent,
+      annotationsByPageRef.current || {},
+    );
+    const preparedIntent = prepareEraseIntentForCommit({
+      intent: groupExpandedIntent,
       annotationsByPage: buildEraseHistoryBeforeSnapshot({
         annotationsByPage: annotationsByPageRef.current || {},
-      }, intent).annotationsByPage,
+      }, groupExpandedIntent).annotationsByPage,
       userId: user?.id || null,
       includeDeleteHistory: Boolean(pdfFile?.id),
     });
@@ -27742,10 +28097,585 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 100);
   }, [getPageSurveyRegionId, selectedModuleId]);
 
-  const handlePdfjsTextSelectionEnd = useCallback(() => {
-    // Selection-only mode for Pdfjs renderer:
-    // keep native text selection/copy behavior and do not create survey markers.
+  const clearLiveTextSelection = useCallback(() => {
+    try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+    liveTextSelectionRef.current = null;
+    setLiveTextSelection(null);
   }, []);
+
+  const handlePdfjsTextAvailability = useCallback((pageNumber, textContent) => {
+    const usable = hasUsableEmbeddedText(textContent);
+    setTextAvailabilityByPage((prev) => (prev[pageNumber] === usable ? prev : { ...prev, [pageNumber]: usable }));
+  }, []);
+
+  const recognizeTextOnPage = useCallback(async (pageNumber) => {
+    const pageElement = pdfjsViewerRef.current?.getPageContainers?.()?.[pageNumber];
+    const canvas = pageElement?.querySelector?.('canvas');
+    const pageSize = pageSizesRef.current?.[pageNumber];
+    if (!canvas || !pageSize) {
+      setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'error', message: 'Page image is not ready.' } }));
+      return;
+    }
+    const fingerprint = pdfDoc?.fingerprints?.[0] || pdfDoc?.fingerprint || pdfFile?.id || pdfFile?.name;
+    const cacheKey = buildOcrCacheKey({ documentFingerprint: fingerprint, pageNumber, language: 'eng' });
+    const cached = ocrCacheRef.current.get(cacheKey) || loadCachedOcrResult(cacheKey);
+    if (cached) {
+      setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'complete', result: cached } }));
+      return;
+    }
+    const controller = new AbortController();
+    ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
+    ocrAbortByPageRef.current.set(pageNumber, controller);
+    setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'running', progress: 0 } }));
+    try {
+      const result = await recognizePageLocally({
+        provider: resolveLocalOcrProvider(window),
+        image: canvas,
+        language: 'eng',
+        signal: controller.signal,
+        mapping: {
+          sourceSize: { width: canvas.width, height: canvas.height },
+          pageSize,
+          rotation: 0,
+        },
+        onProgress: ({ progress = 0 }) => {
+          setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'running', progress } }));
+        },
+      });
+      ocrCacheRef.current.set(cacheKey, result);
+      saveCachedOcrResult(cacheKey, result);
+      setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'complete', result } }));
+    } catch (error) {
+      setOcrStateByPage((prev) => ({
+        ...prev,
+        [pageNumber]: error?.name === 'AbortError'
+          ? { status: 'cancelled' }
+          : { status: 'error', message: error?.message || 'Text recognition failed.' },
+      }));
+    } finally {
+      if (ocrAbortByPageRef.current.get(pageNumber) === controller) ocrAbortByPageRef.current.delete(pageNumber);
+    }
+  }, [pdfDoc, pdfFile?.id, pdfFile?.name]);
+
+  // Text Select pays the OCR cost only when the user asks for text interaction.
+  // A page with embedded text never starts OCR. A scanned page starts once when
+  // it becomes current, and the cache above prevents repeat work after reload.
+  useEffect(() => {
+    if (activeTool !== 'text-select') return;
+    if (textAvailabilityByPage[pageNum] !== false) return;
+    if (['running', 'complete', 'cancelled', 'error'].includes(ocrStateByPage[pageNum]?.status)) return;
+    recognizeTextOnPage(pageNum);
+  }, [activeTool, ocrStateByPage, pageNum, recognizeTextOnPage, textAvailabilityByPage]);
+
+  const cancelTextRecognition = useCallback((pageNumber) => {
+    ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
+  }, []);
+
+  const capturePdfjsTextSelection = useCallback(() => {
+    if (activeToolRef.current !== 'text-select') return null;
+    const selection = window.getSelection?.();
+    const pages = getSelectionPageRanges(selection, pageSizesRef.current || {});
+    if (pages.length === 0) {
+      // The color picker lives in a portal. Browser selection can collapse
+      // when its controls receive focus, but the user still needs the saved
+      // range to apply the chosen pre-creation color and opacity.
+      if (!showAnnotationColorPicker && !textLinkEditorOpen) {
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+      }
+      return null;
+    }
+    const rangeRect = selection.getRangeAt(0).getBoundingClientRect();
+    const payload = {
+      text: String(selection.toString() || ''),
+      pages,
+      anchor: {
+        left: rangeRect.left,
+        top: rangeRect.top,
+        width: rangeRect.width,
+        height: rangeRect.height,
+      },
+    };
+    liveTextSelectionRef.current = payload;
+    setLiveTextSelection(payload);
+    return payload;
+  }, [showAnnotationColorPicker, textLinkEditorOpen]);
+
+  useEffect(() => {
+    if (activeTool !== 'text-select') {
+      clearLiveTextSelection();
+      return undefined;
+    }
+    let timer = 0;
+    const captureSoon = (event) => {
+      const target = event?.target instanceof Element ? event.target : null;
+      if (target?.closest?.('[data-text-selection-action-bar], [data-annotation-color-picker]')) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(capturePdfjsTextSelection, 0);
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (showAnnotationColorPicker) {
+        event.stopPropagation();
+        setShowAnnotationColorPicker(false);
+        return;
+      }
+      if (textLinkEditorOpen) {
+        event.stopPropagation();
+        setTextLinkEditorOpen(false);
+        setTextLinkError('');
+        return;
+      }
+      clearLiveTextSelection();
+    };
+    document.addEventListener('selectionchange', captureSoon);
+    document.addEventListener('pointerup', captureSoon, true);
+    document.addEventListener('touchend', captureSoon, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('selectionchange', captureSoon);
+      document.removeEventListener('pointerup', captureSoon, true);
+      document.removeEventListener('touchend', captureSoon, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, showAnnotationColorPicker, textLinkEditorOpen]);
+
+  useEffect(() => {
+    try { localStorage.setItem('survey:text-markup-overlap-mode', textMarkupOverlapMode); } catch { /* noop */ }
+  }, [textMarkupOverlapMode]);
+
+  const handlePdfjsTextSelectionEnd = useCallback(() => {
+    capturePdfjsTextSelection();
+  }, [capturePdfjsTextSelection]);
+
+  const [selectedTextMarkupAnchorTick, setSelectedTextMarkupAnchorTick] = useState(0);
+  useEffect(() => {
+    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return undefined;
+    let frame = 0;
+    const refreshAnchor = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setSelectedTextMarkupAnchorTick((tick) => tick + 1);
+      });
+    };
+    window.addEventListener('resize', refreshAnchor);
+    document.addEventListener('scroll', refreshAnchor, true);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', refreshAnchor);
+      document.removeEventListener('scroll', refreshAnchor, true);
+    };
+  }, [activeTool, selectedToolbarAnnotation]);
+
+  const selectedTextMarkupActionSelection = useMemo(() => {
+    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return null;
+    const { annotation, pageNumber } = selectedToolbarAnnotation;
+    const sourceGroupId = annotation.data.selectionGroupId;
+    const sourceMarks = Object.values(annotationsByPageRef.current || {})
+      .flatMap((page) => Array.isArray(page?.objects) ? page.objects : [])
+      .filter((candidate) => (
+        candidate?.data?.type === 'text-markup'
+        && candidate.data.selectionGroupId === sourceGroupId
+      ));
+    const rangeMarks = getTextMarkupRangeAnnotations(
+      annotationsByPageRef.current || {},
+      sourceMarks.length ? sourceMarks : [annotation],
+    );
+    const bounds = quadBounds(annotation.data.quads);
+    const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+    const pageRect = pageElement?.getBoundingClientRect?.();
+    const pageSize = pageSizesRef.current?.[pageNumber];
+    if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
+    const scaleX = pageRect.width / pageSize.width;
+    const scaleY = pageRect.height / pageSize.height;
+    return {
+      text: String(annotation.data.selectedText || ''),
+      pages: [{ pageNumber, quads: annotation.data.quads, selectedText: annotation.data.selectedText || '' }],
+      anchor: {
+        left: pageRect.left + bounds.left * scaleX,
+        top: pageRect.top + bounds.top * scaleY,
+        width: bounds.width * scaleX,
+        height: bounds.height * scaleY,
+      },
+      selectedMarkup: true,
+      sourceMarks: rangeMarks.map((entry) => entry.annotation),
+      activeMarkupTypes: getTextMarkupRangeTypes(
+        annotationsByPageRef.current || {},
+        sourceMarks.length ? sourceMarks : [annotation],
+      ),
+      paintByMark: rangeMarks.reduce((paints, { annotation: mark }) => {
+        const type = String(mark?.data?.markupType || '').toLowerCase();
+        if (!TEXT_MARKUP_DEFAULT_PAINT[type]) return paints;
+        paints[type] = resolveTextMarkupEditPaint(mark, TEXT_MARKUP_DEFAULT_PAINT[type].color);
+        return paints;
+      }, {}),
+    };
+  }, [activeTool, annotationsByPage, selectedToolbarAnnotation, scale, zoomGeneration, selectedTextMarkupAnchorTick]);
+
+  const liveTextMarkupRangeProbes = useMemo(() => {
+    if (!liveTextSelection?.pages?.length) return [];
+    return liveTextSelection.pages.map(({ pageNumber, quads, selectedText, textRange, textRangeModel }, index) => (
+      createTextMarkupAnnotation({
+        id: `live-text-selection-${pageNumber}-${index}`,
+        pageNumber,
+        selectionGroupId: 'live-text-selection',
+        markupType: 'highlight',
+        selectedText: selectedText || liveTextSelection.text,
+        textRange,
+        textRangeModel,
+        quads,
+        color: strokeColorStateRef.current || '#f4d35e',
+        opacity: Math.max(0.05, Math.min(1, (Number(strokeOpacityStateRef.current)
+          || TEXT_MARKUP_DEFAULT_PAINT.highlight.opacity) / 100)),
+        overlapMode: textMarkupOverlapMode,
+        authorId: user?.id || null,
+      })
+    )).filter(Boolean);
+  }, [liveTextSelection, textMarkupOverlapMode, user?.id]);
+
+  const liveTextSelectionActionSelection = useMemo(() => {
+    if (!liveTextSelection) return null;
+    const liveRangeMarks = getTextMarkupRangeAnnotations(
+      annotationsByPage,
+      liveTextMarkupRangeProbes,
+    );
+    return {
+      ...liveTextSelection,
+      paintByMark: textMarkupPaintByType,
+      sourceMarks: liveRangeMarks.map((entry) => entry.annotation),
+      activeMarkupTypes: getTextMarkupRangeTypes(
+        annotationsByPage,
+        liveTextMarkupRangeProbes,
+      ),
+    };
+  }, [annotationsByPage, liveTextMarkupRangeProbes, liveTextSelection, textMarkupPaintByType]);
+
+  useEffect(() => {
+    if (!selectedTextMarkupActionSelection?.paintByMark) return;
+    setTextMarkupPaintByType((current) => ({
+      ...current,
+      ...selectedTextMarkupActionSelection.paintByMark,
+    }));
+    const selectedType = String(selectedToolbarAnnotation?.annotation?.data?.markupType || '').toLowerCase();
+    if (TEXT_MARKUP_DEFAULT_PAINT[selectedType]) setFocusedTextMarkupPaint(selectedType);
+  }, [selectedTextMarkupActionSelection, selectedToolbarAnnotation]);
+
+  useEffect(() => {
+    if (!showAnnotationColorPicker || !TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]) return;
+    setTextMarkupPaintByType((current) => ({
+      ...current,
+      [focusedTextMarkupPaint]: {
+        color: strokeColor,
+        opacity: Math.max(0, Math.min(100, Number(strokeOpacity) || 0)),
+      },
+    }));
+  }, [focusedTextMarkupPaint, showAnnotationColorPicker, strokeColor, strokeOpacity]);
+
+  const handleTextMarkupPaintFocus = useCallback((markupType) => {
+    if (!TEXT_MARKUP_DEFAULT_PAINT[markupType]) return;
+    setFocusedTextMarkupPaint(markupType);
+    const selection = selectedTextMarkupActionSelection || liveTextSelectionActionSelection;
+    const paint = selection?.paintByMark?.[markupType]
+      || textMarkupPaintByType[markupType]
+      || TEXT_MARKUP_DEFAULT_PAINT[markupType];
+    strokeColorStateRef.current = paint.color;
+    strokeOpacityStateRef.current = paint.opacity;
+    setStrokeColor(paint.color);
+    setStrokeOpacity(paint.opacity);
+
+    const target = selection?.sourceMarks?.find(
+      (mark) => String(mark?.data?.markupType || '').toLowerCase() === markupType,
+    );
+    if (target) {
+      const pageNumber = Number(target.data.pageNumber);
+      const objects = annotationsByPageRef.current?.[pageNumber]?.objects || [];
+      const annotationIndex = objects.findIndex((mark) => mark?.data?.id === target.data.id);
+      if (annotationIndex >= 0) {
+        const nextSelection = { pageNumber, annotationIndex, annotation: target };
+        selectedToolbarAnnotationRef.current = nextSelection;
+        setSelectedToolbarAnnotation(nextSelection);
+        setPendingSvgSelection({ pageNumber, annotationIndex, tick: Date.now() });
+      }
+    }
+    setShowAnnotationColorPicker(true);
+  }, [liveTextSelectionActionSelection, selectedTextMarkupActionSelection, textMarkupPaintByType]);
+
+  const handleTextSelectionAction = useCallback(async (action, options = {}) => {
+    const selectedMarkup = activeTool === 'select'
+      ? selectedToolbarAnnotationRef.current?.annotation
+      : null;
+    const selection = selectedMarkup?.data?.type === 'text-markup'
+      ? selectedTextMarkupActionSelection
+      : (liveTextSelectionActionSelection || liveTextSelectionRef.current || capturePdfjsTextSelection());
+    if (!selection) return;
+    if (action === 'copy') {
+      try {
+        await navigator.clipboard.writeText(selection.text);
+        let readBack = null;
+        try {
+          readBack = await Promise.race([
+            navigator.clipboard.readText(),
+            new Promise((resolve) => setTimeout(() => resolve(null), 750)),
+          ]);
+        } catch { /* write access can exist without read access */ }
+        const verified = readBack === selection.text;
+        if (typeof window !== 'undefined') {
+          window.__surveyLastCopyProof = {
+            expected: selection.text,
+            actual: readBack,
+            verified,
+          };
+        }
+        showToast(verified ? 'Text copied and checked.' : 'Text copied.', 'success');
+      } catch {
+        try { document.execCommand('copy'); } catch { /* browser copy remains available */ }
+      }
+      return;
+    }
+    const markupType = action;
+    if (!['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'].includes(markupType)) return;
+    if (markupType === 'link' && !options.commit && !options.remove) {
+      const selectedLink = selectedTextMarkupActionSelection?.sourceMarks?.find(
+        (mark) => mark?.data?.markupType === 'link',
+      ) || (selectedMarkup?.data?.markupType === 'link' ? selectedMarkup : null);
+      const nextMode = selectedLink?.data?.linkPageNumber ? 'page' : 'web';
+      setTextLinkMode(nextMode);
+      setTextLinkUrl(nextMode === 'page'
+        ? String(selectedLink?.data?.linkPageNumber || 1)
+        : String(selectedLink?.data?.linkUrl || ''));
+      setTextLinkError('');
+      setTextLinkEditorOpen((open) => !open);
+      return;
+    }
+    if (markupType === 'link' && options.remove) {
+      const linkedMarks = (selection.sourceMarks || []).filter(
+        (mark) => mark?.data?.type === 'text-markup' && mark.data.markupType === 'link',
+      );
+      const toggleOff = buildTextMarkupRangeToggleOffTransaction(
+        annotationsByPageRef.current || {},
+        linkedMarks,
+        'link',
+      );
+      const committed = toggleOff && commitTextMarkupDocumentTransaction(toggleOff, {
+        source: 'text-markup:remove-link',
+        action: 'text-markup-delete',
+        selectionGroupIds: toggleOff.removedSelectionGroupIds,
+      });
+      if (committed) {
+        setTextLinkEditorOpen(false);
+        setTextLinkError('');
+        const next = toggleOff.remaining[0];
+        setSelectedToolbarAnnotation(next ? {
+          pageNumber: next.pageNumber,
+          annotationIndex: next.annotationIndex,
+          annotation: next.annotation,
+        } : null);
+        setPendingSvgSelection({
+          pageNumber: next?.pageNumber || selectedToolbarAnnotationRef.current?.pageNumber,
+          annotationIndex: next?.annotationIndex ?? null,
+          tick: Date.now(),
+        });
+        if (!selectedMarkup) {
+          window.requestAnimationFrame(() => {
+            restorePdfjsTextSelection(selection);
+            capturePdfjsTextSelection();
+          });
+        }
+      }
+      return;
+    }
+    const requestedLinkMode = options.linkMode === 'page' ? 'page' : 'web';
+    const linkPageNumber = markupType === 'link' && requestedLinkMode === 'page'
+      ? Math.trunc(Number(options.linkValue))
+      : null;
+    const linkUrl = markupType === 'link' && requestedLinkMode === 'web'
+      ? normalizeTextLinkUrl(options.linkValue)
+      : null;
+    if (markupType === 'link' && requestedLinkMode === 'web' && !linkUrl) {
+      setTextLinkError('Enter a valid web or email link.');
+      return;
+    }
+    if (markupType === 'link' && requestedLinkMode === 'page'
+      && (!Number.isInteger(linkPageNumber) || linkPageNumber < 1 || linkPageNumber > numPages)) {
+      setTextLinkError(`Enter a page from 1 to ${numPages}.`);
+      return;
+    }
+    if (markupType === 'link') {
+      setTextLinkEditorOpen(false);
+      setTextLinkError('');
+    }
+    if (selectedMarkup?.data?.type === 'text-markup') {
+      const sourceGroupId = selectedMarkup.data.selectionGroupId;
+      const sourceMarks = Object.values(annotationsByPageRef.current || {})
+        .flatMap((page) => Array.isArray(page?.objects) ? page.objects : [])
+        .filter((annotation) => (
+          annotation?.data?.type === 'text-markup'
+          && annotation.data.selectionGroupId === sourceGroupId
+        ));
+      const toggleOff = buildTextMarkupRangeToggleOffTransaction(
+        annotationsByPageRef.current || {},
+        sourceMarks.length ? sourceMarks : [selectedMarkup],
+        markupType,
+      );
+      if (toggleOff && markupType !== 'link') {
+        const committed = commitTextMarkupDocumentTransaction(toggleOff, {
+          source: 'text-markup:toggle-off',
+          action: 'text-markup-delete',
+          selectionGroupIds: toggleOff.removedSelectionGroupIds,
+        });
+        if (committed) {
+          const next = toggleOff.remaining[0];
+          setSelectedToolbarAnnotation(next ? {
+            pageNumber: next.pageNumber,
+            annotationIndex: next.annotationIndex,
+            annotation: next.annotation,
+          } : null);
+          setPendingSvgSelection({
+            pageNumber: next?.pageNumber || selectedToolbarAnnotationRef.current?.pageNumber,
+            annotationIndex: next?.annotationIndex ?? null,
+            tick: Date.now(),
+          });
+        }
+        return;
+      }
+      const selectionGroupId = generateUUID();
+      const paint = textMarkupPaintByType[markupType]
+        || resolveTextMarkupEditPaint(selectedMarkup, strokeColorStateRef.current);
+      const annotations = (sourceMarks.length ? sourceMarks : [selectedMarkup])
+        .flatMap((source) => (markupType === 'link' ? source.data.quads.map((quad) => [source, [quad]]) : [[source, source.data.quads]]))
+        .map(([source, quads]) => createTextMarkupAnnotation({
+          id: generateUUID(),
+          pageNumber: source.data.pageNumber,
+          selectionGroupId,
+          markupType,
+          selectedText: source.data.selectedText,
+          textRange: source.data.textRange,
+          textRangeModel: source.data.textRangeModel,
+          quads,
+          color: paint.color,
+          opacity: Math.max(0.05, Math.min(1, paint.opacity / 100)),
+          overlapMode: source.data.overlapMode || textMarkupOverlapMode,
+          linkUrl,
+          linkPageNumber,
+          authorId: user?.id || null,
+        }))
+        .filter(Boolean);
+      const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
+      let transaction = buildTextMarkupGroupCreateTransaction(
+        transactionBase,
+        annotations,
+      );
+      if (transaction && toggleOff) {
+        transaction = {
+          ...transaction,
+          action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, transaction.nextByPage),
+        };
+      }
+      if (markupType === 'redact') {
+        queuePermanentRedactionConfirmation(transaction);
+        return;
+      }
+      const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
+        source: 'text-markup:stack',
+        action: 'text-markup-create',
+        selectionGroupId,
+      });
+      const created = committed ? transaction.created : [];
+      if (created.length > 0) {
+        window.requestAnimationFrame(() => setPendingSvgSelection({
+          pageNumber: created[0].pageNumber,
+          annotationIndex: created[0].annotationIndex,
+          tick: Date.now(),
+        }));
+      }
+      return;
+    }
+    const selectionGroupId = generateUUID();
+    const annotations = selection.pages.flatMap(({ pageNumber, quads, selectedText, textRange, textRangeModel }) => (
+      markupType === 'link'
+        ? quads.map((quad) => ({ pageNumber, quads: [quad], selectedText, textRange, textRangeModel }))
+        : [{ pageNumber, quads, selectedText, textRange, textRangeModel }]
+    )).map(({ pageNumber, quads, selectedText, textRange, textRangeModel }) => {
+      const id = generateUUID();
+      return createTextMarkupAnnotation({
+        id,
+        pageNumber,
+        selectionGroupId,
+        markupType,
+        selectedText: selectedText || selection.text,
+        textRange,
+        textRangeModel,
+        quads,
+        color: textMarkupPaintByType[markupType]?.color || strokeColorStateRef.current || '#f4d35e',
+        opacity: Math.max(0.05, Math.min(1, Number(textMarkupPaintByType[markupType]?.opacity
+          ?? strokeOpacityStateRef.current
+          ?? TEXT_MARKUP_DEFAULT_PAINT[markupType]?.opacity
+          ?? 100) / 100)),
+        overlapMode: textMarkupOverlapMode,
+        linkUrl,
+        linkPageNumber,
+        authorId: user?.id || null,
+      });
+    }).filter(Boolean);
+    const toggleOff = buildTextMarkupRangeToggleOffTransaction(
+      annotationsByPageRef.current || {},
+      annotations,
+      markupType,
+    );
+    if (toggleOff && markupType !== 'link') {
+      const committed = commitTextMarkupDocumentTransaction(toggleOff, {
+        source: 'text-markup:toggle-off-live-selection',
+        action: 'text-markup-delete',
+        selectionGroupIds: toggleOff.removedSelectionGroupIds,
+      });
+      if (committed) {
+        window.requestAnimationFrame(() => {
+          restorePdfjsTextSelection(selection);
+          capturePdfjsTextSelection();
+        });
+      }
+      return;
+    }
+    const transactionBase = toggleOff?.nextByPage || annotationsByPageRef.current || {};
+    let transaction = buildTextMarkupGroupCreateTransaction(transactionBase, annotations);
+    if (transaction && toggleOff) {
+      transaction = {
+        ...transaction,
+        action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, transaction.nextByPage),
+      };
+    }
+    if (markupType === 'redact') {
+      queuePermanentRedactionConfirmation(transaction);
+      return;
+    }
+    const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
+        source: 'text-markup:create',
+        action: 'text-markup-create',
+        selectionGroupId,
+      });
+    if (committed) {
+      window.requestAnimationFrame(() => {
+        restorePdfjsTextSelection(selection);
+        capturePdfjsTextSelection();
+      });
+    }
+  }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
+
+  useEffect(() => {
+    if (activeTool !== 'text-select') return undefined;
+    const copySelectedPdfText = (event) => {
+      if (String(event.key).toLowerCase() !== 'c' || (!event.metaKey && !event.ctrlKey) || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+      if (!liveTextSelectionRef.current?.pages?.length) return;
+      // Keep the browser's native copy event, then add the app's proof and toast.
+      void handleTextSelectionAction('copy');
+    };
+    document.addEventListener('keydown', copySelectedPdfText, true);
+    return () => document.removeEventListener('keydown', copySelectedPdfText, true);
+  }, [activeTool, handleTextSelectionAction]);
 
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
@@ -27819,7 +28749,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleSelectPdfjsTextMarkup = useCallback((pageNumber, event, pageSize) => {
-    if (activeTool !== 'select' && activeTool !== 'text-select') return false;
+    if (activeTool !== 'select') return false;
     const target = event?.currentTarget;
     if (!target || !pageSize?.width || !pageSize?.height) return false;
     const rect = target.getBoundingClientRect();
@@ -27884,7 +28814,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
-    if (activeTool !== 'select' && activeTool !== 'text-select') return false;
+    if (activeTool !== 'select') return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
     if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .survey-pdfjs-hyperlink, .survey-pdfjs-pdfviewer-formFields')) return false;
     const isPlainPdfTextTarget = !!event.target?.closest?.('.survey-pdfjs-text-layer, .survey-pdfjs-text');
@@ -28033,7 +28963,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, pageSizes, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   useEffect(() => {
-    if (activeTool !== 'select' && activeTool !== 'text-select') return undefined;
+    if (activeTool !== 'select') return undefined;
     const handlePointerDownCapture = (event) => {
       handleSelectPdfjsTextMarkupFromClientPoint(event);
     };
@@ -28810,12 +29740,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       if (!PRINT_PANEL_ENABLED) {
-        // UX 2026-04-25: two-path print. Default Cmd/Ctrl+P hands the
-        // original PDF straight to the OS/browser PDF viewer via a blob URL.
-        // Cmd/Ctrl+Shift+P (or "Print PDF with Annotations…" in the File menu)
-        // builds a temporary annotated PDF with regular document annotations
-        // only, then prints that temporary PDF. Survey, region, space, and
-        // survey-region scoped annotations are intentionally excluded.
+        if (!withMarkup) {
+          browserPrintDocumentRef.current?.print();
+          return;
+        }
+        // Default Cmd/Ctrl+P prepares the marked-up browser print document
+        // before opening the system dialog. Cmd/Ctrl+Shift+P (or "Print PDF
+        // with Annotations…" in the File menu) keeps the temporary-PDF path.
         const printPdfBlob = (blob, logLabel) => {
           const blobUrl = URL.createObjectURL(blob);
           console.log(logLabel);
@@ -28967,8 +29898,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       unsubscribeMarkup = window.electronAPI.onPrintPdfMarkup(() => openPanel('electron menu:print-pdf-markup (regular annotations)', { withMarkup: true }));
     }
 
-    // Safety net: intercept Cmd/Ctrl+P (base PDF print) and Cmd/Ctrl+Shift+P
-    // (regular annotation print) at the renderer level so both shortcuts
+    // Safety net: intercept Cmd/Ctrl+P (lazy browser print) and Cmd/Ctrl+Shift+P
+    // (temporary annotated PDF) at the renderer level so both shortcuts
     // work even if the Electron menu accelerator doesn't round-trip during HMR.
     const keyHandler = (e) => {
       const isP = e.key === 'p' || e.key === 'P' || e.keyCode === 80;
@@ -28979,7 +29910,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         e.stopPropagation();
         openPanel('window keydown shift', { withMarkup: true });
       } else {
-        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)');
+        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted');
         e.preventDefault();
         e.stopPropagation();
         openPanel('window keydown');
@@ -29903,9 +30834,23 @@ ${pageBlocks}
   // KAL-21: in-app failure state — replaces the old browser alerts when the
   // PDF parse path or Pdfjs render path cannot recover. Pre-empts the
   // loading/spinner branch so we never leave the viewer blank.
+  const browserPrintDocument = (
+    <BrowserPrintDocument
+      key="browser-print-document"
+      ref={browserPrintDocumentRef}
+      pdfFile={pdfFile}
+      annotationsByPage={annotationsByPage}
+      callouts={callouts}
+      surveyMarkers={surveyMarkers}
+      spaces={spaces}
+      pageSizes={pageSizes}
+    />
+  );
+
   if (pdfLoadError) {
     const docName = pdfFile?.name || 'this document';
     return (
+      <>
       <div style={{
         height: '100vh',
         display: 'flex',
@@ -30007,12 +30952,15 @@ ${pageBlocks}
           </div>
         </div>
       </div>
+      {browserPrintDocument}
+      </>
     );
   }
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
     return (
+      <>
       <div style={{
         height: '100vh',
         display: 'flex',
@@ -30046,6 +30994,8 @@ ${pageBlocks}
           )}
         </div>
       </div>
+      {browserPrintDocument}
+      </>
     );
   }
 
@@ -30392,6 +31342,7 @@ ${pageBlocks}
                     textMarkupMode={getPdfjsTextMarkupMode(activeTool)}
                     textMarkupColor={strokeColor}
                     textMarkupOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 1))}
+                    textSelectionLayerActive={activeTool === 'text-select'}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}
@@ -30399,6 +31350,7 @@ ${pageBlocks}
                     onZoomPhase={handlePdfjsZoomPhase}
                     onPageRendered={handlePdfjsPageRenderComplete}
                     onTextSelectionEnd={handlePdfjsTextSelectionEnd}
+                    onTextAvailability={handlePdfjsTextAvailability}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
                     onPageContainersChange={handlePdfjsPageContainersChange}
                     onMountedPagesChange={handlePdfjsMountedPagesChange}
@@ -30704,18 +31656,40 @@ ${pageBlocks}
                               {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
-                          {true && pdfDoc && activeTool === 'text-select' && (
-                            // Build the selectable text layer ONLY while the text tool is
-                            // active. renderTextLayer + getTextContent per page is costly;
-                            // mounting it on every page during normal viewing/zoom starves
-                            // the page raster. Text selection is an explicit mode, so this
-                            // is the right time to pay for it.
-                            <PdfjsTextLayer
-                              pdf={pdfDoc}
-                              pageNumber={pageNumber}
-                              scale={layerScale}
-                              interactive
+                          {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
+                            <OcrTextLayer
+                              words={ocrStateByPage[pageNumber].result?.words || []}
+                              pageSize={resolvedPageSize}
                             />
+                          )}
+                          {activeTool === 'text-select' && textAvailabilityByPage[pageNumber] === false && ocrStateByPage[pageNumber]?.status !== 'complete' && (
+                            <div style={{ position: 'absolute', left: 12, top: 12, zIndex: 45, pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {ocrStateByPage[pageNumber]?.status === 'running' ? (
+                                <>
+                                  <span style={{ padding: '6px 9px', borderRadius: 5, background: '#181b20', color: '#e8e2d4', fontSize: 12 }}>
+                                    Recognizing… {Math.round((ocrStateByPage[pageNumber]?.progress || 0) * 100)}%
+                                  </span>
+                                  <button type="button" onClick={() => cancelTextRecognition(pageNumber)}>Cancel</button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => recognizeTextOnPage(pageNumber)}
+                                  title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`}
+                                  style={{ padding: '7px 10px', border: '1px solid #3a4252', borderRadius: 5, background: '#181b20', color: '#e8e2d4', cursor: 'pointer' }}
+                                >
+                                  Recognize text on this page
+                                </button>
+                              )}
+                              <span style={{ color: '#9ca3af', fontSize: 10 }}>
+                                Local {OCR_ENGINE_NAME} - {OCR_ENGINE_LICENSE}. Works offline.
+                              </span>
+                              {ocrStateByPage[pageNumber]?.status === 'error' && (
+                                <span role="status" style={{ maxWidth: 260, padding: '6px 9px', borderRadius: 5, background: '#181b20', color: '#fca5a5', fontSize: 11 }}>
+                                  {ocrStateByPage[pageNumber].message}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {true && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                             <SearchHighlightLayer
@@ -30730,7 +31704,7 @@ ${pageBlocks}
                               fillContainer
                             />
                           )}
-                          {true && pdfDoc && (
+                          {pdfDoc && (
                             <PdfjsLinkLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
@@ -30738,6 +31712,23 @@ ${pageBlocks}
                               onInternalNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
                             />
                           )}
+                          {pdfDoc && (
+                            <PdfjsRedactionMarkLayer pdf={pdfDoc} pageNumber={pageNumber} />
+                          )}
+                          <TextMarkupLinkLayer
+                            annotations={pageAnnotationObjects}
+                            pageSize={resolvedPageSize}
+                            interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' ? 'select' : 'disabled'}
+                            onPageNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
+                            onSelectLink={(region) => {
+                              const annotation = pageAnnotationObjects[region.annotationIndex];
+                              if (!annotation) return;
+                              const nextSelection = { pageNumber, annotationIndex: region.annotationIndex, annotation };
+                              selectedToolbarAnnotationRef.current = nextSelection;
+                              setSelectedToolbarAnnotation(nextSelection);
+                              setPendingSvgSelection({ pageNumber, annotationIndex: region.annotationIndex, tick: Date.now() });
+                            }}
+                          />
                           {true && pdfDoc && (
                             <PdfjsFormLayer
                               pdf={pdfDoc}
@@ -30800,7 +31791,7 @@ ${pageBlocks}
                                 strokeWidth={Number(strokeWidth) || 3}
                                 arrowheadStyle={arrowheadStyle}
                                 annotations={pageAnnotations}
-                                onSaveAnnotations={handleSaveAnnotations}
+                                onSaveAnnotations={handleSaveAnnotationsWithTextMarkupAtomicity}
                                 onToolChange={setActiveTool}
                                 highlightColor="rgba(255, 193, 7, 0.3)"
                                 newSurveyMarkers={newSurveyMarkersByPage[pageNumber]}
@@ -30862,7 +31853,7 @@ ${pageBlocks}
                                 surveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                 onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
                                 onEraseCommit={!pdfFile?.id
-                                  ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(
+                                  ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotationsWithTextMarkupAtomicity(
                                     pageNumber,
                                     updatedJSON,
                                     {
@@ -30977,7 +31968,9 @@ ${pageBlocks}
                                 }
                               } catch (_e) { /* swallow */ }
                             }
-                            const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
+                            // Native Text Select must own the pointer path, including over
+                            // existing marks, so users can add a new stacked range.
+                            const svgInteractive = activeTool === 'select';
                             // UX: callout creation has NO Fabric canvas — the drag that
                             // places arrowTip→textBox starts on the SVG layer itself
                             // (SVGAnnotationLayer isCreationTool / onPointerDown callout
@@ -31225,7 +32218,7 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
-                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotations(pageNumber, updatedJSON, saveContext)}
+                                  onSaveAnnotations={(updatedJSON, saveContext) => handleSaveAnnotationsWithTextMarkupAtomicity(pageNumber, updatedJSON, saveContext)}
                                   onRequestEditMode={(annotationIndex, annotationType) => {
                                     // UX: Phase 14 CALL-10 — callout double-click routes
                                     // through the adapter-backed edit path. useSVGInteraction
@@ -31301,6 +32294,9 @@ ${pageBlocks}
                                     });
                                   }}
                                   activeTool={activeTool}
+                                  selectionMode={selectionMode}
+                                  lassoTouchOperation={lassoTouchOperation}
+                                  lassoTouchMode={lassoTouchMode}
                                   editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
                                   onRequestExitEdit={() => setEditingAnnotation(null)}
@@ -31354,6 +32350,7 @@ ${pageBlocks}
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
+                                  selectionOwnerPageNumber={selectedToolbarAnnotation?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
@@ -31408,7 +32405,7 @@ ${pageBlocks}
                                   surveyMarkers={newSurveyMarkersByPage[pageNumber]}
                                   onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
                                   onEraseCommit={!pdfFile?.id
-                                    ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(
+                                    ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotationsWithTextMarkupAtomicity(
                                       pageNumber,
                                       updatedJSON,
                                       {
@@ -31994,7 +32991,8 @@ ${pageBlocks}
                           </div>
                           {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs', annotationVisualCoverActive)}
                         </div>,
-                        portalTarget
+                        portalTarget,
+                        `pdfjs-overlay-${pageNumber}`,
                       );
                     });
                 })()}
@@ -32052,7 +33050,7 @@ ${pageBlocks}
                   // to true only when KAL-240 lands the real implementation.
                   const showTextMarkupHighlightMenu = false;
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
-                  const hasSplitMenu = isEraser || isHighlighterSplitMenu;
+                  const hasSplitMenu = isHighlighterSplitMenu;
                   const isActiveHighlighter = activeTool === 'highlighter';
                   const isActive = isHighlighter ? isActiveHighlighter : activeTool === t.id;
                   const button = (
@@ -32069,12 +33067,10 @@ ${pageBlocks}
                         if (isEraser) {
                           e.stopPropagation();
                           setActiveTool('eraser');
-                          setEraserCaretPopupOpen(false);
                           return;
                         }
                         setActiveTool(t.id);
                         setHighlighterCaretPopupOpen(false);
-                        setEraserCaretPopupOpen(false);
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
@@ -32101,16 +33097,10 @@ ${pageBlocks}
                       {hasSplitMenu && (
                         <div
                           data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
-                          data-eraser-caret-button={isEraser ? 'true' : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isEraser) {
-                              setActiveTool('eraser');
-                              setEraserCaretPopupOpen((open) => !open);
-                            } else {
-                              setActiveTool('highlighter');
-                              setHighlighterCaretPopupOpen((open) => !open);
-                            }
+                            setActiveTool('highlighter');
+                            setHighlighterCaretPopupOpen((open) => !open);
                           }}
                           style={{
                             position: 'absolute',
@@ -32141,8 +33131,8 @@ ${pageBlocks}
 
                   let popupFixedTop = 0;
                   let popupFixedLeft = 0;
-                  const popupOpen = isHighlighterSplitMenu ? highlighterCaretPopupOpen : eraserCaretPopupOpen;
-                  const buttonSelector = isHighlighterSplitMenu ? '[data-highlighter-caret-button="true"]' : '[data-eraser-caret-button="true"]';
+                  const popupOpen = highlighterCaretPopupOpen;
+                  const buttonSelector = '[data-highlighter-caret-button="true"]';
                   if (popupOpen && typeof document !== 'undefined') {
                     const btnEl = document.querySelector(buttonSelector);
                     if (btnEl) {
@@ -32180,9 +33170,8 @@ ${pageBlocks}
                       {button}
                       {popupOpen && createPortal(
                         <div
-                          ref={isHighlighter ? highlighterCaretPopupRef : eraserCaretPopupRef}
+                          ref={highlighterCaretPopupRef}
                           data-highlighter-caret-popup={isHighlighterSplitMenu ? 'true' : undefined}
-                          data-eraser-caret-popup={isEraser ? 'true' : undefined}
                           style={{
                             position: 'fixed',
                             top: `${popupFixedTop}px`,
@@ -32197,7 +33186,7 @@ ${pageBlocks}
                             display: 'flex',
                             flexDirection: 'column',
                             padding: '4px',
-                            minWidth: isHighlighterSplitMenu ? '150px' : '142px',
+                            minWidth: '150px',
                             color: '#e8e2d4',
                             pointerEvents: 'auto',
                             cursor: 'default',
@@ -32214,65 +33203,32 @@ ${pageBlocks}
                             borderBottom: '1px solid #2a3140',
                             marginBottom: '4px'
                           }}>
-                            {isHighlighterSplitMenu ? 'SurveyMarker Type' : 'Eraser Type'}
+                            SurveyMarker Type
                           </div>
-                          {isHighlighterSplitMenu ? (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('highlighter');
-                                  setHighlighterCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(activeTool === 'highlighter')}
-                              >
-                                Freehand highlight
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('text-highlight');
-                                  setHighlighterCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(activeTool === 'text-highlight')}
-                              >
-                                Text highlight
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('eraser');
-                                  setEraserMode('partial');
-                                  setEraserCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'partial' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(eraserMode === 'partial')}
-                              >
-                                Partial erase
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveTool('eraser');
-                                  setEraserMode('entire');
-                                  setEraserCaretPopupOpen(false);
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'entire' ? '#1f2430' : 'transparent'; }}
-                                style={optionStyle(eraserMode === 'entire')}
-                              >
-                                Full stroke erase
-                              </button>
-                            </>
-                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTool('highlighter');
+                              setHighlighterCaretPopupOpen(false);
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#1f2430' : 'transparent'; }}
+                            style={optionStyle(activeTool === 'highlighter')}
+                          >
+                            Freehand highlight
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTool('text-highlight');
+                              setHighlighterCaretPopupOpen(false);
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#1f2430' : 'transparent'; }}
+                            style={optionStyle(activeTool === 'text-highlight')}
+                          >
+                            Text highlight
+                          </button>
                         </div>,
                         document.body
                       )}
@@ -36464,6 +37420,25 @@ ${pageBlocks}
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
+      {browserPrintDocument}
+      {typeof document !== 'undefined' && createPortal(
+        <ApplyRedactionsModal
+          open={applyRedactionsModalOpen}
+          redactionCount={pendingRedactionRequest?.redactionCount || 0}
+          busy={applyRedactionsBusy}
+          progress={applyRedactionsProgress}
+          error={applyRedactionsError}
+          onCancel={() => {
+            if (applyRedactionsBusy) return;
+            setApplyRedactionsModalOpen(false);
+            setPendingRedactionRequest(null);
+            setApplyRedactionsError('');
+            showToast('Redaction cancelled — nothing was changed.', 'info');
+          }}
+          onConfirm={handleApplyPermanentRedactions}
+        />,
+        document.body,
+      )}
 
       {/* Phase 35 Plan 04 — bulk-delete confirmation modal + undo toast layer.
           Modal opens when handleRequestBulkDelete sets pendingDeletePlan to a
@@ -36489,6 +37464,58 @@ ${pageBlocks}
           if (runner) runner();
         }}
       />
+      {typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+        <TextSelectionActionBar
+          selection={activeTool === 'text-select' ? liveTextSelectionActionSelection : selectedTextMarkupActionSelection}
+          activeMarkupTypes={(activeTool === 'text-select'
+            ? liveTextSelectionActionSelection
+            : selectedTextMarkupActionSelection)?.activeMarkupTypes || []}
+          paintByMark={{
+            ...textMarkupPaintByType,
+            ...((activeTool === 'text-select'
+              ? liveTextSelectionActionSelection
+              : selectedTextMarkupActionSelection)?.paintByMark || {}),
+          }}
+          focusedPaintMark={focusedTextMarkupPaint}
+          linkEditorOpen={textLinkEditorOpen}
+          linkMode={textLinkMode}
+          linkValue={textLinkUrl}
+          linkError={textLinkError}
+          onAction={handleTextSelectionAction}
+          onFocusPaint={handleTextMarkupPaintFocus}
+          onLinkModeChange={(mode) => {
+            setTextLinkMode(mode);
+            setTextLinkUrl(mode === 'page' ? '1' : '');
+            setTextLinkError('');
+          }}
+          onLinkValueChange={(value) => {
+            setTextLinkUrl(value);
+            if (textLinkError) setTextLinkError('');
+          }}
+          onLinkSubmit={() => handleTextSelectionAction('link', {
+            commit: true,
+            linkMode: textLinkMode,
+            linkValue: textLinkUrl,
+          })}
+          onLinkOpen={() => {
+            const link = (selectedTextMarkupActionSelection || liveTextSelectionActionSelection)
+              ?.sourceMarks?.find((mark) => mark?.data?.markupType === 'link');
+            if (link?.data?.linkPageNumber) {
+              goToPage(link.data.linkPageNumber, { fallback: 'nearest' });
+            } else if (link?.data?.linkUrl) {
+              void openExternalDestination(link.data.linkUrl).catch((error) => {
+                showToast(error?.message || 'Could not open link.', 'error');
+              });
+            }
+          }}
+          onLinkRemove={() => handleTextSelectionAction('link', { remove: true })}
+          onLinkCancel={() => {
+            setTextLinkEditorOpen(false);
+            setTextLinkError('');
+          }}
+        />,
+        document.getElementById('chrome-sub-toolbar-host'),
+      )}
       <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />
 
       {/* Renderer toggle badge (hidden dev tool — Ctrl+Shift+V to toggle, ?renderer=canvas to force) */}

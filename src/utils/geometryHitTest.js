@@ -1398,6 +1398,16 @@ export const isPointOnImage = (point, imageObj, tolerance = DEFAULT_TOLERANCE) =
 
 export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
   if (!obj || !obj.type) return false;
+  if (obj?.data?.type === 'text-markup') {
+    return (obj.data.quads || []).some((quad) => {
+      const xs = [quad.x1, quad.x2, quad.x3, quad.x4];
+      const ys = [quad.y1, quad.y2, quad.y3, quad.y4];
+      return point.x >= Math.min(...xs) - tolerance
+        && point.x <= Math.max(...xs) + tolerance
+        && point.y >= Math.min(...ys) - tolerance
+        && point.y <= Math.max(...ys) + tolerance;
+    });
+  }
   if (obj?.data?.type === 'counter') {
     return isPointOnCounter(point, obj, tolerance);
   }
@@ -1837,6 +1847,37 @@ export const doesRectIntersectPath = (selRect, pathObj) => {
  */
 export const doesRectIntersectRect = (selRect, rectObj) => {
   if (!rectObj || hitTestType(rectObj) !== 'rect') return false;
+
+  if (!isLiveFabricObject(rectObj)) {
+    const width = Math.abs((rectObj.width || 0) * (rectObj.scaleX || 1));
+    const height = Math.abs((rectObj.height || 0) * (rectObj.scaleY || 1));
+    const left = rectObj.left ?? 0;
+    const top = rectObj.top ?? 0;
+    const cx = left + width / 2;
+    const cy = top + height / 2;
+    const angle = (Number(rectObj.angle) || 0) * Math.PI / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const rotate = (point) => {
+      const dx = point.x - cx;
+      const dy = point.y - cy;
+      return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+    };
+    const vertices = [
+      { x: left, y: top }, { x: left + width, y: top },
+      { x: left + width, y: top + height }, { x: left, y: top + height },
+    ].map(rotate);
+    if (vertices.some((point) => point.x >= selRect.left && point.x <= selRect.right
+      && point.y >= selRect.top && point.y <= selRect.bottom)) return true;
+    for (let index = 0; index < vertices.length; index += 1) {
+      if (doesRectIntersectLineSegment(selRect, vertices[index], vertices[(index + 1) % vertices.length], 0)) return true;
+    }
+    const selectionCorners = [
+      { x: selRect.left, y: selRect.top }, { x: selRect.right, y: selRect.top },
+      { x: selRect.right, y: selRect.bottom }, { x: selRect.left, y: selRect.bottom },
+    ];
+    return selectionCorners.some((point) => isPointOnRect(point, rectObj, 0.001));
+  }
 
 
 

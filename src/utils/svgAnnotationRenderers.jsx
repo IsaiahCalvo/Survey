@@ -468,6 +468,74 @@ export const renderRect = (obj, index) => {
   );
 };
 
+export const renderTextMarkup = (obj, index) => {
+  const data = obj?.data || {};
+  const type = String(data.markupType || obj?.exportType || '').toLowerCase();
+  const quads = Array.isArray(data.quads) ? data.quads : [];
+  if (data.type !== 'text-markup' || quads.length === 0) return null;
+  const color = obj.fill || obj.stroke || '#f4d35e';
+  const opacity = Math.max(0, Math.min(1, Number(obj.opacity ?? 0.3)));
+  const key = `text-markup-${obj.id || data.id || index}`;
+  const shapeId = obj.id || data.id || key;
+  const lineWidth = Math.max(0.8, Number(data.lineWidth) || 1.2);
+
+  if (type === 'highlight' || type === 'redact') {
+    const d = quads.map((q) => (
+      `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`
+    )).join(' ');
+    return (
+      <path
+        key={key}
+        d={d}
+        fill={type === 'redact' ? '#000000' : color}
+        fillRule="nonzero"
+        opacity={type === 'redact' ? 1 : opacity}
+        style={data.overlapMode === 'layered' ? { mixBlendMode: 'multiply' } : undefined}
+        data-shape-id={shapeId}
+        data-shape-kind={`text-markup-${type}`}
+        data-overlap-mode={data.overlapMode || 'layered'}
+      />
+    );
+  }
+
+  const paths = quads.map((q) => {
+    const height = Math.max(1, Math.hypot(q.x3 - q.x1, q.y3 - q.y1));
+    const startX = type === 'strikeout' ? (q.x1 + q.x3) / 2 : q.x3;
+    const startY = type === 'strikeout' ? (q.y1 + q.y3) / 2 : q.y3;
+    const endX = type === 'strikeout' ? (q.x2 + q.x4) / 2 : q.x4;
+    const endY = type === 'strikeout' ? (q.y2 + q.y4) / 2 : q.y4;
+    if (type !== 'squiggly') return `M ${startX} ${startY} L ${endX} ${endY}`;
+    const length = Math.max(1, Math.hypot(endX - startX, endY - startY));
+    const ux = (endX - startX) / length;
+    const uy = (endY - startY) / length;
+    const nx = -uy;
+    const ny = ux;
+    const amplitude = Math.max(0.7, Math.min(1.8, height * 0.12));
+    const segments = Math.max(6, Math.ceil(length / 2.5));
+    let d = `M ${startX} ${startY}`;
+    for (let i = 1; i <= segments; i += 1) {
+      const along = length * i / segments;
+      const wave = i % 2 === 0 ? -amplitude : amplitude;
+      d += ` L ${startX + ux * along + nx * wave} ${startY + uy * along + ny * wave}`;
+    }
+    return d;
+  }).join(' ');
+  return (
+    <path
+      key={key}
+      d={paths}
+      fill="none"
+      stroke={color}
+      strokeWidth={lineWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      opacity={opacity}
+      data-shape-id={shapeId}
+      data-shape-kind={`text-markup-${type}`}
+    />
+  );
+};
+
 /**
  * Dispatch a pre-built arrowhead spec to its SVG primitive.
  *

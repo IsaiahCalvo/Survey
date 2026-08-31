@@ -66,6 +66,16 @@ function __lineBboxShouldLog(obj) {
 export function getAnnotationBBox(obj) {
   if (!obj) return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
 
+  if (obj?.data?.type === 'text-markup') {
+    return {
+      left: Number(obj.left) || 0,
+      top: Number(obj.top) || 0,
+      width: Math.max(0, Number(obj.width) || 0),
+      height: Math.max(0, Number(obj.height) || 0),
+      angle: 0,
+    };
+  }
+
   const type = String(obj.type || '').toLowerCase();
 
   switch (type) {

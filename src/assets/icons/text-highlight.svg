@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 242 280">
+  <defs>
+    <mask id="highlight-cutout">
+      <rect width="242" height="280" fill="white"/>
+      <path d="M67 68H191V96H141V212H117V96H67Z" fill="black"/>
+    </mask>
+  </defs>
+  <path d="M37 62Q41 44 59 44H223Q241 44 237 62L205 218Q201 236 183 236H19Q1 236 5 218Z" fill="#fff" mask="url(#highlight-cutout)"/>
+</svg>

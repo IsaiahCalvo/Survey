@@ -11,12 +11,11 @@
  *     on settle) — the whole point of owning the renderer
  *   • DPR-correct, double-buffered, cancellable rasters + a deep-zoom detail tile
  *
- * Deliberately LEANER than the prototype: in the real app the overlay layers
- * (annotations, text-select, search, forms) are supplied by PDFViewer's own
- * per-page overlay portal loop, mounted into the page hosts this container
- * exposes. So this container only DRAWS pages + exposes correct page hosts +
- * answers the contract. Features not yet built (search, text-markup select/erase,
- * form state/authoring, print) are SAFE STUBs returning benign values (Stage 4).
+ * Deliberately LEANER than the prototype: this component owns the page raster
+ * and selectable pdf.js text layer. Annotation, search, link, and form overlays
+ * stay in PDFViewer's per-page portal loop. Features not yet built (search,
+ * text-markup select/erase, form state/authoring, print) are SAFE STUBs returning
+ * benign values (Stage 4).
  *
  * INVARIANTS honored: imports the pdf.js worker the production-proven way; never
  * statically imports from src/prototype; introduces NO JavaScript zoom
@@ -40,6 +39,7 @@ import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
+import PdfjsTextLayer from './PdfjsTextLayer';
 import {
   getDocumentMinimumScale,
   getWheelZoomScale,
@@ -552,6 +552,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   textMarkupColor = null,
   // eslint-disable-next-line no-unused-vars
   textMarkupOpacity = null,
+  textSelectionLayerActive = false,
   className = '',
   style = {},
   // eslint-disable-next-line no-unused-vars
@@ -565,6 +566,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   onPageRendered,
   // eslint-disable-next-line no-unused-vars
   onTextSelectionEnd,
+  onTextAvailability,
   onPDFBookmarksAvailable,
   onPageContainersChange,
   onMountedPagesChange,
@@ -1442,7 +1444,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // Preventing pointerdown on a PDF form widget/link suppresses its focus,
       // click, and change sequence entirely on desktop.
       if (isEditableTarget(event.target)
-        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return;
+        || event.target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"], [data-text-markup-link]')) return;
       event.preventDefault();
       event.stopPropagation();
       panPointerRef.current = {
@@ -1551,10 +1553,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
 
     const isNativeInteractionTarget = (target) => {
-      if (isEditableTarget(target)) return true;
-      if (target?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
+      const nativeTarget = target?.nodeType === 3 ? target.parentElement : target;
+      if (isEditableTarget(nativeTarget)) return true;
+      if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
       return interactionModeRef.current === 'TextSelection'
-        && Boolean(target?.closest?.('.textLayer, .textLayer span, .annotationLayer'));
+        && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer'));
     };
 
     const onTouchStart = (event) => {
@@ -2098,6 +2101,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       id={viewerId}
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
       data-mobile-pdf-surface={isMobileSurface ? 'true' : 'false'}
+      data-text-selection={interactionMode === 'TextSelection' ? 'true' : 'false'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -2108,9 +2112,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         WebkitOverflowScrolling: 'touch',
         touchAction: isMobileSurface ? 'none' : 'pan-x pan-y pinch-zoom',
         WebkitTouchCallout: isMobileSurface ? 'none' : undefined,
-        WebkitUserSelect: isMobileSurface ? 'none' : undefined,
+        WebkitUserSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         WebkitUserDrag: isMobileSurface ? 'none' : undefined,
-        userSelect: isMobileSurface ? 'none' : undefined,
+        userSelect: isMobileSurface && interactionMode !== 'TextSelection' ? 'none' : undefined,
         ...style
       }}
     >
@@ -2173,12 +2177,24 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           -webkit-touch-callout: none !important;
           -webkit-user-drag: none !important;
         }
+        .survey-pdfjs-mobile-surface[data-text-selection='true'] {
+          -webkit-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
+        }
         .survey-pdfjs-mobile-surface input,
         .survey-pdfjs-mobile-surface textarea,
         .survey-pdfjs-mobile-surface [contenteditable='true'] {
           -webkit-user-select: text !important;
           user-select: text !important;
           -webkit-touch-callout: default !important;
+        }
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive,
+        .survey-pdfjs-mobile-surface .pdfjsTextLayer.is-interactive :is(span, br) {
+          -webkit-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
+          -webkit-user-drag: auto !important;
         }
       `}</style>
       {loading ? (
@@ -2260,6 +2276,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                       scrollerRef={scrollerRef}
                       isMobileSurface={isMobileSurface}
                     />
+                    {textSelectionLayerActive && (
+                      <PdfjsTextLayer
+                        pdf={pdfRef.current}
+                        pageNumber={i + 1}
+                        scale={scale}
+                        rotation={rotation}
+                        interactive
+                        onTextAvailability={onTextAvailability}
+                      />
+                    )}
                   </>
                 ) : (
                   <div style={{ width: '100%', height: '100%', background: '#fff' }} />

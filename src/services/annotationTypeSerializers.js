@@ -148,6 +148,7 @@ export function fabricObjectToDbType(fabricObj) {
   if (dataKind === 'sticky_note' || dataKind === 'sticky-note') return 'sticky_note';
   if (dataKind === 'eraser') return 'eraser';
   if (dataKind === 'form-field') return 'form-field';
+  if (dataKind === 'text-markup') return 'square';
 
   const fabricType = String(fabricObj.type || '').toLowerCase();
   return FABRIC_TYPE_TO_DB_TYPE[fabricType] || null;

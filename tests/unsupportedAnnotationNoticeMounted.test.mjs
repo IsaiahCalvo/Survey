@@ -31,6 +31,10 @@ async function loadNotice() {
     .replace(
       "import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';",
       `import { formatUnsupportedAnnotationNotice } from ${JSON.stringify(formatterUrl)};`,
+    )
+    .replace(
+      "import Icon from '../Icons';",
+      'const Icon = ({ name, size }) => <svg data-icon={name} width={size} height={size} />;',
     );
 
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
@@ -47,7 +51,7 @@ async function loadNotice() {
   };
 }
 
-async function mountNotice(t, initialCounts = { Stamp: 1 }) {
+async function mountNotice(t, initialCounts = { Redact: 1 }) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
     pretendToBeVisual: true,
@@ -107,61 +111,36 @@ function notice(host) {
   return host.querySelector('[aria-expanded]');
 }
 
-test('collapsed notice exits after three seconds', async (t) => {
+test('collapsed warning stays visible until dismissed', async (t) => {
   const mounted = await mountNotice(t);
   try {
-    await mounted.advance(2999);
+    await mounted.advance(60_000);
     assert.equal(notice(mounted.host)?.style.opacity, '1');
-    await mounted.advance(1);
-    assert.equal(notice(mounted.host)?.style.opacity, '0');
-    await mounted.advance(300);
-    assert.equal(mounted.dismissals.length, 1);
+    assert.equal(mounted.dismissals.length, 0);
   } finally {
     await mounted.teardown();
   }
 });
 
-test('each notice tap toggles detail and restarts its five- or three-second timer', async (t) => {
+test('a notice without redactions keeps its prior auto-dismiss timing', async (t) => {
+  const mounted = await mountNotice(t, { Stamp: 1 });
+  try {
+    await mounted.advance(3000);
+    assert.equal(notice(mounted.host)?.style.opacity, '0');
+  } finally {
+    await mounted.teardown();
+  }
+});
+
+test('each notice tap toggles detail without starting a dismiss timer', async (t) => {
   const mounted = await mountNotice(t);
   try {
-    await mounted.advance(2500);
     await act(async () => notice(mounted.host).dispatchEvent(new MouseEvent('click', { bubbles: true })));
     assert.equal(notice(mounted.host).getAttribute('aria-expanded'), 'true');
-
-    await mounted.advance(4999);
+    await mounted.advance(60_000);
     assert.equal(notice(mounted.host).style.opacity, '1');
-
     await act(async () => notice(mounted.host).dispatchEvent(new MouseEvent('click', { bubbles: true })));
     assert.equal(notice(mounted.host).getAttribute('aria-expanded'), 'false');
-    await mounted.advance(2999);
-    assert.equal(notice(mounted.host).style.opacity, '1');
-    await mounted.advance(1);
-    assert.equal(notice(mounted.host).style.opacity, '0');
-  } finally {
-    await mounted.teardown();
-  }
-});
-
-test('expanded notice exits after five seconds', async (t) => {
-  const mounted = await mountNotice(t);
-  try {
-    await act(async () => notice(mounted.host).dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    await mounted.advance(4999);
-    assert.equal(notice(mounted.host)?.style.opacity, '1');
-    await mounted.advance(1);
-    assert.equal(notice(mounted.host)?.style.opacity, '0');
-  } finally {
-    await mounted.teardown();
-  }
-});
-
-test('an unrelated parent rerender does not restart the active timer', async (t) => {
-  const mounted = await mountNotice(t);
-  try {
-    await mounted.advance(2500);
-    await mounted.render({ Stamp: 1 });
-    await mounted.advance(500);
-    assert.equal(notice(mounted.host)?.style.opacity, '0');
   } finally {
     await mounted.teardown();
   }
@@ -179,19 +158,14 @@ test('dismiss button exits immediately without toggling the notice', async (t) =
   }
 });
 
-test('unmount and document replacement clear stale dismissal timers', async (t) => {
+test('document replacement keeps the new warning visible', async (t) => {
   const mounted = await mountNotice(t);
   try {
-    await mounted.advance(2500);
-    await mounted.render({ Sound: 1 });
-    await mounted.advance(500);
+    await mounted.render({ Redact: 2 });
+    await mounted.advance(60_000);
     assert.equal(notice(mounted.host)?.style.opacity, '1');
     assert.equal(mounted.dismissals.length, 0);
-
-    await mounted.advance(2500);
-    assert.equal(notice(mounted.host)?.style.opacity, '0');
     await mounted.teardown();
-    await mounted.advance(1000);
     assert.equal(mounted.dismissals.length, 0);
   } finally {
     if (mounted.host.isConnected) await mounted.teardown();

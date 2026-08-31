@@ -22,7 +22,9 @@ test('live text formatting uses only app-styled menus', () => {
 });
 
 test('compact eraser and shape selects keep 24px visuals with unclipped 44px targets', () => {
-  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,700}overflow: visible/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,900}overflow: visible/);
+  assert.match(mobileCss, /\.mobile-pdf-properties \{[\s\S]{0,350}padding: 0 52px 0 8px;/);
+  assert.match(mobileCss, /\.mobile-pdf-properties--text \{[\s\S]{0,350}padding-right: 8px;/);
   assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\) > \.mobile-styled-select[\s\S]{0,100}height: 24px;[\s\S]{0,50}min-height: 24px/);
   assert.match(mobileCss, /\.mobile-pdf-properties:not\(\.mobile-pdf-properties--text\)[\s\S]{0,250}\.mobile-styled-select__trigger::after[\s\S]{0,120}inset-block: -10px/);
   assert.match(mobileCss, /\.mobile-pdf-properties--text > \.mobile-styled-select[\s\S]{0,180}height: 44px;[\s\S]{0,50}min-height: 44px/);

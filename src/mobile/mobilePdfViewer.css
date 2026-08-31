@@ -368,6 +368,137 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__button:disabled { opacity: 0.35; }
 
+.mobile-pdf-tools__select-family {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.mobile-pdf-tools__select-family .mobile-pdf-tools__button {
+  position: relative;
+  border-color: transparent;
+}
+
+.mobile-pdf-tools__select-family:hover,
+.mobile-pdf-tools__select-family:focus-within,
+.mobile-pdf-tools__select-family[data-active='true'] {
+  border-color: var(--gold-soft, #b6904a);
+}
+
+.mobile-pdf-tools__select-family:hover .mobile-pdf-tools__button,
+.mobile-pdf-tools__select-family:focus-within .mobile-pdf-tools__button {
+  border-color: transparent;
+}
+
+.mobile-pdf-tools__select-caret {
+  position: absolute;
+  left: 31px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  z-index: 1;
+}
+
+.mobile-pdf-lasso-controls {
+  position: fixed;
+  left: 52px;
+  bottom: calc(var(--mobile-viewer-dock-height) + 12px);
+  z-index: 5751;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  color: #e8e2d4;
+  background: rgba(24, 27, 32, 0.96);
+  border: 1px solid #3c424d;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+}
+
+.mobile-pdf-lasso-controls > button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.mobile-pdf-lasso-controls > button.is-active,
+.mobile-pdf-lasso-controls > button:active {
+  color: var(--accent-primary, #d8a84e);
+  background: #2a2218;
+  border-color: var(--gold-soft, #b6904a);
+}
+
+.mobile-pdf-lasso-controls > button:focus-visible {
+  outline: 2px solid var(--accent-primary, #d8a84e);
+  outline-offset: -2px;
+}
+
+.mobile-pdf-select-mode__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 8998;
+  border: 0;
+  background: transparent;
+}
+
+.mobile-pdf-select-mode__menu {
+  position: fixed;
+  z-index: 8999;
+  width: min(180px, calc(100vw - 16px));
+  max-height: min(152px, calc(100dvh - 16px));
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #e8e2d4;
+  background: #181b20;
+  border: 1px solid #3c424d;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.mobile-pdf-select-mode__menu > button {
+  min-height: 44px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.mobile-pdf-select-mode__menu > button:focus-visible,
+.mobile-pdf-tools__select-caret:focus-visible {
+  outline: 2px solid var(--accent-primary, #d8a84e);
+  outline-offset: -2px;
+}
+
+.mobile-pdf-select-mode__menu > button.is-active {
+  color: var(--accent-primary, #d8a84e);
+  background: #2a2218;
+}
+
 .mobile-pdf-tools__divider {
   width: 26px;
   height: 1px;
@@ -650,7 +781,10 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   max-width: none;
   height: 36px;
   min-height: 36px;
-  padding: 0 8px;
+  /* The strip starts after the 44px tool rail, but its controls align with
+     the page navigation in the full-width header above. The extra right
+     padding cancels half of that rail offset. */
+  padding: 0 52px 0 8px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -677,6 +811,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      to it. Anchor the row at its scroll origin so every control is reachable. */
   height: 52px;
   min-height: 52px;
+  padding-right: 8px;
   justify-content: flex-start;
   scroll-padding-inline: 8px;
   touch-action: pan-x;

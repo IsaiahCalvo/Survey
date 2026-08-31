@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import {
   adaptSquare,
   adaptCircle,
@@ -13,6 +13,7 @@ import {
   adaptUnderline,
   adaptSquiggly,
   adaptStrikeOut,
+  adaptRedact,
   resolveAdapter,
 } from '../../../src/utils/pdfNativeExport/adapters/index.js';
 
@@ -212,6 +213,25 @@ test('adaptHighlight writes Highlight with QuadPoints in Adobe order', async () 
   assert.deepEqual(qp, [10, PAGE_H - 20, 50, PAGE_H - 20, 10, PAGE_H - 30, 50, PAGE_H - 30]);
 });
 
+test('text markup export preserves stored multi-line quads, selected text, and opacity', async () => {
+  const ctx = await setupContext();
+  const ref = adaptHighlight({
+    id: 'multi', type: 'group', exportType: 'highlight', left: 10, top: 20, width: 60, height: 30,
+    fill: '#abcdef', opacity: 0.42,
+    data: {
+      selectedText: 'line one\nline two',
+      quads: [
+        { x1: 10, y1: 20, x2: 50, y2: 20, x3: 10, y3: 30, x4: 50, y4: 30 },
+        { x1: 12, y1: 40, x2: 70, y2: 40, x3: 12, y3: 50, x4: 70, y4: 50 },
+      ],
+    },
+  }, ctx);
+  const dict = readDict(ctx.pdfDoc, ref);
+  assert.equal(dict.get(PDFName.of('Contents')).decodeText(), 'line one\nline two');
+  assert.equal(dict.get(PDFName.of('CA')).value(), 0.42);
+  assert.equal(readNumberArray(dict, 'QuadPoints').length, 16);
+});
+
 test('adaptUnderline, adaptSquiggly, adaptStrikeOut share quad-point math', async () => {
   const ctx = await setupContext();
   for (const [adapt, subtype] of [
@@ -225,6 +245,26 @@ test('adaptUnderline, adaptSquiggly, adaptStrikeOut share quad-point math', asyn
     );
     assert.equal(readSubtype(ctx.pdfDoc, ref), subtype);
   }
+});
+
+test('adaptRedact writes a non-concealing mark without selected text', async () => {
+  const ctx = await setupContext();
+  const ref = adaptRedact({
+    id: 'redact', type: 'group', exportType: 'redact', left: 10, top: 20, width: 80, height: 14,
+    fill: '#000000', opacity: 1,
+    data: {
+      selectedText: 'Private text',
+      quads: [{ x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 }],
+    },
+  }, ctx);
+  const dict = readDict(ctx.pdfDoc, ref);
+  assert.equal(dict.get(PDFName.of('Subtype')).decodeText(), 'Redact');
+  assert.deepEqual(readNumberArray(dict, 'IC'), [0, 0, 0]);
+  assert.equal(dict.get(PDFName.of('Contents')), undefined);
+  const appearance = dict.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
+  assert.match(appearanceSource, /\bre\s+S\b/);
+  assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);
 });
 
 test('resolveAdapter picks the right per-type adapter', () => {

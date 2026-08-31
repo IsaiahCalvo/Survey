@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../supabaseClient';
+import Icon from '../../Icons';
 import {
   createRevision,
   listRevisions,
@@ -840,7 +841,7 @@ export default function RevisionsPanel({
             }}
             aria-label="Close version history panel"
           >
-            ×
+            <Icon name="close" size={17} />
           </button>
         )}
       </div>

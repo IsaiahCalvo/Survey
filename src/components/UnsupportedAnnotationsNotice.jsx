@@ -8,16 +8,15 @@
  * aren't displayed. They're not deleted — they stay in the file and will
  * still be included when you export.") and buckets anything unnameable as
  * "annotations of a type we don't recognize" — never raw PDF subtype jargon.
- * Only genuinely-invisible types trigger it; annotations imported as visible
- * (even locked) proxies — sticky notes, underline/strikeout/squiggly — never
- * do. No action buttons; compact notices auto-dismiss after 3s, expanded
- * notices after 5s, and the X dismisses immediately.
+ * Redaction marks get a stronger warning because their covered text remains
+ * readable. The notice stays until the user dismisses it.
  *
  * Default export UnsupportedAnnotationsNotice takes `unsupportedCounts`
  * ({ Stamp: 2, ... } from the importer) and `onDismiss`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';
+import Icon from '../Icons';
 
 const COLLAPSED_DISMISS_MS = 3000;
 const EXPANDED_DISMISS_MS = 5000;
@@ -38,6 +37,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([type, count]) => `${type}:${count}`)
     .join('|');
+  const hasRedactions = Number(unsupportedCounts?.Redact) > 0;
 
   const clearDismissCompletion = useCallback(() => {
     if (dismissCompletionRef.current !== null) {
@@ -75,14 +75,13 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   }, [clearDismissCompletion, noticeIdentity]);
 
   useEffect(() => {
-    if (!isVisible || isExiting) return undefined;
+    if (!isVisible || isExiting || hasRedactions) return undefined;
     const dismissAfter = isMobile && !isExpanded
       ? COLLAPSED_DISMISS_MS
       : EXPANDED_DISMISS_MS;
     const timer = setTimeout(handleDismiss, dismissAfter);
-
     return () => clearTimeout(timer);
-  }, [handleDismiss, isExpanded, isExiting, isMobile, isVisible, noticeIdentity]);
+  }, [handleDismiss, hasRedactions, isExpanded, isExiting, isMobile, isVisible, noticeIdentity]);
 
   const message = formatUnsupportedAnnotationNotice(unsupportedCounts);
   if (!isVisible || !message) {
@@ -127,6 +126,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     >
       {/* Circled information mark: explanatory notice, not visibility toggle. */}
       <div
+        aria-label="Information"
         style={{
           flexShrink: 0,
           width: 20,
@@ -136,18 +136,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           justifyContent: 'center',
         }}
       >
-        <svg
-          aria-label="Information"
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle cx="10" cy="10" r="8" stroke="#d8a84e" strokeWidth="1.5" />
-          <circle cx="10" cy="6.2" r="1" fill="#d8a84e" />
-          <path d="M10 9V14" stroke="#d8a84e" strokeWidth="1.7" strokeLinecap="round" />
-        </svg>
+        <Icon name="infoCircle" size={20} color="#d8a84e" />
       </div>
 
       {/* Message */}
@@ -161,7 +150,9 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
             whiteSpace: isMobile && !isExpanded ? 'nowrap' : 'normal',
           }}
         >
-          {isMobile ? 'Unsupported annotation' : 'Some annotations aren’t displayed'}
+          {hasRedactions
+            ? 'Redactions are not applied'
+            : (isMobile ? 'Unsupported annotation' : 'Some annotations aren’t displayed')}
         </div>
         {(!isMobile || isExpanded) && (
           <div
@@ -193,20 +184,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
         title="Dismiss"
         aria-label="Dismiss"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M4 4L12 12M12 4L4 12"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
+        <Icon name="close" size={16} />
       </button>
     </div>
   );

@@ -9,6 +9,7 @@
  */
 import { useState } from 'react';
 import { passwordRequirements } from './authFlow';
+import Icon from '../Icons';
 
 const DEFAULT_THEME = {
   ink: '#f4f1ea', muted: '#8d96a6', card: '#181c24', rule: '#2a3140',
@@ -71,7 +72,7 @@ export default function PasswordRequirements({
           <div style={{ fontSize: 11.5, fontWeight: 700, color: t.ink, marginBottom: 7 }}>Your password must:</div>
           {reqs.map((r) => (
             <div key={r.id} style={{ display: 'flex', gap: 7, fontSize: 11.5, color: r.met ? t.good : t.muted, lineHeight: 1.55 }}>
-              <span style={{ width: 12, flex: 'none', textAlign: 'center' }}>{r.met ? '✓' : '○'}</span>
+              <span style={{ width: 12, height: 12, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.met ? <Icon name="check" size={12} /> : '○'}</span>
               <span>{r.label}</span>
             </div>
           ))}

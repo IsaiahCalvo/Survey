@@ -9,7 +9,7 @@
  * - Single <svg viewBox="0 0 pageWidth pageHeight"> per page
  * - All coordinates in unscaled PDF page space
  * - Browser handles zoom scaling automatically via viewBox
- * - vector-effect="non-scaling-stroke" keeps stroke widths constant
+ * - Annotation visuals scale with the viewBox; only selection chrome stays screen-constant
  * - mix-blend-mode: multiply for survey marker annotations
  * - pathOffset transform chain for correct pen stroke positioning
  * - Selection handles use inverseScale for constant visual pixel size
@@ -33,6 +33,7 @@ import {
   renderCounter,
   renderPolygon,
   renderPolyline,
+  renderTextMarkup,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
@@ -62,6 +63,7 @@ import {
   stampAnnotationCreationIdentity,
 } from '../utils/annotationStorageIdentity.js';
 import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
+import { isBlockedFromAreaSelection } from '../utils/annotationSelectionEligibility.js';
 import {
   beginAnnotationGesture,
   markAnnotationPointerRelease,
@@ -70,6 +72,7 @@ import {
   updateAnnotationGesture,
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
+import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
@@ -293,6 +296,9 @@ const SVGAnnotationLayer = memo(({
   onSaveAnnotations,   // (updatedJSON, saveContext) => void
   onRequestEditMode,   // (annotationIndex, annotationType) => void
   activeTool,          // string — current tool (e.g., 'pan', 'pen', etc.)
+  selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
+  lassoTouchOperation = 'replace',
+  lassoTouchMode = 'window',
   editingAnnotationIndex, // number | null — index of annotation currently being edited in FabricEditCanvas (hidden in SVG)
   // UX 2026-04-19: editType of the current edit session ('text' | 'callout' | 'bbox' | null).
   // 'bbox' means the user double-clicked a counter / line / arrow / polygon / polyline and
@@ -371,6 +377,7 @@ const SVGAnnotationLayer = memo(({
   // visible annotation context changes so stale selection chrome disappears
   // without saving or deleting any annotation data.
   selectionClearToken = 0,
+  selectionOwnerPageNumber = null,
   onSelectionChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
   // listener in pan mode and, via resolveAnnotationAt, broadcasts
@@ -479,7 +486,7 @@ const SVGAnnotationLayer = memo(({
     handleAnnotationPointerDown, handleAnnotationPointerEnter,
     handleAnnotationPointerLeave, handleAnnotationDoubleClick,
     handleSvgPointerDown, handleHandlePointerDown,
-    handlePointerMove, handlePointerUp,
+    handlePointerMove, handlePointerUp, handlePointerCancel,
     isSelected, deleteSelected,
     // UX: 2026-04-20 — multi-index selection setter, used by the Ungroup
     // restore path so freed group members stay selected as a multi-set.
@@ -505,9 +512,18 @@ const SVGAnnotationLayer = memo(({
     // steals events from annotations underneath.
     marqueeRect,
     marqueeDirection,
+    lassoMode,
+    lassoPoints,
+    lassoPointerType,
+    lassoOperation,
+    cancelLasso,
+    shouldHandoffLassoPointer,
+    shouldIgnoreLassoPointer,
   } = useSVGInteraction({
     svgRef, annotations, pageWidth: width, pageHeight: height,
     onSaveAnnotations, onRequestEditMode,
+    lassoTouchOperation,
+    lassoTouchMode,
     // UX: Phase 14 CALL-10 — wire the callout drag machinery. The hook
     // reads `callouts` to look up the original React callout by id at
     // drag-start (for whole-move delta math), dispatches selection changes
@@ -525,11 +541,14 @@ const SVGAnnotationLayer = memo(({
     onUpdateCallout,
     // UX: Phase 19 — marquee only activates when tool === 'select'.
     activeTool,
+    selectionMode,
     // Phase 35 Plan 03 — forward per-user delete authority props to the
     // hook's marquee post-filter + click hit-test gate.
     viewerId,
     documentOwnerId,
-    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current.map((entry) => entry.index),
+    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current
+      .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
+      .map((entry) => entry.index),
     // Phase 35 Plan 04 — page number + bulk-delete interceptor for
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
@@ -595,6 +614,15 @@ const SVGAnnotationLayer = memo(({
     surveyMarkerDragRef.current = null;
   }, [selectionClearToken, deselectAll]);
 
+  useLayoutEffect(() => {
+    if (selectionOwnerPageNumber != null && selectionOwnerPageNumber !== pageNumber) {
+      deselectAll();
+      setSelectedSurveyMarkerId(null);
+      setSurveyMarkerPreviewBounds(null);
+      surveyMarkerDragRef.current = null;
+    }
+  }, [selectionOwnerPageNumber, pageNumber, deselectAll]);
+
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
   // OR targets a different page, clear this layer's hoveredId (a previously
   // hovered annotation should lose its glow when the cursor moves off).
@@ -642,8 +670,10 @@ const SVGAnnotationLayer = memo(({
   // tools. The three booleans have distinct jobs:
   //
   //   isSelectTool   — click-to-select / hover / double-click edit gate. Only
-  //                    the Select/Text-Select tools drive annotation selection
-  //                    behavior. Use this for any guard that protects
+  //                    object Select drives annotation selection behavior.
+  //                    Text Select must leave every SVG hit target inert so
+  //                    the PDF.js text layer receives the native drag. Use
+  //                    this for any guard that protects
   //                    select-mode-specific handlers (existing call sites at
   //                    988/1050/1084 KEEP isInteractive because they also
   //                    need creation-tool pointer routing — see Step 3 audit).
@@ -663,7 +693,7 @@ const SVGAnnotationLayer = memo(({
   // clicks, shape drags, and click-to-dismiss all keep working.
   const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
   const isCalloutTextEditMode = !!editingCalloutId;
-  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
+  const isSelectTool = activeTool === 'select'
     && !isCalloutTextEditMode
     && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: creation tools get pointerEvents=auto so the crosshair class shows
@@ -1375,11 +1405,13 @@ const SVGAnnotationLayer = memo(({
   const initialZoomGenRef = useRef(zoomGeneration);
   useEffect(() => {
     if (zoomGeneration === initialZoomGenRef.current) return;
+    initialZoomGenRef.current = zoomGeneration;
+    cancelLasso();
     const state = shapeCreationRef.current;
     if (state && FREEHAND_CREATION_TOOLS.includes(state.tool)) {
       commitShapeCreationRef.current(null);
     }
-  }, [zoomGeneration]);
+  }, [zoomGeneration, cancelLasso]);
 
   // A second finger means the user is pinching the PDF, not finishing a mark —
   // cancel (never commit) the first finger's partial gesture. Parity with the
@@ -2163,7 +2195,12 @@ const SVGAnnotationLayer = memo(({
       const objectType = String(obj.type || '').toLowerCase();
       let element = null;
 
-      if (obj.data && obj.data.type === 'counter') {
+      if (obj.data && obj.data.type === 'text-markup') {
+        element = renderTextMarkup(obj, i);
+        if (obj.data.markupType === 'highlight' && obj.data.overlapMode === 'uniform' && element) {
+          element = cloneElement(element, { opacity: 0, 'data-uniform-hit-source': 'true' });
+        }
+      } else if (obj.data && obj.data.type === 'counter') {
         if (window.__COUNTER_SVG_DIAG) {
           svgAnnotationDebug(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
         }
@@ -3631,7 +3668,9 @@ const SVGAnnotationLayer = memo(({
     if (visualTransform?.previewObjects && visualTransform.previewObjects[i]) {
       renderObj = visualTransform.previewObjects[i];
       const previewType = String(renderObj.type || '').toLowerCase();
-      if (renderObj?.data?.type === 'counter') {
+      if (renderObj?.data?.type === 'text-markup') {
+        renderElement = renderTextMarkup(renderObj, i);
+      } else if (renderObj?.data?.type === 'counter') {
         renderElement = renderCounter(renderObj, i);
       } else if (previewType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
@@ -3844,6 +3883,7 @@ const SVGAnnotationLayer = memo(({
       if (!visualTransform) return undefined;
       // Single annotation visual transform (from Plan 02)
       if (typeof visualTransform.id === 'number' && visualTransform.id === i) {
+        if (visualTransform.previewObjects?.[i]) return undefined;
         if (visualTransform.resize) {
           if (Array.isArray(visualTransform.resize.pageMatrix)) {
             return `matrix(${visualTransform.resize.pageMatrix.join(' ')})`;
@@ -4630,6 +4670,28 @@ const SVGAnnotationLayer = memo(({
     );
   });
 
+  const uniformTextMarkupElements = useMemo(() => {
+    const groups = new Map();
+    for (const entry of stagedAnnotations) {
+      const obj = entry?.obj;
+      if (obj?.data?.type !== 'text-markup' || obj.data.markupType !== 'highlight' || obj.data.overlapMode !== 'uniform') continue;
+      const key = `${obj.fill || obj.stroke || '#f4d35e'}:${Number(obj.opacity ?? 0.3)}`;
+      if (!groups.has(key)) groups.set(key, { color: obj.fill || obj.stroke || '#f4d35e', opacity: Number(obj.opacity ?? 0.3), quads: [] });
+      groups.get(key).quads.push(...(obj.data.quads || []));
+    }
+    return Array.from(groups.values()).map((group, index) => (
+      <path
+        key={`uniform-text-markup-${index}`}
+        d={group.quads.map((q) => `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`).join(' ')}
+        fill={group.color}
+        fillRule="nonzero"
+        opacity={Math.max(0, Math.min(1, group.opacity))}
+        pointerEvents="none"
+        data-uniform-text-markup-mask="true"
+      />
+    ));
+  }, [stagedAnnotations]);
+
   return (
     <>
     <svg
@@ -4663,14 +4725,23 @@ const SVGAnnotationLayer = memo(({
         overflow: 'hidden',
         // One-finger creation strokes must not scroll the page on touch
         // devices — the fabric upper canvas used to set this implicitly.
-        touchAction: isCreationTool ? 'none' : undefined,
+        touchAction: (isCreationTool || (activeTool === 'select' && selectionMode === 'lasso')) ? 'none' : undefined,
         cursor: interactionState === 'dragging' ? 'grabbing'
-              : interactionState === 'rotating' ? 'crosshair'
+              : interactionState === 'rotating' || (activeTool === 'select' && selectionMode === 'lasso') ? 'crosshair'
               : undefined,
       }}
       preserveAspectRatio="none"
       onPointerDown={(e) => {
         if (isInteractive) {
+          if (shouldIgnoreLassoPointer?.(e.pointerId, e.pointerType)) {
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+          }
+          if (shouldHandoffLassoPointer?.(e.pointerId)) {
+            cancelLasso?.();
+            return;
+          }
           e.stopPropagation(); // Prevent Pdfjs from seeing SVG events (SVGAnimatedString crash)
           // UX: Phase 14 CREATE-01 (callout half) — when the callout tool
           // is active and the click lands on empty SVG space (NOT inside
@@ -4746,11 +4817,16 @@ const SVGAnnotationLayer = memo(({
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, true)) return;
         handlePointerUp(e);
       } : undefined}
-      onPointerCancel={isInteractive ? () => {
+      onPointerCancel={isInteractive ? (e) => {
+        cancelLasso?.(e.pointerId);
+        handlePointerCancel(e);
         if (surveyMarkerDragRef.current) {
           surveyMarkerDragRef.current = null;
           setSurveyMarkerPreviewBounds(null);
         }
+      } : undefined}
+      onLostPointerCapture={isInteractive ? (e) => {
+        cancelLasso?.(e.pointerId);
       } : undefined}
       // UX: Phase 15 UAT #1 — double-click anywhere inside a callout (text
       // foreignObject, connector segments, arrowTip, knee) must enter edit
@@ -4765,6 +4841,7 @@ const SVGAnnotationLayer = memo(({
       // clicking empty space during creation tools doesn't misfire.
       onDoubleClick={isSelectTool ? handleAnnotationDoubleClick : undefined}
     >
+      {uniformTextMarkupElements}
       {wrappedAnnotations}
       {/* Survey markers are stored outside annotations.objects, so this
           path owns their click, move, and resize behavior. */}
@@ -5063,6 +5140,68 @@ const SVGAnnotationLayer = memo(({
           pointerEvents="none"
         />
       )}
+      {lassoPoints?.length > 0 && (
+        <g data-lasso-selection-preview="true" pointerEvents="none">
+          <path
+            data-lasso-selection-halo="true"
+            d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
+            fill="none"
+            stroke="rgba(8, 12, 18, 0.72)"
+            strokeWidth={4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            data-lasso-selection-trail="true"
+            data-lasso-mode={lassoMode || 'window'}
+            d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
+            fill={lassoMode === 'window'
+              ? 'rgba(0, 100, 255, 0.12)'
+              : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.12)' : 'none'}
+            stroke={lassoMode === 'window'
+              ? 'rgba(72, 145, 255, 1)'
+              : lassoMode === 'crossing' ? 'rgba(30, 210, 120, 1)' : 'rgba(245, 174, 38, 1)'}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
+            fillRule="evenodd"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      )}
+      {lassoPoints?.length > 0 && (() => {
+        const lastPoint = lassoPoints.at(-1);
+        const usesTouchControls = lassoPointerType === 'touch' || lassoPointerType === 'pen';
+        const modeLabel = lassoMode === 'crossing' ? 'Crossing' : lassoMode === 'fence' ? 'Fence' : 'Window';
+        const operationLabel = lassoOperation === 'add' ? 'Add' : lassoOperation === 'subtract' ? 'Subtract' : 'Replace';
+        const hint = usesTouchControls
+          ? `${modeLabel} · ${operationLabel}`
+          : `${modeLabel} · Space to change · Shift add · Alt subtract`;
+        const chipWidth = usesTouchControls ? 116 : 304;
+        const chipX = Math.max(4 * inverseScale, Math.min(
+          width - (chipWidth + 4) * inverseScale,
+          lastPoint.x + 12 * inverseScale,
+        ));
+        const chipY = Math.max(4 * inverseScale, Math.min(
+          height - 28 * inverseScale,
+          lastPoint.y + 12 * inverseScale,
+        ));
+        // UX: the chip makes the hidden lasso modes clear while the hand is
+        // still moving. It stays small and follows the trail without taking input.
+        return (
+          <g
+            data-lasso-gesture-hint="true"
+            pointerEvents="none"
+            transform={`translate(${chipX} ${chipY}) scale(${inverseScale})`}
+          >
+            <rect width={chipWidth} height={24} rx={6} fill="rgba(18, 21, 28, 0.92)" stroke="rgba(216, 168, 78, 0.72)" />
+            <text x={8} y={16} fill="#f0eadc" fontSize={11} fontWeight={600}>{hint}</text>
+          </g>
+        );
+      })()}
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles.
           UX: Phase 19 follow-up — suppress this when a callout is also
@@ -5219,11 +5358,16 @@ const SVGAnnotationLayer = memo(({
           };
         }
 
+        const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
+
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         let bbox = getAnnotationBBox(selectionObj);
         let overlayTransform;
         if (visualTransform && typeof visualTransform.id === 'number' && visualTransform.id === selectedIndex) {
-          if (visualTransform.resize) {
+          if (visualTransform.previewObjects?.[selectedIndex]) {
+            // The preview object already carries its final page-space quads.
+            // Do not add a generic move transform on top of that geometry.
+          } else if (visualTransform.resize) {
             // During resize: recompute bbox from a transformed copy of the object so
             // type-specific bbox math (e.g. textbox descender buffer) is applied fresh
             // instead of being scaled along with the stored bbox height.
@@ -5656,10 +5800,18 @@ const SVGAnnotationLayer = memo(({
               // surface — it must show the corner + edge + rotate handles
               // itself, so drop the mask in that case.
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
-              hideBoundingBox={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup}
+              hideBoundingBox={textMarkupSelectionChrome.hideBoundingBox
+                || (isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup)}
               padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
+              // Legacy marks have no safe character-offset model for range
+              // handles, so their standard box supplies visible selection feedback.
+              hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles}
+              horizontalResizeOnly={selectionObj?.data?.type === 'text-markup' && !isSelectDeleteOnlyPdfTextMarkup}
+              horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
+                ? getTextMarkupRangeHandlePositions(selectionObj)
+                : null}
             />
           </g>
         );

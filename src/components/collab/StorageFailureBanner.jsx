@@ -28,6 +28,7 @@
 //     (Restore + Dismiss) instead of the single action + × dismiss pattern. Sticky
 //     (no auto-dismiss). Surfaces only when local user is interacting with the
 //     deleted annotation (selected / dragging / scaling / edit-canvas open / context
+import Icon from '../../Icons';
 //     menu open) — Plan 29-06 YDocProvider toast queue handles the gating.
 //
 // Why per-variant heading + secondary maps (instead of shared constants like
@@ -476,7 +477,7 @@ export function StorageFailureBanner({
           aria-label="Dismiss banner"
           onClick={handleDismissClick}
         >
-          ×
+          <Icon name="close" size={16} />
         </button>
       )}
     </div>
