@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import {
   adaptSquare,
   adaptCircle,
@@ -247,7 +247,7 @@ test('adaptUnderline, adaptSquiggly, adaptStrikeOut share quad-point math', asyn
   }
 });
 
-test('adaptRedact writes an opaque black appearance stream', async () => {
+test('adaptRedact writes a non-concealing mark without selected text', async () => {
   const ctx = await setupContext();
   const ref = adaptRedact({
     id: 'redact', type: 'group', exportType: 'redact', left: 10, top: 20, width: 80, height: 14,
@@ -260,7 +260,11 @@ test('adaptRedact writes an opaque black appearance stream', async () => {
   const dict = readDict(ctx.pdfDoc, ref);
   assert.equal(dict.get(PDFName.of('Subtype')).decodeText(), 'Redact');
   assert.deepEqual(readNumberArray(dict, 'IC'), [0, 0, 0]);
-  assert.ok(dict.lookup(PDFName.of('AP')).lookup(PDFName.of('N')), 'redaction must render in standard PDF viewers');
+  assert.equal(dict.get(PDFName.of('Contents')), undefined);
+  const appearance = dict.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
+  assert.match(appearanceSource, /\bre\s+S\b/);
+  assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);
 });
 
 test('resolveAdapter picks the right per-type adapter', () => {

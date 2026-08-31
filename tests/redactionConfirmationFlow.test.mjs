@@ -14,6 +14,10 @@ test('Redact opens confirmation from the new selection before any transaction is
   assert.match(viewer, /setPendingRedactionRequest\(\{[\s\S]{0,260}annotationsByPage: buildRequestedRedactionSnapshot\(transaction\.nextByPage, transaction\.created\)/);
 });
 
+test('cancelling redaction confirms that the document was not changed', () => {
+  assert.match(viewer, /setPendingRedactionRequest\(null\);\s*setApplyRedactionsError\(''\);\s*showToast\('Redaction cancelled — nothing was changed\.', 'info'\);/);
+});
+
 test('permanent export uses only the confirmed pending document and clears it on cancel or success', () => {
   assert.match(viewer, /const redactionAnnotationsByPage = pendingRedactionRequest\.annotationsByPage/);
   assert.match(viewer, /savePDFWithAnnotationsPdfLib\(\s*pdfFile,\s*redactionAnnotationsByPage/);

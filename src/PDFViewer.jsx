@@ -67,6 +67,7 @@ import SaveLogBanner from './components/SaveLogBanner';
 import Spinner from './components/Spinner';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import PdfjsLinkLayer from './components/PdfjsLinkLayer';
+import PdfjsRedactionMarkLayer from './components/PdfjsRedactionMarkLayer';
 import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
@@ -31575,13 +31576,16 @@ ${pageBlocks}
                               fillContainer
                             />
                           )}
-                          {true && pdfDoc && (
+                          {pdfDoc && (
                             <PdfjsLinkLayer
                               pdf={pdfDoc}
                               pageNumber={pageNumber}
                               interactive={activeTool === 'pan' || activeTool === 'select'}
                               onInternalNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
                             />
+                          )}
+                          {pdfDoc && (
+                            <PdfjsRedactionMarkLayer pdf={pdfDoc} pageNumber={pageNumber} />
                           )}
                           <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
@@ -37297,6 +37301,7 @@ ${pageBlocks}
             setApplyRedactionsModalOpen(false);
             setPendingRedactionRequest(null);
             setApplyRedactionsError('');
+            showToast('Redaction cancelled — nothing was changed.', 'info');
           }}
           onConfirm={handleApplyPermanentRedactions}
         />,

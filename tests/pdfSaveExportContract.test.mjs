@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PDFDocument, PDFName, decodePDFRawStream, degrees } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString, decodePDFRawStream, degrees } from 'pdf-lib';
 import {
   buildPdfExportAnnotationPlan,
   buildPrintableRegularAnnotationPayload,
@@ -66,6 +66,50 @@ async function makeRotatedPdfFile(name = 'rotated-source.pdf') {
   };
 }
 
+async function makePdfFileWithUnsafeImportedRedaction({ includeRect = true } = {}) {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([200, 200]);
+  const opaqueAppearance = doc.context.register(doc.context.flateStream(
+    'q\n0 0 0 rg\n0 0 120 18 re f\nQ\n',
+    {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: [0, 0, 120, 18],
+      Resources: {},
+    },
+  ));
+  const unsafeRedactionDict = {
+    Type: 'Annot',
+    Subtype: 'Redact',
+    C: [0, 0, 0],
+    Contents: PDFString.of('Selectable line one on page 1.'),
+    OverlayText: PDFString.of('Selectable line one on page 1.'),
+    AP: { N: opaqueAppearance },
+    P: page.ref,
+  };
+  if (includeRect) unsafeRedactionDict.Rect = [20, 120, 140, 138];
+  const unsafeRedaction = doc.context.register(doc.context.obj(unsafeRedactionDict));
+  page.node.set(PDFName.of('Annots'), doc.context.obj([unsafeRedaction]));
+  const bytes = await doc.save();
+  return {
+    name: 'unsafe-imported-redaction.pdf',
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
+function makeUnsafeImportedRedactionFixtureFile() {
+  const bytes = readFileSync(new URL('../debug/fixtures/unapplied-redaction-leak.pdf', import.meta.url));
+  return {
+    name: 'unapplied-redaction-leak.pdf',
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
 async function getPdfAnnotationSubtypes(bytes) {
   const doc = await PDFDocument.load(bytes);
   const page = doc.getPage(0);
@@ -124,6 +168,45 @@ test('PDF export can generate bytes without writing a local file', async () => {
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test('normal export makes imported unapplied redactions non-concealing and removes cleartext notes', async () => {
+  const fixture = makeUnsafeImportedRedactionFixtureFile();
+  const sourceBytes = new Uint8Array(await fixture.arrayBuffer());
+  const [unsafeSourceRedact] = await getPdfAnnotationDicts(sourceBytes);
+  assert.equal(unsafeSourceRedact.get(PDFName.of('Contents')).decodeText(), 'Selectable line one on page 1.');
+  const unsafeAppearance = unsafeSourceRedact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const unsafeAppearanceSource = new TextDecoder().decode(decodePDFRawStream(unsafeAppearance).decode());
+  assert.match(unsafeAppearanceSource, /\bre\s+f\b/, 'the fixture must carry an opaque appearance');
+
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    fixture,
+    {},
+    {},
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-imported-redact' },
+  );
+  const [redact] = await getPdfAnnotationDicts(bytes);
+  assert.equal(redact.get(PDFName.of('Contents')), undefined);
+  assert.equal(redact.get(PDFName.of('OverlayText')), undefined);
+  const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
+  assert.match(appearanceSource, /\bre\s+S\b/, 'the mark should have a hollow outline');
+  assert.doesNotMatch(appearanceSource, /\bre\s+f\b/, 'the mark must not have an opaque fill');
+});
+
+test('normal export drops an unsafe appearance when an imported redaction has no usable rectangle', async () => {
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFileWithUnsafeImportedRedaction({ includeRect: false }),
+    {},
+    {},
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-malformed-redact' },
+  );
+  const [redact] = await getPdfAnnotationDicts(bytes);
+  assert.equal(redact.get(PDFName.of('Contents')), undefined);
+  assert.equal(redact.get(PDFName.of('OverlayText')), undefined);
+  assert.equal(redact.get(PDFName.of('AP')), undefined);
 });
 
 test('live PDF export keeps all four saved text markup colors, opacities, and quads', async () => {
@@ -202,7 +285,7 @@ test('native export uses the edited active mark color and opacity', async () => 
   );
 });
 
-test('live PDF export writes selected-text links and redaction annotations', async () => {
+test('live PDF export writes links and non-concealing redaction marks without selected text', async () => {
   const quad = { x1: 10, y1: 20, x2: 90, y2: 20, x3: 10, y3: 34, x4: 90, y4: 34 };
   const objects = [
     createTextMarkupAnnotation({
@@ -225,7 +308,11 @@ test('live PDF export writes selected-text links and redaction annotations', asy
   const [link, redact] = await getPdfAnnotationDicts(bytes);
   assert.equal(link.lookup(PDFName.of('A')).lookup(PDFName.of('URI')).decodeText(), 'https://example.com/docs');
   assert.equal(redact.lookup(PDFName.of('QuadPoints')).asArray().length, 8);
-  assert.ok(redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N')), 'exported redaction needs a black appearance');
+  assert.equal(redact.get(PDFName.of('Contents')), undefined);
+  const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
+  assert.match(appearanceSource, /\bre\s+S\b/);
+  assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);
 });
 
 test('live PDF export writes selected-text page links as GoTo actions', async () => {
