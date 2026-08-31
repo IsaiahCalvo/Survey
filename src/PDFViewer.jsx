@@ -99,6 +99,7 @@ import {
   buildRequestedRedactionSnapshot,
   buildTextMarkupDocumentAction,
   buildTextMarkupGroupCreateTransaction,
+  buildTextMarkupPaintEditTransaction,
   buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
   getTextMarkupRangeAnnotations,
@@ -3236,6 +3237,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
+  const commitTextMarkupDocumentTransactionRef = useRef(null);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
@@ -3252,6 +3254,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : sel.annotationIndex;
     const current = pageJSON.objects[currentIndex];
     if (!current) return;
+    if (current.data?.type === 'text-markup'
+      && patch.fill != null
+      && patch.stroke != null
+      && patch.opacity != null) {
+      const transaction = buildTextMarkupPaintEditTransaction({
+        annotationsByPage: annotationsByPageRef.current || {},
+        annotation: current,
+        color: patch.stroke,
+        opacity: patch.opacity,
+      });
+      if (transaction && commitTextMarkupDocumentTransactionRef.current?.(transaction, {
+        source: 'text-markup:paint-edit',
+        action: 'text-markup-update',
+        selectionGroupIds: transaction.selectionGroupIds,
+      })) {
+        const updated = transaction.updated.find((entry) => (
+          entry.pageNumber === Number(sel.pageNumber)
+          && getAnnotationRenderIdentity(entry.annotation).annotationId === selectedId
+        )) || transaction.updated[0];
+        if (updated) {
+          const nextSelection = {
+            pageNumber: updated.pageNumber,
+            annotationIndex: updated.annotationIndex,
+            annotation: updated.annotation,
+          };
+          selectedToolbarAnnotationRef.current = nextSelection;
+          setSelectedToolbarAnnotation(nextSelection);
+        }
+        return;
+      }
+    }
     const nextObj = {
       ...current,
       ...patch,
@@ -7587,6 +7620,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       patchSelectedStroke(nextNumberColor);
     }
   }, [activeTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
+
+  const handleTextMarkupPaintChange = useCallback((color, opacity) => {
+    const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity) || 30));
+    strokeColorStateRef.current = color;
+    strokeOpacityStateRef.current = normalizedOpacity;
+    setStrokeColor(color);
+    setStrokeOpacity(normalizedOpacity);
+    if (pdfId && activeTool !== 'select') {
+      updateToolPreference(activeTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
+    }
+    if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
+      handlePatchSelectedAnnotation({
+        fill: color,
+        stroke: color,
+        opacity: normalizedOpacity / 100,
+      });
+    }
+  }, [activeTool, handlePatchSelectedAnnotation, pdfId, updateToolPreference]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
     strokeOpacityStateRef.current = opacity;
@@ -23310,6 +23361,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setShowAnnotationColorPicker,
       handleStrokeColorChange,
       handleStrokeOpacityChange,
+      handleTextMarkupPaintChange,
       handleStrokeWidthInputChange,
       handleStrokeWidthInputBlur,
       setIsStrokeWidthFocused: handleStrokeWidthFocusChange,
@@ -23403,6 +23455,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setTooltip,
     handleStrokeColorChange,
     handleStrokeOpacityChange,
+    handleTextMarkupPaintChange,
     handleStrokeWidthFocusChange,
     handleStrokeWidthInputChange,
     handleStrokeWidthInputBlur,
@@ -24481,6 +24534,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     user?.id,
     yjsUndoCtx?.userId,
   ]);
+  commitTextMarkupDocumentTransactionRef.current = commitTextMarkupDocumentTransaction;
 
   const handleSaveAnnotationsWithTextMarkupAtomicity = useCallback((pageNumber, json, saveContext = null) => {
     const transaction = buildAtomicTextMarkupPageMutation({
@@ -28215,16 +28269,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     )).filter(Boolean);
   }, [liveTextSelection, textMarkupOverlapMode, user?.id]);
 
-  const liveTextSelectionActionSelection = useMemo(() => (
-    liveTextSelection ? {
+  const liveTextSelectionActionSelection = useMemo(() => {
+    if (!liveTextSelection) return null;
+    const liveRangeMarks = getTextMarkupRangeAnnotations(
+      annotationsByPage,
+      liveTextMarkupRangeProbes,
+    );
+    return {
       ...liveTextSelection,
       paintByMark: textMarkupPaintByType,
+      sourceMarks: liveRangeMarks.map((entry) => entry.annotation),
       activeMarkupTypes: getTextMarkupRangeTypes(
         annotationsByPage,
         liveTextMarkupRangeProbes,
       ),
-    } : null
-  ), [annotationsByPage, liveTextMarkupRangeProbes, liveTextSelection, textMarkupPaintByType]);
+    };
+  }, [annotationsByPage, liveTextMarkupRangeProbes, liveTextSelection, textMarkupPaintByType]);
 
   useEffect(() => {
     if (!selectedTextMarkupActionSelection?.paintByMark) return;
@@ -28259,7 +28319,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setStrokeColor(paint.color);
     setStrokeOpacity(paint.opacity);
 
-    const target = selectedTextMarkupActionSelection?.sourceMarks?.find(
+    const target = selection?.sourceMarks?.find(
       (mark) => String(mark?.data?.markupType || '').toLowerCase() === markupType,
     );
     if (target) {
@@ -28267,7 +28327,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const objects = annotationsByPageRef.current?.[pageNumber]?.objects || [];
       const annotationIndex = objects.findIndex((mark) => mark?.data?.id === target.data.id);
       if (annotationIndex >= 0) {
-        setSelectedToolbarAnnotation({ pageNumber, annotationIndex, annotation: target });
+        const nextSelection = { pageNumber, annotationIndex, annotation: target };
+        selectedToolbarAnnotationRef.current = nextSelection;
+        setSelectedToolbarAnnotation(nextSelection);
         setPendingSvgSelection({ pageNumber, annotationIndex, tick: Date.now() });
       }
     }

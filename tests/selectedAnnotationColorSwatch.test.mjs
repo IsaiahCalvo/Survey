@@ -29,6 +29,24 @@ test('selected text markup publishes its own base color and opacity to the edit 
   assert.match(viewerSource, /strokeOpacity: selectedTextMarkupPaint\?\.opacity \?\? counterToolStrokeOpacity,/);
   assert.match(viewerSource, /strokeColorStateRef\.current = paint\.color;[\s\S]*?strokeOpacityStateRef\.current = paint\.opacity;/);
   assert.match(viewerSource, /const color = getHexFromColor\(strokeColorStateRef\.current\) \|\| paint\.color;/);
+  assert.match(viewerSource, /handleTextMarkupPaintChange,/);
+  assert.match(appShellSource, /isTextMarkupPalette && bottomToolbarApi\.handleTextMarkupPaintChange/);
+  assert.match(appShellSource, /handleTextMarkupPaintChange\(hex, Math\.round\(alpha \* 100\)\)/);
+});
+
+test('live Text Select paint focus hands the active saved mark to the edit transaction', () => {
+  assert.match(viewerSource, /const liveRangeMarks = getTextMarkupRangeAnnotations\(/);
+  assert.match(viewerSource, /sourceMarks: liveRangeMarks\.map\(\(entry\) => entry\.annotation\)/);
+  assert.match(viewerSource, /const target = selection\?\.sourceMarks\?\.find\(/);
+  assert.match(viewerSource, /selectedToolbarAnnotationRef\.current = nextSelection;[\s\S]*?setSelectedToolbarAnnotation\(nextSelection\)/);
+  assert.match(viewerSource, /selectedToolbarAnnotationRef\.current\?\.annotation\?\.data\?\.type === 'text-markup'[\s\S]*?handlePatchSelectedAnnotation/);
+});
+
+test('mobile text markup picker taps stay inside the shared color popover boundary', () => {
+  assert.match(
+    appShellSource,
+    /\[data-annotation-color-trigger\], \[data-annotation-color-picker\], \.mobile-pdf-colorpicker-surface/,
+  );
 });
 
 test('counter preview publishes the renderer-exact fill and number colors', () => {

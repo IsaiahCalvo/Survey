@@ -68,6 +68,7 @@ test('mobile text markup toolbar wires color, opacity, overlap, and the action-b
   assert.match(source, /data-mobile-text-markup-controls=/);
   assert.match(source, /aria-label="Text markup color and opacity"/);
   assert.match(source, /api\.showAnnotationColorPicker/);
+  assert.match(source, /api\.handleTextMarkupPaintChange\(hex, opacity\)/);
   assert.match(source, /api\.handleStrokeColorChange\?\.\(hex\)/);
   assert.match(source, /api\.handleStrokeOpacityChange\?\.\(/);
   assert.match(source, /minOpacity=\{0\.05\}/);

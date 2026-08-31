@@ -784,8 +784,12 @@ export function MobileToolProperties({ api }) {
           opacity={markupOpacity}
           minOpacity={0.05}
           onChange={(hex, alpha) => {
-            api.handleStrokeColorChange?.(hex);
-            api.handleStrokeOpacityChange?.(Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100));
+            const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
+            if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+            else {
+              api.handleStrokeColorChange?.(hex);
+              api.handleStrokeOpacityChange?.(opacity);
+            }
           }}
           onClose={() => api.setShowAnnotationColorPicker?.(false)}
         />
@@ -828,8 +832,12 @@ export function MobileToolProperties({ api }) {
             opacity={markupOpacity}
             minOpacity={0.05}
             onChange={(hex, alpha) => {
-              api.handleStrokeColorChange?.(hex);
-              api.handleStrokeOpacityChange?.(Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100));
+              const opacity = Math.round(Math.max(0.05, alpha ?? markupOpacity) * 100);
+              if (api.handleTextMarkupPaintChange) api.handleTextMarkupPaintChange(hex, opacity);
+              else {
+                api.handleStrokeColorChange?.(hex);
+                api.handleStrokeOpacityChange?.(opacity);
+              }
             }}
             onClose={() => api.setShowAnnotationColorPicker?.(false)}
           />

@@ -105,6 +105,47 @@ export function buildTextMarkupGroupCreateTransaction(annotationsByPage, annotat
   return action ? { action, nextByPage, created } : null;
 }
 
+export function buildTextMarkupPaintEditTransaction({
+  annotationsByPage,
+  annotation,
+  color,
+  opacity,
+}) {
+  if (!isTextMarkupAnnotation(annotation)) return null;
+  const selectionGroupId = annotation.data.selectionGroupId;
+  const normalizedOpacity = Math.max(0, Math.min(1, Number(opacity) || 0));
+  const previousByPage = annotationsByPage || {};
+  const nextByPage = { ...previousByPage };
+  const updated = [];
+
+  for (const [pageKey, page] of Object.entries(previousByPage)) {
+    const objects = pageObjects(page);
+    let changed = false;
+    const nextObjects = objects.map((candidate, annotationIndex) => {
+      if (!isTextMarkupAnnotation(candidate)
+        || candidate.data.selectionGroupId !== selectionGroupId) return candidate;
+      changed = true;
+      const next = {
+        ...candidate,
+        fill: color,
+        stroke: color,
+        opacity: normalizedOpacity,
+      };
+      updated.push({ pageNumber: Number(pageKey), annotationIndex, annotation: next });
+      return next;
+    });
+    if (changed) nextByPage[pageKey] = { ...page, objects: nextObjects };
+  }
+
+  const action = buildTextMarkupDocumentAction(previousByPage, nextByPage);
+  return action ? {
+    action,
+    nextByPage,
+    updated,
+    selectionGroupIds: [selectionGroupId],
+  } : null;
+}
+
 export function buildRequestedRedactionSnapshot(annotationsByPage, createdEntries) {
   const requestedAnnotations = new Set(
     (createdEntries || [])

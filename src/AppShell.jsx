@@ -637,7 +637,7 @@ export default function App({ devPreviewReturnTab = null }) {
       if (!insideDropdown) {
         setOpenAnnotationDropdown(null);
       }
-      if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker]')) {
+      if (!inside('[data-annotation-color-trigger], [data-annotation-color-picker], .mobile-pdf-colorpicker-surface')) {
         bottomToolbarApi?.setShowAnnotationColorPicker?.(false);
       }
       if (!insideDropdown && !inside('[data-counter-series-menu], [data-counter-series-context-menu]')) {
@@ -2377,6 +2377,10 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? document.getElementById('chrome-sub-toolbar-host')?.getBoundingClientRect?.()
                     : null;
                   const applyChange = (hex, alpha) => {
+                    if (isTextMarkupPalette && bottomToolbarApi.handleTextMarkupPaintChange) {
+                      bottomToolbarApi.handleTextMarkupPaintChange(hex, Math.round(alpha * 100));
+                      return;
+                    }
                     if (onFillTab) {
                       const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
                       if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {

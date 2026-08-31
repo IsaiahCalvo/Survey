@@ -7,6 +7,7 @@ import {
 import {
   buildAtomicTextMarkupPageMutation,
   buildTextMarkupGroupCreateTransaction,
+  buildTextMarkupPaintEditTransaction,
   buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
   getTextMarkupRangeTypes,
@@ -177,6 +178,47 @@ test('undo and redo keep each stacked mark paint and overlap mode', () => {
   })), paints.map(([markupType, color, opacity, overlapMode]) => ({
     markupType, fill: color, stroke: color, opacity, overlapMode,
   })));
+});
+
+test('editing the active stacked mark paint leaves every sibling byte-identical', () => {
+  const paints = [
+    ['highlight', '#f5c229'],
+    ['underline', '#ef3029'],
+    ['squiggly', '#f0f1f4'],
+    ['strikeout', '#3d63dc'],
+  ];
+  const marks = paints.map(([markupType, color], index) => {
+    const annotation = mark(`paint-edit-${index}`, 1, `${markupType}-group`, markupType);
+    annotation.fill = color;
+    annotation.stroke = color;
+    annotation.opacity = 0.3;
+    annotation.data.overlapMode = 'layered';
+    return annotation;
+  });
+  const before = { 1: { objects: marks } };
+  const siblingBytes = marks.slice(0, 3).map((annotation) => JSON.stringify(annotation));
+
+  const tx = buildTextMarkupPaintEditTransaction({
+    annotationsByPage: before,
+    annotation: marks[3],
+    color: '#0000FF',
+    opacity: 0.65,
+  });
+
+  assert.ok(tx);
+  assert.deepEqual(
+    tx.nextByPage['1'].objects.slice(0, 3).map((annotation) => JSON.stringify(annotation)),
+    siblingBytes,
+  );
+  assert.deepEqual(
+    tx.nextByPage['1'].objects[3],
+    { ...marks[3], fill: '#0000FF', stroke: '#0000FF', opacity: 0.65 },
+  );
+  const undone = applyAnnotationHistoryAction(tx.nextByPage, invertAnnotationHistoryAction(tx.action));
+  assert.deepEqual(undone, before);
+  const redone = applyAnnotationHistoryAction(undone, tx.action);
+  assert.deepEqual(redone, tx.nextByPage);
+  assert.deepEqual(JSON.parse(JSON.stringify(redone)), tx.nextByPage);
 });
 
 test('deleting one page member deletes the full selection group as one action', () => {

@@ -30,6 +30,7 @@ import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import { getCounterLabelLayout } from '../src/utils/counterGeometry.js';
 import { createTextMarkupAnnotation } from '../src/utils/pdfTextMarkup.js';
+import { buildTextMarkupPaintEditTransaction } from '../src/utils/textMarkupGroupTransactions.js';
 
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
   + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
@@ -165,6 +166,40 @@ test('live PDF export keeps all four saved text markup colors, opacities, and qu
           : index === 2 ? [0, 0, 1] : [1, 1, 0],
     );
   });
+});
+
+test('native export uses the edited active mark color and opacity', async () => {
+  const types = ['highlight', 'underline', 'squiggly', 'strikeout'];
+  const objects = types.map((markupType) => createTextMarkupAnnotation({
+    id: `edit-export-${markupType}`,
+    pageNumber: 1,
+    selectionGroupId: `edit-export-${markupType}-group`,
+    markupType,
+    selectedText: 'stacked export edit',
+    color: markupType === 'strikeout' ? '#3d63dc' : '#f5c229',
+    opacity: 0.3,
+    quads: [{ x1: 10, y1: 20, x2: 100, y2: 20, x3: 10, y3: 35, x4: 100, y4: 35 }],
+  }));
+  const transaction = buildTextMarkupPaintEditTransaction({
+    annotationsByPage: { 1: { objects } },
+    annotation: objects[3],
+    color: '#0000FF',
+    opacity: 0.65,
+  });
+  const bytes = await savePDFWithAnnotationsPdfLib(
+    await makePdfFile(),
+    transaction.nextByPage,
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, actionType: 'pdf-export', documentId: 'edited-active-mark-export' },
+  );
+
+  const dicts = await getPdfAnnotationDicts(bytes);
+  assert.equal(dicts[3].lookup(PDFName.of('CA')).asNumber(), 0.65);
+  assert.deepEqual(
+    dicts[3].lookup(PDFName.of('C')).asArray().map((entry) => entry.asNumber()),
+    [0, 0, 1],
+  );
 });
 
 test('live PDF export writes selected-text links and redaction annotations', async () => {
