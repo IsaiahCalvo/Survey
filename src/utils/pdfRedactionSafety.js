@@ -1,4 +1,5 @@
 import { PDFName } from 'pdf-lib';
+import { PENDING_REDACTION_OUTLINE_PDF_RGB } from './pdfRedactionAppearance.js';
 
 const numberValue = (value) => {
   if (typeof value?.asNumber === 'function') return value.asNumber();
@@ -26,19 +27,15 @@ export function attachMarkedForRedactionAppearance(pdfDoc, dict) {
   const height = rect[3] - rect[1];
   if (!(width > 0) || !(height > 0)) return false;
 
-  const inset = Math.min(1, width / 4, height / 4);
-  const hatchStep = Math.max(6, Math.min(12, height));
+  const strokeWidth = 1;
+  const inset = Math.min(strokeWidth / 2, width / 4, height / 4);
+  const strokeColor = PENDING_REDACTION_OUTLINE_PDF_RGB.map(pdfNumber).join(' ');
   const content = [
     'q',
-    '0 0 0 RG',
-    '1.5 w',
+    `${strokeColor} RG`,
+    `${pdfNumber(strokeWidth)} w`,
     `${pdfNumber(inset)} ${pdfNumber(inset)} ${pdfNumber(width - inset * 2)} ${pdfNumber(height - inset * 2)} re S`,
-    `0 0 ${pdfNumber(width)} ${pdfNumber(height)} re W n`,
-    '0.75 w',
   ];
-  for (let x = -height; x < width; x += hatchStep) {
-    content.push(`${pdfNumber(x)} 0 m ${pdfNumber(x + height)} ${pdfNumber(height)} l S`);
-  }
   content.push('Q');
 
   const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
@@ -52,10 +49,12 @@ export function attachMarkedForRedactionAppearance(pdfDoc, dict) {
   const appearanceDict = pdfDoc.context.obj({ N: appearanceRef });
   if (typeof dict?.set === 'function') {
     dict.set(PDFName.of('AP'), appearanceDict);
-    dict.set(PDFName.of('Border'), pdfDoc.context.obj([0, 0, 1.5]));
+    dict.set(PDFName.of('Border'), pdfDoc.context.obj([0, 0, strokeWidth]));
+    dict.set(PDFName.of('C'), pdfDoc.context.obj(PENDING_REDACTION_OUTLINE_PDF_RGB));
   } else {
     dict.AP = appearanceDict;
-    dict.Border = [0, 0, 1.5];
+    dict.Border = [0, 0, strokeWidth];
+    dict.C = PENDING_REDACTION_OUTLINE_PDF_RGB;
   }
   return true;
 }
