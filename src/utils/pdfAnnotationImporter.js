@@ -2810,6 +2810,70 @@ function polygonSetBounds(polygons) {
     : null;
 }
 
+function simpleStrokeHasNegligibleImplicitClip(operation) {
+  if (
+    operation?.clipActive !== true
+    || operation?.hasExplicitClip === true
+    || operation?.stroke !== true
+    || operation?.fill === true
+    || !(Number(operation?.strokeWidth) > 0)
+  ) {
+    return false;
+  }
+  const clip = normalizeMultiPolygon(operation.clipPolygons);
+  if (clip.length !== 1 || clip[0].length !== 1) return false;
+  const clipBounds = polygonSetBounds(clip);
+  const ring = clip[0][0];
+  if (
+    !clipBounds
+    || ring.length < 4
+    || ring.some(([x, y]) => (
+      (x !== clipBounds.minX && x !== clipBounds.maxX)
+      || (y !== clipBounds.minY && y !== clipBounds.maxY)
+    ))
+  ) {
+    return false;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const command of operation.path || []) {
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const x = Number(command[index]);
+      const y = Number(command[index + 1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (!Number.isFinite(minX)) return false;
+  const strokeMatrix = isFinitePdfMatrix(operation.strokeMatrix)
+    ? Array.from(operation.strokeMatrix, Number)
+    : Array.from(PDF_IDENTITY_MATRIX);
+  const joinScale = operation.lineJoin === 'miter'
+    ? Math.max(1, Number(operation.miterLimit) || 10)
+    : 1;
+  const extension = (
+    Number(operation.strokeWidth) / 2
+    * pdfMatrixMaxSingularScale(strokeMatrix)
+    * joinScale
+  );
+  const overrun = Math.max(
+    0,
+    clipBounds.minX - (minX - extension),
+    clipBounds.minY - (minY - extension),
+    (maxX + extension) - clipBounds.maxX,
+    (maxY + extension) - clipBounds.maxY,
+  );
+  // PDF writers round the path and Form BBox separately. A sub-0.1-point
+  // mismatch is not a useful visual clip, but polygonizing it can be costly.
+  return overrun <= 0.1;
+}
+
 function transformAppearancePolygonSetToViewport(
   polygons,
   appearanceToPdf,
@@ -2976,6 +3040,35 @@ function buildAppearancePaintLayers(
     pdfToViewport,
     appearanceToPdf,
   );
+  const soleOperation = operations.length === 1 ? operations[0] : null;
+  if (
+    soleOperation
+    && (
+      soleOperation.clipActive !== true
+      || simpleStrokeHasNegligibleImplicitClip(soleOperation)
+    )
+  ) {
+    const hasFill = soleOperation.fill === true;
+    const hasStroke = soleOperation.stroke === true && Number(soleOperation.strokeWidth) > 0;
+    if (hasFill !== hasStroke) {
+      if (hasFill) return null;
+      const strokeMatrix = isFinitePdfMatrix(soleOperation.strokeMatrix)
+        ? Array.from(soleOperation.strokeMatrix, Number)
+        : Array.from(PDF_IDENTITY_MATRIX);
+      const effectiveStrokeMatrix = composePdfMatrices(
+        appearanceToViewport,
+        strokeMatrix,
+      );
+      if (
+        isSimilarityMatrix(effectiveStrokeMatrix)
+        && (!Array.isArray(soleOperation.dashArray) || soleOperation.dashArray.length === 0)
+      ) {
+        // The live Fabric path can represent this paint exactly. Avoid a
+        // polygon union that would be discarded at the end of this function.
+        return null;
+      }
+    }
+  }
   const baseOpacity = extractAnnotationOpacity(annotation, 1);
   const layers = [];
   let requiresMaterialization = operations.length > 1;
@@ -5051,80 +5144,98 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const appCalloutsById = new Map();
       const importedDiag = [];
       supported.forEach(annotation => {
-        const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
-        const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
-        if (
-          normalized.calloutMetadata?.kind === PDF_CALLOUT_SUBJECT &&
-          normalized.calloutMetadata?.type === 'callout'
-        ) {
-          const appCallout = normalizeImportedAppCallout(normalized.calloutMetadata);
-          if (appCallout) {
-            appCalloutsById.set(appCallout.id, appCallout);
-            counts.appCalloutPiecesSkipped++;
-            importedDiag.push({
-              status: 'app-callout-piece-grouped',
-              reason: 'survey-app-callout-metadata',
-              importOutcome: 'sampled',
-              importOutcomeReason: 'survey-app-callout-metadata',
-              rawId: annotation?.id || annotation?.name || null,
-              rawSubtype: annotation?.subtype || null,
-              appId: appCallout.id,
-              appType: 'callout',
-              calloutPart: normalized.calloutMetadata.part || null,
-              savedToAppState: true,
-            });
-            return;
+        try {
+          const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
+          const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
+          if (
+            normalized.calloutMetadata?.kind === PDF_CALLOUT_SUBJECT &&
+            normalized.calloutMetadata?.type === 'callout'
+          ) {
+            const appCallout = normalizeImportedAppCallout(normalized.calloutMetadata);
+            if (appCallout) {
+              appCalloutsById.set(appCallout.id, appCallout);
+              counts.appCalloutPiecesSkipped++;
+              importedDiag.push({
+                status: 'app-callout-piece-grouped',
+                reason: 'survey-app-callout-metadata',
+                importOutcome: 'sampled',
+                importOutcomeReason: 'survey-app-callout-metadata',
+                rawId: annotation?.id || annotation?.name || null,
+                rawSubtype: annotation?.subtype || null,
+                appId: appCallout.id,
+                appType: 'callout',
+                calloutPart: normalized.calloutMetadata.part || null,
+                savedToAppState: true,
+              });
+              return;
+            }
           }
-        }
-        const counterMetadataParseFailed = (
-          normalized.subtype === 'Circle' &&
-          normalized.subject === PDF_COUNTER_SUBJECT &&
-          !normalized.counterMetadata
-        );
-        if (counterMetadataParseFailed) {
-          counts.counterMetadataParseFailures++;
-          console.warn('[PDFCounterImport] counter marker found but metadata was not parseable', {
-            id: normalized.id || normalized.name || null,
-            metadataKey: PDF_COUNTER_METADATA_KEY
-          });
-        }
-
-        const converted = convertPdfAnnotationToFabric(
-          annotation,
-          viewport,
-          1,
-          rawMetadata,
-        );
-        const convertedObjects = converted
-          ? [
-              converted,
-              ...(converted[PDF_APPEARANCE_COMPANION_LAYERS] || []),
-            ]
-          : [];
-        const fabricObjectsForAnnotation = convertedObjects.map((fabricObject) => (
-          attachPdfNativeAnnotationIdentity(
-            fabricObject,
-            directNativeIdentities.get(annotation),
-          )
-        ));
-        const fabricObj = fabricObjectsForAnnotation[0] || null;
-        if (fabricObj) {
-          if (!options.diagnosticsOnly) {
-            fabricObjects.push(...fabricObjectsForAnnotation);
-          }
-          if (fabricObj?.data?.type === 'counter') {
-            counts.counterAnnotationsImported++;
-          } else if (fabricObj?.pdfAnnotationType === 'Circle' || fabricObj?.type === 'circle') {
-            counts.plainCirclesImported++;
-          }
-          const diagEntry = summarizeFabricImportForDiag(fabricObj, annotation);
+          const counterMetadataParseFailed = (
+            normalized.subtype === 'Circle' &&
+            normalized.subject === PDF_COUNTER_SUBJECT &&
+            !normalized.counterMetadata
+          );
           if (counterMetadataParseFailed) {
-            diagEntry.importOutcome = 'fallback';
-            diagEntry.importOutcomeReason = 'counter-metadata-unparseable';
+            counts.counterMetadataParseFailures++;
+            console.warn('[PDFCounterImport] counter marker found but metadata was not parseable', {
+              id: normalized.id || normalized.name || null,
+              metadataKey: PDF_COUNTER_METADATA_KEY
+            });
           }
-          importedDiag.push(diagEntry);
-        } else {
-          importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'converter-returned-null'));
+
+          const converted = convertPdfAnnotationToFabric(
+            annotation,
+            viewport,
+            1,
+            rawMetadata,
+          );
+          const convertedObjects = converted
+            ? [
+                converted,
+                ...(converted[PDF_APPEARANCE_COMPANION_LAYERS] || []),
+              ]
+            : [];
+          const fabricObjectsForAnnotation = convertedObjects.map((fabricObject) => (
+            attachPdfNativeAnnotationIdentity(
+              fabricObject,
+              directNativeIdentities.get(annotation),
+            )
+          ));
+          const fabricObj = fabricObjectsForAnnotation[0] || null;
+          if (fabricObj) {
+            if (!options.diagnosticsOnly) {
+              fabricObjects.push(...fabricObjectsForAnnotation);
+            }
+            if (fabricObj?.data?.type === 'counter') {
+              counts.counterAnnotationsImported++;
+            } else if (fabricObj?.pdfAnnotationType === 'Circle' || fabricObj?.type === 'circle') {
+              counts.plainCirclesImported++;
+            }
+            const diagEntry = summarizeFabricImportForDiag(fabricObj, annotation);
+            if (counterMetadataParseFailed) {
+              diagEntry.importOutcome = 'fallback';
+              diagEntry.importOutcomeReason = 'counter-metadata-unparseable';
+            }
+            importedDiag.push(diagEntry);
+          } else {
+            importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'converter-returned-null'));
+          }
+        } catch (error) {
+          console.error(
+            `Error importing annotation ${annotation?.id || annotation?.name || '(unknown)'} from page ${pageNum}:`,
+            error && (error.stack || error.message || error),
+            error,
+          );
+          importedDiag.push({
+            ...summarizeFabricImportForDiag(
+              null,
+              annotation,
+              'skipped',
+              'annotation-import-failed',
+            ),
+            errorName: error?.name || null,
+            errorMessage: error?.message || String(error),
+          });
         }
       });
 
@@ -5375,4 +5486,3 @@ export async function countUnsupportedAnnotations(pdfDoc) {
   }
   return counts;
 }
-
