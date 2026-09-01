@@ -34,6 +34,8 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
   const preparingPromiseRef = useRef(null);
   const printWhenReadyRef = useRef(false);
   const mountedRef = useRef(true);
+  const progressTimerRef = useRef(null);
+  const [showProgress, setShowProgress] = useState(false);
   const readyForCurrentInputs = renderState.ready && sameInputs(renderState.inputs, currentInputs);
   const readyRef = useRef(readyForCurrentInputs);
   readyRef.current = readyForCurrentInputs;
@@ -227,19 +229,39 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
     () => buildBrowserPrintLayout(readyForCurrentInputs ? renderState.pages : []),
     [readyForCurrentInputs, renderState.pages],
   );
-  if (typeof document === 'undefined') return null;
-
   const preparing = !renderState.ready
     && sameInputs(renderState.inputs, currentInputs)
     && preparingPromiseRef.current !== null
     && !renderState.error;
+
+  // UX 2026-09-01 (owner): a successful print must be silent. The progress
+  // chip only appears when preparation genuinely takes a moment (>800ms) —
+  // small documents print with no flash; long preparations still explain
+  // themselves. Errors always show.
+  useEffect(() => {
+    if (!preparing) {
+      if (progressTimerRef.current) { clearTimeout(progressTimerRef.current); progressTimerRef.current = null; }
+      if (showProgress) setShowProgress(false);
+      return;
+    }
+    if (progressTimerRef.current || showProgress) return;
+    progressTimerRef.current = setTimeout(() => {
+      progressTimerRef.current = null;
+      setShowProgress(true);
+    }, 800);
+    return () => {
+      if (progressTimerRef.current) { clearTimeout(progressTimerRef.current); progressTimerRef.current = null; }
+    };
+  }, [preparing, showProgress]);
   const progressText = renderState.pageCount > 0
     ? `Preparing print… page ${Math.max(1, renderState.pageNumber)} of ${renderState.pageCount}`
     : 'Preparing print…';
 
+  if (typeof document === 'undefined') return null;
+
   return createPortal(
     <>
-      {(preparing || renderState.error) && (
+      {((preparing && showProgress) || renderState.error) && (
         <div className="survey-browser-print-progress" role="status" aria-live="polite">
           {renderState.error ? 'Could not prepare the document for print. Please try again.' : progressText}
         </div>
@@ -296,6 +318,15 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
               break-after: page;
               page-break-after: always;
               background: #fff !important;
+              /* One sheet = exactly one printed page in EVERY dialog mode.
+                 The inline pt height matches the @page box only when the
+                 dialog honors CSS page sizes; with default paper + margins
+                 the printable box is smaller, the pt heights overflow, and
+                 the slivers accumulate into a phantom trailing page (owner
+                 hit "page 8" on a 7-page document). 100vh in print media is
+                 the page box height, so this fits both modes. */
+              width: 100% !important;
+              height: 100vh !important;
             }
             .survey-browser-print-sheet:last-child {
               break-after: auto;
@@ -305,7 +336,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
               display: block !important;
               width: 100% !important;
               height: 100% !important;
-              object-fit: fill !important;
+              object-fit: contain !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
@@ -333,7 +364,6 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
             className="survey-browser-print-sheet"
             data-browser-print-page={page.pageNumber}
             style={{
-              page: page.pageName,
               width: `${page.widthPt}pt`,
               height: `${page.heightPt}pt`,
             }}

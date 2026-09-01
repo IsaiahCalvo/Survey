@@ -13,7 +13,8 @@ import sharp from 'sharp';
 const baseUrl = process.env.PRINT_RACE_BASE_URL;
 const iterations = Number.parseInt(process.env.PRINT_RACE_ITERATIONS || '1', 10);
 const minimumCoverage = Number.parseFloat(process.env.PRINT_RACE_MIN_COVERAGE || '0.001');
-const expectedPages = 36;
+const expectedPages = Number.parseInt(process.env.PRINT_RACE_EXPECTED_PAGES || '36', 10);
+const fixture = process.env.PRINT_RACE_FIXTURE || 'package2-rev4.pdf';
 
 if (!baseUrl) throw new Error('Set PRINT_RACE_BASE_URL to the Vite server URL.');
 if (!Number.isInteger(iterations) || iterations < 1) throw new Error('PRINT_RACE_ITERATIONS must be a positive integer.');
@@ -44,6 +45,7 @@ try {
         const sheets = [...document.querySelectorAll('[data-browser-print-page] img, .survey-browser-print-sheet img')];
         window.__printCapture = {
           calledAt: Date.now(),
+          placeholderAtPrint: document.querySelectorAll('.survey-browser-print-placeholder').length,
           sheets: sheets.map((image, index) => ({
             page: index + 1,
             complete: image.complete,
@@ -56,7 +58,7 @@ try {
 
     const consoleMessages = [];
     page.on('console', (message) => consoleMessages.push(message.text()));
-    await page.goto(`${baseUrl}/?testPdf=package2-rev4.pdf`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(`${baseUrl}/?testPdf=${encodeURIComponent(fixture)}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+P' : 'Control+P');
     await page.waitForFunction(() => window.__printCapture, null, { timeout: 120_000 });
@@ -67,7 +69,7 @@ try {
     const pdfPath = join(outputDir, `iteration-${iteration}.pdf`);
     const rasterPrefix = join(outputDir, `iteration-${iteration}-page`);
     await page.emulateMedia({ media: 'print' });
-    await page.pdf({ path: pdfPath, printBackground: true, preferCSSPageSize: true, timeout: 120_000 });
+    await page.pdf({ path: pdfPath, printBackground: true, preferCSSPageSize: false, timeout: 120_000 });
     if (iteration === 1) {
       await page.screenshot({ path: join(outputDir, 'print-composed-dom.png'), fullPage: true });
     }
@@ -81,8 +83,11 @@ try {
       .map((value, index) => ({ page: index + 1, value }))
       .filter(({ value }) => value < minimumCoverage);
     const readinessFailure = consoleMessages.some((message) => message.includes('print page readiness failed'));
+    const placeholderCount = capture.placeholderAtPrint ?? 0;
+    const errorToastVisible = await page.evaluate(() => [...document.querySelectorAll('.survey-browser-print-progress')].some((el) => /Could not prepare/.test(el.textContent || '')));
     const ok = readiness.length === expectedPages && unready.length === 0
-      && rasterPaths.length === expectedPages && blankPages.length === 0 && !readinessFailure;
+      && rasterPaths.length === expectedPages && blankPages.length === 0 && !readinessFailure
+      && placeholderCount === 0 && !errorToastVisible;
     if (ok) passed += 1;
     console.log(JSON.stringify({
       iteration,
@@ -92,6 +97,8 @@ try {
       outputPages: rasterPaths.length,
       blankPages,
       readinessFailure,
+      placeholderCount,
+      errorToastVisible,
       minimumPageCoverage: coverage.length ? Number(Math.min(...coverage).toFixed(5)) : 0,
     }));
     await page.close();

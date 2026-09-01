@@ -20,10 +20,15 @@ export function buildBrowserPrintLayout(inputPages = []) {
       pageName: `survey-print-page-${Number(page.pageNumber)}`,
     }));
 
+  // One uniform margin-less page rule (pdf.js's shipping print pattern).
+  // Per-page named @page sizes broke real print dialogs two ways: with CSS
+  // sizes ignored (default paper + margins) the fixed pt sheet heights
+  // overflowed into a phantom trailing page, and mixed-orientation documents
+  // paginated unpredictably. size:auto keeps the user's chosen paper,
+  // margin:0 makes the page box the full sheet, and each sheet fills exactly
+  // one page (100vh) with the image letterboxed via object-fit: contain.
   return {
     pages,
-    pageCss: pages.map((page) => (
-      `@page ${page.pageName} { size: ${formatPt(page.widthPt)}pt ${formatPt(page.heightPt)}pt; margin: 0; }`
-    )).join('\n'),
+    pageCss: '@page { size: auto; margin: 0; }',
   };
 }
