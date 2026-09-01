@@ -40,6 +40,25 @@ export const waitForPrintImage = (image, pageNumber, options = {}) => {
         }
         finish(resolve);
       } catch (error) {
+        // Chromium's decode() is known to reject spuriously on very large
+        // images under memory pressure even when the image is fully loaded
+        // and paints fine. Retry once on the next frame; if decode still
+        // rejects but the image IS complete with real dimensions, proceed —
+        // load state is the ground truth for print rasterisation. Only a
+        // genuine load failure (error event / blank dimensions) blocks print.
+        await new Promise((raf) => (typeof requestAnimationFrame === 'function'
+          ? requestAnimationFrame(() => raf())
+          : setTimeout(raf, 16)));
+        try {
+          if (typeof image.decode === 'function') await image.decode();
+          finish(resolve);
+          return;
+        } catch {
+          if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+            finish(resolve);
+            return;
+          }
+        }
         fail(error?.message || 'the page image could not be decoded');
       }
     };
