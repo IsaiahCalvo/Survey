@@ -90,7 +90,11 @@ const nativeArrow = addNative(pages[2], {
   Subtype: 'Line', Rect: [330, 235, 560, 302], L: [340, 247, 550, 292], LE: ['None', 'ClosedArrow'],
   C: [0.95, 0.35, 0.1], CA: 1, Border: [0, 0, 4], NM: 'native-arrow',
 });
-addNative(pages[3], { Subtype: 'Stamp', Rect: [120, 500, 250, 560], Name: 'Approved', NM: 'native-stamp' });
+const stampAppearance = pdf.context.register(pdf.context.flateStream(
+  'q\n1 0.2 0.2 RG\n3 w\n2 2 126 56 re S\n8 w\n20 30 m\n45 12 l\n108 48 l\nS\nQ\n',
+  { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 130, 60], Resources: {} },
+));
+addNative(pages[3], { Subtype: 'Stamp', Rect: [120, 500, 250, 560], Name: 'Approved', NM: 'native-stamp', AP: { N: stampAppearance } });
 
 const form = pdf.getForm();
 const checked = form.createCheckBox('fidelity.checked');
@@ -129,7 +133,7 @@ const annotationsByPage = {
     pathObject('pen-edited', [['M', 0, 0], ['C', 25, -20, 55, 30, 82, 4]], { left: 70, top: 170, pathOffset: { x: 0, y: 0 }, scaleX: 1.35, scaleY: 0.8, angle: 18, stroke: '#2563eb' }),
     pathObject('pen-erased', [['M', 210, 62], ['L', 320, 62], ['L', 320, 105], ['L', 210, 105], ['Z'], ['M', 252, 72], ['L', 278, 72], ['L', 278, 96], ['L', 252, 96], ['Z']], { stroke: 'none', strokeWidth: 0, fill: '#dc2626', fillRule: 'evenodd', paperEraserGeometry: 'v1' }),
     pathObject('highlighter', [['M', 40, 255], ['L', 180, 255]], { stroke: 'rgba(250,204,21,0.55)', strokeWidth: 18, globalCompositeOperation: 'multiply' }),
-    { id: 'rectangle', type: 'rect', left: 40, top: 310, width: 100, height: 62, angle: 12, stroke: '#ef4444', strokeWidth: 4, fill: 'rgba(239,68,68,0.18)' },
+    { id: 'rectangle', type: 'rect', left: 40, top: 310, width: 100, height: 62, angle: 12, stroke: '#ef4444', strokeWidth: 4, fill: '#fee2e2' },
     { id: 'ellipse', type: 'ellipse', left: 175, top: 305, rx: 54, ry: 30, angle: -18, stroke: '#0ea5e9', strokeWidth: 3, fill: 'rgba(14,165,233,0.20)' },
     { id: 'line', type: 'line', x1: 40, y1: 420, x2: 150, y2: 455, stroke: '#16a34a', strokeWidth: 4 },
     { id: 'arrow', type: 'line', x1: 180, y1: 450, x2: 300, y2: 405, stroke: '#7c3aed', strokeWidth: 4, lineEnding2: 'ClosedArrow', tool: 'arrow' },
@@ -139,8 +143,9 @@ const annotationsByPage = {
   ] },
   2: { width: 792, height: 612, objects: [
     { id: 'textbox-format', type: 'textbox', left: 60, top: 80, width: 230, height: 70, text: 'Bold italic violet', fontFamily: 'Helvetica', fontSize: 22, fontWeight: 'bold', fontStyle: 'italic', underline: true, fill: '#7c3aed', angle: 8 },
-    { id: 'counter', type: 'circle', left: 350, top: 90, radius: 22, fill: '#ef4444', data: { type: 'counter', displayNumber: '12', numberColor: '#ffffff', pointerAngle: 225 } },
-    { id: 'space-shape', type: 'rect', left: 60, top: 220, width: 150, height: 70, stroke: '#2563eb', strokeWidth: 3, fill: 'rgba(37,99,235,0.12)', spaceId: 'space-1' },
+    { id: 'counter', type: 'circle', left: 350, top: 90, radius: 22, fill: '#ef4444', data: { id: 'counter', type: 'counter', annotationType: 'counter', displayNumber: '12', numberColor: '#ffffff', pointerAngle: 225, seriesId: 'print-fidelity-series', seriesStart: 1, createdAt: 1 } },
+    { id: 'survey-marker-screen', annotationId: 'survey-marker-1', type: 'rect', left: 465, top: 90, width: 36, height: 36, stroke: 'transparent', strokeWidth: 0, fill: 'rgba(216,168,78,0.55)', data: { id: 'survey-marker-screen' } },
+    { id: 'space-shape', type: 'rect', left: 60, top: 220, width: 150, height: 70, stroke: '#2563eb', strokeWidth: 3, fill: '#dbeafe', spaceId: 'space-1' },
     { id: 'region-shape', type: 'ellipse', left: 270, top: 220, rx: 70, ry: 35, stroke: '#16a34a', strokeWidth: 3, fill: 'rgba(22,163,74,0.12)' },
     { id: 'callout-1', type: 'group', data: { type: 'callout', id: 'callout-1' }, pageNumber: 2, text: 'Callout text', arrowTip: { x: 510 / 792, y: 360 / 612 }, knee: { x: 430 / 792, y: 330 / 612 }, textBox: { left: 250 / 792, top: 300 / 612, width: 180 / 792, height: 72 / 612 }, style: { lineColor: '#be123c', borderColor: '#be123c', lineThickness: 3, backgroundColor: '#fff1f2', fontColor: '#881337', fontSize: 16, bold: true, arrowheadStyle: 'solid-triangle' } },
   ] },
@@ -160,10 +165,10 @@ const annotationsByPage = {
   ] },
   4: { width: 792, height: 612, objects: [
     pathObject('rotated-page-ink', [['M', 80, 120], ['C', 150, 60, 220, 180, 300, 110]], { stroke: '#db2777', strokeWidth: 7 }),
-    { id: 'rotated-page-rect', type: 'rect', left: 90, top: 250, width: 180, height: 90, angle: 27, stroke: '#0f766e', strokeWidth: 5, fill: 'rgba(15,118,110,0.2)' },
+    { id: 'rotated-page-rect', type: 'rect', left: 90, top: 250, width: 180, height: 90, angle: 27, stroke: '#0f766e', strokeWidth: 5, fill: '#ccfbf1' },
   ] },
   5: { width: 540, height: 648, objects: [
-    { id: 'cropbox-offset-rect', type: 'rect', left: 65, top: 90, width: 170, height: 95, stroke: '#9333ea', strokeWidth: 5, fill: 'rgba(147,51,234,0.18)' },
+    { id: 'cropbox-offset-rect', type: 'rect', left: 65, top: 90, width: 170, height: 95, stroke: '#9333ea', strokeWidth: 5, fill: '#f3e8ff' },
     markup('cropbox-highlight', 'highlight', [70, 245, 280, 275], '#facc15', 0.4),
   ] },
 };
@@ -196,15 +201,15 @@ const regions = [
   region('strike-custom', 'strikethrough', 3, [45, 275, 270, 320], ['bounds', 'colour', 'strokeWeight']),
   region('link', 'link', 3, [45, 340, 270, 385], ['bounds', 'colour']),
   region('redaction-unapplied', 'redaction', 3, [45, 405, 270, 460], ['bounds', 'fillCoverage', 'colour']),
-  region('imported-native-ink', 'native-ink', 3, [320, 45, 570, 115], ['bounds', 'colour', 'strokeWeight']),
+  region('imported-native-ink', 'native-ink', 3, [45, 650, 295, 735], ['bounds', 'colour', 'strokeWeight']),
   region('imported-native-circle', 'native-circle', 3, [335, 125, 465, 220], ['bounds', 'fillCoverage', 'colour', 'strokeWeight']),
   region('imported-native-free-text', 'native-free-text', 3, [315, 215, 575, 295], ['bounds', 'colour', 'textPresence']),
   region('imported-native-highlight', 'native-highlight', 3, [315, 300, 575, 360], ['bounds', 'fillCoverage', 'colour']),
   region('imported-native-cloud', 'native-cloud', 3, [320, 365, 520, 475], ['bounds', 'colour', 'strokeWeight']),
-  region('imported-native-arrow', 'native-arrow', 3, [320, 480, 570, 565], ['bounds', 'orientation', 'colour', 'strokeWeight']),
+  region('imported-native-arrow', 'native-arrow', 3, [40, 225, 290, 315], ['bounds', 'orientation', 'colour', 'strokeWeight']),
   region('rotated-page-ink', 'rotated-ink', 4, [55, 45, 325, 200]),
   region('rotated-page-rect', 'rotated-rect', 4, [55, 205, 310, 390]),
-  region('native-stamp', 'native-stamp', 4, [100, 210, 275, 330], ['bounds', 'textPresence']),
+  region('native-stamp', 'native-stamp', 4, [215, 345, 310, 510], ['bounds', 'textPresence']),
   region('cropbox-offset-rect', 'cropbox-rect', 5, [50, 75, 250, 205]),
   region('cropbox-highlight', 'cropbox-highlight', 5, [55, 230, 295, 290]),
 ];
@@ -217,10 +222,16 @@ const manifest = {
   pdfSize: bytes.byteLength,
   fixedZoom: 1,
   rasterScale: 2,
-  pages: rotations.map((rotation, index) => ({ page: index + 1, rotation, ...(index === 4 ? { cropBox: [36, 72, 576, 720] } : {}) })),
+  pages: rotations.map((rotation, index) => ({
+    page: index + 1,
+    rotation,
+    width: PAGE.width,
+    height: PAGE.height,
+    ...(index === 4 ? { cropBox: [36, 72, 576, 720] } : {}),
+  })),
   annotationsByPage,
   spaces: [{ id: 'space-1', assignedPages: [{ pageId: 2, wholePageIncluded: false, regions: [{ regionId: 'region-1', shapeType: 'rectangular', coordinates: [250, 200, 430, 200, 430, 310, 250, 310] }] }] }],
-  surveyMarkers: { 'survey-marker-1': { annotationId: 'survey-marker-1', pageNumber: 2, x: 465, y: 90, width: 36, height: 36, color: '#d8a84e' } },
+  surveyMarkers: { 'survey-marker-1': { annotationId: 'survey-marker-1', pageNumber: 2, x: 465, y: 90, width: 36, height: 36, bounds: { x: 465, y: 90, width: 36, height: 36 }, color: 'rgba(216,168,78,0.55)' } },
   regions,
 };
 await writeFile(pdfPath, bytes);

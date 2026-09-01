@@ -692,6 +692,14 @@ test('print payload includes canvas, survey, space, and region annotations', () 
 
 test('print payload carries survey highlights into the flattener', () => {
   const payload = buildPrintableRegularAnnotationPayload({
+    annotationsByPage: {
+      1: {
+        objects: [
+          { id: 'survey-highlight-screen-copy', annotationId: 'survey-highlight', type: 'rect', left: 10, top: 10, width: 20, height: 10 },
+          { id: 'regular-rect', type: 'rect', left: 70, top: 10, width: 20, height: 10 },
+        ],
+      },
+    },
     surveyMarkers: {
       'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a' },
       'region-highlight': { pageNumber: 1, bounds: { x: 20, y: 20, width: 20, height: 10 }, regionId: 'region-a' },
@@ -702,6 +710,7 @@ test('print payload carries survey highlights into the flattener', () => {
 
   assert.equal(Object.keys(payload.surveyMarkers).length, 4);
   assert.equal(payload.diagnostics.included.surveyMarkers, 4);
+  assert.deepEqual(payload.annotationsByPage[1].objects.map((obj) => obj.id), ['regular-rect']);
 });
 
 test('print payload includes regular and scoped counters', () => {

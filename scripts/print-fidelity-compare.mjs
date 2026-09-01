@@ -19,8 +19,25 @@ const rgbToHsl = (r, g, b) => {
 };
 const hueDistance = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
-const cropForRegion = async (imagePath, bounds, pageSize) => {
-  const image = sharp(imagePath).ensureAlpha();
+const normalisePageRaster = async ({ imagePath, pageSize, width, height, fitted = false }) => {
+  let image = sharp(imagePath).ensureAlpha();
+  const meta = await image.metadata();
+  if (fitted) {
+    // BrowserPrintDocument puts each PDF.js viewport image into a letter sheet
+    // with object-fit:contain. Undo that exact fit (including the landscape or
+    // CropBox letterbox offset) before any region is measured.
+    const fit = Math.min(meta.width / pageSize.width, meta.height / pageSize.height);
+    const fittedWidth = Math.min(meta.width, Math.round(pageSize.width * fit));
+    const fittedHeight = Math.min(meta.height, Math.round(pageSize.height * fit));
+    const left = Math.max(0, Math.round((meta.width - fittedWidth) / 2));
+    const top = Math.max(0, Math.round((meta.height - fittedHeight) / 2));
+    image = image.extract({ left, top, width: fittedWidth, height: fittedHeight });
+  }
+  return image.resize(width, height, { fit: 'fill', kernel: sharp.kernel.lanczos3 }).png().toBuffer();
+};
+
+const cropForRegion = async (imageBuffer, bounds, pageSize) => {
+  const image = sharp(imageBuffer).ensureAlpha();
   const meta = await image.metadata();
   const sx = meta.width / pageSize.width;
   const sy = meta.height / pageSize.height;
@@ -36,42 +53,90 @@ const analyseCrop = ({ data, info }) => {
   const coloured = [];
   let dark = 0;
   let painted = 0;
+  let saturated = 0;
+  let sumX = 0; let sumY = 0; let sumXX = 0; let sumYY = 0; let sumXY = 0;
   let minX = info.width; let minY = info.height; let maxX = -1; let maxY = -1;
   const mask = new Uint8Array(info.width * info.height);
+  const lightnessByPixel = new Float32Array(info.width * info.height);
+  const observedLightness = [];
   for (let y = 0; y < info.height; y += 1) {
     for (let x = 0; x < info.width; x += 1) {
       const offset = (y * info.width + x) * info.channels;
       const r = data[offset]; const g = data[offset + 1]; const b = data[offset + 2];
       const hsl = rgbToHsl(r, g, b);
-      const nonBackground = hsl.saturation > 5 || hsl.lightness < 88;
+      const minChannel = Math.min(r, g, b);
+      const maxChannel = Math.max(r, g, b);
+      const chroma = maxChannel - minChannel;
+      const whiteDistance = 255 - minChannel;
+      // BrowserPrintDocument uses JPEG page images. Near-white JPEG noise can
+      // have a high HSL saturation even when channels differ by only 1. Use a
+      // real distance from white so compression speckle never becomes paint.
+      const nonBackground = whiteDistance > 12 && (minChannel < 243 || chroma > 10);
       if (!nonBackground) continue;
       mask[y * info.width + x] = 1;
+      lightnessByPixel[y * info.width + x] = hsl.lightness;
+      observedLightness.push(hsl.lightness);
       painted += 1;
+      sumX += x; sumY += y; sumXX += x * x; sumYY += y * y; sumXY += x * y;
       minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       if (hsl.lightness < 45) dark += 1;
-      if (hsl.saturation > 18 && hsl.lightness > 8 && hsl.lightness < 94) coloured.push(hsl);
+      if (hsl.saturation > 18 && hsl.lightness > 8 && hsl.lightness < 94) {
+        saturated += 1;
+        coloured.push(hsl);
+      }
     }
   }
-  let edgeRuns = [];
+  observedLightness.sort((a, b) => a - b);
+  const minLightness = observedLightness[0] ?? 100;
+  const maxLightness = observedLightness.at(-1) ?? 100;
+  // A filled shape normally has a light interior and a darker outline. When
+  // those clusters are distinct, measure only the outline. A flat pen or
+  // highlighter has no such split, so its whole paint mask is the stroke.
+  const strokeLightnessLimit = maxLightness - minLightness > 12
+    ? minLightness + Math.min(12, (maxLightness - minLightness) * 0.4)
+    : maxLightness;
+  const strokeMask = new Uint8Array(mask.length);
+  for (let index = 0; index < mask.length; index += 1) {
+    strokeMask[index] = mask[index] && lightnessByPixel[index] <= strokeLightnessLimit ? 1 : 0;
+  }
+  let strokeArea = 0;
+  let strokePerimeter = 0;
   for (let y = 0; y < info.height; y += 1) {
-    let run = 0;
     for (let x = 0; x < info.width; x += 1) {
-      if (mask[y * info.width + x]) run += 1;
-      else if (run) { if (run <= Math.max(20, info.width * 0.18)) edgeRuns.push(run); run = 0; }
+      const index = y * info.width + x;
+      if (!strokeMask[index]) continue;
+      strokeArea += 1;
+      if (x === 0 || !strokeMask[index - 1]) strokePerimeter += 1;
+      if (x === info.width - 1 || !strokeMask[index + 1]) strokePerimeter += 1;
+      if (y === 0 || !strokeMask[index - info.width]) strokePerimeter += 1;
+      if (y === info.height - 1 || !strokeMask[index + info.width]) strokePerimeter += 1;
     }
-    if (run && run <= Math.max(20, info.width * 0.18)) edgeRuns.push(run);
   }
-  edgeRuns.sort((a, b) => a - b);
   coloured.sort((a, b) => a.hue - b.hue);
   const median = (list, key) => list.length ? list[Math.floor(list.length / 2)][key] : null;
+  let orientation = null;
+  if (painted > 1) {
+    const meanX = sumX / painted; const meanY = sumY / painted;
+    const covarianceXX = sumXX / painted - meanX * meanX;
+    const covarianceYY = sumYY / painted - meanY * meanY;
+    const covarianceXY = sumXY / painted - meanX * meanY;
+    orientation = ((Math.atan2(2 * covarianceXY, covarianceXX - covarianceYY) * 90 / Math.PI) + 180) % 180;
+  }
   return {
     paintedPixels: painted,
     coverage: painted / Math.max(1, info.width * info.height),
     darkCoverage: dark / Math.max(1, info.width * info.height),
+    saturatedCoverage: saturated / Math.max(1, info.width * info.height),
     bounds: painted ? { left: minX / info.width, top: minY / info.height, right: (maxX + 1) / info.width, bottom: (maxY + 1) / info.height } : null,
     colour: coloured.length ? { hue: median(coloured, 'hue'), saturation: median(coloured, 'saturation'), lightness: median(coloured, 'lightness') } : null,
-    strokeWeight: edgeRuns.length ? edgeRuns[Math.floor(edgeRuns.length / 2)] : 0,
+    strokeWeight: strokePerimeter ? (2 * strokeArea) / strokePerimeter : 0,
+    orientation,
   };
+};
+
+const orientationDistance = (a, b) => {
+  const delta = Math.abs(a - b) % 180;
+  return Math.min(delta, 180 - delta);
 };
 
 const compareMetrics = (screen, print, checks, tolerance = {}) => {
@@ -81,7 +146,7 @@ const compareMetrics = (screen, print, checks, tolerance = {}) => {
     if (!screen.bounds || !print.bounds) failures.push('missing painted bounds');
     else for (const edge of ['left', 'top', 'right', 'bottom']) {
       const delta = Math.abs(screen.bounds[edge] - print.bounds[edge]);
-      if (delta > boundTol) failures.push(`${edge} delta ${delta.toFixed(4)} > ${boundTol}`);
+      if (delta > boundTol + 1e-6) failures.push(`${edge} delta ${delta.toFixed(4)} > ${boundTol}`);
     }
   }
   if (checks.includes('colour')) {
@@ -102,8 +167,19 @@ const compareMetrics = (screen, print, checks, tolerance = {}) => {
     const delta = Math.abs(screen.strokeWeight - print.strokeWeight) / denom;
     if (delta > (tolerance.strokeWeight ?? 0.45)) failures.push(`stroke delta ${(delta * 100).toFixed(1)}%`);
   }
-  if (checks.includes('textPresence') && (screen.darkCoverage < 0.002 || print.darkCoverage < 0.002)) {
-    failures.push(`text missing screen=${screen.darkCoverage.toFixed(4)} print=${print.darkCoverage.toFixed(4)}`);
+  if (checks.includes('orientation')) {
+    if (!Number.isFinite(screen.orientation) || !Number.isFinite(print.orientation)) failures.push('missing orientation');
+    else {
+      const delta = orientationDistance(screen.orientation, print.orientation);
+      if (delta > (tolerance.orientation ?? 8)) failures.push(`orientation delta ${delta.toFixed(1)}°`);
+    }
+  }
+  if (checks.includes('textPresence')) {
+    const screenSignal = screen.darkCoverage + screen.saturatedCoverage;
+    const printSignal = print.darkCoverage + print.saturatedCoverage;
+    if (screenSignal < (tolerance.textSignal ?? 0.002) || printSignal < (tolerance.textSignal ?? 0.002)) {
+      failures.push(`text missing screen=${screenSignal.toFixed(4)} print=${printSignal.toFixed(4)}`);
+    }
   }
   return failures;
 };
@@ -112,32 +188,88 @@ export async function comparePrintFidelity({ manifestPath, screenDir, printDir, 
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   await mkdir(outputDir, { recursive: true });
   const results = [];
+  const normalisedDir = join(outputDir, '_normalised-pages');
+  await mkdir(normalisedDir, { recursive: true });
+  const normalisedPages = new Map();
+  for (const page of manifest.pages) {
+    const pageSize = pageViewportSize(page);
+    const screenPath = join(screenDir, `page-${page.page}.png`);
+    const printPath = join(printDir, `page-${page.page}.png`);
+    const screenMeta = await sharp(screenPath).metadata();
+    const common = { width: screenMeta.width, height: screenMeta.height };
+    const screenRaster = await normalisePageRaster({ imagePath: screenPath, pageSize, ...common });
+    const printRaster = await normalisePageRaster({ imagePath: printPath, pageSize, ...common, fitted: true });
+    await writeFile(join(normalisedDir, `page-${page.page}-screen.png`), screenRaster);
+    await writeFile(join(normalisedDir, `page-${page.page}-print.png`), printRaster);
+    normalisedPages.set(page.page, { pageSize, screenRaster, printRaster, common });
+  }
   for (const item of manifest.regions) {
-    const page = manifest.pages.find((entry) => entry.page === item.page) || { page: item.page };
-    const pageSize = page.rotation === 90 || page.rotation === 270
-      ? { width: PAGE_HEIGHT(page), height: PAGE_WIDTH(page) }
-      : page.cropBox ? { width: page.cropBox[2] - page.cropBox[0], height: page.cropBox[3] - page.cropBox[1] } : { width: 612, height: 792 };
-    const screenPath = join(screenDir, `page-${item.page}.png`);
-    const printPath = join(printDir, `page-${item.page}.png`);
-    const screenCrop = await cropForRegion(screenPath, item.bounds, pageSize);
-    const printCrop = await cropForRegion(printPath, item.bounds, pageSize);
+    const normalised = normalisedPages.get(item.page);
+    if (!normalised) throw new Error(`Missing page ${item.page} in print-fidelity manifest`);
+    const { pageSize, screenRaster, printRaster } = normalised;
+    const screenCrop = await cropForRegion(screenRaster, item.bounds, pageSize);
+    const printCrop = await cropForRegion(printRaster, item.bounds, pageSize);
+    if (screenCrop.width !== printCrop.width || screenCrop.height !== printCrop.height) {
+      throw new Error(`${item.id}: screen and print crop grids differ`);
+    }
     const screen = analyseCrop(screenCrop);
     const print = analyseCrop(printCrop);
-    const failures = compareMetrics(screen, print, item.checks || ['bounds', 'colour'], item.tolerance);
+    const fixtureMinimum = item.fixtureMinPaintedPixels ?? Math.max(8, Math.round(screenCrop.width * screenCrop.height * 0.0005));
+    const fixtureFailures = screen.paintedPixels < fixtureMinimum
+      ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${fixtureMinimum}`]
+      : [];
+    const failures = fixtureFailures.length ? [] : compareMetrics(screen, print, item.checks || ['bounds', 'colour'], item.tolerance);
     const safe = item.id.replace(/[^a-z0-9_.-]+/gi, '-');
     const beforePath = join(outputDir, `${safe}-screen.png`);
     const afterPath = join(outputDir, `${safe}-print.png`);
-    await sharp(screenPath).extract({ left: screenCrop.left, top: screenCrop.top, width: screenCrop.width, height: screenCrop.height }).png().toFile(beforePath);
-    await sharp(printPath).extract({ left: printCrop.left, top: printCrop.top, width: printCrop.width, height: printCrop.height }).png().toFile(afterPath);
-    results.push({ id: item.id, type: item.type, page: item.page, pass: failures.length === 0, failures, screen, print, screenImage: beforePath, printImage: afterPath });
+    await sharp(screenRaster).extract({ left: screenCrop.left, top: screenCrop.top, width: screenCrop.width, height: screenCrop.height }).png().toFile(beforePath);
+    await sharp(printRaster).extract({ left: printCrop.left, top: printCrop.top, width: printCrop.width, height: printCrop.height }).png().toFile(afterPath);
+    const status = fixtureFailures.length ? 'fixture-failure' : failures.length ? 'print-failure' : 'pass';
+    results.push({ id: item.id, type: item.type, page: item.page, status, pass: status === 'pass', fixtureFailures, failures, cropSize: { width: screenCrop.width, height: screenCrop.height }, screen, print, screenImage: beforePath, printImage: afterPath });
   }
-  const report = { generatedAt: new Date().toISOString(), manifest: basename(manifestPath), passed: results.filter((r) => r.pass).length, failed: results.filter((r) => !r.pass).length, results };
+  const report = {
+    generatedAt: new Date().toISOString(), manifest: basename(manifestPath),
+    passed: results.filter((r) => r.status === 'pass').length,
+    failed: results.filter((r) => r.status === 'print-failure').length,
+    fixtureFailed: results.filter((r) => r.status === 'fixture-failure').length,
+    results,
+  };
   await writeFile(join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
   return report;
 }
 
-const PAGE_WIDTH = (page) => page.cropBox ? page.cropBox[2] - page.cropBox[0] : 612;
-const PAGE_HEIGHT = (page) => page.cropBox ? page.cropBox[3] - page.cropBox[1] : 792;
+const PAGE_WIDTH = (page) => page.cropBox ? page.cropBox[2] - page.cropBox[0] : Number(page.width) || 612;
+const PAGE_HEIGHT = (page) => page.cropBox ? page.cropBox[3] - page.cropBox[1] : Number(page.height) || 792;
+
+const pageViewportSize = (page) => page.rotation === 90 || page.rotation === 270
+  ? { width: PAGE_HEIGHT(page), height: PAGE_WIDTH(page) }
+  : page.cropBox
+    ? { width: page.cropBox[2] - page.cropBox[0], height: page.cropBox[3] - page.cropBox[1] }
+    : { width: PAGE_WIDTH(page), height: PAGE_HEIGHT(page) };
+
+export async function validatePrintFidelityScreenFixture({ manifestPath, screenDir }) {
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const pages = new Map();
+  for (const page of manifest.pages) {
+    const pageSize = pageViewportSize(page);
+    const screenPath = join(screenDir, `page-${page.page}.png`);
+    const meta = await sharp(screenPath).metadata();
+    const screenRaster = await normalisePageRaster({ imagePath: screenPath, pageSize, width: meta.width, height: meta.height });
+    pages.set(page.page, { pageSize, screenRaster });
+  }
+  const results = [];
+  for (const item of manifest.regions) {
+    const page = pages.get(item.page);
+    const crop = await cropForRegion(page.screenRaster, item.bounds, page.pageSize);
+    const screen = analyseCrop(crop);
+    const minimum = item.fixtureMinPaintedPixels ?? Math.max(8, Math.round(crop.width * crop.height * 0.0005));
+    const failures = screen.paintedPixels < minimum
+      ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${minimum}`]
+      : [];
+    results.push({ id: item.id, type: item.type, page: item.page, pass: failures.length === 0, failures, screen });
+  }
+  return { passed: results.filter((item) => item.pass).length, failed: results.filter((item) => !item.pass).length, results };
+}
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [manifestPath, screenDir, printDir, outputDir] = process.argv.slice(2);
@@ -146,7 +278,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = 2;
   } else {
     const report = await comparePrintFidelity({ manifestPath, screenDir, printDir, outputDir });
-    console.log(JSON.stringify({ passed: report.passed, failed: report.failed, report: join(outputDir, 'report.json') }));
-    if (report.failed) process.exitCode = 1;
+    console.log(JSON.stringify({ passed: report.passed, failed: report.failed, fixtureFailed: report.fixtureFailed, report: join(outputDir, 'report.json') }));
+    if (report.failed || report.fixtureFailed) process.exitCode = 1;
   }
 }

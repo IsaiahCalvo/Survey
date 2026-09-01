@@ -224,6 +224,7 @@ export function buildPrintableRegularAnnotationPayload({
     },
   };
   const printableAnnotationsByPage = {};
+  const surveyMarkerIds = new Set(Object.keys(surveyMarkers || {}).map(String));
 
   // Same composite pre-pass as buildPdfExportAnnotationPlan: editing ONE
   // member of a pdfAppearanceCompositeId group makes the whole group the
@@ -253,6 +254,10 @@ export function buildPrintableRegularAnnotationPayload({
 
     objects.forEach((obj) => {
       const isCounter = obj?.data?.type === 'counter';
+      // Survey Markers can also have a canvas rect mirror for screen paint.
+      // The marker map is the print source; flattening both would double its
+      // opacity and make print darker than the screen.
+      if (obj?.annotationId != null && surveyMarkerIds.has(String(obj.annotationId))) return;
       const editedImportedReplacement = isEditedImportedReplacement(obj);
       if (isPdfImportedObject(obj) && !canFlattenImportedObjectForPrint(obj)) {
         diagnostics.excluded.importedPdfNativePreserved += 1;

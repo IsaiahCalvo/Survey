@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { comparePrintFidelity } from '../../scripts/print-fidelity-compare.mjs';
+import { comparePrintFidelity, validatePrintFidelityScreenFixture } from '../../scripts/print-fidelity-compare.mjs';
 
 const execFileAsync = promisify(execFile);
 const root = resolve(import.meta.dirname, '..', '..');
@@ -31,6 +31,9 @@ test('every supported annotation matches the real browser print path', async ({ 
   await page.goto(`/?testPdf=${encodeURIComponent(manifest.pdfFile)}`);
   await page.locator('.survey-pdfjs-page-div[data-page-number]').first().waitFor({ state: 'visible', timeout: 60_000 });
   await page.keyboard.press('v');
+  // Let any load or migration toast leave before element screenshots. A fixed
+  // toast inside the page crop is not PDF paint and must never enter metrics.
+  await page.waitForTimeout(4_800);
 
   for (const entry of manifest.pages) {
     const pageEl = page.locator(`.survey-pdfjs-page-div[data-page-number="${entry.page}"]`);
@@ -39,6 +42,12 @@ test('every supported annotation matches the real browser print path', async ({ 
     await page.waitForTimeout(350);
     await pageEl.screenshot({ path: join(screenDir, `page-${entry.page}.png`), animations: 'disabled' });
   }
+
+  const fixtureReport = await validatePrintFidelityScreenFixture({ manifestPath, screenDir });
+  expect(
+    fixtureReport.results.filter((result) => !result.pass),
+    `Print-fidelity fixture did not paint every screen region:\n${JSON.stringify(fixtureReport.results.filter((result) => !result.pass), null, 2)}`,
+  ).toEqual([]);
 
   await page.keyboard.press(shortcut);
   await expect.poll(() => page.evaluate(() => window.__browserPrintCalls), { timeout: 60_000 }).toBe(1);
@@ -49,5 +58,6 @@ test('every supported annotation matches the real browser print path', async ({ 
   await execFileAsync('pdftoppm', ['-png', '-r', '144', printPdf, join(printDir, 'page')]);
 
   const report = await comparePrintFidelity({ manifestPath, screenDir, printDir, outputDir: pairsDir });
-  expect(report.results.filter((result) => !result.pass), JSON.stringify(report.results.filter((result) => !result.pass), null, 2)).toEqual([]);
+  expect(report.results.filter((result) => result.status === 'fixture-failure'), 'Fixture failures must be fixed before print comparison').toEqual([]);
+  expect(report.results.filter((result) => result.status === 'print-failure'), JSON.stringify(report.results.filter((result) => result.status === 'print-failure'), null, 2)).toEqual([]);
 });

@@ -1,29 +1,39 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 4217,
+  "pdfSize": 4443,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
     {
       "page": 1,
-      "rotation": 0
+      "rotation": 0,
+      "width": 612,
+      "height": 792
     },
     {
       "page": 2,
-      "rotation": 90
+      "rotation": 90,
+      "width": 612,
+      "height": 792
     },
     {
       "page": 3,
-      "rotation": 180
+      "rotation": 180,
+      "width": 612,
+      "height": 792
     },
     {
       "page": 4,
-      "rotation": 270
+      "rotation": 270,
+      "width": 612,
+      "height": 792
     },
     {
       "page": 5,
       "rotation": 0,
+      "width": 612,
+      "height": 792,
       "cropBox": [
         36,
         72,
@@ -221,7 +231,7 @@
           "angle": 12,
           "stroke": "#ef4444",
           "strokeWidth": 4,
-          "fill": "rgba(239,68,68,0.18)"
+          "fill": "#fee2e2"
         },
         {
           "id": "ellipse",
@@ -388,7 +398,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "29R",
+            "fieldId": "30R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -398,7 +408,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "35R",
+            "fieldId": "36R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -434,10 +444,30 @@
           "radius": 22,
           "fill": "#ef4444",
           "data": {
+            "id": "counter",
             "type": "counter",
+            "annotationType": "counter",
             "displayNumber": "12",
             "numberColor": "#ffffff",
-            "pointerAngle": 225
+            "pointerAngle": 225,
+            "seriesId": "print-fidelity-series",
+            "seriesStart": 1,
+            "createdAt": 1
+          }
+        },
+        {
+          "id": "survey-marker-screen",
+          "annotationId": "survey-marker-1",
+          "type": "rect",
+          "left": 465,
+          "top": 90,
+          "width": 36,
+          "height": 36,
+          "stroke": "transparent",
+          "strokeWidth": 0,
+          "fill": "rgba(216,168,78,0.55)",
+          "data": {
+            "id": "survey-marker-screen"
           }
         },
         {
@@ -449,7 +479,7 @@
           "height": 70,
           "stroke": "#2563eb",
           "strokeWidth": 3,
-          "fill": "rgba(37,99,235,0.12)",
+          "fill": "#dbeafe",
           "spaceId": "space-1"
         },
         {
@@ -829,7 +859,7 @@
           "angle": 27,
           "stroke": "#0f766e",
           "strokeWidth": 5,
-          "fill": "rgba(15,118,110,0.2)"
+          "fill": "#ccfbf1"
         }
       ]
     },
@@ -846,7 +876,7 @@
           "height": 95,
           "stroke": "#9333ea",
           "strokeWidth": 5,
-          "fill": "rgba(147,51,234,0.18)"
+          "fill": "#f3e8ff"
         },
         {
           "id": "cropbox-highlight",
@@ -911,7 +941,13 @@
       "y": 90,
       "width": 36,
       "height": 36,
-      "color": "#d8a84e"
+      "bounds": {
+        "x": 465,
+        "y": 90,
+        "width": 36,
+        "height": 36
+      },
+      "color": "rgba(216,168,78,0.55)"
     }
   },
   "regions": [
@@ -1350,10 +1386,10 @@
       "type": "native-ink",
       "page": 3,
       "bounds": [
-        320,
         45,
-        570,
-        115
+        650,
+        295,
+        735
       ],
       "checks": [
         "bounds",
@@ -1431,10 +1467,10 @@
       "type": "native-arrow",
       "page": 3,
       "bounds": [
-        320,
-        480,
-        570,
-        565
+        40,
+        225,
+        290,
+        315
       ],
       "checks": [
         "bounds",
@@ -1478,10 +1514,10 @@
       "type": "native-stamp",
       "page": 4,
       "bounds": [
-        100,
-        210,
-        275,
-        330
+        215,
+        345,
+        310,
+        510
       ],
       "checks": [
         "bounds",
