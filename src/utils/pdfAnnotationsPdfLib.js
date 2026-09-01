@@ -5,6 +5,8 @@
  */
 
 import {
+  BlendMode,
+  PDFArray,
   PDFDict,
   PDFDocument,
   PDFName,
@@ -16,6 +18,7 @@ import {
   StandardFonts,
   appendBezierCurve,
   appendQuadraticCurve,
+  concatTransformationMatrix,
   closePath as closePathOperator,
   fill as fillOperator,
   lineTo,
@@ -85,10 +88,10 @@ import {
   adaptLink,
   adaptRedact,
   getTextMarkupPageGeometry,
-  viewportPointToBaseAppPoint,
   viewportPointToPdfPoint,
 } from './pdfNativeExport/adapters/textMarkup.js';
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
+import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -168,46 +171,31 @@ const isEditedPdfImportedObject = (obj) => (
   )
 );
 
+// Browser print must use the same app-side object the SVG layer paints. Keeping
+// an untouched native annotation means print uses its /AP stream while the app
+// hides that stream and paints the imported Fabric copy. Those two sources are
+// allowed to differ (opacity, inset stroke, colour, and even authored state).
+// Only replace types this flattener can draw; stamps and other AP-only imports
+// stay native until they have a real app renderer and flattener.
+const canFlattenImportedObjectForPrint = (obj) => {
+  if (!isPdfImportedObject(obj)) return true;
+  if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) return true;
+  if (Array.isArray(obj?.objects)) return obj.objects.length > 0;
+  return EXPORTABLE_FABRIC_TYPES.has(String(obj?.type || '').toLowerCase());
+};
+
 const getPdfAppearanceCompositeId = (obj) => (
   obj?.data?.pdfAppearanceCompositeId
   || obj?.pdfAppearanceCompositeId
   || null
 );
 
-const getPrintableRegularScope = (obj) => {
-  const hasModule = obj?.moduleId !== null && obj?.moduleId !== undefined;
-  const hasSpace = obj?.spaceId !== null && obj?.spaceId !== undefined;
-  const hasRegion = obj?.regionId !== null && obj?.regionId !== undefined;
-
-  if (hasRegion && (hasModule || hasSpace)) return ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
-  if (hasRegion) return ANNOTATION_VISIBILITY_SCOPE.REGION;
-  if (hasSpace) return 'space';
-  if (hasModule) return ANNOTATION_VISIBILITY_SCOPE.SURVEY;
-  return ANNOTATION_VISIBILITY_SCOPE.CANVAS;
-};
-
 const clonePlain = (value) => deepClone(value);
 
-// UX 2026-07-17 (print contract, investigated for the survey-marker print
-// question): this builder feeds the "Print PDF with annotations…" path and is
-// deliberately scoped to REGULAR (canvas-scope) viewer annotations only —
-// what the user sees with no survey/space/region context active. Survey
-// Markers are survey content, so they are excluded here BY DESIGN, together
-// with all survey/space/region-scoped shapes and callouts (see the
-// 'printable regular annotation filter excludes survey highlights' regression
-// test). The surveyMarkers argument exists so diagnostics can report how many
-// markers were excluded; the returned payload always carries an empty map.
-// If survey printing is ever added, include ALL survey-scoped content
-// (markers + shapes + callouts) in one coherent change, not markers alone.
-// Note: callers (PDFViewer print path, tests) also pass `spaces`; it is
-// intentionally not destructured — region scope is derived from each object's
-// own regionId, so no region→space mapping is needed for this filter.
-//
-// KAL-91 (print parity with the export path's P1 policy): an EDITED imported
-// copy is the annotation's current truth, so it passes this filter and
-// flattens into the print; its stale native original is suppressed by the
-// print writer (savePDFWithFlattenedRegularAnnotationsForPrint). UNEDITED
-// imported copies stay excluded — their native annot already prints.
+// Print is an image of the app's annotation state, not a second export policy.
+// Carry every canvas, survey, space, and region mark. Drawable imported copies
+// are also the paint truth even when untouched; their native originals are
+// removed only after the app copy flattened successfully.
 export function buildPrintableRegularAnnotationPayload({
   annotationsByPage = {},
   callouts = [],
@@ -219,12 +207,13 @@ export function buildPrintableRegularAnnotationPayload({
       callouts: 0,
       counters: 0,
       editedImportedCopies: 0,
+      surveyMarkers: 0,
     },
     excluded: {
       fabric: 0,
       callouts: 0,
       counters: 0,
-      surveyMarkers: Object.keys(surveyMarkers || {}).length,
+      surveyMarkers: 0,
       importedPdfNativePreserved: 0,
     },
     excludedByScope: {
@@ -258,39 +247,21 @@ export function buildPrintableRegularAnnotationPayload({
     );
   };
 
-  const recordExcludedScope = (scope) => {
-    if (scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS) {
-      diagnostics.excludedByScope[scope] = (diagnostics.excludedByScope[scope] || 0) + 1;
-    }
-  };
-
   Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
     const printableObjects = [];
 
     objects.forEach((obj) => {
       const isCounter = obj?.data?.type === 'counter';
-      if (obj?.annotationId) {
-        diagnostics.excluded.surveyMarkers += 1;
-        return;
-      }
       const editedImportedReplacement = isEditedImportedReplacement(obj);
-      if (isPdfImportedObject(obj) && !editedImportedReplacement) {
+      if (isPdfImportedObject(obj) && !canFlattenImportedObjectForPrint(obj)) {
         diagnostics.excluded.importedPdfNativePreserved += 1;
-        return;
-      }
-
-      const scope = getPrintableRegularScope(obj);
-      if (scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS) {
-        diagnostics.excluded.fabric += 1;
-        if (isCounter) diagnostics.excluded.counters += 1;
-        recordExcludedScope(scope);
         return;
       }
 
       diagnostics.included.fabric += 1;
       if (isCounter) diagnostics.included.counters += 1;
-      if (editedImportedReplacement) diagnostics.included.editedImportedCopies += 1;
+      if (isPdfImportedObject(obj)) diagnostics.included.editedImportedCopies += 1;
       printableObjects.push(clonePlain(obj));
     });
 
@@ -304,20 +275,15 @@ export function buildPrintableRegularAnnotationPayload({
 
   const printableCallouts = [];
   (Array.isArray(callouts) ? callouts : []).forEach((callout) => {
-    const scope = getPrintableRegularScope(callout);
-    if (scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS) {
-      diagnostics.excluded.callouts += 1;
-      recordExcludedScope(scope);
-      return;
-    }
     diagnostics.included.callouts += 1;
     printableCallouts.push(clonePlain(callout));
   });
+  diagnostics.included.surveyMarkers = Object.keys(surveyMarkers || {}).length;
 
   return {
     annotationsByPage: printableAnnotationsByPage,
     callouts: printableCallouts,
-    surveyMarkers: {},
+    surveyMarkers: clonePlain(surveyMarkers || {}),
     diagnostics,
   };
 }
@@ -2986,6 +2952,61 @@ const getObjNumber = (obj, key, fallback = 0) => {
 
 const getPdfY = (pageHeight, appY) => pageHeight - appY;
 
+const resolvedPdfPaint = (value, fallback) => {
+  const paint = parsePdfDrawColor(value, fallback);
+  if (paint) return paint;
+  return value === null || value === undefined || value === ''
+    ? parsePdfDrawColor(fallback)
+    : null;
+};
+
+const rotateAppPoint = (point, center, angleDeg) => {
+  if (!angleDeg) return point;
+  const angle = Number(angleDeg) * Math.PI / 180;
+  const cos = Math.cos(angle); const sin = Math.sin(angle);
+  const dx = point.x - center.x; const dy = point.y - center.y;
+  return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos };
+};
+
+const withPrintPageTransform = (page, viewportHeight, draw) => {
+  const geometry = getTextMarkupPageGeometry(page, viewportHeight);
+  const origin = viewportPointToPdfPoint({ x: 0, y: 0 }, geometry);
+  const xBasis = viewportPointToPdfPoint({ x: 1, y: 0 }, geometry);
+  const yBasis = viewportPointToPdfPoint({ x: 0, y: 1 }, geometry);
+  const dx = { x: xBasis.x - origin.x, y: xBasis.y - origin.y };
+  const dy = { x: yBasis.x - origin.x, y: yBasis.y - origin.y };
+  // Existing draw helpers author a virtual, viewport-sized PDF page where
+  // app y-down is flipped around viewportHeight. Map that virtual y-up space
+  // into the real rotated CropBox once for every annotation on the page.
+  const e = origin.x + viewportHeight * dy.x;
+  const f = origin.y + viewportHeight * dy.y;
+  page.pushOperators(
+    pushGraphicsState(),
+    concatTransformationMatrix(dx.x, dx.y, -dy.x, -dy.y, e, f),
+  );
+  try { return draw(); } finally { page.pushOperators(popGraphicsState()); }
+};
+
+const fabricPolygonWorldPoints = (obj) => {
+  const points = Array.isArray(obj?.points) ? obj.points : [];
+  if (!points.length) return [];
+  const scaleX = Number(obj?.scaleX ?? 1) || 1;
+  const scaleY = Number(obj?.scaleY ?? 1) || 1;
+  const offsetX = Number(obj?.pathOffset?.x) || 0;
+  const offsetY = Number(obj?.pathOffset?.y) || 0;
+  const xs = points.map((point) => Number(point?.x) || 0);
+  const ys = points.map((point) => Number(point?.y) || 0);
+  const center = {
+    x: scaleX * ((Math.min(...xs) + Math.max(...xs)) / 2 - offsetX),
+    y: scaleY * ((Math.min(...ys) + Math.max(...ys)) / 2 - offsetY),
+  };
+  return points.map((point) => {
+    const local = { x: ((Number(point?.x) || 0) - offsetX) * scaleX, y: ((Number(point?.y) || 0) - offsetY) * scaleY };
+    const rotated = rotateAppPoint(local, center, Number(obj?.angle) || 0);
+    return { x: (Number(obj?.left) || 0) + rotated.x, y: (Number(obj?.top) || 0) + rotated.y };
+  });
+};
+
 // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec): emits
 // RAW app-space (y-down) coordinates; the drawSvgPath call site MUST pass
 // origin {x: 0, y: pageHeight}. Pre-flipping with getPdfY here lands the
@@ -3313,28 +3334,33 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
 };
 
 const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
-  const points = Array.isArray(obj?.points) ? obj.points : [];
+  const points = fabricPolygonWorldPoints(obj);
   if (points.length < (closePath ? 3 : 2)) return false;
-  const left = getObjNumber(obj, 'left');
-  const top = getObjNumber(obj, 'top');
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
-  const d = points.map((point, index) => {
-    const x = left + (Number(point?.x) || 0);
-    const y = top + (Number(point?.y) || 0);
+  const cloud = closePath && Number.isFinite(Number(obj?.data?.pdfCloudIntensity))
+    ? buildCloudPathCommands(points, Number(obj.data.pdfCloudIntensity), Number(obj?.strokeWidth) || 1)
+    : null;
+  const d = Array.isArray(cloud) && cloud.length > 0
+    ? cloud.map((segment) => segment.join(' ')).join(' ')
+    : points.map((point, index) => {
+    const x = Number(point?.x) || 0;
+    const y = Number(point?.y) || 0;
     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ') + (closePath ? ' Z' : '');
-  const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
-  const fill = closePath ? parsePdfDrawColor(obj?.fill, '#ffffff') : null;
+    }).join(' ') + (closePath ? ' Z' : '');
+  const stroke = resolvedPdfPaint(obj?.stroke, '#000000');
+  const fill = closePath ? resolvedPdfPaint(obj?.fill, 'transparent') : null;
+  const strokeWidth = stroke ? Math.max(0, Number(obj?.strokeWidth) || 1) : 0;
   page.drawSvgPath(d, {
     x: 0,
     y: pageHeight,
-    borderColor: stroke.color,
-    borderWidth: Math.max(0.5, Number(obj?.strokeWidth) || 1),
+    borderColor: stroke?.color,
+    borderWidth: strokeWidth,
     color: fill?.color,
     opacity: fill?.opacity ?? 1,
-    borderOpacity: stroke.opacity,
+    borderOpacity: stroke?.opacity,
+    blendMode: obj?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
   });
   return true;
 };
@@ -3342,10 +3368,11 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }) => {
   if (!obj || typeof obj !== 'object') return 0;
   if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) {
-    const color = parsePdfDrawColor(obj.fill || obj.stroke || '#f4d35e', '#f4d35e');
+    const color = parsePdfDrawColor(obj.fill, '#f4d35e')
+      || parsePdfDrawColor(obj.stroke, '#f4d35e')
+      || parsePdfDrawColor('#f4d35e');
     const opacity = Math.max(0.05, Math.min(1, Number(obj.opacity ?? 1)));
     const markupType = String(obj.data.markupType || obj.exportType || 'highlight').toLowerCase();
-    const geometry = getTextMarkupPageGeometry(page, pageHeight);
     let count = 0;
     obj.data.quads.forEach((quad) => {
       const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
@@ -3359,23 +3386,28 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
           { x: quad.x2, y: quad.y2 },
           { x: quad.x4, y: quad.y4 },
           { x: quad.x3, y: quad.y3 },
-        ].map((point) => viewportPointToBaseAppPoint(point, geometry));
+        ];
         const path = `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
+        const unappliedRedaction = markupType === 'redact' && obj?.data?.applied !== true;
         page.drawSvgPath(path, {
-          x: geometry.x,
-          y: geometry.y + geometry.height,
-          color: color.color,
-          opacity: markupType === 'redact' ? 1 : opacity,
+          x: 0,
+          y: pageHeight,
+          color: unappliedRedaction ? undefined : (markupType === 'redact' ? rgb(0, 0, 0) : color.color),
+          opacity: unappliedRedaction ? undefined : (markupType === 'redact' ? 1 : opacity),
+          borderColor: unappliedRedaction ? color.color : undefined,
+          borderOpacity: unappliedRedaction ? opacity : undefined,
+          borderWidth: unappliedRedaction ? Math.max(1, Number(obj?.data?.lineWidth) || 1.2) : 0,
         });
       } else if (markupType === 'squiggly') {
         const y = bottom - Math.max(0.6, (bottom - top) * 0.08);
         const step = Math.max(1.5, (bottom - top) * 0.2);
         for (let x = left; x < right; x += step) {
-          const start = viewportPointToPdfPoint({ x, y }, geometry);
-          const end = viewportPointToPdfPoint({
+          const start = { x, y: getPdfY(pageHeight, y) };
+          const nextPoint = {
             x: Math.min(right, x + step),
             y: y + (Math.floor((x - left) / step) % 2 === 0 ? -step * 0.35 : step * 0.35),
-          }, geometry);
+          };
+          const end = { x: nextPoint.x, y: getPdfY(pageHeight, nextPoint.y) };
           page.drawLine({
             start,
             end,
@@ -3387,8 +3419,8 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       } else {
         const y = markupType === 'strikeout' ? (top + bottom) / 2 : bottom - Math.max(0.6, (bottom - top) * 0.08);
         page.drawLine({
-          start: viewportPointToPdfPoint({ x: left, y }, geometry),
-          end: viewportPointToPdfPoint({ x: right, y }, geometry),
+          start: { x: left, y: getPdfY(pageHeight, y) },
+          end: { x: right, y: getPdfY(pageHeight, y) },
           thickness: Math.max(0.6, (bottom - top) * 0.06),
           color: color.color,
           opacity,
@@ -3415,13 +3447,15 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   const shifted = offset.x || offset.y
     ? { ...obj, left: (Number(obj.left) || 0) + offset.x, top: (Number(obj.top) || 0) + offset.y }
     : obj;
-  const stroke = parsePdfDrawColor(shifted?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
-  const fill = parsePdfDrawColor(shifted?.fill, '#ffffff');
+  const stroke = resolvedPdfPaint(shifted?.stroke, '#000000');
+  const fill = resolvedPdfPaint(shifted?.fill, 'transparent');
   const left = getObjNumber(shifted, 'left');
   const top = getObjNumber(shifted, 'top');
-  const width = Math.max(0, getObjNumber(shifted, 'width'));
-  const height = Math.max(0, getObjNumber(shifted, 'height'));
-  const strokeWidth = Math.max(0.5, Number(shifted?.strokeWidth) || 1);
+  const scaleX = Math.abs(Number(shifted?.scaleX ?? 1) || 1);
+  const scaleY = Math.abs(Number(shifted?.scaleY ?? 1) || 1);
+  const width = Math.max(0, getObjNumber(shifted, 'width') * scaleX);
+  const height = Math.max(0, getObjNumber(shifted, 'height') * scaleY);
+  const strokeWidth = stroke ? Math.max(0, Number(shifted?.strokeWidth) || 1) : 0;
 
   if ((type === 'circle' || type === 'ellipse') && shifted?.data?.type === 'counter') {
     drawFlattenedCounterPin(page, shifted, pageHeight, fonts.bold);
@@ -3429,7 +3463,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   }
 
   if (type === 'path') {
-    const path = fabricPathToSvgPath(shifted.path);
+    const transform = createInkPageTransform(shifted, shifted.path);
+    const transformedPath = transformInkPath(shifted.path, transform);
+    const path = fabricPathToSvgPath(transformedPath);
     if (!path) return 0;
     // Paint decisions come from the SAME derivation the screen uses so print
     // matches the app exactly: filled outline ink (pen strokes, erased ink,
@@ -3437,7 +3473,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // else is a genuinely stroked path.
     const pathAttrs = renderPathToSvgAttrs(shifted);
     if (pathAttrs.filledOutline || (pathAttrs.strokeWidth === 0 && pathAttrs.fill && pathAttrs.fill !== 'none')) {
-      return drawFilledOutlineInk(page, shifted.path, pageHeight, pathAttrs);
+      return drawFilledOutlineInk(page, transformedPath, pageHeight, pathAttrs);
     }
     // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
     // origin {x: 0, y: pageHeight} + RAW app-space (y-down) path coordinates.
@@ -3445,9 +3481,10 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     page.drawSvgPath(path, {
       x: 0,
       y: pageHeight,
-      borderColor: stroke.color,
-      borderWidth: strokeWidth,
-      borderOpacity: stroke.opacity,
+      borderColor: stroke?.color,
+      borderWidth: strokeWidth * transform.strokeScale,
+      borderOpacity: stroke?.opacity,
+      blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     });
     return 1;
   }
@@ -3458,35 +3495,58 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const rectDash = Array.isArray(shifted?.strokeDashArray) && shifted.strokeDashArray.length > 0
       ? shifted.strokeDashArray.map((v) => Number(v) || 0)
       : null;
-    page.drawRectangle({
-      x: left,
-      y: getPdfY(pageHeight, top + height),
-      width,
-      height,
-      borderColor: stroke.color,
+    const angle = Number(shifted?.angle) || 0;
+    const common = {
+      borderColor: stroke?.color,
       borderWidth: strokeWidth,
       color: fill?.color,
       opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
-      borderOpacity: stroke.opacity,
-      ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
-    });
+      borderOpacity: stroke?.opacity,
+      blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
+    };
+    const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity);
+    if (Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
+      const center = { x: left + width / 2, y: top + height / 2 };
+      const points = [
+        { x: left, y: top }, { x: left + width, y: top },
+        { x: left + width, y: top + height }, { x: left, y: top + height },
+      ].map((point) => rotateAppPoint(point, center, angle));
+      const cloud = buildCloudPathCommands(points, cloudIntensity, strokeWidth);
+      const d = cloud.map((segment) => segment.join(' ')).join(' ');
+      page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
+    } else if (angle) {
+      const center = { x: left + width / 2, y: top + height / 2 };
+      const points = [
+        { x: left, y: top }, { x: left + width, y: top },
+        { x: left + width, y: top + height }, { x: left, y: top + height },
+      ].map((point) => rotateAppPoint(point, center, angle));
+      const d = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+      page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
+    } else {
+      page.drawRectangle({
+        x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
+        ...(rectDash ? { borderDashArray: rectDash, borderDashPhase: 0 } : {}),
+      });
+    }
     return 1;
   }
   if (type === 'circle' || type === 'ellipse') {
     const radius = Number(shifted?.radius) || Math.max(width, height) / 2 || 10;
-    const xScale = Number(shifted?.rx) || radius;
-    const yScale = Number(shifted?.ry) || radius;
-    page.drawEllipse({
-      x: left + xScale,
-      y: getPdfY(pageHeight, top + yScale),
-      xScale,
-      yScale,
-      borderColor: stroke.color,
-      borderWidth: strokeWidth,
-      color: fill?.color,
-      opacity: fill?.opacity ?? 1,
-      borderOpacity: stroke.opacity,
-    });
+    const xRadius = (Number(shifted?.rx) || radius) * scaleX;
+    const yRadius = (Number(shifted?.ry) || radius) * scaleY;
+    const cx = left + xRadius; const cy = top + yRadius;
+    const angle = Number(shifted?.angle) || 0;
+    const common = { borderColor: stroke?.color, borderWidth: strokeWidth, color: fill?.color, opacity: fill?.opacity ?? 1, borderOpacity: stroke?.opacity, blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined };
+    if (angle) {
+      const points = Array.from({ length: 48 }, (_, index) => {
+        const theta = index * Math.PI * 2 / 48;
+        return rotateAppPoint({ x: cx + Math.cos(theta) * xRadius, y: cy + Math.sin(theta) * yRadius }, { x: cx, y: cy }, angle);
+      });
+      const d = `${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`;
+      page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
+    } else {
+      page.drawEllipse({ x: cx, y: getPdfY(pageHeight, cy), xScale: xRadius, yScale: yRadius, ...common });
+    }
     return 1;
   }
   if (type === 'line') {
@@ -3510,21 +3570,20 @@ const drawUniformHighlightMask = (page, objects, pageHeight) => {
   if (!first || quads.length === 0) return 0;
   const color = parsePdfDrawColor(first.fill || first.stroke || '#f4d35e', '#f4d35e');
   const opacity = Math.max(0.05, Math.min(1, Number(first.opacity ?? 1)));
-  const geometry = getTextMarkupPageGeometry(page, pageHeight);
   const path = quads.map((quad) => {
     const points = [
       { x: quad.x1, y: quad.y1 },
       { x: quad.x2, y: quad.y2 },
       { x: quad.x4, y: quad.y4 },
       { x: quad.x3, y: quad.y3 },
-    ].map((point) => viewportPointToBaseAppPoint(point, geometry));
+    ];
     if (!points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) return '';
     return `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')} Z`;
   }).filter(Boolean).join(' ');
   if (!path) return 0;
   page.drawSvgPath(path, {
-    x: geometry.x,
-    y: geometry.y + geometry.height,
+    x: 0,
+    y: pageHeight,
     color: color.color,
     opacity,
   });
@@ -3601,6 +3660,111 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
   return 1;
 };
 
+const decodedPdfText = (value) => {
+  try {
+    if (typeof value?.decodeText === 'function') return value.decodeText();
+    if (typeof value?.asString === 'function') return String(value.asString()).replace(/^\//, '');
+  } catch { /* malformed form value */ }
+  return '';
+};
+
+const inheritedWidgetValue = (pdfDoc, widget, key) => {
+  let node = widget;
+  for (let guard = 0; node instanceof PDFDict && guard < 32; guard += 1) {
+    const raw = node.get(PDFName.of(key));
+    if (raw) return pdfDoc.context.lookup(raw);
+    const parent = node.get(PDFName.of('Parent'));
+    node = parent ? pdfDoc.context.lookupMaybe(parent, PDFDict) : null;
+  }
+  return null;
+};
+
+// PdfjsFormLayer owns the on-screen form look. It deliberately replaces a
+// document's widget border with rgba(60,130,255,.55) and its background with
+// rgba(60,130,255,.06). A printer never sees that HTML layer, so bake the same
+// chrome and saved value into page content, then remove the Widget annotation.
+// This also avoids viewer-specific /NeedAppearances handling for checked boxes.
+const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
+  const diagnostics = { widgetsFlattened: 0, checkboxesFlattened: 0, textFieldsFlattened: 0 };
+  const blue = rgb(60 / 255, 130 / 255, 1);
+  const black = rgb(17 / 255, 17 / 255, 17 / 255);
+  const white = rgb(1, 1, 1);
+
+  pdfDoc.getPages().forEach((page) => {
+    const annots = page.node.lookup(PDFName.of('Annots'));
+    if (!(annots instanceof PDFArray)) return;
+    for (let index = annots.size() - 1; index >= 0; index -= 1) {
+      const raw = annots.get(index);
+      const widget = pdfDoc.context.lookupMaybe(raw, PDFDict);
+      if (!(widget instanceof PDFDict)) continue;
+      if (decodedPdfText(pdfDoc.context.lookup(widget.get(PDFName.of('Subtype')))) !== 'Widget') continue;
+      const rect = readPdfNativeNumberArray(pdfDoc, widget.get(PDFName.of('Rect')));
+      if (!rect) continue;
+      const [x1, y1, x2, y2] = rect;
+      const x = Math.min(x1, x2);
+      const y = Math.min(y1, y2);
+      const width = Math.abs(x2 - x1);
+      const height = Math.abs(y2 - y1);
+      if (!(width > 0 && height > 0)) continue;
+
+      page.drawRectangle({
+        x,
+        y,
+        width,
+        height,
+        color: blue,
+        opacity: 0.06,
+        borderColor: blue,
+        borderOpacity: 0.55,
+        borderWidth: 1,
+      });
+
+      const fieldType = decodedPdfText(inheritedWidgetValue(pdfDoc, widget, 'FT'));
+      const value = inheritedWidgetValue(pdfDoc, widget, 'V');
+      if (fieldType === 'Btn') {
+        const state = decodedPdfText(widget.get(PDFName.of('AS')) || value);
+        if (state && state !== 'Off') {
+          const pad = Math.max(1, Math.min(width, height) * 0.12);
+          page.drawRectangle({ x: x + pad, y: y + pad, width: width - 2 * pad, height: height - 2 * pad, color: blue });
+          page.drawLine({
+            start: { x: x + width * 0.23, y: y + height * 0.52 },
+            end: { x: x + width * 0.43, y: y + height * 0.3 },
+            color: white,
+            thickness: Math.max(1.2, Math.min(width, height) * 0.12),
+          });
+          page.drawLine({
+            start: { x: x + width * 0.43, y: y + height * 0.3 },
+            end: { x: x + width * 0.78, y: y + height * 0.72 },
+            color: white,
+            thickness: Math.max(1.2, Math.min(width, height) * 0.12),
+          });
+        }
+        diagnostics.checkboxesFlattened += 1;
+      } else if (fieldType === 'Tx') {
+        const text = decodedPdfText(value);
+        if (text) {
+          let size = Math.max(4, Math.min(22, height * 0.72));
+          try {
+            const textWidth = fonts.regular.widthOfTextAtSize(text, size);
+            if (textWidth > width - 4) size = Math.max(4, size * (width - 4) / textWidth);
+          } catch { /* keep the field-height size for unencodable text */ }
+          page.drawText(text, {
+            x: x + 2,
+            y: y + Math.max(1, (height - size) / 2),
+            size,
+            font: fonts.regular,
+            color: black,
+          });
+        }
+        diagnostics.textFieldsFlattened += 1;
+      }
+      annots.remove(index);
+      diagnostics.widgetsFlattened += 1;
+    }
+  });
+  return diagnostics;
+};
+
 export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   pdfFile,
   annotationsByPage,
@@ -3620,17 +3784,12 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
     boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
   };
-  // UX 2026-07-17: surveyMarkers stays an empty map here ON PURPOSE — Survey
-  // Markers are excluded from this "regular annotations only" print flatten by
-  // design (see the contract comment on buildPrintableRegularAnnotationPayload).
-  // The caller already ran the payload builder once with the REAL markers map
-  // so the exclusion counts land in options.printableDiagnostics; this inner
-  // rebuild only re-filters the pre-filtered pages, and passing the real map
-  // again would double-count exclusions without printing anything more.
+  // Rebuild the caller's payload defensively. Survey Markers stay in the same
+  // all-visible print set as survey, space, and region shapes.
   const printablePayload = buildPrintableRegularAnnotationPayload({
     annotationsByPage,
     callouts: options?.callouts || [],
-    surveyMarkers: {},
+    surveyMarkers: options?.surveyMarkers || {},
   });
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
@@ -3681,24 +3840,26 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     const uniformHighlightGroups = new Map();
-    (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
-      const isUniformHighlight = obj?.data?.type === 'text-markup'
-        && obj?.data?.markupType === 'highlight'
-        && obj?.data?.overlapMode === 'uniform';
-      if (isUniformHighlight) {
-        const key = `${String(obj.fill || obj.stroke || '#f4d35e').toLowerCase()}:${Number(obj.opacity ?? 1)}`;
-        if (!uniformHighlightGroups.has(key)) uniformHighlightGroups.set(key, []);
-        uniformHighlightGroups.get(key).push(obj);
-        return;
-      }
-      const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts);
-      flattenedPrintAnnotationsAdded += drawnCount;
-      trackEditedImportDraw(pageNumber, obj, drawnCount);
-    });
-    uniformHighlightGroups.forEach((objects) => {
-      const drawnCount = drawUniformHighlightMask(page, objects, pageHeight);
-      flattenedPrintAnnotationsAdded += drawnCount;
-      objects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
+    withPrintPageTransform(page, pageHeight, () => {
+      (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+        const isUniformHighlight = obj?.data?.type === 'text-markup'
+          && obj?.data?.markupType === 'highlight'
+          && obj?.data?.overlapMode === 'uniform';
+        if (isUniformHighlight) {
+          const key = `${String(obj.fill || obj.stroke || '#f4d35e').toLowerCase()}:${Number(obj.opacity ?? 1)}`;
+          if (!uniformHighlightGroups.has(key)) uniformHighlightGroups.set(key, []);
+          uniformHighlightGroups.get(key).push(obj);
+          return;
+        }
+        const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts);
+        flattenedPrintAnnotationsAdded += drawnCount;
+        trackEditedImportDraw(pageNumber, obj, drawnCount);
+      });
+      uniformHighlightGroups.forEach((objects) => {
+        const drawnCount = drawUniformHighlightMask(page, objects, pageHeight);
+        flattenedPrintAnnotationsAdded += drawnCount;
+        objects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
+      });
     });
   });
 
@@ -3711,7 +3872,35 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
     const pageHeight = Number(pageSize?.height) || fallbackSize.height;
     const calloutObj = calloutToExportObject(callout, pageSize);
-    if (calloutObj) flattenedPrintAnnotationsAdded += drawFlattenedCallout(page, calloutObj, pageHeight, fonts);
+    if (calloutObj) withPrintPageTransform(page, pageHeight, () => {
+      flattenedPrintAnnotationsAdded += drawFlattenedCallout(page, calloutObj, pageHeight, fonts);
+    });
+  });
+
+  Object.values(printablePayload.surveyMarkers || {}).forEach((marker) => {
+    const pageNumber = Number(marker?.pageNumber || marker?.page || 1);
+    const pageIndex = pageNumber - 1;
+    if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
+    const page = pdfDoc.getPage(pageIndex);
+    const fallbackSize = page.getSize();
+    const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
+    const pageHeight = Number(pageSize?.height) || fallbackSize.height;
+    withPrintPageTransform(page, pageHeight, () => {
+      flattenedPrintAnnotationsAdded += drawFlattenedObject(page, {
+      type: 'rect',
+      left: Number(marker?.x) || 0,
+      top: Number(marker?.y) || 0,
+      width: Math.max(0, Number(marker?.width) || 0),
+      height: Math.max(0, Number(marker?.height) || 0),
+      fill: marker?.needsEntity ? 'transparent' : (marker?.color || 'rgba(255,235,59,0.25)'),
+      stroke: marker?.needsEntity ? '#4A90E2' : 'transparent',
+      strokeWidth: marker?.needsEntity ? 2 : 0,
+      strokeDashArray: marker?.needsEntity ? [5, 5] : undefined,
+      opacity: 1,
+      angle: Number(marker?.angle) || 0,
+      globalCompositeOperation: 'multiply',
+      }, pageHeight, fonts);
+    });
   });
 
   const editedImportDiagnostics = {
@@ -3730,7 +3919,8 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
 
   const regularAnnotationsIncluded =
     (Number(printablePayload.diagnostics?.included?.fabric) || 0)
-    + (Number(printablePayload.diagnostics?.included?.callouts) || 0);
+    + (Number(printablePayload.diagnostics?.included?.callouts) || 0)
+    + (Number(printablePayload.diagnostics?.included?.surveyMarkers) || 0);
   const scopedAnnotationsExcluded = Object.values(printableDiagnostics?.excludedByScope || {})
     .reduce((sum, count) => sum + (Number(count) || 0), 0);
   // KAL-441: printing with markup also starts from the ORIGINAL PDF bytes, so
@@ -3741,6 +3931,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     pdfDoc,
     collectFormFieldValues(annotationsByPage),
   );
+  const flattenedFormDiagnostics = flattenFormWidgetsForPrint(pdfDoc, fonts);
   // See the export path: appearances are already regenerated by the writer.
   sanitizeUnappliedRedactionsForExport(pdfDoc);
   const pdfBytes = await pdfDoc.save({ updateFieldAppearances: false });
@@ -3754,6 +3945,9 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     pdfFormFieldValuesWritten: formFieldDiagnostics.formFieldValuesWritten,
     pdfFormFieldValuesSkipped: formFieldDiagnostics.formFieldValuesSkipped,
     pdfFormFieldSkipReasons: formFieldDiagnostics.formFieldSkipReasons,
+    pdfFormWidgetsFlattened: flattenedFormDiagnostics.widgetsFlattened,
+    pdfFormCheckboxesFlattened: flattenedFormDiagnostics.checkboxesFlattened,
+    pdfFormTextFieldsFlattened: flattenedFormDiagnostics.textFieldsFlattened,
     regularAnnotationsIncluded,
     scopedAnnotationsExcluded,
     editedImportedNativeCopiesRemoved: editedImportDiagnostics.editedImportedNativeCopiesRemoved,

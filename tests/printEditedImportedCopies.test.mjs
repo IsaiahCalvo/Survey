@@ -31,7 +31,7 @@ const editedImportedRect = (overrides = {}) => ({
   ...overrides,
 });
 
-test('printable payload includes edited imported copies and keeps excluding unedited ones', () => {
+test('printable payload uses drawable imported copies as print truth, edited or not', () => {
   const payload = buildPrintableRegularAnnotationPayload({
     annotationsByPage: {
       1: {
@@ -46,10 +46,10 @@ test('printable payload includes edited imported copies and keeps excluding uned
 
   assert.deepEqual(
     payload.annotationsByPage[1].objects.map((obj) => obj.id),
-    ['edited-imported-rect', 'app-rect'],
+    ['edited-imported-rect', 'unedited-imported-circle', 'app-rect'],
   );
-  assert.equal(payload.diagnostics.included.editedImportedCopies, 1);
-  assert.equal(payload.diagnostics.excluded.importedPdfNativePreserved, 1);
+  assert.equal(payload.diagnostics.included.editedImportedCopies, 2);
+  assert.equal(payload.diagnostics.excluded.importedPdfNativePreserved, 0);
 });
 
 test('printable payload treats composite siblings of an edited member as part of the replacement', () => {
@@ -90,20 +90,20 @@ test('printable payload treats composite siblings of an edited member as part of
 
   assert.deepEqual(
     payload.annotationsByPage[1].objects.map((obj) => obj.id),
-    ['edited-composite-member', 'unedited-composite-sibling'],
+    ['edited-composite-member', 'unedited-composite-sibling', 'unedited-other-composite'],
   );
-  assert.equal(payload.diagnostics.included.editedImportedCopies, 2);
-  assert.equal(payload.diagnostics.excluded.importedPdfNativePreserved, 1);
+  assert.equal(payload.diagnostics.included.editedImportedCopies, 3);
+  assert.equal(payload.diagnostics.excluded.importedPdfNativePreserved, 0);
 });
 
-test('printable payload still excludes scoped edited imported copies (regular print contract)', () => {
+test('printable payload includes scoped edited imported copies under the all-visible print contract', () => {
   const payload = buildPrintableRegularAnnotationPayload({
     annotationsByPage: {
       1: { objects: [editedImportedRect({ moduleId: 'module-a' })] },
     },
   });
-  assert.equal(payload.annotationsByPage[1], undefined);
-  assert.equal(payload.diagnostics.excludedByScope.survey, 1);
+  assert.deepEqual(payload.annotationsByPage[1].objects.map((obj) => obj.id), ['edited-imported-rect']);
+  assert.equal(payload.diagnostics.excludedByScope.survey, 0);
 });
 
 const makeNativeSourcePdf = async () => {
@@ -161,7 +161,7 @@ test('print flatten suppresses the native original of an edited imported copy', 
   assert.equal(await countNativeAnnots(bytes), 0);
 });
 
-test('print flatten preserves the native original of an UNEDITED imported copy', async () => {
+test('print flatten replaces the native original of a drawable UNEDITED imported copy', async () => {
   const { nativeAnnot, pdfFile } = await makeNativeSourcePdf();
   const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
     pdfFile,
@@ -183,5 +183,5 @@ test('print flatten preserves the native original of an UNEDITED imported copy',
     { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
   );
 
-  assert.equal(await countNativeAnnots(bytes), 1);
+  assert.equal(await countNativeAnnots(bytes), 0);
 });

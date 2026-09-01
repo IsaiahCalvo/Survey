@@ -74,6 +74,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
             actionType: 'pdf-browser-print-flattened-regular-annotations',
             documentId: pdfFile?.id || pdfFile?.name || null,
             callouts: printablePayload.callouts,
+            surveyMarkers: printablePayload.surveyMarkers,
             spaces,
             printableDiagnostics: printablePayload.diagnostics,
           },

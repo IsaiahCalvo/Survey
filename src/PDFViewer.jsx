@@ -29798,6 +29798,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                   actionType: 'pdf-print-flattened-regular-annotations',
                   documentId: pdfFile?.id || pdfFile?.name || null,
                   callouts: printableRegularPayload.callouts,
+                  surveyMarkers: printableRegularPayload.surveyMarkers,
                   spaces,
                   printableDiagnostics: printableRegularPayload.diagnostics,
                 }

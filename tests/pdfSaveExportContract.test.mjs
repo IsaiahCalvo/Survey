@@ -383,7 +383,7 @@ test('native text markup export converts rotated PDF.js viewport quads into base
   ]);
 });
 
-test('Uniform export converts rotated PDF.js viewport quads before flattening page content', async () => {
+test('Uniform export flattens rotated PDF.js viewport quads under each page transform', async () => {
   const viewportSizes = [
     { width: 200, height: 100 },
     { width: 100, height: 200 },
@@ -412,10 +412,9 @@ test('Uniform export converts rotated PDF.js viewport quads before flattening pa
   );
   assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
   const contents = await getPdfPageContentStrings(bytes);
-  assert.match(contents[0], /10 20 m\s+30 20 l\s+30 40 l\s+10 40 l/);
-  assert.match(contents[1], /20 90 m\s+20 70 l\s+40 70 l\s+40 90 l/);
-  assert.match(contents[2], /190 80 m\s+170 80 l\s+170 60 l\s+190 60 l/);
-  assert.match(contents[3], /180 10 m\s+180 30 l\s+160 30 l\s+160 10 l/);
+  for (const content of contents) {
+    assert.match(content, /10 20 m\s+30 20 l\s+30 40 l\s+10 40 l/);
+  }
 });
 
 test('print helper flattens all four saved text mark paints into visible page content', async () => {
@@ -665,7 +664,7 @@ test('print PDF helper flattens regular combined annotations', async () => {
   assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
 });
 
-test('printable regular annotation filter includes normal annotations and excludes scoped annotations', () => {
+test('print payload includes canvas, survey, space, and region annotations', () => {
   const payload = buildPrintableRegularAnnotationPayload({
     spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
     annotationsByPage: {
@@ -685,16 +684,13 @@ test('printable regular annotation filter includes normal annotations and exclud
 
   assert.deepEqual(
     payload.annotationsByPage[1].objects.map((obj) => obj.id),
-    ['regular-path', 'regular-rect'],
+    ['regular-path', 'regular-rect', 'survey-circle', 'region-line', 'space-polyline', 'survey-region-text'],
   );
-  assert.equal(payload.diagnostics.included.fabric, 2);
-  assert.equal(payload.diagnostics.excludedByScope.survey, 1);
-  assert.equal(payload.diagnostics.excludedByScope.region, 1);
-  assert.equal(payload.diagnostics.excludedByScope.space, 1);
-  assert.equal(payload.diagnostics.excludedByScope['survey-region'], 1);
+  assert.equal(payload.diagnostics.included.fabric, 6);
+  assert.equal(Object.values(payload.diagnostics.excludedByScope).reduce((sum, value) => sum + value, 0), 0);
 });
 
-test('printable regular annotation filter excludes survey highlights', () => {
+test('print payload carries survey highlights into the flattener', () => {
   const payload = buildPrintableRegularAnnotationPayload({
     surveyMarkers: {
       'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a' },
@@ -704,11 +700,11 @@ test('printable regular annotation filter excludes survey highlights', () => {
     },
   });
 
-  assert.deepEqual(payload.surveyMarkers, {});
-  assert.equal(payload.diagnostics.excluded.surveyMarkers, 4);
+  assert.equal(Object.keys(payload.surveyMarkers).length, 4);
+  assert.equal(payload.diagnostics.included.surveyMarkers, 4);
 });
 
-test('printable regular annotation filter includes regular counters and excludes scoped counters', () => {
+test('print payload includes regular and scoped counters', () => {
   const payload = buildPrintableRegularAnnotationPayload({
     annotationsByPage: {
       1: {
@@ -723,10 +719,10 @@ test('printable regular annotation filter includes regular counters and excludes
 
   assert.deepEqual(
     payload.annotationsByPage[1].objects.map((obj) => obj.id),
-    ['regular-counter'],
+    ['regular-counter', 'survey-counter', 'region-counter'],
   );
-  assert.equal(payload.diagnostics.included.counters, 1);
-  assert.equal(payload.diagnostics.excluded.counters, 2);
+  assert.equal(payload.diagnostics.included.counters, 3);
+  assert.equal(payload.diagnostics.excluded.counters, 0);
 });
 
 test('printable regular annotation filter includes regular callouts as ordinary annotations', () => {
@@ -738,9 +734,9 @@ test('printable regular annotation filter includes regular callouts as ordinary 
     ],
   });
 
-  assert.deepEqual(payload.callouts.map((callout) => callout.id), ['regular-callout']);
-  assert.equal(payload.diagnostics.included.callouts, 1);
-  assert.equal(payload.diagnostics.excluded.callouts, 2);
+  assert.deepEqual(payload.callouts.map((callout) => callout.id), ['regular-callout', 'survey-callout', 'region-callout']);
+  assert.equal(payload.diagnostics.included.callouts, 3);
+  assert.equal(payload.diagnostics.excluded.callouts, 0);
 });
 
 test('normal Print remains base PDF print and Command+S remains app-state only', () => {
