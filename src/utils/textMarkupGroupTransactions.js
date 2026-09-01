@@ -233,6 +233,19 @@ export function getTextMarkupRangeTypes(annotationsByPage, sourceAnnotations) {
   return order.filter((type) => types.has(type));
 }
 
+export function resolveTextLinkEditorPrefill(selection, selectedMarkup = null) {
+  const selectedLink = selection?.sourceMarks?.find(
+    (mark) => mark?.data?.markupType === 'link',
+  ) || (selectedMarkup?.data?.markupType === 'link' ? selectedMarkup : null);
+  const mode = selectedLink?.data?.linkPageNumber ? 'page' : 'web';
+  return {
+    mode,
+    value: mode === 'page'
+      ? String(selectedLink?.data?.linkPageNumber || 1)
+      : String(selectedLink?.data?.linkUrl || ''),
+  };
+}
+
 export function buildTextMarkupRangeToggleOffTransaction(
   annotationsByPage,
   sourceAnnotations,

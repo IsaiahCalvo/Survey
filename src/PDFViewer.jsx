@@ -108,6 +108,7 @@ import {
   getTextMarkupRangeAnnotations,
   getTextMarkupRangeTypes,
   preserveTextMarkupRangeResizeSiblings,
+  resolveTextLinkEditorPrefill,
 } from './utils/textMarkupGroupTransactions.js';
 import { getAnnotationRenderIdentity, normalizeByPageAnnotationIdentities } from './utils/annotationStorageIdentity.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
@@ -28437,14 +28438,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'].includes(markupType)) return;
     if (markupType === 'link' && !options.commit && !options.remove) {
-      const selectedLink = selectedTextMarkupActionSelection?.sourceMarks?.find(
-        (mark) => mark?.data?.markupType === 'link',
-      ) || (selectedMarkup?.data?.markupType === 'link' ? selectedMarkup : null);
-      const nextMode = selectedLink?.data?.linkPageNumber ? 'page' : 'web';
-      setTextLinkMode(nextMode);
-      setTextLinkUrl(nextMode === 'page'
-        ? String(selectedLink?.data?.linkPageNumber || 1)
-        : String(selectedLink?.data?.linkUrl || ''));
+      const prefill = resolveTextLinkEditorPrefill(selection, selectedMarkup);
+      setTextLinkMode(prefill.mode);
+      setTextLinkUrl(prefill.value);
       setTextLinkError('');
       setTextLinkEditorOpen((open) => !open);
       return;

@@ -13,6 +13,7 @@ import {
   getTextMarkupRangeTypes,
   isExactTextMarkupDuplicate,
   preserveTextMarkupRangeResizeSiblings,
+  resolveTextLinkEditorPrefill,
 } from '../src/utils/textMarkupGroupTransactions.js';
 
 const mark = (id, pageNumber, group = 'range-1', markupType = 'highlight') => ({
@@ -99,6 +100,42 @@ test('same-range links with different URLs stay distinct', () => {
 
   assert.equal(tx.created.length, 1);
   assert.equal(isExactTextMarkupDuplicate(first, second), false);
+});
+
+test('link editor prefill reads web and page links from either selection route', () => {
+  const webLink = mark('web-link', 1, 'web-link-group', 'link');
+  webLink.data.linkUrl = 'https://example.com/docs';
+  const pageLink = mark('page-link', 1, 'page-link-group', 'link');
+  pageLink.data.linkPageNumber = 3;
+
+  assert.deepEqual(resolveTextLinkEditorPrefill({ sourceMarks: [webLink] }), {
+    mode: 'web',
+    value: 'https://example.com/docs',
+  });
+  assert.deepEqual(resolveTextLinkEditorPrefill({ sourceMarks: [pageLink] }), {
+    mode: 'page',
+    value: '3',
+  });
+  assert.deepEqual(resolveTextLinkEditorPrefill({ sourceMarks: [] }, webLink), {
+    mode: 'web',
+    value: 'https://example.com/docs',
+  });
+});
+
+test('editing a same-range link replaces it with one link annotation', () => {
+  const oldLink = mark('old-link', 1, 'old-link-group', 'link');
+  oldLink.data.linkUrl = 'https://example.com/old';
+  const nextLink = mark('next-link', 1, 'next-link-group', 'link');
+  nextLink.data.linkUrl = 'https://example.com/new';
+  const before = { 1: { objects: [oldLink] } };
+  const remove = buildTextMarkupRangeToggleOffTransaction(before, [nextLink], 'link');
+  const replace = buildTextMarkupGroupCreateTransaction(remove.nextByPage, [nextLink]);
+  const links = replace.nextByPage['1'].objects.filter(
+    (annotation) => annotation.data.markupType === 'link',
+  );
+
+  assert.equal(links.length, 1);
+  assert.equal(links[0].data.linkUrl, 'https://example.com/new');
 });
 
 test('removing a link keeps the other marks on the same text', () => {
