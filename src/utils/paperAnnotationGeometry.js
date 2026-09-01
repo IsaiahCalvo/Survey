@@ -1085,19 +1085,51 @@ const styledCircleGeometry = (point, radius, tolerance) => {
 };
 
 const mergeStyledStrokeGeometries = (values) => {
-  let geometries = values.map(normalizeMultiPolygon).filter((value) => value.length);
-  while (geometries.length > 1) {
+  let groups = values
+    .map(normalizeMultiPolygon)
+    .filter((value) => value.length)
+    .map((geometry) => ({ geometry, mergeable: true }));
+  while (groups.length > 1) {
     const next = [];
-    for (let index = 0; index < geometries.length; index += 2) {
-      next.push(
-        index + 1 < geometries.length
-          ? normalizeMultiPolygon(union(geometries[index], geometries[index + 1]))
-          : geometries[index],
-      );
+    for (let index = 0; index < groups.length; index += 2) {
+      const left = groups[index];
+      const right = groups[index + 1];
+      if (!right) {
+        next.push(left);
+        continue;
+      }
+      if (!left.mergeable || !right.mergeable) {
+        next.push({
+          geometry: [...left.geometry, ...right.geometry],
+          mergeable: false,
+        });
+        continue;
+      }
+      try {
+        const joined = normalizeMultiPolygon(union(left.geometry, right.geometry));
+        if (joined.length === 0) {
+          next.push({
+            geometry: [...left.geometry, ...right.geometry],
+            mergeable: false,
+          });
+          continue;
+        }
+        next.push({
+          geometry: joined,
+          mergeable: true,
+        });
+      } catch {
+        // Martinez can fail on valid, near-collinear rings that share an edge.
+        // Keep those raw outline parts and do not send them back into Martinez.
+        next.push({
+          geometry: [...left.geometry, ...right.geometry],
+          mergeable: false,
+        });
+      }
     }
-    geometries = next;
+    groups = next;
   }
-  return geometries[0] || [];
+  return groups[0]?.geometry || [];
 };
 
 const splitPolylineByDash = (points, dashArray, dashOffset = 0) => {

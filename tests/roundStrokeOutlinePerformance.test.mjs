@@ -516,6 +516,29 @@ test('large styled round caps obey tolerance without a facet ceiling', () => {
   );
 });
 
+test('near-collinear round stroke geometry degrades instead of throwing during union', () => {
+  const outline = styledStrokeCommandsToPolygonSet([
+    ['M', 244.438, 765.694],
+    ['L', 244.457, 765.72],
+    ['L', 244.469, 765.732],
+    ['L', 244.476, 765.739],
+    ['L', 244.482, 765.745],
+    ['L', 244.488, 765.751],
+    ['L', 244.494, 765.751],
+    ['L', 244.494, 765.751],
+    ['L', 244.513, 765.751],
+    ['L', 244.532, 765.751],
+  ], {
+    strokeWidth: 1,
+    curveTolerance: 0.02,
+    lineCap: 'round',
+    lineJoin: 'round',
+    miterLimit: 10,
+  });
+
+  assert.ok(outline.length > 0);
+});
+
 test('styled dash geometry remains proportional through 1e-15', () => {
   let expectedComponents = null;
   let expectedNormalizedArea = null;
