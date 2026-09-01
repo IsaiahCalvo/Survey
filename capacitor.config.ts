@@ -28,9 +28,9 @@ const config: CapacitorConfig = {
     // bar and revealed a white iOS root view behind it. `never` + dark
     // native background makes the status-bar strip match the app's grey.
     contentInset: 'never',
-    backgroundColor: '#1E1E1E'
+    backgroundColor: '#12151c'
   },
-  backgroundColor: '#1E1E1E'
+  backgroundColor: '#12151c'
 };
 
 export default config;
