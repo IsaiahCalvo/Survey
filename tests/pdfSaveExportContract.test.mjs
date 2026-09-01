@@ -192,7 +192,10 @@ test('normal export makes imported unapplied redactions non-concealing and remov
   const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
   const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
   assert.match(appearanceSource, /\bre\s+S\b/, 'the mark should have a hollow outline');
+  assert.match(appearanceSource, /0\.81569 0\.00784 0\.10588 RG/, 'the outline should use the pending-redaction red');
+  assert.match(appearanceSource, /\b1 w\b/, 'the outline should use a thin one-point stroke');
   assert.doesNotMatch(appearanceSource, /\bre\s+f\b/, 'the mark must not have an opaque fill');
+  assert.doesNotMatch(appearanceSource, /\b[ml]\b/, 'the mark must not contain hatch paths');
 });
 
 test('normal export drops an unsafe appearance when an imported redaction has no usable rectangle', async () => {
@@ -312,7 +315,10 @@ test('live PDF export writes links and non-concealing redaction marks without se
   const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
   const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
   assert.match(appearanceSource, /\bre\s+S\b/);
+  assert.match(appearanceSource, /0\.81569 0\.00784 0\.10588 RG/);
+  assert.match(appearanceSource, /\b1 w\b/);
   assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);
+  assert.doesNotMatch(appearanceSource, /\b[ml]\b/);
 });
 
 test('live PDF export writes selected-text page links as GoTo actions', async () => {
