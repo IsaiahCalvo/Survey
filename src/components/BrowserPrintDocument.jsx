@@ -2,6 +2,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { createPortal } from 'react-dom';
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
 import { buildBrowserPrintLayout } from '../utils/browserPrintLayout.js';
+import { createPrintPageError, waitForPrintImages } from '../utils/printImageReadiness.js';
+import { showToast } from '../utils/toast.js';
 
 const PRINT_RENDER_SCALE = 2;
 const EMPTY_RENDER_STATE = { ready: false, pages: [], error: '', pageNumber: 0, pageCount: 0, inputs: null };
@@ -28,6 +30,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
   const latestInputsRef = useRef(currentInputs);
   const [renderState, setRenderState] = useState(EMPTY_RENDER_STATE);
   const loadingTaskRef = useRef(null);
+  const printDocumentRef = useRef(null);
   const preparingPromiseRef = useRef(null);
   const printWhenReadyRef = useRef(false);
   const mountedRef = useRef(true);
@@ -85,8 +88,9 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
           if (!mountedRef.current || !sameInputs(jobInputs, latestInputsRef.current)) return false;
           setRenderState((current) => ({ ...current, pageNumber, pageCount: pdf.numPages }));
-          const page = await pdf.getPage(pageNumber);
+          let page = null;
           try {
+            page = await pdf.getPage(pageNumber);
             const viewport = page.getViewport({ scale: PRINT_RENDER_SCALE });
             const canvas = document.createElement('canvas');
             canvas.width = Math.max(1, Math.ceil(viewport.width));
@@ -94,11 +98,29 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
             const context = canvas.getContext('2d', { alpha: false });
             context.fillStyle = '#ffffff';
             context.fillRect(0, 0, canvas.width, canvas.height);
-            await page.render({
+            const renderTask = page.render({
               canvasContext: context,
               viewport,
               annotationMode: pdfjsLib.AnnotationMode.ENABLE,
-            }).promise;
+            });
+            let renderTimeout = null;
+            try {
+              await Promise.race([
+                renderTask.promise,
+                new Promise((_, reject) => {
+                  // This timer only aborts a stuck render; it never marks a page ready.
+                  renderTimeout = setTimeout(() => {
+                    try { renderTask.cancel(); } catch {}
+                    reject(createPrintPageError(pageNumber, 'the page render timed out'));
+                  }, 60_000);
+                }),
+              ]);
+            } catch (error) {
+              if (error?.printPageNumber) throw error;
+              throw createPrintPageError(pageNumber, error?.message || 'the page render failed');
+            } finally {
+              if (renderTimeout !== null) clearTimeout(renderTimeout);
+            }
             if (!mountedRef.current || !sameInputs(jobInputs, latestInputsRef.current)) return false;
             pages.push({
               pageNumber,
@@ -106,8 +128,11 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
               heightPt: viewport.height / PRINT_RENDER_SCALE,
               src: canvas.toDataURL('image/jpeg', 0.94),
             });
+          } catch (error) {
+            if (error?.printPageNumber) throw error;
+            throw createPrintPageError(pageNumber, error?.message || 'the page render failed');
           } finally {
-            page.cleanup();
+            page?.cleanup();
           }
         }
 
@@ -124,6 +149,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
         console.error('[BrowserPrint] failed to prepare print pages:', error);
         if (mountedRef.current && sameInputs(jobInputs, latestInputsRef.current)) {
           printWhenReadyRef.current = false;
+          showToast(error?.message || 'Could not prepare the document for print.', 'error');
           setRenderState({ ...EMPTY_RENDER_STATE, error: error?.message || String(error), inputs: jobInputs });
         }
         return false;
@@ -144,9 +170,22 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
 
   useEffect(() => {
     if (!readyForCurrentInputs || !printWhenReadyRef.current) return;
-    printWhenReadyRef.current = false;
-    window.print();
-  }, [readyForCurrentInputs]);
+    let cancelled = false;
+    const images = [...(printDocumentRef.current?.querySelectorAll('.survey-browser-print-sheet > img') || [])];
+    const pageNumbers = renderState.pages.map((page) => page.pageNumber);
+    waitForPrintImages(images, pageNumbers).then(() => {
+      if (cancelled || !printWhenReadyRef.current) return;
+      printWhenReadyRef.current = false;
+      window.print();
+    }).catch((error) => {
+      if (cancelled) return;
+      printWhenReadyRef.current = false;
+      console.error('[BrowserPrint] print page readiness failed:', error);
+      showToast(error?.message || 'Could not prepare the document for print.', 'error');
+      setRenderState((current) => ({ ...current, ready: false, error: error?.message || String(error) }));
+    });
+    return () => { cancelled = true; };
+  }, [readyForCurrentInputs, renderState.pages]);
 
   useEffect(() => {
     latestInputsRef.current = currentInputs;
@@ -206,6 +245,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
         </div>
       )}
       <div
+        ref={printDocumentRef}
         data-browser-print-document="true"
         data-browser-print-ready={readyForCurrentInputs ? 'true' : 'false'}
         data-browser-print-page-count={layout.pages.length}
