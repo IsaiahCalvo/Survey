@@ -23,6 +23,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
+import {
+  clampFloatingMenuPosition,
+  DESKTOP_RIGHT_RAIL_WIDTH,
+  getPageViewportBounds,
+} from '../utils/floatingUiGeometry.js';
 // Locked permissions model 2026-07-17 — the shape Delete items route through
 // PDFViewer's bulk-delete planner (confirm modal for cross-author deletes)
 // and the Cut items are restricted to marks the viewer authored (or owner
@@ -662,23 +667,21 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       <div
         data-annotation-context-menu="true"
         ref={(el) => {
-          // UX: keep the menu inside the PDF page the user right-clicked
-          // on (not just the viewport). When the cursor is near the right
+          // UX: keep the menu inside both the visible viewport and the PDF
+          // page the user right-clicked. When the cursor is near the right
           // or bottom edge of a page, flip the menu's anchor so its
           // right/bottom corner aligns with the cursor — this keeps the
-          // pointer still resting on the clicked item/shape. Falls back
-          // to a viewport clamp if the page element can't be found (e.g.
-          // right-click landed in an empty zone). 8px margin so the menu
-          // never kisses the page border.
+          // pointer still resting on the clicked item/shape. The viewport
+          // also excludes the desktop right rail. If the page element can't
+          // be found, use that viewport alone. An 8px margin keeps the menu
+          // off each bound.
           if (!el) return;
           const rect = el.getBoundingClientRect();
-          const margin = 8;
 
-          // Resolve the bounding box we want to keep the menu inside of.
-          // First preference: the PDF page wrapper for ctx.pageNumber.
-          // Fallback: the Pdfjs page div at the same index. Fallback
-          // of fallback: the viewport.
-          let bounds = null;
+          // Find the PDF page wrapper for ctx.pageNumber, then cut its rect
+          // to the visible viewport. The helper uses the viewport if no page
+          // can be found.
+          let pageRect = null;
           if (ctx.pageNumber != null) {
             const pageEl =
               document.querySelector(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
@@ -688,42 +691,25 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
               // what the user visually sees as "the page".
               const pageDiv = pageEl.closest('.survey-pdfjs-page-div') || pageEl;
               const r = pageDiv.getBoundingClientRect();
-              if (r.width > 0 && r.height > 0) bounds = r;
+              if (r.width > 0 && r.height > 0) pageRect = r;
             }
           }
-          if (!bounds) {
-            bounds = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
-          }
+          const bounds = getPageViewportBounds(
+            pageRect,
+            window.innerWidth,
+            window.innerHeight,
+            isMobileMenu ? 0 : DESKTOP_RIGHT_RAIL_WIDTH,
+          );
+          const position = clampFloatingMenuPosition({
+            x: ctx.x,
+            y: ctx.y,
+            width: rect.width,
+            height: rect.height,
+            bounds,
+          });
 
-          // Horizontal: flip left if opening rightward would overflow.
-          let nextLeft = ctx.x;
-          if (ctx.x + rect.width + margin > bounds.right) {
-            nextLeft = ctx.x - rect.width; // flip: menu opens leftward
-          }
-          // Then clamp so we never go past the left edge.
-          if (nextLeft < bounds.left + margin) {
-            nextLeft = Math.max(margin, bounds.left + margin);
-          }
-          // If the menu is wider than the bounds, keep it pinned to the
-          // left edge with the margin (rather than going negative).
-          if (rect.width + margin * 2 > bounds.width) {
-            nextLeft = Math.max(margin, bounds.left + margin);
-          }
-
-          // Vertical: same logic for top/bottom.
-          let nextTop = ctx.y;
-          if (ctx.y + rect.height + margin > bounds.bottom) {
-            nextTop = ctx.y - rect.height;
-          }
-          if (nextTop < bounds.top + margin) {
-            nextTop = Math.max(margin, bounds.top + margin);
-          }
-          if (rect.height + margin * 2 > bounds.height) {
-            nextTop = Math.max(margin, bounds.top + margin);
-          }
-
-          el.style.left = `${nextLeft}px`;
-          el.style.top = `${nextTop}px`;
+          el.style.left = `${position.left}px`;
+          el.style.top = `${position.top}px`;
         }}
         style={isMobileMenu ? {
           // UX: demo touch context-menu chrome (mobile-expo-go/src/styles.ts:861-871).

@@ -33,9 +33,10 @@
  * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
  * the instant chip from the start.
  */
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
+import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
 
 /**
  * The canonical tooltip look. Every tooltip in the app is painted from this one
@@ -108,9 +109,30 @@ export function tooltipAnchorFor(rect, placement = 'below') {
  * counter caret popup uses.
  */
 export function FloatingTooltip({ tooltip }) {
+  const tooltipRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = tooltipRef.current;
+    if (!tooltip?.visible || !el || typeof window === 'undefined') return undefined;
+
+    const clampToViewport = () => {
+      el.style.left = `${tooltip.x}px`;
+      el.style.top = `${tooltip.y}px`;
+      const rect = el.getBoundingClientRect();
+      const delta = viewportClampDelta(rect, window.innerWidth, window.innerHeight);
+      el.style.left = `${tooltip.x + delta.x}px`;
+      el.style.top = `${tooltip.y + delta.y}px`;
+    };
+
+    clampToViewport();
+    window.addEventListener('resize', clampToViewport);
+    return () => window.removeEventListener('resize', clampToViewport);
+  }, [tooltip?.placement, tooltip?.text, tooltip?.visible, tooltip?.x, tooltip?.y]);
+
   if (!tooltip?.visible || typeof document === 'undefined') return null;
   return createPortal(
     <div
+      ref={tooltipRef}
       // aria-hidden: the chip duplicates the control's own aria-label, so
       // announcing it would read every control's name twice.
       aria-hidden="true"

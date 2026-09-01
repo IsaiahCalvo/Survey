@@ -16,11 +16,14 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';
+import { DESKTOP_RIGHT_RAIL_WIDTH } from '../utils/floatingUiGeometry.js';
+import BodyPortal from './BodyPortal.js';
 import Icon from '../Icons';
 
 const COLLAPSED_DISMISS_MS = 3000;
 const EXPANDED_DISMISS_MS = 5000;
 const EXIT_ANIMATION_MS = 300;
+const DESKTOP_RAIL_GAP = 20;
 
 const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
   const [isVisible, setIsVisible] = useState(true);
@@ -88,7 +91,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
     return null;
   }
 
-  return (
+  const notice = (
     <div
       role={isMobile ? 'button' : undefined}
       tabIndex={isMobile ? 0 : undefined}
@@ -105,7 +108,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
       style={{
         position: 'fixed',
         bottom: isMobile ? 'calc(var(--mobile-viewer-dock-height, 72px) + 12px)' : 20,
-        right: isMobile ? 12 : 20,
+        right: isMobile ? 12 : DESKTOP_RIGHT_RAIL_WIDTH + DESKTOP_RAIL_GAP,
         width: isMobile && isExpanded ? 'calc(100vw - 116px)' : 'auto',
         maxWidth: isMobile ? (isExpanded ? 340 : 248) : 400,
         backgroundColor: '#1a1a1a',
@@ -188,6 +191,8 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
       </button>
     </div>
   );
+
+  return <BodyPortal>{notice}</BodyPortal>;
 };
 
 export default UnsupportedAnnotationsNotice;
