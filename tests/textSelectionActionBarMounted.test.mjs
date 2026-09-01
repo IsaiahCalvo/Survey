@@ -196,3 +196,34 @@ test('the text markup strip is hidden after text selection is dismissed and has 
     for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
   }
 });
+
+test('mounted link editor shows its existing address and cancel does not submit it', async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { pretendToBeVisual: true, url: 'http://localhost/' });
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true });
+  dom.window.HTMLElement.prototype.attachEvent = () => {};
+  dom.window.HTMLElement.prototype.detachEvent = () => {};
+  const { ActionBar, cleanup } = await loadActionBar();
+  const calls = [];
+  const root = createRoot(document.getElementById('root'));
+  try {
+    await act(async () => root.render(React.createElement(ActionBar, {
+      selection: { pages: [{ pageNumber: 1 }] },
+      activeMarkupTypes: ['link'],
+      linkEditorOpen: true,
+      linkMode: 'web',
+      linkValue: 'https://example.com/docs',
+      onLinkSubmit: () => calls.push('submit'),
+      onLinkCancel: () => calls.push('cancel'),
+      onAction: () => {},
+      onFocusPaint: () => {},
+    })));
+    assert.equal(document.querySelector('input[aria-label="Web address"]').value, 'https://example.com/docs');
+    await act(async () => document.querySelector('button[aria-label="Cancel hyperlink"]').click());
+    assert.deepEqual(calls, ['cancel']);
+  } finally {
+    await act(async () => root.unmount());
+    await cleanup();
+    dom.window.close();
+    for (const key of ['window', 'document', 'HTMLElement', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) delete globalThis[key];
+  }
+});
