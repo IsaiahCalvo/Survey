@@ -9,11 +9,26 @@ import {
   PDFDocument,
   PDFName,
   PDFNumber,
+  PDFOperator,
+  PDFOperatorNames,
   PDFRef,
   PDFString,
   StandardFonts,
+  appendBezierCurve,
+  appendQuadraticCurve,
+  closePath as closePathOperator,
+  fill as fillOperator,
+  lineTo,
+  moveTo,
+  popGraphicsState,
+  pushGraphicsState,
   rgb,
+  scale as scaleOperator,
+  setFillingRgbColor,
+  setGraphicsState,
+  translate as translateOperator,
 } from 'pdf-lib';
+import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { deepClone } from './deepClone.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -2987,9 +3002,58 @@ const fabricPathToSvgPath = (pathData) => {
       parts.push(`Q ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0} ${Number(cmd[3]) || 0} ${Number(cmd[4]) || 0}`);
     } else if (command === 'C') {
       parts.push(`C ${Number(cmd[1]) || 0} ${Number(cmd[2]) || 0} ${Number(cmd[3]) || 0} ${Number(cmd[4]) || 0} ${Number(cmd[5]) || 0} ${Number(cmd[6]) || 0}`);
+    } else if (command === 'Z' || command === 'z') {
+      // Closed subpaths matter for filled outline ink (multi-ring erased
+      // geometry): dropping Z left rings open and the fill/stroke wrong.
+      parts.push('Z');
     }
   });
   return parts.join(' ');
+};
+
+// Filled outline ink (native paper pen strokes and eraser-carved ink) paints
+// on screen as a fill region with NO stroke — see renderPathToSvgAttrs. The
+// print flattener must paint the same way. pdf-lib's drawSvgPath cannot
+// express an even-odd fill (needed for erased ink's holes), so emit the raw
+// operators mirroring drawSvgPath's origin/scale handling exactly.
+const fabricPathToOperators = (pathData) => {
+  const ops = [];
+  const num = (value) => Number(value) || 0;
+  (Array.isArray(pathData) ? pathData : []).forEach((cmd) => {
+    const command = cmd?.[0];
+    if (command === 'M') ops.push(moveTo(num(cmd[1]), num(cmd[2])));
+    else if (command === 'L') ops.push(lineTo(num(cmd[1]), num(cmd[2])));
+    else if (command === 'Q') ops.push(appendQuadraticCurve(num(cmd[1]), num(cmd[2]), num(cmd[3]), num(cmd[4])));
+    else if (command === 'C') ops.push(appendBezierCurve(num(cmd[1]), num(cmd[2]), num(cmd[3]), num(cmd[4]), num(cmd[5]), num(cmd[6])));
+    else if (command === 'Z' || command === 'z') ops.push(closePathOperator());
+  });
+  return ops;
+};
+
+const drawFilledOutlineInk = (page, pathData, pageHeight, attrs) => {
+  const paint = parsePdfDrawColor(attrs.fill, '#000000');
+  if (!paint) return 0;
+  const pathOperators = fabricPathToOperators(pathData);
+  if (!pathOperators.length) return 0;
+  const opacity = Math.max(0, Math.min(1, Number(attrs.opacity ?? 1)));
+  const graphicsStateKey = typeof page.maybeEmbedGraphicsState === 'function'
+    ? page.maybeEmbedGraphicsState({ opacity })
+    : undefined;
+  const fillRuleOperator = attrs.fillRule === 'evenodd'
+    ? PDFOperator.of(PDFOperatorNames.FillEvenOdd)
+    : fillOperator();
+  const { red, green, blue } = paint.color;
+  page.pushOperators(
+    pushGraphicsState(),
+    ...(graphicsStateKey ? [setGraphicsState(graphicsStateKey)] : []),
+    translateOperator(0, pageHeight),
+    scaleOperator(1, -1),
+    setFillingRgbColor(red, green, blue),
+    ...pathOperators,
+    fillRuleOperator,
+    popGraphicsState(),
+  );
+  return 1;
 };
 
 const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width }) => {
@@ -3367,6 +3431,14 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   if (type === 'path') {
     const path = fabricPathToSvgPath(shifted.path);
     if (!path) return 0;
+    // Paint decisions come from the SAME derivation the screen uses so print
+    // matches the app exactly: filled outline ink (pen strokes, erased ink,
+    // imported filled Ink) fills with the ink colour and no stroke; anything
+    // else is a genuinely stroked path.
+    const pathAttrs = renderPathToSvgAttrs(shifted);
+    if (pathAttrs.filledOutline || (pathAttrs.strokeWidth === 0 && pathAttrs.fill && pathAttrs.fill !== 'none')) {
+      return drawFilledOutlineInk(page, shifted.path, pageHeight, pathAttrs);
+    }
     // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
     // origin {x: 0, y: pageHeight} + RAW app-space (y-down) path coordinates.
     // The default origin (page bottom-left) negates y off-page.
