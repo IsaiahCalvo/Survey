@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Theme-aware tab icon: transparent ground, brass on light tab strips,
+       gold on dark ones (gold never touches a light ground). The plated
+       PNG/ICO remain only as legacy fallbacks. Small cut: tangent ring is
+       fine on a square, non-cropped tab canvas. -->
+  <style>
+    .m { stroke: #654500; }
+    @media (prefers-color-scheme: dark) { .m { stroke: #d8a84e; } }
+  </style>
+  <g class="m" fill="none" stroke-width="52" stroke-linecap="round">
+  <circle cx="256" cy="256" r="230"/>
+  <line x1="256" y1="30" x2="256" y2="90"/>
+  <line x1="256" y1="482" x2="256" y2="422"/>
+  <line x1="30" y1="256" x2="90" y2="256"/>
+  <line x1="482" y1="256" x2="422" y2="256"/>
+  <line x1="192" y1="200" x2="320" y2="200"/>
+  <line x1="192" y1="312" x2="269" y2="312"/>
+  </g>
+</svg>

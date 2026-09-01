@@ -285,17 +285,18 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // Survey icon
+    // Survey icon — the 2026-08-30 mark re-derived onto the 24 grid at the
+    // icon set's own 1.5 stroke (two bars; protruding ticks). Not the brand
+    // 48-weight proportions — this must sit beside its rail siblings.
     survey: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M9 12H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M9 8H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M9 16H12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M12 3V6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M21 12H18" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M12 18V21" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M6 12H3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" fill="none" />
+        <path d="M12 3.4V5.4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M12 18.6V20.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M3.4 12H5.4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M18.6 12H20.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M8.2 9.8H15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M8.2 14.2H12.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
 
