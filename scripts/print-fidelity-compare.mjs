@@ -80,7 +80,7 @@ const analyseCrop = ({ data, info }) => {
       sumX += x; sumY += y; sumXX += x * x; sumYY += y * y; sumXY += x * y;
       minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       if (hsl.lightness < 45) dark += 1;
-      if (hsl.saturation > 18 && hsl.lightness > 8 && hsl.lightness < 94) {
+      if (hsl.saturation >= 30 && hsl.lightness > 8 && hsl.lightness < 94) {
         saturated += 1;
         coloured.push(hsl);
       }
@@ -99,20 +99,47 @@ const analyseCrop = ({ data, info }) => {
   for (let index = 0; index < mask.length; index += 1) {
     strokeMask[index] = mask[index] && lightnessByPixel[index] <= strokeLightnessLimit ? 1 : 0;
   }
-  let strokeArea = 0;
-  let strokePerimeter = 0;
-  for (let y = 0; y < info.height; y += 1) {
-    for (let x = 0; x < info.width; x += 1) {
-      const index = y * info.width + x;
-      if (!strokeMask[index]) continue;
-      strokeArea += 1;
-      if (x === 0 || !strokeMask[index - 1]) strokePerimeter += 1;
-      if (x === info.width - 1 || !strokeMask[index + 1]) strokePerimeter += 1;
-      if (y === 0 || !strokeMask[index - info.width]) strokePerimeter += 1;
-      if (y === info.height - 1 || !strokeMask[index + info.width]) strokePerimeter += 1;
+  // One- and two-pixel anti-aliased edges are not stable stroke samples.
+  // Measure only short cross-stroke runs that are at least 3px wide.
+  const strokeRuns = [];
+  const recordRuns = (length, read, maxRun) => {
+    let run = 0;
+    for (let index = 0; index <= length; index += 1) {
+      if (index < length && read(index)) run += 1;
+      else {
+        if (run >= 3 && run <= maxRun) strokeRuns.push(run);
+        run = 0;
+      }
     }
+  };
+  const maxHorizontalRun = Math.max(12, Math.round(info.width * 0.18));
+  const maxVerticalRun = Math.max(12, Math.round(info.height * 0.18));
+  for (let y = 0; y < info.height; y += 1) {
+    recordRuns(info.width, (x) => strokeMask[y * info.width + x], maxHorizontalRun);
   }
-  coloured.sort((a, b) => a.hue - b.hue);
+  for (let x = 0; x < info.width; x += 1) {
+    recordRuns(info.height, (y) => strokeMask[y * info.width + x], maxVerticalRun);
+  }
+  // Pick the largest saturated paint cluster. Hue plus lightness keeps a pale
+  // fill separate from its dark anti-aliased edge.
+  const sortedSaturation = coloured.map((pixel) => pixel.saturation).sort((a, b) => a - b);
+  const saturationFloor = sortedSaturation.length
+    ? Math.max(30, sortedSaturation[Math.floor(sortedSaturation.length * 0.75)] - 2)
+    : 30;
+  const dominantCandidates = coloured.filter((pixel) => pixel.saturation >= saturationFloor);
+  const colourBins = new Map();
+  dominantCandidates.forEach((pixel) => {
+    const key = `${Math.floor(pixel.hue / 15) % 24}:${Math.floor(pixel.lightness / 10)}`;
+    const bin = colourBins.get(key) || { pixels: [], score: 0 };
+    bin.pixels.push(pixel);
+    bin.score += 1;
+    colourBins.set(key, bin);
+  });
+  const dominantColours = [...colourBins.values()].reduce((best, bin) => bin.score > best.score ? bin : best, { pixels: [], score: 0 }).pixels;
+  dominantColours.sort((a, b) => a.hue - b.hue);
+  const runCounts = new Map();
+  strokeRuns.forEach((run) => runCounts.set(run, (runCounts.get(run) || 0) + 1));
+  const dominantRun = [...runCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] || 0;
   const median = (list, key) => list.length ? list[Math.floor(list.length / 2)][key] : null;
   let orientation = null;
   if (painted > 1) {
@@ -127,9 +154,11 @@ const analyseCrop = ({ data, info }) => {
     coverage: painted / Math.max(1, info.width * info.height),
     darkCoverage: dark / Math.max(1, info.width * info.height),
     saturatedCoverage: saturated / Math.max(1, info.width * info.height),
+    pixelSize: { width: info.width, height: info.height },
     bounds: painted ? { left: minX / info.width, top: minY / info.height, right: (maxX + 1) / info.width, bottom: (maxY + 1) / info.height } : null,
-    colour: coloured.length ? { hue: median(coloured, 'hue'), saturation: median(coloured, 'saturation'), lightness: median(coloured, 'lightness') } : null,
-    strokeWeight: strokePerimeter ? (2 * strokeArea) / strokePerimeter : 0,
+    colour: dominantColours.length ? { hue: median(dominantColours, 'hue'), saturation: median(dominantColours, 'saturation'), lightness: median(dominantColours, 'lightness') } : null,
+    strokeWeight: painted && maxLightness - minLightness <= 12 && painted / Math.max(1, info.width * info.height) > 0.15 ? 0 : dominantRun,
+    strokeSampleCount: painted && maxLightness - minLightness <= 12 && painted / Math.max(1, info.width * info.height) > 0.15 ? 0 : strokeRuns.length,
     orientation,
   };
 };
@@ -145,8 +174,10 @@ const compareMetrics = (screen, print, checks, tolerance = {}) => {
   if (checks.includes('bounds')) {
     if (!screen.bounds || !print.bounds) failures.push('missing painted bounds');
     else for (const edge of ['left', 'top', 'right', 'bottom']) {
+      const axisPixels = edge === 'left' || edge === 'right' ? screen.pixelSize.width : screen.pixelSize.height;
+      const edgeTolerance = Math.max(boundTol, 3 / Math.max(1, axisPixels));
       const delta = Math.abs(screen.bounds[edge] - print.bounds[edge]);
-      if (delta > boundTol + 1e-6) failures.push(`${edge} delta ${delta.toFixed(4)} > ${boundTol}`);
+      if (delta > edgeTolerance + 1e-6) failures.push(`${edge} delta ${delta.toFixed(4)} > ${edgeTolerance.toFixed(4)} (max 2%, 3px)`);
     }
   }
   if (checks.includes('colour')) {
@@ -163,9 +194,11 @@ const compareMetrics = (screen, print, checks, tolerance = {}) => {
     if (delta > (tolerance.coverage ?? 0.12)) failures.push(`coverage delta ${delta.toFixed(4)}`);
   }
   if (checks.includes('strokeWeight')) {
-    const denom = Math.max(1, screen.strokeWeight);
-    const delta = Math.abs(screen.strokeWeight - print.strokeWeight) / denom;
-    if (delta > (tolerance.strokeWeight ?? 0.45)) failures.push(`stroke delta ${(delta * 100).toFixed(1)}%`);
+    if (screen.strokeSampleCount > 0 && print.strokeSampleCount > 0) {
+      const denom = Math.max(1, screen.strokeWeight);
+      const delta = Math.abs(screen.strokeWeight - print.strokeWeight) / denom;
+      if (delta > (tolerance.strokeWeight ?? 0.45)) failures.push(`stroke delta ${(delta * 100).toFixed(1)}%`);
+    }
   }
   if (checks.includes('orientation')) {
     if (!Number.isFinite(screen.orientation) || !Number.isFinite(print.orientation)) failures.push('missing orientation');

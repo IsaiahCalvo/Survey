@@ -15,12 +15,14 @@ import {
   PDFOperatorNames,
   PDFRef,
   PDFString,
+  LineCapStyle,
   StandardFonts,
   appendBezierCurve,
   appendQuadraticCurve,
   concatTransformationMatrix,
   closePath as closePathOperator,
   fill as fillOperator,
+  degrees,
   lineTo,
   moveTo,
   popGraphicsState,
@@ -3207,12 +3209,28 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
 // (bold/italic) so both shapes print with their chosen weight/slant.
 const pickFlattenedTextFont = (obj, fonts) => {
   if (!fonts || typeof fonts !== 'object' || !fonts.regular) return fonts;
+  const family = String(obj?.fontFamily || '').toLowerCase();
+  const familyFonts = /times|serif/.test(family)
+    ? {
+        regular: fonts.timesRegular,
+        bold: fonts.timesBold,
+        oblique: fonts.timesItalic,
+        boldOblique: fonts.timesBoldItalic,
+      }
+    : /courier|mono/.test(family)
+      ? {
+          regular: fonts.courierRegular,
+          bold: fonts.courierBold,
+          oblique: fonts.courierOblique,
+          boldOblique: fonts.courierBoldOblique,
+        }
+      : fonts;
   const isBold = obj?.fontWeight === 'bold' || Number(obj?.fontWeight) >= 600 || obj?.bold === true;
   const isItalic = obj?.fontStyle === 'italic' || obj?.fontStyle === 'oblique' || obj?.italic === true;
-  if (isBold && isItalic) return fonts.boldOblique || fonts.bold || fonts.regular;
-  if (isBold) return fonts.bold || fonts.regular;
-  if (isItalic) return fonts.oblique || fonts.regular;
-  return fonts.regular;
+  if (isBold && isItalic) return familyFonts.boldOblique || familyFonts.bold || familyFonts.regular || fonts.regular;
+  if (isBold) return familyFonts.bold || familyFonts.regular || fonts.regular;
+  if (isItalic) return familyFonts.oblique || familyFonts.regular || fonts.regular;
+  return familyFonts.regular || fonts.regular;
 };
 
 const drawFlattenedText = (page, obj, pageHeight, fonts) => {
@@ -3224,6 +3242,8 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const font = pickFlattenedTextFont(obj, fonts);
   const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200));
   const baselineY = getPdfY(pageHeight, top + Math.min(height, fontSize + 2));
+  const angle = Number(obj?.angle) || 0;
+  const pdfAngle = -angle;
   page.drawText(String(obj?.text || ''), {
     x: left,
     y: baselineY,
@@ -3232,6 +3252,7 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     color: fill.color,
     opacity: fill.opacity,
     maxWidth,
+    ...(angle ? { rotate: degrees(pdfAngle) } : {}),
   });
   // UX 2026-07-17 (print text style): PDF has no text-decoration operator, so
   // underline/strikethrough are drawn as explicit lines in the text color,
@@ -3251,15 +3272,22 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
     }
     if (lineWidth > 0) {
       const thickness = Math.max(0.5, fontSize / 14);
-      const drawDecorationLine = (y) => page.drawLine({
-        start: { x: left, y },
-        end: { x: left + lineWidth, y },
+      const theta = pdfAngle * Math.PI / 180;
+      const cos = Math.cos(theta);
+      const sin = Math.sin(theta);
+      const rotatedPoint = (x, y) => ({
+        x: left + x * cos - y * sin,
+        y: baselineY + x * sin + y * cos,
+      });
+      const drawDecorationLine = (offsetY) => page.drawLine({
+        start: rotatedPoint(0, offsetY),
+        end: rotatedPoint(lineWidth, offsetY),
         color: fill.color,
         thickness,
         opacity: fill.opacity,
       });
-      if (wantsUnderline) drawDecorationLine(baselineY - fontSize * 0.12);
-      if (wantsLinethrough) drawDecorationLine(baselineY + fontSize * 0.28);
+      if (wantsUnderline) drawDecorationLine(-fontSize * 0.12);
+      if (wantsLinethrough) drawDecorationLine(fontSize * 0.28);
     }
   }
 };
@@ -3402,6 +3430,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
           borderColor: unappliedRedaction ? color.color : undefined,
           borderOpacity: unappliedRedaction ? opacity : undefined,
           borderWidth: unappliedRedaction ? Math.max(1, Number(obj?.data?.lineWidth) || 1.2) : 0,
+          blendMode: markupType === 'highlight' ? BlendMode.Multiply : undefined,
         });
       } else if (markupType === 'squiggly') {
         const y = bottom - Math.max(0.6, (bottom - top) * 0.08);
@@ -3489,6 +3518,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       borderColor: stroke?.color,
       borderWidth: strokeWidth * transform.strokeScale,
       borderOpacity: stroke?.opacity,
+      borderLineCap: shifted?.strokeLineCap === 'round' ? LineCapStyle.Round : undefined,
       blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     });
     return 1;
@@ -3788,6 +3818,14 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     // regular Helvetica for text, dropping weight and style).
     oblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
     boldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+    timesRegular: await pdfDoc.embedFont(StandardFonts.TimesRoman),
+    timesBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+    timesItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanItalic),
+    timesBoldItalic: await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic),
+    courierRegular: await pdfDoc.embedFont(StandardFonts.Courier),
+    courierBold: await pdfDoc.embedFont(StandardFonts.CourierBold),
+    courierOblique: await pdfDoc.embedFont(StandardFonts.CourierOblique),
+    courierBoldOblique: await pdfDoc.embedFont(StandardFonts.CourierBoldOblique),
   };
   // Rebuild the caller's payload defensively. Survey Markers stay in the same
   // all-visible print set as survey, space, and region shapes.

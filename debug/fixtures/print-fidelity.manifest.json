@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 4443,
+  "pdfSize": 5207,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -40,6 +40,25 @@
         576,
         720
       ]
+    },
+    {
+      "page": 6,
+      "rotation": 0,
+      "width": 612,
+      "height": 792,
+      "requiresSurveyMode": true
+    },
+    {
+      "page": 7,
+      "rotation": 0,
+      "width": 612,
+      "height": 792
+    },
+    {
+      "page": 8,
+      "rotation": 0,
+      "width": 612,
+      "height": 792
     }
   ],
   "annotationsByPage": {
@@ -336,7 +355,7 @@
           "strokeWidth": 1,
           "opacity": 1,
           "isPdfImported": true,
-          "pdfAnnotationId": "15R",
+          "pdfAnnotationId": "21R",
           "pdfAnnotationType": "Square"
         },
         {
@@ -363,7 +382,7 @@
           "strokeWidth": 1,
           "opacity": 1,
           "isPdfImported": true,
-          "pdfAnnotationId": "16R",
+          "pdfAnnotationId": "22R",
           "pdfAnnotationType": "Polygon"
         },
         {
@@ -391,14 +410,14 @@
             ]
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "17R",
+          "pdfAnnotationId": "23R",
           "pdfAnnotationType": "StrikeOut"
         },
         {
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "30R",
+            "fieldId": "37R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -408,7 +427,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "36R",
+            "fieldId": "43R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -456,21 +475,6 @@
           }
         },
         {
-          "id": "survey-marker-screen",
-          "annotationId": "survey-marker-1",
-          "type": "rect",
-          "left": 465,
-          "top": 90,
-          "width": 36,
-          "height": 36,
-          "stroke": "transparent",
-          "strokeWidth": 0,
-          "fill": "rgba(216,168,78,0.55)",
-          "data": {
-            "id": "survey-marker-screen"
-          }
-        },
-        {
           "id": "space-shape",
           "type": "rect",
           "left": 60,
@@ -504,15 +508,15 @@
           "text": "Callout text",
           "arrowTip": {
             "x": 0.6439393939393939,
-            "y": 0.5882352941176471
+            "y": 0.8169934640522876
           },
           "knee": {
             "x": 0.5429292929292929,
-            "y": 0.5392156862745098
+            "y": 0.7679738562091504
           },
           "textBox": {
             "left": 0.31565656565656564,
-            "top": 0.49019607843137253,
+            "top": 0.7026143790849673,
             "width": 0.22727272727272727,
             "height": 0.11764705882352941
           },
@@ -584,56 +588,6 @@
           }
         },
         {
-          "id": "squiggle-custom",
-          "type": "group",
-          "fill": "#dc2626",
-          "stroke": "#dc2626",
-          "opacity": 1,
-          "data": {
-            "type": "text-markup",
-            "markupType": "squiggly",
-            "overlapMode": "layered",
-            "lineWidth": 1.2,
-            "quads": [
-              {
-                "x1": 55,
-                "y1": 220,
-                "x2": 260,
-                "y2": 220,
-                "x3": 55,
-                "y3": 246,
-                "x4": 260,
-                "y4": 246
-              }
-            ]
-          }
-        },
-        {
-          "id": "strike-custom",
-          "type": "group",
-          "fill": "#16a34a",
-          "stroke": "#16a34a",
-          "opacity": 1,
-          "data": {
-            "type": "text-markup",
-            "markupType": "strikeout",
-            "overlapMode": "layered",
-            "lineWidth": 1.2,
-            "quads": [
-              {
-                "x1": 55,
-                "y1": 285,
-                "x2": 260,
-                "y2": 285,
-                "x3": 55,
-                "y3": 311,
-                "x4": 260,
-                "y4": 311
-              }
-            ]
-          }
-        },
-        {
           "id": "link",
           "type": "group",
           "fill": "#2563eb",
@@ -655,30 +609,6 @@
               }
             ],
             "url": "https://example.com"
-          }
-        },
-        {
-          "id": "redaction-unapplied",
-          "type": "group",
-          "fill": "transparent",
-          "stroke": "#ef4444",
-          "opacity": 1,
-          "data": {
-            "type": "text-markup",
-            "markupType": "redact",
-            "applied": false,
-            "quads": [
-              {
-                "x1": 55,
-                "y1": 415,
-                "x2": 260,
-                "y2": 415,
-                "x3": 55,
-                "y3": 450,
-                "x4": 260,
-                "y4": 450
-              }
-            ]
           }
         },
         {
@@ -716,7 +646,7 @@
             ]
           ],
           "isPdfImported": true,
-          "pdfAnnotationId": "18R",
+          "pdfAnnotationId": "24R",
           "pdfAnnotationType": "Ink"
         },
         {
@@ -730,7 +660,7 @@
           "strokeWidth": 3,
           "fill": "rgba(204,250,235,0.55)",
           "isPdfImported": true,
-          "pdfAnnotationId": "19R",
+          "pdfAnnotationId": "25R",
           "pdfAnnotationType": "Circle"
         },
         {
@@ -741,11 +671,11 @@
           "width": 230,
           "height": 50,
           "text": "NATIVE FREE TEXT",
-          "fontFamily": "Helvetica",
+          "fontFamily": "Times New Roman",
           "fontSize": 18,
           "fill": "#7333e6",
           "isPdfImported": true,
-          "pdfAnnotationId": "20R",
+          "pdfAnnotationId": "26R",
           "pdfAnnotationType": "FreeText"
         },
         {
@@ -773,7 +703,7 @@
             ]
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "21R",
+          "pdfAnnotationId": "27R",
           "pdfAnnotationType": "Highlight"
         },
         {
@@ -790,7 +720,7 @@
             "pdfCloudIntensity": 2
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "22R",
+          "pdfAnnotationId": "28R",
           "pdfAnnotationType": "Square"
         },
         {
@@ -805,7 +735,7 @@
           "lineEnding2": "ClosedArrow",
           "tool": "arrow",
           "isPdfImported": true,
-          "pdfAnnotationId": "23R",
+          "pdfAnnotationId": "29R",
           "pdfAnnotationType": "Line"
         }
       ]
@@ -904,6 +834,62 @@
           }
         }
       ]
+    },
+    "7": {
+      "width": 612,
+      "height": 792,
+      "objects": [
+        {
+          "id": "squiggle-custom",
+          "type": "group",
+          "fill": "#dc2626",
+          "stroke": "#dc2626",
+          "opacity": 1,
+          "data": {
+            "type": "text-markup",
+            "markupType": "squiggly",
+            "overlapMode": "layered",
+            "lineWidth": 1.2,
+            "quads": [
+              {
+                "x1": 70,
+                "y1": 70,
+                "x2": 300,
+                "y2": 70,
+                "x3": 70,
+                "y3": 96,
+                "x4": 300,
+                "y4": 96
+              }
+            ]
+          }
+        },
+        {
+          "id": "strike-custom",
+          "type": "group",
+          "fill": "#16a34a",
+          "stroke": "#16a34a",
+          "opacity": 1,
+          "data": {
+            "type": "text-markup",
+            "markupType": "strikeout",
+            "overlapMode": "layered",
+            "lineWidth": 1.2,
+            "quads": [
+              {
+                "x1": 70,
+                "y1": 150,
+                "x2": 300,
+                "y2": 150,
+                "x3": 70,
+                "y3": 176,
+                "x4": 300,
+                "y4": 176
+              }
+            ]
+          }
+        }
+      ]
     }
   },
   "spaces": [
@@ -936,20 +922,59 @@
   "surveyMarkers": {
     "survey-marker-1": {
       "annotationId": "survey-marker-1",
-      "pageNumber": 2,
-      "x": 465,
-      "y": 90,
-      "width": 36,
-      "height": 36,
+      "pageNumber": 6,
+      "moduleId": "kal436-module",
+      "entityId": "fixture-entity",
+      "entityColor": "rgba(216,168,78,0.55)",
+      "x": 180,
+      "y": 180,
+      "width": 190,
+      "height": 50,
       "bounds": {
-        "x": 465,
-        "y": 90,
-        "width": 36,
-        "height": 36
+        "x": 180,
+        "y": 180,
+        "width": 190,
+        "height": 50
       },
       "color": "rgba(216,168,78,0.55)"
     }
   },
+  "callouts": [
+    {
+      "id": "callout-1",
+      "type": "group",
+      "data": {
+        "type": "callout",
+        "id": "callout-1"
+      },
+      "pageNumber": 2,
+      "text": "Callout text",
+      "arrowTip": {
+        "x": 0.6439393939393939,
+        "y": 0.8169934640522876
+      },
+      "knee": {
+        "x": 0.5429292929292929,
+        "y": 0.7679738562091504
+      },
+      "textBox": {
+        "left": 0.31565656565656564,
+        "top": 0.7026143790849673,
+        "width": 0.22727272727272727,
+        "height": 0.11764705882352941
+      },
+      "style": {
+        "lineColor": "#be123c",
+        "borderColor": "#be123c",
+        "lineThickness": 3,
+        "backgroundColor": "#fff1f2",
+        "fontColor": "#881337",
+        "fontSize": 16,
+        "bold": true,
+        "arrowheadStyle": "solid-triangle"
+      }
+    }
+  ],
   "regions": [
     {
       "id": "pen-fresh",
@@ -1120,7 +1145,7 @@
       "bounds": [
         335,
         75,
-        470,
+        465,
         165
       ],
       "checks": [
@@ -1134,7 +1159,7 @@
       "type": "native-polygon",
       "page": 1,
       "bounds": [
-        455,
+        465,
         65,
         590,
         180
@@ -1228,12 +1253,12 @@
     {
       "id": "survey-marker",
       "type": "survey-marker",
-      "page": 2,
+      "page": 6,
       "bounds": [
-        440,
-        60,
-        510,
-        135
+        160,
+        160,
+        390,
+        255
       ],
       "checks": [
         "bounds",
@@ -1276,9 +1301,9 @@
       "page": 2,
       "bounds": [
         235,
-        285,
+        410,
         535,
-        385
+        525
       ],
       "checks": [
         "bounds",
@@ -1321,12 +1346,12 @@
     {
       "id": "squiggle-custom",
       "type": "squiggle",
-      "page": 3,
+      "page": 7,
       "bounds": [
-        45,
-        210,
-        270,
-        255
+        55,
+        55,
+        315,
+        115
       ],
       "checks": [
         "bounds",
@@ -1337,12 +1362,12 @@
     {
       "id": "strike-custom",
       "type": "strikethrough",
-      "page": 3,
+      "page": 7,
       "bounds": [
-        45,
-        275,
-        270,
-        320
+        55,
+        135,
+        315,
+        195
       ],
       "checks": [
         "bounds",
@@ -1368,12 +1393,12 @@
     {
       "id": "redaction-unapplied",
       "type": "redaction",
-      "page": 3,
+      "page": 7,
       "bounds": [
-        45,
-        405,
-        270,
-        460
+        85,
+        285,
+        335,
+        365
       ],
       "checks": [
         "bounds",
@@ -1512,12 +1537,12 @@
     {
       "id": "native-stamp",
       "type": "native-stamp",
-      "page": 4,
+      "page": 8,
       "bounds": [
-        215,
-        345,
-        310,
-        510
+        100,
+        210,
+        270,
+        315
       ],
       "checks": [
         "bounds",

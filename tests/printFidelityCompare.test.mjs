@@ -75,3 +75,29 @@ test('print comparator removes object-fit scale and letterbox offsets before str
   }
   assert.ok(JSON.parse(await readFile(join(pairsDir, 'report.json'), 'utf8')).fixtureFailed === 1);
 });
+
+test('print comparator allows at most three anti-aliased pixels and still catches larger moves', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'print-fidelity-pixels-'));
+  const screenDir = join(root, 'screen');
+  const printDir = join(root, 'print');
+  await Promise.all([mkdir(screenDir), mkdir(printDir)]);
+  const screenSvg = Buffer.from('<svg width="120" height="80"><path d="M10 20 L50 20" stroke="#16a34a" stroke-width="2"/><path d="M10 60 L50 60" stroke="#2563eb" stroke-width="2"/></svg>');
+  const printSvg = Buffer.from('<svg width="120" height="80"><path d="M12 20 L52 20" stroke="#16a34a" stroke-width="2"/><path d="M15 60 L55 60" stroke="#2563eb" stroke-width="2"/></svg>');
+  const screen = await whitePage(120, 80).composite([{ input: screenSvg }]).png().toBuffer();
+  const print = await whitePage(120, 80).composite([{ input: printSvg }]).png().toBuffer();
+  await Promise.all([
+    writeFile(join(screenDir, 'page-1.png'), screen),
+    writeFile(join(printDir, 'page-1.png'), await fittedLetterPage(print, 120, 80)),
+  ]);
+  const manifestPath = join(root, 'manifest.json');
+  await writeFile(manifestPath, JSON.stringify({
+    pages: [{ page: 1, rotation: 0, width: 120, height: 80 }],
+    regions: [
+      { id: 'two-pixel-edge', type: 'line', page: 1, bounds: [5, 10, 60, 30], checks: ['bounds', 'colour', 'strokeWeight'] },
+      { id: 'five-pixel-move', type: 'line', page: 1, bounds: [5, 50, 65, 75], checks: ['bounds', 'colour', 'strokeWeight'] },
+    ],
+  }));
+  const report = await comparePrintFidelity({ manifestPath, screenDir, printDir, outputDir: join(root, 'pairs') });
+  assert.equal(report.results.find((item) => item.id === 'two-pixel-edge').status, 'pass');
+  assert.equal(report.results.find((item) => item.id === 'five-pixel-move').status, 'print-failure');
+});

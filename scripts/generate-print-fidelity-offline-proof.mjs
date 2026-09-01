@@ -22,7 +22,7 @@ const fixed = await savePDFWithFlattenedRegularAnnotationsForPrint(
   Object.fromEntries(manifest.pages.map((page) => [page.page, page.rotation === 90 || page.rotation === 270 ? { width: 792, height: 612 } : page.cropBox ? { width: 540, height: 648 } : { width: 612, height: 792 }])),
   {
     actionType: 'offline-print-fidelity-proof',
-    callouts: [manifest.annotationsByPage[2].objects.find((obj) => obj.id === 'callout-1')],
+    callouts: manifest.callouts,
     surveyMarkers: manifest.surveyMarkers,
   },
 );
