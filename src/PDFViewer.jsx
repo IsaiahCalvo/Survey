@@ -62,6 +62,7 @@ import PDFPageCanvas from './components/PDFPageCanvas';
 import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
 import PrintPanel from './components/PrintPanel';
 import BrowserPrintDocument from './components/BrowserPrintDocument.jsx';
+import { createPrintPageError, waitForPrintImages } from './utils/printImageReadiness.js';
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
@@ -29863,9 +29864,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         console.log('[PrintPanel] disabled — running PDF-native annotation print; app annotations are not composited, pages=', perPage.length);
         printInFlight = true;
         Promise.resolve(handlePrintPanelPrint(jobSpec)).finally(() => {
-          // Brief cooldown after the iframe print() returns so the
-          // dialog has time to appear before another Cmd+P queues.
-          setTimeout(() => { printInFlight = false; }, 1500);
+          printInFlight = false;
         });
         return;
       }
@@ -30154,17 +30153,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const slot = cursor++;
           if (slot >= pages.length) return;
           const p = pages[slot];
-          const img = await printPanelGetThumbnail(p.pageNumber, {
-            targetWidth,
-            rotation: p.rotation,
-            mirrorH: p.mirrorH,
-            mirrorV: p.mirrorV,
-            withAnnotations: p.withAnnotations,
+          let renderTimeout = null;
+          const img = await Promise.race([
+            printPanelGetThumbnail(p.pageNumber, {
+              targetWidth,
+              rotation: p.rotation,
+              mirrorH: p.mirrorH,
+              mirrorV: p.mirrorV,
+              withAnnotations: p.withAnnotations,
+            }),
+            new Promise((_, reject) => {
+              // This timer only aborts a stuck render; it never starts printing.
+              renderTimeout = setTimeout(() => {
+                reject(createPrintPageError(p.pageNumber, 'the page render timed out'));
+              }, 60_000);
+            }),
+          ]).finally(() => {
+            if (renderTimeout !== null) clearTimeout(renderTimeout);
           });
           if (img?.src) {
             renderResults[slot] = { spec: p, img };
           } else {
-            console.warn(`[PrintPanel] print render missing for page ${p.pageNumber}`);
+            throw createPrintPageError(p.pageNumber, 'the page render failed');
           }
         }
       };
@@ -30341,22 +30351,37 @@ ${pageBlocks}
         iframe.style.border = '0';
         iframe.srcdoc = html;
         document.body.appendChild(iframe);
-        const waitLoad = new Promise((resolve) => {
-          iframe.addEventListener('load', () => resolve(), { once: true });
-          setTimeout(resolve, 5000);
+        const waitLoad = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(createPrintPageError(perPageRenders[0].spec.pageNumber, 'the print frame timed out'));
+          }, 5000);
+          iframe.addEventListener('load', () => {
+            clearTimeout(timeout);
+            resolve();
+          }, { once: true });
         });
-        await waitLoad;
         try {
+          await waitLoad;
+          const printImages = [...(iframe.contentDocument?.images || [])];
+          await waitForPrintImages(
+            printImages,
+            perPageRenders.map(({ spec }) => spec.pageNumber),
+          );
           const win = iframe.contentWindow;
-          if (win) { win.focus(); win.print(); }
+          if (!win) throw createPrintPageError(perPageRenders[0].spec.pageNumber, 'the print frame is not available');
+          win.focus();
+          win.print();
+          setTimeout(() => { try { iframe.remove(); } catch {} }, 2000);
         } catch (err) {
+          try { iframe.remove(); } catch {}
           console.error('[PrintPanel] iframe print() failed:', err);
+          throw err;
         }
-        setTimeout(() => { try { iframe.remove(); } catch {} }, 2000);
       }
       console.log('[PrintPanel] print dispatched via', used, 'destination=', dest);
     } catch (err) {
       console.error('[PrintPanel] print pipeline error:', err);
+      showToast(err?.message || 'Could not prepare the document for print.', 'error');
     }
     setPrintPanelOpen(false);
   }, [printPanelGetThumbnail]);
