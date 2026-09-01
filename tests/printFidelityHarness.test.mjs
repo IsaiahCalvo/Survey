@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
 import { init } from '@embedpdf/pdfium';
 import { PdfEngine, PdfiumNative } from '@embedpdf/engines/pdfium';
-import { savePDFWithFlattenedRegularAnnotationsForPrint } from '../src/utils/pdfAnnotationsPdfLib.js';
+import {
+  buildPrintableRegularAnnotationPayload,
+  savePDFWithFlattenedRegularAnnotationsForPrint,
+} from '../src/utils/pdfAnnotationsPdfLib.js';
 
 const fixtureUrl = new URL('../debug/fixtures/print-fidelity.pdf', import.meta.url);
 const manifestUrl = new URL('../debug/fixtures/print-fidelity.manifest.json', import.meta.url);
@@ -62,21 +65,37 @@ test('print-fidelity manifest covers every required app and native type on rotat
     'native-circle', 'native-polygon', 'native-ink', 'native-free-text', 'native-highlight',
     'native-cloud', 'native-arrow', 'native-strikeout', 'form-checkbox', 'form-text', 'native-stamp',
   ]) assert.ok(types.has(required), `manifest must cover ${required}`);
-  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0]);
+  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0]);
   assert.deepEqual(manifest.pages[4].cropBox, [36, 72, 576, 720]);
   assert.equal(manifest.pages[5].requiresSurveyMode, true);
+});
+
+test('print payload emits a callout leader once when by-page state has its projected copy', () => {
+  const callout = { id: 'callout-1', pageNumber: 1 };
+  const payload = buildPrintableRegularAnnotationPayload({
+    annotationsByPage: {
+      1: { objects: [{ id: 'callout-1', type: 'group', data: { id: 'callout-1', type: 'callout' }, objects: [{ type: 'line' }] }] },
+    },
+    callouts: [callout],
+  });
+  assert.equal(payload.callouts.length, 1);
+  assert.equal(payload.annotationsByPage[1], undefined, 'projected callout must not enter the fabric print pass');
 });
 
 test('real print flattener uses app paint for untouched imports and bakes form state', async () => {
   const source = new Uint8Array(await readFile(fixtureUrl));
   const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
+  const importedHighlight = manifest.annotationsByPage[3].objects.find((obj) => obj.id === 'imported-native-highlight');
+  importedHighlight.pdfAnnotationId = 'annot_p2_999';
+  delete importedHighlight.pdfNativeAnnotationIdentity;
+  if (importedHighlight.data) delete importedHighlight.data.pdfNativeAnnotationIdentity;
   const output = await savePDFWithFlattenedRegularAnnotationsForPrint(
     { name: manifest.pdfFile, async arrayBuffer() { return toArrayBuffer(source); } },
     manifest.annotationsByPage,
     Object.fromEntries(manifest.pages.map((page) => [page.page, page.rotation === 90 || page.rotation === 270 ? { width: 792, height: 612 } : page.cropBox ? { width: 540, height: 648 } : { width: 612, height: 792 }])),
     {
       actionType: 'test-print-fidelity',
-      callouts: [manifest.annotationsByPage[2].objects.find((obj) => obj.id === 'callout-1')],
+      callouts: manifest.callouts,
       surveyMarkers: manifest.surveyMarkers,
     },
   );
@@ -84,6 +103,8 @@ test('real print flattener uses app paint for untouched imports and bakes form s
   const parsed = await PDFDocument.load(output);
   const pageOneAnnots = parsed.getPage(0).node.lookup(PDFName.of('Annots'));
   assert.equal(pageOneAnnots?.size?.() || 0, 0, 'drawable native marks and widgets must not bypass app paint');
+  const importedPageAnnots = parsed.getPage(2).node.lookup(PDFName.of('Annots'));
+  assert.equal(importedPageAnnots?.size?.() || 0, 0, 'runtime-id native highlight must not paint over its translucent app copy');
   const stampPageAnnots = parsed.getPage(7).node.lookup(PDFName.of('Annots'));
   assert.equal(stampPageAnnots?.size?.() || 0, 1, 'AP-only native stamp stays native until it has an app flattener');
 

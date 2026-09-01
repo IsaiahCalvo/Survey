@@ -227,6 +227,10 @@ export function buildPrintableRegularAnnotationPayload({
   };
   const printableAnnotationsByPage = {};
   const surveyMarkerIds = new Set(Object.keys(surveyMarkers || {}).map(String));
+  const calloutIds = new Set((Array.isArray(callouts) ? callouts : [])
+    .map((callout) => getObjectId(callout))
+    .filter(Boolean)
+    .map(String));
 
   // Same composite pre-pass as buildPdfExportAnnotationPlan: editing ONE
   // member of a pdfAppearanceCompositeId group makes the whole group the
@@ -256,6 +260,16 @@ export function buildPrintableRegularAnnotationPayload({
 
     objects.forEach((obj) => {
       const isCounter = obj?.data?.type === 'counter';
+      const objectId = getObjectId(obj);
+      const isProjectedCallout = (
+        obj?.data?.type === 'callout'
+        || obj?.type === 'callout'
+        || obj?.exportType === 'callout'
+      );
+      // Callouts have their own source-of-truth list. The annotation layer may
+      // also project one into by-page state for screen interaction; printing
+      // both copies draws the leader twice.
+      if (isProjectedCallout && objectId != null && calloutIds.has(String(objectId))) return;
       // Survey Markers can also have a canvas rect mirror for screen paint.
       // The marker map is the print source; flattening both would double its
       // opacity and make print darker than the screen.
@@ -2896,7 +2910,7 @@ const applyNativePdfAnnotationRemovalPlan = ({
     }
     const page = pdfDoc.getPage(pageIndex);
     const annots = page.node.lookup(PDFName.of('Annots'));
-    const indices = findMatchingNativePdfAnnotationIndices(
+    let indices = findMatchingNativePdfAnnotationIndices(
       pdfDoc,
       annots,
       request.pdfAnnotationId,
@@ -2906,6 +2920,22 @@ const applyNativePdfAnnotationRemovalPlan = ({
         pdfNativeAnnotationIdentity: request.pdfNativeAnnotationIdentity,
       },
     );
+    if (indices.length === 0 && request.allowUniqueSubtypeFallback === true) {
+      const subtype = normalizePdfAnnotationSubtype(request.pdfAnnotationType);
+      const matches = [];
+      const refs = typeof annots?.asArray === 'function' ? annots.asArray() : [];
+      refs.forEach((ref, index) => {
+        const dict = lookupPdfValue(pdfDoc, ref);
+        const candidateSubtype = normalizePdfAnnotationSubtype(
+          String(dict?.get?.(PDFName.of('Subtype')) || ''),
+        );
+        if (candidateSubtype === subtype) matches.push(index);
+      });
+      // Print may receive a pdf.js runtime id after state hydration. A lone
+      // native annotation of the same subtype is still safe to replace; more
+      // than one candidate fails closed.
+      if (matches.length === 1) indices = matches;
+    }
     if (indices.length === 0) {
       exportDiagnostics[fields.misses] += 1;
       continue;
@@ -3621,6 +3651,7 @@ const drawUniformHighlightMask = (page, objects, pageHeight) => {
     y: pageHeight,
     color: color.color,
     opacity,
+    blendMode: BlendMode.Multiply,
   });
   return 1;
 };
@@ -3854,6 +3885,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
       : `${pageNumber}:annot:${obj?.pdfAnnotationId}`;
     let tracker = editedImportTrackers.get(key);
     if (!tracker) {
+      const pdfAnnotationType = obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType;
       tracker = {
         expected: 0,
         drawn: 0,
@@ -3861,11 +3893,13 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
           kind: 'edited',
           pageNumber,
           pdfAnnotationId: obj?.pdfAnnotationId,
-          pdfAnnotationType: obj?.pdfAnnotationType,
+          pdfAnnotationType,
           pdfNativeAnnotationIdentity:
             obj?.data?.pdfNativeAnnotationIdentity
             || obj?.pdfNativeAnnotationIdentity
             || null,
+          allowUniqueSubtypeFallback:
+            normalizePdfAnnotationSubtype(pdfAnnotationType) === 'highlight',
         },
       };
       editedImportTrackers.set(key, tracker);

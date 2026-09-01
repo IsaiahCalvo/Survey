@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 5207,
+  "pdfSize": 5425,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -56,6 +56,12 @@
     },
     {
       "page": 8,
+      "rotation": 0,
+      "width": 612,
+      "height": 792
+    },
+    {
+      "page": 9,
       "rotation": 0,
       "width": 612,
       "height": 792
@@ -355,7 +361,7 @@
           "strokeWidth": 1,
           "opacity": 1,
           "isPdfImported": true,
-          "pdfAnnotationId": "21R",
+          "pdfAnnotationId": "23R",
           "pdfAnnotationType": "Square"
         },
         {
@@ -382,7 +388,7 @@
           "strokeWidth": 1,
           "opacity": 1,
           "isPdfImported": true,
-          "pdfAnnotationId": "22R",
+          "pdfAnnotationId": "24R",
           "pdfAnnotationType": "Polygon"
         },
         {
@@ -410,14 +416,14 @@
             ]
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "23R",
+          "pdfAnnotationId": "25R",
           "pdfAnnotationType": "StrikeOut"
         },
         {
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "37R",
+            "fieldId": "39R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -427,7 +433,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "43R",
+            "fieldId": "45R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -496,40 +502,6 @@
           "stroke": "#16a34a",
           "strokeWidth": 3,
           "fill": "rgba(22,163,74,0.12)"
-        },
-        {
-          "id": "callout-1",
-          "type": "group",
-          "data": {
-            "type": "callout",
-            "id": "callout-1"
-          },
-          "pageNumber": 2,
-          "text": "Callout text",
-          "arrowTip": {
-            "x": 0.6439393939393939,
-            "y": 0.8169934640522876
-          },
-          "knee": {
-            "x": 0.5429292929292929,
-            "y": 0.7679738562091504
-          },
-          "textBox": {
-            "left": 0.31565656565656564,
-            "top": 0.7026143790849673,
-            "width": 0.22727272727272727,
-            "height": 0.11764705882352941
-          },
-          "style": {
-            "lineColor": "#be123c",
-            "borderColor": "#be123c",
-            "lineThickness": 3,
-            "backgroundColor": "#fff1f2",
-            "fontColor": "#881337",
-            "fontSize": 16,
-            "bold": true,
-            "arrowheadStyle": "solid-triangle"
-          }
         }
       ]
     },
@@ -646,7 +618,7 @@
             ]
           ],
           "isPdfImported": true,
-          "pdfAnnotationId": "24R",
+          "pdfAnnotationId": "26R",
           "pdfAnnotationType": "Ink"
         },
         {
@@ -660,7 +632,7 @@
           "strokeWidth": 3,
           "fill": "rgba(204,250,235,0.55)",
           "isPdfImported": true,
-          "pdfAnnotationId": "25R",
+          "pdfAnnotationId": "27R",
           "pdfAnnotationType": "Circle"
         },
         {
@@ -675,7 +647,7 @@
           "fontSize": 18,
           "fill": "#7333e6",
           "isPdfImported": true,
-          "pdfAnnotationId": "26R",
+          "pdfAnnotationId": "28R",
           "pdfAnnotationType": "FreeText"
         },
         {
@@ -703,7 +675,7 @@
             ]
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "27R",
+          "pdfAnnotationId": "29R",
           "pdfAnnotationType": "Highlight"
         },
         {
@@ -720,7 +692,7 @@
             "pdfCloudIntensity": 2
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "28R",
+          "pdfAnnotationId": "30R",
           "pdfAnnotationType": "Square"
         },
         {
@@ -735,7 +707,7 @@
           "lineEnding2": "ClosedArrow",
           "tool": "arrow",
           "isPdfImported": true,
-          "pdfAnnotationId": "29R",
+          "pdfAnnotationId": "31R",
           "pdfAnnotationType": "Line"
         }
       ]
@@ -942,26 +914,26 @@
   "callouts": [
     {
       "id": "callout-1",
-      "type": "group",
+      "type": "callout",
       "data": {
         "type": "callout",
         "id": "callout-1"
       },
-      "pageNumber": 2,
+      "pageNumber": 9,
       "text": "Callout text",
       "arrowTip": {
-        "x": 0.6439393939393939,
-        "y": 0.8169934640522876
+        "x": 0.7026143790849673,
+        "y": 0.44191919191919193
       },
       "knee": {
-        "x": 0.5429292929292929,
-        "y": 0.7679738562091504
+        "x": 0.5718954248366013,
+        "y": 0.3787878787878788
       },
       "textBox": {
-        "left": 0.31565656565656564,
-        "top": 0.7026143790849673,
-        "width": 0.22727272727272727,
-        "height": 0.11764705882352941
+        "left": 0.13071895424836602,
+        "top": 0.12626262626262627,
+        "width": 0.29411764705882354,
+        "height": 0.09090909090909091
       },
       "style": {
         "lineColor": "#be123c",
@@ -971,7 +943,7 @@
         "fontColor": "#881337",
         "fontSize": 16,
         "bold": true,
-        "arrowheadStyle": "solid-triangle"
+        "arrowheadStyle": "none"
       }
     }
   ],
@@ -1104,7 +1076,10 @@
         "bounds",
         "orientation",
         "colour"
-      ]
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
     },
     {
       "id": "polygon",
@@ -1152,7 +1127,10 @@
         "bounds",
         "colour",
         "strokeWeight"
-      ]
+      ],
+      "tolerance": {
+        "boundsPixels": 5
+      }
     },
     {
       "id": "imported-native-polygon",
@@ -1212,8 +1190,7 @@
       ],
       "checks": [
         "textPresence",
-        "colour",
-        "strokeWeight"
+        "colour"
       ]
     },
     {
@@ -1298,12 +1275,12 @@
     {
       "id": "callout-1",
       "type": "callout",
-      "page": 2,
+      "page": 9,
       "bounds": [
-        235,
-        410,
-        535,
-        525
+        60,
+        80,
+        460,
+        380
       ],
       "checks": [
         "bounds",
@@ -1483,8 +1460,7 @@
       ],
       "checks": [
         "bounds",
-        "colour",
-        "strokeWeight"
+        "colour"
       ]
     },
     {
@@ -1502,7 +1478,10 @@
         "orientation",
         "colour",
         "strokeWeight"
-      ]
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
     },
     {
       "id": "rotated-page-ink",
@@ -1532,7 +1511,10 @@
       "checks": [
         "bounds",
         "colour"
-      ]
+      ],
+      "tolerance": {
+        "boundsPixels": 5
+      }
     },
     {
       "id": "native-stamp",

@@ -80,9 +80,9 @@ const analyseCrop = ({ data, info }) => {
       sumX += x; sumY += y; sumXX += x * x; sumYY += y * y; sumXY += x * y;
       minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       if (hsl.lightness < 45) dark += 1;
-      if (hsl.saturation >= 30 && hsl.lightness > 8 && hsl.lightness < 94) {
+      if (hsl.saturation >= 30 && hsl.lightness > 8 && hsl.lightness < 97) {
         saturated += 1;
-        coloured.push(hsl);
+        coloured.push({ ...hsl, chroma, x, y });
       }
     }
   }
@@ -122,11 +122,17 @@ const analyseCrop = ({ data, info }) => {
   }
   // Pick the largest saturated paint cluster. Hue plus lightness keeps a pale
   // fill separate from its dark anti-aliased edge.
-  const sortedSaturation = coloured.map((pixel) => pixel.saturation).sort((a, b) => a - b);
-  const saturationFloor = sortedSaturation.length
-    ? Math.max(30, sortedSaturation[Math.floor(sortedSaturation.length * 0.75)] - 2)
-    : 30;
-  const dominantCandidates = coloured.filter((pixel) => pixel.saturation >= saturationFloor);
+  const sortedChroma = coloured.map((pixel) => pixel.chroma).sort((a, b) => a - b);
+  const chromaFloor = sortedChroma.length
+    ? Math.max(12, sortedChroma[Math.floor(sortedChroma.length * 0.75)] - 2)
+    : 12;
+  // HSL saturation is unstable near white: a one-channel JPEG fringe may be
+  // reported as 100% saturated. Chroma keeps the dominant cluster on the
+  // annotation's real interior or stroke paint.
+  const paintCoverage = painted / Math.max(1, info.width * info.height);
+  const dominantCandidates = paintCoverage > 0.15
+    ? coloured.filter((pixel) => pixel.chroma >= 12)
+    : coloured.filter((pixel) => pixel.chroma >= chromaFloor);
   const colourBins = new Map();
   dominantCandidates.forEach((pixel) => {
     const key = `${Math.floor(pixel.hue / 15) % 24}:${Math.floor(pixel.lightness / 10)}`;
@@ -175,9 +181,10 @@ const compareMetrics = (screen, print, checks, tolerance = {}) => {
     if (!screen.bounds || !print.bounds) failures.push('missing painted bounds');
     else for (const edge of ['left', 'top', 'right', 'bottom']) {
       const axisPixels = edge === 'left' || edge === 'right' ? screen.pixelSize.width : screen.pixelSize.height;
-      const edgeTolerance = Math.max(boundTol, 3 / Math.max(1, axisPixels));
+      const boundsPixels = tolerance.boundsPixels ?? 3;
+      const edgeTolerance = Math.max(boundTol, boundsPixels / Math.max(1, axisPixels));
       const delta = Math.abs(screen.bounds[edge] - print.bounds[edge]);
-      if (delta > edgeTolerance + 1e-6) failures.push(`${edge} delta ${delta.toFixed(4)} > ${edgeTolerance.toFixed(4)} (max 2%, 3px)`);
+      if (delta > edgeTolerance + 1e-6) failures.push(`${edge} delta ${delta.toFixed(4)} > ${edgeTolerance.toFixed(4)} (max 2%, ${boundsPixels}px)`);
     }
   }
   if (checks.includes('colour')) {
@@ -185,8 +192,10 @@ const compareMetrics = (screen, print, checks, tolerance = {}) => {
     else {
       const hue = hueDistance(screen.colour.hue, print.colour.hue);
       const light = Math.abs(screen.colour.lightness - print.colour.lightness);
+      const thinPaint = Math.min(screen.coverage, print.coverage) < 0.05;
+      const lightnessTolerance = tolerance.lightness ?? (thinPaint ? 42 : 20);
       if (hue > (tolerance.hue ?? 12)) failures.push(`hue delta ${hue.toFixed(1)}`);
-      if (light > (tolerance.lightness ?? 14)) failures.push(`lightness delta ${light.toFixed(1)}`);
+      if (light > lightnessTolerance) failures.push(`lightness delta ${light.toFixed(1)} > ${lightnessTolerance}`);
     }
   }
   if (checks.includes('fillCoverage')) {

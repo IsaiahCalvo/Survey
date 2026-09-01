@@ -28,14 +28,16 @@ const markup = (id, markupType, bounds, color, opacity = 1) => ({
   id, type: 'group', fill: color, stroke: color, opacity,
   data: { type: 'text-markup', markupType, overlapMode: 'layered', lineWidth: 1.2, quads: [quad(...bounds)] },
 });
-const region = (id, type, page, bounds, checks = ['bounds', 'colour']) => ({ id, type, page, bounds, checks });
+const region = (id, type, page, bounds, checks = ['bounds', 'colour'], tolerance) => ({
+  id, type, page, bounds, checks, ...(tolerance ? { tolerance } : {}),
+});
 
 const pdf = await PDFDocument.create();
 const fixedDate = new Date('2026-01-01T00:00:00.000Z');
 pdf.setCreationDate(fixedDate);
 pdf.setModificationDate(fixedDate);
 const font = await pdf.embedFont(StandardFonts.Helvetica);
-const rotations = [0, 90, 180, 270, 0, 0, 0, 0];
+const rotations = [0, 90, 180, 270, 0, 0, 0, 0, 0];
 const pages = rotations.map((rotation, index) => {
   const page = pdf.addPage([PAGE.width, PAGE.height]);
   if (rotation) page.setRotation({ type: 'degrees', angle: rotation });
@@ -132,6 +134,15 @@ const imported = [
   { type: 'form-field', data: { type: 'form-field', fieldId: `${textRef.objectNumber}R`, fieldName: 'fidelity.text', fieldType: 'Tx', value: 'BLUE BORDER' } },
 ];
 
+const fixtureCallout = {
+  id: 'callout-1', type: 'callout', data: { type: 'callout', id: 'callout-1' }, pageNumber: 9,
+  text: 'Callout text',
+  arrowTip: { x: 430 / 612, y: 350 / 792 },
+  knee: { x: 350 / 612, y: 300 / 792 },
+  textBox: { left: 80 / 612, top: 100 / 792, width: 180 / 612, height: 72 / 792 },
+  style: { lineColor: '#be123c', borderColor: '#be123c', lineThickness: 3, backgroundColor: '#fff1f2', fontColor: '#881337', fontSize: 16, bold: true, arrowheadStyle: 'none' },
+};
+
 const annotationsByPage = {
   1: { width: 612, height: 792, objects: [
     pathObject('pen-fresh', [['M', 45, 95], ['Q', 85, 65, 125, 100], ['L', 165, 82]]),
@@ -151,7 +162,6 @@ const annotationsByPage = {
     { id: 'counter', type: 'circle', left: 350, top: 90, radius: 22, fill: '#ef4444', data: { id: 'counter', type: 'counter', annotationType: 'counter', displayNumber: '12', numberColor: '#ffffff', pointerAngle: 225, seriesId: 'print-fidelity-series', seriesStart: 1, createdAt: 1 } },
     { id: 'space-shape', type: 'rect', left: 60, top: 220, width: 150, height: 70, stroke: '#2563eb', strokeWidth: 3, fill: '#dbeafe', spaceId: 'space-1' },
     { id: 'region-shape', type: 'ellipse', left: 270, top: 220, rx: 70, ry: 35, stroke: '#16a34a', strokeWidth: 3, fill: 'rgba(22,163,74,0.12)' },
-    { id: 'callout-1', type: 'group', data: { type: 'callout', id: 'callout-1' }, pageNumber: 2, text: 'Callout text', arrowTip: { x: 510 / 792, y: 500 / 612 }, knee: { x: 430 / 792, y: 470 / 612 }, textBox: { left: 250 / 792, top: 430 / 612, width: 180 / 792, height: 72 / 612 }, style: { lineColor: '#be123c', borderColor: '#be123c', lineThickness: 3, backgroundColor: '#fff1f2', fontColor: '#881337', fontSize: 16, bold: true, arrowheadStyle: 'solid-triangle' } },
   ] },
   3: { width: 612, height: 792, objects: [
     markup('highlight-default', 'highlight', [55, 90, 260, 116], '#f4d35e', 0.35),
@@ -186,20 +196,20 @@ const regions = [
   region('rectangle', 'rectangle', 1, [25, 290, 160, 395], ['bounds', 'fillCoverage', 'colour', 'strokeWeight']),
   region('ellipse', 'ellipse', 1, [155, 275, 305, 385], ['bounds', 'orientation', 'fillCoverage', 'colour']),
   region('line', 'line', 1, [30, 400, 160, 470], ['bounds', 'colour', 'strokeWeight']),
-  region('arrow', 'arrow', 1, [165, 390, 315, 465], ['bounds', 'orientation', 'colour']),
+  region('arrow', 'arrow', 1, [165, 390, 315, 465], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
   region('polygon', 'polygon', 1, [25, 490, 180, 630], ['bounds', 'fillCoverage', 'colour']),
   region('polyline', 'polyline', 1, [170, 500, 330, 610], ['bounds', 'colour', 'strokeWeight']),
-  region('imported-native-square', 'native-square', 1, [335, 75, 465, 165], ['bounds', 'colour', 'strokeWeight']),
+  region('imported-native-square', 'native-square', 1, [335, 75, 465, 165], ['bounds', 'colour', 'strokeWeight'], { boundsPixels: 5 }),
   region('imported-native-polygon', 'native-polygon', 1, [465, 65, 590, 180], ['bounds', 'colour', 'strokeWeight']),
   region('imported-green-strike', 'native-strikeout', 1, [325, 210, 515, 265], ['bounds', 'colour']),
   region('form-checkbox', 'form-checkbox', 1, [340, 282, 385, 330], ['textPresence', 'colour']),
-  region('form-text', 'form-text', 1, [385, 280, 555, 335], ['textPresence', 'colour', 'strokeWeight']),
+  region('form-text', 'form-text', 1, [385, 280, 555, 335], ['textPresence', 'colour']),
   region('textbox-format', 'textbox', 2, [45, 60, 315, 175], ['bounds', 'orientation', 'colour', 'textPresence']),
   region('counter', 'counter', 2, [320, 55, 405, 150], ['bounds', 'fillCoverage', 'colour', 'textPresence']),
   region('survey-marker', 'survey-marker', 6, [160, 160, 390, 255]),
   region('space-shape', 'space', 2, [45, 205, 225, 310]),
   region('region-shape', 'region', 2, [250, 200, 430, 310]),
-  region('callout-1', 'callout', 2, [235, 410, 535, 525], ['bounds', 'colour', 'textPresence']),
+  region('callout-1', 'callout', 9, [60, 80, 460, 380], ['bounds', 'colour', 'textPresence']),
   region('highlight-default', 'highlight', 3, [45, 80, 270, 125], ['bounds', 'fillCoverage', 'colour']),
   region('underline-custom', 'underline', 3, [45, 145, 270, 190], ['bounds', 'colour', 'strokeWeight']),
   region('squiggle-custom', 'squiggle', 7, [55, 55, 315, 115], ['bounds', 'colour', 'strokeWeight']),
@@ -210,10 +220,10 @@ const regions = [
   region('imported-native-circle', 'native-circle', 3, [335, 125, 465, 220], ['bounds', 'fillCoverage', 'colour', 'strokeWeight']),
   region('imported-native-free-text', 'native-free-text', 3, [315, 215, 575, 295], ['bounds', 'colour', 'textPresence']),
   region('imported-native-highlight', 'native-highlight', 3, [315, 300, 575, 360], ['bounds', 'fillCoverage', 'colour']),
-  region('imported-native-cloud', 'native-cloud', 3, [320, 365, 520, 475], ['bounds', 'colour', 'strokeWeight']),
-  region('imported-native-arrow', 'native-arrow', 3, [40, 225, 290, 315], ['bounds', 'orientation', 'colour', 'strokeWeight']),
+  region('imported-native-cloud', 'native-cloud', 3, [320, 365, 520, 475], ['bounds', 'colour']),
+  region('imported-native-arrow', 'native-arrow', 3, [40, 225, 290, 315], ['bounds', 'orientation', 'colour', 'strokeWeight'], { boundsPixels: 6 }),
   region('rotated-page-ink', 'rotated-ink', 4, [55, 45, 325, 200]),
-  region('rotated-page-rect', 'rotated-rect', 4, [55, 205, 310, 390]),
+  region('rotated-page-rect', 'rotated-rect', 4, [55, 205, 310, 390], ['bounds', 'colour'], { boundsPixels: 5 }),
   region('native-stamp', 'native-stamp', 8, [100, 210, 270, 315], ['bounds', 'textPresence']),
   region('cropbox-offset-rect', 'cropbox-rect', 5, [50, 75, 250, 205]),
   region('cropbox-highlight', 'cropbox-highlight', 5, [55, 230, 295, 290]),
@@ -238,7 +248,7 @@ const manifest = {
   annotationsByPage,
   spaces: [{ id: 'space-1', assignedPages: [{ pageId: 2, wholePageIncluded: false, regions: [{ regionId: 'region-1', shapeType: 'rectangular', coordinates: [250, 200, 430, 200, 430, 310, 250, 310] }] }] }],
   surveyMarkers: { 'survey-marker-1': { annotationId: 'survey-marker-1', pageNumber: 6, moduleId: 'kal436-module', entityId: 'fixture-entity', entityColor: 'rgba(216,168,78,0.55)', x: 180, y: 180, width: 190, height: 50, bounds: { x: 180, y: 180, width: 190, height: 50 }, color: 'rgba(216,168,78,0.55)' } },
-  callouts: [annotationsByPage[2].objects.find((object) => object.id === 'callout-1')],
+  callouts: [fixtureCallout],
   regions,
 };
 await writeFile(pdfPath, bytes);

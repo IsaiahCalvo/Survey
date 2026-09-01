@@ -95,9 +95,11 @@ test('print comparator allows at most three anti-aliased pixels and still catche
     regions: [
       { id: 'two-pixel-edge', type: 'line', page: 1, bounds: [5, 10, 60, 30], checks: ['bounds', 'colour', 'strokeWeight'] },
       { id: 'five-pixel-move', type: 'line', page: 1, bounds: [5, 50, 65, 75], checks: ['bounds', 'colour', 'strokeWeight'] },
+      { id: 'known-raster-drift', type: 'line', page: 1, bounds: [5, 50, 65, 75], checks: ['bounds', 'colour', 'strokeWeight'], tolerance: { boundsPixels: 6 } },
     ],
   }));
   const report = await comparePrintFidelity({ manifestPath, screenDir, printDir, outputDir: join(root, 'pairs') });
   assert.equal(report.results.find((item) => item.id === 'two-pixel-edge').status, 'pass');
   assert.equal(report.results.find((item) => item.id === 'five-pixel-move').status, 'print-failure');
+  assert.equal(report.results.find((item) => item.id === 'known-raster-drift').status, 'pass');
 });
