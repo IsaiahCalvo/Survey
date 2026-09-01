@@ -286,6 +286,75 @@ test('importAnnotationsFromPdf records a getAnnotations failure as skipped inste
   assert.equal(result.nativeLayerPolicyByPage[1].reason, 'page-import-failed');
 });
 
+test('one corrupt stroke does not discard healthy annotations on the same page', async () => {
+  const corruptPaintOperations = [];
+  Object.defineProperty(corruptPaintOperations, 'map', {
+    value() {
+      throw new TypeError('corrupt stroke appearance operations');
+    },
+  });
+  const annotations = [
+    {
+      id: 'healthy-square',
+      subtype: 'Square',
+      rect: [10, 10, 30, 30],
+      color: [1, 0, 0],
+      borderStyle: { width: 1 },
+    },
+    {
+      id: 'corrupt-ink',
+      subtype: 'Ink',
+      rect: [35, 35, 55, 55],
+      color: [0, 0, 0],
+      borderStyle: { width: 2 },
+      inkLists: [[35, 35, 45, 45, 55, 40]],
+      hasAppearance: true,
+      _appearance: {
+        path: [['M', 35, 35], ['L', 45, 45], ['L', 55, 40]],
+        hasStroke: true,
+        strokeWidth: 2,
+        paintOperations: corruptPaintOperations,
+      },
+    },
+    {
+      id: 'healthy-circle',
+      subtype: 'Circle',
+      rect: [60, 60, 80, 80],
+      color: [0, 0, 1],
+      borderStyle: { width: 1 },
+    },
+  ];
+  const pdfDoc = {
+    numPages: 1,
+    async getPage() {
+      return {
+        getViewport: () => makeViewport({ pageHeight: 100 }),
+        async getAnnotations() {
+          return annotations;
+        },
+      };
+    },
+  };
+  const originalError = console.error;
+  console.error = () => {};
+  let result;
+  try {
+    result = await importAnnotationsFromPdf(pdfDoc, { pdfName: 'mixed-corrupt-page.pdf' });
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.notEqual(result.nativeLayerPolicyByPage[1].reason, 'page-import-failed');
+  assert.deepEqual(
+    result.annotationsByPage[1].objects.map((object) => object.pdfAnnotationId),
+    ['healthy-square', 'healthy-circle'],
+  );
+  const corruptDiag = result.diagnosticsByPage[1].importedAnnotations
+    .find((entry) => entry.rawId === 'corrupt-ink');
+  assert.equal(corruptDiag.status, 'skipped');
+  assert.equal(corruptDiag.reason, 'annotation-import-failed');
+});
+
 test('convertPdfAnnotationToFabric rebuilds marked app counter Circle annotations as counters', () => {
   const viewport = makeViewport({ pageHeight: 100 });
 
@@ -1241,6 +1310,41 @@ test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFro
     totalImported,
     'every imported object must have isPdfImported===true'
   );
+});
+
+test('package2-rev4 page 9 imports all 1520 annotations without a page-wide failure', async () => {
+  const fixturePath = join(__dirname, '..', 'debug', 'fixtures', 'package2-rev4.pdf');
+  const bytes = readFileSync(fixturePath);
+  const pdfDoc = await pdfjsLib.getDocument({
+    data: cloneBytesForPdfjs(bytes),
+    disableWorker: true,
+    verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+  }).promise;
+  const sourcePage = await pdfDoc.getPage(9);
+  const sourceAnnotations = await sourcePage.getAnnotations({ intent: 'display' });
+  const badStroke = sourceAnnotations.find((annotation) => annotation.id === '4949R');
+  const pageNineOnlyDoc = {
+    numPages: 9,
+    async getPage(pageNumber) {
+      return {
+        getViewport: (options) => sourcePage.getViewport(options),
+        async getAnnotations() {
+          return pageNumber === 9 ? sourceAnnotations : [];
+        },
+      };
+    },
+  };
+
+  const result = await importAnnotationsFromPdf(pageNineOnlyDoc, {
+    rawPdfBytes: bytes,
+    pdfName: 'package2-rev4.pdf',
+  });
+  const pageObjects = result.annotationsByPage[9]?.objects || [];
+
+  assert.equal(sourceAnnotations.length, 1520, 'fixture page 9 annotation count changed');
+  assert.ok(badStroke, 'fixture must retain the stroke that caused the page-wide loss');
+  assert.notEqual(result.nativeLayerPolicyByPage[9].reason, 'page-import-failed');
+  assert.equal(pageObjects.length, 1520, 'every page-9 annotation imports');
 });
 
 // --- KAL-405: single-tap imported ink marks render as dots -----------------
