@@ -19,7 +19,11 @@ async function loadNotice() {
   const formatterUrl = pathToFileURL(
     path.join(repoRoot, 'src/utils/unsupportedAnnotationNotice.js'),
   ).href;
+  const geometryUrl = pathToFileURL(
+    path.join(repoRoot, 'src/utils/floatingUiGeometry.js'),
+  ).href;
   const reactUrl = pathToFileURL(require.resolve('react')).href;
+  const reactDomUrl = pathToFileURL(require.resolve('react-dom')).href;
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
 
@@ -31,6 +35,14 @@ async function loadNotice() {
     .replace(
       "import { formatUnsupportedAnnotationNotice } from '../utils/unsupportedAnnotationNotice';",
       `import { formatUnsupportedAnnotationNotice } from ${JSON.stringify(formatterUrl)};`,
+    )
+    .replace(
+      "import { DESKTOP_RIGHT_RAIL_WIDTH } from '../utils/floatingUiGeometry.js';",
+      `import { DESKTOP_RIGHT_RAIL_WIDTH } from ${JSON.stringify(geometryUrl)};`,
+    )
+    .replace(
+      "import BodyPortal from './BodyPortal.js';",
+      `import { createPortal } from ${JSON.stringify(reactDomUrl)};\nconst BodyPortal = ({ children }) => createPortal(children, document.body);`,
     )
     .replace(
       "import Icon from '../Icons';",
@@ -51,7 +63,7 @@ async function loadNotice() {
   };
 }
 
-async function mountNotice(t, initialCounts = { Redact: 1 }) {
+async function mountNotice(t, initialCounts = { Redact: 1 }, isMobile = true) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
     pretendToBeVisual: true,
@@ -60,7 +72,7 @@ async function mountNotice(t, initialCounts = { Redact: 1 }) {
   Object.defineProperty(dom.window, 'matchMedia', {
     configurable: true,
     value: () => ({
-      matches: true,
+      matches: isMobile,
       addEventListener() {},
       removeEventListener() {},
     }),
@@ -107,16 +119,27 @@ async function mountNotice(t, initialCounts = { Redact: 1 }) {
   };
 }
 
-function notice(host) {
-  return host.querySelector('[aria-expanded]');
+function notice() {
+  return document.querySelector('button[aria-label="Dismiss"]')?.parentElement;
 }
 
 test('collapsed warning stays visible until dismissed', async (t) => {
   const mounted = await mountNotice(t);
   try {
     await mounted.advance(60_000);
-    assert.equal(notice(mounted.host)?.style.opacity, '1');
+    assert.equal(notice()?.style.opacity, '1');
+    assert.equal(mounted.host.children.length, 0);
     assert.equal(mounted.dismissals.length, 0);
+  } finally {
+    await mounted.teardown();
+  }
+});
+
+test('desktop notice clears the 48px right rail plus its 20px gap', async (t) => {
+  const mounted = await mountNotice(t, { Redact: 1 }, false);
+  try {
+    assert.equal(notice()?.style.right, '68px');
+    assert.equal(mounted.host.children.length, 0);
   } finally {
     await mounted.teardown();
   }
@@ -126,7 +149,7 @@ test('a notice without redactions keeps its prior auto-dismiss timing', async (t
   const mounted = await mountNotice(t, { Stamp: 1 });
   try {
     await mounted.advance(3000);
-    assert.equal(notice(mounted.host)?.style.opacity, '0');
+    assert.equal(notice()?.style.opacity, '0');
   } finally {
     await mounted.teardown();
   }
@@ -135,12 +158,12 @@ test('a notice without redactions keeps its prior auto-dismiss timing', async (t
 test('each notice tap toggles detail without starting a dismiss timer', async (t) => {
   const mounted = await mountNotice(t);
   try {
-    await act(async () => notice(mounted.host).dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    assert.equal(notice(mounted.host).getAttribute('aria-expanded'), 'true');
+    await act(async () => notice().dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    assert.equal(notice().getAttribute('aria-expanded'), 'true');
     await mounted.advance(60_000);
-    assert.equal(notice(mounted.host).style.opacity, '1');
-    await act(async () => notice(mounted.host).dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    assert.equal(notice(mounted.host).getAttribute('aria-expanded'), 'false');
+    assert.equal(notice().style.opacity, '1');
+    await act(async () => notice().dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    assert.equal(notice().getAttribute('aria-expanded'), 'false');
   } finally {
     await mounted.teardown();
   }
@@ -149,10 +172,10 @@ test('each notice tap toggles detail without starting a dismiss timer', async (t
 test('dismiss button exits immediately without toggling the notice', async (t) => {
   const mounted = await mountNotice(t);
   try {
-    const dismiss = mounted.host.querySelector('button[aria-label="Dismiss"]');
+    const dismiss = document.querySelector('button[aria-label="Dismiss"]');
     await act(async () => dismiss.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    assert.equal(notice(mounted.host).getAttribute('aria-expanded'), 'false');
-    assert.equal(notice(mounted.host).style.opacity, '0');
+    assert.equal(notice().getAttribute('aria-expanded'), 'false');
+    assert.equal(notice().style.opacity, '0');
   } finally {
     await mounted.teardown();
   }
@@ -163,7 +186,7 @@ test('document replacement keeps the new warning visible', async (t) => {
   try {
     await mounted.render({ Redact: 2 });
     await mounted.advance(60_000);
-    assert.equal(notice(mounted.host)?.style.opacity, '1');
+    assert.equal(notice()?.style.opacity, '1');
     assert.equal(mounted.dismissals.length, 0);
     await mounted.teardown();
     assert.equal(mounted.dismissals.length, 0);
