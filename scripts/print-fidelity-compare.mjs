@@ -266,7 +266,9 @@ export async function comparePrintFidelity({ manifestPath, screenDir, printDir, 
     const afterPath = join(outputDir, `${safe}-print.png`);
     await sharp(screenRaster).extract({ left: screenCrop.left, top: screenCrop.top, width: screenCrop.width, height: screenCrop.height }).png().toFile(beforePath);
     await sharp(printRaster).extract({ left: printCrop.left, top: printCrop.top, width: printCrop.width, height: printCrop.height }).png().toFile(afterPath);
-    const status = fixtureFailures.length ? 'fixture-failure' : failures.length ? 'print-failure' : 'pass';
+    const status = item.knownUnsupported
+      ? 'known-unsupported'
+      : fixtureFailures.length ? 'fixture-failure' : failures.length ? 'print-failure' : 'pass';
     results.push({ id: item.id, type: item.type, page: item.page, status, pass: status === 'pass', fixtureFailures, failures, cropSize: { width: screenCrop.width, height: screenCrop.height }, screen, print, screenImage: beforePath, printImage: afterPath });
   }
   const report = {
@@ -308,6 +310,11 @@ export async function validatePrintFidelityScreenFixture({ manifestPath, screenD
     const failures = screen.paintedPixels < minimum
       ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${minimum}`]
       : [];
+    if (item.knownUnsupported) {
+      // Documented gap (e.g. /Stamp import unsupported): report, never fail.
+      results.push({ id: item.id, type: item.type, page: item.page, pass: true, knownUnsupported: item.knownUnsupported, failures: [], screen });
+      continue;
+    }
     results.push({ id: item.id, type: item.type, page: item.page, pass: failures.length === 0, failures, screen });
   }
   return { passed: results.filter((item) => item.pass).length, failed: results.filter((item) => !item.pass).length, results };

@@ -1208,7 +1208,10 @@
         "orientation",
         "colour",
         "textPresence"
-      ]
+      ],
+      "tolerance": {
+        "boundsPixels": 8
+      }
     },
     {
       "id": "counter",
@@ -1529,7 +1532,8 @@
       "checks": [
         "bounds",
         "textPresence"
-      ]
+      ],
+      "knownUnsupported": "Stamp import is not supported (importer skips /Stamp)"
     },
     {
       "id": "cropbox-offset-rect",

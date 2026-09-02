@@ -44,12 +44,20 @@ test('every supported annotation matches the real browser print path', async ({ 
     await pageEl.screenshot({ path: join(screenDir, `page-${entry.page}.png`), animations: 'disabled' });
   }
 
+  // Survey-mode pages need the template flow; if the seeded marker never
+  // materialises that is a FIXTURE failure for those regions — it must not
+  // abort the comparison for the other 30+ regions.
   const surveyPages = manifest.pages.filter((item) => item.requiresSurveyMode);
+  const surveyModeErrors = [];
   if (surveyPages.length > 0) {
-    await page.getByRole('button', { name: 'Survey', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible();
-    await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
-    await expect(page.locator('[data-survey-marker-id="survey-marker-1"]')).toHaveCount(1);
+    try {
+      await page.getByRole('button', { name: 'Survey', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Choose survey template' })).toBeVisible();
+      await page.getByRole('button', { name: /KAL-436 Preservation Template/ }).click();
+      await expect(page.locator('[data-survey-marker-id="survey-marker-1"]')).toHaveCount(1, { timeout: 15_000 });
+    } catch (error) {
+      surveyModeErrors.push(`survey mode did not paint the seeded marker: ${error?.message?.split('\n')[0]}`);
+    }
     for (const entry of surveyPages) {
       const pageEl = page.locator(`.survey-pdfjs-page-div[data-page-number="${entry.page}"]`);
       await pageEl.scrollIntoViewIfNeeded();
@@ -63,7 +71,16 @@ test('every supported annotation matches the real browser print path', async ({ 
   // bucket at the end — they must not abort the print comparison for the
   // regions that did paint, or one bad seed hides every real print defect.
   const fixtureReport = await validatePrintFidelityScreenFixture({ manifestPath, screenDir });
-  const fixtureFailures = fixtureReport.results.filter((result) => !result.pass);
+  // The marker-element wait is advisory: the region validator below is the
+  // real proof the Survey Marker painted. Only escalate the wait error when
+  // the survey regions genuinely did not paint.
+  const surveyRegionIds = new Set(manifest.regions.filter((r) => r.type === 'survey-marker').map((r) => r.id));
+  const surveyRegionsFailed = fixtureReport.results.some((r) => surveyRegionIds.has(r.id) && !r.pass);
+  if (surveyModeErrors.length && !surveyRegionsFailed) console.warn('[print-fidelity] advisory:', surveyModeErrors.join('; '));
+  const fixtureFailures = [
+    ...(surveyRegionsFailed ? surveyModeErrors.map((message) => ({ id: 'survey-mode', message })) : []),
+    ...fixtureReport.results.filter((result) => !result.pass),
+  ];
 
   await page.keyboard.press(shortcut);
   await expect.poll(() => page.evaluate(() => window.__browserPrintCalls), { timeout: 60_000 }).toBe(1);

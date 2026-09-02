@@ -94,6 +94,7 @@ import {
 } from './pdfNativeExport/adapters/textMarkup.js';
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
+import { calculateCalloutConnection } from './calloutGeometry.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -3271,11 +3272,27 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
   const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200));
-  const baselineY = getPdfY(pageHeight, top + Math.min(height, fontSize + 2));
   const angle = Number(obj?.angle) || 0;
   const pdfAngle = -angle;
+  // The screen rotates a text box about its CENTER (translate(left,top)
+  // rotate(angle, w/2, h/2)); pdf-lib rotates about the text origin. Rotate
+  // the unrotated origin (left, baseline) about that same center so the
+  // printed glyphs land where the screen draws them.
+  const baselineOffset = Math.min(height, fontSize + 2);
+  let originX = left;
+  let originY = top + baselineOffset;
+  if (angle) {
+    const cx = left + maxWidth / 2;
+    const cy = top + height / 2;
+    const rad = (angle * Math.PI) / 180;
+    const dx = originX - cx;
+    const dy = originY - cy;
+    originX = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+    originY = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+  }
+  const baselineY = getPdfY(pageHeight, originY);
   page.drawText(String(obj?.text || ''), {
-    x: left,
+    x: originX,
     y: baselineY,
     size: fontSize,
     font,
@@ -3561,12 +3578,21 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       ? shifted.strokeDashArray.map((v) => Number(v) || 0)
       : null;
     const angle = Number(shifted?.angle) || 0;
+    // Screen parity: a rect whose stroke is null/transparent has NO border
+    // (the imported-highlight proxy is exactly that — it printed with a black
+    // hairline because the paint fallback substituted #000). And the object's
+    // own opacity multiplies the fill colour's alpha (a hex fill at 45%
+    // object opacity is 45%, not opaque).
+    const rawStroke = shifted?.stroke;
+    const hasBorder = !(rawStroke === null || rawStroke === undefined || rawStroke === '' || rawStroke === 'transparent')
+      && strokeWidth > 0;
+    const objectOpacity = Number.isFinite(Number(shifted?.opacity)) ? Math.max(0, Math.min(1, Number(shifted.opacity))) : 1;
     const common = {
-      borderColor: stroke?.color,
-      borderWidth: strokeWidth,
+      borderColor: hasBorder ? stroke?.color : undefined,
+      borderWidth: hasBorder ? strokeWidth : 0,
       color: fill?.color,
-      opacity: fill?.opacity ?? (Number.isFinite(Number(shifted?.opacity)) ? Number(shifted.opacity) : undefined),
-      borderOpacity: stroke?.opacity,
+      opacity: fill ? (fill.opacity ?? 1) * objectOpacity : undefined,
+      borderOpacity: hasBorder ? (stroke?.opacity ?? 1) * objectOpacity : undefined,
       blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     };
     const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity);
@@ -3670,7 +3696,17 @@ const drawFlattenedCallout = (page, calloutObj, pageHeight, fonts) => {
   // the arrowhead stays solid (same as the arrow tool). Absent → solid.
   const leaderDash = calloutLineDashArray(style.lineStyle);
   const leaderDashProps = leaderDash ? { strokeDashArray: leaderDash } : {};
-  drawFlattenedLine(page, { type: 'line', x1: textBox.left, y1: textBox.top + textBox.height / 2, x2: knee.x, y2: knee.y, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
+  // Print anchors line 1 exactly where the screen does: the box-edge point
+  // nearest the knee (calculateCalloutConnection), with the same bad-geometry
+  // rescue — not a fixed left-middle anchor, which flattened the knee away.
+  const connection = calculateCalloutConnection(
+    textBox.left, textBox.top, textBox.width, textBox.height, knee, arrowTip, strokeWidth,
+  );
+  const line1Start = connection.line1Start;
+  const effectiveKnee = connection.effectiveKnee || knee;
+  if (!connection.shouldHideLine1) {
+    drawFlattenedLine(page, { type: 'line', x1: line1Start.x, y1: line1Start.y, x2: effectiveKnee.x, y2: effectiveKnee.y, stroke, strokeWidth, ...leaderDashProps }, pageHeight);
+  }
   // UX (print flatten callout arrowhead): honor style.arrowheadStyle via the
   // shared arrow-tool spec — same default (solid triangle) and same line2
   // shortening the SVG renderer / canvas painter use, so print matches the
