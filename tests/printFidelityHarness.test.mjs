@@ -148,7 +148,8 @@ test('real print flattener uses app paint for untouched imports and bakes form s
     assert.ok(Math.abs(textSlope.slope) > 0.05, `formatted text must keep its rotation, slope=${textSlope.slope}`);
 
     const importedPage = await engine.renderPageRaw(doc, doc.pages[2], { scaleFactor: 2 }).toPromise();
-    const highlight = regionPixels(importedPage, [315, 300, 575, 360]);
+    // Page 3 is /Rotate 180: the seeded highlight sits where the viewer shows it.
+    const highlight = regionPixels(importedPage, [37, 432, 297, 492]);
     const yellow = highlight.filter(([r, g, b]) => r > 200 && g > 130 && b < 245);
     assert.ok(yellow.length > 100, 'imported highlight must paint');
     assert.ok(medianChannel(yellow, 2) > 90, 'imported highlight must stay translucent, not opaque yellow');
