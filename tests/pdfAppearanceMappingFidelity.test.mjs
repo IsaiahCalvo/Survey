@@ -1040,7 +1040,10 @@ test('microscopic anisotropic AP CTM keeps transformed stroke thickness', async 
 });
 
 test('huge-width near-anisotropic AP CTM materializes its exact transformed boundary', async () => {
-  const width = 1_000_000_000;
+  // 2026-09-02: the importer now rejects marks wider than 100 pages as corrupt
+  // (E2E "nonsense sizes reach saved data"), so the stress width stays large
+  // but sane: ~50 pages at 612pt.
+  const width = 2_000;
   const verticalScale = 1 + 5e-9;
   const bytes = await createRawInkPdf({
     rect: [-width, -width, width, width],

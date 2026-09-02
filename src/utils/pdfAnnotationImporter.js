@@ -4112,8 +4112,12 @@ function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1, pageNu
   const quads = convertHighlightQuadPoints(annotation, viewport, scale);
   const appearance = annotation?._appearance;
   const appearanceFill = appearance?.hasFill === true ? appearance.fillColor : null;
-  const color = appearance?.hasFill === true
-    ? pdfColorToHex(appearanceFill || [0, 0, 0])
+  // The appearance wins when it names a colour. When it paints without one
+  // (e.g. Acrobat's highlight AP paints through a nested form whose colour we
+  // cannot see) fall back to /C — never to the PDF default black, which turned
+  // the E2E Acrobat highlight into a black bar.
+  const color = appearanceFill
+    ? pdfColorToHex(appearanceFill)
     : pdfColorToHex(annotation.color || [1, 1, 0], annotation);
   const opacity = resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 0.3);
   if (quads.length > 0) {
@@ -4239,7 +4243,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     : null;
   const appearance = annotation._appearance;
   const fallbackAppearanceColor = appearance?.hasStroke === true
-    ? pdfColorToHex(appearance.strokeColor || [0, 0, 0])
+    ? pdfColorToHex(appearance.strokeColor || annotation.color || [0, 0, 0])
     : null;
   // Text color: prefer /DS when it exists (Drawboard writes a distinct text
   // color there); fall through to /DA for Acrobat-style PDFs where /DS is
@@ -4294,8 +4298,12 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const strokeWidth = getBorderWidth(annotation, 0, { allowExplicitZero: true });
   const dashArray = extractAnnotationDashArray(annotation);
   const fillHex = getShapeFillHex(annotation);
-  const appearanceFillHex = appearance?.hasFill === true
-    ? pdfColorToHex(appearance.fillColor || [0, 0, 0])
+  // A callout's appearance also paints its filled arrowhead, so its generic
+  // "has fill" cannot tell the box background from the arrowhead (the E2E
+  // callout came in as a solid orange block). Callouts keep the /IC-only
+  // rule; plain FreeText takes its box background from the appearance.
+  const appearanceFillHex = !isCalloutIntent && appearance?.hasFill === true
+    ? pdfColorToHex(appearance.fillColor || annotation.interiorColor || annotation.fillColor || [0, 0, 0])
     : null;
   const fillOpacity = appearanceFillHex
     ? resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 1)
@@ -4680,7 +4688,7 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   );
   const strokeColor = pdfColorToHex(
     hasAppearancePaint && appearance.hasStroke === true
-      ? (appearance.strokeColor || [0, 0, 0])
+      ? (appearance.strokeColor || annotation.color || [0, 0, 0])
       : (annotation.color || [0, 0, 0]),
     hasAppearancePaint ? null : annotation,
   );
@@ -4688,7 +4696,7 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     ? resolveAnnotationPaintOpacity(annotation, appearance, 'stroke', 1)
     : extractAnnotationOpacity(annotation, 1);
   const appearanceFillHex = hasAppearancePaint && appearance.hasFill === true
-    ? pdfColorToHex(appearance.fillColor || [0, 0, 0])
+    ? pdfColorToHex(appearance.fillColor || annotation.interiorColor || annotation.fillColor || [0, 0, 0])
     : null;
   const fillColor = appearanceFillHex
     ? hexToRgba(appearanceFillHex, resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 1))
@@ -4861,7 +4869,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
   );
   const strokeColor = pdfColorToHex(
     hasAppearancePaint && appearance.hasStroke === true
-      ? (appearance.strokeColor || [0, 0, 0])
+      ? (appearance.strokeColor || annotation.color || [0, 0, 0])
       : (annotation.color || [0, 0, 0]),
     hasAppearancePaint ? null : annotation,
   );
@@ -4869,7 +4877,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     ? resolveAnnotationPaintOpacity(annotation, appearance, 'stroke', 1)
     : extractAnnotationOpacity(annotation, 1);
   const appearanceFillHex = hasAppearancePaint && appearance.hasFill === true
-    ? pdfColorToHex(appearance.fillColor || [0, 0, 0])
+    ? pdfColorToHex(appearance.fillColor || annotation.interiorColor || annotation.fillColor || [0, 0, 0])
     : null;
   const fillColor = appearanceFillHex
     ? hexToRgba(appearanceFillHex, resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 1))
