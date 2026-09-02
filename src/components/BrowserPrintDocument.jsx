@@ -360,6 +360,15 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
               width: 100% !important;
               height: 100vh !important;
             }
+            /* Wide pages sit on a CSS named page with size: landscape. Chromium
+               takes vh/vw from the BASE page box (the dialog's paper, normally
+               portrait), so 100vh on a landscape sheet overflows its shorter box
+               and spills a phantom sheet — the E2E "fourteen sheets for eleven
+               pages". The landscape box height is the base box's WIDTH (100vw);
+               min() keeps it right when the dialog's paper is landscape too. */
+            .survey-browser-print-sheet[data-print-orientation="landscape"] {
+              height: min(100vw, 100vh) !important;
+            }
             .survey-browser-print-sheet:last-child {
               break-after: auto;
               page-break-after: auto;
@@ -395,6 +404,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
             key={page.pageNumber}
             className="survey-browser-print-sheet"
             data-browser-print-page={page.pageNumber}
+            data-print-orientation={page.pageName ? 'landscape' : 'portrait'}
             style={{
               width: `${page.widthPt}pt`,
               height: `${page.heightPt}pt`,

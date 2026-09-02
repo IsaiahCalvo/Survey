@@ -314,7 +314,9 @@ test('live PDF export writes links and non-concealing redaction marks without se
   assert.equal(redact.get(PDFName.of('Contents')), undefined);
   const appearance = redact.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
   const appearanceSource = new TextDecoder().decode(decodePDFRawStream(appearance).decode());
-  assert.match(appearanceSource, /\bre\s+S\b/);
+  // Hollow outline: a rect (`re S`) for legacy marks, a closed path per
+  // source run (`h S`) when the mark carries QuadPoints.
+  assert.match(appearanceSource, /\b(re|h)\s+S\b/);
   assert.match(appearanceSource, /0\.81569 0\.00784 0\.10588 RG/);
   assert.match(appearanceSource, /\b1 w\b/);
   assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);

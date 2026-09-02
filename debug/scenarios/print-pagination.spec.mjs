@@ -57,12 +57,21 @@ test('every paper and margin combination prints one sheet per page', async ({ pa
   await page.emulateMedia({ media: 'print' });
 
   const counts = {};
+  const orientations = {};
   for (const combo of PAPER_COMBOS) {
     const path = join(outputDir, `${combo.name}.pdf`);
     await page.pdf({ path, printBackground: true, ...combo.options });
-    counts[combo.name] = await pageCount(path);
+    const doc = await PDFDocument.load(await readFile(path));
+    counts[combo.name] = doc.getPageCount();
+    orientations[combo.name] = doc.getPages().map((p) => (p.getWidth() > p.getHeight() ? 'L' : 'P')).join('');
   }
   expect(counts).toEqual(Object.fromEntries(PAPER_COMBOS.map((combo) => [combo.name, EXPECTED_PAGES])));
+  // Wide pages get their own landscape sheet (CSS named pages) with NO phantom
+  // sheet after them; the fixture's pages 3, 5 and 6 are wide. Landscape paper
+  // in the dialog turns every sheet landscape, so only portrait combos assert.
+  for (const combo of PAPER_COMBOS.filter((c) => !c.options.landscape)) {
+    expect(orientations[combo.name], combo.name).toBe('PPLPLL');
+  }
 });
 
 test('a retry print in the same dialog session prints the real pages, not the placeholder', async ({ page }) => {
