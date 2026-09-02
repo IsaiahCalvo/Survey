@@ -50,6 +50,8 @@ const cases = [
     file: 'prog-03-no-appearance-and-conflicts.pdf',
     pages: [1],
     regions: [
+      { page: 1, id: 'prog03-no-ap-dashed-circle-a2', bounds: [205, 115, 355, 215], maxMae: 28 },
+      { page: 1, id: 'prog03-no-ap-freetext-a7', bounds: [35, 300, 285, 390], maxMae: 30 },
       { page: 1, id: 'appearance-magenta-hollow-square', bounds: [280, 450, 480, 550], maxMae: 28 },
       { page: 1, id: 'appearance-blue-highlight', bounds: [50, 580, 315, 615], maxMae: 28 },
       { page: 1, id: 'appearance-small-filled-square', bounds: [55, 650, 205, 735], maxMae: 28 },

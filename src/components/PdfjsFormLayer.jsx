@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { shouldApplyPersistedFormValue } from './pdfjsFormLocalValueGuard.js';
+import { getPdfjsFormTextSizing } from './pdfjsFormTextSizing.js';
 import { getPdfWidgetVisualStyle } from '../utils/pdfAnnotationImporter.js';
 
 /**
@@ -177,6 +178,7 @@ export default function PdfjsFormLayer({
             fieldType: w.fieldType ?? null,
             rect: Array.isArray(w.rect) ? w.rect : null,
             visualStyle: getPdfWidgetVisualStyle(w),
+            textSizing: getPdfjsFormTextSizing(w),
           });
         }
         const viewport = page.getViewport({ scale: scaleRef.current, rotation: page.rotate });
@@ -215,6 +217,9 @@ export default function PdfjsFormLayer({
           const section = el.closest('section');
           const fieldId = section?.getAttribute('data-annotation-id') || el.id || null;
           const meta = widgetMetaById.get(fieldId) || {};
+          if (meta.textSizing && el.tagName === 'TEXTAREA') {
+            el.style.fontSize = `calc(${meta.textSizing.fontSize}px * var(--total-scale-factor))`;
+          }
           if (meta.visualStyle && el.type === 'checkbox') {
             el.style.setProperty('--pdf-widget-background', meta.visualStyle.backgroundColor);
             el.style.setProperty('--pdf-widget-border', meta.visualStyle.borderColor);

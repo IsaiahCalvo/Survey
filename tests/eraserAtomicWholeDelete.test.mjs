@@ -73,22 +73,6 @@ const edgeCases = [
     },
   },
   {
-    name: 'textbox',
-    point: { x: 95, y: 110 },
-    object: {
-      type: 'Textbox', left: 100, top: 100, width: 60, height: 20,
-      text: 'Edge erase', fill: '#111111',
-    },
-  },
-  {
-    name: 'text',
-    point: { x: 95, y: 110 },
-    object: {
-      type: 'text', left: 100, top: 100, width: 60, height: 20,
-      text: 'Edge erase', fill: '#111111',
-    },
-  },
-  {
     name: 'image/stamp',
     point: { x: 95, y: 115 },
     object: {
@@ -171,6 +155,43 @@ test('partial mode whole-deletes every non-ink atomic annotation on eraser-disk 
       assert.deepEqual(result.deletedIds, [id]);
       assert.deepEqual(result.touchedIds, [id]);
     });
+  }
+});
+
+test('text objects delete only when either eraser mode touches a rendered line box', async (t) => {
+  for (const mode of ['partial', 'full']) {
+    for (const type of ['Textbox', 'text']) {
+      await t.test(`${mode} ${type}`, () => {
+        const object = {
+          type,
+          left: 100,
+          top: 100,
+          width: 60,
+          height: 30,
+          text: 'Ink',
+          fontSize: 12,
+          fill: '#111111',
+          data: { id: `${mode}-${type}` },
+        };
+
+        const miss = erasePageAnnotations({
+          pageAnnotations: { objects: [object] },
+          eraserPoints: [{ x: 95, y: 110 }],
+          eraserRadius: 6,
+          mode,
+        });
+        assert.equal(miss.didChange, false, 'outer box edge is not text ink');
+
+        const hit = erasePageAnnotations({
+          pageAnnotations: { objects: [object] },
+          eraserPoints: [{ x: 110, y: 110 }],
+          eraserRadius: 2,
+          mode,
+        });
+        assert.equal(hit.didChange, true, 'rendered text line is erasable');
+        assert.deepEqual(hit.pageAnnotations.objects, []);
+      });
+    }
   }
 });
 

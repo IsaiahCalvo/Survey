@@ -1339,10 +1339,13 @@ function extractAnnotationDashArray(annotation) {
   // Strict gate: only return a dash array when we have explicit evidence that
   // /S is /D. If borderStyleType is missing or anything other than 'D', the
   // annotation is solid — return null and ignore any dash candidates.
-  const borderStyleType = normalizePdfNameToken(
-    annotation?.borderStyle?.style || annotation?.borderStyleType || ''
-  );
-  if (borderStyleType !== 'D') return null;
+  const rawBorderStyleType = annotation?.borderStyle?.style || annotation?.borderStyleType || '';
+  const borderStyleType = rawBorderStyleType === 2
+    ? '2'
+    : normalizePdfNameToken(rawBorderStyleType);
+  // PDF.js exposes AnnotationBorderStyleType.DASHED as numeric 2. Raw PDF
+  // metadata uses the name D. Accept both forms so no-AP circles keep /BS /D.
+  if (borderStyleType !== 'D' && borderStyleType !== '2') return null;
 
   const dashCandidates = [
     annotation?.borderDashArray,
@@ -4230,7 +4233,8 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // parse /DA and /DS separately so color-resolution can tell them apart.
   const parsedDa = parseDefaultAppearanceString(annotation.defaultAppearanceString);
   const parsedDs = parseDefaultStyleString(annotation.defaultStyleString);
-  const daColorHex = parsedDa?.fontColor ? pdfColorToHex(parsedDa.fontColor, annotation) : null;
+  const daFontColor = parsedDa?.fontColor || annotation.defaultAppearanceData?.fontColor;
+  const daColorHex = daFontColor ? pdfColorToHex(daFontColor, annotation) : null;
   const dsColorHex = parsedDs?.fontColor ? pdfColorToHex(parsedDs.fontColor, annotation) : null;
   const lineColor = annotation.lineColor;
   const lineColorHex = lineColor ? pdfColorToHex(lineColor, annotation) : null;

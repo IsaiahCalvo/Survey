@@ -173,3 +173,99 @@ test('filled ink: circle fully clear of the outline does not touch', () => {
   });
   assert.equal(touched, false);
 });
+
+const touches = (object, points, eraserRadius = 2) => eraserStrokeTouchesObject({
+  object,
+  eraserPoints: points,
+  eraserRadius,
+});
+
+const hollowEllipse = {
+  type: 'ellipse',
+  left: 20,
+  top: 20,
+  rx: 40,
+  ry: 25,
+  fill: 'transparent',
+  stroke: '#111111',
+  strokeWidth: 4,
+};
+
+test('hollow ellipse interior stroke does not hit', () => {
+  assert.equal(touches(hollowEllipse, [{ x: 45, y: 45 }, { x: 75, y: 45 }]), false);
+});
+
+test('ellipse edge stroke hits', () => {
+  assert.equal(touches(hollowEllipse, [{ x: 60, y: 17 }, { x: 60, y: 23 }]), true);
+});
+
+test('filled ellipse interior stroke hits', () => {
+  assert.equal(touches({ ...hollowEllipse, fill: '#ffee00' }, [{ x: 50, y: 45 }]), true);
+});
+
+test('textbox only hits rendered text line boxes, not outer padding', () => {
+  const textbox = {
+    type: 'textbox',
+    left: 10,
+    top: 20,
+    width: 100,
+    height: 40,
+    text: 'Hello',
+    fontSize: 12,
+    lineHeight: 1.16,
+    textAlign: 'left',
+    verticalAlign: 'top',
+    fill: '#111111',
+  };
+
+  assert.equal(touches(textbox, [{ x: 12, y: 28 }]), false, 'inside box padding, beside text');
+  assert.equal(touches(textbox, [{ x: 20, y: 28 }]), true, 'through the text line');
+});
+
+test('callout text ignores wrapped lines clipped by the renderer', () => {
+  const calloutText = {
+    type: 'textbox',
+    left: 10,
+    top: 20,
+    width: 80,
+    height: 60,
+    text: 'First line\nSecond line\nClipped line',
+    fontSize: 12,
+    lineHeight: 1,
+    maxLines: 2,
+    calloutText: true,
+  };
+
+  assert.equal(touches(calloutText, [{ x: 20, y: 70 }]), false);
+});
+
+test('rect corner brush hits the outline', () => {
+  const object = {
+    type: 'rect',
+    left: 20,
+    top: 20,
+    width: 50,
+    height: 30,
+    fill: 'none',
+    stroke: '#111111',
+    strokeWidth: 4,
+  };
+  assert.equal(touches(object, [{ x: 17.5, y: 17.5 }]), true);
+});
+
+test('line stroke parallel 10px away does not hit', () => {
+  const object = {
+    type: 'line',
+    left: 20,
+    top: 20,
+    width: 80,
+    height: 0,
+    x1: -40,
+    y1: 0,
+    x2: 40,
+    y2: 0,
+    stroke: '#111111',
+    strokeWidth: 4,
+  };
+  assert.equal(touches(object, [{ x: 30, y: 30 }, { x: 90, y: 30 }]), false);
+});
