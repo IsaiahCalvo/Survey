@@ -376,8 +376,14 @@ const surveyMarkerToFabricRect = (surveyMarker, annotationId) => {
     top: bounds.top,
     width: bounds.width,
     height: bounds.height,
-    fill: surveyMarker?.color || '#FFFF00',
-    opacity: surveyMarker?.opacity ?? 0.3,
+    // Same paint as the screen: dashed blue outline until an entity is
+    // assigned (needsEntity), the marker's colour after.
+    fill: surveyMarker?.needsEntity ? 'transparent' : (surveyMarker?.color || 'rgba(255,235,59,0.25)'),
+    stroke: surveyMarker?.needsEntity ? '#4A90E2' : 'transparent',
+    strokeWidth: surveyMarker?.needsEntity ? 2 : 0,
+    strokeDashArray: surveyMarker?.needsEntity ? [5, 5] : undefined,
+    globalCompositeOperation: 'multiply',
+    opacity: surveyMarker?.opacity ?? 1,
     moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
     spaceId: surveyMarker?.spaceId ?? null,
     regionId: surveyMarker?.regionId ?? null,
@@ -470,6 +476,10 @@ export function buildPdfExportAnnotationPlan({
   surveyMarkers = {},
   pageSizes = {},
   spaces = [],
+  // UX (owner ruling 2026-09-02): "Export annotated PDF" matches what the user
+  // is looking at — regular markup as before PLUS the Survey Markers of the
+  // module currently open in the template; other modules' markers stay out.
+  activeModuleId = null,
 } = {}) {
   const diagnostics = emptyExportCounts();
   const items = [];
@@ -507,12 +517,17 @@ export function buildPdfExportAnnotationPlan({
       return;
     }
 
-    if (item.source === 'survey-marker') {
+    const isActiveModuleSurveyMarker = (
+      item.source === 'survey-marker'
+      && activeModuleId != null
+      && (item.moduleId ?? null) === activeModuleId
+    );
+    if (item.source === 'survey-marker' && !isActiveModuleSurveyMarker) {
       recordSkip(diagnostics, item, 'survey-marker-export-excluded');
       return;
     }
 
-    if (item.scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS) {
+    if (item.scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS && !isActiveModuleSurveyMarker) {
       recordSkip(diagnostics, item, 'scoped-annotation-export-excluded');
       return;
     }
@@ -627,14 +642,19 @@ export function buildPdfExportAnnotationPlan({
     contract: {
       version: 1,
       defaultScope: 'regular-viewer-annotations-only',
-      includedScopes: [ANNOTATION_VISIBILITY_SCOPE.CANVAS],
+      includedScopes: activeModuleId != null
+        ? [ANNOTATION_VISIBILITY_SCOPE.CANVAS, ANNOTATION_VISIBILITY_SCOPE.SURVEY]
+        : [ANNOTATION_VISIBILITY_SCOPE.CANVAS],
       excludedScopes: [
-        ANNOTATION_VISIBILITY_SCOPE.SURVEY,
+        ...(activeModuleId != null ? [] : [ANNOTATION_VISIBILITY_SCOPE.SURVEY]),
         ANNOTATION_VISIBILITY_SCOPE.REGION,
         ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION,
       ],
+      activeModuleId,
       importedPdfNativeHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies',
-      visibilityHandling: 'export-regular-viewer-annotations-only-exclude-survey-spaces-regions',
+      visibilityHandling: activeModuleId != null
+        ? 'export-regular-viewer-annotations-plus-active-module-survey-markers'
+        : 'export-regular-viewer-annotations-only-exclude-survey-spaces-regions',
     },
     items,
     diagnostics,
@@ -2190,12 +2210,65 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
       maxX, minY   // Bottom-right
     ];
 
+    // UX (owner ruling 2026-09-02): an exported Survey Marker must look the
+    // way it does on screen in ANY viewer. /SurveyMarker is an app-private
+    // subtype no viewer knows, so bake an appearance stream: a dashed blue
+    // outline until an entity is assigned (needsEntity), the marker's colour
+    // at its own alpha, multiplied, after.
+    const dashedOutline = fabricObj.stroke && fabricObj.stroke !== 'transparent' && Number(fabricObj.strokeWidth) > 0;
+    const alphaMatch = typeof fabricObj.fill === 'string'
+      ? fabricObj.fill.match(/rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i)
+      : null;
+    const fillAlpha = Math.max(0, Math.min(1, alphaMatch ? Number(alphaMatch[1]) : 1));
+    let appearanceContent;
+    let resources = {};
+    if (dashedOutline) {
+      const stroke = hexToRGB(fabricObj.stroke);
+      const strokeWidth = Number(fabricObj.strokeWidth) || 2;
+      const dash = Array.isArray(fabricObj.strokeDashArray) && fabricObj.strokeDashArray.length
+        ? fabricObj.strokeDashArray.map((n) => pdfNumberText(n)).join(' ')
+        : '5 5';
+      const inset = strokeWidth / 2;
+      appearanceContent = [
+        'q',
+        `${pdfNumberText(stroke.red)} ${pdfNumberText(stroke.green)} ${pdfNumberText(stroke.blue)} RG`,
+        `${pdfNumberText(strokeWidth)} w`,
+        `[${dash}] 0 d`,
+        `${pdfNumberText(inset)} ${pdfNumberText(inset)} ${pdfNumberText(Math.max(0, width - strokeWidth))} ${pdfNumberText(Math.max(0, height - strokeWidth))} re`,
+        'S',
+        'Q',
+      ].join('\n');
+    } else {
+      resources = { ExtGState: { GS0: { Type: 'ExtGState', ca: fillAlpha, CA: fillAlpha, BM: 'Multiply' } } };
+      appearanceContent = [
+        'q',
+        '/GS0 gs',
+        `${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} rg`,
+        `0 0 ${pdfNumberText(width)} ${pdfNumberText(height)} re`,
+        'f',
+        'Q',
+      ].join('\n');
+    }
+    const appearance = pdfDoc.context.flateStream(`${appearanceContent}\n`, {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: [0, 0, width, height],
+      Resources: resources,
+    });
+    const appearanceRef = pdfDoc.context.register(appearance);
+
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'SurveyMarker',
       Rect: [minX, minY, maxX, maxY],
       QuadPoints: quadPoints.map(n => PDFNumber.of(n)),
-      C: [color.red, color.green, color.blue],
+      C: dashedOutline
+        ? (() => { const c = hexToRGB(fabricObj.stroke); return [c.red, c.green, c.blue]; })()
+        : [color.red, color.green, color.blue],
+      CA: dashedOutline ? 1 : fillAlpha,
+      F: 4,
+      AP: pdfDoc.context.obj({ N: appearanceRef }),
       Contents: PDFString.of(''),
       P: page.ref,
     };
@@ -4364,6 +4437,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       surveyMarkers: options?.surveyMarkers || {},
       pageSizes,
       spaces: options?.spaces || [],
+      activeModuleId: options?.activeModuleId ?? null,
     });
     const exportDiagnostics = exportPlan.diagnostics;
     const appLayerState = buildPdfAppLayerStateMetadata({

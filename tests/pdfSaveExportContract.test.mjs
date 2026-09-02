@@ -1398,3 +1398,22 @@ test('app annotation metadata restore keeps arrow interaction fields', () => {
   assert.equal(restored.lineEnding2, 'ClosedArrow');
   assert.equal(restored.arrowheadStyle, 'solid-triangle');
 });
+
+
+test('PDF export carries the active module\'s Survey Markers (owner ruling 2026-09-02) and no other module\'s', () => {
+  const pageSizes = { 1: { width: 200, height: 200 } };
+  const surveyMarkers = {
+    'marker-a': { pageNumber: 1, bounds: { x: 10, y: 10, width: 40, height: 20 }, moduleId: 'module-a', color: 'rgba(216,168,78,0.55)' },
+    'marker-b': { pageNumber: 1, bounds: { x: 60, y: 10, width: 40, height: 20 }, moduleId: 'module-b', needsEntity: true },
+  };
+  const withoutModule = buildPdfExportAnnotationPlan({ pageSizes, surveyMarkers });
+  assert.deepEqual(withoutModule.items.map((item) => item.id), []);
+  assert.equal(withoutModule.diagnostics.skippedByReason['survey-marker-export-excluded'], 2);
+  assert.deepEqual(withoutModule.contract.includedScopes, ['canvas']);
+
+  const withModule = buildPdfExportAnnotationPlan({ pageSizes, surveyMarkers, activeModuleId: 'module-a' });
+  assert.deepEqual(withModule.items.map((item) => item.id), ['marker-a']);
+  assert.equal(withModule.diagnostics.skippedByReason['survey-marker-export-excluded'], 1);
+  assert.deepEqual(withModule.contract.includedScopes, ['canvas', 'survey']);
+  assert.equal(withModule.contract.activeModuleId, 'module-a');
+});

@@ -487,11 +487,9 @@ test.describe('Survey Marker lifecycle inside a module', () => {
 // ============================================================================
 
 test.describe('Survey Marker export', () => {
-  // OWNER DECISION PENDING (2026-09-02): the export contract deliberately excludes
-  // survey scopes (includedScopes: ['canvas']). Isaiah is deciding whether export
-  // should carry the selected module's Survey Markers. Until then this stays a
-  // documented gap, not a red gate — flip fixme → test once ruled.
-  test.fixme('5a. exporting an annotated PDF carries the Survey Markers', async ({ browser }) => {
+  // Owner ruling 2026-09-02: export matches the screen — regular markup plus
+  // the open module's Survey Markers; the other module's markers stay out.
+  test('5a. exporting an annotated PDF carries the open module\'s Survey Markers and not the other module\'s', async ({ browser }) => {
     await mkdir(artifacts, { recursive: true });
     const dir = join(artifacts, 'export');
     await rm(dir, { recursive: true, force: true });
@@ -524,8 +522,11 @@ test.describe('Survey Marker export', () => {
     );
     expect(
       carried,
-      `Survey Markers missing from the exported PDF. Painted pixels per marker region: ${JSON.stringify(found)}`,
-    ).toEqual(Object.fromEntries([...MODULE_A_SET, ...MODULE_B_SET].map((spec) => [spec.name, true])));
+      `Exported PDF must carry module A's markers and none of module B's. Painted pixels per marker region: ${JSON.stringify(found)}`,
+    ).toEqual({
+      ...Object.fromEntries(MODULE_A_SET.map((spec) => [spec.name, true])),
+      ...Object.fromEntries(MODULE_B_SET.map((spec) => [spec.name, false])),
+    });
   });
 });
 

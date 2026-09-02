@@ -21122,7 +21122,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           actionType: 'pdf-export',
           documentId: pdfFile?.id || null,
           callouts,
-          surveyMarkers,
+          // Owner ruling 2026-09-02: export = regular markup + the open
+          // module's Survey Markers (same set and paint the screen shows).
+          surveyMarkers: printableSurveyMarkers,
+          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
           deletedPdfAnnotations,
         }
@@ -21194,7 +21197,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pageSizes,
     pdfFile,
     spaces,
-    surveyMarkers,
+    printableSurveyMarkers,
+    showSurveyPanel,
+    selectedModuleId,
   ]);
 
   const queuePermanentRedactionConfirmation = useCallback((transaction) => {
@@ -21230,7 +21235,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           actionType: 'pdf-apply-redactions-source',
           documentId: pdfFile?.id || null,
           callouts,
-          surveyMarkers,
+          surveyMarkers: printableSurveyMarkers,
+          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
           deletedPdfAnnotations,
         },
@@ -21283,7 +21289,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfFile,
     pendingRedactionRequest,
     spaces,
-    surveyMarkers,
+    printableSurveyMarkers, showSurveyPanel, selectedModuleId,
   ]);
 
   // Subscribe to the File menu item.
