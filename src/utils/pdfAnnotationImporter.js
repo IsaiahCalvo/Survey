@@ -746,7 +746,14 @@ function resolveAnnotationPaintOpacity(annotation, appearance, paintKind, fallba
   if (operation?.[explicitKey] === true) {
     return normalizeOpacityValue(operation[alphaKey]) ?? fallback;
   }
-  return extractAnnotationOpacity(annotation, fallback);
+  const declared = extractAnnotationOpacity(annotation, null);
+  if (declared !== null && declared !== undefined) return declared;
+  // Acrobat-style highlight: no /CA and no alpha, but the appearance stream
+  // paints with /BM /Multiply. Acrobat shows that as full-strength colour
+  // multiplied over the text (still legible), so match it rather than
+  // washing it out with the app's translucent default.
+  if (operation?.blendMode === 'Multiply') return 1;
+  return fallback;
 }
 
 function hexToRgba(hex, alpha = 1) {
@@ -5132,11 +5139,25 @@ const SILENT_IGNORE_SUBTYPES = ['Link', 'Popup', 'Widget'];
  * @param {Array} annotations - Array of PDF.js annotations
  * @returns {Object} { supported: [], unsupported: [] }
  */
+// PDF annotation /F bits that mean "never show this" (ISO 32000 12.5.3).
+const PDF_ANNOTATION_FLAG_HIDDEN = 2;
+const PDF_ANNOTATION_FLAG_NO_VIEW = 32;
+
+export function isPdfAnnotationHiddenFromView(annotation) {
+  const flags = Number(annotation?.annotationFlags);
+  if (!Number.isInteger(flags)) return false;
+  return Boolean(flags & (PDF_ANNOTATION_FLAG_HIDDEN | PDF_ANNOTATION_FLAG_NO_VIEW));
+}
+
 export function categorizeAnnotations(annotations) {
   const supported = [];
   const unsupported = [];
 
   annotations.forEach(annotation => {
+    // UX: a mark the PDF itself flags Hidden or NoView must not appear on
+    // screen (Acrobat hides it too), and the print copy strips it for screen
+    // parity. It is not "unsupported" either, so no notice is raised.
+    if (isPdfAnnotationHiddenFromView(annotation)) return;
     if (
       SUPPORTED_SUBTYPES.includes(annotation.subtype)
       && (annotation.subtype !== 'Stamp' || annotation.hasAppearance === true)

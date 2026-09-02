@@ -92,7 +92,9 @@ test('imported PDF marks match independent pdftoppm renders by region', async ({
   const report = [];
 
   for (const fixture of cases) {
-    await page.goto(`/?testPdf=${encodeURIComponent(`e2e/${fixture.file}`)}`);
+    // surveyTransitionE2E=1 is the dev seam that opens a test PDF straight into
+    // the viewer without the home/auth flow (same as print-fidelity.spec).
+    await page.goto(`/?testPdf=${encodeURIComponent(`e2e/${fixture.file}`)}&surveyTransitionE2E=1`);
     await page.locator('.survey-pdfjs-page-div[data-page-number]').first().waitFor({
       state: 'visible',
       timeout: 60_000,

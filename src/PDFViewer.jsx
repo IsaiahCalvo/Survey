@@ -21930,7 +21930,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             Object.entries(prev || {}).forEach(([pageKey, pageData]) => {
               const existingObjects = Array.isArray(pageData?.objects) ? pageData.objects : [];
-              const preservedObjects = existingObjects.filter((obj) => !obj?.isPdfImported);
+              // Imported callouts were just written into `prev` by the
+              // setCalloutsIfPersistedChanged call above (the callout list is a
+              // projection of annotationsByPage) and are NOT in
+              // filteredImportedAnnotations (split out above). Dropping every
+              // isPdfImported object here erased them — the E2E "callouts never
+              // appear / drawn callout gone after reopen" blocker.
+              const preservedObjects = existingObjects.filter(
+                (obj) => !obj?.isPdfImported || obj?.data?.type === 'callout',
+              );
 
               next[pageKey] = {
                 ...(pageData || {}),

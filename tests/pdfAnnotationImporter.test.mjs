@@ -1883,3 +1883,15 @@ test('KAL-405 an imported ink dot survives export back into the PDF', async () =
     assert.ok(/\bf\*?\b/.test(content), 'the dot is filled, not stroked');
   }
 });
+
+test('Hidden and NoView flagged annotations are neither imported nor reported', async () => {
+  const { categorizeAnnotations, isPdfAnnotationHiddenFromView } = await import('../src/utils/pdfAnnotationImporter.js');
+  const visible = { subtype: 'Square', annotationFlags: 4, rect: [0, 0, 10, 10] };
+  const hidden = { subtype: 'Square', annotationFlags: 6, rect: [0, 0, 10, 10] };
+  const noView = { subtype: 'Ink', annotationFlags: 36, rect: [0, 0, 10, 10] };
+  const hiddenUnsupported = { subtype: 'FileAttachment', annotationFlags: 2, rect: [0, 0, 10, 10] };
+  const { supported, unsupported } = categorizeAnnotations([visible, hidden, noView, hiddenUnsupported]);
+  assert.deepEqual(supported, [visible]);
+  assert.deepEqual(unsupported, []);
+  assert.equal(isPdfAnnotationHiddenFromView({ subtype: 'Square' }), false);
+});
