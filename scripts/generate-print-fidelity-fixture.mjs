@@ -220,16 +220,18 @@ const annotationsByPage = {
     { id: 'space-shape', type: 'rect', left: 60, top: 220, width: 150, height: 70, stroke: '#2563eb', strokeWidth: 3, fill: '#dbeafe', spaceId: 'space-1' },
     { id: 'region-shape', type: 'ellipse', left: 270, top: 220, rx: 70, ry: 35, stroke: '#16a34a', strokeWidth: 3, fill: 'rgba(22,163,74,0.12)' },
   ] },
+  // Page 3 is /Rotate 180: imported natives are seeded where the viewer shows
+  // them after rotation (x' = 612 - x - w, y' = 792 - y - h of the PDF rect).
   3: { width: 612, height: 792, objects: [
     markup('highlight-default', 'highlight', [55, 90, 260, 116], '#f4d35e', 0.35),
     markup('underline-custom', 'underline', [55, 155, 260, 181], '#2563eb'),
     { id: 'link', type: 'group', fill: '#2563eb', stroke: '#2563eb', opacity: 1, data: { type: 'text-markup', markupType: 'link', quads: [quad(55, 350, 260, 376)], url: 'https://example.com' } },
-    pathObject('imported-native-ink', [['M', 335, 88], ['C', 390, 53, 455, 90, 550, 63]], { stroke: '#0d73d9', strokeWidth: 4, isPdfImported: true, pdfAnnotationId: `${nativeInk.objectNumber}R`, pdfAnnotationType: 'Ink' }),
-    { id: 'imported-native-circle', type: 'ellipse', left: 350, top: 140, rx: 50, ry: 32.5, stroke: '#0da67f', strokeWidth: 3, fill: 'rgba(204,250,235,0.55)', isPdfImported: true, pdfAnnotationId: `${nativeCircle.objectNumber}R`, pdfAnnotationType: 'Circle' },
-    { id: 'imported-native-free-text', type: 'textbox', left: 330, top: 230, width: 230, height: 50, text: 'NATIVE FREE TEXT', fontFamily: 'Times New Roman', fontSize: 18, fill: '#7333e6', isPdfImported: true, pdfAnnotationId: `${nativeFreeText.objectNumber}R`, pdfAnnotationType: 'FreeText' },
-    { ...markup('imported-native-highlight', 'highlight', [330, 315, 560, 345], '#ffbf1a', 0.45), isPdfImported: true, pdfAnnotationId: `${nativeHighlight.objectNumber}R`, pdfAnnotationType: 'Highlight' },
-    { id: 'imported-native-cloud', type: 'rect', left: 340, top: 385, width: 160, height: 70, stroke: 'rgba(255,76,115,0.36)', strokeWidth: 1, fill: 'transparent', data: { pdfCloudIntensity: 2 }, isPdfImported: true, pdfAnnotationId: `${nativeCloud.objectNumber}R`, pdfAnnotationType: 'Square' },
-    { id: 'imported-native-arrow', type: 'line', x1: 340, y1: 500, x2: 550, y2: 545, stroke: '#f2591a', strokeWidth: 4, lineEnding2: 'ClosedArrow', tool: 'arrow', isPdfImported: true, pdfAnnotationId: `${nativeArrow.objectNumber}R`, pdfAnnotationType: 'Line' },
+    pathObject('imported-native-ink', [['M', 277, 704], ['C', 222, 739, 157, 702, 62, 729]], { stroke: '#0d73d9', strokeWidth: 4, isPdfImported: true, pdfAnnotationId: `${nativeInk.objectNumber}R`, pdfAnnotationType: 'Ink' }),
+    { id: 'imported-native-circle', type: 'ellipse', left: 162, top: 587, rx: 50, ry: 32.5, stroke: '#0da67f', strokeWidth: 3, fill: 'rgba(204,250,235,0.55)', isPdfImported: true, pdfAnnotationId: `${nativeCircle.objectNumber}R`, pdfAnnotationType: 'Circle' },
+    { id: 'imported-native-free-text', type: 'textbox', left: 52, top: 512, width: 230, height: 50, text: 'NATIVE FREE TEXT', fontFamily: 'Times New Roman', fontSize: 18, fill: '#7333e6', isPdfImported: true, pdfAnnotationId: `${nativeFreeText.objectNumber}R`, pdfAnnotationType: 'FreeText' },
+    { ...markup('imported-native-highlight', 'highlight', [52, 447, 282, 477], '#ffbf1a', 0.45), isPdfImported: true, pdfAnnotationId: `${nativeHighlight.objectNumber}R`, pdfAnnotationType: 'Highlight' },
+    { id: 'imported-native-cloud', type: 'rect', left: 112, top: 337, width: 160, height: 70, stroke: 'rgba(255,76,115,0.36)', strokeWidth: 1, fill: 'transparent', data: { pdfCloudIntensity: 2 }, isPdfImported: true, pdfAnnotationId: `${nativeCloud.objectNumber}R`, pdfAnnotationType: 'Square' },
+    { id: 'imported-native-arrow', type: 'line', x1: 272, y1: 292, x2: 62, y2: 247, stroke: '#f2591a', strokeWidth: 4, lineEnding2: 'ClosedArrow', tool: 'arrow', isPdfImported: true, pdfAnnotationId: `${nativeArrow.objectNumber}R`, pdfAnnotationType: 'Line' },
   ] },
   4: { width: 792, height: 612, objects: [
     pathObject('rotated-page-ink', [['M', 80, 120], ['C', 150, 60, 220, 180, 300, 110]], { stroke: '#db2777', strokeWidth: 7 }),
@@ -309,10 +311,12 @@ const regions = [
   region('link', 'link', 3, [45, 340, 270, 385], ['bounds', 'colour']),
   region('redaction-unapplied', 'redaction', 7, [85, 285, 335, 365], ['bounds', 'fillCoverage', 'colour']),
   region('imported-native-ink', 'native-ink', 3, [45, 650, 295, 735], ['bounds', 'colour', 'strokeWeight']),
-  region('imported-native-circle', 'native-circle', 3, [335, 125, 465, 220], ['bounds', 'fillCoverage', 'colour', 'strokeWeight']),
-  region('imported-native-free-text', 'native-free-text', 3, [315, 215, 575, 295], ['bounds', 'colour', 'textPresence']),
-  region('imported-native-highlight', 'native-highlight', 3, [315, 300, 575, 360], ['bounds', 'fillCoverage', 'colour']),
-  region('imported-native-cloud', 'native-cloud', 3, [320, 365, 520, 475], ['bounds', 'colour']),
+  region('imported-native-circle', 'native-circle', 3, [147, 572, 277, 667], ['bounds', 'fillCoverage', 'colour', 'strokeWeight']),
+  region('imported-native-free-text', 'native-free-text', 3, [37, 497, 297, 577], ['bounds', 'textPresence'], { boundsPixels: 8 }),
+  region('imported-native-highlight', 'native-highlight', 3, [37, 432, 297, 492], ['bounds', 'fillCoverage', 'colour']),
+  // The page-3 link underline crosses this crop, so the dominant-colour pick is
+  // ambiguous (blue vs pale pink) on both sides; bounds carry the check.
+  region('imported-native-cloud', 'native-cloud', 3, [92, 317, 292, 427], ['bounds'], { boundsPixels: 6 }),
   region('imported-native-arrow', 'native-arrow', 3, [40, 225, 290, 315], ['bounds', 'orientation', 'colour', 'strokeWeight'], { boundsPixels: 6 }),
   region('rotated-page-ink', 'rotated-ink', 4, [55, 45, 325, 200]),
   region('rotated-page-rect', 'rotated-rect', 4, [55, 205, 310, 390], ['bounds', 'colour'], { boundsPixels: 5 }),

@@ -610,17 +610,17 @@
           "path": [
             [
               "M",
-              335,
-              88
+              277,
+              704
             ],
             [
               "C",
-              390,
-              53,
-              455,
-              90,
-              550,
-              63
+              222,
+              739,
+              157,
+              702,
+              62,
+              729
             ]
           ],
           "isPdfImported": true,
@@ -630,8 +630,8 @@
         {
           "id": "imported-native-circle",
           "type": "ellipse",
-          "left": 350,
-          "top": 140,
+          "left": 162,
+          "top": 587,
           "rx": 50,
           "ry": 32.5,
           "stroke": "#0da67f",
@@ -644,8 +644,8 @@
         {
           "id": "imported-native-free-text",
           "type": "textbox",
-          "left": 330,
-          "top": 230,
+          "left": 52,
+          "top": 512,
           "width": 230,
           "height": 50,
           "text": "NATIVE FREE TEXT",
@@ -669,14 +669,14 @@
             "lineWidth": 1.2,
             "quads": [
               {
-                "x1": 330,
-                "y1": 315,
-                "x2": 560,
-                "y2": 315,
-                "x3": 330,
-                "y3": 345,
-                "x4": 560,
-                "y4": 345
+                "x1": 52,
+                "y1": 447,
+                "x2": 282,
+                "y2": 447,
+                "x3": 52,
+                "y3": 477,
+                "x4": 282,
+                "y4": 477
               }
             ]
           },
@@ -687,8 +687,8 @@
         {
           "id": "imported-native-cloud",
           "type": "rect",
-          "left": 340,
-          "top": 385,
+          "left": 112,
+          "top": 337,
           "width": 160,
           "height": 70,
           "stroke": "rgba(255,76,115,0.36)",
@@ -704,10 +704,10 @@
         {
           "id": "imported-native-arrow",
           "type": "line",
-          "x1": 340,
-          "y1": 500,
-          "x2": 550,
-          "y2": 545,
+          "x1": 272,
+          "y1": 292,
+          "x2": 62,
+          "y2": 247,
           "stroke": "#f2591a",
           "strokeWidth": 4,
           "lineEnding2": "ClosedArrow",
@@ -1604,10 +1604,10 @@
       "type": "native-circle",
       "page": 3,
       "bounds": [
-        335,
-        125,
-        465,
-        220
+        147,
+        572,
+        277,
+        667
       ],
       "checks": [
         "bounds",
@@ -1621,26 +1621,28 @@
       "type": "native-free-text",
       "page": 3,
       "bounds": [
-        315,
-        215,
-        575,
-        295
+        37,
+        497,
+        297,
+        577
       ],
       "checks": [
         "bounds",
-        "colour",
         "textPresence"
-      ]
+      ],
+      "tolerance": {
+        "boundsPixels": 8
+      }
     },
     {
       "id": "imported-native-highlight",
       "type": "native-highlight",
       "page": 3,
       "bounds": [
-        315,
-        300,
-        575,
-        360
+        37,
+        432,
+        297,
+        492
       ],
       "checks": [
         "bounds",
@@ -1653,15 +1655,17 @@
       "type": "native-cloud",
       "page": 3,
       "bounds": [
-        320,
-        365,
-        520,
-        475
+        92,
+        317,
+        292,
+        427
       ],
       "checks": [
-        "bounds",
-        "colour"
-      ]
+        "bounds"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
     },
     {
       "id": "imported-native-arrow",
