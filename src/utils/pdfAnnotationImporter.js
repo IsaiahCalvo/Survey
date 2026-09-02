@@ -5445,11 +5445,20 @@ function isSaneImportedAnnotationGeometry(annotation, viewport) {
     if (!alternate || alternate.length < minimumPoints || !finiteAndBounded(alternate)) return false;
   }
 
-  const quadPoints = annotation?._rawQuadPointsPresent
+  const rawQuadPoints = annotation?._rawQuadPointsPresent
     ? annotation._rawQuadPoints
     : annotation?.quadPoints;
-  if (annotation?._rawQuadPointsPresent && !quadPoints) return false;
-  if (quadPoints != null) {
+  if (annotation?._rawQuadPointsPresent && !rawQuadPoints) return false;
+  if (rawQuadPoints != null) {
+    // pdf.js hands quadPoints over as [[{x,y} x4], ...]; the raw dictionary
+    // form is a flat number array. Flatten both to numbers before checking.
+    const quadPoints = Array.isArray(rawQuadPoints)
+      ? rawQuadPoints.flatMap((quad) => (
+        Array.isArray(quad)
+          ? quad.flatMap((point) => (point && typeof point === 'object' ? [point.x, point.y] : [point]))
+          : (quad && typeof quad === 'object' ? [quad.x, quad.y] : [quad])
+      ))
+      : [];
     if (quadPoints.length === 0 || quadPoints.length % 8 !== 0 || !finiteAndBounded(quadPoints)) {
       return false;
     }
