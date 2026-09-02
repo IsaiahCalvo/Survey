@@ -218,7 +218,21 @@ export default function PdfjsFormLayer({
           const fieldId = section?.getAttribute('data-annotation-id') || el.id || null;
           const meta = widgetMetaById.get(fieldId) || {};
           if (meta.textSizing && el.tagName === 'TEXTAREA') {
-            el.style.fontSize = `calc(${meta.textSizing.fontSize}px * var(--total-scale-factor))`;
+            let fontSize = meta.textSizing.fontSize;
+            el.style.fontSize = `calc(${fontSize}px * var(--total-scale-factor))`;
+            // UX: a multi-line value must be fully visible in its box. The /DA
+            // size (or the auto-size from the line count) is the starting
+            // point, but a long line can wrap at that size and push the last
+            // line out of view (E2E: "Third line" clipped while the file's own
+            // stored picture fit). Shrink until the wrapped text fits — that is
+            // what the stored appearance already shows in other viewers.
+            // Measure after layout: at mount the textarea has no box yet.
+            requestAnimationFrame(() => {
+              for (let step = 0; step < 24 && fontSize > 6 && el.scrollHeight > el.clientHeight + 1; step += 1) {
+                fontSize = Math.round((fontSize - 0.5) * 10) / 10;
+                el.style.fontSize = `calc(${fontSize}px * var(--total-scale-factor))`;
+              }
+            });
           }
           if (meta.visualStyle && el.type === 'checkbox') {
             el.style.setProperty('--pdf-widget-background', meta.visualStyle.backgroundColor);

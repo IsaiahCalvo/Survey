@@ -1094,6 +1094,7 @@ export const renderEllipse = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
+      strokeDasharray={Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length ? obj.strokeDashArray.join(' ') : undefined}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
       data-shape-id={shapeId}
@@ -1127,6 +1128,7 @@ export const renderEllipse = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={sw}
+      strokeDasharray={Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length ? obj.strokeDashArray.join(' ') : undefined}
       opacity={obj.opacity ?? 1}
       data-shape-id={shapeId}
       data-shape-kind="ellipse"
