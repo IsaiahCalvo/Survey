@@ -322,7 +322,8 @@ test('live PDF export writes links and non-concealing redaction marks without se
   assert.match(appearanceSource, /0\.81569 0\.00784 0\.10588 RG/);
   assert.match(appearanceSource, /\b1 w\b/);
   assert.doesNotMatch(appearanceSource, /\bre\s+f\b/);
-  assert.doesNotMatch(appearanceSource, /\b[ml]\b/);
+  // Safety: stroked only — no fill operator may paint over the page content.
+  assert.doesNotMatch(appearanceSource, /\b(f|f\*|B|B\*|b|b\*)\b/);
 });
 
 test('live PDF export writes selected-text page links as GoTo actions', async () => {
