@@ -32,6 +32,8 @@ const cases = [
       { page: 1, id: 'acrobat-grey-freetext-box', bounds: [110, 325, 410, 405], maxMae: 30, maxStrongDiff: 0.3 },
       { page: 2, id: 'acrobat-highlighter-ink', bounds: [55, 105, 440, 145], maxMae: 30 },
       { page: 2, id: 'acrobat-transparent-shapes', bounds: [55, 275, 405, 380], maxMae: 30 },
+      { page: 2, id: 'acrobat-cloud-square', bounds: [50, 425, 262, 565], maxMae: 30 },
+      { page: 2, id: 'acrobat-cloud-polygon', bounds: [258, 425, 450, 565], maxMae: 30 },
       { page: 2, id: 'acrobat-callout', bounds: [235, 585, 585, 720], maxMae: 34 },
     ],
   },
@@ -44,6 +46,7 @@ const cases = [
       { page: 1, id: 'prog02-framed-freetext', bounds: [50, 375, 270, 465], maxMae: 30 },
       { page: 1, id: 'prog02-pale-unframed-freetext', bounds: [290, 375, 510, 465], maxMae: 30 },
       { page: 1, id: 'prog02-callout', bounds: [100, 470, 545, 635], maxMae: 34 },
+      { page: 1, id: 'prog02-sticky-note', bounds: [530, 68, 575, 115], maxMae: 24 },
     ],
   },
   {
@@ -52,6 +55,8 @@ const cases = [
     regions: [
       { page: 1, id: 'prog03-no-ap-dashed-circle-a2', bounds: [205, 115, 355, 215], maxMae: 28 },
       { page: 1, id: 'prog03-no-ap-freetext-a7', bounds: [35, 300, 285, 390], maxMae: 30 },
+      { page: 1, id: 'prog03-sticky-note-a6', bounds: [390, 238, 435, 285], maxMae: 24 },
+      { page: 1, id: 'prog03-cloud-polygon-a8', bounds: [300, 290, 580, 395], maxMae: 30 },
       { page: 1, id: 'appearance-magenta-hollow-square', bounds: [280, 450, 480, 550], maxMae: 28 },
       { page: 1, id: 'appearance-blue-highlight', bounds: [50, 580, 315, 615], maxMae: 28 },
       { page: 1, id: 'appearance-small-filled-square', bounds: [55, 650, 205, 735], maxMae: 28 },

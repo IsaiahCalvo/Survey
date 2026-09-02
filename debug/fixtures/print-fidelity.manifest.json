@@ -1084,6 +1084,26 @@
           "stroke": "#0f766e",
           "strokeWidth": 5,
           "fill": "#ccfbf1"
+        },
+        {
+          "id": "imported-sticky-note",
+          "type": "rect",
+          "left": 100,
+          "top": 320,
+          "width": 24,
+          "height": 24,
+          "fill": "rgba(255, 217, 51, 0.92)",
+          "stroke": "rgba(65, 57, 12, 0.72)",
+          "strokeWidth": 1,
+          "data": {
+            "type": "note",
+            "pdfNoteGlyph": "note",
+            "pdfNoteIcon": "Comment",
+            "noteText": "Print glyph check"
+          },
+          "isPdfImported": true,
+          "pdfAnnotationId": "print-sticky-note",
+          "pdfAnnotationType": "Text"
         }
       ]
     }
@@ -1904,6 +1924,26 @@
         "colour",
         "strokeWeight"
       ]
+    },
+    {
+      "id": "imported-sticky-note",
+      "type": "native-sticky-note",
+      "page": 11,
+      "bounds": [
+        85,
+        305,
+        140,
+        360
+      ],
+      "checks": [
+        "bounds",
+        "fillCoverage",
+        "colour",
+        "textPresence"
+      ],
+      "tolerance": {
+        "boundsPixels": 5
+      }
     },
     {
       "id": "landscape-page",

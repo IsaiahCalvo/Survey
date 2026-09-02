@@ -94,7 +94,12 @@ import {
   viewportPointToPdfPoint,
 } from './pdfNativeExport/adapters/textMarkup.js';
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
-import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
+import {
+  buildCloudPathCommands,
+  buildStickyNoteGlyphSpec,
+  isStickyNoteGlyphObject,
+  stickyNoteOutlineColor,
+} from './pdfAnnotationAppearance.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 
@@ -3714,7 +3719,12 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.
   const cloud = closePath && Number.isFinite(Number(obj?.data?.pdfCloudIntensity))
-    ? buildCloudPathCommands(points, Number(obj.data.pdfCloudIntensity), Number(obj?.strokeWidth) || 1)
+    ? buildCloudPathCommands(
+        points,
+        Number(obj.data.pdfCloudIntensity),
+        Number(obj?.strokeWidth) || 1,
+        obj?.data?.pdfCloudUnitScale ?? 1,
+      )
     : null;
   const d = Array.isArray(cloud) && cloud.length > 0
     ? cloud.map((segment) => segment.join(' ')).join(' ')
@@ -3899,6 +3909,42 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'rect') {
+    if (isStickyNoteGlyphObject(shifted)) {
+      const angle = Number(shifted?.angle) || 0;
+      const center = { x: left + width / 2, y: top + height / 2 };
+      const glyph = buildStickyNoteGlyphSpec({
+        width,
+        height,
+        left: -width / 2,
+        top: -height / 2,
+      });
+      const glyphFill = parsePdfDrawColor(shifted.fill || '#ffeb3b', '#ffeb3b');
+      const glyphStroke = parsePdfDrawColor(stickyNoteOutlineColor(shifted.fill), '#5f5200');
+      const glyphStrokeWidth = Math.max(1, Math.min(width, height) * 0.06);
+      page.drawSvgPath(glyph.bubblePath, {
+        x: center.x,
+        y: getPdfY(pageHeight, center.y),
+        rotate: degrees(-angle),
+        color: glyphFill?.color,
+        opacity: glyphFill?.opacity ?? 1,
+        borderColor: glyphStroke?.color,
+        borderOpacity: glyphStroke?.opacity ?? 1,
+        borderWidth: glyphStrokeWidth,
+      });
+      for (const line of glyph.textLines) {
+        const start = rotateAppPoint({ x: center.x + line.x1, y: center.y + line.y1 }, center, angle);
+        const end = rotateAppPoint({ x: center.x + line.x2, y: center.y + line.y2 }, center, angle);
+        page.drawLine({
+          start: { x: start.x, y: getPdfY(pageHeight, start.y) },
+          end: { x: end.x, y: getPdfY(pageHeight, end.y) },
+          thickness: glyphStrokeWidth,
+          color: glyphStroke?.color,
+          opacity: glyphStroke?.opacity ?? 1,
+          lineCap: LineCapStyle.Round,
+        });
+      }
+      return 1;
+    }
     // UX (2026-07-17, line style): dashed/dotted rect borders (incl. the
     // callout text box, which flattens through this branch) print with their
     // on-screen dash pattern instead of flattening solid.
@@ -3926,11 +3972,21 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     const cloudIntensity = Number(shifted?.data?.pdfCloudIntensity);
     if (Number.isFinite(cloudIntensity) && width > 0 && height > 0) {
       const center = { x: left + width / 2, y: top + height / 2 };
+      const insets = Array.isArray(shifted?.data?.pdfCloudInsets)
+        ? shifted.data.pdfCloudInsets
+        : [0, 0, 0, 0];
       const points = [
-        { x: left, y: top }, { x: left + width, y: top },
-        { x: left + width, y: top + height }, { x: left, y: top + height },
+        { x: left + (insets[0] || 0) * scaleX, y: top + (insets[1] || 0) * scaleY },
+        { x: left + width - (insets[2] || 0) * scaleX, y: top + (insets[1] || 0) * scaleY },
+        { x: left + width - (insets[2] || 0) * scaleX, y: top + height - (insets[3] || 0) * scaleY },
+        { x: left + (insets[0] || 0) * scaleX, y: top + height - (insets[3] || 0) * scaleY },
       ].map((point) => rotateAppPoint(point, center, angle));
-      const cloud = buildCloudPathCommands(points, cloudIntensity, strokeWidth);
+      const cloud = buildCloudPathCommands(
+        points,
+        cloudIntensity,
+        strokeWidth,
+        shifted?.data?.pdfCloudUnitScale ?? 1,
+      );
       const d = cloud.map((segment) => segment.join(' ')).join(' ');
       page.drawSvgPath(d, { x: 0, y: pageHeight, ...common });
     } else if (angle) {

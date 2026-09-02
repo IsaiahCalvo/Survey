@@ -63,7 +63,7 @@ test('print-fidelity manifest covers every required app and native type on rotat
     'polygon', 'polyline', 'callout', 'textbox', 'counter', 'survey-marker', 'space', 'region',
     'highlight', 'underline', 'squiggle', 'strikethrough', 'link', 'redaction', 'native-square',
     'native-circle', 'native-polygon', 'native-ink', 'native-free-text', 'native-highlight',
-    'native-cloud', 'native-arrow', 'native-strikeout', 'form-checkbox', 'form-text', 'native-stamp',
+    'native-cloud', 'native-sticky-note', 'native-arrow', 'native-strikeout', 'form-checkbox', 'form-text', 'native-stamp',
     'landscape-page',
   ]) assert.ok(types.has(required), `manifest must cover ${required}`);
   assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0, 0, 0]);

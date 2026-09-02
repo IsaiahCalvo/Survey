@@ -65,6 +65,8 @@ import {
   renderPdfStampAppearances,
 } from './pdfStampProxy.js';
 import { createTextMarkupAnnotation } from './pdfTextMarkup.js';
+import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
+export { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 
 const pdfImportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_IMPORT_DEBUG !== true) return;
@@ -912,92 +914,6 @@ function convertAutoCadShxTextToFabricProxy(annotation, viewport, scale = 1) {
     pdfAnnotationType: 'AutoCAD SHX Text',
     layer: 'pdf-annotations'
   };
-}
-
-// UX 2026-04-21: Cloud-edge path builder for revision-cloud shapes imported
-// via PDF /BE border-effect flag. Takes an array of {x,y} points in the
-// shape's own local coordinate system (so rects pass [(0,0),(w,0),(w,h),(0,h)]
-// and polygons pass their already-relative vertices), and emits a closed
-// Fabric.js path-command array where each edge is replaced by a scalloped
-// series of outward-bumping quadratic arcs. Detects winding automatically
-// so polygons whose vertices run CCW still get bumps on the correct side.
-//
-// Exported so the SVG renderer can rebuild the scalloped geometry live as
-// the user resizes a cloud — adding more humps when the shape grows and
-// fewer when it shrinks, matching Bluebeam/Acrobat behavior.
-//
-// UX 2026-04-21: strokeWidth param lets the renderer apply Acrobat's
-// "bumps stay taller than the stroke" rule — the intensity slider still
-// controls the base bump size the user picked, but we silently raise the
-// effective radius to at least ~2×strokeWidth so a thick stroke never
-// fills the gap between tiny humps and turns the cloud into a blob.
-// Count per edge drops automatically to keep hump centers on the edge,
-// so the overall shape footprint stays put (Acrobat feel, not Drawboard
-// bloat). See session-moments 2026-04-21 for vendor research.
-export function buildCloudPathCommands(points, intensity = 2, strokeWidth = 1) {
-  if (!Array.isArray(points) || points.length < 3) return null;
-
-  // User-picked intensity maps to a base bump radius in local units
-  // (matches the prior behavior at default strokeWidth=1).
-  const userRadius = Math.max(6, 5 + intensity * 3);
-  // Acrobat clamp: effective bump radius is never less than ~2×stroke
-  // so a fat stroke can't swallow adjacent humps.
-  const effectiveRadius = Math.max(userRadius, 2 * Math.max(1, strokeWidth));
-  // Center-to-center spacing along each edge — 1.6×radius leaves a
-  // visible notch between humps even at the thick-stroke clamp.
-  const targetSpacing = 1.6 * effectiveRadius;
-
-  // UX 2026-04-21: trapezoid-form shoelace in screen coords (Y-down). A
-  // NEGATIVE accumulated sum means the points wind clockwise as drawn on
-  // screen (Y-down inverts the standard math-coord convention). A CW
-  // screen-space traversal places "outside" 90° clockwise from the edge
-  // direction = (dy, -dx); CCW flips to (-dy, dx). The previous check
-  // had the sign inverted, which pushed the cloud bumps inward.
-  let area = 0;
-  for (let i = 0; i < points.length; i++) {
-    const p0 = points[i];
-    const p1 = points[(i + 1) % points.length];
-    area += (p1.x - p0.x) * (p1.y + p0.y);
-  }
-  const clockwise = area < 0;
-  const perp = clockwise
-    ? (ux, uy) => ({ x: uy, y: -ux })
-    : (ux, uy) => ({ x: -uy, y: ux });
-
-  const cmds = [];
-  let first = null;
-  for (let i = 0; i < points.length; i++) {
-    const p0 = points[i];
-    const p1 = points[(i + 1) % points.length];
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 0.1) continue;
-    const ux = dx / len;
-    const uy = dy / len;
-    const numBumps = Math.max(1, Math.round(len / targetSpacing));
-    const segLen = len / numBumps;
-    const outward = perp(ux, uy);
-    // Bump height tracks the effective radius (so thick strokes grow the
-    // arc), but never exceeds half the segment length — that keeps
-    // adjacent humps from overlapping on short edges.
-    const bumpHeight = Math.min(effectiveRadius, segLen * 0.55);
-    for (let j = 0; j < numBumps; j++) {
-      const sx = p0.x + ux * segLen * j;
-      const sy = p0.y + uy * segLen * j;
-      const ex = p0.x + ux * segLen * (j + 1);
-      const ey = p0.y + uy * segLen * (j + 1);
-      if (i === 0 && j === 0) {
-        cmds.push(['M', sx, sy]);
-        first = { x: sx, y: sy };
-      }
-      const mx = (sx + ex) / 2 + outward.x * bumpHeight;
-      const my = (sy + ey) / 2 + outward.y * bumpHeight;
-      cmds.push(['Q', mx, my, ex, ey]);
-    }
-  }
-  if (first) cmds.push(['Z']);
-  return cmds.length > 0 ? cmds : null;
 }
 
 function isNearWhiteHexColor(hex) {
@@ -4558,14 +4474,20 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
   const cloudEffect = annotation.borderEffect?.style === 'C'
     ? (annotation.borderEffect || { style: 'C', intensity: 2 })
     : null;
+  const cloudIntensity = cloudEffect ? (cloudEffect.intensity ?? 2) : null;
   const cloudPathD = cloudEffect
-    ? buildCloudPathCommands(relative.points, (cloudEffect.intensity || 2) * scale)
+    ? buildCloudPathCommands(
+        relative.points,
+        cloudIntensity,
+        strokeWidth * scale,
+        scale,
+      )
     : null;
 
   const data = {
     ...(intent ? { pdfIntent: intent } : {}),
     ...(cloudPathD
-      ? { pdfCloudPathD: cloudPathD, pdfCloudIntensity: cloudEffect.intensity }
+      ? { pdfCloudPathD: cloudPathD, pdfCloudIntensity: cloudIntensity, pdfCloudUnitScale: scale }
       : {}),
   };
 
@@ -4624,6 +4546,7 @@ function convertTextToFabricNote(annotation, viewport, scale = 1) {
     hoverCursor: 'pointer',
     data: {
       type: 'note',
+      pdfNoteGlyph: 'note',
       noteText: getAnnotationContents(annotation),
       pdfNoteIcon: iconName,
       ...(annotation.state ? { pdfState: annotation.state } : {}),
@@ -4672,7 +4595,11 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   const rawViewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   const appearance = annotation?._appearance;
   const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
-  const appearanceBounds = !rotationTransform
+  const cloudEffect = annotation.borderEffect?.style === 'C'
+    ? (annotation.borderEffect || { style: 'C', intensity: 2 })
+    : null;
+  const cloudIntensity = cloudEffect ? (cloudEffect.intensity ?? 2) : null;
+  const appearanceBounds = !cloudEffect && !rotationTransform
     && (appearance?.hasFill === true || appearance?.hasStroke === true)
     ? getAppearancePathBounds(annotation, viewport, scale)
     : null;
@@ -4727,18 +4654,21 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   // border effect (/BE /S = /C), build a scalloped edge path so it renders
   // as a revision cloud instead of a plain box. Path is in local coords
   // (0,0 origin) so normal rect positioning/scaling works unchanged.
-  const cloudEffect = annotation.borderEffect?.style === 'C'
-    ? (annotation.borderEffect || { style: 'C', intensity: 2 })
-    : null;
+  const cloudInsets = cloudEffect && Array.isArray(annotation.rectangleDifferences)
+    && annotation.rectangleDifferences.length === 4
+    ? annotation.rectangleDifferences.map((value) => Math.max(0, Number(value) || 0) * scale)
+    : [0, 0, 0, 0];
   const cloudPathD = cloudEffect
     ? buildCloudPathCommands(
         [
-          { x: 0, y: 0 },
-          { x: viewportRect.width, y: 0 },
-          { x: viewportRect.width, y: viewportRect.height },
-          { x: 0, y: viewportRect.height },
+          { x: cloudInsets[0], y: cloudInsets[1] },
+          { x: viewportRect.width - cloudInsets[2], y: cloudInsets[1] },
+          { x: viewportRect.width - cloudInsets[2], y: viewportRect.height - cloudInsets[3] },
+          { x: cloudInsets[0], y: viewportRect.height - cloudInsets[3] },
         ],
-        (cloudEffect.intensity || 2) * scale
+        cloudIntensity,
+        strokeWidth * scale,
+        scale,
       )
     : null;
 
@@ -4773,7 +4703,12 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     hasControls: true,
     hasBorders: true,
     ...(cloudPathD
-      ? { data: { pdfCloudPathD: cloudPathD, pdfCloudIntensity: cloudEffect.intensity } }
+      ? { data: {
+          pdfCloudPathD: cloudPathD,
+          pdfCloudIntensity: cloudIntensity,
+          pdfCloudInsets: cloudInsets,
+          pdfCloudUnitScale: scale,
+        } }
       : {}),
     // Mark as imported from PDF
     isPdfImported: true,

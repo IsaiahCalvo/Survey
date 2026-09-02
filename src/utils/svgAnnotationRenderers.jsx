@@ -29,7 +29,12 @@ import {
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
 // grows/shrinks with the shape instead of staying baked at import size.
-import { buildCloudPathCommands } from './pdfAnnotationImporter';
+import {
+  buildCloudPathCommands,
+  buildStickyNoteGlyphSpec,
+  isStickyNoteGlyphObject,
+  stickyNoteOutlineColor,
+} from './pdfAnnotationAppearance.js';
 // Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
 // cheap no-ops when disabled. Toggle in DevTools console:
 //   __shapeSpyOn()  __shapeSpyOff()  __captureAllShapes()
@@ -353,6 +358,39 @@ export const renderRect = (obj, index) => {
     obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
   }`;
 
+  if (isStickyNoteGlyphObject(obj)) {
+    const glyph = buildStickyNoteGlyphSpec({ width: effectiveWidth, height: effectiveHeight });
+    const linePath = glyph.textLines
+      .map((line) => `M ${line.x1} ${line.y1} L ${line.x2} ${line.y2}`)
+      .join(' ');
+    const outline = stickyNoteOutlineColor(obj.fill);
+    const glyphStrokeWidth = Math.max(1, Math.min(effectiveWidth, effectiveHeight) * 0.06);
+    return (
+      <g
+        key={key}
+        transform={positionTransform}
+        data-shape-id={shapeId}
+        data-shape-kind="sticky-note"
+        onClick={__shapeClick}
+      >
+        <path
+          d={glyph.bubblePath}
+          fill={obj.fill || '#ffeb3b'}
+          stroke={outline}
+          strokeWidth={glyphStrokeWidth}
+          strokeLinejoin="round"
+        />
+        <path
+          d={linePath}
+          fill="none"
+          stroke={outline}
+          strokeWidth={glyphStrokeWidth}
+          strokeLinecap="round"
+        />
+      </g>
+    );
+  }
+
   // UX 2026-04-21: Revision-cloud rectangles rebuild their scalloped path
   // from the current effective box size on every render. That way when the
   // user resizes the cloud, more humps appear as the box grows and fewer as
@@ -361,18 +399,22 @@ export const renderRect = (obj, index) => {
   // flags a box as a cloud; the original baked path is ignored.
   const cloudIntensity = obj.data?.pdfCloudIntensity;
   if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+    const scaleX = Math.abs(obj.scaleX || 1);
+    const scaleY = Math.abs(obj.scaleY || 1);
+    const insets = Array.isArray(obj.data?.pdfCloudInsets) ? obj.data.pdfCloudInsets : [0, 0, 0, 0];
     const liveCloud = buildCloudPathCommands(
       [
-        { x: 0, y: 0 },
-        { x: effectiveWidth, y: 0 },
-        { x: effectiveWidth, y: effectiveHeight },
-        { x: 0, y: effectiveHeight },
+        { x: (insets[0] || 0) * scaleX, y: (insets[1] || 0) * scaleY },
+        { x: effectiveWidth - (insets[2] || 0) * scaleX, y: (insets[1] || 0) * scaleY },
+        { x: effectiveWidth - (insets[2] || 0) * scaleX, y: effectiveHeight - (insets[3] || 0) * scaleY },
+        { x: (insets[0] || 0) * scaleX, y: effectiveHeight - (insets[3] || 0) * scaleY },
       ],
       cloudIntensity,
       // UX 2026-04-21: pass stroke width so the renderer can keep the
       // bump radius ≥ 2×stroke — prevents thick strokes from swallowing
       // adjacent humps (Acrobat-style clamp, no Drawboard bloat).
-      obj.strokeWidth ?? 1
+      obj.strokeWidth ?? 1,
+      obj.data?.pdfCloudUnitScale ?? 1,
     );
     if (Array.isArray(liveCloud) && liveCloud.length > 0) {
       const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
@@ -888,7 +930,12 @@ export const renderPolygon = (obj, index) => {
   const cloudIntensity = obj.data?.pdfCloudIntensity;
   if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
     const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
-    const liveCloud = buildCloudPathCommands(livePoints, cloudIntensity, obj.strokeWidth ?? 1);
+    const liveCloud = buildCloudPathCommands(
+      livePoints,
+      cloudIntensity,
+      obj.strokeWidth ?? 1,
+      obj.data?.pdfCloudUnitScale ?? 1,
+    );
     if (Array.isArray(liveCloud) && liveCloud.length > 0) {
       const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
       return (
