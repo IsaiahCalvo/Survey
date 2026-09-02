@@ -487,7 +487,11 @@ test.describe('Survey Marker lifecycle inside a module', () => {
 // ============================================================================
 
 test.describe('Survey Marker export', () => {
-  test('5a. exporting an annotated PDF carries the Survey Markers', async ({ browser }) => {
+  // OWNER DECISION PENDING (2026-09-02): the export contract deliberately excludes
+  // survey scopes (includedScopes: ['canvas']). Isaiah is deciding whether export
+  // should carry the selected module's Survey Markers. Until then this stays a
+  // documented gap, not a red gate — flip fixme → test once ruled.
+  test.fixme('5a. exporting an annotated PDF carries the Survey Markers', async ({ browser }) => {
     await mkdir(artifacts, { recursive: true });
     const dir = join(artifacts, 'export');
     await rm(dir, { recursive: true, force: true });
@@ -565,11 +569,16 @@ test.describe('Survey Marker print', () => {
     await page.close();
     await execFileAsync('pdftoppm', ['-png', '-r', '100', printPdf, join(dir, 'sheet')]);
 
-    // Sheet-wide marker paint. A Survey Marker prints as a translucent yellow
-    // block, which nothing in the source PDF uses, so a yellow count per sheet
-    // isolates the markers from the document's own red / green / black marks.
+    // Sheet-wide marker paint. A Survey Marker prints exactly as the screen
+    // shows it: a dashed blue outline until an entity is assigned, its colour
+    // (translucent yellow by default) after. Neither hue occurs in the source
+    // PDF, so blue + yellow per sheet isolates the markers from the document's
+    // own red / green / black marks.
     const perSheet = {};
-    for (const n of [1, 6, 8]) perSheet[n] = (await countInWholeImage(await rasterSheet(dir, 'sheet', n))).yellow;
+    for (const n of [1, 6, 8]) {
+      const tallied = await countInWholeImage(await rasterSheet(dir, 'sheet', n));
+      perSheet[n] = tallied.yellow + tallied.blue;
+    }
 
     expect(
       {

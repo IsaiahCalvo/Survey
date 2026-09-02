@@ -351,7 +351,9 @@ const manifest = {
   })),
   annotationsByPage,
   spaces: [{ id: 'space-1', assignedPages: [{ pageId: 2, wholePageIncluded: false, regions: [{ regionId: 'region-1', shapeType: 'rectangular', coordinates: [250, 200, 430, 200, 430, 310, 250, 310] }] }] }],
-  surveyMarkers: { 'survey-marker-1': { annotationId: 'survey-marker-1', pageNumber: 6, moduleId: 'kal436-module', entityId: 'fixture-entity', entityColor: 'rgba(216,168,78,0.55)', x: 180, y: 180, width: 190, height: 50, bounds: { x: 180, y: 180, width: 190, height: 50 }, color: 'rgba(216,168,78,0.55)' } },
+  // Real markers keep geometry under `bounds` only — no top-level x/y — so the
+  // harness proves the print path reads the shape a saved marker actually has.
+  surveyMarkers: { 'survey-marker-1': { annotationId: 'survey-marker-1', pageNumber: 6, moduleId: 'kal436-module', entityId: 'fixture-entity', entityColor: 'rgba(216,168,78,0.55)', bounds: { x: 180, y: 180, width: 190, height: 50 }, color: 'rgba(216,168,78,0.55)' } },
   callouts: [fixtureCallout],
   regions,
 };

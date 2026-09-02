@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { comparePrintFidelity, validatePrintFidelityScreenFixture } from '../../scripts/print-fidelity-compare.mjs';
@@ -13,6 +13,27 @@ const screenDir = join(outputRoot, 'screen');
 const printDir = join(outputRoot, 'print');
 const pairsDir = join(outputRoot, 'pairs');
 const shortcut = process.platform === 'darwin' ? 'Meta+P' : 'Control+P';
+
+// Print through the app's own shortcut path and rasterise every sheet.
+// Called twice: once outside survey mode (regular pages) and once inside it
+// (survey pages) — print mirrors the screen, and the two screens differ by
+// design (a template hides regular markup and shows only its module).
+async function printAndRasterise(page, { expectedCalls, pdfPath, rasterDir }) {
+  await page.keyboard.press(shortcut);
+  await expect.poll(() => page.evaluate(() => window.__browserPrintCalls), { timeout: 60_000 }).toBe(expectedCalls);
+  await expect(page.locator('[data-browser-print-document]')).toHaveAttribute('data-browser-print-ready', 'true');
+  await page.emulateMedia({ media: 'print' });
+  await page.pdf({ path: pdfPath, printBackground: true, preferCSSPageSize: true });
+  await page.emulateMedia({ media: 'screen' });
+  await mkdir(rasterDir, { recursive: true });
+  await execFileAsync('pdftoppm', ['-png', '-r', '144', pdfPath, join(rasterDir, 'page')]);
+  // pdftoppm zero-pads page numbers once the document has 10+ pages
+  // (page-01.png); the comparer keys on page-N.png.
+  for (const name of await readdir(rasterDir)) {
+    const match = name.match(/^page-0+(\d+)\.png$/);
+    if (match) await rename(join(rasterDir, name), join(rasterDir, `page-${match[1]}.png`));
+  }
+}
 
 test('every supported annotation matches the real browser print path', async ({ page }) => {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
@@ -91,6 +112,9 @@ test('every supported annotation matches the real browser print path', async ({ 
   const pageTenAfter = page.locator('.survey-pdfjs-page-div[data-page-number="10"]');
   await pageTenAfter.screenshot({ path: join(outputRoot, 'screen-after-delete-erase.png'), animations: 'disabled' });
 
+  // Print #1: regular pages, outside survey mode.
+  await printAndRasterise(page, { expectedCalls: 1, pdfPath: join(outputRoot, 'browser-print.pdf'), rasterDir: printDir });
+
   // Survey-mode pages need the template flow; if the seeded marker never
   // materialises that is a FIXTURE failure for those regions — it must not
   // abort the comparison for the other 30+ regions.
@@ -112,6 +136,12 @@ test('every supported annotation matches the real browser print path', async ({ 
       await page.waitForTimeout(350);
       await pageEl.screenshot({ path: join(screenDir, `page-${entry.page}.png`), animations: 'disabled' });
     }
+    // Print #2: the survey sheet as the screen shows it in this module.
+    const surveyPrintDir = join(outputRoot, 'print-survey-mode');
+    await printAndRasterise(page, { expectedCalls: 2, pdfPath: join(outputRoot, 'browser-print-survey-mode.pdf'), rasterDir: surveyPrintDir });
+    for (const entry of surveyPages) {
+      await copyFile(join(surveyPrintDir, `page-${entry.page}.png`), join(printDir, `page-${entry.page}.png`));
+    }
   }
 
   // Fixture regions that never painted on screen are reported as their own
@@ -128,20 +158,6 @@ test('every supported annotation matches the real browser print path', async ({ 
     ...(surveyRegionsFailed ? surveyModeErrors.map((message) => ({ id: 'survey-mode', message })) : []),
     ...fixtureReport.results.filter((result) => !result.pass),
   ];
-
-  await page.keyboard.press(shortcut);
-  await expect.poll(() => page.evaluate(() => window.__browserPrintCalls), { timeout: 60_000 }).toBe(1);
-  await expect(page.locator('[data-browser-print-document]')).toHaveAttribute('data-browser-print-ready', 'true');
-  await page.emulateMedia({ media: 'print' });
-  const printPdf = join(outputRoot, 'browser-print.pdf');
-  await page.pdf({ path: printPdf, printBackground: true, preferCSSPageSize: true });
-  await execFileAsync('pdftoppm', ['-png', '-r', '144', printPdf, join(printDir, 'page')]);
-  // pdftoppm zero-pads page numbers once the document has 10+ pages
-  // (page-01.png); the comparer keys on page-N.png.
-  for (const name of await readdir(printDir)) {
-    const match = name.match(/^page-0+(\d+)\.png$/);
-    if (match) await rename(join(printDir, name), join(printDir, `page-${match[1]}.png`));
-  }
 
   const report = await comparePrintFidelity({ manifestPath, screenDir, printDir, outputDir: pairsDir });
   const printFailures = report.results.filter((result) => result.status === 'print-failure');

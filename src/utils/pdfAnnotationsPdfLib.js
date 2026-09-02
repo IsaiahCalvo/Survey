@@ -4231,6 +4231,12 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const pageNumber = Number(marker?.pageNumber || marker?.page || 1);
     const pageIndex = pageNumber - 1;
     if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) return;
+    // A saved Survey Marker keeps its geometry under `bounds`; only fixtures
+    // ever carried top-level x/y/width/height. Reading those directly printed
+    // every real marker as a zero-size box at the page origin.
+    const markerBounds = normalizeSurveyMarkerBounds(marker);
+    if (!markerBounds) return;
+    const markerNeedsEntity = marker?.needsEntity ?? (marker?.entityId == null && marker?.entityColor == null);
     const page = pdfDoc.getPage(pageIndex);
     const fallbackSize = page.getSize();
     const pageSize = pageSizes[String(pageNumber)] || pageSizes[pageNumber] || fallbackSize;
@@ -4238,14 +4244,16 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     withPrintPageTransform(page, pageHeight, () => {
       flattenedPrintAnnotationsAdded += drawFlattenedObject(page, {
       type: 'rect',
-      left: Number(marker?.x) || 0,
-      top: Number(marker?.y) || 0,
-      width: Math.max(0, Number(marker?.width) || 0),
-      height: Math.max(0, Number(marker?.height) || 0),
-      fill: marker?.needsEntity ? 'transparent' : (marker?.color || 'rgba(255,235,59,0.25)'),
-      stroke: marker?.needsEntity ? '#4A90E2' : 'transparent',
-      strokeWidth: marker?.needsEntity ? 2 : 0,
-      strokeDashArray: marker?.needsEntity ? [5, 5] : undefined,
+      left: markerBounds.left,
+      top: markerBounds.top,
+      width: markerBounds.width,
+      height: markerBounds.height,
+      // Same paint rule as the screen mirror: no entity yet → dashed blue
+      // outline; entity assigned → its colour.
+      fill: markerNeedsEntity ? 'transparent' : (marker?.color || marker?.entityColor || 'rgba(255,235,59,0.25)'),
+      stroke: markerNeedsEntity ? '#4A90E2' : 'transparent',
+      strokeWidth: markerNeedsEntity ? 2 : 0,
+      strokeDashArray: markerNeedsEntity ? [5, 5] : undefined,
       opacity: 1,
       angle: Number(marker?.angle) || 0,
       globalCompositeOperation: 'multiply',

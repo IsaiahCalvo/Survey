@@ -145,7 +145,7 @@ import { createPortal, flushSync } from 'react-dom';
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
-import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
+import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope } from './utils/annotationCreationCommit';
@@ -7361,6 +7361,70 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
   const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  // UX: print shows exactly what the screen shows. Survey Markers are visible
+  // only inside a template, and only the selected module's set (clean slate per
+  // module — owner rule, 2026-09-02), so print carries that set and nothing
+  // else. Paint follows the screen's rule: entity colour when assigned,
+  // dashed blue outline (needsEntity) until then.
+  const printableSurveyMarkers = useMemo(() => {
+    if (!isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId })) return {};
+    const result = {};
+    Object.entries(surveyMarkers || {}).forEach(([annotationId, marker]) => {
+      const visible = isAnnotationVisibleInSurveyMode({
+        moduleId: marker?.moduleId ?? marker?.spaceId ?? null,
+        regionId: marker?.regionId ?? null,
+        showSurveyPanel,
+        selectedModuleId,
+      });
+      if (!visible) return;
+      // Same fields the per-page screen preview carries: the marker's own
+      // colour, and needsEntity only when it was stored as such.
+      result[annotationId] = {
+        ...marker,
+        annotationId,
+        color: marker?.color || null,
+        needsEntity: marker?.needsEntity === true,
+      };
+    });
+    return result;
+  }, [surveyMarkers, showSurveyPanel, selectedModuleId]);
+  const printableSurveyMarkersRef = useRef(printableSurveyMarkers);
+  printableSurveyMarkersRef.current = printableSurveyMarkers;
+  // Same rule for page objects: the screen decides per object with
+  // isAnnotationVisibleInSurveyMode (regular markup hidden inside a template,
+  // other modules' markers hidden, region-scoped marks untouched). Print gets
+  // the identical filter so a printed sheet is the sheet on screen. Pages
+  // where nothing is filtered keep their object identity.
+  const printableAnnotationsByPage = useMemo(() => {
+    const visible = (obj) => isAnnotationVisibleInSurveyMode({
+      moduleId: obj?.moduleId ?? null,
+      regionId: obj?.regionId ?? null,
+      showSurveyPanel,
+      selectedModuleId,
+    });
+    let changed = false;
+    const next = {};
+    Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
+      const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+      const kept = objects.filter(visible);
+      if (kept.length === objects.length) {
+        next[pageKey] = pageData;
+      } else {
+        changed = true;
+        next[pageKey] = { ...(pageData || {}), objects: kept };
+      }
+    });
+    return changed ? next : annotationsByPage;
+  }, [annotationsByPage, showSurveyPanel, selectedModuleId]);
+  const printableAnnotationsByPageRef = useRef(printableAnnotationsByPage);
+  printableAnnotationsByPageRef.current = printableAnnotationsByPage;
+  // Print parity: callouts follow the same survey-mode visibility rule as page objects.
+  const printableCallouts = useMemo(() => callouts.filter((callout) => isAnnotationVisibleInSurveyMode({
+    moduleId: callout?.moduleId ?? null,
+    regionId: callout?.regionId ?? null,
+    showSurveyPanel,
+    selectedModuleId,
+  })), [callouts, showSurveyPanel, selectedModuleId]);
   const [surveyAnnotationHydration, setSurveyAnnotationHydration] = useState(ANNOTATION_HYDRATION_READY_LOCAL);
   const [expandedCategories, setExpandedCategories] = useState({}); // { [categoryId]: boolean }
   const [expandedSurveyMarkers, setExpandedSurveyMarkers] = useState({}); // { [annotationId]: boolean }
@@ -29831,9 +29895,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
                 await import('./utils/pdfAnnotationsPdfLib');
               const printableRegularPayload = buildPrintableRegularAnnotationPayload({
-                annotationsByPage: annotationsByPageRef.current || {},
-                callouts: calloutsRef.current || [],
-                surveyMarkers: surveyMarkersRef.current || {},
+                annotationsByPage: printableAnnotationsByPageRef.current || {},
+                callouts: (calloutsRef.current || []).filter((callout) => isAnnotationVisibleInSurveyMode({
+                  moduleId: callout?.moduleId ?? null,
+                  regionId: callout?.regionId ?? null,
+                  showSurveyPanel,
+                  selectedModuleId,
+                })),
+                surveyMarkers: printableSurveyMarkersRef.current || {},
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
@@ -30910,9 +30979,9 @@ ${pageBlocks}
       key="browser-print-document"
       ref={browserPrintDocumentRef}
       pdfFile={pdfFile}
-      annotationsByPage={annotationsByPage}
-      callouts={callouts}
-      surveyMarkers={surveyMarkers}
+      annotationsByPage={printableAnnotationsByPage}
+      callouts={printableCallouts}
+      surveyMarkers={printableSurveyMarkers}
       spaces={spaces}
       pageSizes={pageSizes}
       deletedPdfAnnotations={deletedPdfAnnotations}
