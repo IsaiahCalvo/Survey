@@ -1,0 +1,78 @@
+HEADLINE: The app is tough — nothing crashed, nothing corrupted, and a file you don't touch comes back out almost perfectly. But faithfulness is broken in ways a surveyor would hit on their first real job: highlights blot out the text they mark, notes-with-a-pointer disappear entirely, sideways and trimmed pages put every markup in the wrong place, markups you delete come back when you print, and picking a survey template makes all existing markup vanish from the screen — which also means the Survey Marker cannot be used on an imported drawing at all. Do not put this in front of a customer yet.
+
+BLOCKERS (12):
+- Opening a file someone sent you: a highlight is painted solid, so the sentence it marks is completely unreadable — a bar of colour where the words should be, the exact opposite of what a highlighter is for.
+- Opening a file someone sent you: notes with a pointer line (a box with a leader pointing at something on the drawing) never appear at all — box, text and pointer — with no warning that anything is missing.
+- Opening a file someone sent you: a pen mark made of several strokes keeps only the first stroke, so part of someone's drawing is silently gone.
+- Opening a file someone sent you: on any page that is sideways or upside down, the markups don't turn with the page — a highlight ends up lying in blank white space while the sentence it marks runs vertically somewhere else, and shapes land on top of each other.
+- Opening a file someone sent you: on pages trimmed down from a larger sheet (routine in construction drawing sets) every box, circle, highlight and note drifts off its target, and some slide off the page and disappear.
+- Opening a file someone sent you: a see-through outline shape comes in as a solid block of colour, covering whatever was drawn underneath it.
+- Adding your own markups: the moment you pick a survey template, every piece of existing markup vanishes from the screen and the page looks blank — the data is still in the file, but you cannot see or work over it, and since the template is the only route to the Survey Marker, Survey Markers cannot be used on an imported drawing at all.
+- Adding your own markups: a note-with-a-pointer you draw yourself is completely gone after saving and reopening — box, pointer and text.
+- Adding your own markups: rubbing out an imported markup doesn't stick — it looks erased on screen, then comes back on the page after saving and reopening.
+- Printing: markups you deleted on screen reappear on the printed sheet, in their original form.
+- Printing: notes the app never showed you print anyway, so you review a clean-looking page and hand over a sheet carrying a comment you never saw.
+- Printing: a see-through highlighter that looks like a pale wash on screen prints as a solid saturated block, which would obliterate anything underneath it on paper.
+
+SHOULD FIX (25):
+- Opening a file: every dashed or dotted outline comes in solid — on a drawing dashed usually means something different from solid, so the mark now says the wrong thing.
+- Opening a file: a highlight running across two lines is drawn as one big block, colouring words that were never highlighted.
+- Opening a file: when a file's stored picture of a markup disagrees with its raw numbers, the app trusts the numbers and shows something else — an empty magenta outline drawn as a solid green block, a blue highlight drawn red, a small filled shape stretched into a large hollow one.
+- Opening a file: text boxes lose their background colour and their frame, leaving bare floating text.
+- Opening a file: arrowheads go missing — a line drawn with arrows at both ends arrives with one, a zigzag pointer arrives with none.
+- Opening a file: a wavy underline is drawn straight, so it becomes indistinguishable from an ordinary underline.
+- Opening a file: an empty tick box is drawn as a solid dark filled square, so it reads as ticked — and darker than the boxes that really are ticked.
+- Opening a file: wide see-through highlighter strokes come out almost white, so a mark made to stand out barely registers.
+- Opening a file: an out-of-range transparency value is used as-is instead of being sensibly capped, so a mark other viewers show solid comes in as a faint ghost or is invisible.
+- Opening a file: markups the app cannot read are thrown away with no message — and on one badly structured page every markup vanished silently, so you could not tell it from a page that never had any.
+- Adding your own markups: one short eraser stroke wiped out two whole markups it only brushed past — an entire ellipse touched at its edge and an entire text box the stroke ran beside but never crossed.
+- Adding your own markups: the counter drops a pale pin with no number in it, which makes the mark meaningless on the page.
+- Saving it back out: the exported file contains stray line marks with impossible positions, one of which draws an unexplained red diagonal in the corner of the page when a client opens it in another viewer.
+- Saving it back out: redaction marks are rewritten — a blue one becomes red, one that covered two separate pieces of text becomes a single big box swallowing words that were never marked, and the replacement wording attached to it is deleted.
+- Saving it back out: a markup that sat behind another one flips in front of it after saving and reopening, hiding what was underneath.
+- Printing: form fields are repainted in a fixed blue — a red-bordered tick box prints blue, a dark box prints empty, a green field prints pale blue.
+- Printing: a multi-line answer in a form field prints oversized, stops wrapping, runs past the right edge of its box and strands its last line below the box on bare paper.
+- Printing: landscape and oversized pages are squeezed into a portrait sheet with big blank bands — a wide banner page prints as a thin strip about a fifth of the sheet.
+- Printing: thick pen strokes have rounded ends on screen and flat, squared-off ends on paper, losing a little length at each end.
+- Printing: hyperlinks print inside a visible box that isn't on screen, so sheets come out with rectangles drawn around link text.
+- Printing: text boxes print without their border and fill, and with looser line spacing, so a note that fits its box on screen overflows it on paper.
+- Printing: the print ignores the file's own instructions about what may be printed — a comment marked do-not-print lands on the paper, and a print-only mark never does.
+- Printing: under one paper-and-margin combination a six-page document printed a single sheet holding only page one, silently, and the sheet looked perfectly normal — proven under an automated print setting rather than the real print dialog, so treat it as a fragility rather than a confirmed everyday bug.
+- The project's own automated print test passes cleanly while every printing problem above is live, so it will not catch any of them — its test file avoids every condition that goes wrong.
+- A deliberately broken markup writes nonsense size values into the app's saved markup data, which will misbehave later in anything that measures the page (fit-to-page, select-all, saving out).
+
+COSMETIC:
+- Sticky notes are drawn as a plain flat yellow square instead of the familiar note icon, so they no longer read as a comment marker.
+- Cloud outlines around irregular shapes are redrawn with fewer, larger bumps and a squatter shape, so the cloud no longer encloses exactly what it did before.
+- Saving it back out: the author's written note attached to a redaction mark is deleted — this one looks deliberate as a safety measure, but it happens even to files you never touched, and nobody is told.
+- Saving it back out: a redaction outline grows very slightly, now enclosing a trailing full stop the original excluded.
+
+VERIFIED WORKING:
+- Nothing crashed, hung or froze on any file, including deliberately corrupted ones — and the old failure where one bad markup wiped every markup off its page did not happen once across sixteen hostile cases with known-good marks sitting beside them.
+- Very heavy files are handled well: a 60,000-point pen stroke, a 300,000-point stroke, and a page holding 5,000 markups all open in a few seconds and draw correctly.
+- Colour and see-through levels are excellent — a forty-cell grid of colours at five transparency levels matched the reference almost exactly.
+- Line thicknesses, from hairline to very thick, come in at the right weight.
+- Boxes, circles, polygons and multi-segment lines land in exactly the right place, at the right size, with the right fill, on ordinary upright pages.
+- Cloud-style borders look right on boxes and polygons.
+- Underline, strikeout and wavy underline sit on the right words on single-line text.
+- Markups that carry no stored picture of themselves are correctly rebuilt from their raw numbers and appear in the right place.
+- Form fields work: all fields present, pre-filled answers correct, multi-line answers keep all their lines, read-only fields correctly locked.
+- Documents mixing six different sheet sizes place every markup in the right spot on every size.
+- The app is honest about the types it cannot show — a plain-English message appears within a few seconds with exact, correct counts, and it says those marks are not deleted.
+- Saving a file straight back out without touching it is essentially lossless: eight of eleven test files came out pixel-for-pixel identical, nothing was baked flat into the page, nothing duplicated or dropped, and every saved file is structurally sound. Only redaction marks changed.
+- Sideways and trimmed pages save back out with no position drift at all — a common failure spot, and it is clean.
+- Your own pen, highlighter, rectangle, arrow and text box all survive saving and reopening twice, in the right place, with nothing degrading on the second round.
+- Editing an imported shape sticks: recoloured, moved and enlarged, and all three changes came back correctly after two save-and-reopen cycles.
+- Rubbing out part of your own pen stroke is preserved correctly as two separate fragments.
+- Under normal print settings every document printed exactly as many sheets as it has pages, on both printing routes, and the two routes produce identical output.
+- Shape colours and transparency print faithfully, trimmed pages line up correctly on paper, and unapplied redactions print exactly as they look on screen rather than pretending to be finished.
+
+NOT COVERED:
+- The Survey Marker was never tested at all — reaching it requires picking a survey template, and doing that blanks the page. Your signature feature is currently untested.
+- Nothing was tested on iPhone, iPad, Android or the desktop app. Everything here is the web version.
+- No real printer and no real print dialog were used — all printing was simulated in a browser, so paper-side behaviour is inferred, not witnessed.
+- Adobe Acrobat was deliberately never opened, per your instruction after the last crash, so 'what Acrobat would show' is judged from two other rendering engines rather than Acrobat itself.
+- Nothing was tested around multiple people working at once, cloud saving and syncing, or the Excel link.
+- Only eleven purpose-built test files plus some deliberately broken ones were used. No real client drawing set was ever opened.
+- Zoom and pan feel, scrolling smoothness and general responsiveness were not judged.
+- The finding about pages silently disappearing when printing is proven only under an automated print configuration, not through the print dialog a real person clicks.
