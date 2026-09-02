@@ -195,7 +195,9 @@ test('normal export makes imported unapplied redactions non-concealing and remov
   assert.match(appearanceSource, /0\.81569 0\.00784 0\.10588 RG/, 'the outline should use the pending-redaction red');
   assert.match(appearanceSource, /\b1 w\b/, 'the outline should use a thin one-point stroke');
   assert.doesNotMatch(appearanceSource, /\bre\s+f\b/, 'the mark must not have an opaque fill');
-  assert.doesNotMatch(appearanceSource, /\b[ml]\b/, 'the mark must not contain hatch paths');
+  // Safety: the pending mark is stroked only — no fill operator may paint
+  // over (or conceal) the page content beneath it.
+  assert.doesNotMatch(appearanceSource, /\b(f|f\*|B|B\*|b|b\*)\b/);
 });
 
 test('normal export drops an unsafe appearance when an imported redaction has no usable rectangle', async () => {
