@@ -5445,24 +5445,29 @@ function isSaneImportedAnnotationGeometry(annotation, viewport) {
     if (!alternate || alternate.length < minimumPoints || !finiteAndBounded(alternate)) return false;
   }
 
-  const rawQuadPoints = annotation?._rawQuadPointsPresent
-    ? annotation._rawQuadPoints
-    : annotation?.quadPoints;
-  if (annotation?._rawQuadPointsPresent && !rawQuadPoints) return false;
-  if (rawQuadPoints != null) {
-    // pdf.js hands quadPoints over as [[{x,y} x4], ...]; the raw dictionary
-    // form is a flat number array. Flatten both to numbers before checking.
-    const quadPoints = Array.isArray(rawQuadPoints)
-      ? rawQuadPoints.flatMap((quad) => (
-        Array.isArray(quad)
-          ? quad.flatMap((point) => (point && typeof point === 'object' ? [point.x, point.y] : [point]))
-          : (quad && typeof quad === 'object' ? [quad.x, quad.y] : [quad])
-      ))
-      : [];
-    if (quadPoints.length === 0 || quadPoints.length % 8 !== 0 || !finiteAndBounded(quadPoints)) {
-      return false;
-    }
-  }
+  // pdf.js hands quadPoints over as [[{x,y} x4], ...]; the raw dictionary
+  // form is a flat number array. Flatten both to numbers before checking.
+  // pdf.js may also expose a flat Float32Array of numbers.
+  const flattenQuadPoints = (input) => {
+    const value = Array.isArray(input) ? input : (ArrayBuffer.isView(input) ? Array.from(input) : null);
+    return (Array.isArray(value)
+    ? value.flatMap((quad) => (
+      Array.isArray(quad)
+        ? quad.flatMap((point) => (point && typeof point === 'object' ? [point.x, point.y] : [point]))
+        : (quad && typeof quad === 'object' ? [quad.x, quad.y] : [quad])
+    ))
+    : null);
+  };
+  const quadPointsValid = (value) => {
+    const flat = flattenQuadPoints(value);
+    return Array.isArray(flat) && flat.length > 0 && flat.length % 8 === 0 && finiteAndBounded(flat);
+  };
+  const candidates = [];
+  if (annotation?._rawQuadPointsPresent) candidates.push(annotation._rawQuadPoints);
+  if (annotation?.quadPoints != null) candidates.push(annotation.quadPoints);
+  // Raw-twin pairing can hand a valid mark a malformed sibling's raw quads;
+  // the mark is only corrupt when NO candidate geometry is usable.
+  if (candidates.length > 0 && !candidates.some(quadPointsValid)) return false;
   return true;
 }
 
