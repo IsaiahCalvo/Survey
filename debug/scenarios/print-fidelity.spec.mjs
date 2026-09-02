@@ -82,6 +82,31 @@ test('every supported annotation matches the real browser print path', async ({ 
     ...fixtureReport.results.filter((result) => !result.pass),
   ];
 
+  const deleteTarget = page.locator('[data-anno-id="imported-delete-square"]').first();
+  await deleteTarget.scrollIntoViewIfNeeded();
+  await page.keyboard.press('v');
+  await deleteTarget.click({ force: true });
+  await page.keyboard.press('Delete');
+  await expect(page.locator('[data-anno-id="imported-delete-square"]')).toHaveCount(0);
+
+  const eraseTarget = page.locator('[data-anno-id="imported-erase-ink"]').first();
+  await eraseTarget.scrollIntoViewIfNeeded();
+  const eraseBox = await eraseTarget.boundingBox();
+  expect(eraseBox).toBeTruthy();
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await page.getByRole('button', { name: /Partial erase|Full stroke erase/ }).click();
+  const widthInput = page.getByRole('textbox', { name: 'Width', exact: true });
+  await widthInput.fill('80');
+  await widthInput.press('Tab');
+  await page.mouse.move(eraseBox.x - 15, eraseBox.y + eraseBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(eraseBox.x + eraseBox.width + 15, eraseBox.y + eraseBox.height / 2, { steps: 20 });
+  await page.mouse.up();
+  await expect(page.locator('[data-anno-id="imported-erase-ink"]')).toHaveCount(0);
+
+  const pageTenAfter = page.locator('.survey-pdfjs-page-div[data-page-number="10"]');
+  await pageTenAfter.screenshot({ path: join(outputRoot, 'screen-after-delete-erase.png'), animations: 'disabled' });
+
   await page.keyboard.press(shortcut);
   await expect.poll(() => page.evaluate(() => window.__browserPrintCalls), { timeout: 60_000 }).toBe(1);
   await expect(page.locator('[data-browser-print-document]')).toHaveAttribute('data-browser-print-ready', 'true');

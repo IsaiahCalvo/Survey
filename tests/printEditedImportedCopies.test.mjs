@@ -9,7 +9,7 @@
 // preserved native annots only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import {
@@ -115,6 +115,7 @@ const makeNativeSourcePdf = async () => {
     Subtype: 'Square',
     Rect: [20, 160, 40, 180],
     Border: [0, 0, 1],
+    F: 4,
     Contents: 'old native',
     P: page.ref,
   }));
@@ -144,6 +145,15 @@ const countNativeAnnots = async (bytes) => {
   return count;
 };
 
+const pageContentText = (doc, pageIndex = 0) => {
+  const contents = doc.getPage(pageIndex).node.Contents();
+  const values = contents instanceof PDFArray ? contents.asArray() : [contents];
+  return values.filter(Boolean).map((value) => {
+    const stream = doc.context.lookup(value);
+    return Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
+  }).join('\n');
+};
+
 test('print flatten suppresses the native original of an edited imported copy', async () => {
   const { nativeAnnot, pdfFile } = await makeNativeSourcePdf();
   const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
@@ -160,6 +170,201 @@ test('print flatten suppresses the native original of an edited imported copy', 
   // The edited replacement flattens as page CONTENT; the stale native
   // original must be gone (0 annotation objects remain).
   assert.equal(await countNativeAnnots(bytes), 0);
+});
+
+test('print flatten removes a deleted imported native annotation', async () => {
+  const { nativeAnnot, pdfFile } = await makeNativeSourcePdf();
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    pdfFile,
+    {},
+    { 1: { width: 200, height: 200 } },
+    {
+      actionType: 'pdf-print-flattened-regular-annotations',
+      documentId: 'doc-test',
+      deletedPdfAnnotations: [{
+        pageNumber: 1,
+        pdfAnnotationId: `${nativeAnnot.objectNumber}R`,
+        pdfAnnotationType: 'Square',
+      }],
+    },
+  );
+
+  assert.equal(await countNativeAnnots(bytes), 0);
+});
+
+test('print flatten strips native annotations that have no screen object', async () => {
+  const sourceDoc = await PDFDocument.create();
+  const page = sourceDoc.addPage([200, 200]);
+  const visibleButSkipped = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot', Subtype: 'Sound', Rect: [20, 160, 40, 180], F: 4, P: page.ref,
+  }));
+  const hidden = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot', Subtype: 'Square', Rect: [50, 160, 70, 180], F: 6, P: page.ref,
+  }));
+  const printOnly = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot', Subtype: 'Square', Rect: [80, 160, 100, 180], F: 36, P: page.ref,
+  }));
+  const noPrintFlag = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot', Subtype: 'Square', Rect: [110, 160, 130, 180], F: 0, P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), sourceDoc.context.obj([
+    visibleButSkipped, hidden, printOnly, noPrintFlag,
+  ]));
+  const sourceBytes = await sourceDoc.save();
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'native-screen-parity.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    {},
+    { 1: { width: 200, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+
+  assert.equal(await countNativeAnnots(bytes), 0);
+});
+
+test('print flatten gives translucent highlighter ink a Multiply ExtGState with stroke opacity', async () => {
+  const sourceDoc = await PDFDocument.create();
+  sourceDoc.addPage([200, 200]);
+  const sourceBytes = await sourceDoc.save();
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'translucent-highlighter.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    { 1: { objects: [{
+      id: 'wash', type: 'path', left: 0, top: 0, pathOffset: { x: 0, y: 0 },
+      scaleX: 1, scaleY: 1, stroke: '#facc15', strokeWidth: 18, opacity: 0.35,
+      strokeLineCap: 'round', strokeLineJoin: 'round', globalCompositeOperation: 'multiply',
+      path: [['M', 25, 80], ['L', 175, 80]],
+    }] } },
+    { 1: { width: 200, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+
+  const flattened = await PDFDocument.load(bytes);
+  const resources = flattened.getPage(0).node.Resources();
+  const extGStates = resources?.lookup(PDFName.of('ExtGState'), PDFDict);
+  const states = extGStates
+    ? extGStates.keys().map((key) => extGStates.lookup(key, PDFDict))
+    : [];
+  assert.ok(states.some((state) => (
+    state.lookup(PDFName.of('BM'))?.toString?.() === '/Multiply'
+    && Math.abs((state.lookup(PDFName.of('CA'))?.asNumber?.() ?? 1) - 0.35) < 0.001
+  )));
+});
+
+test('print flatten uses widget colours and DA size and wraps multiline text', async () => {
+  const sourceDoc = await PDFDocument.create();
+  const page = sourceDoc.addPage([240, 200]);
+  const form = sourceDoc.getForm();
+  const field = form.createTextField('notes');
+  field.enableMultiline();
+  field.setText('first line wraps inside the field\nsecond line');
+  field.addToPage(page, { x: 20, y: 80, width: 90, height: 54 });
+  field.setFontSize(9);
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  const fieldRef = annots.get(annots.size() - 1);
+  const widget = sourceDoc.context.lookup(fieldRef, PDFDict);
+  widget.set(PDFName.of('F'), sourceDoc.context.obj(4));
+  widget.set(PDFName.of('MK'), sourceDoc.context.obj({
+    BG: [1, 0.95, 0.8],
+    BC: [0.1, 0.65, 0.2],
+  }));
+  widget.set(PDFName.of('BS'), sourceDoc.context.obj({ W: 2, S: 'S' }));
+  const sourceBytes = await sourceDoc.save({ updateFieldAppearances: false });
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'multiline-form.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    { 1: { objects: [{
+      type: 'form-field',
+      data: {
+        type: 'form-field', fieldId: `${fieldRef.objectNumber}R`,
+        fieldName: 'notes', fieldType: 'Tx', value: 'first line wraps inside the field\nsecond line',
+      },
+    }] } },
+    { 1: { width: 240, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+
+  assert.equal(await countNativeAnnots(bytes), 0);
+  const flattened = await PDFDocument.load(bytes);
+  const content = pageContentText(flattened);
+  assert.match(content, /1 0\.95 0\.8 rg/);
+  assert.match(content, /0\.1 0\.65 0\.2 RG/);
+  const loadingTask = pdfjsLib.getDocument({ data: Uint8Array.from(bytes), disableWorker: true });
+  const renderedPage = await (await loadingTask.promise).getPage(1);
+  const operatorList = await renderedPage.getOperatorList();
+  const fontSizes = operatorList.fnArray
+    .map((fn, index) => (fn === pdfjsLib.OPS.setFont ? Number(operatorList.argsArray[index]?.[1]) : null))
+    .filter(Number.isFinite);
+  const shownTextCount = operatorList.fnArray.filter((fn) => fn === pdfjsLib.OPS.showText).length;
+  assert.ok(fontSizes.some((size) => Math.abs(size - 9) < 0.01), `expected 9pt text, got ${fontSizes}`);
+  assert.ok(shownTextCount >= 3, `expected wrapped lines, got ${shownTextCount}`);
+  await loadingTask.destroy();
+});
+
+test('print flatten removes a native link border and keeps only the screen link paint', async () => {
+  const sourceDoc = await PDFDocument.create();
+  const page = sourceDoc.addPage([200, 200]);
+  const linkRef = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot', Subtype: 'Link', Rect: [20, 140, 160, 165], F: 4,
+    Border: [0, 0, 3], C: [1, 0, 0], P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), sourceDoc.context.obj([linkRef]));
+  const sourceBytes = await sourceDoc.save();
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'native-link.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    { 1: { objects: [{
+      id: 'link', type: 'group', fill: '#2563eb', stroke: '#2563eb', opacity: 1,
+      isPdfImported: true, pdfAnnotationId: `${linkRef.objectNumber}R`, pdfAnnotationType: 'Link',
+      data: { type: 'text-markup', markupType: 'link', quads: [{
+        x1: 20, y1: 35, x2: 160, y2: 35, x3: 20, y3: 60, x4: 160, y4: 60,
+      }] },
+    }] } },
+    { 1: { width: 200, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+  assert.equal(await countNativeAnnots(bytes), 0);
+});
+
+test('print flatten defaults thick pen paths to round caps and joins', async () => {
+  const sourceDoc = await PDFDocument.create();
+  sourceDoc.addPage([200, 200]);
+  const sourceBytes = await sourceDoc.save();
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'round-pen.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    { 1: { objects: [{
+      id: 'pen', type: 'path', left: 0, top: 0, pathOffset: { x: 0, y: 0 },
+      scaleX: 1, scaleY: 1, stroke: '#7c3aed', strokeWidth: 20,
+      path: [['M', 20, 100], ['L', 180, 100]],
+    }] } },
+    { 1: { width: 200, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+  const flattened = await PDFDocument.load(bytes);
+  const content = pageContentText(flattened);
+  assert.match(content, /(?:^|\n)1 j(?:\n|$)/);
+  assert.match(content, /(?:^|\n)1 J(?:\n|$)/);
 });
 
 test('print flatten replaces the native original of a drawable UNEDITED imported copy', async () => {
@@ -195,7 +400,7 @@ test('print flatten embeds an imported stamp PNG and removes its native original
     { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 40, 20], Resources: {} },
   ));
   const nativeAnnot = sourceDoc.context.register(sourceDoc.context.obj({
-    Type: 'Annot', Subtype: 'Stamp', Rect: [20, 160, 60, 180], NM: 'print-stamp', AP: { N: appearance }, P: page.ref,
+    Type: 'Annot', Subtype: 'Stamp', Rect: [20, 160, 60, 180], F: 4, NM: 'print-stamp', AP: { N: appearance }, P: page.ref,
   }));
   page.node.set(PDFName.of('Annots'), sourceDoc.context.obj([nativeAnnot]));
   const sourceBytes = await sourceDoc.save();

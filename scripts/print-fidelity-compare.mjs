@@ -257,10 +257,32 @@ export async function comparePrintFidelity({ manifestPath, screenDir, printDir, 
     const screen = analyseCrop(screenCrop);
     const print = analyseCrop(printCrop);
     const fixtureMinimum = item.fixtureMinPaintedPixels ?? Math.max(8, Math.round(screenCrop.width * screenCrop.height * 0.0005));
-    const fixtureFailures = screen.paintedPixels < fixtureMinimum
-      ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${fixtureMinimum}`]
-      : [];
-    const failures = fixtureFailures.length ? [] : compareMetrics(screen, print, item.checks || ['bounds', 'colour'], item.tolerance);
+    const expectedScreenAbsent = item.tolerance?.expectedScreenAbsent === true;
+    const fixtureFailures = expectedScreenAbsent
+      ? (screen.paintedPixels > fixtureMinimum
+        ? [`screen paintedPixels ${screen.paintedPixels} > absent maximum ${fixtureMinimum}`]
+        : [])
+      : screen.paintedPixels < fixtureMinimum
+        ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${fixtureMinimum}`]
+        : [];
+    const expectedPrintAbsent = item.tolerance?.expectedPrintAbsent === true;
+    const maxAbsentPixels = item.tolerance?.maxAbsentPixels
+      ?? Math.max(8, Math.round(printCrop.width * printCrop.height * 0.0005));
+    const failures = fixtureFailures.length
+      ? []
+      : expectedPrintAbsent
+        ? (print.paintedPixels > maxAbsentPixels
+          ? [`print paintedPixels ${print.paintedPixels} > absent maximum ${maxAbsentPixels}`]
+          : [])
+        : compareMetrics(screen, print, item.checks || ['bounds', 'colour'], item.tolerance);
+    if (
+      !fixtureFailures.length
+      && !expectedPrintAbsent
+      && Number.isFinite(item.tolerance?.minPrintLightness)
+      && (!print.colour || print.colour.lightness < item.tolerance.minPrintLightness)
+    ) {
+      failures.push(`print lightness ${print.colour?.lightness ?? 'missing'} < ${item.tolerance.minPrintLightness}`);
+    }
     const safe = item.id.replace(/[^a-z0-9_.-]+/gi, '-');
     const beforePath = join(outputDir, `${safe}-screen.png`);
     const afterPath = join(outputDir, `${safe}-print.png`);
@@ -307,9 +329,14 @@ export async function validatePrintFidelityScreenFixture({ manifestPath, screenD
     const crop = await cropForRegion(page.screenRaster, item.bounds, page.pageSize);
     const screen = analyseCrop(crop);
     const minimum = item.fixtureMinPaintedPixels ?? Math.max(8, Math.round(crop.width * crop.height * 0.0005));
-    const failures = screen.paintedPixels < minimum
-      ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${minimum}`]
-      : [];
+    const expectedScreenAbsent = item.tolerance?.expectedScreenAbsent === true;
+    const failures = expectedScreenAbsent
+      ? (screen.paintedPixels > minimum
+        ? [`screen paintedPixels ${screen.paintedPixels} > absent maximum ${minimum}`]
+        : [])
+      : screen.paintedPixels < minimum
+        ? [`screen paintedPixels ${screen.paintedPixels} < fixture minimum ${minimum}`]
+        : [];
     if (item.knownUnsupported) {
       // Documented gap (e.g. /Stamp import unsupported): report, never fail.
       results.push({ id: item.id, type: item.type, page: item.page, pass: true, knownUnsupported: item.knownUnsupported, failures: [], screen });

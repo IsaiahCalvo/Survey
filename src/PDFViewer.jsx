@@ -3870,6 +3870,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // back without also moving addHistoryCheckpoint.
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
+  const [locallyDeletedPdfAnnotations, setLocallyDeletedPdfAnnotations] = useState([]);
+  useEffect(() => { setLocallyDeletedPdfAnnotations([]); }, [pdfFile]);
 
   // R2.2 Slice 2 (THE FLIP): the callout list is a pure DERIVED projection of
   // annotationsByPage -- every data.type==='callout' object's embedded
@@ -19024,7 +19026,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // empty/partial overwrite, no documentId-timing gate.
   const {
     initialHydration: normalAnnotationHydration,
-    deletedPdfAnnotations,
+    deletedPdfAnnotations: durableDeletedPdfAnnotations,
     commitEraseIntent: commitDurableEraseIntent,
     applyEraseHistoryTransition: applyDurableEraseHistoryTransition,
     restoreEraseDeletion: restoreDurableEraseDeletion,
@@ -19067,6 +19069,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
   });
+  const deletedPdfAnnotations = useMemo(() => [
+    ...new Map(
+      [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
+        .filter((entry) => entry?.pdfAnnotationId)
+        .map((entry) => [
+          `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`,
+          entry,
+        ]),
+    ).values(),
+  ], [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations]);
 
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
@@ -24081,6 +24093,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(
       markedIncomingJson,
     );
+    setLocallyDeletedPdfAnnotations((previous) => {
+      const keyFor = (entry) => `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`;
+      const nextImportedIds = new Set(
+        (normalizedIncomingAnnotations?.objects || [])
+          .filter((obj) => obj?.pdfAnnotationId)
+          .map((obj) => String(obj.pdfAnnotationId)),
+      );
+      const next = new Map(previous.map((entry) => [keyFor(entry), entry]));
+      (normalizedCurrentAnnotations?.objects || [])
+        .filter((obj) => obj?.pdfAnnotationId && !nextImportedIds.has(String(obj.pdfAnnotationId)))
+        .forEach((obj) => {
+          const entry = {
+            pageNumber: Number(pageNumber),
+            pdfAnnotationId: String(obj.pdfAnnotationId),
+            pdfAnnotationType: obj.pdfAnnotationType || obj?.data?.pdfAnnotationType || null,
+            ...(obj?.pdfNativeAnnotationIdentity || obj?.data?.pdfNativeAnnotationIdentity
+              ? { pdfNativeAnnotationIdentity: obj.pdfNativeAnnotationIdentity || obj.data.pdfNativeAnnotationIdentity }
+              : {}),
+          };
+          next.set(keyFor(entry), entry);
+        });
+      nextImportedIds.forEach((pdfAnnotationId) => {
+        next.delete(`${Number(pageNumber)}:${pdfAnnotationId}`);
+      });
+      const result = [...next.values()];
+      return JSON.stringify(result) === JSON.stringify(previous) ? previous : result;
+    });
     const rangeResizeIncomingAnnotations = source === 'text-markup:range-resize'
       ? preserveTextMarkupRangeResizeSiblings({
         previousPage: identityNormalizedCurrentAnnotations,
@@ -29809,6 +29848,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                   surveyMarkers: printableRegularPayload.surveyMarkers,
                   spaces,
                   printableDiagnostics: printableRegularPayload.diagnostics,
+                  screenAnnotationsByPage: annotationsByPageRef.current || {},
+                  deletedPdfAnnotations,
                 }
               );
               const annotatedBlob = new Blob([annotatedBytes], { type: 'application/pdf' });
@@ -30874,6 +30915,7 @@ ${pageBlocks}
       surveyMarkers={surveyMarkers}
       spaces={spaces}
       pageSizes={pageSizes}
+      deletedPdfAnnotations={deletedPdfAnnotations}
     />
   );
 

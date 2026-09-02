@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import * as Y from 'yjs';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import {
   ERASE_OUTBOX_MAP,
   MAX_ACKNOWLEDGED_ERASE_TOMBSTONES,
@@ -33,7 +34,10 @@ import {
   syncByPageToDoc,
 } from '../src/services/annotationDocStore.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
-import { buildPdfExportAnnotationPlan } from '../src/utils/pdfAnnotationsPdfLib.js';
+import {
+  buildPdfExportAnnotationPlan,
+  savePDFWithAnnotationsPdfLib,
+} from '../src/utils/pdfAnnotationsPdfLib.js';
 import { applyAnnotationHistoryAction } from '../src/utils/annotationLocalHistory.js';
 import { setAnnotationStorageKey } from '../src/utils/annotationStorageIdentity.js';
 import { buildAnnotationEraseDeleteHistoryRow } from '../src/services/annotationTrashHistory.js';
@@ -1139,6 +1143,57 @@ test('full erase tombstones imported shape and text markup atomically across Und
     ['61R', '62R'],
   );
   undoManager.destroy();
+});
+
+test('eraser tombstone removes the imported native annotation on export', async () => {
+  const source = await PDFDocument.create();
+  const page = source.addPage([200, 200]);
+  const nativeRef = source.context.register(source.context.obj({
+    Type: 'Annot', Subtype: 'Square', Rect: [20, 160, 40, 180],
+    Border: [0, 0, 1], F: 4, P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), source.context.obj([nativeRef]));
+  const sourceBytes = await source.save();
+  const imported = {
+    ...pageObject('eraser-export-shape', 'shape'),
+    isPdfImported: true,
+    pdfAnnotationId: `${nativeRef.objectNumber}R`,
+    pdfAnnotationType: 'Square',
+  };
+  const doc = new Y.Doc();
+  syncByPageToDoc(doc, { 1: { objects: [imported] } });
+  const intent = buildIntent({
+    mutationId: 'eraser-export-delete',
+    targets: [{
+      domain: 'page-object', storageKey: 'eraser-export-shape', kind: 'shape',
+      operation: 'delete', pageNumber: 1, index: 0, before: imported,
+    }],
+    gesture: { mode: 'full', radius: 20, points: [{ x: 20, y: 20 }] },
+  });
+  assert.equal((await commitEraseIntent({
+    doc,
+    intent,
+    actorUserId: 'owner',
+    eraserWriterId: 'owner-writer',
+    permissionContext: { mode: 'local-only' },
+    validateTarget: () => true,
+    materializePageTarget: () => docToByPage(doc)[1].objects[0],
+  })).status, 'committed');
+
+  const exportedBytes = await savePDFWithAnnotationsPdfLib(
+    {
+      name: 'eraser-export.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    docToByPage(doc),
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, deletedPdfAnnotations: docToDeletedPdfAnnotations(doc) },
+  );
+  const exported = await PDFDocument.load(exportedBytes);
+  assert.equal(exported.getPage(0).node.lookup(PDFName.of('Annots'))?.size?.() || 0, 0);
 });
 
 test('writer-scoped native deletion survives one writer Undo until every delete lane is gone', async () => {

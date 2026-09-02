@@ -21,6 +21,7 @@ const sameInputs = (left, right) => (
   && left.surveyMarkers === right.surveyMarkers
   && left.spaces === right.spaces
   && left.pageSizes === right.pageSizes
+  && left.deletedPdfAnnotations === right.deletedPdfAnnotations
 );
 
 const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
@@ -30,8 +31,9 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
   surveyMarkers,
   spaces,
   pageSizes,
+  deletedPdfAnnotations,
 }, ref) {
-  const currentInputs = { pdfFile, annotationsByPage, callouts, surveyMarkers, spaces, pageSizes };
+  const currentInputs = { pdfFile, annotationsByPage, callouts, surveyMarkers, spaces, pageSizes, deletedPdfAnnotations };
   const latestInputsRef = useRef(currentInputs);
   const [renderState, setRenderState] = useState(EMPTY_RENDER_STATE);
   const loadingTaskRef = useRef(null);
@@ -84,6 +86,8 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
             surveyMarkers: printablePayload.surveyMarkers,
             spaces,
             printableDiagnostics: printablePayload.diagnostics,
+            screenAnnotationsByPage: annotationsByPage,
+            deletedPdfAnnotations,
           },
         );
         if (!mountedRef.current || !sameInputs(jobInputs, latestInputsRef.current)) return false;
@@ -174,7 +178,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
       if (preparingPromiseRef.current === promise) preparingPromiseRef.current = null;
     });
     return promise;
-  }, [annotationsByPage, callouts, pageSizes, pdfFile, spaces, surveyMarkers]);
+  }, [annotationsByPage, callouts, deletedPdfAnnotations, pageSizes, pdfFile, spaces, surveyMarkers]);
 
   preparePrintRef.current = preparePrint;
 
@@ -209,7 +213,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
     printWhenReadyRef.current = false;
     setRenderState(EMPTY_RENDER_STATE);
     if (shouldRestart) preparePrint();
-  }, [annotationsByPage, callouts, pageSizes, pdfFile, preparePrint, renderState.inputs, spaces, surveyMarkers]);
+  }, [annotationsByPage, callouts, deletedPdfAnnotations, pageSizes, pdfFile, preparePrint, renderState.inputs, spaces, surveyMarkers]);
 
   useEffect(() => {
     const handleBeforePrint = () => {

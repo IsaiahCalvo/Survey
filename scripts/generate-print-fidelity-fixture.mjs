@@ -45,7 +45,7 @@ const fixedDate = new Date('2026-01-01T00:00:00.000Z');
 pdf.setCreationDate(fixedDate);
 pdf.setModificationDate(fixedDate);
 const font = await pdf.embedFont(StandardFonts.Helvetica);
-const rotations = [0, 90, 180, 270, 0, 0, 0, 0, 0];
+const rotations = [0, 90, 180, 270, 0, 0, 0, 0, 0, 0];
 const pages = rotations.map((rotation, index) => {
   const page = pdf.addPage([PAGE.width, PAGE.height]);
   if (rotation) page.setRotation({ type: 'degrees', angle: rotation });
@@ -57,7 +57,7 @@ const pages = rotations.map((rotation, index) => {
 pages[4].node.set(PDFName.of('CropBox'), pdf.context.obj([36, 72, 576, 720]));
 
 const addNative = (page, dict) => {
-  const ref = pdf.context.register(pdf.context.obj({ Type: 'Annot', P: page.ref, ...dict }));
+  const ref = pdf.context.register(pdf.context.obj({ Type: 'Annot', P: page.ref, F: 4, ...dict }));
   const annots = page.node.lookup(PDFName.of('Annots')) || pdf.context.obj([]);
   if (!page.node.get(PDFName.of('Annots'))) page.node.set(PDFName.of('Annots'), annots);
   annots.push(ref);
@@ -121,6 +121,26 @@ addNative(pages[6], {
   C: [0.94, 0.12, 0.12], CA: 1, Border: [0, 0, 2], NM: 'native-redaction-unapplied',
 });
 
+pages[9].drawText('PALE HIGHLIGHT TEXT', { x: 50, y: 382, size: 16, font, color: rgb(0.08, 0.08, 0.08) });
+pages[9].drawText('LINK WITHOUT A BOX', { x: 50, y: 520, size: 14, font, color: rgb(0.08, 0.08, 0.08) });
+const deletedPrintSquare = addNative(pages[9], {
+  Subtype: 'Square', Rect: [50, 650, 150, 710], C: [0.9, 0.1, 0.15],
+  Border: [0, 0, 5], NM: 'deleted-print-square',
+});
+addNative(pages[9], {
+  Subtype: 'Square', Rect: [190, 650, 290, 710], C: [0.9, 0.1, 0.8],
+  Border: [0, 0, 8], NM: 'hidden-print-square', F: 6,
+});
+const erasedPrintInk = addNative(pages[9], {
+  Subtype: 'Ink', Rect: [330, 650, 550, 710],
+  InkList: [[335, 680, 390, 700, 455, 670, 545, 695]],
+  C: [0.05, 0.4, 0.85], Border: [0, 0, 8], NM: 'erased-print-ink',
+});
+const nativeLink = addNative(pages[9], {
+  Subtype: 'Link', Rect: [48, 510, 245, 540], Border: [0, 0, 2], C: [0.1, 0.3, 0.9],
+  A: { S: 'URI', URI: 'https://example.com' }, NM: 'link-no-box',
+});
+
 const form = pdf.getForm();
 const checked = form.createCheckBox('fidelity.checked');
 checked.addToPage(pages[0], { x: 350, y: 475, width: 24, height: 24 });
@@ -131,6 +151,17 @@ const textField = form.createTextField('fidelity.text');
 textField.setText('BLUE BORDER');
 textField.addToPage(pages[0], { x: 395, y: 470, width: 150, height: 30, font });
 const textRef = pageOneAnnots.get(pageOneAnnots.size() - 1);
+const multilineField = form.createTextField('fidelity.multiline');
+multilineField.enableMultiline();
+multilineField.setText('First line wraps within the green field.\nSecond line stays inside.');
+multilineField.addToPage(pages[9], { x: 300, y: 500, width: 220, height: 72, font });
+multilineField.setFontSize(10);
+const pageTenAnnots = pages[9].node.lookup(PDFName.of('Annots'));
+const multilineRef = pageTenAnnots.get(pageTenAnnots.size() - 1);
+const multilineWidget = pdf.context.lookup(multilineRef);
+multilineWidget.set(PDFName.of('F'), pdf.context.obj(4));
+multilineWidget.set(PDFName.of('MK'), pdf.context.obj({ BG: [0.92, 1, 0.92], BC: [0.1, 0.6, 0.2] }));
+multilineWidget.set(PDFName.of('BS'), pdf.context.obj({ W: 2, S: 'S' }));
 
 const imported = [
   {
@@ -222,6 +253,26 @@ const annotationsByPage = {
     isPdfImported: true, pdfAnnotationId: 'native-stamp', pdfAnnotationType: 'Stamp',
     data: { pdfStampAppearanceRotationBaked: false },
   }] },
+  10: { width: 612, height: 792, objects: [
+    { id: 'imported-delete-square', type: 'rect', left: 50, top: 82, width: 100, height: 60,
+      stroke: '#e61926', strokeWidth: 5, fill: 'transparent', isPdfImported: true,
+      pdfAnnotationId: `${deletedPrintSquare.objectNumber}R`, pdfAnnotationType: 'Square' },
+    pathObject('imported-erase-ink', [['M', 335, 112], ['C', 390, 92, 455, 122, 545, 97]], {
+      stroke: '#0d66d9', strokeWidth: 8, isPdfImported: true,
+      pdfAnnotationId: `${erasedPrintInk.objectNumber}R`, pdfAnnotationType: 'Ink',
+    }),
+    { ...markup('imported-link-no-box', 'link', [48, 252, 245, 282], '#1a4de6'),
+      isPdfImported: true, pdfAnnotationId: `${nativeLink.objectNumber}R`, pdfAnnotationType: 'Link' },
+    { type: 'form-field', data: { type: 'form-field', fieldId: `${multilineRef.objectNumber}R`,
+      fieldName: 'fidelity.multiline', fieldType: 'Tx',
+      value: 'First line wraps within the green field.\nSecond line stays inside.' } },
+    pathObject('translucent-multiply-highlighter', [['M', 45, 405], ['L', 245, 405]], {
+      stroke: '#facc15', strokeWidth: 22, opacity: 0.35, globalCompositeOperation: 'multiply',
+    }),
+    pathObject('round-cap-pen', [['M', 60, 500], ['L', 250, 500]], {
+      stroke: '#7c3aed', strokeWidth: 20,
+    }),
+  ] },
 };
 
 const regions = [
@@ -267,6 +318,13 @@ const regions = [
   region('native-stamp', 'native-stamp', 8, [100, 180, 270, 345], ['bounds', 'orientation', 'textPresence']),
   region('cropbox-offset-rect', 'cropbox-rect', 5, [50, 75, 250, 205]),
   region('cropbox-highlight', 'cropbox-highlight', 5, [55, 230, 295, 290]),
+  region('deleted-imported-mark', 'deleted-imported-mark', 10, [35, 65, 165, 160], ['bounds', 'colour'], { expectedPrintAbsent: true }),
+  region('hidden-native-mark', 'hidden-native-mark', 10, [175, 65, 305, 160], [], { expectedScreenAbsent: true, expectedPrintAbsent: true }),
+  region('erased-imported-mark', 'erased-imported-mark', 10, [315, 65, 565, 160], ['bounds', 'colour'], { expectedPrintAbsent: true }),
+  region('link-no-box', 'link', 10, [35, 235, 260, 295], ['bounds', 'colour']),
+  region('multiline-form', 'form-text-multiline', 10, [285, 205, 535, 310], ['bounds', 'colour', 'textPresence']),
+  region('translucent-multiply-highlighter', 'highlighter', 10, [35, 370, 260, 430], ['bounds', 'fillCoverage', 'colour'], { minPrintLightness: 55 }),
+  region('round-cap-pen', 'pen', 10, [35, 475, 275, 525], ['bounds', 'colour', 'strokeWeight']),
 ];
 
 await mkdir(fixtureDir, { recursive: true });

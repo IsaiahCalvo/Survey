@@ -31,6 +31,7 @@ import {
   scale as scaleOperator,
   setFillingRgbColor,
   setGraphicsState,
+  setLineJoin,
   translate as translateOperator,
 } from 'pdf-lib';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
@@ -2965,6 +2966,87 @@ const applyNativePdfAnnotationRemovalPlan = ({
   }
 };
 
+const PDF_ANNOTATION_FLAG_INVISIBLE = 1;
+const PDF_ANNOTATION_FLAG_HIDDEN = 2;
+const PDF_ANNOTATION_FLAG_PRINT = 4;
+const PDF_ANNOTATION_FLAG_NO_VIEW = 32;
+
+const nativeAnnotationPrintsWithScreen = (pdfDoc, dict) => {
+  const rawFlags = dict?.get?.(PDFName.of('F'));
+  const flags = rawFlags === undefined ? 0 : readPdfNativeNumber(pdfDoc, rawFlags);
+  if (!Number.isInteger(flags)) return false;
+  return Boolean(flags & PDF_ANNOTATION_FLAG_PRINT)
+    && !(flags & PDF_ANNOTATION_FLAG_INVISIBLE)
+    && !(flags & PDF_ANNOTATION_FLAG_HIDDEN)
+    && !(flags & PDF_ANNOTATION_FLAG_NO_VIEW);
+};
+
+const nativeAnnotationMatchesForObject = (pdfDoc, pageIndex, obj) => {
+  const page = pdfDoc.getPage(pageIndex);
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  const pdfAnnotationId = obj?.pdfAnnotationId || obj?.data?.fieldId || obj?.fieldId;
+  if (!(annots instanceof PDFArray) || !pdfAnnotationId) return [];
+  return findMatchingNativePdfAnnotationIndices(pdfDoc, annots, pdfAnnotationId, {
+    pageIndex,
+    pdfAnnotationType: obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || null,
+    pdfNativeAnnotationIdentity:
+      obj?.data?.pdfNativeAnnotationIdentity
+      || obj?.pdfNativeAnnotationIdentity
+      || null,
+  });
+};
+
+const importedObjectAllowsPrint = (pdfDoc, pageIndex, obj) => {
+  if (!isPdfImportedObject(obj)) return true;
+  const page = pdfDoc.getPage(pageIndex);
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  if (!(annots instanceof PDFArray)) return true;
+  const indices = nativeAnnotationMatchesForObject(pdfDoc, pageIndex, obj);
+  if (indices.length === 0) return true;
+  return indices.every((index) => {
+    const dict = pdfDoc.context.lookupMaybe(annots.get(index), PDFDict);
+    return dict instanceof PDFDict && nativeAnnotationPrintsWithScreen(pdfDoc, dict);
+  });
+};
+
+// Browser print starts with the source PDF. Keep only native dictionaries that
+// still back a screen object and are allowed by /F. Every other native annot is
+// absent from the app view, so leaving it for pdf.js would leak hidden content.
+const stripNativeAnnotationsNotOnScreen = (pdfDoc, annotationsByPage) => {
+  const diagnostics = { kept: 0, removed: 0, removedByFlags: 0 };
+  pdfDoc.getPages().forEach((page, pageIndex) => {
+    const annots = page.node.lookup(PDFName.of('Annots'));
+    if (!(annots instanceof PDFArray)) return;
+    const pageNumber = pageIndex + 1;
+    const objects = annotationsByPage?.[pageNumber]?.objects
+      || annotationsByPage?.[String(pageNumber)]?.objects
+      || [];
+    const keepIndices = new Set();
+    for (const obj of objects) {
+      if (!isPdfImportedObject(obj) && !isFormFieldObject(obj)) continue;
+      for (const index of nativeAnnotationMatchesForObject(pdfDoc, pageIndex, obj)) {
+        const dict = pdfDoc.context.lookupMaybe(annots.get(index), PDFDict);
+        if (dict instanceof PDFDict && nativeAnnotationPrintsWithScreen(pdfDoc, dict)) {
+          keepIndices.add(index);
+        }
+      }
+    }
+    for (let index = annots.size() - 1; index >= 0; index -= 1) {
+      if (keepIndices.has(index)) {
+        diagnostics.kept += 1;
+        continue;
+      }
+      const dict = pdfDoc.context.lookupMaybe(annots.get(index), PDFDict);
+      if (dict instanceof PDFDict && !nativeAnnotationPrintsWithScreen(pdfDoc, dict)) {
+        diagnostics.removedByFlags += 1;
+      }
+      annots.remove(index);
+      diagnostics.removed += 1;
+    }
+  });
+  return diagnostics;
+};
+
 const parsePdfDrawColor = (value, fallback = '#000000') => {
   if (value === null || value === undefined || value === '' || value === 'transparent') return null;
   const text = String(value || fallback).trim();
@@ -3588,15 +3670,22 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
     // origin {x: 0, y: pageHeight} + RAW app-space (y-down) path coordinates.
     // The default origin (page bottom-left) negates y off-page.
+    const objectOpacity = Number.isFinite(Number(shifted?.opacity))
+      ? Math.max(0, Math.min(1, Number(shifted.opacity)))
+      : 1;
+    page.pushOperators(pushGraphicsState(), setLineJoin(1));
     page.drawSvgPath(path, {
       x: 0,
       y: pageHeight,
       borderColor: stroke?.color,
       borderWidth: strokeWidth * transform.strokeScale,
-      borderOpacity: stroke?.opacity,
-      borderLineCap: shifted?.strokeLineCap === 'round' ? LineCapStyle.Round : undefined,
+      borderOpacity: (stroke?.opacity ?? 1) * objectOpacity,
+      borderLineCap: String(shifted?.strokeLineCap || 'round').toLowerCase() === 'round'
+        ? LineCapStyle.Round
+        : undefined,
       blendMode: shifted?.globalCompositeOperation === 'multiply' ? BlendMode.Multiply : undefined,
     });
+    page.pushOperators(popGraphicsState());
     return 1;
   }
   if (type === 'rect') {
@@ -3810,14 +3899,89 @@ const inheritedWidgetValue = (pdfDoc, widget, key) => {
   return null;
 };
 
-// PdfjsFormLayer owns the on-screen form look. It deliberately replaces a
-// document's widget border with rgba(60,130,255,.55) and its background with
-// rgba(60,130,255,.06). A printer never sees that HTML layer, so bake the same
-// chrome and saved value into page content, then remove the Widget annotation.
-// This also avoids viewer-specific /NeedAppearances handling for checked boxes.
+const widgetColor = (pdfDoc, widget, key) => {
+  const appearance = pdfDoc.context.lookupMaybe(widget.get(PDFName.of('MK')), PDFDict);
+  const components = appearance
+    ? readPdfNativeNumberArray(pdfDoc, appearance.get(PDFName.of(key)))
+    : null;
+  if (components?.length === 1) return rgb(components[0], components[0], components[0]);
+  if (components?.length === 3) return rgb(...components);
+  if (components?.length === 4) {
+    const [c, m, y, k] = components;
+    return rgb(1 - Math.min(1, c + k), 1 - Math.min(1, m + k), 1 - Math.min(1, y + k));
+  }
+  return null;
+};
+
+const widgetBorderWidth = (pdfDoc, widget) => {
+  const borderStyle = pdfDoc.context.lookupMaybe(widget.get(PDFName.of('BS')), PDFDict);
+  const styleWidth = borderStyle
+    ? readPdfNativeNumber(pdfDoc, borderStyle.get(PDFName.of('W')))
+    : null;
+  if (Number.isFinite(styleWidth)) return Math.max(0, styleWidth);
+  const border = readPdfNativeNumberArray(pdfDoc, widget.get(PDFName.of('Border')));
+  return Math.max(0, Number(border?.[2]) || 0);
+};
+
+const fieldDefaultFontSize = (pdfDoc, widget) => {
+  const da = decodedPdfText(inheritedWidgetValue(pdfDoc, widget, 'DA'));
+  const match = da.match(/(?:^|\s)(\d*\.?\d+)\s+Tf(?:\s|$)/);
+  const size = Number(match?.[1]);
+  return Number.isFinite(size) && size > 0 ? size : null;
+};
+
+const fieldFlags = (pdfDoc, widget) => {
+  const value = inheritedWidgetValue(pdfDoc, widget, 'Ff');
+  return Math.max(0, Math.trunc(readPdfNativeNumber(pdfDoc, value) || 0));
+};
+
+const wrapFieldText = (text, font, size, maxWidth) => {
+  const fits = (value) => {
+    try { return font.widthOfTextAtSize(value, size) <= maxWidth; } catch { return true; }
+  };
+  const splitLongWord = (word) => {
+    const parts = [];
+    let part = '';
+    for (const character of word) {
+      if (part && !fits(part + character)) {
+        parts.push(part);
+        part = character;
+      } else {
+        part += character;
+      }
+    }
+    if (part) parts.push(part);
+    return parts;
+  };
+  const lines = [];
+  String(text || '').split(/\r\n?|\n/).forEach((paragraph) => {
+    if (!paragraph) {
+      lines.push('');
+      return;
+    }
+    let line = '';
+    paragraph.split(/\s+/).filter(Boolean).forEach((word) => {
+      const parts = fits(word) ? [word] : splitLongWord(word);
+      parts.forEach((part) => {
+        const candidate = line ? `${line} ${part}` : part;
+        if (line && !fits(candidate)) {
+          lines.push(line);
+          line = part;
+        } else {
+          line = candidate;
+        }
+      });
+    });
+    lines.push(line);
+  });
+  return lines;
+};
+
+// Bake form values with each widget's own appearance settings. This avoids
+// viewer-specific /NeedAppearances handling while keeping print true to /MK,
+// /BS, /DA, and the multiline field flag.
 const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
   const diagnostics = { widgetsFlattened: 0, checkboxesFlattened: 0, textFieldsFlattened: 0 };
-  const blue = rgb(60 / 255, 130 / 255, 1);
   const black = rgb(17 / 255, 17 / 255, 17 / 255);
   const white = rgb(1, 1, 1);
 
@@ -3838,16 +4002,17 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
       const height = Math.abs(y2 - y1);
       if (!(width > 0 && height > 0)) continue;
 
+      const backgroundColor = widgetColor(pdfDoc, widget, 'BG');
+      const borderColor = widgetColor(pdfDoc, widget, 'BC');
+      const borderWidth = widgetBorderWidth(pdfDoc, widget);
       page.drawRectangle({
         x,
         y,
         width,
         height,
-        color: blue,
-        opacity: 0.06,
-        borderColor: blue,
-        borderOpacity: 0.55,
-        borderWidth: 1,
+        color: backgroundColor || undefined,
+        borderColor: borderWidth > 0 ? (borderColor || black) : undefined,
+        borderWidth,
       });
 
       const fieldType = decodedPdfText(inheritedWidgetValue(pdfDoc, widget, 'FT'));
@@ -3856,7 +4021,8 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
         const state = decodedPdfText(widget.get(PDFName.of('AS')) || value);
         if (state && state !== 'Off') {
           const pad = Math.max(1, Math.min(width, height) * 0.12);
-          page.drawRectangle({ x: x + pad, y: y + pad, width: width - 2 * pad, height: height - 2 * pad, color: blue });
+          const checkColor = borderColor || black;
+          page.drawRectangle({ x: x + pad, y: y + pad, width: width - 2 * pad, height: height - 2 * pad, color: checkColor });
           page.drawLine({
             start: { x: x + width * 0.23, y: y + height * 0.52 },
             end: { x: x + width * 0.43, y: y + height * 0.3 },
@@ -3874,17 +4040,29 @@ const flattenFormWidgetsForPrint = (pdfDoc, fonts) => {
       } else if (fieldType === 'Tx') {
         const text = decodedPdfText(value);
         if (text) {
-          let size = Math.max(4, Math.min(22, height * 0.72));
-          try {
-            const textWidth = fonts.regular.widthOfTextAtSize(text, size);
-            if (textWidth > width - 4) size = Math.max(4, size * (width - 4) / textWidth);
-          } catch { /* keep the field-height size for unencodable text */ }
-          page.drawText(text, {
-            x: x + 2,
-            y: y + Math.max(1, (height - size) / 2),
-            size,
-            font: fonts.regular,
-            color: black,
+          const multiline = Boolean(fieldFlags(pdfDoc, widget) & (1 << 12));
+          let size = fieldDefaultFontSize(pdfDoc, widget)
+            || Math.max(4, Math.min(22, height * (multiline ? 0.22 : 0.72)));
+          const innerWidth = Math.max(1, width - 4);
+          if (!multiline && !fieldDefaultFontSize(pdfDoc, widget)) {
+            try {
+              const textWidth = fonts.regular.widthOfTextAtSize(text, size);
+              if (textWidth > innerWidth) size = Math.max(4, size * innerWidth / textWidth);
+            } catch { /* keep the field-height size for unencodable text */ }
+          }
+          const lines = multiline ? wrapFieldText(text, fonts.regular, size, innerWidth) : [text.replace(/[\r\n]+/g, ' ')];
+          const lineHeight = size * 1.2;
+          const maxLines = Math.max(1, Math.floor((height - 4) / lineHeight));
+          lines.slice(0, maxLines).forEach((line, lineIndex) => {
+            page.drawText(line, {
+              x: x + 2,
+              y: multiline
+                ? y + height - 2 - size - lineIndex * lineHeight
+                : y + Math.max(1, (height - size) / 2),
+              size,
+              font: fonts.regular,
+              color: black,
+            });
           });
         }
         diagnostics.textFieldsFlattened += 1;
@@ -3904,6 +4082,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
 ) => {
   const actionType = options?.actionType || 'pdf-print-flattened-regular-annotations';
   const documentId = options?.documentId || null;
+  const screenAnnotationsByPage = options?.screenAnnotationsByPage || annotationsByPage || {};
   const arrayBuffer = await pdfFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer);
   const fonts = {
@@ -3999,6 +4178,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     const uniformHighlightGroups = new Map();
     withPrintPageTransform(page, pageHeight, () => {
       (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+        if (!importedObjectAllowsPrint(pdfDoc, pageIndex, obj)) return;
         const isUniformHighlight = obj?.data?.type === 'text-markup'
           && obj?.data?.markupType === 'highlight'
           && obj?.data?.overlapMode === 'uniform';
@@ -4013,9 +4193,10 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
         trackEditedImportDraw(pageNumber, obj, drawnCount);
       });
       uniformHighlightGroups.forEach((objects) => {
-        const drawnCount = drawUniformHighlightMask(page, objects, pageHeight);
+        const printableObjects = objects.filter((obj) => importedObjectAllowsPrint(pdfDoc, pageIndex, obj));
+        const drawnCount = drawUniformHighlightMask(page, printableObjects, pageHeight);
         flattenedPrintAnnotationsAdded += drawnCount;
-        objects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
+        printableObjects.forEach((obj) => trackEditedImportDraw(pageNumber, obj, drawnCount));
       });
     });
   });
@@ -4066,13 +4247,35 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     deletedImportedNativeCopiesRemoved: 0,
     deletedImportedNativeCopiesRemoveMisses: 0,
   };
+  const deletedNativeRequests = (Array.isArray(options?.deletedPdfAnnotations)
+    ? options.deletedPdfAnnotations
+    : [])
+    .filter((entry) => entry?.pdfAnnotationId)
+    .map((entry) => ({
+      kind: 'deleted',
+      pageNumber: Number(entry.pageNumber),
+      pdfAnnotationId: entry.pdfAnnotationId,
+      pdfAnnotationType: entry.pdfAnnotationType,
+      pdfNativeAnnotationIdentity:
+        entry.pdfNativeAnnotationIdentity
+        || entry.data?.pdfNativeAnnotationIdentity
+        || null,
+    }));
   applyNativePdfAnnotationRemovalPlan({
     pdfDoc,
-    requests: [...editedImportTrackers.values()]
-      .filter((tracker) => tracker.drawn > 0 && tracker.drawn === tracker.expected)
-      .map((tracker) => tracker.request),
+    requests: [
+      ...deletedNativeRequests,
+      ...[...editedImportTrackers.values()]
+        .filter((tracker) => tracker.drawn > 0 && tracker.drawn === tracker.expected)
+        .map((tracker) => tracker.request),
+    ],
     exportDiagnostics: editedImportDiagnostics,
   });
+
+  const nativeScreenParityDiagnostics = stripNativeAnnotationsNotOnScreen(
+    pdfDoc,
+    screenAnnotationsByPage,
+  );
 
   const regularAnnotationsIncluded =
     (Number(printablePayload.diagnostics?.included?.fabric) || 0)
@@ -4109,6 +4312,11 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
     scopedAnnotationsExcluded,
     editedImportedNativeCopiesRemoved: editedImportDiagnostics.editedImportedNativeCopiesRemoved,
     editedImportedNativeCopiesRemoveMisses: editedImportDiagnostics.editedImportedNativeCopiesRemoveMisses,
+    deletedImportedNativeCopiesRemoved: editedImportDiagnostics.deletedImportedNativeCopiesRemoved,
+    deletedImportedNativeCopiesRemoveMisses: editedImportDiagnostics.deletedImportedNativeCopiesRemoveMisses,
+    nativeAnnotationsKeptForScreenParity: nativeScreenParityDiagnostics.kept,
+    nativeAnnotationsRemovedForScreenParity: nativeScreenParityDiagnostics.removed,
+    nativeAnnotationsRemovedByFlags: nativeScreenParityDiagnostics.removedByFlags,
     printableDiagnostics,
   }));
   return pdfBytes;

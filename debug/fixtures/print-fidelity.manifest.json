@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 5424,
+  "pdfSize": 6578,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -62,6 +62,12 @@
     },
     {
       "page": 9,
+      "rotation": 0,
+      "width": 612,
+      "height": 792
+    },
+    {
+      "page": 10,
       "rotation": 0,
       "width": 612,
       "height": 792
@@ -361,7 +367,7 @@
           "strokeWidth": 1,
           "opacity": 1,
           "isPdfImported": true,
-          "pdfAnnotationId": "23R",
+          "pdfAnnotationId": "25R",
           "pdfAnnotationType": "Square"
         },
         {
@@ -388,7 +394,7 @@
           "strokeWidth": 1,
           "opacity": 1,
           "isPdfImported": true,
-          "pdfAnnotationId": "24R",
+          "pdfAnnotationId": "26R",
           "pdfAnnotationType": "Polygon"
         },
         {
@@ -416,14 +422,14 @@
             ]
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "25R",
+          "pdfAnnotationId": "27R",
           "pdfAnnotationType": "StrikeOut"
         },
         {
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "39R",
+            "fieldId": "45R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -433,7 +439,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "45R",
+            "fieldId": "51R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -618,7 +624,7 @@
             ]
           ],
           "isPdfImported": true,
-          "pdfAnnotationId": "26R",
+          "pdfAnnotationId": "28R",
           "pdfAnnotationType": "Ink"
         },
         {
@@ -632,7 +638,7 @@
           "strokeWidth": 3,
           "fill": "rgba(204,250,235,0.55)",
           "isPdfImported": true,
-          "pdfAnnotationId": "27R",
+          "pdfAnnotationId": "29R",
           "pdfAnnotationType": "Circle"
         },
         {
@@ -647,7 +653,7 @@
           "fontSize": 18,
           "fill": "#7333e6",
           "isPdfImported": true,
-          "pdfAnnotationId": "28R",
+          "pdfAnnotationId": "30R",
           "pdfAnnotationType": "FreeText"
         },
         {
@@ -675,7 +681,7 @@
             ]
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "29R",
+          "pdfAnnotationId": "31R",
           "pdfAnnotationType": "Highlight"
         },
         {
@@ -692,7 +698,7 @@
             "pdfCloudIntensity": 2
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "30R",
+          "pdfAnnotationId": "32R",
           "pdfAnnotationType": "Square"
         },
         {
@@ -707,7 +713,7 @@
           "lineEnding2": "ClosedArrow",
           "tool": "arrow",
           "isPdfImported": true,
-          "pdfAnnotationId": "31R",
+          "pdfAnnotationId": "33R",
           "pdfAnnotationType": "Line"
         }
       ]
@@ -894,6 +900,165 @@
           "data": {
             "pdfStampAppearanceRotationBaked": false
           }
+        }
+      ]
+    },
+    "10": {
+      "width": 612,
+      "height": 792,
+      "objects": [
+        {
+          "id": "imported-delete-square",
+          "type": "rect",
+          "left": 50,
+          "top": 82,
+          "width": 100,
+          "height": 60,
+          "stroke": "#e61926",
+          "strokeWidth": 5,
+          "fill": "transparent",
+          "isPdfImported": true,
+          "pdfAnnotationId": "37R",
+          "pdfAnnotationType": "Square"
+        },
+        {
+          "id": "imported-erase-ink",
+          "type": "path",
+          "left": 0,
+          "top": 0,
+          "pathOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "scaleX": 1,
+          "scaleY": 1,
+          "angle": 0,
+          "stroke": "#0d66d9",
+          "strokeWidth": 8,
+          "fill": "transparent",
+          "opacity": 1,
+          "strokeLineCap": "round",
+          "strokeLineJoin": "round",
+          "path": [
+            [
+              "M",
+              335,
+              112
+            ],
+            [
+              "C",
+              390,
+              92,
+              455,
+              122,
+              545,
+              97
+            ]
+          ],
+          "isPdfImported": true,
+          "pdfAnnotationId": "39R",
+          "pdfAnnotationType": "Ink"
+        },
+        {
+          "id": "imported-link-no-box",
+          "type": "group",
+          "fill": "#1a4de6",
+          "stroke": "#1a4de6",
+          "opacity": 1,
+          "data": {
+            "type": "text-markup",
+            "markupType": "link",
+            "overlapMode": "layered",
+            "lineWidth": 1.2,
+            "quads": [
+              {
+                "x1": 48,
+                "y1": 252,
+                "x2": 245,
+                "y2": 252,
+                "x3": 48,
+                "y3": 282,
+                "x4": 245,
+                "y4": 282
+              }
+            ]
+          },
+          "isPdfImported": true,
+          "pdfAnnotationId": "40R",
+          "pdfAnnotationType": "Link"
+        },
+        {
+          "type": "form-field",
+          "data": {
+            "type": "form-field",
+            "fieldId": "54R",
+            "fieldName": "fidelity.multiline",
+            "fieldType": "Tx",
+            "value": "First line wraps within the green field.\nSecond line stays inside."
+          }
+        },
+        {
+          "id": "translucent-multiply-highlighter",
+          "type": "path",
+          "left": 0,
+          "top": 0,
+          "pathOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "scaleX": 1,
+          "scaleY": 1,
+          "angle": 0,
+          "stroke": "#facc15",
+          "strokeWidth": 22,
+          "fill": "transparent",
+          "opacity": 0.35,
+          "strokeLineCap": "round",
+          "strokeLineJoin": "round",
+          "path": [
+            [
+              "M",
+              45,
+              405
+            ],
+            [
+              "L",
+              245,
+              405
+            ]
+          ],
+          "globalCompositeOperation": "multiply"
+        },
+        {
+          "id": "round-cap-pen",
+          "type": "path",
+          "left": 0,
+          "top": 0,
+          "pathOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "scaleX": 1,
+          "scaleY": 1,
+          "angle": 0,
+          "stroke": "#7c3aed",
+          "strokeWidth": 20,
+          "fill": "transparent",
+          "opacity": 1,
+          "strokeLineCap": "round",
+          "strokeLineJoin": "round",
+          "path": [
+            [
+              "M",
+              60,
+              500
+            ],
+            [
+              "L",
+              250,
+              500
+            ]
+          ]
         }
       ]
     }
@@ -1597,6 +1762,124 @@
       "checks": [
         "bounds",
         "colour"
+      ]
+    },
+    {
+      "id": "deleted-imported-mark",
+      "type": "deleted-imported-mark",
+      "page": 10,
+      "bounds": [
+        35,
+        65,
+        165,
+        160
+      ],
+      "checks": [
+        "bounds",
+        "colour"
+      ],
+      "tolerance": {
+        "expectedPrintAbsent": true
+      }
+    },
+    {
+      "id": "hidden-native-mark",
+      "type": "hidden-native-mark",
+      "page": 10,
+      "bounds": [
+        175,
+        65,
+        305,
+        160
+      ],
+      "checks": [],
+      "tolerance": {
+        "expectedScreenAbsent": true,
+        "expectedPrintAbsent": true
+      }
+    },
+    {
+      "id": "erased-imported-mark",
+      "type": "erased-imported-mark",
+      "page": 10,
+      "bounds": [
+        315,
+        65,
+        565,
+        160
+      ],
+      "checks": [
+        "bounds",
+        "colour"
+      ],
+      "tolerance": {
+        "expectedPrintAbsent": true
+      }
+    },
+    {
+      "id": "link-no-box",
+      "type": "link",
+      "page": 10,
+      "bounds": [
+        35,
+        235,
+        260,
+        295
+      ],
+      "checks": [
+        "bounds",
+        "colour"
+      ]
+    },
+    {
+      "id": "multiline-form",
+      "type": "form-text-multiline",
+      "page": 10,
+      "bounds": [
+        285,
+        205,
+        535,
+        310
+      ],
+      "checks": [
+        "bounds",
+        "colour",
+        "textPresence"
+      ]
+    },
+    {
+      "id": "translucent-multiply-highlighter",
+      "type": "highlighter",
+      "page": 10,
+      "bounds": [
+        35,
+        370,
+        260,
+        430
+      ],
+      "checks": [
+        "bounds",
+        "fillCoverage",
+        "colour"
+      ],
+      "tolerance": {
+        "minPrintLightness": 55
+      }
+    },
+    {
+      "id": "round-cap-pen",
+      "type": "pen",
+      "page": 10,
+      "bounds": [
+        35,
+        475,
+        275,
+        525
+      ],
+      "checks": [
+        "bounds",
+        "colour",
+        "strokeWeight"
       ]
     }
   ]
