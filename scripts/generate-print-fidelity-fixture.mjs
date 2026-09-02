@@ -45,9 +45,12 @@ const fixedDate = new Date('2026-01-01T00:00:00.000Z');
 pdf.setCreationDate(fixedDate);
 pdf.setModificationDate(fixedDate);
 const font = await pdf.embedFont(StandardFonts.Helvetica);
-const rotations = [0, 90, 180, 270, 0, 0, 0, 0, 0, 0];
-const pages = rotations.map((rotation, index) => {
-  const page = pdf.addPage([PAGE.width, PAGE.height]);
+const pageSpecs = [
+  ...[0, 90, 180, 270, 0, 0, 0, 0, 0, 0].map((rotation) => ({ ...PAGE, rotation })),
+  { width: 792, height: 612, rotation: 0 },
+];
+const pages = pageSpecs.map(({ width, height, rotation }, index) => {
+  const page = pdf.addPage([width, height]);
   if (rotation) page.setRotation({ type: 'degrees', angle: rotation });
   page.drawText(`PRINT FIDELITY PAGE ${index + 1} ROTATION ${rotation}`, {
     x: 28, y: 760, size: 10, font, color: rgb(0.78, 0.78, 0.78),
@@ -215,8 +218,8 @@ const annotationsByPage = {
     ...imported,
   ] },
   2: { width: 792, height: 612, objects: [
-    { id: 'textbox-format', type: 'textbox', left: 60, top: 80, width: 230, height: 70, text: 'Bold italic violet', fontFamily: 'Helvetica', fontSize: 22, fontWeight: 'bold', fontStyle: 'italic', underline: true, fill: '#7c3aed', angle: 8 },
-    { id: 'counter', type: 'circle', left: 350, top: 90, radius: 22, fill: '#ef4444', data: { id: 'counter', type: 'counter', annotationType: 'counter', displayNumber: '12', numberColor: '#ffffff', pointerAngle: 225, seriesId: 'print-fidelity-series', seriesStart: 1, createdAt: 1 } },
+    { id: 'textbox-format', type: 'textbox', left: 60, top: 65, width: 230, height: 80, text: 'FIRST WRAPPED LINE\nSECOND WRAPPED LINE\nTHIRD WRAPPED LINE', fontFamily: 'Helvetica', fontSize: 16, lineHeight: 1, fontWeight: 'bold', fill: '#7c3aed', backgroundColor: '#fef3c7', stroke: '#7c3aed', strokeWidth: 3, angle: 8 },
+    { id: 'counter', type: 'circle', left: 350, top: 90, radius: 22, fill: '#ef4444', data: { id: 'counter', type: 'counter', annotationType: 'counter', number: '12', numberColor: '#ffffff', pointerAngle: 225, seriesId: 'print-fidelity-series', seriesStart: 1, createdAt: 1 } },
     { id: 'space-shape', type: 'rect', left: 60, top: 220, width: 150, height: 70, stroke: '#2563eb', strokeWidth: 3, fill: '#dbeafe', spaceId: 'space-1' },
     { id: 'region-shape', type: 'ellipse', left: 270, top: 220, rx: 70, ry: 35, stroke: '#16a34a', strokeWidth: 3, fill: 'rgba(22,163,74,0.12)' },
   ] },
@@ -275,6 +278,10 @@ const annotationsByPage = {
       stroke: '#7c3aed', strokeWidth: 20,
     }),
   ] },
+  11: { width: 792, height: 612, objects: [
+    { id: 'landscape-page', type: 'rect', left: 70, top: 100, width: 650, height: 120,
+      stroke: '#0f766e', strokeWidth: 5, fill: '#ccfbf1' },
+  ] },
 };
 
 const regions = [
@@ -298,7 +305,7 @@ const regions = [
   // screen, but glyph placement comes from a font-metric approximation
   // (≤4pt residual, eye-verified identical at print size). 8px on the common
   // grid; the un-rotated / mis-placed failures this exists to catch were 10%+.
-  region('textbox-format', 'textbox', 2, [45, 60, 315, 175], ['bounds', 'orientation', 'colour', 'textPresence'], { boundsPixels: 8 }),
+  region('textbox-format', 'textbox', 2, [45, 50, 315, 165], ['bounds', 'fillCoverage', 'colour', 'textPresence'], { boundsPixels: 8 }),
   region('counter', 'counter', 2, [320, 55, 405, 150], ['bounds', 'fillCoverage', 'colour', 'textPresence']),
   region('survey-marker', 'survey-marker', 6, [160, 160, 390, 255]),
   region('space-shape', 'space', 2, [45, 205, 225, 310]),
@@ -331,6 +338,7 @@ const regions = [
   region('multiline-form', 'form-text-multiline', 10, [285, 205, 535, 310], ['bounds', 'colour', 'textPresence']),
   region('translucent-multiply-highlighter', 'highlighter', 10, [35, 370, 260, 430], ['bounds', 'fillCoverage', 'colour'], { minPrintLightness: 55 }),
   region('round-cap-pen', 'pen', 10, [35, 475, 275, 525], ['bounds', 'colour', 'strokeWeight']),
+  region('landscape-page', 'landscape-page', 11, [50, 80, 740, 240], ['bounds', 'fillCoverage', 'colour']),
 ];
 
 await mkdir(fixtureDir, { recursive: true });
@@ -341,11 +349,11 @@ const manifest = {
   pdfSize: bytes.byteLength,
   fixedZoom: 1,
   rasterScale: 2,
-  pages: rotations.map((rotation, index) => ({
+  pages: pageSpecs.map(({ width, height, rotation }, index) => ({
     page: index + 1,
     rotation,
-    width: PAGE.width,
-    height: PAGE.height,
+    width,
+    height,
     ...(index === 4 ? { cropBox: [36, 72, 576, 720] } : {}),
     ...(index === 5 ? { requiresSurveyMode: true } : {}),
   })),

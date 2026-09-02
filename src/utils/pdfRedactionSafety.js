@@ -17,6 +17,13 @@ const readRect = (pdfDoc, dict) => {
   return rect;
 };
 
+const readQuadPoints = (pdfDoc, dict) => {
+  const raw = pdfDoc.context.lookup(dict?.get?.(PDFName.of('QuadPoints')))?.asArray?.();
+  if (!Array.isArray(raw) || raw.length < 8 || raw.length % 8 !== 0) return [];
+  const values = raw.map(numberValue);
+  return values.every(Number.isFinite) ? values : [];
+};
+
 const pdfNumber = (value) => String(Math.round(Number(value) * 100_000) / 100_000);
 
 /** Give an unapplied redaction a visible mark without hiding page content. */
@@ -30,12 +37,27 @@ export function attachMarkedForRedactionAppearance(pdfDoc, dict) {
   const strokeWidth = 1;
   const inset = Math.min(strokeWidth / 2, width / 4, height / 4);
   const strokeColor = PENDING_REDACTION_OUTLINE_PDF_RGB.map(pdfNumber).join(' ');
-  const content = [
-    'q',
-    `${strokeColor} RG`,
-    `${pdfNumber(strokeWidth)} w`,
-    `${pdfNumber(inset)} ${pdfNumber(inset)} ${pdfNumber(width - inset * 2)} ${pdfNumber(height - inset * 2)} re S`,
-  ];
+  const quadPoints = readQuadPoints(pdfDoc, dict);
+  const content = ['q', `${strokeColor} RG`, `${pdfNumber(strokeWidth)} w`];
+  if (quadPoints.length > 0) {
+    for (let index = 0; index < quadPoints.length; index += 8) {
+      // Adobe order is TL, TR, BL, BR. Draw TL -> TR -> BR -> BL so the
+      // hollow mark follows each source run, including tilted quads.
+      const points = [
+        [quadPoints[index], quadPoints[index + 1]],
+        [quadPoints[index + 2], quadPoints[index + 3]],
+        [quadPoints[index + 6], quadPoints[index + 7]],
+        [quadPoints[index + 4], quadPoints[index + 5]],
+      ].map(([x, y]) => [x - rect[0], y - rect[1]]);
+      content.push(
+        `${pdfNumber(points[0][0])} ${pdfNumber(points[0][1])} m`,
+        ...points.slice(1).map(([x, y]) => `${pdfNumber(x)} ${pdfNumber(y)} l`),
+        'h S',
+      );
+    }
+  } else {
+    content.push(`${pdfNumber(inset)} ${pdfNumber(inset)} ${pdfNumber(width - inset * 2)} ${pdfNumber(height - inset * 2)} re S`);
+  }
   content.push('Q');
 
   const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {

@@ -398,6 +398,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
             style={{
               width: `${page.widthPt}pt`,
               height: `${page.heightPt}pt`,
+              ...(page.pageName ? { page: page.pageName } : {}),
             }}
           >
             <img src={page.src} alt={`PDF page ${page.pageNumber}`} />

@@ -2757,6 +2757,63 @@ const readPdfNativeNestedNumberArrays = (pdfDoc, value) => {
   return arrays.every(Array.isArray) ? arrays : null;
 };
 
+const exportAnnotationRefHasValidGeometry = (pdfDoc, page, ref) => {
+  const dict = lookupPdfValue(pdfDoc, ref);
+  if (!(dict instanceof PDFDict)) return false;
+  const crop = page.getCropBox();
+  const bounds = {
+    minX: Number(crop.x), minY: Number(crop.y),
+    maxX: Number(crop.x) + Number(crop.width),
+    maxY: Number(crop.y) + Number(crop.height),
+  };
+  // A valid appearance can extend a few points past the page when a curve or
+  // stroke touches an edge. Keep that small bleed, but reject the wild Rects
+  // produced by broken transforms. Coordinate arrays below stay strict.
+  const rectBleed = Math.max(Number(crop.width), Number(crop.height)) * 0.05;
+  const rectWithinPage = (values) => (
+    Array.isArray(values)
+    && values.length === 4
+    && values.every(Number.isFinite)
+    && values[0] >= bounds.minX - rectBleed
+    && values[1] >= bounds.minY - rectBleed
+    && values[2] <= bounds.maxX + rectBleed
+    && values[3] <= bounds.maxY + rectBleed
+  );
+  const withinPage = (values) => (
+    Array.isArray(values)
+    && values.length % 2 === 0
+    && values.every(Number.isFinite)
+    && values.every((value, index) => (
+      index % 2 === 0
+        ? value >= bounds.minX && value <= bounds.maxX
+        : value >= bounds.minY && value <= bounds.maxY
+    ))
+  );
+  const rect = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Rect')));
+  if (!rectWithinPage(rect)) return false;
+  if (rect[2] < rect[0] || rect[3] < rect[1]) return false;
+
+  const subtype = decodePdfDictText(pdfDoc, dict, 'Subtype');
+  const line = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('L')));
+  if (subtype === 'Line') {
+    if (!withinPage(line) || line.length !== 4) return false;
+    if (Math.hypot(line[2] - line[0], line[3] - line[1]) <= 0.01) return false;
+  }
+  for (const key of ['QuadPoints', 'Vertices', 'CL']) {
+    const raw = dict.get(PDFName.of(key));
+    if (raw !== undefined) {
+      const values = readPdfNativeNumberArray(pdfDoc, raw);
+      if (!withinPage(values)) return false;
+    }
+  }
+  const inkListRaw = dict.get(PDFName.of('InkList'));
+  if (inkListRaw !== undefined) {
+    const strokes = readPdfNativeNestedNumberArrays(pdfDoc, inkListRaw);
+    if (!Array.isArray(strokes) || strokes.some((stroke) => !withinPage(stroke))) return false;
+  }
+  return true;
+};
+
 const decodePdfDictText = (pdfDoc, dict, key) => {
   try {
     return normalizePdfNativeAnnotationText(
@@ -3132,6 +3189,45 @@ const stripNativeAnnotationsNotOnScreen = (pdfDoc, annotationsByPage) => {
   return diagnostics;
 };
 
+const reorderManagedAnnotationsToAppDrawOrder = (
+  pdfDoc,
+  annotationsByPage,
+  attachedEntries,
+) => {
+  const refsByObject = new Map();
+  const refsById = new Map();
+  for (const { item, refs } of attachedEntries) {
+    refsByObject.set(item.object, refs);
+    const id = item.id || getObjectId(item.object);
+    if (id) refsById.set(String(id), refs);
+  }
+
+  pdfDoc.getPages().forEach((page, pageIndex) => {
+    const annots = page.node.lookup(PDFName.of('Annots'));
+    if (!(annots instanceof PDFArray)) return;
+    const objects = annotationsByPage?.[pageIndex + 1]?.objects
+      || annotationsByPage?.[String(pageIndex + 1)]?.objects
+      || [];
+    const desired = [];
+    for (const obj of objects) {
+      let refs = refsByObject.get(obj) || refsById.get(String(getObjectId(obj) || '')) || [];
+      if (isPdfImportedObject(obj) || isFormFieldObject(obj)) {
+        refs = nativeAnnotationMatchesForObject(pdfDoc, pageIndex, obj)
+          .map((index) => annots.get(index));
+      }
+      for (const ref of refs) if (!desired.includes(ref)) desired.push(ref);
+    }
+    if (desired.length < 2) return;
+    const rank = new Map(desired.map((ref, index) => [ref, index]));
+    const slots = annots.asArray()
+      .map((ref, index) => ({ ref, index }))
+      .filter(({ ref }) => rank.has(ref));
+    if (slots.length < 2) return;
+    const sorted = slots.map(({ ref }) => ref).sort((left, right) => rank.get(left) - rank.get(right));
+    slots.forEach(({ index }, slotIndex) => annots.set(index, sorted[slotIndex]));
+  });
+};
+
 const parsePdfDrawColor = (value, fallback = '#000000') => {
   if (value === null || value === undefined || value === '' || value === 'transparent') return null;
   const text = String(value || fallback).trim();
@@ -3434,82 +3530,111 @@ const pickFlattenedTextFont = (obj, fonts) => {
 };
 
 const drawFlattenedText = (page, obj, pageHeight, fonts) => {
-  const fill = parsePdfDrawColor(obj?.fill || obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
+  const fill = parsePdfDrawColor(obj?.fill || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const left = getObjNumber(obj, 'left');
   const top = getObjNumber(obj, 'top');
+  const width = Math.max(1, getObjNumber(obj, 'width', 200));
   const height = Math.max(1, getObjNumber(obj, 'height', Number(obj?.fontSize) || 14));
   const fontSize = Math.max(4, Number(obj?.fontSize) || 12);
   const font = pickFlattenedTextFont(obj, fonts);
-  const maxWidth = Math.max(1, getObjNumber(obj, 'width', 200));
   const angle = Number(obj?.angle) || 0;
   const pdfAngle = -angle;
-  // The screen rotates a text box about its CENTER (translate(left,top)
-  // rotate(angle, w/2, h/2)); pdf-lib rotates about the text origin. Rotate
-  // the unrotated origin (left, baseline) about that same center so the
-  // printed glyphs land where the screen draws them.
-  const baselineOffset = Math.min(height, fontSize + 2);
-  let originX = left;
-  let originY = top + baselineOffset;
-  if (angle) {
-    const cx = left + maxWidth / 2;
-    const cy = top + height / 2;
-    const rad = (angle * Math.PI) / 180;
-    const dx = originX - cx;
-    const dy = originY - cy;
-    originX = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
-    originY = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+  const objectOpacity = Number.isFinite(Number(obj?.opacity))
+    ? Math.max(0, Math.min(1, Number(obj.opacity)))
+    : 1;
+  const background = resolvedPdfPaint(obj?.backgroundColor, 'transparent');
+  const border = resolvedPdfPaint(obj?.stroke, 'transparent');
+  const borderWidth = border ? Math.max(0, Number(obj?.strokeWidth) || 0) : 0;
+  const center = { x: left + width / 2, y: top + height / 2 };
+  if (background || borderWidth > 0) {
+    const common = {
+      color: background?.color,
+      opacity: background ? (background.opacity ?? 1) * objectOpacity : undefined,
+      borderColor: borderWidth > 0 ? border?.color : undefined,
+      borderWidth,
+      borderOpacity: borderWidth > 0 ? (border?.opacity ?? 1) * objectOpacity : undefined,
+    };
+    if (angle) {
+      const points = [
+        { x: left, y: top }, { x: left + width, y: top },
+        { x: left + width, y: top + height }, { x: left, y: top + height },
+      ].map((point) => rotateAppPoint(point, center, angle));
+      page.drawSvgPath(`${points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')} Z`, {
+        x: 0, y: pageHeight, ...common,
+      });
+    } else {
+      page.drawRectangle({
+        x: left, y: getPdfY(pageHeight, top + height), width, height, ...common,
+      });
+    }
   }
-  const baselineY = getPdfY(pageHeight, originY);
-  page.drawText(String(obj?.text || ''), {
-    x: originX,
-    y: baselineY,
-    size: fontSize,
-    font,
-    color: fill.color,
-    opacity: fill.opacity,
-    maxWidth,
-    ...(angle ? { rotate: degrees(pdfAngle) } : {}),
+
+  const padding = 6;
+  const innerWidth = Math.max(1, width - padding * 2);
+  const lineHeight = fontSize * (Number(obj?.lineHeight) || 1.16) * 1.13;
+  const fits = (value) => {
+    try { return font.widthOfTextAtSize(value, fontSize) <= innerWidth; } catch { return true; }
+  };
+  const lines = [];
+  String(obj?.text || '').split(/\r?\n/).forEach((paragraph) => {
+    if (!paragraph) { lines.push(''); return; }
+    let line = '';
+    for (const character of paragraph) {
+      if (line && !fits(line + character)) {
+        lines.push(line);
+        line = character;
+      } else {
+        line += character;
+      }
+    }
+    lines.push(line);
   });
-  // UX 2026-07-17 (print text style): PDF has no text-decoration operator, so
-  // underline/strikethrough are drawn as explicit lines in the text color,
-  // matching the on-screen SVG textDecoration. Understands fabric-native
-  // underline/linethrough and the callout strikethrough boolean. Known
-  // limitation: the decoration covers the FIRST rendered line only — wrapped
-  // or multi-line text keeps styled glyphs but only line one is decorated.
+  const maxLines = Math.max(1, Math.floor((height - padding * 2 + fontSize * 0.35) / lineHeight));
+  const visibleLines = lines.slice(0, maxLines);
+  const blockHeight = visibleLines.length * lineHeight;
+  const freeSpace = Math.max(0, height - padding * 2 + fontSize * 0.35 - blockHeight);
+  const verticalOffset = obj?.verticalAlign === 'middle'
+    ? freeSpace / 2
+    : obj?.verticalAlign === 'bottom' ? freeSpace : 0;
+  const rotatePoint = (point) => angle ? rotateAppPoint(point, center, angle) : point;
   const wantsUnderline = obj?.underline === true;
   const wantsLinethrough = obj?.linethrough === true || obj?.strikethrough === true;
-  if (wantsUnderline || wantsLinethrough) {
-    const firstLine = String(obj?.text || '').split('\n')[0] || '';
-    let lineWidth = maxWidth;
-    try {
-      lineWidth = Math.min(maxWidth, font.widthOfTextAtSize(firstLine, fontSize));
-    } catch {
-      /* unencodable glyphs — fall back to the box width */
-    }
-    if (lineWidth > 0) {
-      const thickness = Math.max(0.5, fontSize / 14);
-      const theta = pdfAngle * Math.PI / 180;
-      const cos = Math.cos(theta);
-      const sin = Math.sin(theta);
-      const rotatedPoint = (x, y) => ({
-        x: left + x * cos - y * sin,
-        y: baselineY + x * sin + y * cos,
+
+  visibleLines.forEach((line, index) => {
+    let lineWidth = innerWidth;
+    try { lineWidth = font.widthOfTextAtSize(line, fontSize); } catch { /* use inner width */ }
+    const textX = obj?.textAlign === 'center'
+      ? left + padding + (innerWidth - lineWidth) / 2
+      : obj?.textAlign === 'right' ? left + padding + innerWidth - lineWidth : left + padding;
+    const appBaseline = top + padding + verticalOffset + fontSize + index * lineHeight;
+    const origin = rotatePoint({ x: textX, y: appBaseline });
+    page.drawText(line, {
+      x: origin.x,
+      y: getPdfY(pageHeight, origin.y),
+      size: fontSize,
+      font,
+      color: fill.color,
+      opacity: fill.opacity * objectOpacity,
+      ...(angle ? { rotate: degrees(pdfAngle) } : {}),
+    });
+    if (!line || (!wantsUnderline && !wantsLinethrough)) return;
+    const thickness = Math.max(0.5, fontSize / 14);
+    const drawDecoration = (offset) => {
+      const start = rotatePoint({ x: textX, y: appBaseline + offset });
+      const end = rotatePoint({ x: textX + lineWidth, y: appBaseline + offset });
+      page.drawLine({
+        start: { x: start.x, y: getPdfY(pageHeight, start.y) },
+        end: { x: end.x, y: getPdfY(pageHeight, end.y) },
+        color: fill.color, thickness, opacity: fill.opacity * objectOpacity,
       });
-      const drawDecorationLine = (offsetY) => page.drawLine({
-        start: rotatedPoint(0, offsetY),
-        end: rotatedPoint(lineWidth, offsetY),
-        color: fill.color,
-        thickness,
-        opacity: fill.opacity,
-      });
-      if (wantsUnderline) drawDecorationLine(-fontSize * 0.12);
-      if (wantsLinethrough) drawDecorationLine(fontSize * 0.28);
-    }
-  }
+    };
+    if (wantsUnderline) drawDecoration(fontSize * 0.12);
+    if (wantsLinethrough) drawDecoration(-fontSize * 0.28);
+  });
 };
 
 const drawFlattenedCounterLabel = (page, obj, pageHeight, font) => {
-  const text = String(obj?.data?.displayNumber ?? '');
+  const text = String(obj?.data?.displayNumber ?? obj?.data?.number ?? '');
   if (!text) return;
   const radius = Math.max(1, (Number(obj?.radius) || 10) * Math.abs(Number(obj?.scaleX) || 1));
   const left = getObjNumber(obj, 'left');
@@ -4542,6 +4667,16 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       let annotRef = null;
       let annotRefs = null;
       const objType = obj?.type?.toLowerCase?.() || item.fabricType || 'unknown';
+      if (objType === 'line') {
+        const lineValues = [obj?.x1, obj?.y1, obj?.x2, obj?.y2].map(Number);
+        if (
+          !lineValues.every(Number.isFinite)
+          || Math.hypot(lineValues[2] - lineValues[0], lineValues[3] - lineValues[1]) <= 0.01
+        ) {
+          recordSkip(exportDiagnostics, item, 'invalid-or-degenerate-geometry');
+          return;
+        }
+      }
       const isCounter = obj?.data?.type === 'counter';
       const appAnnotationMetadataJson = (!isCounter && item.type !== 'callout')
         ? serializePdfAppAnnotationMetadata(obj, item)
@@ -4635,7 +4770,11 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           break;
       }
 
-      const refsToPush = Array.isArray(annotRefs) ? annotRefs : (annotRef ? [annotRef] : []);
+      const createdRefs = Array.isArray(annotRefs) ? annotRefs : (annotRef ? [annotRef] : []);
+      const refsToPush = createdRefs.filter((ref) => exportAnnotationRefHasValidGeometry(pdfDoc, page, ref));
+      if (refsToPush.length !== createdRefs.length) {
+        recordSkip(exportDiagnostics, item, 'invalid-or-outside-page-geometry');
+      }
       if (refsToPush.length > 0) {
         const compositeExportKey = compositeExportKeyForItem(item);
         pendingAnnotationRefs.push({
@@ -4669,7 +4808,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         }
         totalAnnotations += refsToPush.length;
         exportDiagnostics.pdfAnnotationsAdded += refsToPush.length;
-      } else {
+      } else if (createdRefs.length === 0) {
         recordSkip(exportDiagnostics, item, 'pdf-annotation-create-failed');
       }
     });
@@ -4709,6 +4848,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       ],
       exportDiagnostics,
     });
+    const attachedAnnotationEntries = [];
     pendingAnnotationRefs.forEach(({
       annots,
       refs,
@@ -4725,7 +4865,13 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         return;
       }
       refs.forEach((ref) => annots.push(ref));
+      attachedAnnotationEntries.push({ item, refs });
     });
+    reorderManagedAnnotationsToAppDrawOrder(
+      pdfDoc,
+      annotationsByPage,
+      attachedAnnotationEntries,
+    );
 
     // KAL-441: carry the values the user typed into the PDF's own form fields
     // into the exported document. Without this the export silently returned a
@@ -4739,7 +4885,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     // Save the PDF. updateFieldAppearances is off because the form writer above
     // already regenerated appearances inside its own try/catch — letting save()
     // redo it would let one awkward field throw the whole export away.
-    sanitizeUnappliedRedactionsForExport(pdfDoc);
+    const redactionsSanitized = sanitizeUnappliedRedactionsForExport(pdfDoc);
+    if (redactionsSanitized > 0) options?.onRedactionsSanitized?.(redactionsSanitized);
     const pdfBytes = await pdfDoc.save({ updateFieldAppearances: false });
     pdfExportDebug('[PDFImportedEditExport] summary ' + JSON.stringify({
       actionType,

@@ -64,8 +64,13 @@ test('print-fidelity manifest covers every required app and native type on rotat
     'highlight', 'underline', 'squiggle', 'strikethrough', 'link', 'redaction', 'native-square',
     'native-circle', 'native-polygon', 'native-ink', 'native-free-text', 'native-highlight',
     'native-cloud', 'native-arrow', 'native-strikeout', 'form-checkbox', 'form-text', 'native-stamp',
+    'landscape-page',
   ]) assert.ok(types.has(required), `manifest must cover ${required}`);
-  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(
+    manifest.pages.at(-1),
+    { page: 11, rotation: 0, width: 792, height: 612 },
+  );
   assert.deepEqual(manifest.pages[4].cropBox, [36, 72, 576, 720]);
   assert.equal(manifest.pages[5].requiresSurveyMode, true);
 });
@@ -92,7 +97,11 @@ test('real print flattener uses app paint for untouched imports and bakes form s
   const output = await savePDFWithFlattenedRegularAnnotationsForPrint(
     { name: manifest.pdfFile, async arrayBuffer() { return toArrayBuffer(source); } },
     manifest.annotationsByPage,
-    Object.fromEntries(manifest.pages.map((page) => [page.page, page.rotation === 90 || page.rotation === 270 ? { width: 792, height: 612 } : page.cropBox ? { width: 540, height: 648 } : { width: 612, height: 792 }])),
+    Object.fromEntries(manifest.pages.map((page) => [page.page, page.cropBox
+      ? { width: 540, height: 648 }
+      : page.rotation === 90 || page.rotation === 270
+        ? { width: page.height, height: page.width }
+        : { width: page.width, height: page.height }])),
     {
       actionType: 'test-print-fidelity',
       callouts: manifest.callouts,
@@ -146,6 +155,26 @@ test('real print flattener uses app paint for untouched imports and bakes form s
     );
     assert.ok(textSlope.count > 100, 'formatted text must paint');
     assert.ok(Math.abs(textSlope.slope) > 0.05, `formatted text must keep its rotation, slope=${textSlope.slope}`);
+
+    const textbox = regionPixels(textPage, [45, 50, 315, 165], 792, 612);
+    assert.ok(
+      ratio(textbox, ([r, g, b]) => r > 225 && g > 195 && b < 205) > 0.08,
+      'textbox must print its pale fill',
+    );
+    assert.ok(
+      ratio(textbox, ([r, g, b]) => b > g * 1.45 && b > r * 1.25) > 0.006,
+      'textbox must print its violet border and text',
+    );
+
+    const counter = regionPixels(textPage, [350, 90, 394, 134], 792, 612);
+    assert.ok(
+      ratio(counter, ([r, g, b]) => r > 180 && r > g * 1.8 && r > b * 1.8) > 0.25,
+      'counter must print its red pin body',
+    );
+    assert.ok(
+      ratio(counter, ([r, g, b]) => r > 245 && g > 245 && b > 245) > 0.01,
+      'counter must print a white number inside the pin',
+    );
 
     const importedPage = await engine.renderPageRaw(doc, doc.pages[2], { scaleFactor: 2 }).toPromise();
     // Page 3 is /Rotate 180: the seeded highlight sits where the viewer shows it.

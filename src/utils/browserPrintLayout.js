@@ -17,7 +17,9 @@ export function buildBrowserPrintLayout(inputPages = []) {
       pageNumber: Number(page.pageNumber),
       widthPt: Number(page.widthPt),
       heightPt: Number(page.heightPt),
-      pageName: `survey-print-page-${Number(page.pageNumber)}`,
+      pageName: Number(page.widthPt) > Number(page.heightPt)
+        ? `landscape-${Number(page.pageNumber)}`
+        : null,
     }));
 
   // One uniform margin-less page rule (pdf.js's shipping print pattern).
@@ -29,6 +31,11 @@ export function buildBrowserPrintLayout(inputPages = []) {
   // one page (100vh) with the image letterboxed via object-fit: contain.
   return {
     pages,
-    pageCss: '@page { size: auto; margin: 0; }',
+    pageCss: [
+      '@page { size: auto; margin: 0; }',
+      ...pages
+        .filter((page) => page.pageName)
+        .map((page) => `@page ${page.pageName} { size: landscape; margin: 0; }`),
+    ].join('\n'),
   };
 }
