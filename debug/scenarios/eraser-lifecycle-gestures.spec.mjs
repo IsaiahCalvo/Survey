@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+// 2026-08-16 (975b7e86) relabelled the shared toolbar size input to "Size" while
+// the eraser (or counter) is active and left it "Width" for the pen. The specs
+// match either label so they follow the tool that is active.
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { asymmetricNoRepaint } from './eraserPixelOracle.mjs';
@@ -57,9 +60,14 @@ async function activateEraser(page, { mode = 'partial', size = 20 } = {}) {
   });
 
   if (mode === 'entire' && await currentMode.count() === 0) {
+    // The eraser type is chosen from a listbox behind the "Eraser type"
+    // button (it only appears once the eraser is active), so activate the
+    // eraser in its current mode first, then pick the whole-stroke option.
+    await page.getByRole('button', { name: 'Partial erase', exact: true }).click();
     const typeButton = page.getByRole('button', { name: 'Eraser type', exact: true });
     await expect(typeButton).toHaveCount(1);
     await typeButton.click();
+    await page.getByRole('option', { name: 'Full stroke erase', exact: true }).click();
   }
 
   await expect(currentMode).toHaveCount(1);
@@ -69,7 +77,7 @@ async function activateEraser(page, { mode = 'partial', size = 20 } = {}) {
   // eraser surface to mount so this immediate fill reaches the eraser handler,
   // not the previously-active drawing tool's handler.
   await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toHaveCount(1);
-  const width = page.getByRole('textbox', { name: 'Width', exact: true });
+  const width = page.getByRole('textbox', { name: /^(Width|Size)$/ });
   await expect(width).toHaveCount(1);
   await width.fill(String(size));
   await width.press('Tab');
@@ -157,7 +165,7 @@ async function createFreehandStroke(page, {
   const beforeIds = new Set(await appAnnotationIds(page));
   await activateDrawTool(page, tool);
 
-  const widthInput = page.getByRole('textbox', { name: 'Width', exact: true });
+  const widthInput = page.getByRole('textbox', { name: /^(Width|Size)$/ });
   await expect(widthInput).toHaveCount(1);
   await widthInput.fill(String(width));
   if (blurWidth) {
@@ -381,8 +389,11 @@ async function createRectangleAndText(page) {
   await page.mouse.move(box.x + box.width * 0.74, box.y + box.height * 0.62, { steps: 5 });
   await page.mouse.up();
 
-  await page.getByRole('button', { name: 'Text', exact: true }).click();
-  const textButtons = page.locator('button[title="Text"]');
+  // The Text category button and the Text sub-tool share the accessible
+  // name "Text"; sub-tools carry aria-label (no title) since the toolbar
+  // tooltip rework, so select by role and take the second match.
+  const textButtons = page.getByRole('button', { name: 'Text', exact: true });
+  await textButtons.first().click();
   await expect(textButtons).toHaveCount(2);
   await textButtons.nth(1).click();
 
@@ -469,7 +480,7 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     await expect(zoom).not.toHaveText(beforeZoom);
 
     await activateDrawTool(page, 'Highlighter');
-    await expect(page.getByRole('textbox', { name: 'Width', exact: true })).toHaveValue('20');
+    await expect(page.getByRole('textbox', { name: /^(Width|Size)$/ })).toHaveValue('20');
 
     await activateEraser(page, { mode: 'partial', size: 20 });
     await expect(page.getByRole('button', { name: 'Partial erase', exact: true }))
@@ -483,7 +494,7 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     await openEditor(page);
     await activateDrawTool(page, 'Pen');
 
-    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    const width = page.getByRole('textbox', { name: /^(Width|Size)$/ });
     await expect(width).toHaveCount(1);
     await width.fill('17');
     await width.press('Tab');
@@ -498,7 +509,7 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     await page.getByRole('button', { name: 'Partial erase', exact: true }).click();
     await expect(page.locator('[data-diag-eraser-wrapper="1"]')).toHaveCount(1);
 
-    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    const width = page.getByRole('textbox', { name: /^(Width|Size)$/ });
     await expect(width).toHaveCount(1);
     await width.fill('37');
     await width.press('Tab');
@@ -530,7 +541,7 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     const box = await annotationBox(page, selector);
     await activateEraser(page, { size: 8 });
 
-    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    const width = page.getByRole('textbox', { name: /^(Width|Size)$/ });
     await width.fill('64');
     await expect(width).toHaveValue('64');
     await page.evaluate(() => {
@@ -729,11 +740,14 @@ test.describe('mounted eraser lifecycle and gestures', () => {
     const typeButton = page.getByRole('button', { name: 'Eraser type', exact: true });
     await expect(typeButton).toHaveCount(1);
     await typeButton.evaluate((button) => button.click());
-    const fullErase = page.getByRole('button', { name: 'Full stroke erase', exact: true });
-    await expect(fullErase).toHaveCount(1);
-    await fullErase.evaluate((button) => button.click());
+    // Eraser type is a listbox option now; pick it without moving the mouse
+    // so the drag in progress is not disturbed.
+    const fullEraseOption = page.getByRole('option', { name: 'Full stroke erase', exact: true });
+    await expect(fullEraseOption).toHaveCount(1);
+    await fullEraseOption.evaluate((option) => option.click());
+    await expect(page.getByRole('button', { name: 'Full stroke erase', exact: true })).toHaveCount(1);
 
-    const width = page.getByRole('textbox', { name: 'Width', exact: true });
+    const width = page.getByRole('textbox', { name: /^(Width|Size)$/ });
     await width.fill('60');
     await width.press('Tab');
     await expect(width).toHaveValue('60');

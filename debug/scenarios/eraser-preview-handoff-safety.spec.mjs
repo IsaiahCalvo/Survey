@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+// 2026-08-16 (975b7e86) relabelled the shared toolbar size input to "Size" while
+// the eraser (or counter) is active and left it "Width" for the pen. The specs
+// match either label so they follow the tool that is active.
 import { PNG } from 'pngjs';
 import { asymmetricNoRepaint } from './eraserPixelOracle.mjs';
 
@@ -24,7 +27,7 @@ async function openDrawTools(page) {
 }
 
 async function setWidth(page, width) {
-  const input = page.getByRole('textbox', { name: 'Width', exact: true });
+  const input = page.getByRole('textbox', { name: /^(Width|Size)$/ });
   await input.fill(String(width));
   await input.press('Tab');
   await input.evaluate((element) => element.blur());
