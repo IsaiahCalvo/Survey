@@ -28,14 +28,15 @@ const fixed = await savePDFWithFlattenedRegularAnnotationsForPrint(
 );
 const fixedPdf = join(outputDir, 'after-fixed.pdf');
 await writeFile(fixedPdf, fixed);
-await execFileAsync('pdftoppm', ['-f', '1', '-l', '3', '-png', '-r', '144', join(fixtureDir, manifest.pdfFile), join(outputDir, 'before')]);
-await execFileAsync('pdftoppm', ['-f', '1', '-l', '3', '-png', '-r', '144', fixedPdf, join(outputDir, 'after')]);
+await execFileAsync('pdftoppm', ['-f', '1', '-l', '8', '-png', '-r', '144', join(fixtureDir, manifest.pdfFile), join(outputDir, 'before')]);
+await execFileAsync('pdftoppm', ['-f', '1', '-l', '8', '-png', '-r', '144', fixedPdf, join(outputDir, 'after')]);
 
 const ids = [
   'imported-native-square', 'imported-native-polygon', 'imported-green-strike',
   'form-checkbox', 'form-text', 'imported-native-ink', 'imported-native-circle',
   'imported-native-free-text', 'imported-native-highlight', 'imported-native-cloud',
   'imported-native-arrow',
+  'native-stamp',
 ];
 const pairs = [];
 for (const id of ids) {

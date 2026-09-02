@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 5425,
+  "pdfSize": 5424,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -862,6 +862,40 @@
           }
         }
       ]
+    },
+    "8": {
+      "width": 612,
+      "height": 792,
+      "objects": [
+        {
+          "id": "native-stamp-proxy",
+          "type": "image",
+          "src": "data:image/png;base64,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",
+          "left": 120,
+          "top": 232,
+          "width": 130,
+          "height": 60,
+          "scaleX": 1,
+          "scaleY": 1,
+          "opacity": 1,
+          "angle": 90,
+          "selectable": true,
+          "evented": true,
+          "hasControls": false,
+          "hasBorders": true,
+          "lockMovementX": true,
+          "lockMovementY": true,
+          "lockScalingX": true,
+          "lockScalingY": true,
+          "lockRotation": true,
+          "isPdfImported": true,
+          "pdfAnnotationId": "native-stamp",
+          "pdfAnnotationType": "Stamp",
+          "data": {
+            "pdfStampAppearanceRotationBaked": false
+          }
+        }
+      ]
     }
   },
   "spaces": [
@@ -1525,15 +1559,15 @@
       "page": 8,
       "bounds": [
         100,
-        210,
+        180,
         270,
-        315
+        345
       ],
       "checks": [
         "bounds",
+        "orientation",
         "textPresence"
-      ],
-      "knownUnsupported": "Stamp import is not supported (importer skips /Stamp)"
+      ]
     },
     {
       "id": "cropbox-offset-rect",

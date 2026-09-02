@@ -7,6 +7,7 @@ import {
   StandardFonts,
   rgb,
 } from 'pdf-lib';
+import sharp from 'sharp';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureDir = join(here, '..', 'debug', 'fixtures');
@@ -31,6 +32,13 @@ const markup = (id, markupType, bounds, color, opacity = 1) => ({
 const region = (id, type, page, bounds, checks = ['bounds', 'colour'], tolerance) => ({
   id, type, page, bounds, checks, ...(tolerance ? { tolerance } : {}),
 });
+const stampAppearanceSpec = {
+  width: 130,
+  height: 60,
+  color: [1, 0.2, 0.2],
+  border: { inset: 2, width: 3 },
+  check: { width: 8, points: [[20, 30], [45, 12], [108, 48]] },
+};
 
 const pdf = await PDFDocument.create();
 const fixedDate = new Date('2026-01-01T00:00:00.000Z');
@@ -93,10 +101,20 @@ const nativeArrow = addNative(pages[2], {
   C: [0.95, 0.35, 0.1], CA: 1, Border: [0, 0, 4], NM: 'native-arrow',
 });
 const stampAppearance = pdf.context.register(pdf.context.flateStream(
-  'q\n1 0.2 0.2 RG\n3 w\n2 2 126 56 re S\n8 w\n20 30 m\n45 12 l\n108 48 l\nS\nQ\n',
-  { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 130, 60], Resources: {} },
+  [
+    'q',
+    `${stampAppearanceSpec.color.join(' ')} RG`,
+    `${stampAppearanceSpec.border.width} w`,
+    `${stampAppearanceSpec.border.inset} ${stampAppearanceSpec.border.inset} ${stampAppearanceSpec.width - 2 * stampAppearanceSpec.border.inset} ${stampAppearanceSpec.height - 2 * stampAppearanceSpec.border.inset} re S`,
+    `${stampAppearanceSpec.check.width} w`,
+    `${stampAppearanceSpec.check.points[0].join(' ')} m`,
+    ...stampAppearanceSpec.check.points.slice(1).map((point) => `${point.join(' ')} l`),
+    'S',
+    'Q',
+  ].join('\n'),
+  { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, stampAppearanceSpec.width, stampAppearanceSpec.height], Resources: {} },
 ));
-addNative(pages[7], { Subtype: 'Stamp', Rect: [120, 500, 250, 560], Name: 'Approved', NM: 'native-stamp', AP: { N: stampAppearance } });
+addNative(pages[7], { Subtype: 'Stamp', Rect: [120, 500, 120 + stampAppearanceSpec.width, 500 + stampAppearanceSpec.height], Rotate: 90, Name: 'Approved', NM: 'native-stamp', AP: { N: stampAppearance } });
 addNative(pages[6], {
   Subtype: 'Redact', Rect: [100, 442, 320, 492],
   QuadPoints: [100, 492, 320, 492, 100, 442, 320, 442],
@@ -133,6 +151,14 @@ const imported = [
   { type: 'form-field', data: { type: 'form-field', fieldId: `${checkedRef.objectNumber}R`, fieldName: 'fidelity.checked', fieldType: 'Btn', value: true } },
   { type: 'form-field', data: { type: 'form-field', fieldId: `${textRef.objectNumber}R`, fieldName: 'fidelity.text', fieldType: 'Tx', value: 'BLUE BORDER' } },
 ];
+
+const stampProxyPng = await sharp(Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${stampAppearanceSpec.width * 2}" height="${stampAppearanceSpec.height * 2}" viewBox="0 0 ${stampAppearanceSpec.width} ${stampAppearanceSpec.height}">`
+  + `<rect x="${stampAppearanceSpec.border.inset}" y="${stampAppearanceSpec.border.inset}" width="${stampAppearanceSpec.width - 2 * stampAppearanceSpec.border.inset}" height="${stampAppearanceSpec.height - 2 * stampAppearanceSpec.border.inset}" fill="none" stroke="rgb(${stampAppearanceSpec.color.map((channel) => channel * 255).join(' ')})" stroke-width="${stampAppearanceSpec.border.width}"/>`
+  + `<path d="M${stampAppearanceSpec.check.points.map((point) => point.join(' ')).join(' L')}" fill="none" stroke="rgb(${stampAppearanceSpec.color.map((channel) => channel * 255).join(' ')})" stroke-width="${stampAppearanceSpec.check.width}"/>`
+  + '</svg>',
+)).png().toBuffer();
+const stampProxyDataUrl = `data:image/png;base64,${stampProxyPng.toString('base64')}`;
 
 const fixtureCallout = {
   id: 'callout-1', type: 'callout', data: { type: 'callout', id: 'callout-1' }, pageNumber: 9,
@@ -186,6 +212,16 @@ const annotationsByPage = {
     markup('squiggle-custom', 'squiggly', [70, 70, 300, 96], '#dc2626'),
     markup('strike-custom', 'strikeout', [70, 150, 300, 176], '#16a34a'),
   ] },
+  8: { width: 612, height: 792, objects: [{
+    id: 'native-stamp-proxy', type: 'image', src: stampProxyDataUrl,
+    left: 120, top: 232, width: 130, height: 60, scaleX: 1, scaleY: 1,
+    opacity: 1, angle: 90, selectable: true, evented: true,
+    hasControls: false, hasBorders: true,
+    lockMovementX: true, lockMovementY: true,
+    lockScalingX: true, lockScalingY: true, lockRotation: true,
+    isPdfImported: true, pdfAnnotationId: 'native-stamp', pdfAnnotationType: 'Stamp',
+    data: { pdfStampAppearanceRotationBaked: false },
+  }] },
 };
 
 const regions = [
@@ -228,11 +264,7 @@ const regions = [
   region('imported-native-arrow', 'native-arrow', 3, [40, 225, 290, 315], ['bounds', 'orientation', 'colour', 'strokeWeight'], { boundsPixels: 6 }),
   region('rotated-page-ink', 'rotated-ink', 4, [55, 45, 325, 200]),
   region('rotated-page-rect', 'rotated-rect', 4, [55, 205, 310, 390], ['bounds', 'colour'], { boundsPixels: 5 }),
-  // Imported /Stamp annotations are not supported by the importer (screen shows
-  // nothing), so screen-vs-print parity cannot be measured yet. Kept in the
-  // fixture as a KNOWN gap — reported, never counted as a failure — so the
-  // gate flips red the day stamp support lands without parity.
-  { ...region('native-stamp', 'native-stamp', 8, [100, 210, 270, 315], ['bounds', 'textPresence']), knownUnsupported: 'Stamp import is not supported (importer skips /Stamp)' },
+  region('native-stamp', 'native-stamp', 8, [100, 180, 270, 345], ['bounds', 'orientation', 'textPresence']),
   region('cropbox-offset-rect', 'cropbox-rect', 5, [50, 75, 250, 205]),
   region('cropbox-highlight', 'cropbox-highlight', 5, [55, 230, 295, 290]),
 ];
