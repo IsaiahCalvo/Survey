@@ -72,9 +72,14 @@ const edgeCases = [
       stroke: '#111111', strokeWidth: 2, tool: 'arrow',
     },
   },
+  // Owner ruling 2026-09-02 ("must touch the ink"): a text object is hit on
+  // its rendered text lines, not on its box edge or padding. The old point
+  // (95, 110) sat 5px outside the BOX and hit through padding slack. The
+  // point now sits 4px above the first text line (y 106): the cursor centre
+  // misses at radius 0 and the 6px disk overlaps the glyph line.
   {
     name: 'textbox',
-    point: { x: 95, y: 110 },
+    point: { x: 112, y: 102 },
     object: {
       type: 'Textbox', left: 100, top: 100, width: 60, height: 20,
       text: 'Edge erase', fill: '#111111',
@@ -82,7 +87,7 @@ const edgeCases = [
   },
   {
     name: 'text',
-    point: { x: 95, y: 110 },
+    point: { x: 112, y: 102 },
     object: {
       type: 'text', left: 100, top: 100, width: 60, height: 20,
       text: 'Edge erase', fill: '#111111',

@@ -79,7 +79,10 @@ test('rotated rect: hit region follows the visible (center-pivoted) shape', () =
   assert.equal(touch(rect, 100, 100, 4), false, 'old unrotated corner no longer hits');
 });
 
-test('rotated textbox: hit region follows the visible box', () => {
+test('rotated textbox: hit region follows its rendered text, not the visible box', () => {
+  // Owner ruling 2026-09-02 ("must touch the ink"): the old expectation that
+  // the box CENTRE is a hit was wrong — "hello" at 16px ends ~36px into a
+  // 100px box, so the centre is empty box, not ink.
   const text = {
     type: 'Textbox',
     left: 200,
@@ -88,10 +91,13 @@ test('rotated textbox: hit region follows the visible box', () => {
     height: 30,
     angle: 45,
     text: 'hello',
+    fontSize: 16,
   };
-  // Center (250, 215); the visible rotated box contains the center.
-  assert.equal(touch(text, 250, 215, 4), true);
-  // The unrotated far corner region is empty space now.
+  // Local glyph point (220, 215) rotated 45° about the centre (250, 215).
+  assert.equal(touch(text, 228.79, 193.79, 2), true);
+  // The box centre is inside the rotated box but off the text: no ink, no hit.
+  assert.equal(touch(text, 250, 215, 2), false);
+  // The unrotated far corner region is empty space.
   assert.equal(touch(text, 208, 202, 1), false);
 });
 

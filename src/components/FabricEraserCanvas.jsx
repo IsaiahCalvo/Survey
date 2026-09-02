@@ -7,6 +7,7 @@
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { isPointOnObject } from '../utils/geometryHitTest.js';
 import { canModify } from '../lib/collab/permissionScope.js';
 import { isAnnotationVisibleInSurveyMode } from '../utils/annotationVisibilityRules.js';
 import {
@@ -15,6 +16,8 @@ import {
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag';
 import {
+  buildTextInkHitLayout,
+  eraserPointTouchesText,
   eraserStrokeTouchesObject,
   getEraserStrokeBounds,
   getEraserCandidateId,
@@ -154,13 +157,6 @@ const distanceToSegment = (point, start, end) => {
   );
 };
 
-const pointInRect = (point, rect, radius) => (
-  point.x >= rect.x - radius
-  && point.x <= rect.x + rect.width + radius
-  && point.y >= rect.y - radius
-  && point.y <= rect.y + rect.height + radius
-);
-
 // --- Eraser hot-path AABB prefilter (2026-07-19, KAL-366 smoothness) -------
 // A single pointer-move segment overlaps only a handful of a busy page's
 // annotations, yet the old per-move preview ran the full boolean-carve engine
@@ -229,8 +225,39 @@ const getCalloutHitIds = ({
       arrowTip,
       0,
     );
+    // Owner ruling 2026-09-02 ("must touch the ink"): the callout box counts
+    // only on its frame (or fill) or its text — a stroke running beside the
+    // box or through its empty interior leaves the callout alone.
+    const calloutFontSize = Number(callout.style?.fontSize || 12);
+    const frameObject = {
+      type: 'rect',
+      left: textBox.x,
+      top: textBox.y,
+      width: textBox.width,
+      height: textBox.height,
+      fill: callout.style?.fillColor || 'transparent',
+      stroke: callout.style?.borderColor || callout.style?.lineColor || '#1e293b',
+      strokeWidth: Math.max(1, Number(callout.style?.lineThickness || 2)),
+    };
+    const textObject = {
+      type: 'textbox',
+      left: textBox.x,
+      top: textBox.y,
+      width: textBox.width,
+      height: textBox.height,
+      text: callout.text || '',
+      fontSize: calloutFontSize,
+      fontFamily: callout.style?.fontFamily || 'Helvetica',
+      fontWeight: callout.style?.bold ? 'bold' : 'normal',
+      fontStyle: callout.style?.italic ? 'italic' : 'normal',
+      textAlign: callout.style?.textAlign || 'left',
+      lineHeight: callout.style?.lineHeight || 1,
+      calloutText: true,
+    };
+    const textLayout = buildTextInkHitLayout(textObject);
     const hit = samples.some((point) => (
-      pointInRect(point, textBox, eraserRadius)
+      isPointOnObject(point, frameObject, eraserRadius)
+      || eraserPointTouchesText(point, textObject, eraserRadius, textLayout)
       || Math.hypot(point.x - arrowTip.x, point.y - arrowTip.y) <= lineTolerance
       || Math.hypot(
         point.x - connection.effectiveKnee.x,

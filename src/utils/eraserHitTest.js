@@ -12,6 +12,154 @@ import { getAnnotationHistoryId } from './annotationLocalHistory.js';
 const MIN_SAMPLE_STEP = 2;
 const MAX_SAMPLE_STEP = 8;
 
+// --- Text ink hit region (owner ruling 2026-09-02: "must touch the ink") ----
+// Erasing counts only when the stroke touches painted ink: an outline, a
+// fill, or the text itself. Shapes already get this from geometryHitTest
+// (a hollow rect/ellipse is hit on its outline only). Text objects were hit
+// by their loose bounding box plus padding, so a stroke running BESIDE a text
+// box wiped the whole note. This lays the text out into per-line ink boxes
+// (Fabric's 6px padding, line height, wrapping, alignment, rotation) and hits
+// only those. Text metrics come from a 2D canvas when one exists, otherwise a
+// per-glyph estimate — both err slightly wide, never narrow.
+const TEXT_PADDING = 6;
+let textMeasureContext = null;
+
+const getTextMeasureContext = () => {
+  if (textMeasureContext || typeof document === 'undefined') return textMeasureContext;
+  try {
+    const canvas = document.createElement('canvas');
+    textMeasureContext = canvas.getContext('2d');
+  } catch {
+    textMeasureContext = null;
+  }
+  return textMeasureContext;
+};
+
+const estimateTextWidth = (text, fontSize) => Array.from(text).reduce((width, char) => {
+  if (/\s/.test(char)) return width + fontSize * 0.28;
+  if (/[ilI1.,'`]/.test(char)) return width + fontSize * 0.3;
+  if (/[MW@#%]/.test(char)) return width + fontSize * 0.85;
+  return width + fontSize * 0.56;
+}, 0);
+
+const textWidth = (text, object, fontSize) => {
+  const context = getTextMeasureContext();
+  if (!context || typeof context.measureText !== 'function') return estimateTextWidth(text, fontSize);
+  context.font = `${object.fontStyle || 'normal'} ${object.fontWeight || 'normal'} ${fontSize}px ${object.fontFamily || 'sans-serif'}`;
+  const measured = context.measureText(text)?.width;
+  return Number.isFinite(measured) && measured > 0 ? measured : estimateTextWidth(text, fontSize);
+};
+
+const wrapTextLines = (object, maxWidth, fontSize) => {
+  const lines = [];
+  String(object?.text || '').split('\n').forEach((sourceLine) => {
+    if (!sourceLine) {
+      lines.push('');
+      return;
+    }
+    let line = '';
+    Array.from(sourceLine).forEach((char) => {
+      const next = `${line}${char}`;
+      if (line && textWidth(next, object, fontSize) > maxWidth) {
+        lines.push(line);
+        line = char;
+      } else {
+        line = next;
+      }
+    });
+    lines.push(line);
+  });
+  return lines;
+};
+
+const unrotateTextPoint = (point, angle, cx, cy) => {
+  if (!angle) return point;
+  const radians = (-angle * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = point.x - cx;
+  const dy = point.y - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+};
+
+const pointTouchesRect = (point, rect, radius) => {
+  const dx = Math.max(rect.left - point.x, 0, point.x - rect.right);
+  const dy = Math.max(rect.top - point.y, 0, point.y - rect.bottom);
+  return Math.hypot(dx, dy) <= radius;
+};
+
+const isTextObjectType = (object) => {
+  const type = String(object?.type || '').toLowerCase();
+  return type === 'textbox' || type === 'text' || type === 'i-text' || type === 'itext';
+};
+
+export function buildTextInkHitLayout(object) {
+  const text = String(object?.text || '');
+  if (!text.trim()) return null;
+
+  const scaleX = Math.abs(Number(object.scaleX) || 1);
+  const scaleY = Math.abs(Number(object.scaleY) || 1);
+  const width = Math.abs(Number(object.width) || 0) * scaleX;
+  const height = Math.abs(Number(object.height) || 0) * scaleY;
+  if (width <= 0 || height <= 0) return null;
+
+  const left = Number(object.left) || 0;
+  const top = Number(object.top) || 0;
+  const padX = TEXT_PADDING * scaleX;
+  const padY = object.calloutText ? 0 : TEXT_PADDING * scaleY;
+  const innerWidth = Math.max(0, width - padX * 2);
+  const innerHeight = Math.max(0, height - padY * 2);
+  const baseFontSize = Number(object.fontSize) || 16;
+  const fontSize = baseFontSize * scaleY;
+  const lineStep = fontSize * (Number(object.lineHeight) || (object.calloutText ? 1 : 1.16)) * 1.13;
+  const wrappedLines = wrapTextLines(object, innerWidth / scaleX, baseFontSize);
+  const maxLines = Math.max(1, Number(object.maxLines) || wrappedLines.length);
+  const lines = wrappedLines.slice(0, maxLines);
+  const blockHeight = lines.length * lineStep;
+  const verticalAlign = object.calloutText ? 'middle' : (object.verticalAlign || 'top');
+  const blockTop = top + padY + (
+    verticalAlign === 'bottom'
+      ? Math.max(0, innerHeight - blockHeight)
+      : verticalAlign === 'middle'
+        ? Math.max(0, (innerHeight - blockHeight) / 2)
+        : 0
+  );
+
+  const lineBoxes = lines.flatMap((line, index) => {
+    if (!line.trim()) return [];
+    const lineWidth = Math.min(innerWidth, textWidth(line, object, baseFontSize) * scaleX);
+    const textAlign = object.textAlign || 'left';
+    const lineLeft = left + padX + (
+      textAlign === 'right'
+        ? innerWidth - lineWidth
+        : textAlign === 'center'
+          ? (innerWidth - lineWidth) / 2
+          : 0
+    );
+    return [{
+      left: lineLeft,
+      top: blockTop + index * lineStep,
+      right: lineLeft + lineWidth,
+      bottom: blockTop + (index + 1) * lineStep,
+    }];
+  });
+
+  return {
+    angle: Number(object.angle) || 0,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    lineBoxes,
+  };
+}
+
+export function eraserPointTouchesText(point, object, eraserRadius = 0, layout = null) {
+  const hitLayout = layout || buildTextInkHitLayout(object);
+  if (!hitLayout) return false;
+  const probe = unrotateTextPoint(point, hitLayout.angle, hitLayout.centerX, hitLayout.centerY);
+  const radius = Math.max(0, Number(eraserRadius) || 0);
+  return hitLayout.lineBoxes.some((rect) => pointTouchesRect(probe, rect, radius));
+}
+
 export function getEraserStrokeBounds(points = [], radius = 0) {
   const finite = points.filter((point) => (
     point
@@ -91,6 +239,13 @@ export function eraserStrokeTouchesObject({ eraserPoints, eraserRadius, object }
   }
 
   const samples = sampleEraserStroke(eraserPoints, eraserRadius);
+  // Text with content: only its rendered lines are ink. An EMPTY text object
+  // paints nothing the user could aim at, so it keeps the box rule and can
+  // still be cleaned up.
+  if (isTextObjectType(object)) {
+    const layout = buildTextInkHitLayout(object);
+    if (layout) return samples.some((point) => eraserPointTouchesText(point, object, eraserRadius, layout));
+  }
   return samples.some((point) => isPointOnObject(point, object, eraserRadius));
 }
 
