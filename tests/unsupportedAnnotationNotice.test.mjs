@@ -147,6 +147,7 @@ test('countUnsupportedAnnotations (cloud-doc cheap scan) matches full-import cla
       { id: 'link-1', subtype: 'Link', rect: [0, 0, 5, 5] }                            // silent companion
     ],
     2: [
+      { id: 'stamp-no-ap', subtype: 'Stamp', rect: [12, 12, 24, 24], hasAppearance: false },
       { id: 'att-1', subtype: 'FileAttachment', rect: [0, 0, 8, 8] }
     ]
   });

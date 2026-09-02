@@ -96,6 +96,7 @@ import {
 // Diagnostic: record every SVG callout's source data + DOM rects so Save Log
 // can dump a full geometry comparison against the Fabric edit-mode capture.
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
+import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -2219,6 +2220,8 @@ const SVGAnnotationLayer = memo(({
         element = null;
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
+      } else if (isPdfStampProxy(obj)) {
+        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" />;
       } else if (objectType === 'rect') {
         element = renderRect(obj, i);
       } else if (objectType === 'line') {
@@ -5359,9 +5362,14 @@ const SVGAnnotationLayer = memo(({
         }
 
         const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
+        const isLockedStampProxy = isPdfStampProxy(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
-        let bbox = getAnnotationBBox(selectionObj);
+        let bbox = getAnnotationBBox(
+          isLockedStampProxy && selectionObj?.data?.pdfStampAppearanceRotationBaked === true
+            ? { ...selectionObj, angle: 0 }
+            : selectionObj
+        );
         let overlayTransform;
         if (visualTransform && typeof visualTransform.id === 'number' && visualTransform.id === selectedIndex) {
           if (visualTransform.previewObjects?.[selectedIndex]) {
@@ -5793,7 +5801,9 @@ const SVGAnnotationLayer = memo(({
               key={`selection-${selectedIndex}`}
               bbox={bbox}
               inverseScale={inverseScale}
-              onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
+              onHandleDrag={isLockedStampProxy
+                ? undefined
+                : (e, handleId) => handleHandlePointerDown(e, handleId)}
               // UX 2026-04-19: only mask the overlay handles when the edit
               // surface is a Fabric canvas (which would render its own
               // handles). In bbox edit mode the SVG layer IS the edit
@@ -5801,8 +5811,9 @@ const SVGAnnotationLayer = memo(({
               // itself, so drop the mask in that case.
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
               hideBoundingBox={textMarkupSelectionChrome.hideBoundingBox
+                || isLockedStampProxy
                 || (isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup)}
-              padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
+              padding={isLockedStampProxy || (isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup) ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
               // Legacy marks have no safe character-offset model for range

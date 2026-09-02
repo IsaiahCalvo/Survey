@@ -106,7 +106,7 @@ test('real print flattener uses app paint for untouched imports and bakes form s
   const importedPageAnnots = parsed.getPage(2).node.lookup(PDFName.of('Annots'));
   assert.equal(importedPageAnnots?.size?.() || 0, 0, 'runtime-id native highlight must not paint over its translucent app copy');
   const stampPageAnnots = parsed.getPage(7).node.lookup(PDFName.of('Annots'));
-  assert.equal(stampPageAnnots?.size?.() || 0, 1, 'AP-only native stamp stays native until it has an app flattener');
+  assert.equal(stampPageAnnots?.size?.() || 0, 0, 'stamp proxy must flatten before its native original is removed');
 
   const engine = await createEngine();
   let doc = null;
@@ -152,6 +152,13 @@ test('real print flattener uses app paint for untouched imports and bakes form s
     assert.ok(yellow.length > 100, 'imported highlight must paint');
     assert.ok(medianChannel(yellow, 2) > 90, 'imported highlight must stay translucent, not opaque yellow');
     assert.ok(ratio(highlight, ([r, g, b]) => r < 80 && g < 80 && b < 80) < 0.002, 'imported highlight must stay borderless');
+
+    const stampPage = await engine.renderPageRaw(doc, doc.pages[7], { scaleFactor: 2 }).toPromise();
+    const stamp = regionPixels(stampPage, [100, 210, 270, 315]);
+    assert.ok(
+      ratio(stamp, ([r, g, b]) => r > 180 && r > g * 2 && r > b * 2) > 0.02,
+      'flattened stamp PNG must keep the red native appearance',
+    );
 
     const resources = parsed.getPage(2).node.lookup(PDFName.of('Resources'), PDFDict);
     const pageFonts = resources?.lookup(PDFName.of('Font'), PDFDict);

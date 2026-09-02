@@ -60,6 +60,10 @@ import {
   parsePdfAppLayerStateMetadata,
   parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
+import {
+  getPdfStampRotation,
+  renderPdfStampAppearances,
+} from './pdfStampProxy.js';
 
 const pdfImportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_IMPORT_DEBUG !== true) return;
@@ -79,9 +83,10 @@ const pdfImportDebug = (...args) => {
  * - Circle (ellipses) → Fabric.js Circle
  * - Line / PolyLine / Polygon → Fabric.js Line/Polyline/Polygon
  * - Text notes / Caret / Underline / StrikeOut / Squiggly
+ * - Stamp with /AP /N → locked PNG proxy
  *
  * Unsupported types (preserved but not imported):
- * - Stamp, Link, Widget, Popup, FileAttachment, Sound, Movie, etc.
+ * - Stamp without /AP /N, Link, Widget, Popup, FileAttachment, Sound, Movie, etc.
  */
 
 // Supported annotation subtypes that we can convert to Fabric.js
@@ -98,7 +103,8 @@ const SUPPORTED_SUBTYPES = [
   'Underline',
   'StrikeOut',
   'Squiggly',
-  'Caret'
+  'Caret',
+  'Stamp'
 ];
 
 // UX / INTENTIONAL BEHAVIOR (verified 2026-07-19, KAL-91): imported Underline /
@@ -2344,6 +2350,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         const ca = readPdfLibNumber(dict.get(PDFName.of('ca')));
         const CA = readPdfLibNumber(dict.get(PDFName.of('CA')));
         const fillOpacity = readPdfLibNumber(dict.get(PDFName.of('FillOpacity')));
+        const rotation = readPdfLibNumber(dict.get(PDFName.of('Rotate')));
         const intent = normalizePdfNameToken(readPdfLibText(dict.get(PDFName.of('IT'))));
         const lineEndings = normalizePdfLineEndings(readPdfLibNameArray(dict.get(PDFName.of('LE'))));
         const lineCoordinates = readPdfLibNumberArray(dict.get(PDFName.of('L')));
@@ -2437,6 +2444,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(Number.isFinite(ca) ? { ca } : {}),
           ...(Number.isFinite(CA) ? { CA } : {}),
           ...(Number.isFinite(fillOpacity) ? { fillOpacity } : {}),
+          ...(Number.isFinite(rotation) ? { rotation } : {}),
           ...(Number.isFinite(borderWidth) ? { borderWidth } : {}),
           ...(borderStyleType ? { borderStyleType } : {}),
           ...(borderDashArray ? { borderDashArray } : {}),
@@ -2576,6 +2584,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     ca: annotation.ca ?? rawMetadata.ca,
     CA: annotation.CA ?? rawMetadata.CA,
     fillOpacity: annotation.fillOpacity ?? rawMetadata.fillOpacity,
+    rotation: Number.isFinite(rawMetadata.rotation) ? rawMetadata.rotation : annotation.rotation,
     borderDashArray: annotation.borderDashArray || rawMetadata.borderDashArray || annotation.borderDashArray,
     borderStyleType: annotation.borderStyleType || rawMetadata.borderStyleType || annotation.borderStyleType,
     borderEffect: annotation.borderEffect || rawMetadata.borderEffect || null,
@@ -2708,6 +2717,45 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
     bottom,
     width: right - left,
     height: bottom - top
+  };
+}
+
+function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl) {
+  if (!annotation?.hasAppearance || typeof appearanceDataUrl !== 'string') return null;
+  const rect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  const opacity = Number(annotation.CA ?? annotation.opacity ?? 1);
+  const explicitRotation = Number(annotation.rotation);
+  const hasExplicitRotation = Number.isFinite(explicitRotation) && explicitRotation !== 0;
+  return {
+    type: 'image',
+    src: appearanceDataUrl,
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    scaleX: 1,
+    scaleY: 1,
+    angle: getPdfStampRotation(annotation),
+    opacity: Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 1,
+    selectable: true,
+    evented: true,
+    hasControls: false,
+    hasBorders: true,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockRotation: true,
+    isPdfImported: true,
+    pdfAnnotationId: annotation.id,
+    pdfAnnotationType: 'Stamp',
+    layer: 'pdf-annotations',
+    data: {
+      // pdf.js applies the appearance stream's /Matrix while it paints the
+      // PNG, but it does not apply the annotation dictionary's /Rotate.
+      pdfStampAppearanceRotationBaked: !hasExplicitRotation,
+    },
   };
 }
 
@@ -4830,7 +4878,7 @@ function convertCaretToFabricPolyline(annotation, viewport, scale = 1) {
  * @param {number} scale - Scale factor (default 1)
  * @returns {Object|null} Fabric.js object data or null if unsupported
  */
-export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null) {
+export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null, options = {}) {
   const normalizedAnnotation = applyRawMetadataToAnnotation(annotation, rawMetadata);
   const subtype = normalizedAnnotation.subtype;
   const finish = (fabricObj) => {
@@ -4934,6 +4982,13 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
       return convertSquigglyToFabricPath(normalizedAnnotation, viewport, scale);
     case 'Caret':
       return convertCaretToFabricPolyline(normalizedAnnotation, viewport, scale);
+    case 'Stamp':
+      return finish(convertStampToImageProxy(
+        normalizedAnnotation,
+        viewport,
+        scale,
+        options.stampAppearanceDataUrl,
+      ));
     default:
       // Unsupported annotation type
       return null;
@@ -4969,7 +5024,10 @@ export function categorizeAnnotations(annotations) {
   const unsupported = [];
 
   annotations.forEach(annotation => {
-    if (SUPPORTED_SUBTYPES.includes(annotation.subtype)) {
+    if (
+      SUPPORTED_SUBTYPES.includes(annotation.subtype)
+      && (annotation.subtype !== 'Stamp' || annotation.hasAppearance === true)
+    ) {
       supported.push(annotation);
     } else if (annotation.subtype && !SILENT_IGNORE_SUBTYPES.includes(annotation.subtype)) {
       // Only report types that are truly unsupported (not common companion annotations)
@@ -5143,7 +5201,18 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const fabricObjects = [];
       const appCalloutsById = new Map();
       const importedDiag = [];
-      supported.forEach(annotation => {
+      const stampAnnotations = supported.filter((annotation) => annotation?.subtype === 'Stamp');
+      let stampAppearanceDataUrls = new Map();
+      if (stampAnnotations.length > 0 && !options.diagnosticsOnly) {
+        try {
+          const renderStampAppearances = options.renderStampAppearances || renderPdfStampAppearances;
+          stampAppearanceDataUrls = await renderStampAppearances(page, stampAnnotations);
+        } catch (error) {
+          console.warn('Failed to render imported stamp appearances:', error);
+        }
+      }
+
+      for (const annotation of supported) {
         try {
           const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
           const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
@@ -5167,7 +5236,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
                 calloutPart: normalized.calloutMetadata.part || null,
                 savedToAppState: true,
               });
-              return;
+              continue;
             }
           }
           const counterMetadataParseFailed = (
@@ -5188,6 +5257,9 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             viewport,
             1,
             rawMetadata,
+            {
+              stampAppearanceDataUrl: stampAppearanceDataUrls.get(annotation.id || annotation.name),
+            },
           );
           const convertedObjects = converted
             ? [
@@ -5218,6 +5290,20 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             }
             importedDiag.push(diagEntry);
           } else {
+            if (annotation?.subtype === 'Stamp') {
+              localUnsupported.add('Stamp');
+              localUnsupportedCounts.set(
+                'Stamp',
+                (localUnsupportedCounts.get('Stamp') || 0) + 1,
+              );
+              importedDiag.push(summarizeFabricImportForDiag(
+                null,
+                annotation,
+                'native-only',
+                'unsupported-renderable-native-annotation',
+              ));
+              continue;
+            }
             importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'converter-returned-null'));
           }
         } catch (error) {
@@ -5237,7 +5323,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             errorMessage: error?.message || String(error),
           });
         }
-      });
+      }
 
       uniqueUnsupported.forEach((annotation) => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);

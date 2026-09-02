@@ -13,6 +13,7 @@ import {
   importAnnotationsFromPdf
 } from '../src/utils/pdfAnnotationImporter.js';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
+import { getPdfStampProxySvgProps } from '../src/utils/pdfStampProxy.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -613,6 +614,72 @@ test('exported app-created pen stroke reimports with original app geometry', asy
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test('stamp with a normal appearance imports as a locked PNG proxy', async () => {
+  const source = await PDFDocument.create();
+  const page = source.addPage([200, 200]);
+  const appearance = source.context.register(source.context.flateStream(
+    'q\n1 0 0 RG\n3 w\n2 2 76 36 re S\nQ\n',
+    {
+      Type: 'XObject',
+      Subtype: 'Form',
+      FormType: 1,
+      BBox: [0, 0, 80, 40],
+      Resources: {},
+    },
+  ));
+  const stampRef = source.context.register(source.context.obj({
+    Type: 'Annot',
+    Subtype: 'Stamp',
+    Rect: [20, 140, 100, 180],
+    NM: 'stamp-with-ap',
+    CA: 0.6,
+    Rotate: 90,
+    AP: { N: appearance },
+    P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), source.context.obj([stampRef]));
+  const bytes = await source.save();
+  const loadingTask = pdfjsLib.getDocument({
+    data: cloneBytesForPdfjs(bytes),
+    disableWorker: true,
+    verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+  });
+  const pdfDoc = await loadingTask.promise;
+  const pngDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw4mAAAAAElFTkSuQmCC';
+  let renderedIds = [];
+
+  const imported = await importAnnotationsFromPdf(pdfDoc, {
+    rawPdfBytes: bytes,
+    renderStampAppearances: async (_page, annotations) => {
+      renderedIds = annotations.map((annotation) => annotation.id);
+      return new Map(annotations.map((annotation) => [annotation.id, pngDataUrl]));
+    },
+  });
+
+  assert.equal(renderedIds.length, 1);
+  const proxy = imported.annotationsByPage[1].objects[0];
+  assert.equal(proxy.type, 'image');
+  assert.equal(proxy.src, pngDataUrl);
+  assert.deepEqual(
+    { left: proxy.left, top: proxy.top, width: proxy.width, height: proxy.height },
+    { left: 20, top: 20, width: 80, height: 40 },
+  );
+  assert.equal(proxy.opacity, 0.6);
+  assert.equal(proxy.angle, 90);
+  assert.equal(proxy.lockMovementX, true);
+  assert.equal(proxy.lockMovementY, true);
+  assert.equal(proxy.lockScalingX, true);
+  assert.equal(proxy.lockScalingY, true);
+  assert.equal(proxy.lockRotation, true);
+  assert.equal(proxy.isPdfImported, true);
+  assert.equal(proxy.pdfAnnotationType, 'Stamp');
+  assert.equal(proxy.pdfAnnotationId, `${stampRef.objectNumber}R`);
+  assert.equal(proxy.data.pdfStampAppearanceRotationBaked, false);
+  assert.match(getPdfStampProxySvgProps(proxy).transform, /^rotate\(90,/);
+  assert.deepEqual(imported.unsupportedTypes, []);
+  assert.equal(imported.nativeLayerPolicyByPage[1].hideNativeLayer, true);
 });
 
 test('exported app-created callout reimports as one app callout without loose Line or FreeText duplicates', async () => {

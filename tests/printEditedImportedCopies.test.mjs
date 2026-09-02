@@ -10,6 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import {
   buildPrintableRegularAnnotationPayload,
@@ -184,4 +185,52 @@ test('print flatten replaces the native original of a drawable UNEDITED imported
   );
 
   assert.equal(await countNativeAnnots(bytes), 0);
+});
+
+test('print flatten embeds an imported stamp PNG and removes its native original', async () => {
+  const sourceDoc = await PDFDocument.create();
+  const page = sourceDoc.addPage([200, 200]);
+  const appearance = sourceDoc.context.register(sourceDoc.context.flateStream(
+    'q 1 0 0 RG 2 w 0 0 40 20 re S Q',
+    { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 40, 20], Resources: {} },
+  ));
+  const nativeAnnot = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot', Subtype: 'Stamp', Rect: [20, 160, 60, 180], NM: 'print-stamp', AP: { N: appearance }, P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), sourceDoc.context.obj([nativeAnnot]));
+  const sourceBytes = await sourceDoc.save();
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw4mAAAAAElFTkSuQmCC';
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'native-stamp.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    {
+      1: { objects: [{
+        id: 'stamp-proxy', type: 'image', src: png,
+        left: 20, top: 20, width: 40, height: 20,
+        angle: 90,
+        isPdfImported: true,
+        pdfAnnotationId: `${nativeAnnot.objectNumber}R`,
+        pdfAnnotationType: 'Stamp',
+        data: { pdfStampAppearanceRotationBaked: false },
+      }] },
+    },
+    { 1: { width: 200, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+
+  assert.equal(await countNativeAnnots(bytes), 0);
+  const flattened = await PDFDocument.load(bytes);
+  assert.ok(flattened.getPage(0).node.get(PDFName.of('Contents')));
+  const loadingTask = pdfjsLib.getDocument({ data: Uint8Array.from(bytes), disableWorker: true });
+  const flattenedPage = await (await loadingTask.promise).getPage(1);
+  const operatorList = await flattenedPage.getOperatorList();
+  assert.ok(operatorList.fnArray.some((fn, index) => (
+    fn === pdfjsLib.OPS.transform
+    && Math.abs(Number(operatorList.argsArray[index]?.[1])) > 0.9
+    && Math.abs(Number(operatorList.argsArray[index]?.[2])) > 0.9
+  )), 'flattened stamp image must retain its 90 degree rotation');
 });

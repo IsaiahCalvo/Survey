@@ -95,6 +95,7 @@ import {
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
 import { buildCloudPathCommands } from './pdfAnnotationImporter.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
+import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 
 const pdfExportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
@@ -178,10 +179,11 @@ const isEditedPdfImportedObject = (obj) => (
 // an untouched native annotation means print uses its /AP stream while the app
 // hides that stream and paints the imported Fabric copy. Those two sources are
 // allowed to differ (opacity, inset stroke, colour, and even authored state).
-// Only replace types this flattener can draw; stamps and other AP-only imports
-// stay native until they have a real app renderer and flattener.
+// Only replace types this flattener can draw. Other AP-only imports stay native
+// until they have an app renderer and flattener.
 const canFlattenImportedObjectForPrint = (obj) => {
   if (!isPdfImportedObject(obj)) return true;
+  if (isPdfStampProxy(obj)) return true;
   if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) return true;
   if (Array.isArray(obj?.objects)) return obj.objects.length > 0;
   return EXPORTABLE_FABRIC_TYPES.has(String(obj?.type || '').toLowerCase());
@@ -3445,7 +3447,7 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   return true;
 };
 
-const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }) => {
+const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
   if (!obj || typeof obj !== 'object') return 0;
   if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) {
     const color = parsePdfDrawColor(obj.fill, '#f4d35e')
@@ -3522,7 +3524,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       y1: child?.y1 !== undefined ? (Number(child.y1) || 0) + parentTop : child?.y1,
       x2: child?.x2 !== undefined ? (Number(child.x2) || 0) + parentLeft : child?.x2,
       y2: child?.y2 !== undefined ? (Number(child.y2) || 0) + parentTop : child?.y2,
-    }, pageHeight, fonts, offset), 0);
+    }, pageHeight, fonts, offset, stampImages), 0);
   }
   const type = String(obj.type || '').toLowerCase();
   const shifted = offset.x || offset.y
@@ -3537,6 +3539,33 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
   const width = Math.max(0, getObjNumber(shifted, 'width') * scaleX);
   const height = Math.max(0, getObjNumber(shifted, 'height') * scaleY);
   const strokeWidth = stroke ? Math.max(0, Number(shifted?.strokeWidth) || 1) : 0;
+
+  if (isPdfStampProxy(shifted)) {
+    const image = stampImages.get(shifted.src || shifted.dataUrl);
+    if (!image || width <= 0 || height <= 0) return 0;
+    const angle = shifted?.data?.pdfStampAppearanceRotationBaked === true
+      ? 0
+      : Number(shifted.angle) || 0;
+    const pdfAngle = -angle;
+    const centerX = left + width / 2;
+    const centerY = getPdfY(pageHeight, top + height / 2);
+    const radians = pdfAngle * Math.PI / 180;
+    const originDx = -width / 2;
+    const originDy = -height / 2;
+    const imageX = centerX + originDx * Math.cos(radians) - originDy * Math.sin(radians);
+    const imageY = centerY + originDx * Math.sin(radians) + originDy * Math.cos(radians);
+    page.drawImage(image, {
+      x: imageX,
+      y: imageY,
+      width,
+      height,
+      opacity: Number.isFinite(Number(shifted.opacity))
+        ? Math.max(0, Math.min(1, Number(shifted.opacity)))
+        : 1,
+      ...(angle ? { rotate: degrees(pdfAngle) } : {}),
+    });
+    return 1;
+  }
 
   if ((type === 'circle' || type === 'ellipse') && shifted?.data?.type === 'counter') {
     drawFlattenedCounterPin(page, shifted, pageHeight, fonts.bold);
@@ -3903,6 +3932,21 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   });
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
+  const stampImages = new Map();
+  for (const pageData of Object.values(printablePayload.annotationsByPage || {})) {
+    for (const obj of (Array.isArray(pageData?.objects) ? pageData.objects : [])) {
+      if (!isPdfStampProxy(obj)) continue;
+      const source = obj.src || obj.dataUrl;
+      if (stampImages.has(source)) continue;
+      const pngBytes = pngDataUrlToBytes(source);
+      if (!pngBytes) continue;
+      try {
+        stampImages.set(source, await pdfDoc.embedPng(pngBytes));
+      } catch (error) {
+        console.warn('Failed to embed imported stamp PNG for print:', error);
+      }
+    }
+  }
 
   // KAL-91 — mirror of the export path's edited-replacement native
   // suppression: an imported object only reaches the printable payload when
@@ -3964,7 +4008,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
           uniformHighlightGroups.get(key).push(obj);
           return;
         }
-        const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts);
+        const drawnCount = drawFlattenedObject(page, obj, pageHeight, fonts, { x: 0, y: 0 }, stampImages);
         flattenedPrintAnnotationsAdded += drawnCount;
         trackEditedImportDraw(pageNumber, obj, drawnCount);
       });
