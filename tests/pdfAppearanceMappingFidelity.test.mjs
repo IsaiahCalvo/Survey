@@ -353,14 +353,16 @@ test('q/Q restores the content CTM between separately painted AP subpaths', asyn
   const imported = await importRawPdf(bytes);
   const layers = imported.annotationsByPage[1].objects;
 
-  assert.equal(layers.length, 2);
-  assertBoundsClose(coordinateBounds(worldPolygons(layers[0])), {
+  assert.equal(layers.length, 1);
+  const polygons = worldPolygons(layers[0]);
+  assert.equal(polygons.length, 2);
+  assertBoundsClose(coordinateBounds(polygons[0]), {
     minX: 10,
     minY: 199,
     maxX: 30,
     maxY: 200,
   });
-  assertBoundsClose(coordinateBounds(worldPolygons(layers[1])), {
+  assertBoundsClose(coordinateBounds(polygons[1]), {
     minX: 0,
     minY: 189.5,
     maxX: 10,

@@ -3,7 +3,11 @@
 // callouts[] state entry. Importer outputs viewport-at-scale-1 coords; the
 // callouts[] state uses normalized 0..1 coords relative to page width/height.
 
-import { defaultCalloutStyle } from '../components/Callout/types';
+import {
+  CALLOUT_LINE_STYLES,
+  calloutLineStyleFromDash,
+  defaultCalloutStyle,
+} from '../components/Callout/types';
 
 function isImportedCalloutTextbox(obj) {
   if (!obj || obj.type !== 'textbox') return false;
@@ -82,6 +86,14 @@ function convertImportedCalloutToCalloutState(importedObj, pageNumber, pageWidth
   }
   if (Number.isFinite(pdfStyle.strokeWidth) && pdfStyle.strokeWidth > 0) {
     style.lineThickness = pdfStyle.strokeWidth;
+  }
+  if (Array.isArray(pdfStyle.strokeDashArray) && pdfStyle.strokeDashArray.length > 0) {
+    const canonical = calloutLineStyleFromDash(pdfStyle.strokeDashArray);
+    style.lineStyle = canonical !== CALLOUT_LINE_STYLES.SOLID
+      ? canonical
+      : (Number(pdfStyle.strokeDashArray[0]) <= 2
+          ? CALLOUT_LINE_STYLES.DOTTED
+          : CALLOUT_LINE_STYLES.DASHED);
   }
   // UX: Phase 15 UAT-3 (2026-04-18) — surface the PDF's interior-color
   // fill. Source PDFs (Acrobat FreeTextCallout) carry the fill as an

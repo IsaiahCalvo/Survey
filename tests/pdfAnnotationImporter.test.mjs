@@ -41,6 +41,265 @@ const makeViewport = ({ xOffset = 0, yOffset = 0, pageHeight = 100 } = {}) => {
   };
 };
 
+const importSyntheticPdf = async (build) => {
+  const source = await PDFDocument.create();
+  await build(source);
+  const bytes = await source.save();
+  const loadingTask = pdfjsLib.getDocument({
+    data: cloneBytesForPdfjs(bytes),
+    disableWorker: true,
+    verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+  });
+  const pdfDoc = await loadingTask.promise;
+  try {
+    return {
+      pdfDoc,
+      destroy: () => loadingTask.destroy(),
+      imported: await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes: bytes }),
+    };
+  } catch (error) {
+    await loadingTask.destroy();
+    throw error;
+  }
+};
+
+const addRawAnnotation = (pdfDoc, page, entries) => {
+  const ref = pdfDoc.context.register(pdfDoc.context.obj({
+    Type: 'Annot',
+    F: 4,
+    P: page.ref,
+    ...entries,
+  }));
+  const annots = page.node.lookup(PDFName.of('Annots'));
+  page.node.set(
+    PDFName.of('Annots'),
+    pdfDoc.context.obj([...(annots?.asArray?.() || []), ref]),
+  );
+  return ref;
+};
+
+test('synthetic rotated pages map annotation rectangles through the page viewport', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    for (const rotation of [90, 180, 270]) {
+      const page = source.addPage([200, 300]);
+      page.node.set(PDFName.of('Rotate'), source.context.obj(rotation));
+      addRawAnnotation(source, page, {
+        Subtype: 'Square',
+        Rect: [20, 40, 60, 80],
+        C: [1, 0, 0],
+        BS: { W: 2 },
+      });
+    }
+  });
+
+  try {
+    for (let pageNumber = 1; pageNumber <= 3; pageNumber += 1) {
+      const page = await pdfDoc.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 1, rotation: page.rotate });
+      const corners = [
+        viewport.convertToViewportPoint(20, 40),
+        viewport.convertToViewportPoint(60, 80),
+      ];
+      const expected = {
+        left: Math.min(corners[0][0], corners[1][0]),
+        top: Math.min(corners[0][1], corners[1][1]),
+        width: Math.abs(corners[1][0] - corners[0][0]),
+        height: Math.abs(corners[1][1] - corners[0][1]),
+      };
+      const object = imported.annotationsByPage[pageNumber].objects[0];
+      assert.deepEqual(
+        { left: object.left, top: object.top, width: object.width, height: object.height },
+        expected,
+      );
+    }
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic CropBox page maps annotation rectangles relative to the crop origin', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([400, 600]);
+    page.node.set(PDFName.of('CropBox'), source.context.obj([90, 140, 290, 440]));
+    addRawAnnotation(source, page, {
+      Subtype: 'Square',
+      Rect: [100, 150, 150, 200],
+      C: [0, 0, 1],
+      BS: { W: 1 },
+    });
+  });
+
+  try {
+    const object = imported.annotationsByPage[1].objects[0];
+    assert.deepEqual(
+      { left: object.left, top: object.top, width: object.width, height: object.height },
+      { left: 10, top: 240, width: 50, height: 50 },
+    );
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic highlight honors CA and appearance alpha without applying alpha twice', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    const gs = source.context.register(source.context.obj({
+      Type: 'ExtGState',
+      CA: 0.4,
+      ca: 0.4,
+      BM: 'Multiply',
+    }));
+    const appearance = source.context.register(source.context.flateStream(
+      '/GS0 gs 1 1 0 rg 0 0 80 20 re f',
+      {
+        Type: 'XObject',
+        Subtype: 'Form',
+        FormType: 1,
+        BBox: [0, 0, 80, 20],
+        Resources: { ExtGState: { GS0: gs } },
+      },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'Highlight',
+      Rect: [20, 100, 100, 120],
+      QuadPoints: [20, 120, 100, 120, 20, 100, 100, 100],
+      C: [1, 1, 0],
+      CA: 0.4,
+      AP: { N: appearance },
+    });
+    addRawAnnotation(source, page, {
+      Subtype: 'Highlight',
+      Rect: [20, 60, 100, 80],
+      QuadPoints: [20, 80, 100, 80, 20, 60, 100, 60],
+      C: [1, 1, 0],
+      CA: 4,
+    });
+  });
+
+  try {
+    const [object, clamped] = imported.annotationsByPage[1].objects;
+    assert.equal(object.opacity, 0.4);
+    assert.equal(object.globalCompositeOperation, 'multiply');
+    assert.equal(clamped.opacity, 1);
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic multi-stroke InkList keeps every stroke', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Ink',
+      Rect: [10, 20, 170, 170],
+      C: [0, 0, 0],
+      BS: { W: 3, S: 'D', D: [4, 2] },
+      InkList: [
+        [20, 30, 50, 60],
+        [70, 80, 90, 100],
+        [120, 130, 150, 160],
+      ],
+    });
+  });
+
+  try {
+    const object = imported.annotationsByPage[1].objects[0];
+    assert.equal(object.path.filter((segment) => segment[0] === 'M').length, 3);
+    assert.deepEqual(object.strokeDashArray, [4, 2]);
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic translucent Ink uses appearance alpha once and keeps multiply blend', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    const gs = source.context.register(source.context.obj({
+      Type: 'ExtGState',
+      CA: 0.45,
+      ca: 0.45,
+      BM: 'Multiply',
+    }));
+    const appearance = source.context.register(source.context.flateStream(
+      '/GS0 gs 1 1 0 RG 10 w 20 100 m 160 100 l S',
+      {
+        Type: 'XObject',
+        Subtype: 'Form',
+        FormType: 1,
+        BBox: [10, 90, 170, 110],
+        Matrix: [1, 0, 0, 1, -10, -90],
+        Resources: { ExtGState: { GS0: gs } },
+      },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'Ink',
+      Rect: [10, 90, 170, 110],
+      C: [1, 1, 0],
+      CA: 0.45,
+      BS: { W: 10 },
+      InkList: [[20, 100, 160, 100]],
+      AP: { N: appearance },
+    });
+  });
+
+  try {
+    const object = imported.annotationsByPage[1].objects[0];
+    assert.equal(object.stroke, 'rgba(255, 255, 0, 0.45)');
+    assert.equal(object.globalCompositeOperation, 'multiply');
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic IC-less transparent square stays unfilled and keeps its dash pattern', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Square',
+      Rect: [20, 20, 100, 100],
+      C: [1, 0, 0],
+      CA: 0.25,
+      BS: { W: 2, S: 'D', D: [3, 2] },
+    });
+  });
+
+  try {
+    const object = imported.annotationsByPage[1].objects[0];
+    assert.equal(object.fill, 'transparent');
+    assert.equal(object.stroke, 'rgba(255, 0, 0, 0.25)');
+    assert.deepEqual(object.strokeDashArray, [3, 2]);
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic FreeTextCallout keeps text, style, and leader points for the app callout adapter', async () => {
+  const { pdfDoc, imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([300, 300]);
+    addRawAnnotation(source, page, {
+      Subtype: 'FreeText',
+      Rect: [40, 80, 260, 180],
+      Contents: 'Synthetic callout',
+      IT: 'FreeTextCallout',
+      CL: [50, 90, 100, 110, 150, 130],
+      C: [0, 0, 1],
+      DA: '/Helv 12 Tf 0 0 1 rg',
+      BS: { W: 2, S: 'D', D: [5, 3] },
+    });
+  });
+
+  try {
+    const object = imported.annotationsByPage[1].objects[0];
+    assert.equal(object.text, 'Synthetic callout');
+    assert.equal(object.data.pdfIntent, 'FreeTextCallout');
+    assert.equal(object.data.pdfCalloutPoints.length, 3);
+    assert.deepEqual(object.strokeDashArray, [5, 3]);
+    assert.equal(object.data.pdfCalloutPoints[0].x, 50);
+  } finally {
+    await destroy();
+  }
+});
+
 test('buildPdfImportStatisticsSummary derives sampled, fallback, and skipped from importer diagnostics', () => {
   const summary = buildPdfImportStatisticsSummary({
     1: {
@@ -164,7 +423,7 @@ test('convertPdfAnnotationToFabric maps line endpoints using viewport point conv
   assert.equal(obj.y2, 83);
 });
 
-test('convertPdfAnnotationToFabric applies opacity-based fill fallback for transparent Circle annotations', () => {
+test('convertPdfAnnotationToFabric keeps IC-less transparent Circle annotations unfilled', () => {
   const viewport = makeViewport({ pageHeight: 100 });
 
   const annotation = {
@@ -178,7 +437,7 @@ test('convertPdfAnnotationToFabric applies opacity-based fill fallback for trans
   const obj = convertPdfAnnotationToFabric(annotation, viewport);
 
   assert.equal(obj.type, 'circle');
-  assert.equal(obj.fill, 'rgba(255, 0, 0, 0.3)');
+  assert.equal(obj.fill, 'transparent');
   assert.equal(obj.stroke, 'rgba(255, 0, 0, 0.3)');
 });
 

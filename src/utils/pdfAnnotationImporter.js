@@ -704,16 +704,14 @@ function normalizeOpacityValue(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
 
-  // Some generators store alpha as a percentage (0-100).
-  if (numeric > 1 && numeric <= 100) {
-    return clamp01(numeric / 100, null);
-  }
-
   return clamp01(numeric, null);
 }
 
 function extractAnnotationOpacity(annotation, fallback = 1) {
   if (!annotation || typeof annotation !== 'object') {
+    return fallback;
+  }
+  if (annotation._hasExplicitAnnotationOpacity === false) {
     return fallback;
   }
 
@@ -734,6 +732,21 @@ function extractAnnotationOpacity(annotation, fallback = 1) {
   }
 
   return fallback;
+}
+
+function getAppearancePaintOperation(appearance, paintKind) {
+  if (!Array.isArray(appearance?.paintOperations)) return null;
+  return appearance.paintOperations.find((operation) => operation?.[paintKind] === true) || null;
+}
+
+function resolveAnnotationPaintOpacity(annotation, appearance, paintKind, fallback = 1) {
+  const operation = getAppearancePaintOperation(appearance, paintKind);
+  const alphaKey = paintKind === 'fill' ? 'fillAlpha' : 'strokeAlpha';
+  const explicitKey = `${alphaKey}Explicit`;
+  if (operation?.[explicitKey] === true) {
+    return normalizeOpacityValue(operation[alphaKey]) ?? fallback;
+  }
+  return extractAnnotationOpacity(annotation, fallback);
 }
 
 function hexToRgba(hex, alpha = 1) {
@@ -777,18 +790,12 @@ function getShapeFillHex(annotation) {
   return pdfColorToHex(fillSource, annotation);
 }
 
-function getShapeFillColor(annotation, strokeHex) {
+function getShapeFillColor(annotation) {
   const explicitFillHex = getShapeFillHex(annotation);
   const objectOpacity = extractAnnotationOpacity(annotation, 1);
 
   if (explicitFillHex) {
     return hexToRgba(explicitFillHex, objectOpacity);
-  }
-
-  // Drawboard and similar tools may rely on shared opacity + stroke color and omit interiorColor.
-  // For partially transparent circle/square markups, use stroke color as fill fallback.
-  if (objectOpacity < 1) {
-    return hexToRgba(strokeHex, objectOpacity);
   }
 
   return 'transparent';
@@ -1567,6 +1574,9 @@ function parseAppearanceStream(content, options = {}) {
   let fillAlpha = Number.isFinite(options.initialGraphicsState?.fillAlpha)
     ? Number(options.initialGraphicsState.fillAlpha)
     : 1;
+  let strokeAlphaExplicit = options.initialGraphicsState?.strokeAlphaExplicit === true;
+  let fillAlphaExplicit = options.initialGraphicsState?.fillAlphaExplicit === true;
+  let blendMode = options.initialGraphicsState?.blendMode || null;
   let hasStroke = false;
   let hasFill = false;
   let fillRule = null;
@@ -1670,6 +1680,9 @@ function parseAppearanceStream(content, options = {}) {
           dashPhase,
           strokeAlpha,
           fillAlpha,
+          strokeAlphaExplicit,
+          fillAlphaExplicit,
+          blendMode,
           strokeMatrix: Array.from(ctm),
           clipPolygons: clonePolygonSet(activeClip),
           clipActive,
@@ -1901,8 +1914,15 @@ function parseAppearanceStream(content, options = {}) {
           if (Number.isFinite(ext.miterLimit)) miterLimit = ext.miterLimit;
           if (Array.isArray(ext.dashArray)) dashArray = Array.from(ext.dashArray, Number);
           if (Number.isFinite(ext.dashPhase)) dashPhase = ext.dashPhase;
-          if (Number.isFinite(ext.strokeAlpha)) strokeAlpha = ext.strokeAlpha;
-          if (Number.isFinite(ext.fillAlpha)) fillAlpha = ext.fillAlpha;
+          if (Number.isFinite(ext.strokeAlpha)) {
+            strokeAlpha = ext.strokeAlpha;
+            strokeAlphaExplicit = true;
+          }
+          if (Number.isFinite(ext.fillAlpha)) {
+            fillAlpha = ext.fillAlpha;
+            fillAlphaExplicit = true;
+          }
+          if (ext.blendMode) blendMode = ext.blendMode;
         }
         operands.length = 0;
         break;
@@ -2027,6 +2047,9 @@ function parseAppearanceStream(content, options = {}) {
             dashPhase,
             strokeAlpha,
             fillAlpha,
+            strokeAlphaExplicit,
+            fillAlphaExplicit,
+            blendMode,
           },
         });
         if (child) {
@@ -2070,6 +2093,9 @@ function parseAppearanceStream(content, options = {}) {
           dashPhase,
           strokeAlpha,
           fillAlpha,
+          strokeAlphaExplicit,
+          fillAlphaExplicit,
+          blendMode,
           ctm: Array.from(ctm),
           activeClip: clonePolygonSet(activeClip),
           clipActive,
@@ -2091,6 +2117,9 @@ function parseAppearanceStream(content, options = {}) {
           dashPhase = saved.dashPhase;
           strokeAlpha = saved.strokeAlpha;
           fillAlpha = saved.fillAlpha;
+          strokeAlphaExplicit = saved.strokeAlphaExplicit;
+          fillAlphaExplicit = saved.fillAlphaExplicit;
+          blendMode = saved.blendMode;
           ctm = saved.ctm;
           activeClip = saved.activeClip;
           clipActive = saved.clipActive;
@@ -2199,6 +2228,9 @@ function createAppearanceResourceResolvers(context, pdfLib) {
       : null;
     const capIndex = readPdfLibNumber(state.get(PDFName.of('LC')));
     const joinIndex = readPdfLibNumber(state.get(PDFName.of('LJ')));
+    const blendMode = normalizePdfNameToken(
+      readPdfLibText(state.get(PDFName.of('BM'))),
+    );
     return {
       strokeWidth: readPdfLibNumber(state.get(PDFName.of('LW'))),
       lineCap: Number.isFinite(capIndex) ? (LINE_CAP_MAP[Math.trunc(capIndex)] || null) : null,
@@ -2208,6 +2240,7 @@ function createAppearanceResourceResolvers(context, pdfLib) {
       dashPhase,
       strokeAlpha: readPdfLibNumber(state.get(PDFName.of('CA'))),
       fillAlpha: readPdfLibNumber(state.get(PDFName.of('ca'))),
+      blendMode,
     };
   };
 
@@ -2392,7 +2425,9 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         let borderStyleType = null;
         let borderDashArray = null;
         const borderStyleRef = dict.get(PDFName.of('BS'));
-        const borderStyle = borderStyleRef ? rawPdfDoc.context.lookup(borderStyleRef) : null;
+        const borderStyle = borderStyleRef
+          ? (rawPdfDoc.context.lookup(borderStyleRef) || borderStyleRef)
+          : null;
         if (borderStyle && typeof borderStyle.get === 'function') {
           borderWidth = readPdfLibNumber(borderStyle.get(PDFName.of('W')));
           borderStyleType = normalizePdfNameToken(readPdfLibText(borderStyle.get(PDFName.of('S'))));
@@ -2542,7 +2577,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
   if (Number.isFinite(rawMetadata.borderWidth)) {
     borderStyle.width = rawMetadata.borderWidth;
   }
-  if (!borderStyle.style && rawMetadata.borderStyleType) {
+  if (rawMetadata.borderStyleType) {
     borderStyle.style = rawMetadata.borderStyleType;
   }
   if (
@@ -2580,10 +2615,20 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     // reason the borderStyle fix above handles. Falls back to pdf.js's
     // borderWidth only when raw isn't available.
     borderWidth: Number.isFinite(rawMetadata.borderWidth) ? rawMetadata.borderWidth : annotation.borderWidth,
-    opacity: annotation.opacity ?? rawMetadata.opacity,
+    opacity:
+      rawMetadata.opacity
+      ?? rawMetadata.CA
+      ?? rawMetadata.ca
+      ?? annotation.opacity,
     ca: annotation.ca ?? rawMetadata.ca,
     CA: annotation.CA ?? rawMetadata.CA,
     fillOpacity: annotation.fillOpacity ?? rawMetadata.fillOpacity,
+    _hasExplicitAnnotationOpacity: [
+      rawMetadata.opacity,
+      rawMetadata.CA,
+      rawMetadata.ca,
+      rawMetadata.fillOpacity,
+    ].some(Number.isFinite),
     rotation: Number.isFinite(rawMetadata.rotation) ? rawMetadata.rotation : annotation.rotation,
     borderDashArray: annotation.borderDashArray || rawMetadata.borderDashArray || annotation.borderDashArray,
     borderStyleType: annotation.borderStyleType || rawMetadata.borderStyleType || annotation.borderStyleType,
@@ -2693,17 +2738,15 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
     return null;
   }
 
-  let x1, y1, x2, y2;
-
-  if (viewport && typeof viewport.convertToViewportRectangle === 'function') {
-    [x1, y1, x2, y2] = viewport.convertToViewportRectangle(rect);
-  } else {
-    const pageHeight = Number.isFinite(viewport?.height) ? viewport.height : 0;
-    x1 = rect[0];
-    y1 = pageHeight - rect[3];
-    x2 = rect[2];
-    y2 = pageHeight - rect[1];
-  }
+  // pdf.js 6 exposes point conversion but no rectangle helper. Convert both
+  // corners through the viewport so page rotation and non-zero CropBox origins
+  // use the same transform as the rendered PDF page.
+  const first = convertPdfPointToViewport(rect[0], rect[1], viewport, 1);
+  const second = convertPdfPointToViewport(rect[2], rect[3], viewport, 1);
+  const x1 = first.x;
+  const y1 = first.y;
+  const x2 = second.x;
+  const y2 = second.y;
 
   const left = Math.min(x1, x2) * scale;
   const right = Math.max(x1, x2) * scale;
@@ -2998,6 +3041,7 @@ function createFilledAppearanceLayer({
   layerIndex,
   paint,
   opacity,
+  blendMode = null,
   worldPolygons,
   exactWorldPath = null,
   sourceWidth = 0,
@@ -3027,6 +3071,7 @@ function createFilledAppearanceLayer({
     width: bounds.maxX - bounds.minX,
     height: bounds.maxY - bounds.minY,
     fill,
+    ...(blendMode === 'Multiply' ? { globalCompositeOperation: 'multiply' } : {}),
     stroke: 'transparent',
     strokeWidth: 0,
     fillRule: fillRule === 'nonzero' ? 'nonzero' : 'evenodd',
@@ -3058,6 +3103,45 @@ function createFilledAppearanceLayer({
       pdfAppearanceLayerKind: kind,
     },
     layer: 'pdf-annotations',
+  };
+}
+
+function mergeCompatibleAppearanceLayers(layers) {
+  if (!Array.isArray(layers) || layers.length < 2) return null;
+  const signature = (layer) => JSON.stringify({
+    fill: layer?.fill,
+    stroke: layer?.stroke,
+    strokeWidth: layer?.strokeWidth,
+    fillRule: layer?.fillRule,
+    globalCompositeOperation: layer?.globalCompositeOperation || null,
+  });
+  const expected = signature(layers[0]);
+  if (!layers.every((layer) => signature(layer) === expected)) return null;
+
+  const worldPath = [];
+  const worldPolygons = [];
+  for (const layer of layers) {
+    worldPath.push(...translatePathCommands(layer.path, layer.left, layer.top));
+    worldPolygons.push(...translatePolygonSet(layer.polygons, layer.left, layer.top));
+  }
+  const bounds = polygonSetBounds(worldPolygons);
+  if (!bounds) return null;
+  const first = layers[0];
+  return {
+    ...first,
+    path: translatePathCommands(worldPath, -bounds.minX, -bounds.minY),
+    polygons: translatePolygonSet(worldPolygons, -bounds.minX, -bounds.minY),
+    left: bounds.minX,
+    top: bounds.minY,
+    width: bounds.maxX - bounds.minX,
+    height: bounds.maxY - bounds.minY,
+    data: {
+      ...(first.data || {}),
+      pdfAppearanceLayerKind: 'composite',
+      pdfAppearancePaintOperationIndexes: layers.map(
+        (layer) => layer?.data?.pdfAppearancePaintOperationIndex,
+      ),
+    },
   };
 }
 
@@ -3117,7 +3201,6 @@ function buildAppearancePaintLayers(
       }
     }
   }
-  const baseOpacity = extractAnnotationOpacity(annotation, 1);
   const layers = [];
   let requiresMaterialization = operations.length > 1;
 
@@ -3174,9 +3257,10 @@ function buildAppearancePaintLayers(
           paintOperationIndex,
           layerIndex: layers.length,
           paint: operation.fillColor || annotation?.color,
-          opacity: baseOpacity * (
-            Number.isFinite(operation.fillAlpha) ? operation.fillAlpha : 1
-          ),
+          opacity: operation.fillAlphaExplicit === true
+            ? (normalizeOpacityValue(operation.fillAlpha) ?? 1)
+            : extractAnnotationOpacity(annotation, 1),
+          blendMode: operation.blendMode,
           worldPolygons,
           exactWorldPath,
           fillRule: operation.fillRule || 'nonzero',
@@ -3232,9 +3316,10 @@ function buildAppearancePaintLayers(
           paintOperationIndex,
           layerIndex: layers.length,
           paint: operation.strokeColor || annotation?.color,
-          opacity: baseOpacity * (
-            Number.isFinite(operation.strokeAlpha) ? operation.strokeAlpha : 1
-          ),
+          opacity: operation.strokeAlphaExplicit === true
+            ? (normalizeOpacityValue(operation.strokeAlpha) ?? 1)
+            : extractAnnotationOpacity(annotation, 1),
+          blendMode: operation.blendMode,
           worldPolygons,
           sourceWidth: (
             operation.strokeWidth
@@ -3249,6 +3334,8 @@ function buildAppearancePaintLayers(
   });
 
   if (layers.length > 1) requiresMaterialization = true;
+  const mergedLayer = mergeCompatibleAppearanceLayers(layers);
+  if (mergedLayer) return [mergedLayer];
   // An empty array is authoritative: the appearance contained supported paint
   // operations, but clipping removed every painted point. Keep that distinct
   // from null ("use the exact live-path representation") so a fully clipped
@@ -3336,11 +3423,18 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     Array.isArray(appearancePathData) &&
     appearancePathData.length > 0 &&
     appearance?.hasFill === true;
+  const inkStrokeCount = hasInkList
+    ? annotation.inkLists.filter((list) => list && list.length > 0).length
+    : 0;
+  const appearanceSubpathCount = Array.isArray(appearancePathData)
+    ? appearancePathData.filter((command) => command?.[0] === 'M').length
+    : 0;
   const useStrokedAppearancePath =
     !useFilledAppearancePath &&
     Array.isArray(appearancePathData) &&
     appearancePathData.length > 0 &&
-    appearance?.hasStroke === true;
+    appearance?.hasStroke === true &&
+    (inkStrokeCount <= 1 || appearanceSubpathCount >= inkStrokeCount);
   const appearanceFillRule = appearance?.fillRule
     || (appearance?.isFormXObject === true ? 'nonzero' : 'evenodd');
   const isPdfStrokeHairline = (
@@ -3386,6 +3480,9 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
           fillAlpha: Number.isFinite(operation?.fillAlpha)
             ? operation.fillAlpha
             : 1,
+          strokeAlphaExplicit: operation?.strokeAlphaExplicit === true,
+          fillAlphaExplicit: operation?.fillAlphaExplicit === true,
+          blendMode: operation?.blendMode || null,
           strokeMatrix: isFinitePdfMatrix(operation?.strokeMatrix)
             ? Array.from(operation.strokeMatrix, Number)
             : null,
@@ -3526,11 +3623,11 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
         useFilledAppearancePath ? operation?.fill : operation?.stroke
       ))
     : null;
-  const appearancePaintAlpha = useFilledAppearancePath
-    ? primaryPaintOperation?.fillAlpha
-    : primaryPaintOperation?.strokeAlpha;
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1) * (
-    Number.isFinite(appearancePaintAlpha) ? appearancePaintAlpha : 1
+  const strokeOpacity = resolveAnnotationPaintOpacity(
+    annotation,
+    appearance,
+    useFilledAppearancePath ? 'fill' : 'stroke',
+    1,
   );
 
   let strokeWidth = 0;
@@ -3732,18 +3829,24 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     // diameter and make the exporter treat it as a stroked ink path.
     strokeWidth: isImportedInkDot ? 0 : strokeWidth,
     fill: fillsClosedOutline ? inkPaint : null,
+    ...(primaryPaintOperation?.blendMode === 'Multiply'
+      ? { globalCompositeOperation: 'multiply' }
+      : {}),
     strokeLineCap: appearance?.lineCap || (useStrokedAppearancePath ? 'butt' : 'round'),
     strokeLineJoin: appearance?.lineJoin || (useStrokedAppearancePath ? 'miter' : 'round'),
     ...(Number.isFinite(primaryPaintOperation?.miterLimit)
       ? { strokeMiterLimit: primaryPaintOperation.miterLimit }
       : {}),
-    ...(Array.isArray(appearance?.paintOperations?.[0]?.dashArray)
-      && appearance.paintOperations[0].dashArray.length > 0
+    ...((Array.isArray(primaryPaintOperation?.dashArray)
+      && primaryPaintOperation.dashArray.length > 0)
       ? {
-          strokeDashArray: Array.from(appearance.paintOperations[0].dashArray, Number),
-          strokeDashOffset: Number(appearance.paintOperations[0].dashPhase) || 0,
+          strokeDashArray: Array.from(primaryPaintOperation.dashArray, Number),
+          strokeDashOffset: Number(primaryPaintOperation.dashPhase) || 0,
         }
-      : {}),
+      : (() => {
+          const dashArray = extractAnnotationDashArray(annotation);
+          return dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {};
+        })()),
     // strokeUniform intentionally omitted — matches internal pen-stroke
     // behavior (undefined). Do NOT reintroduce without removing the
     // matching field from makeInternalPenPathSpec + updating the parity
@@ -3874,7 +3977,7 @@ function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
   }
 
   const color = pdfColorToHex(annotation.color || [1, 1, 0], annotation); // Default yellow
-  const opacity = extractAnnotationOpacity(annotation, 0.3);
+  const opacity = resolveAnnotationPaintOpacity(annotation, annotation?._appearance, 'fill', 0.3);
 
   return {
     type: 'rect',
@@ -3884,6 +3987,7 @@ function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
     height: viewportRect.height,
     fill: color,
     opacity,
+    globalCompositeOperation: 'multiply',
     stroke: null,
     strokeWidth: 0,
     // Required Fabric.js properties for proper interaction
@@ -4019,6 +4123,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   }
   const fontSize = annotation.defaultAppearanceData?.fontSize || 12;
   const strokeWidth = getBorderWidth(annotation, 0, { allowExplicitZero: true });
+  const dashArray = extractAnnotationDashArray(annotation);
   const fillHex = getShapeFillHex(annotation);
   const fillOpacity = extractAnnotationOpacity(annotation, 1);
   // UX 2026-04-21: PDF spec — callout/textbox fill comes from /IC
@@ -4067,6 +4172,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
             borderColor,
             backgroundColor,
             strokeWidth: strokeWidth * scale,
+            ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
             textAlign: annotation.defaultAppearanceData?.textAlign || null,
           }
         }
@@ -4114,6 +4220,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
       fill: textColor,
       stroke: strokeWidth > 0 ? borderColor : null,
       strokeWidth: strokeWidth * scale,
+      ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
       backgroundColor,
       fontSize: fontSize * scale,
       fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
@@ -4139,6 +4246,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     fill: textColor,
     stroke: strokeWidth > 0 ? borderColor : null,
     strokeWidth: strokeWidth * scale,
+    ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     backgroundColor,
     fontSize: fontSize * scale,
     fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
@@ -4247,11 +4355,11 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
-  const fillColor = getShapeFillColor(annotation, strokeColor);
+  const fillColor = getShapeFillColor(annotation);
   const strokeWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
+  const dashArray = extractAnnotationDashArray(annotation);
   const hasVisibleStroke = strokeWidth > 0;
   const hasVisibleFill = fillColor !== 'transparent';
-  const dashArray = extractAnnotationDashArray(annotation);
   const intent = normalizePdfNameToken(annotation.intent || '');
 
   if (!hasVisibleStroke && !hasVisibleFill) {
@@ -4390,8 +4498,9 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
-  const fillColor = getShapeFillColor(annotation, strokeColor);
+  const fillColor = getShapeFillColor(annotation);
   const strokeWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
+  const dashArray = extractAnnotationDashArray(annotation);
   const hasVisibleStroke = strokeWidth > 0;
   const hasVisibleFill = fillColor !== 'transparent';
 
@@ -4442,6 +4551,7 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     fill: fillColor,
     stroke: hasVisibleStroke ? hexToRgba(strokeColor, strokeOpacity) : null,
     strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
+    ...(dashArray && hasVisibleStroke ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     strokeUniform: true,
     // Required Fabric.js properties for proper interaction
     selectable: true,
@@ -4483,7 +4593,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     }
 
     const displayNumber = counterMetadata.displayNumber ?? counterMetadata.number ?? null;
-    const color = counterMetadata.color || getShapeFillColor(annotation, pdfColorToHex(annotation.color || [0, 0, 0], annotation));
+    const color = counterMetadata.color || getShapeFillColor(annotation);
     // The PDF /Rect includes the counter pin nub so native viewers do not clip
     // its appearance. Restore the editable circle body from app metadata rather
     // than treating that larger appearance rectangle as the Fabric position.
@@ -4533,8 +4643,9 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
-  const fillColor = getShapeFillColor(annotation, strokeColor);
+  const fillColor = getShapeFillColor(annotation);
   const strokeWidth = getBorderWidth(annotation, 1);
+  const dashArray = extractAnnotationDashArray(annotation);
 
   // UX 2026-04-22: recover tilt + true oblong dimensions from the /AP
   // appearance matrix when present. Drawboard tilts ellipses by baking a
@@ -4559,6 +4670,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
       fill: fillColor,
       stroke: hexToRgba(strokeColor, strokeOpacity),
       strokeWidth: strokeWidth * scale,
+      ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
       strokeUniform: true,
       selectable: true,
       evented: true,
@@ -4585,6 +4697,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     fill: fillColor,
     stroke: hexToRgba(strokeColor, strokeOpacity),
     strokeWidth: strokeWidth * scale,
+    ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     strokeUniform: true,
     // If it's an ellipse, store the original dimensions
     scaleX: viewportRect.width / (radius * 2),
@@ -5133,7 +5246,8 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     };
     try {
       const page = await pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1 });
+      const rotation = Number.isFinite(Number(page.rotate)) ? Number(page.rotate) : 0;
+      const viewport = page.getViewport({ scale: 1, rotation });
 
       const annotations = await extractAnnotationsFromPage(page);
       const directNativeIdentities = buildDirectPdfNativeAnnotationIdentities(
