@@ -12,10 +12,12 @@ const findFreePort = () => new Promise((resolve, reject) => {
   });
 });
 
+// Any scenario spec may be passed as arguments; the fidelity spec is the default.
+const specs = process.argv.slice(2).length ? process.argv.slice(2) : ['debug/scenarios/print-fidelity.spec.mjs'];
 const port = await findFreePort();
 const child = spawn(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  ['playwright', 'test', '--config', 'debug/playwright.config.mjs', 'debug/scenarios/print-fidelity.spec.mjs'],
+  ['playwright', 'test', '--config', 'debug/playwright.config.mjs', ...specs],
   { stdio: 'inherit', env: { ...process.env, PLAYWRIGHT_BASE_URL: `http://127.0.0.1:${port}` } },
 );
 child.on('exit', (code, signal) => {

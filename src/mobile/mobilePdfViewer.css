@@ -16,7 +16,10 @@ html.survey-viewer-open #root {
   display: none;
 }
 
-@media (max-width: 720px) {
+/* Screen-only: the html/body/#root pin below must never apply while the
+   browser paginates for paper (printable width < 720px clipped every print
+   to one sheet). */
+@media screen and (max-width: 720px) {
   html.survey-viewer-open .survey-marker-touch-delete {
     display: inline;
     overflow: visible;

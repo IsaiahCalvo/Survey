@@ -7,6 +7,11 @@ import { showToast } from '../utils/toast.js';
 
 const PRINT_RENDER_SCALE = 2;
 const EMPTY_RENDER_STATE = { ready: false, pages: [], error: '', pageNumber: 0, pageCount: 0, inputs: null };
+// UX: after a print the prepared sheets stay for this long so a re-print from
+// the same dialog session (cancel + retry, browser menu, a second capture)
+// prints the real pages instead of the "still preparing" placeholder; the
+// bitmaps are then released so long documents don't pin memory forever.
+const PRINT_RETAIN_MS = 30_000;
 
 const sameInputs = (left, right) => (
   Boolean(left && right)
@@ -39,6 +44,8 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
   const readyForCurrentInputs = renderState.ready && sameInputs(renderState.inputs, currentInputs);
   const readyRef = useRef(readyForCurrentInputs);
   readyRef.current = readyForCurrentInputs;
+  const retainTimerRef = useRef(null);
+  const preparePrintRef = useRef(null);
 
   const preparePrint = useCallback(() => {
     if (!pdfFile || typeof document === 'undefined') return Promise.resolve(false);
@@ -169,6 +176,8 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
     return promise;
   }, [annotationsByPage, callouts, pageSizes, pdfFile, spaces, surveyMarkers]);
 
+  preparePrintRef.current = preparePrint;
+
   useImperativeHandle(ref, () => ({ print: preparePrint }), [preparePrint]);
 
   useEffect(() => {
@@ -204,17 +213,35 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
 
   useEffect(() => {
     const handleBeforePrint = () => {
-      if (!readyRef.current) printWhenReadyRef.current = false;
+      if (retainTimerRef.current) {
+        clearTimeout(retainTimerRef.current);
+        retainTimerRef.current = null;
+      }
+      if (readyRef.current) return;
+      printWhenReadyRef.current = false;
+      // A print that bypassed the app's shortcut (browser menu) arrives with
+      // nothing prepared: the placeholder sheet goes out this time, so start
+      // preparing now — without auto-printing — so the user's retry prints
+      // the real pages instead of the same placeholder again.
+      if (!preparingPromiseRef.current) {
+        preparePrintRef.current();
+        printWhenReadyRef.current = false;
+      }
     };
     const handleAfterPrint = () => {
       printWhenReadyRef.current = false;
-      setRenderState(EMPTY_RENDER_STATE);
+      if (retainTimerRef.current) clearTimeout(retainTimerRef.current);
+      retainTimerRef.current = setTimeout(() => {
+        retainTimerRef.current = null;
+        if (mountedRef.current) setRenderState(EMPTY_RENDER_STATE);
+      }, PRINT_RETAIN_MS);
     };
     window.addEventListener('beforeprint', handleBeforePrint);
     window.addEventListener('afterprint', handleAfterPrint);
     return () => {
       window.removeEventListener('beforeprint', handleBeforePrint);
       window.removeEventListener('afterprint', handleAfterPrint);
+      if (retainTimerRef.current) clearTimeout(retainTimerRef.current);
     };
   }, []);
 

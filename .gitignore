@@ -47,6 +47,7 @@ debug/debug-sessions/
 /TestLogs/
 /test-results/
 /playwright-report/
+/debug/artifacts/
 
 # Per-session debug log dumps left at the project root
 /1.log

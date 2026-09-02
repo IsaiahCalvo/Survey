@@ -868,8 +868,8 @@ test('the mobile card list is hidden on desktop and shown under 720px', () => {
   assert.match(SCREEN, /className="archive-mobile-list slim-scroll"/);
   assert.match(SCREEN, /className="card archive-desktop-card"/);
   assert.match(CSS, /\.survey-hub \.archive-mobile-list \{\s*\n\s*display: none;/);
-  assert.match(CSS, /@media \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
-  assert.match(CSS, /@media \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
+  assert.match(CSS, /@media screen and \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-desktop-card \{[\s\S]*?display: none !important/);
+  assert.match(CSS, /@media screen and \(max-width: 720px\)[\s\S]*?\.survey-hub \.archive-mobile-list \{[\s\S]*?display: flex/);
 });
 
 test('Archive transient controls follow the shared home interaction contract', () => {

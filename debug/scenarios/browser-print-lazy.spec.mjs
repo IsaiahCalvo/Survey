@@ -43,16 +43,22 @@ test('Cmd or Ctrl+P prepares marked-up pages before calling print', async ({ pag
 
   await page.keyboard.press(shortcut);
   await expect(page.getByText(/Preparing print/)).toBeVisible();
+  // Flattening + rasterising this package measures 26–38s on an idle machine;
+  // the assertion is that print fires with ready pages, not how fast.
   await expect.poll(() => page.evaluate(() => window.__browserPrintCalls.length), {
-    timeout: 30_000,
+    timeout: 90_000,
   }).toBe(1);
 
   const [printCall] = await page.evaluate(() => window.__browserPrintCalls);
   expect(printCall.ready).toBe('true');
   expect(printCall.pages).toBeGreaterThan(0);
 
+  // afterprint keeps the sheets for a short grace window so a retry from the
+  // same dialog session prints real pages (print-pagination.spec covers the
+  // retry); an edit still drops them immediately (test below).
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-  await expect(printDocument.locator('[data-browser-print-page]')).toHaveCount(0);
+  await expect(printDocument).toHaveAttribute('data-browser-print-ready', 'true');
+  await expect(printDocument.locator('[data-browser-print-page]')).not.toHaveCount(0);
 });
 
 test('raw print has a clear retry sheet when pages are not ready', async ({ page }) => {

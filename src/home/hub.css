@@ -594,7 +594,11 @@
   display: none;
 }
 
-@media (max-width: 720px) {
+/* Screen-only: these pin <html>/<body> to one viewport with overflow hidden.
+   When the browser paginates for paper the printable width can drop under
+   720px (portrait + margins, any phone), and without the `screen` guard the
+   pin clipped every print to a single sheet holding page 1. */
+@media screen and (max-width: 720px) {
   html.survey-hub-native-frame,
   body.survey-hub-native-frame {
     height: 100% !important;
