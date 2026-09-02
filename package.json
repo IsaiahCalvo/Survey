@@ -36,6 +36,7 @@
     "test:eraser-lifecycle": "npx playwright test --config debug/playwright.config.mjs debug/scenarios/eraser-lifecycle-gestures.spec.mjs",
     "test:print-fidelity": "node scripts/generate-print-fidelity-fixture.mjs && node scripts/run-print-fidelity.mjs",
     "test:print-pagination": "node scripts/run-print-fidelity.mjs debug/scenarios/print-pagination.spec.mjs debug/scenarios/browser-print-lazy.spec.mjs",
+    "test:survey-marker": "node scripts/run-print-fidelity.mjs debug/scenarios/survey-marker-module.spec.mjs",
     "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep",
     "debug:process": "node debug/lib/post-process.mjs",
     "mobile:sync": "npm run build && npx cap sync",
