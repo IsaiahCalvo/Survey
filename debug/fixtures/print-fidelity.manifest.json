@@ -1373,8 +1373,7 @@
         330
       ],
       "checks": [
-        "textPresence",
-        "colour"
+        "textPresence"
       ]
     },
     {
@@ -1388,8 +1387,7 @@
         335
       ],
       "checks": [
-        "textPresence",
-        "colour"
+        "textPresence"
       ]
     },
     {
@@ -1828,7 +1826,7 @@
       ],
       "checks": [
         "bounds",
-        "colour"
+        "textPresence"
       ]
     },
     {

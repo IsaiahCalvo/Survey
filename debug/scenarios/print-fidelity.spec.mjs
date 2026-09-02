@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { comparePrintFidelity, validatePrintFidelityScreenFixture } from '../../scripts/print-fidelity-compare.mjs';
@@ -44,6 +44,53 @@ test('every supported annotation matches the real browser print path', async ({ 
     await pageEl.screenshot({ path: join(screenDir, `page-${entry.page}.png`), animations: 'disabled' });
   }
 
+  // Delete + erase imported marks BEFORE survey mode: a template hides regular
+  // markup by design (module clean slate), so these targets only exist here.
+  const pdfIdOf = (id) => manifest.annotationsByPage[10].objects.find((obj) => obj.id === id).pdfAnnotationId;
+  const deleteSelector = `[data-pdf-annotation-id="${pdfIdOf('imported-delete-square')}"]`;
+  const eraseSelector = `[data-pdf-annotation-id="${pdfIdOf('imported-erase-ink')}"]`;
+  const deleteTarget = page.locator(deleteSelector).first();
+  await deleteTarget.scrollIntoViewIfNeeded();
+  await page.keyboard.press('v');
+  // Hollow square: its centre is not a hit target, so click the top edge.
+  const deleteBox = await deleteTarget.boundingBox();
+  expect(deleteBox).toBeTruthy();
+  await page.mouse.click(deleteBox.x + deleteBox.width / 2, deleteBox.y + 2);
+  await page.keyboard.press('Delete');
+  await expect(page.locator(deleteSelector)).toHaveCount(0);
+
+  const eraseTarget = page.locator(eraseSelector).first();
+  await eraseTarget.scrollIntoViewIfNeeded();
+  const eraseBox = await eraseTarget.boundingBox();
+  expect(eraseBox).toBeTruthy();
+  const pen = page.getByRole('button', { name: 'Pen', exact: true });
+  if (await pen.count() === 0) await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect(pen).toBeVisible();
+  // Whole-stroke erase removes the imported ink in one pass (the batch-2 fix
+  // records that removal for print/export). Switch the eraser type if needed.
+  // Activate the eraser first ("Eraser type" only shows once it is active),
+  // then switch it to whole-stroke mode.
+  await page.getByRole('button', { name: 'Partial erase', exact: true }).click();
+  if (await page.getByRole('button', { name: 'Full stroke erase', exact: true }).count() === 0) {
+    await page.getByRole('button', { name: 'Eraser type', exact: true }).click();
+    await page.getByRole('option', { name: 'Full stroke erase', exact: true }).click();
+  }
+  await expect(page.getByRole('button', { name: 'Full stroke erase', exact: true })).toHaveCount(1);
+  // The toolbar's one size input is labelled "Size" while the eraser is active.
+  const sizeInput = page.getByRole('textbox', { name: 'Size', exact: true });
+  await expect(sizeInput).toHaveCount(1);
+  await sizeInput.fill('40');
+  await sizeInput.press('Tab');
+  await page.mouse.move(eraseBox.x - 15, eraseBox.y + eraseBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(eraseBox.x + eraseBox.width + 15, eraseBox.y + eraseBox.height / 2, { steps: 20 });
+  await page.mouse.up();
+  await page.keyboard.press('v');
+  await expect(page.locator(eraseSelector)).toHaveCount(0);
+
+  const pageTenAfter = page.locator('.survey-pdfjs-page-div[data-page-number="10"]');
+  await pageTenAfter.screenshot({ path: join(outputRoot, 'screen-after-delete-erase.png'), animations: 'disabled' });
+
   // Survey-mode pages need the template flow; if the seeded marker never
   // materialises that is a FIXTURE failure for those regions — it must not
   // abort the comparison for the other 30+ regions.
@@ -82,31 +129,6 @@ test('every supported annotation matches the real browser print path', async ({ 
     ...fixtureReport.results.filter((result) => !result.pass),
   ];
 
-  const deleteTarget = page.locator('[data-anno-id="imported-delete-square"]').first();
-  await deleteTarget.scrollIntoViewIfNeeded();
-  await page.keyboard.press('v');
-  await deleteTarget.click({ force: true });
-  await page.keyboard.press('Delete');
-  await expect(page.locator('[data-anno-id="imported-delete-square"]')).toHaveCount(0);
-
-  const eraseTarget = page.locator('[data-anno-id="imported-erase-ink"]').first();
-  await eraseTarget.scrollIntoViewIfNeeded();
-  const eraseBox = await eraseTarget.boundingBox();
-  expect(eraseBox).toBeTruthy();
-  await page.getByRole('button', { name: 'Draw', exact: true }).click();
-  await page.getByRole('button', { name: /Partial erase|Full stroke erase/ }).click();
-  const widthInput = page.getByRole('textbox', { name: 'Width', exact: true });
-  await widthInput.fill('80');
-  await widthInput.press('Tab');
-  await page.mouse.move(eraseBox.x - 15, eraseBox.y + eraseBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(eraseBox.x + eraseBox.width + 15, eraseBox.y + eraseBox.height / 2, { steps: 20 });
-  await page.mouse.up();
-  await expect(page.locator('[data-anno-id="imported-erase-ink"]')).toHaveCount(0);
-
-  const pageTenAfter = page.locator('.survey-pdfjs-page-div[data-page-number="10"]');
-  await pageTenAfter.screenshot({ path: join(outputRoot, 'screen-after-delete-erase.png'), animations: 'disabled' });
-
   await page.keyboard.press(shortcut);
   await expect.poll(() => page.evaluate(() => window.__browserPrintCalls), { timeout: 60_000 }).toBe(1);
   await expect(page.locator('[data-browser-print-document]')).toHaveAttribute('data-browser-print-ready', 'true');
@@ -114,6 +136,12 @@ test('every supported annotation matches the real browser print path', async ({ 
   const printPdf = join(outputRoot, 'browser-print.pdf');
   await page.pdf({ path: printPdf, printBackground: true, preferCSSPageSize: true });
   await execFileAsync('pdftoppm', ['-png', '-r', '144', printPdf, join(printDir, 'page')]);
+  // pdftoppm zero-pads page numbers once the document has 10+ pages
+  // (page-01.png); the comparer keys on page-N.png.
+  for (const name of await readdir(printDir)) {
+    const match = name.match(/^page-0+(\d+)\.png$/);
+    if (match) await rename(join(printDir, name), join(printDir, `page-${match[1]}.png`));
+  }
 
   const report = await comparePrintFidelity({ manifestPath, screenDir, printDir, outputDir: pairsDir });
   const printFailures = report.results.filter((result) => result.status === 'print-failure');

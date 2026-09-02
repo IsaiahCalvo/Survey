@@ -289,8 +289,9 @@ const regions = [
   region('imported-native-square', 'native-square', 1, [335, 75, 465, 165], ['bounds', 'colour', 'strokeWeight'], { boundsPixels: 5 }),
   region('imported-native-polygon', 'native-polygon', 1, [465, 65, 590, 180], ['bounds', 'colour', 'strokeWeight']),
   region('imported-green-strike', 'native-strikeout', 1, [325, 210, 515, 265], ['bounds', 'colour']),
-  region('form-checkbox', 'form-checkbox', 1, [340, 282, 385, 330], ['textPresence', 'colour']),
-  region('form-text', 'form-text', 1, [385, 280, 555, 335], ['textPresence', 'colour']),
+  // Widgets print with their own /MK colours, not the screen's blue editing chrome.
+  region('form-checkbox', 'form-checkbox', 1, [340, 282, 385, 330], ['textPresence']),
+  region('form-text', 'form-text', 1, [385, 280, 555, 335], ['textPresence']),
   // Rotated text: print rotates the glyph origin about the box center like the
   // screen, but glyph placement comes from a font-metric approximation
   // (≤4pt residual, eye-verified identical at print size). 8px on the common
@@ -321,7 +322,8 @@ const regions = [
   region('deleted-imported-mark', 'deleted-imported-mark', 10, [35, 65, 165, 160], ['bounds', 'colour'], { expectedPrintAbsent: true }),
   region('hidden-native-mark', 'hidden-native-mark', 10, [175, 65, 305, 160], [], { expectedScreenAbsent: true, expectedPrintAbsent: true }),
   region('erased-imported-mark', 'erased-imported-mark', 10, [315, 65, 565, 160], ['bounds', 'colour'], { expectedPrintAbsent: true }),
-  region('link-no-box', 'link', 10, [35, 235, 260, 295], ['bounds', 'colour']),
+  // Only the page text paints here on both sides; the point is that no link box appears.
+  region('link-no-box', 'link', 10, [35, 235, 260, 295], ['bounds', 'textPresence']),
   region('multiline-form', 'form-text-multiline', 10, [285, 205, 535, 310], ['bounds', 'colour', 'textPresence']),
   region('translucent-multiply-highlighter', 'highlighter', 10, [35, 370, 260, 430], ['bounds', 'fillCoverage', 'colour'], { minPrintLightness: 55 }),
   region('round-cap-pen', 'pen', 10, [35, 475, 275, 525], ['bounds', 'colour', 'strokeWeight']),

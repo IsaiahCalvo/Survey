@@ -3037,6 +3037,18 @@ const stripNativeAnnotationsNotOnScreen = (pdfDoc, annotationsByPage) => {
         continue;
       }
       const dict = pdfDoc.context.lookupMaybe(annots.get(index), PDFDict);
+      // Pending /Redact marks have no fabric object but ARE on screen (the
+      // redaction mark layer draws their red outline); the export sanitiser
+      // below turns them into the same hollow outline for paper. Keep them.
+      if (
+        dict instanceof PDFDict
+        && dict.get(PDFName.of('Subtype')) === PDFName.of('Redact')
+        && nativeAnnotationPrintsWithScreen(pdfDoc, dict)
+      ) {
+        keepIndices.add(index);
+        diagnostics.kept += 1;
+        continue;
+      }
       if (dict instanceof PDFDict && !nativeAnnotationPrintsWithScreen(pdfDoc, dict)) {
         diagnostics.removedByFlags += 1;
       }

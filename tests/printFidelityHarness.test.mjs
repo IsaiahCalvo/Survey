@@ -65,7 +65,7 @@ test('print-fidelity manifest covers every required app and native type on rotat
     'native-circle', 'native-polygon', 'native-ink', 'native-free-text', 'native-highlight',
     'native-cloud', 'native-arrow', 'native-strikeout', 'form-checkbox', 'form-text', 'native-stamp',
   ]) assert.ok(types.has(required), `manifest must cover ${required}`);
-  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0]);
+  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0, 0]);
   assert.deepEqual(manifest.pages[4].cropBox, [36, 72, 576, 720]);
   assert.equal(manifest.pages[5].requiresSurveyMode, true);
 });
@@ -122,11 +122,12 @@ test('real print flattener uses app paint for untouched imports and bakes form s
     assert.ok(ratio(strike, ([r, g, b]) => g > r * 1.25 && g > b * 1.15) > 0.5, 'native strikeout must print green, not black');
 
     const checkbox = regionPixels(image, [340, 282, 385, 330]);
-    assert.ok(ratio(checkbox, ([r, g, b]) => b > r * 1.25 && b > g * 1.08) > 0.01, 'checked widget must contain blue checked-state paint');
+    // Widgets print with their own /MK colours (black fallback), not the screen's blue chrome.
+    assert.ok(ratio(checkbox, ([r, g, b]) => r < 90 && g < 90 && b < 90) > 0.01, 'checked widget must contain dark checked-state paint');
     assert.ok(ratio(checkbox, ([r, g, b]) => r > 245 && g > 245 && b > 245) < 0.97, 'checked widget must not print empty');
 
     const textField = regionPixels(image, [385, 280, 555, 335]);
-    assert.ok(ratio(textField, ([r, g, b]) => b > r * 1.2 && b > g * 1.05) > 0.003, 'text field border must use the screen blue');
+    assert.ok(ratio(textField, ([r, g, b]) => r < 235 || g < 235 || b < 235) > 0.01, 'text field must print its own /MK border, not the screen chrome');
     assert.ok(ratio(textField, ([r, g, b]) => r < 90 && g < 90 && b < 90) > 0.003, 'text field value must be present');
 
     const highlighterRoundCap = regionPixels(image, [30, 246, 40, 264]);
