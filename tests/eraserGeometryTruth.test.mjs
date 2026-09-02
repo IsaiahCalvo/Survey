@@ -79,7 +79,7 @@ test('rotated rect: hit region follows the visible (center-pivoted) shape', () =
   assert.equal(touch(rect, 100, 100, 4), false, 'old unrotated corner no longer hits');
 });
 
-test('rotated textbox: hit region follows its rendered text ink', () => {
+test('rotated textbox: hit region follows the visible box', () => {
   const text = {
     type: 'Textbox',
     left: 200,
@@ -88,12 +88,11 @@ test('rotated textbox: hit region follows its rendered text ink', () => {
     height: 30,
     angle: 45,
     text: 'hello',
-    fontSize: 16,
   };
-  // Local glyph point (220, 215), rotated 45 degrees about center (250, 215).
-  assert.equal(touch(text, 228.79, 193.79, 2), true);
-  // A point in the rotated outer padding remains clear.
-  assert.equal(touch(text, 225.25, 171.87, 1), false);
+  // Center (250, 215); the visible rotated box contains the center.
+  assert.equal(touch(text, 250, 215, 4), true);
+  // The unrotated far corner region is empty space now.
+  assert.equal(touch(text, 208, 202, 1), false);
 });
 
 test('stamp (image) annotations are hittable as their box', () => {
