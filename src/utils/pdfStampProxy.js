@@ -49,6 +49,14 @@ const canvasToPngDataUrl = async (canvas) => {
   throw new Error('This browser cannot encode the stamp appearance canvas');
 };
 
+// pdf.js 6 dropped PageViewport.convertToViewportRectangle; derive it from
+// the two-corner point conversion that still exists.
+const toViewportRect = (viewport, rect) => {
+  const [x1, y1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+  const [x2, y2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+  return [x1, y1, x2, y2];
+};
+
 /** Render each native /Stamp /AP /N through pdf.js into a transparent PNG. */
 export async function renderPdfStampAppearances(page, annotations) {
   if (typeof document === 'undefined') {
@@ -69,7 +77,7 @@ export async function renderPdfStampAppearances(page, annotations) {
     const range = annotationOperatorRange(operatorList, annotation.id);
     if (!range || !Array.isArray(annotation.rect)) continue;
     const unitViewport = page.getViewport({ scale: 1 });
-    const unitRect = unitViewport.convertToViewportRectangle(annotation.rect);
+    const unitRect = toViewportRect(unitViewport, annotation.rect);
     const unitWidth = Math.abs(unitRect[2] - unitRect[0]);
     const unitHeight = Math.abs(unitRect[3] - unitRect[1]);
     if (!(unitWidth > 0 && unitHeight > 0)) continue;
@@ -78,7 +86,7 @@ export async function renderPdfStampAppearances(page, annotations) {
       MAX_APPEARANCE_EDGE / Math.max(unitWidth, unitHeight),
     );
     const viewport = page.getViewport({ scale });
-    const rect = viewport.convertToViewportRectangle(annotation.rect);
+    const rect = toViewportRect(viewport, annotation.rect);
     const left = Math.min(rect[0], rect[2]);
     const top = Math.min(rect[1], rect[3]);
     const canvas = document.createElement('canvas');
