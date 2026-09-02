@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 6810,
+  "pdfSize": 6880,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -435,7 +435,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "47R",
+            "fieldId": "48R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -445,7 +445,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "53R",
+            "fieldId": "54R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -999,7 +999,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "56R",
+            "fieldId": "57R",
             "fieldName": "fidelity.multiline",
             "fieldType": "Tx",
             "value": "First line wraps within the green field.\nSecond line stays inside."
@@ -1102,7 +1102,7 @@
             "noteText": "Print glyph check"
           },
           "isPdfImported": true,
-          "pdfAnnotationId": "print-sticky-note",
+          "pdfAnnotationId": "43R",
           "pdfAnnotationType": "Text"
         }
       ]
@@ -1926,6 +1926,22 @@
       ]
     },
     {
+      "id": "landscape-page",
+      "type": "landscape-page",
+      "page": 11,
+      "bounds": [
+        50,
+        80,
+        740,
+        240
+      ],
+      "checks": [
+        "bounds",
+        "fillCoverage",
+        "colour"
+      ]
+    },
+    {
       "id": "imported-sticky-note",
       "type": "native-sticky-note",
       "page": 11,
@@ -1944,22 +1960,6 @@
       "tolerance": {
         "boundsPixels": 5
       }
-    },
-    {
-      "id": "landscape-page",
-      "type": "landscape-page",
-      "page": 11,
-      "bounds": [
-        50,
-        80,
-        740,
-        240
-      ],
-      "checks": [
-        "bounds",
-        "fillCoverage",
-        "colour"
-      ]
     }
   ]
 }

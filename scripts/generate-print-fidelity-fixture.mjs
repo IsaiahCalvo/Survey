@@ -144,6 +144,13 @@ const nativeLink = addNative(pages[9], {
   A: { S: 'URI', URI: 'https://example.com' }, NM: 'link-no-box',
 });
 
+// Real sticky note on the landscape page so the runtime import (which replaces
+// seeded imported objects with what it re-imports) keeps it on screen.
+const nativeStickyNote = addNative(pages[10], {
+  Subtype: 'Text', Rect: [100, 268, 124, 292], C: [1, 0.85, 0.2], Name: 'Comment',
+  Contents: 'Print glyph check', NM: 'native-sticky-note',
+});
+
 const form = pdf.getForm();
 const checked = form.createCheckBox('fidelity.checked');
 checked.addToPage(pages[0], { x: 350, y: 475, width: 24, height: 24 });
@@ -281,6 +288,12 @@ const annotationsByPage = {
   11: { width: 792, height: 612, objects: [
     { id: 'landscape-page', type: 'rect', left: 70, top: 100, width: 650, height: 120,
       stroke: '#0f766e', strokeWidth: 5, fill: '#ccfbf1' },
+    // Imported sticky note (/Text): the screen and print draw the note glyph,
+    // not a flat square (E2E cosmetic item, batch 7).
+    { id: 'imported-sticky-note', type: 'rect', left: 100, top: 320, width: 24, height: 24,
+      fill: 'rgba(255, 217, 51, 0.92)', stroke: 'rgba(65, 57, 12, 0.72)', strokeWidth: 1,
+      data: { type: 'note', pdfNoteGlyph: 'note', pdfNoteIcon: 'Comment', noteText: 'Print glyph check' },
+      isPdfImported: true, pdfAnnotationId: `${nativeStickyNote.objectNumber}R`, pdfAnnotationType: 'Text' },
   ] },
 };
 
@@ -339,6 +352,7 @@ const regions = [
   region('translucent-multiply-highlighter', 'highlighter', 10, [35, 370, 260, 430], ['bounds', 'fillCoverage', 'colour'], { minPrintLightness: 55 }),
   region('round-cap-pen', 'pen', 10, [35, 475, 275, 525], ['bounds', 'colour', 'strokeWeight']),
   region('landscape-page', 'landscape-page', 11, [50, 80, 740, 240], ['bounds', 'fillCoverage', 'colour']),
+  region('imported-sticky-note', 'native-sticky-note', 11, [85, 305, 140, 360], ['bounds', 'fillCoverage', 'colour', 'textPresence'], { boundsPixels: 5 }),
 ];
 
 await mkdir(fixtureDir, { recursive: true });
