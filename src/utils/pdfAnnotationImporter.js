@@ -64,6 +64,7 @@ import {
   getPdfStampRotation,
   renderPdfStampAppearances,
 } from './pdfStampProxy.js';
+import { createTextMarkupAnnotation } from './pdfTextMarkup.js';
 
 const pdfImportDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PDF_IMPORT_DEBUG !== true) return;
@@ -746,6 +747,14 @@ function resolveAnnotationPaintOpacity(annotation, appearance, paintKind, fallba
   if (operation?.[explicitKey] === true) {
     return normalizeOpacityValue(operation[alphaKey]) ?? fallback;
   }
+  if (operation) {
+    // A valid normal appearance is the painted result. If it does not set an
+    // ExtGState alpha, PDF graphics state defaults to opaque; stale /CA or /ca
+    // values outside the stream must not change that result.
+    return operation?.blendMode === 'Multiply'
+      ? 1
+      : (normalizeOpacityValue(operation[alphaKey]) ?? fallback);
+  }
   const declared = extractAnnotationOpacity(annotation, null);
   if (declared !== null && declared !== undefined) return declared;
   // Acrobat-style highlight: no /CA and no alpha, but the appearance stream
@@ -806,6 +815,19 @@ function getShapeFillColor(annotation) {
   }
 
   return 'transparent';
+}
+
+export function getPdfWidgetVisualStyle(annotation) {
+  if (annotation?.subtype !== 'Widget' || annotation?.checkBox !== true) return null;
+  const borderWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
+  const fieldValue = String(annotation.fieldValue || 'Off');
+  const exportValue = String(annotation.exportValue || 'Yes');
+  return {
+    backgroundColor: pdfColorToHex(annotation.backgroundColor || [1, 1, 1]),
+    borderColor: pdfColorToHex(annotation.borderColor || annotation.color || [0, 0, 0]),
+    borderWidth,
+    checked: fieldValue !== 'Off' && fieldValue === exportValue,
+  };
 }
 
 function getAnnotationTitle(annotation) {
@@ -2343,12 +2365,14 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
     });
     const metadataById = new Map();
     const directCandidatesByPage = new Map();
+    const rawAnnotationsByPage = new Map();
 
     rawPdfDoc.getPages().forEach((page, pageIndex) => {
       const annots = page.node.lookup(PDFName.of('Annots'));
       if (!annots || typeof annots.asArray !== 'function') return;
       const pageNumber = pageIndex + 1;
       const directCandidates = [];
+      const rawAnnotations = [];
 
       annots.asArray().forEach((annotRef, annotsIndex) => {
         const dict = rawPdfDoc.context.lookup(annotRef);
@@ -2382,8 +2406,21 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         );
         const nameId = readPdfLibText(dict.get(PDFName.of('NM')));
         const idCandidates = [referenceId, nameId].filter(Boolean);
+        rawAnnotations.push({
+          subtype,
+          ids: idCandidates,
+          annotsIndex,
+          flags: normalizePdfNativeAnnotationFlags(
+            readPdfLibNumber(dict.get(PDFName.of('F'))),
+            0,
+          ) ?? 0,
+        });
         if (idCandidates.length === 0) return;
 
+        const rectValue = dict.get(PDFName.of('Rect'));
+        const quadPointsValue = dict.get(PDFName.of('QuadPoints'));
+        const rect = readPdfLibNumberArray(rectValue);
+        const quadPoints = readPdfLibNumberArray(quadPointsValue);
         const color = readPdfLibNumberArray(dict.get(PDFName.of('C')));
         const lineColor = readPdfLibNumberArray(dict.get(PDFName.of('LineColor')));
         const interiorColor = readPdfLibNumberArray(dict.get(PDFName.of('IC')));
@@ -2480,6 +2517,10 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
 
         const metadata = {
           subtype,
+          _rawRectPresent: rectValue !== undefined,
+          _rawRect: rect,
+          _rawQuadPointsPresent: quadPointsValue !== undefined,
+          _rawQuadPoints: quadPoints,
           ...(color ? { color } : {}),
           ...(lineColor ? { lineColor } : {}),
           ...(interiorColor ? { interiorColor } : {}),
@@ -2520,9 +2561,10 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         });
       });
       directCandidatesByPage.set(pageNumber, directCandidates);
+      rawAnnotationsByPage.set(pageNumber, rawAnnotations);
     });
 
-    return { metadataById, directCandidatesByPage };
+    return { metadataById, directCandidatesByPage, rawAnnotationsByPage };
   } catch (error) {
     console.warn('Failed to parse raw PDF annotation metadata:', error);
     return null;
@@ -2668,7 +2710,11 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     },
     defaultAppearanceString: annotation.defaultAppearanceString || rawMetadata.defaultAppearanceString || annotation.defaultAppearanceString,
     defaultStyleString: annotation.defaultStyleString || rawMetadata.defaultStyleString || annotation.defaultStyleString,
-    _appearance: rawMetadata.appearance || annotation._appearance || null
+    _appearance: rawMetadata.appearance || annotation._appearance || null,
+    _rawRectPresent: rawMetadata._rawRectPresent === true,
+    _rawRect: rawMetadata._rawRect ?? null,
+    _rawQuadPointsPresent: rawMetadata._rawQuadPointsPresent === true,
+    _rawQuadPoints: rawMetadata._rawQuadPoints ?? null,
   };
 }
 
@@ -2724,6 +2770,65 @@ function convertAppearancePathToFabricPath(
   });
 
   return converted.length > 0 ? converted : null;
+}
+
+function getPathCommandBounds(path) {
+  if (!Array.isArray(path) || path.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const command of path) {
+    if (!Array.isArray(command)) continue;
+    for (let index = 1; index + 1 < command.length; index += 2) {
+      const x = Number(command[index]);
+      const y = Number(command[index + 1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
+  return {
+    left: minX,
+    top: minY,
+    right: maxX,
+    bottom: maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function getAppearancePathBounds(annotation, viewport, scale = 1) {
+  const appearance = annotation?._appearance;
+  const path = convertAppearancePathToFabricPath(
+    appearance?.path,
+    viewport,
+    scale,
+    appearance?.matrix,
+    appearance?.bbox,
+    annotation?.rect,
+    appearance?.isFormXObject === true,
+  );
+  return getPathCommandBounds(path);
+}
+
+function getAppearanceStrokeWidth(annotation, viewport, scale = 1) {
+  const appearance = annotation?._appearance;
+  if (!Number.isFinite(appearance?.strokeWidth) || appearance.strokeWidth < 0) return null;
+  const appearanceToPdf = appearance?.isFormXObject === true
+    ? createAppearanceToPdfMatrix(annotation?.rect, appearance?.bbox, appearance?.matrix)
+    : (isFinitePdfMatrix(appearance?.matrix)
+        ? Array.from(appearance.matrix, Number)
+        : Array.from(PDF_IDENTITY_MATRIX));
+  const strokeCtm = isFinitePdfMatrix(appearance?.strokeMatrix)
+    ? Array.from(appearance.strokeMatrix, Number)
+    : Array.from(PDF_IDENTITY_MATRIX);
+  return appearance.strokeWidth
+    * pdfMatrixAreaScale(composePdfMatrices(appearanceToPdf, strokeCtm))
+    * viewportAreaScale(viewport, scale);
 }
 
 /**
@@ -3977,14 +4082,68 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
 /**
  * Convert PDF Highlight annotation to Fabric.js Rect with fill
  */
-function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
+function convertHighlightQuadPoints(annotation, viewport, scale = 1) {
+  const values = toNumericArray(annotation?.quadPoints);
+  if (!values || values.length === 0 || values.length % 8 !== 0) return [];
+  const quads = [];
+  for (let index = 0; index < values.length; index += 8) {
+    const points = [];
+    for (let offset = 0; offset < 8; offset += 2) {
+      points.push(convertPdfPointToViewport(
+        values[index + offset],
+        values[index + offset + 1],
+        viewport,
+        scale,
+      ));
+    }
+    if (points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) {
+      quads.push({
+        x1: points[0].x, y1: points[0].y,
+        x2: points[1].x, y2: points[1].y,
+        x3: points[2].x, y3: points[2].y,
+        x4: points[3].x, y4: points[3].y,
+      });
+    }
+  }
+  return quads;
+}
+
+function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1, pageNumber = 1) {
+  const quads = convertHighlightQuadPoints(annotation, viewport, scale);
+  const appearance = annotation?._appearance;
+  const appearanceFill = appearance?.hasFill === true ? appearance.fillColor : null;
+  const color = appearance?.hasFill === true
+    ? pdfColorToHex(appearanceFill || [0, 0, 0])
+    : pdfColorToHex(annotation.color || [1, 1, 0], annotation);
+  const opacity = resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 0.3);
+  if (quads.length > 0) {
+    const markup = createTextMarkupAnnotation({
+      id: annotation.id || annotation.name || `pdf-highlight-${pageNumber}`,
+      selectionGroupId: annotation.id || annotation.name || null,
+      pageNumber,
+      markupType: 'highlight',
+      selectedText: getAnnotationContents(annotation),
+      quads,
+      color,
+      opacity,
+      overlapMode: 'layered',
+    });
+    if (markup) {
+      return {
+        ...markup,
+        isPdfImported: true,
+        pdfAnnotationId: annotation.id,
+        pdfAnnotationType: 'Highlight',
+        globalCompositeOperation: 'multiply',
+        layer: 'pdf-annotations',
+      };
+    }
+  }
+
   const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!viewportRect) {
     return null;
   }
-
-  const color = pdfColorToHex(annotation.color || [1, 1, 0], annotation); // Default yellow
-  const opacity = resolveAnnotationPaintOpacity(annotation, annotation?._appearance, 'fill', 0.3);
 
   return {
     type: 'rect',
@@ -4078,8 +4237,9 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const annotationColorHex = annotation.color
     ? pdfColorToHex(annotation.color, annotation)
     : null;
-  const fallbackAppearanceColor = annotation._appearance?.strokeColor
-    ? pdfColorToHex(annotation._appearance.strokeColor, annotation)
+  const appearance = annotation._appearance;
+  const fallbackAppearanceColor = appearance?.hasStroke === true
+    ? pdfColorToHex(appearance.strokeColor || [0, 0, 0])
     : null;
   // Text color: prefer /DS when it exists (Drawboard writes a distinct text
   // color there); fall through to /DA for Acrobat-style PDFs where /DS is
@@ -4108,7 +4268,9 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // only fall back to /C when the stream didn't paint any stroke color.
   // For non-callout FreeText, keep the old precedence (C > AP stroke).
   let borderColor;
-  if (isCalloutIntent) {
+  if (appearance?.hasStroke === true) {
+    borderColor = fallbackAppearanceColor;
+  } else if (isCalloutIntent) {
     borderColor = lineColorHex
       || fallbackAppearanceColor
       || annotationColorHex
@@ -4132,15 +4294,20 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const strokeWidth = getBorderWidth(annotation, 0, { allowExplicitZero: true });
   const dashArray = extractAnnotationDashArray(annotation);
   const fillHex = getShapeFillHex(annotation);
-  const fillOpacity = extractAnnotationOpacity(annotation, 1);
+  const appearanceFillHex = appearance?.hasFill === true
+    ? pdfColorToHex(appearance.fillColor || [0, 0, 0])
+    : null;
+  const fillOpacity = appearanceFillHex
+    ? resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 1)
+    : extractAnnotationOpacity(annotation, 1);
   // UX 2026-04-21: PDF spec — callout/textbox fill comes from /IC
   // (interior color) only. /C is the border/line color. The prior fallback
   // that painted /C as the textbox fill when /IC was missing was wrong and
   // caused Drawboard imports to get a red box because PDF.js was surfacing
   // the text's red color as annotation.color. When /IC is absent, the
   // textbox must stay clear — matching what Adobe Acrobat renders.
-  const backgroundColor = fillHex
-    ? hexToRgba(fillHex, fillOpacity)
+  const backgroundColor = appearanceFillHex || fillHex
+    ? hexToRgba(appearanceFillHex || fillHex, fillOpacity)
     : 'transparent';
 
   const data = {
@@ -4230,7 +4397,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
       ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
       backgroundColor,
       fontSize: fontSize * scale,
-      fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
+      fontFamily: annotation.defaultAppearanceData?.fontName || 'Helvetica',
       ...(Object.keys(data).length > 0 ? { data } : {}),
       selectable: true,
       evented: true,
@@ -4256,7 +4423,7 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     backgroundColor,
     fontSize: fontSize * scale,
-    fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
+    fontFamily: annotation.defaultAppearanceData?.fontName || 'Helvetica',
     ...(Object.keys(data).length > 0 ? { data } : {}),
     // Required Fabric.js properties for proper interaction
     selectable: true,
@@ -4490,7 +4657,14 @@ function computeAppearanceRotationTransform(annotation, scale = 1) {
 }
 
 function convertSquareToFabricRect(annotation, viewport, scale = 1) {
-  const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
+  const rawViewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
+  const appearance = annotation?._appearance;
+  const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
+  const appearanceBounds = !rotationTransform
+    && (appearance?.hasFill === true || appearance?.hasStroke === true)
+    ? getAppearancePathBounds(annotation, viewport, scale)
+    : null;
+  const viewportRect = appearanceBounds || rawViewportRect;
   if (!viewportRect) {
     return null;
   }
@@ -4501,15 +4675,36 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   // matches what the authoring tool displayed. Rect.left/top is recentered
   // on the viewport /Rect midpoint so Fabric's rotation pivot (bbox center)
   // matches Drawboard's.
-  const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
-
-  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1);
-  const fillColor = getShapeFillColor(annotation);
-  const strokeWidth = getBorderWidth(annotation, 1, { allowExplicitZero: true });
-  const dashArray = extractAnnotationDashArray(annotation);
-  const hasVisibleStroke = strokeWidth > 0;
-  const hasVisibleFill = fillColor !== 'transparent';
+  const hasAppearancePaint = Boolean(
+    appearance && (appearance.hasFill === true || appearance.hasStroke === true)
+  );
+  const strokeColor = pdfColorToHex(
+    hasAppearancePaint && appearance.hasStroke === true
+      ? (appearance.strokeColor || [0, 0, 0])
+      : (annotation.color || [0, 0, 0]),
+    hasAppearancePaint ? null : annotation,
+  );
+  const strokeOpacity = hasAppearancePaint
+    ? resolveAnnotationPaintOpacity(annotation, appearance, 'stroke', 1)
+    : extractAnnotationOpacity(annotation, 1);
+  const appearanceFillHex = hasAppearancePaint && appearance.hasFill === true
+    ? pdfColorToHex(appearance.fillColor || [0, 0, 0])
+    : null;
+  const fillColor = appearanceFillHex
+    ? hexToRgba(appearanceFillHex, resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 1))
+    : (hasAppearancePaint ? 'transparent' : getShapeFillColor(annotation));
+  const appearanceStrokeWidth = hasAppearancePaint && appearance.hasStroke === true
+    ? getAppearanceStrokeWidth(annotation, viewport, scale)
+    : null;
+  const strokeWidth = Number.isFinite(appearanceStrokeWidth)
+    ? appearanceStrokeWidth / scale
+    : getBorderWidth(annotation, 1, { allowExplicitZero: true });
+  const appearanceDash = getAppearancePaintOperation(appearance, 'stroke')?.dashArray;
+  const dashArray = hasAppearancePaint && Array.isArray(appearanceDash)
+    ? appearanceDash
+    : extractAnnotationDashArray(annotation);
+  const hasVisibleStroke = hasAppearancePaint ? appearance.hasStroke === true && strokeWidth >= 0 : strokeWidth > 0;
+  const hasVisibleFill = hasAppearancePaint ? appearance.hasFill === true : fillColor !== 'transparent';
 
   // Ignore shape annotations that are fully invisible in the source PDF.
   if (!hasVisibleStroke && !hasVisibleFill) {
@@ -4580,8 +4775,8 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
  * Convert PDF Circle annotation to Fabric.js Circle
  */
 function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
-  const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
-  if (!viewportRect) {
+  const rawViewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
+  if (!rawViewportRect) {
     return null;
   }
 
@@ -4590,7 +4785,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     const radiusFromMetadata = Number(counterMetadata.radius);
     const radius = Number.isFinite(radiusFromMetadata) && radiusFromMetadata > 0
       ? radiusFromMetadata * scale
-      : Math.min(viewportRect.width, viewportRect.height) / 2;
+      : Math.min(rawViewportRect.width, rawViewportRect.height) / 2;
     if (radius <= 0) {
       console.warn('[PDFCounterImport] counter metadata parse failed: invalid radius', {
         id: annotation.id,
@@ -4606,8 +4801,8 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     // than treating that larger appearance rectangle as the Fabric position.
     const metadataLeft = Number(counterMetadata.position?.left ?? counterMetadata.left);
     const metadataTop = Number(counterMetadata.position?.top ?? counterMetadata.top);
-    const left = Number.isFinite(metadataLeft) ? metadataLeft * scale : viewportRect.left;
-    const top = Number.isFinite(metadataTop) ? metadataTop * scale : viewportRect.top;
+    const left = Number.isFinite(metadataLeft) ? metadataLeft * scale : rawViewportRect.left;
+    const top = Number.isFinite(metadataTop) ? metadataTop * scale : rawViewportRect.top;
     const data = {
       type: 'counter',
       id: counterMetadata.id || annotation.id || undefined,
@@ -4648,19 +4843,55 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     };
   }
 
-  const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
-  const strokeOpacity = extractAnnotationOpacity(annotation, 1);
-  const fillColor = getShapeFillColor(annotation);
-  const strokeWidth = getBorderWidth(annotation, 1);
-  const dashArray = extractAnnotationDashArray(annotation);
-
   // UX 2026-04-22: recover tilt + true oblong dimensions from the /AP
   // appearance matrix when present. Drawboard tilts ellipses by baking a
   // rotation into the /AP /N /Matrix and storing the un-rotated (oblong)
   // radii in /AP /N /BBox — so an ellipse tilted 47° imports as a plain
   // circle without this path. Switches output to `type: 'ellipse'` with
   // rx/ry + angle so the SVG renderer draws it as Drawboard displayed it.
+  const appearance = annotation?._appearance;
   const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
+  const appearanceBounds = !rotationTransform
+    && (appearance?.hasFill === true || appearance?.hasStroke === true)
+    ? getAppearancePathBounds(annotation, viewport, scale)
+    : null;
+  const viewportRect = appearanceBounds || rawViewportRect;
+  const hasAppearancePaint = Boolean(
+    appearance && (appearance.hasFill === true || appearance.hasStroke === true)
+  );
+  const strokeColor = pdfColorToHex(
+    hasAppearancePaint && appearance.hasStroke === true
+      ? (appearance.strokeColor || [0, 0, 0])
+      : (annotation.color || [0, 0, 0]),
+    hasAppearancePaint ? null : annotation,
+  );
+  const strokeOpacity = hasAppearancePaint
+    ? resolveAnnotationPaintOpacity(annotation, appearance, 'stroke', 1)
+    : extractAnnotationOpacity(annotation, 1);
+  const appearanceFillHex = hasAppearancePaint && appearance.hasFill === true
+    ? pdfColorToHex(appearance.fillColor || [0, 0, 0])
+    : null;
+  const fillColor = appearanceFillHex
+    ? hexToRgba(appearanceFillHex, resolveAnnotationPaintOpacity(annotation, appearance, 'fill', 1))
+    : (hasAppearancePaint ? 'transparent' : getShapeFillColor(annotation));
+  const appearanceStrokeWidth = hasAppearancePaint && appearance.hasStroke === true
+    ? getAppearanceStrokeWidth(annotation, viewport, scale)
+    : null;
+  const strokeWidth = Number.isFinite(appearanceStrokeWidth)
+    ? appearanceStrokeWidth / scale
+    : getBorderWidth(annotation, 1, { allowExplicitZero: true });
+  const appearanceDash = getAppearancePaintOperation(appearance, 'stroke')?.dashArray;
+  const dashArray = hasAppearancePaint && Array.isArray(appearanceDash)
+    ? appearanceDash
+    : extractAnnotationDashArray(annotation);
+  const hasVisibleStroke = hasAppearancePaint
+    ? appearance.hasStroke === true && strokeWidth >= 0
+    : strokeWidth > 0;
+  const hasVisibleFill = hasAppearancePaint
+    ? appearance.hasFill === true
+    : fillColor !== 'transparent';
+  if (!hasVisibleStroke && !hasVisibleFill) return null;
+
   if (rotationTransform) {
     const rx = rotationTransform.bboxWidth / 2;
     const ry = rotationTransform.bboxHeight / 2;
@@ -4675,9 +4906,9 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
       ry,
       angle: rotationTransform.angleDeg,
       fill: fillColor,
-      stroke: hexToRgba(strokeColor, strokeOpacity),
-      strokeWidth: strokeWidth * scale,
-      ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
+      stroke: hasVisibleStroke ? hexToRgba(strokeColor, strokeOpacity) : null,
+      strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
+      ...(dashArray && hasVisibleStroke ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
       strokeUniform: true,
       selectable: true,
       evented: true,
@@ -4702,9 +4933,9 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     top: viewportRect.top,
     radius: radius,
     fill: fillColor,
-    stroke: hexToRgba(strokeColor, strokeOpacity),
-    strokeWidth: strokeWidth * scale,
-    ...(dashArray ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
+    stroke: hasVisibleStroke ? hexToRgba(strokeColor, strokeOpacity) : null,
+    strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
+    ...(dashArray && hasVisibleStroke ? { strokeDashArray: dashArray.map((value) => value * scale) } : {}),
     strokeUniform: true,
     // If it's an ellipse, store the original dimensions
     scaleX: viewportRect.width / (radius * 2),
@@ -4762,7 +4993,6 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
   const startArrow = !!(lineEndings && ARROW_LE.has(lineEndings[0]));
   const endArrow = !!(lineEndings && ARROW_LE.has(lineEndings[1]));
   const detectedArrow = startArrow || endArrow;
-  const swapEndpoints = startArrow && !endArrow;
   const data = {
     ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
     ...(intent ? { pdfIntent: intent } : {}),
@@ -4782,8 +5012,8 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
 
     const startRaw = convertPdfPointToViewport(rect[0], rect[1], viewport, scale);
     const endRaw = convertPdfPointToViewport(rect[2], rect[3], viewport, scale);
-    const start = swapEndpoints ? endRaw : startRaw;
-    const end = swapEndpoints ? startRaw : endRaw;
+    const start = startRaw;
+    const end = endRaw;
 
     return {
       type: 'line',
@@ -4810,8 +5040,8 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
 
   const startRaw = convertPdfPointToViewport(lineCoords[0], lineCoords[1], viewport, scale);
   const endRaw = convertPdfPointToViewport(lineCoords[2], lineCoords[3], viewport, scale);
-  const start = swapEndpoints ? endRaw : startRaw;
-  const end = swapEndpoints ? startRaw : endRaw;
+  const start = startRaw;
+  const end = endRaw;
 
   return {
     type: 'line',
@@ -5077,7 +5307,12 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
     case 'Ink':
       return finish(convertInkToFabricPath(normalizedAnnotation, viewport, scale));
     case 'Highlight':
-      return finish(convertSurveyMarkerToFabricRect(normalizedAnnotation, viewport, scale));
+      return finish(convertSurveyMarkerToFabricRect(
+        normalizedAnnotation,
+        viewport,
+        scale,
+        options.pageNumber || normalizedAnnotation.pageNumber || 1,
+      ));
     case 'FreeText':
       return finish(convertFreeTextToFabricTextbox(normalizedAnnotation, viewport, scale));
     case 'Square':
@@ -5172,6 +5407,48 @@ export function categorizeAnnotations(annotations) {
   return { supported, unsupported };
 }
 
+function isSaneImportedAnnotationGeometry(annotation, viewport) {
+  const pageSpan = Math.max(
+    1,
+    Number(viewport?.width) || 0,
+    Number(viewport?.height) || 0,
+  );
+  // Keep a wide off-page allowance, but tie it to the page. Fixed million-unit
+  // caps let corrupt marks dwarf a normal page and reach saved app state.
+  const coordinateLimit = pageSpan * 1_000;
+  const sizeLimit = pageSpan * 100;
+  const finiteAndBounded = (values) => (
+    Array.from(values || []).every((value) => (
+      Number.isFinite(Number(value)) && Math.abs(Number(value)) <= coordinateLimit
+    ))
+  );
+  const rect = annotation?._rawRectPresent ? annotation._rawRect : annotation?.rect;
+  if (!rect && annotation?._rawRectPresent !== true) {
+    const alternate = annotation?.vertices || annotation?.lineCoordinates || annotation?.inkLists?.flat?.();
+    return Boolean(alternate && alternate.length >= 4 && finiteAndBounded(alternate));
+  }
+  if (!rect || rect.length !== 4 || !finiteAndBounded(rect)) return false;
+  const width = Math.abs(Number(rect[2]) - Number(rect[0]));
+  const height = Math.abs(Number(rect[3]) - Number(rect[1]));
+  if (width > sizeLimit || height > sizeLimit) return false;
+  if (width === 0 && height === 0) {
+    const alternate = annotation?.vertices || annotation?.lineCoordinates || annotation?.inkLists?.flat?.();
+    const minimumPoints = annotation?.subtype === 'Ink' ? 2 : 4;
+    if (!alternate || alternate.length < minimumPoints || !finiteAndBounded(alternate)) return false;
+  }
+
+  const quadPoints = annotation?._rawQuadPointsPresent
+    ? annotation._rawQuadPoints
+    : annotation?.quadPoints;
+  if (annotation?._rawQuadPointsPresent && !quadPoints) return false;
+  if (quadPoints != null) {
+    if (quadPoints.length === 0 || quadPoints.length % 8 !== 0 || !finiteAndBounded(quadPoints)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function normalizeImportedAppCallout(metadata) {
   if (!metadata || metadata.kind !== PDF_CALLOUT_SUBJECT || metadata.type !== 'callout') {
     return null;
@@ -5242,6 +5519,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   const rawMetadataById = rawAnnotationIndex?.metadataById || null;
   const rawDirectCandidatesByPage =
     rawAnnotationIndex?.directCandidatesByPage || new Map();
+  const rawAnnotationsByPage = rawAnnotationIndex?.rawAnnotationsByPage || new Map();
   const diagnosticsByPage = {};
   const nativeLayerPolicyByPage = {};
   let counterAnnotationsImported = 0;
@@ -5271,6 +5549,31 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const viewport = page.getViewport({ scale: 1, rotation });
 
       const annotations = await extractAnnotationsFromPage(page);
+      const observedAnnotationIds = new Set(annotations.flatMap((annotation) => (
+        [annotation?.id, annotation?.name].filter(Boolean).map(String)
+      )));
+      const remainingObservedDirectBySubtype = new Map();
+      annotations.forEach((annotation) => {
+        if (!/^annot_p\d+_\d+$/i.test(String(annotation?.id || ''))) return;
+        remainingObservedDirectBySubtype.set(
+          annotation.subtype,
+          (remainingObservedDirectBySubtype.get(annotation.subtype) || 0) + 1,
+        );
+      });
+      const unreadableRawAnnotations = (rawAnnotationsByPage.get(pageNum) || []).filter((raw) => (
+        raw?.subtype
+        && !SILENT_IGNORE_SUBTYPES.includes(raw.subtype)
+        && !(Number(raw.flags) & (PDF_ANNOTATION_FLAG_HIDDEN | PDF_ANNOTATION_FLAG_NO_VIEW))
+        && Array.isArray(raw.ids)
+        && (raw.ids.length > 0
+          ? !raw.ids.some((id) => observedAnnotationIds.has(String(id)))
+          : (() => {
+              const remaining = remainingObservedDirectBySubtype.get(raw.subtype) || 0;
+              if (remaining <= 0) return true;
+              remainingObservedDirectBySubtype.set(raw.subtype, remaining - 1);
+              return false;
+            })())
+      ));
       const directNativeIdentities = buildDirectPdfNativeAnnotationIdentities(
         annotations,
         pageNum,
@@ -5336,6 +5639,19 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const fabricObjects = [];
       const appCalloutsById = new Map();
       const importedDiag = [];
+      unreadableRawAnnotations.forEach((raw) => {
+        localUnsupported.add(raw.subtype);
+        localUnsupportedCounts.set(
+          raw.subtype,
+          (localUnsupportedCounts.get(raw.subtype) || 0) + 1,
+        );
+        importedDiag.push({
+          ...summarizeFabricImportForDiag(null, null, 'skipped', 'pdfjs-annotation-not-readable'),
+          rawId: raw.ids[0] || null,
+          rawSubtype: raw.subtype,
+          savedToAppState: false,
+        });
+      });
       const stampAnnotations = supported.filter((annotation) => annotation?.subtype === 'Stamp');
       let stampAppearanceDataUrls = new Map();
       if (stampAnnotations.length > 0 && !options.diagnosticsOnly) {
@@ -5351,6 +5667,20 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         try {
           const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
           const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
+          if (!isSaneImportedAnnotationGeometry(normalized, viewport)) {
+            localUnsupported.add(normalized.subtype || 'Unknown');
+            localUnsupportedCounts.set(
+              normalized.subtype || 'Unknown',
+              (localUnsupportedCounts.get(normalized.subtype || 'Unknown') || 0) + 1,
+            );
+            importedDiag.push(summarizeFabricImportForDiag(
+              null,
+              annotation,
+              'skipped',
+              'invalid-annotation-geometry',
+            ));
+            continue;
+          }
           if (
             normalized.calloutMetadata?.kind === PDF_CALLOUT_SUBJECT &&
             normalized.calloutMetadata?.type === 'callout'
@@ -5440,6 +5770,11 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
               continue;
             }
             importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'converter-returned-null'));
+            localUnsupported.add(annotation?.subtype || 'Unknown');
+            localUnsupportedCounts.set(
+              annotation?.subtype || 'Unknown',
+              (localUnsupportedCounts.get(annotation?.subtype || 'Unknown') || 0) + 1,
+            );
           }
         } catch (error) {
           console.error(
@@ -5457,6 +5792,11 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             errorName: error?.name || null,
             errorMessage: error?.message || String(error),
           });
+          localUnsupported.add(annotation?.subtype || 'Unknown');
+          localUnsupportedCounts.set(
+            annotation?.subtype || 'Unknown',
+            (localUnsupportedCounts.get(annotation?.subtype || 'Unknown') || 0) + 1,
+          );
         }
       }
 
@@ -5520,18 +5860,27 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         error && (error.stack || error.message || error),
         error
       );
-      const pageFailure = {
-        ...summarizeFabricImportForDiag(
-          null,
-          null,
-          'skipped',
-          'page-import-failed',
-        ),
-        rawSubtype: 'Page',
+      const readableRaw = (rawAnnotationsByPage.get(pageNum) || []).filter((raw) => (
+        raw?.subtype
+        && !SILENT_IGNORE_SUBTYPES.includes(raw.subtype)
+        && !(Number(raw.flags) & (PDF_ANNOTATION_FLAG_HIDDEN | PDF_ANNOTATION_FLAG_NO_VIEW))
+      ));
+      const failedEntries = readableRaw.length > 0 ? readableRaw : [{ subtype: 'Page', ids: [] }];
+      failedEntries.forEach((raw) => {
+        localUnsupported.add(raw.subtype);
+        localUnsupportedCounts.set(
+          raw.subtype,
+          (localUnsupportedCounts.get(raw.subtype) || 0) + 1,
+        );
+      });
+      const pageFailures = failedEntries.map((raw) => ({
+        ...summarizeFabricImportForDiag(null, null, 'skipped', 'page-import-failed'),
+        rawId: raw.ids?.[0] || null,
+        rawSubtype: raw.subtype,
         pageNumber: pageNum,
         errorName: error?.name || null,
         errorMessage: error?.message || String(error),
-      };
+      }));
       return {
         pageNum,
         annot: null,
@@ -5539,7 +5888,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         diag: {
           pageNumber: pageNum,
           rawAnnotations: [],
-          importedAnnotations: [pageFailure],
+          importedAnnotations: pageFailures,
           nativeRenderableAnnotationIds: [],
           nativeOnlyAnnotationIds: [],
         },
@@ -5551,8 +5900,8 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           nativeRenderableAnnotationIds: [],
           nativeOnlyAnnotationIds: [],
         },
-        unsupported: new Set(),
-        unsupportedCounts: new Map(),
+        unsupported: localUnsupported,
+        unsupportedCounts: localUnsupportedCounts,
         counts: {
           counterAnnotationsImported: 0,
           plainCirclesImported: 0,

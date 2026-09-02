@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { shouldApplyPersistedFormValue } from './pdfjsFormLocalValueGuard.js';
+import { getPdfWidgetVisualStyle } from '../utils/pdfAnnotationImporter.js';
 
 /**
  * PdfjsFormLayer — interactive form-field (Widget) overlay for one page under
@@ -63,7 +64,21 @@ function ensureFormLayerCss() {
       border: calc(var(--scale-factor, 1) * 1px) solid rgba(60,130,255,0.55);
       color: #111;
     }
-    .pdfjsFormLayer .buttonWidgetAnnotation.checkBox input,
+    .pdfjsFormLayer .buttonWidgetAnnotation.checkBox input {
+      appearance: none; -webkit-appearance: none;
+      background-color: var(--pdf-widget-background, #fff) !important;
+      background-image: none !important;
+      border-color: var(--pdf-widget-border, #000) !important;
+      border-style: solid !important;
+      border-width: var(--pdf-widget-border-width, 1px) !important;
+      border-radius: 0;
+    }
+    .pdfjsFormLayer .buttonWidgetAnnotation.checkBox input:checked {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.3 6.3 12 13 4' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 82% 82%;
+    }
     .pdfjsFormLayer .buttonWidgetAnnotation.radioButton input { appearance: auto; -webkit-appearance: auto; background: #fff; }
   `;
   document.head.appendChild(style);
@@ -161,6 +176,7 @@ export default function PdfjsFormLayer({
             fieldName: w.fieldName ?? null,
             fieldType: w.fieldType ?? null,
             rect: Array.isArray(w.rect) ? w.rect : null,
+            visualStyle: getPdfWidgetVisualStyle(w),
           });
         }
         const viewport = page.getViewport({ scale: scaleRef.current, rotation: page.rotate });
@@ -199,6 +215,13 @@ export default function PdfjsFormLayer({
           const section = el.closest('section');
           const fieldId = section?.getAttribute('data-annotation-id') || el.id || null;
           const meta = widgetMetaById.get(fieldId) || {};
+          if (meta.visualStyle && el.type === 'checkbox') {
+            el.style.setProperty('--pdf-widget-background', meta.visualStyle.backgroundColor);
+            el.style.setProperty('--pdf-widget-border', meta.visualStyle.borderColor);
+            el.style.setProperty('--pdf-widget-border-width', `${meta.visualStyle.borderWidth}px`);
+            el.dataset.pdfWidgetBorderWidth = String(meta.visualStyle.borderWidth);
+            el.checked = meta.visualStyle.checked;
+          }
           const readValue = () => {
             if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
             return el.value;
@@ -266,7 +289,12 @@ export default function PdfjsFormLayer({
         const syncScaleFactor = () => {
           const w = host ? host.offsetWidth : 0;
           if (w > 0 && pageWidthPoints > 0) {
-            div.style.setProperty('--scale-factor', String(w / pageWidthPoints));
+            const measuredScale = w / pageWidthPoints;
+            div.style.setProperty('--scale-factor', String(measuredScale));
+            div.querySelectorAll('input[type="checkbox"][data-pdf-widget-border-width]').forEach((input) => {
+              const sourceWidth = Number(input.dataset.pdfWidgetBorderWidth);
+              if (Number.isFinite(sourceWidth)) input.style.borderWidth = `${sourceWidth * measuredScale}px`;
+            });
           }
         };
         syncScaleFactor();

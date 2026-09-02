@@ -5,15 +5,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { inflateSync } from 'node:zlib';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
 
 import {
   buildPdfImportStatisticsSummary,
   convertPdfAnnotationToFabric,
+  getPdfWidgetVisualStyle,
   importAnnotationsFromPdf
 } from '../src/utils/pdfAnnotationImporter.js';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 import { getPdfStampProxySvgProps } from '../src/utils/pdfStampProxy.js';
+import { buildLineRenderSpec, pdfLineEndingToArrowheadStyle } from '../src/utils/lineRenderHelpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -184,6 +186,334 @@ test('synthetic highlight honors CA and appearance alpha without applying alpha 
   } finally {
     await destroy();
   }
+});
+
+test('synthetic multi-line Highlight imports each QuadPoints region instead of one bounding box', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Highlight',
+      Rect: [20, 80, 160, 140],
+      QuadPoints: [
+        80, 140, 160, 140, 80, 120, 160, 120,
+        20, 100, 110, 100, 20, 80, 110, 80,
+      ],
+      C: [1, 0.5, 0],
+      CA: 0.4,
+    });
+  });
+
+  try {
+    const object = imported.annotationsByPage[1].objects[0];
+    assert.equal(object.type, 'group');
+    assert.equal(object.data?.type, 'text-markup');
+    assert.equal(object.data?.markupType, 'highlight');
+    assert.equal(object.data?.quads?.length, 2);
+    assert.deepEqual(object.data.quads.map((quad) => ({
+      left: Math.min(quad.x1, quad.x2, quad.x3, quad.x4),
+      top: Math.min(quad.y1, quad.y2, quad.y3, quad.y4),
+      width: Math.max(quad.x1, quad.x2, quad.x3, quad.x4)
+        - Math.min(quad.x1, quad.x2, quad.x3, quad.x4),
+      height: Math.max(quad.y1, quad.y2, quad.y3, quad.y4)
+        - Math.min(quad.y1, quad.y2, quad.y3, quad.y4),
+    })), [
+      { left: 80, top: 60, width: 80, height: 20 },
+      { left: 20, top: 100, width: 90, height: 20 },
+    ]);
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic annotations prefer valid appearance paint and geometry over conflicting raw values', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([240, 240]);
+    const hollow = source.context.register(source.context.flateStream(
+      '0.85 0.1 0.7 RG 3 w 42 122 76 36 re S',
+      { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [40, 120, 120, 160] },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'Square', Rect: [40, 120, 120, 160], C: [0, 0.7, 0.2], IC: [0, 0.7, 0.2],
+      BS: { W: 3 }, AP: { N: hollow },
+    });
+
+    const blueHighlight = source.context.register(source.context.flateStream(
+      '0.2 0.4 1 rg 40 82 90 16 re f',
+      { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [38, 80, 132, 100] },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'Highlight', Rect: [38, 80, 132, 100],
+      QuadPoints: [40, 98, 130, 98, 40, 82, 130, 82],
+      C: [1, 0, 0], CA: 0.15, AP: { N: blueHighlight },
+    });
+
+    const smallFilled = source.context.register(source.context.flateStream(
+      '0 0.4 0.8 RG 0.6 0.85 1 rg 2 w 30 25 55 35 re B',
+      { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [20, 20, 180, 70] },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'Square', Rect: [20, 20, 180, 70], C: [1, 0, 0], CA: 0.2,
+      BS: { W: 7 }, AP: { N: smallFilled },
+    });
+
+    const hollowCircle = source.context.register(source.context.flateStream(
+      '0.85 0.1 0.7 RG 3 w 80 170 30 20 re S',
+      { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [60, 150, 180, 220] },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'Circle', Rect: [60, 150, 180, 220], C: [0, 0.7, 0.2], IC: [0, 0.7, 0.2],
+      CA: 0.2, BS: { W: 8 }, AP: { N: hollowCircle },
+    });
+  });
+
+  try {
+    const [hollow, highlight, small, circle] = imported.annotationsByPage[1].objects;
+    assert.equal(hollow.stroke, 'rgba(217, 26, 179, 1)');
+    assert.equal(hollow.fill, 'transparent');
+    assert.deepEqual(
+      { left: hollow.left, top: hollow.top, width: hollow.width, height: hollow.height },
+      { left: 42, top: 82, width: 76, height: 36 },
+    );
+    assert.equal(highlight.fill, '#3366ff');
+    assert.equal(highlight.opacity, 1);
+    assert.equal(small.fill, 'rgba(153, 217, 255, 1)');
+    assert.equal(small.stroke, 'rgba(0, 102, 204, 1)');
+    assert.deepEqual(
+      { left: small.left, top: small.top, width: small.width, height: small.height },
+      { left: 30, top: 180, width: 55, height: 35 },
+    );
+    assert.equal(circle.stroke, 'rgba(217, 26, 179, 1)');
+    assert.equal(circle.fill, 'transparent');
+    assert.deepEqual(
+      {
+        left: circle.left,
+        top: circle.top,
+        width: circle.radius * 2 * circle.scaleX,
+        height: circle.radius * 2 * circle.scaleY,
+      },
+      { left: 80, top: 50, width: 30, height: 20 },
+    );
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic FreeText keeps appearance fill and BS-controlled frame', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([240, 240]);
+    const framed = source.context.register(source.context.flateStream(
+      '0.92 g 0.2 0.3 0.4 RG 2 w 20 150 90 45 re B',
+      { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [20, 150, 110, 195] },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'FreeText', Rect: [20, 150, 110, 195], Contents: 'Framed',
+      C: [1, 0, 0], DA: '/Helv 12 Tf 0 0 0 rg', BS: { W: 2 }, AP: { N: framed },
+    });
+    const unframed = source.context.register(source.context.flateStream(
+      '1 0.98 0.8 rg 130 150 90 45 re f',
+      { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [130, 150, 220, 195] },
+    ));
+    addRawAnnotation(source, page, {
+      Subtype: 'FreeText', Rect: [130, 150, 220, 195], Contents: 'No frame',
+      C: [1, 0.98, 0.8], DA: '/Helv 12 Tf 0 0 0 rg', BS: { W: 0 }, AP: { N: unframed },
+    });
+  });
+
+  try {
+    const [framed, unframed] = imported.annotationsByPage[1].objects;
+    assert.equal(framed.backgroundColor, 'rgba(235, 235, 235, 1)');
+    assert.equal(framed.stroke, '#334d66');
+    assert.equal(framed.strokeWidth, 2);
+    assert.equal(unframed.backgroundColor, 'rgba(255, 250, 204, 1)');
+    assert.equal(unframed.stroke, null);
+    assert.equal(unframed.strokeWidth, 0);
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic unchecked checkbox uses only its MK background and border', async () => {
+  const source = await PDFDocument.create();
+  const page = source.addPage([120, 120]);
+  const off = source.context.register(source.context.flateStream(
+    '1 1 1 rg 0 0 20 20 re f 0.8 0.1 0.1 RG 2 w 1 1 18 18 re S',
+    { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 20, 20] },
+  ));
+  const yes = source.context.register(source.context.flateStream(
+    '1 1 1 rg 0 0 20 20 re f 0.8 0.1 0.1 RG 2 w 1 1 18 18 re S 3 10 m 8 4 l 17 16 l S',
+    { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 20, 20] },
+  ));
+  addRawAnnotation(source, page, {
+    Subtype: 'Widget', Rect: [20, 70, 40, 90], FT: 'Btn', T: 'empty-box',
+    V: 'Off', AS: 'Off', BS: { W: 2 }, MK: { BC: [0.8, 0.1, 0.1], BG: [1, 1, 1] },
+    AP: { N: { Off: off, Yes: yes } },
+  });
+  const bytes = await source.save();
+  const loadingTask = pdfjsLib.getDocument({ data: cloneBytesForPdfjs(bytes), disableWorker: true });
+  try {
+    const doc = await loadingTask.promise;
+    const annotations = await (await doc.getPage(1)).getAnnotations({ intent: 'display' });
+    const widget = annotations.find((annotation) => annotation.subtype === 'Widget');
+    assert.equal(widget.checkBox, true);
+    assert.deepEqual(getPdfWidgetVisualStyle(widget), {
+      backgroundColor: '#ffffff',
+      borderColor: '#cc1a1a',
+      borderWidth: 2,
+      checked: false,
+    });
+  } finally {
+    await loadingTask.destroy();
+  }
+});
+
+test('synthetic NaN Rect is skipped, counted, and never saved as app markup', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Square', Rect: [PDFNumber.of(NaN), 20, 80, 80],
+      C: [1, 0, 0], BS: { W: 2 },
+    });
+    addRawAnnotation(source, page, {
+      Subtype: 'Circle', Rect: [100, 100, 140, 140],
+      C: [0, 0, 1], BS: { W: 2 },
+    });
+  });
+
+  try {
+    assert.deepEqual(
+      imported.annotationsByPage[1].objects.map((object) => object.pdfAnnotationType),
+      ['Circle'],
+    );
+    assert.equal(imported.unsupportedCounts.Square, 1);
+    assert.ok(imported.unsupportedTypes.includes('Square'));
+    const skipped = imported.diagnosticsByPage[1].importedAnnotations.find(
+      (entry) => entry.rawSubtype === 'Square',
+    );
+    assert.equal(skipped?.status, 'skipped');
+    assert.equal(skipped?.reason, 'invalid-annotation-geometry');
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic absurd QuadPoints are skipped and counted', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Highlight', Rect: [20, 100, 100, 120],
+      QuadPoints: [1e50, 120, 100, 120, 20, 100, 100, 100],
+      C: [1, 1, 0],
+    });
+  });
+  try {
+    assert.equal(imported.annotationsByPage[1], undefined);
+    assert.equal(imported.unsupportedCounts.Highlight, 1);
+    assert.equal(
+      imported.diagnosticsByPage[1].importedAnnotations[0]?.reason,
+      'invalid-annotation-geometry',
+    );
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic page-relative absurd Rect is skipped and counted', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Square', Rect: [20, 20, 500020, 500020],
+      C: [1, 0, 0], BS: { W: 2 },
+    });
+  });
+  try {
+    assert.equal(imported.annotationsByPage[1], undefined);
+    assert.equal(imported.unsupportedCounts.Square, 1);
+    assert.equal(
+      imported.diagnosticsByPage[1].importedAnnotations[0]?.reason,
+      'invalid-annotation-geometry',
+    );
+  } finally {
+    await destroy();
+  }
+});
+
+test('synthetic direct unreadable annotation without an id is still counted', async () => {
+  const source = await PDFDocument.create();
+  const page = source.addPage([200, 200]);
+  const direct = source.context.obj({
+    Type: 'Annot', Subtype: 'Square', F: 4, P: page.ref,
+    Rect: [20, 20, 80, 80], C: [1, 0, 0], BS: { W: 2 },
+  });
+  page.node.set(PDFName.of('Annots'), source.context.obj([direct]));
+  const bytes = await source.save();
+  const imported = await importAnnotationsFromPdf({
+    numPages: 1,
+    async getPage() {
+      return {
+        rotate: 0,
+        getViewport: () => ({ ...makeViewport({ pageHeight: 200 }), width: 200 }),
+        async getAnnotations() { return []; },
+      };
+    },
+  }, { rawPdfBytes: bytes });
+  assert.equal(imported.annotationsByPage[1], undefined);
+  assert.equal(imported.unsupportedCounts.Square, 1);
+  assert.equal(
+    imported.diagnosticsByPage[1].importedAnnotations[0]?.reason,
+    'pdfjs-annotation-not-readable',
+  );
+});
+
+test('synthetic single-point Ink with a zero-size Rect survives the import gate', async () => {
+  const imported = await importAnnotationsFromPdf({
+    numPages: 1,
+    async getPage() {
+      return {
+        rotate: 0,
+        getViewport: () => ({ ...makeViewport({ pageHeight: 100 }), width: 100 }),
+        async getAnnotations() {
+          return [{
+            id: 'ink-tap-gated', subtype: 'Ink', rect: [50, 50, 50, 50],
+            inkLists: [[50, 50]], color: [255, 0, 0], borderStyle: { width: 4 },
+          }];
+        },
+      };
+    },
+  });
+  const object = imported.annotationsByPage[1].objects[0];
+  assert.equal(object.pdfAnnotationType, 'Ink');
+  assert.equal(object.pdfInkTapDot, true);
+  assert.equal(imported.unsupportedCounts.Ink, undefined);
+});
+
+test('a synthetic page annotation-tree failure reports each raw markup type', async () => {
+  const source = await PDFDocument.create();
+  const page = source.addPage([200, 200]);
+  addRawAnnotation(source, page, {
+    Subtype: 'Square', Rect: [20, 20, 60, 60], C: [1, 0, 0], BS: { W: 2 },
+  });
+  addRawAnnotation(source, page, {
+    Subtype: 'Highlight', Rect: [80, 80, 150, 100],
+    QuadPoints: [80, 100, 150, 100, 80, 80, 150, 80], C: [1, 1, 0],
+  });
+  const bytes = await source.save();
+  const result = await importAnnotationsFromPdf({
+    numPages: 1,
+    async getPage() {
+      return {
+        getViewport: () => makeViewport({ pageHeight: 200 }),
+        async getAnnotations() { throw new TypeError('bad annotation tree'); },
+      };
+    },
+  }, { rawPdfBytes: bytes });
+
+  assert.deepEqual(result.unsupportedCounts, { Square: 1, Highlight: 1 });
+  assert.deepEqual(result.unsupportedTypes.sort(), ['Highlight', 'Square']);
+  assert.deepEqual(
+    result.diagnosticsByPage[1].importedAnnotations.map((entry) => entry.rawSubtype).sort(),
+    ['Highlight', 'Square'],
+  );
+  assert.deepEqual(result.importStatistics.counts, { sampled: 0, fallback: 0, skipped: 2 });
 });
 
 test('synthetic multi-stroke InkList keeps every stroke', async () => {
@@ -515,6 +845,8 @@ test('importAnnotationsFromPdf records a failed page as skipped instead of dropp
     'page-import-failed',
   );
   assert.equal(result.nativeLayerPolicyByPage[1].reason, 'page-import-failed');
+  assert.equal(result.unsupportedCounts.Page, 1);
+  assert.ok(result.unsupportedTypes.includes('Page'));
 });
 
 test('importAnnotationsFromPdf records a getAnnotations failure as skipped instead of an empty page', async () => {
@@ -544,6 +876,7 @@ test('importAnnotationsFromPdf records a getAnnotations failure as skipped inste
     'broken annotation tree',
   );
   assert.equal(result.nativeLayerPolicyByPage[1].reason, 'page-import-failed');
+  assert.equal(result.unsupportedCounts.Page, 1);
 });
 
 test('one corrupt stroke does not discard healthy annotations on the same page', async () => {
@@ -613,6 +946,8 @@ test('one corrupt stroke does not discard healthy annotations on the same page',
     .find((entry) => entry.rawId === 'corrupt-ink');
   assert.equal(corruptDiag.status, 'skipped');
   assert.equal(corruptDiag.reason, 'annotation-import-failed');
+  assert.equal(result.unsupportedCounts.Ink, 1);
+  assert.ok(result.unsupportedTypes.includes('Ink'));
 });
 
 test('convertPdfAnnotationToFabric rebuilds marked app counter Circle annotations as counters', () => {
@@ -1452,6 +1787,35 @@ test('convertPdfAnnotationToFabric preserves line endings and callout metadata f
     [0, 10],
     'valid zero dash entries must not be deleted',
   );
+});
+
+test('synthetic Line and PolyLine keep both LE ends and target the PolyLine last segment', async () => {
+  const { imported, destroy } = await importSyntheticPdf(async (source) => {
+    const page = source.addPage([200, 200]);
+    addRawAnnotation(source, page, {
+      Subtype: 'Line', Rect: [15, 115, 165, 165], L: [20, 120, 160, 160],
+      LE: ['OpenArrow', 'ClosedArrow'], C: [0, 0, 1], BS: { W: 2, S: 'D', D: [5, 3] },
+    });
+    addRawAnnotation(source, page, {
+      Subtype: 'PolyLine', Rect: [20, 20, 170, 100],
+      Vertices: [20, 30, 80, 90, 120, 40, 165, 95],
+      LE: ['None', 'OpenArrow'], C: [1, 0, 0], BS: { W: 3 },
+    });
+  });
+
+  try {
+    const [line, polyline] = imported.annotationsByPage[1].objects;
+    assert.deepEqual(line.data?.pdfLineEndings, ['OpenArrow', 'ClosedArrow']);
+    const lineSpec = buildLineRenderSpec(line);
+    assert.equal(lineSpec.startArrowhead.kind, 'openTriangle');
+    assert.equal(lineSpec.arrowhead.kind, 'solidTriangle');
+    assert.deepEqual(polyline.data?.pdfLineEndings, ['None', 'OpenArrow']);
+    assert.equal(pdfLineEndingToArrowheadStyle(polyline.data.pdfLineEndings[1]), 'openTriangle');
+    const points = polyline.points;
+    assert.deepEqual(points.slice(-2), [{ x: 100, y: 55 }, { x: 145, y: 0 }]);
+  } finally {
+    await destroy();
+  }
 });
 
 test('convertPdfAnnotationToFabric maps text and freetext-callout annotations with interaction metadata', () => {

@@ -39,6 +39,16 @@ export {
   calloutLineStyleFromDash,
 };
 
+export function pdfLineEndingToArrowheadStyle(value) {
+  const ending = String(value || '').replace(/^\//, '');
+  if (ending === 'OpenArrow' || ending === 'ROpenArrow') return ARROWHEAD_STYLES.OPEN_TRIANGLE;
+  if (ending === 'ClosedArrow' || ending === 'RClosedArrow') return ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  if (ending === 'Circle') return ARROWHEAD_STYLES.OPEN_CIRCLE;
+  if (ending === 'Butt' || ending === 'Square') return ARROWHEAD_STYLES.HORIZONTAL_LINE;
+  if (ending === 'Slash' || ending === 'Diamond') return ARROWHEAD_STYLES.V_SHAPE;
+  return ARROWHEAD_STYLES.NONE;
+}
+
 /**
  * Resolve absolute endpoint coords from a Fabric.Line toJSON shape.
  * Fabric stores x1/y1/x2/y2 as offsets from the bounding box CENTER, and
@@ -214,8 +224,15 @@ export function buildLineRenderSpec(obj) {
   // fallback per UI-SPEC §"Section C". `??` honors 'none' as an explicit
   // override (callers can force-disable the arrowhead on a `tool: 'arrow'`).
   const explicitStyle = obj.data?.arrowheadStyle;
-  const effectiveStyle = explicitStyle
-    ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
+  const pdfLineEndings = Array.isArray(obj.data?.pdfLineEndings)
+    ? obj.data.pdfLineEndings
+    : null;
+  const startStyle = pdfLineEndings
+    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0])
+    : ARROWHEAD_STYLES.NONE;
+  const effectiveStyle = pdfLineEndings
+    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1])
+    : (explicitStyle ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE));
 
   // Curved branch activation — 1px render hysteresis per UI-SPEC §"Section B".
   // Clamp to straight when data.midpoint sits within 1px of the straight
@@ -244,6 +261,9 @@ export function buildLineRenderSpec(obj) {
       arrowhead: buildArrowheadRenderSpec(
         effectiveStyle, x2, y2, angleDeg, strokeColor, sw
       ),
+      startArrowhead: buildArrowheadRenderSpec(
+        startStyle, x1, y1, angleDeg + 180, strokeColor, sw
+      ),
     };
   }
 
@@ -258,6 +278,16 @@ export function buildLineRenderSpec(obj) {
 
   let lineEndX = x2;
   let lineEndY = y2;
+  let lineStartX = x1;
+  let lineStartY = y1;
+  if (
+    startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+    || startStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE
+  ) {
+    const headSize = Math.max(8, sw * 3);
+    lineStartX = x1 + (headSize / 3) * Math.cos(angleRad);
+    lineStartY = y1 + (headSize / 3) * Math.sin(angleRad);
+  }
   if (
     effectiveStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
     || effectiveStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE
@@ -270,8 +300,8 @@ export function buildLineRenderSpec(obj) {
   return {
     kind: 'straight',
     line: {
-      x1,
-      y1,
+      x1: lineStartX,
+      y1: lineStartY,
       x2: lineEndX,
       y2: lineEndY,
       stroke: strokeColor,
@@ -280,6 +310,9 @@ export function buildLineRenderSpec(obj) {
     },
     arrowhead: buildArrowheadRenderSpec(
       effectiveStyle, x2, y2, angleDeg, strokeColor, sw
+    ),
+    startArrowhead: buildArrowheadRenderSpec(
+      startStyle, x1, y1, angleDeg + 180, strokeColor, sw
     ),
   };
 }

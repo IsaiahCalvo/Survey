@@ -22,6 +22,7 @@ import { buildCalloutRenderSpec, sanitizeFontFamily } from './calloutEditAdapter
 import {
   buildLineRenderSpec,
   buildArrowheadRenderSpec,
+  pdfLineEndingToArrowheadStyle,
   ARROWHEAD_STYLES,
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
@@ -725,6 +726,7 @@ export const renderLine = (obj, index) => {
     return (
       <g key={key} opacity={opacity} transform={rotateTransform}>
         <path {...spec.path} strokeDasharray={lineDashArrayAttr} />
+        {renderArrowheadFromSpec(spec.startArrowhead || { kind: 'none' })}
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
@@ -732,10 +734,11 @@ export const renderLine = (obj, index) => {
 
   // Straight branch — byte-identical to pre-Phase-15 when no data.midpoint
   // and no rotation. A rotation wrapper is added whenever obj.angle !== 0.
-  if (spec.arrowhead.kind !== 'none') {
+  if (spec.arrowhead.kind !== 'none' || spec.startArrowhead?.kind !== 'none') {
     return (
       <g key={key} opacity={opacity} transform={rotateTransform}>
         <line {...spec.line} strokeDasharray={lineDashArrayAttr} />
+        {renderArrowheadFromSpec(spec.startArrowhead || { kind: 'none' })}
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
@@ -998,14 +1001,35 @@ export const renderPolyline = (obj, index) => {
     ? obj.strokeDashArray.join(' ')
     : undefined;
 
-  return (
+  const endings = Array.isArray(obj.data?.pdfLineEndings) ? obj.data.pdfLineEndings : [];
+  const first = obj.points[0];
+  const second = obj.points[1];
+  const beforeLast = obj.points[obj.points.length - 2];
+  const last = obj.points[obj.points.length - 1];
+  const stroke = obj.stroke || '#000';
+  const strokeWidth = obj.strokeWidth || 1;
+  const startSpec = buildArrowheadRenderSpec(
+    pdfLineEndingToArrowheadStyle(endings[0]),
+    toNumber(first?.x),
+    toNumber(first?.y),
+    Math.atan2(toNumber(first?.y) - toNumber(second?.y), toNumber(first?.x) - toNumber(second?.x)) * 180 / Math.PI,
+    stroke,
+    strokeWidth,
+  );
+  const endSpec = buildArrowheadRenderSpec(
+    pdfLineEndingToArrowheadStyle(endings[1]),
+    toNumber(last?.x),
+    toNumber(last?.y),
+    Math.atan2(toNumber(last?.y) - toNumber(beforeLast?.y), toNumber(last?.x) - toNumber(beforeLast?.x)) * 180 / Math.PI,
+    stroke,
+    strokeWidth,
+  );
+  const body = (
     <polyline
-      key={key}
       points={pointsStr}
-      transform={transform}
       fill={fill}
-      stroke={obj.stroke || '#000'}
-      strokeWidth={obj.strokeWidth || 1}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
       strokeDasharray={plDashArrayAttr}
       opacity={obj.opacity ?? 1}
       strokeLinecap="round"
@@ -1014,6 +1038,16 @@ export const renderPolyline = (obj, index) => {
       data-shape-kind="polyline"
       onClick={__shapeClick}
     />
+  );
+  if (startSpec.kind === 'none' && endSpec.kind === 'none') {
+    return React.cloneElement(body, { key, transform });
+  }
+  return (
+    <g key={key} transform={transform} opacity={obj.opacity ?? 1}>
+      {React.cloneElement(body, { opacity: 1 })}
+      {renderArrowheadFromSpec(startSpec)}
+      {renderArrowheadFromSpec(endSpec)}
+    </g>
   );
 };
 

@@ -18,6 +18,8 @@ const cases = [
       { page: 1, id: 'multistroke-ink', bounds: [195, 100, 350, 170], maxMae: 30 },
       { page: 1, id: 'multistroke-highlighter', bounds: [375, 110, 580, 165], maxMae: 32 },
       { page: 1, id: 'transparent-and-dashed-shapes', bounds: [35, 190, 575, 290], maxMae: 30 },
+      { page: 1, id: 'double-arrow-both-heads', bounds: [375, 300, 590, 390], maxMae: 30 },
+      { page: 1, id: 'polyline-last-segment-arrow', bounds: [200, 415, 365, 550], maxMae: 30 },
     ],
   },
   {
@@ -25,6 +27,7 @@ const cases = [
     pages: [1, 2],
     regions: [
       { page: 1, id: 'acrobat-highlight', bounds: [130, 128, 350, 165], maxMae: 28 },
+      { page: 1, id: 'acrobat-grey-freetext-box', bounds: [110, 325, 410, 405], maxMae: 30 },
       { page: 2, id: 'acrobat-highlighter-ink', bounds: [55, 105, 440, 145], maxMae: 30 },
       { page: 2, id: 'acrobat-transparent-shapes', bounds: [55, 275, 405, 380], maxMae: 30 },
       { page: 2, id: 'acrobat-callout', bounds: [235, 585, 585, 720], maxMae: 34 },
@@ -35,7 +38,26 @@ const cases = [
     pages: [1],
     regions: [
       { page: 1, id: 'prog02-highlights', bounds: [45, 78, 505, 290], maxMae: 30 },
+      { page: 1, id: 'prog02-two-quad-highlight', bounds: [50, 235, 385, 285], maxMae: 28 },
+      { page: 1, id: 'prog02-framed-freetext', bounds: [50, 375, 270, 465], maxMae: 30 },
+      { page: 1, id: 'prog02-pale-unframed-freetext', bounds: [290, 375, 510, 465], maxMae: 30 },
       { page: 1, id: 'prog02-callout', bounds: [100, 470, 545, 635], maxMae: 34 },
+    ],
+  },
+  {
+    file: 'prog-03-no-appearance-and-conflicts.pdf',
+    pages: [1],
+    regions: [
+      { page: 1, id: 'appearance-magenta-hollow-square', bounds: [280, 450, 480, 550], maxMae: 28 },
+      { page: 1, id: 'appearance-blue-highlight', bounds: [50, 580, 315, 615], maxMae: 28 },
+      { page: 1, id: 'appearance-small-filled-square', bounds: [55, 650, 205, 735], maxMae: 28 },
+    ],
+  },
+  {
+    file: 'prog-07-form-fields.pdf',
+    pages: [1],
+    regions: [
+      { page: 1, id: 'unchecked-checkbox', bounds: [45, 100, 85, 145], maxMae: 24 },
     ],
   },
   {
