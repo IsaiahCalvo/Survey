@@ -3364,9 +3364,16 @@ const drawFilledOutlineInk = (page, pathData, pageHeight, attrs) => {
   if (!paint) return 0;
   const pathOperators = fabricPathToOperators(pathData);
   if (!pathOperators.length) return 0;
-  const opacity = Math.max(0, Math.min(1, Number(attrs.opacity ?? 1)));
+  // The screen paints imported translucent ink (a wide multiply highlighter)
+  // with the object's opacity and multiply blend; print must too, or a pale
+  // wash on screen prints as a solid saturated bar (found on the desktop
+  // print check, 2026-09-02; the web route did the same).
+  // Imported ink carries its transparency in the fill's rgba alpha (paint.opacity),
+  // app ink in the object's opacity; both must reach the paper.
+  const opacity = Math.max(0, Math.min(1, Number(attrs.opacity ?? attrs.fillOpacity ?? 1) * (paint.opacity ?? 1)));
+  const blendMode = attrs.blendMode === 'Multiply' ? BlendMode.Multiply : undefined;
   const graphicsStateKey = typeof page.maybeEmbedGraphicsState === 'function'
-    ? page.maybeEmbedGraphicsState({ opacity })
+    ? page.maybeEmbedGraphicsState({ opacity, ...(blendMode ? { blendMode } : {}) })
     : undefined;
   const fillRuleOperator = attrs.fillRule === 'evenodd'
     ? PDFOperator.of(PDFOperatorNames.FillEvenOdd)
@@ -3885,7 +3892,11 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     // else is a genuinely stroked path.
     const pathAttrs = renderPathToSvgAttrs(shifted);
     if (pathAttrs.filledOutline || (pathAttrs.strokeWidth === 0 && pathAttrs.fill && pathAttrs.fill !== 'none')) {
-      return drawFilledOutlineInk(page, transformedPath, pageHeight, pathAttrs);
+      return drawFilledOutlineInk(page, transformedPath, pageHeight, {
+        ...pathAttrs,
+        opacity: pathAttrs.opacity ?? pathAttrs.fillOpacity ?? shifted?.opacity,
+        blendMode: shifted?.globalCompositeOperation === 'multiply' ? 'Multiply' : undefined,
+      });
     }
     // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
     // origin {x: 0, y: pageHeight} + RAW app-space (y-down) path coordinates.

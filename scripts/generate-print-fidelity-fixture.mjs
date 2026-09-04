@@ -151,6 +151,13 @@ const nativeStickyNote = addNative(pages[10], {
   Contents: 'Print glyph check', NM: 'native-sticky-note',
 });
 
+// Imported translucent multiply highlighter (wide Ink, /CA 0.35): the screen
+// shows a pale wash and print must match, not a solid bar.
+const nativeTranslucentInk = addNative(pages[9], {
+  Subtype: 'Ink', Rect: [40, 90, 300, 130], InkList: [[50, 110, 290, 110]],
+  C: [1, 0.85, 0.1], CA: 0.35, Border: [0, 0, 14], NM: 'native-translucent-ink',
+});
+
 const form = pdf.getForm();
 const checked = form.createCheckBox('fidelity.checked');
 checked.addToPage(pages[0], { x: 350, y: 475, width: 24, height: 24 });
@@ -278,6 +285,10 @@ const annotationsByPage = {
     { type: 'form-field', data: { type: 'form-field', fieldId: `${multilineRef.objectNumber}R`,
       fieldName: 'fidelity.multiline', fieldType: 'Tx',
       value: 'First line wraps within the green field.\nSecond line stays inside.' } },
+    pathObject('imported-translucent-ink', [['M', 50, 682], ['L', 290, 682]], {
+      stroke: '#ffd91a', strokeWidth: 14, opacity: 0.35, globalCompositeOperation: 'multiply',
+      isPdfImported: true, pdfAnnotationId: `${nativeTranslucentInk.objectNumber}R`, pdfAnnotationType: 'Ink',
+    }),
     pathObject('translucent-multiply-highlighter', [['M', 45, 405], ['L', 245, 405]], {
       stroke: '#facc15', strokeWidth: 22, opacity: 0.35, globalCompositeOperation: 'multiply',
     }),
@@ -350,6 +361,7 @@ const regions = [
   region('link-no-box', 'link', 10, [35, 235, 260, 295], ['bounds', 'textPresence']),
   region('multiline-form', 'form-text-multiline', 10, [285, 205, 535, 310], ['bounds', 'colour', 'textPresence']),
   region('translucent-multiply-highlighter', 'highlighter', 10, [35, 370, 260, 430], ['bounds', 'fillCoverage', 'colour'], { minPrintLightness: 55 }),
+  region('imported-translucent-ink', 'native-ink', 10, [35, 665, 305, 700], ['bounds', 'fillCoverage', 'colour'], { minPrintLightness: 55, boundsPixels: 6 }),
   region('round-cap-pen', 'pen', 10, [35, 475, 275, 525], ['bounds', 'colour', 'strokeWeight']),
   region('landscape-page', 'landscape-page', 11, [50, 80, 740, 240], ['bounds', 'fillCoverage', 'colour']),
   region('imported-sticky-note', 'native-sticky-note', 11, [85, 305, 140, 360], ['bounds', 'fillCoverage', 'colour', 'textPresence'], { boundsPixels: 5 }),

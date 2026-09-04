@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 6880,
+  "pdfSize": 6932,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -435,7 +435,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "48R",
+            "fieldId": "49R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -445,7 +445,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "54R",
+            "fieldId": "55R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -999,11 +999,46 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "57R",
+            "fieldId": "58R",
             "fieldName": "fidelity.multiline",
             "fieldType": "Tx",
             "value": "First line wraps within the green field.\nSecond line stays inside."
           }
+        },
+        {
+          "id": "imported-translucent-ink",
+          "type": "path",
+          "left": 0,
+          "top": 0,
+          "pathOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "scaleX": 1,
+          "scaleY": 1,
+          "angle": 0,
+          "stroke": "#ffd91a",
+          "strokeWidth": 14,
+          "fill": "transparent",
+          "opacity": 0.35,
+          "strokeLineCap": "round",
+          "strokeLineJoin": "round",
+          "path": [
+            [
+              "M",
+              50,
+              682
+            ],
+            [
+              "L",
+              290,
+              682
+            ]
+          ],
+          "globalCompositeOperation": "multiply",
+          "isPdfImported": true,
+          "pdfAnnotationId": "44R",
+          "pdfAnnotationType": "Ink"
         },
         {
           "id": "translucent-multiply-highlighter",
@@ -1907,6 +1942,26 @@
       ],
       "tolerance": {
         "minPrintLightness": 55
+      }
+    },
+    {
+      "id": "imported-translucent-ink",
+      "type": "native-ink",
+      "page": 10,
+      "bounds": [
+        35,
+        665,
+        305,
+        700
+      ],
+      "checks": [
+        "bounds",
+        "fillCoverage",
+        "colour"
+      ],
+      "tolerance": {
+        "minPrintLightness": 55,
+        "boundsPixels": 6
       }
     },
     {
