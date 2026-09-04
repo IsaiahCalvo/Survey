@@ -339,6 +339,23 @@ const ringHasSelfIntersection = (ring) => {
   return false;
 };
 
+const pathHasSharpTurn = (points) => {
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const vertex = points[index];
+    const next = points[index + 1];
+    const firstLength = Math.hypot(vertex.x - previous.x, vertex.y - previous.y);
+    const secondLength = Math.hypot(next.x - vertex.x, next.y - vertex.y);
+    if (firstLength === 0 || secondLength === 0) continue;
+    const cross = (
+      ((vertex.x - previous.x) / firstLength) * ((next.y - vertex.y) / secondLength)
+      - ((vertex.y - previous.y) / firstLength) * ((next.x - vertex.x) / secondLength)
+    );
+    if (Math.abs(cross) >= 0.25) return true;
+  }
+  return false;
+};
+
 const directSweptDiskRing = (points, radius, semicircleSteps) => {
   const segments = [];
   for (let index = 1; index < points.length; index += 1) {
@@ -359,6 +376,7 @@ const directSweptDiskRing = (points, radius, semicircleSteps) => {
     });
   }
   if (!segments.length) return null;
+  if (pathHasSharpTurn(points)) return null;
   // A repeated first point represents a closed path. Its offset may contain
   // holes or multiple components, so leave it to the robust boolean fallback.
   if (
@@ -794,6 +812,9 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
     )),
     children: null,
   }));
+  // Keep sharp bends as exact local cuts. A merged mask can produce a weakly
+  // simple concave join that leaves a small contacted island after one diff.
+  if (pathHasSharpTurn(compacted)) return leaves;
   const mergeRange = (start, end) => {
     if (end - start === 1) return [leaves[start]];
     const middle = start + Math.floor((end - start) / 2);

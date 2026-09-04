@@ -145,3 +145,32 @@ test('recorded crossing pass cannot render a pointed survivor inside prior conta
   violations.sort((left, right) => right.penetration - left.penetration);
   assert.deepEqual(violations.slice(0, 20), []);
 });
+
+test('a concave C-cut leaves no filled ink inside the swept channel', () => {
+  const before = { objects: [ink] };
+  const points = [
+    [299.9373040752351, 79.33054393305439], [291.2434793789185, 83.5146494590089],
+    [282.5496240693574, 87.69873966233003], [273.8557993730408, 91.88284518828452],
+    [265.1619746767241, 96.06695071423901], [256.468119367163, 100.25104091756015],
+    [247.77429467084642, 104.43514644351465], [245.7680250783699, 110.29288192174425],
+    [243.76175548589342, 116.15063272260721], [241.7554858934169, 122.00836820083683],
+    [239.74921630094045, 127.86610367906643], [237.74294670846393, 133.7238544799294],
+    [235.73667711598745, 139.581589958159], [237.74294670846393, 145.4393254363886],
+    [239.74921630094045, 151.2970762372516], [241.7554858934169, 157.15481171548117],
+    [243.76175548589342, 163.0125471937108], [245.7680250783699, 168.87028267194037],
+    [247.77429467084642, 174.72803347280336], [256.468119367163, 178.91212367612448],
+    [265.1619746767241, 183.09624452471235], [273.8557993730408, 187.28033472803347],
+    [282.5496240693574, 191.46442493135459], [291.2434793789185, 195.64854577994248],
+    [299.9373040752351, 199.8326359832636],
+  ];
+  const after = applyGesture(before, { points, radius: 12 });
+  const audit = auditPartialEraseGeometry({
+    before: before.objects[0].polygons,
+    after: after.objects[0]?.polygons || [],
+    eraserPoints: points.map(([x, y]) => ({ x, y })),
+    radius: 12,
+    captureLocations: true,
+  });
+
+  assert.equal(audit.violations.retainedInsideContact, false, JSON.stringify(audit.violationSamples.retainedInsideContact));
+});
