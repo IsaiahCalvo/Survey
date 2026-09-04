@@ -158,6 +158,13 @@ const nativeTranslucentInk = addNative(pages[9], {
   C: [1, 0.85, 0.1], CA: 0.35, Border: [0, 0, 14], NM: 'native-translucent-ink',
 });
 
+// Imported Line with non-arrow endings (Circle at the start, Butt at the end)
+// on the landscape page: print must draw the same endings the screen shows.
+const nativeEndingsLine = addNative(pages[10], {
+  Subtype: 'Line', Rect: [490, 130, 710, 205], L: [500, 192, 700, 142], LE: ['Circle', 'Butt'],
+  C: [0.11, 0.31, 0.85], CA: 1, Border: [0, 0, 4], NM: 'native-endings-line',
+});
+
 const form = pdf.getForm();
 const checked = form.createCheckBox('fidelity.checked');
 checked.addToPage(pages[0], { x: 350, y: 475, width: 24, height: 24 });
@@ -301,6 +308,14 @@ const annotationsByPage = {
       stroke: '#0f766e', strokeWidth: 5, fill: '#ccfbf1' },
     // Imported sticky note (/Text): the screen and print draw the note glyph,
     // not a flat square (E2E cosmetic item, batch 7).
+    // Line endings on paper (owner request 2026-09-02): arrows at both ends,
+    // a polyline with an open arrow at its end, and two non-arrow endings.
+    { id: 'double-arrow-line', type: 'line', x1: 80, y1: 400, x2: 300, y2: 470, stroke: '#0f766e', strokeWidth: 4,
+      data: { pdfLineEndings: ['ClosedArrow', 'OpenArrow'] } },
+    { id: 'polyline-arrow-end', type: 'polyline', left: 350, top: 380, points: [{ x: 0, y: 40 }, { x: 40, y: 0 }, { x: 80, y: 40 }, { x: 130, y: 0 }],
+      stroke: '#b91c1c', strokeWidth: 4, fill: 'none', data: { pdfLineEndings: ['None', 'OpenArrow'] } },
+    { id: 'imported-endings-line', type: 'line', x1: 500, y1: 420, x2: 700, y2: 470, stroke: '#1c4fd9', strokeWidth: 4,
+      isPdfImported: true, pdfAnnotationId: `${nativeEndingsLine.objectNumber}R`, pdfAnnotationType: 'Line' },
     { id: 'imported-sticky-note', type: 'rect', left: 100, top: 320, width: 24, height: 24,
       fill: 'rgba(255, 217, 51, 0.92)', stroke: 'rgba(65, 57, 12, 0.72)', strokeWidth: 1,
       data: { type: 'note', pdfNoteGlyph: 'note', pdfNoteIcon: 'Comment', noteText: 'Print glyph check' },
@@ -365,6 +380,9 @@ const regions = [
   region('round-cap-pen', 'pen', 10, [35, 475, 275, 525], ['bounds', 'colour', 'strokeWeight']),
   region('landscape-page', 'landscape-page', 11, [50, 80, 740, 240], ['bounds', 'fillCoverage', 'colour']),
   region('imported-sticky-note', 'native-sticky-note', 11, [85, 305, 140, 360], ['bounds', 'fillCoverage', 'colour', 'textPresence'], { boundsPixels: 5 }),
+  region('double-arrow-line', 'line-endings', 11, [60, 380, 320, 490], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
+  region('polyline-arrow-end', 'line-endings', 11, [335, 360, 500, 440], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
+  region('imported-endings-line', 'native-line-endings', 11, [485, 405, 712, 478], ['bounds', 'colour'], { boundsPixels: 6 }),
 ];
 
 await mkdir(fixtureDir, { recursive: true });

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 6932,
+  "pdfSize": 6988,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -435,7 +435,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "49R",
+            "fieldId": "50R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -445,7 +445,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "55R",
+            "fieldId": "56R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -999,7 +999,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "58R",
+            "fieldId": "59R",
             "fieldName": "fidelity.multiline",
             "fieldType": "Tx",
             "value": "First line wraps within the green field.\nSecond line stays inside."
@@ -1119,6 +1119,68 @@
           "stroke": "#0f766e",
           "strokeWidth": 5,
           "fill": "#ccfbf1"
+        },
+        {
+          "id": "double-arrow-line",
+          "type": "line",
+          "x1": 80,
+          "y1": 400,
+          "x2": 300,
+          "y2": 470,
+          "stroke": "#0f766e",
+          "strokeWidth": 4,
+          "data": {
+            "pdfLineEndings": [
+              "ClosedArrow",
+              "OpenArrow"
+            ]
+          }
+        },
+        {
+          "id": "polyline-arrow-end",
+          "type": "polyline",
+          "left": 350,
+          "top": 380,
+          "points": [
+            {
+              "x": 0,
+              "y": 40
+            },
+            {
+              "x": 40,
+              "y": 0
+            },
+            {
+              "x": 80,
+              "y": 40
+            },
+            {
+              "x": 130,
+              "y": 0
+            }
+          ],
+          "stroke": "#b91c1c",
+          "strokeWidth": 4,
+          "fill": "none",
+          "data": {
+            "pdfLineEndings": [
+              "None",
+              "OpenArrow"
+            ]
+          }
+        },
+        {
+          "id": "imported-endings-line",
+          "type": "line",
+          "x1": 500,
+          "y1": 420,
+          "x2": 700,
+          "y2": 470,
+          "stroke": "#1c4fd9",
+          "strokeWidth": 4,
+          "isPdfImported": true,
+          "pdfAnnotationId": "45R",
+          "pdfAnnotationType": "Line"
         },
         {
           "id": "imported-sticky-note",
@@ -2014,6 +2076,62 @@
       ],
       "tolerance": {
         "boundsPixels": 5
+      }
+    },
+    {
+      "id": "double-arrow-line",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        60,
+        380,
+        320,
+        490
+      ],
+      "checks": [
+        "bounds",
+        "orientation",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "polyline-arrow-end",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        335,
+        360,
+        500,
+        440
+      ],
+      "checks": [
+        "bounds",
+        "orientation",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "imported-endings-line",
+      "type": "native-line-endings",
+      "page": 11,
+      "bounds": [
+        485,
+        405,
+        712,
+        478
+      ],
+      "checks": [
+        "bounds",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
       }
     }
   ]

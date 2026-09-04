@@ -81,7 +81,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray } from './lineRenderHelpers.js';
+import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray, pdfLineEndingToArrowheadStyle } from './lineRenderHelpers.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import {
   adaptHighlight,
@@ -3498,17 +3498,72 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.map((v) => Number(v) || 0)
     : null;
+  // Triangle heads: pull the line body back by headSize/3 so its tail does
+  // not poke through the head (same rule as buildLineRenderSpec on screen).
+  const endingStyles = resolveFlattenedLineEndingStyles(obj);
+  const isTriangle = (style) => style === ARROWHEAD_STYLES.SOLID_TRIANGLE || style === ARROWHEAD_STYLES.OPEN_TRIANGLE;
+  const headInset = Math.max(8, width * 3) / 3;
+  const bodyAngle = Math.atan2(y2 - y1, x2 - x1);
+  const bodyStart = isTriangle(endingStyles.startStyle)
+    ? { x: x1 + headInset * Math.cos(bodyAngle), y: y1 + headInset * Math.sin(bodyAngle) } : { x: x1, y: y1 };
+  const bodyEnd = isTriangle(endingStyles.endStyle)
+    ? { x: x2 - headInset * Math.cos(bodyAngle), y: y2 - headInset * Math.sin(bodyAngle) } : { x: x2, y: y2 };
   page.drawLine({
-    start: { x: x1, y: getPdfY(pageHeight, y1) },
-    end: { x: x2, y: getPdfY(pageHeight, y2) },
+    start: { x: bodyStart.x, y: getPdfY(pageHeight, bodyStart.y) },
+    end: { x: bodyEnd.x, y: getPdfY(pageHeight, bodyEnd.y) },
     color: stroke.color,
     thickness: width,
     opacity: stroke.opacity,
     ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
   });
-  const ending2 = String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase();
-  const isArrow = ending2.includes('arrow') || obj?.data?.annotationType === 'arrow' || obj?.tool === 'arrow';
-  if (isArrow) drawArrowHead(page, { x1, y1, x2, y2, pageHeight, color: stroke.color, width });
+  // Line endings print exactly as the screen resolves them (owner request
+  // 2026-09-02: imported arrows printed as plain lines). Both ends, every
+  // /LE style the screen knows: Open/ClosedArrow → triangles, Circle → open
+  // circle, Butt/Square → bar, Slash/Diamond → V (the screen's own
+  // approximation for those two, so print matches the screen).
+  const { startStyle, endStyle } = resolveFlattenedLineEndingStyles(obj);
+  const angleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+  const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endStyle, x2, y2, angleDeg, strokeHex, width), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(startStyle, x1, y1, angleDeg + 180, strokeHex, width), pageHeight);
+};
+
+// Mirrors buildLineRenderSpec's style resolution (lineRenderHelpers): imported
+// lines carry both raw /LE names in data.pdfLineEndings; app arrows carry
+// data.arrowheadStyle or tool === 'arrow'; legacy objects may carry
+// lineEnding1/lineEnding2 directly.
+const resolveFlattenedLineEndingStyles = (obj) => {
+  const pdfLineEndings = Array.isArray(obj?.data?.pdfLineEndings) ? obj.data.pdfLineEndings : null;
+  const explicitStyle = obj?.data?.arrowheadStyle;
+  const legacyArrow = obj?.tool === 'arrow'
+    || obj?.data?.annotationType === 'arrow'
+    || String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase().includes('arrow');
+  const startStyle = pdfLineEndings
+    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0])
+    : (obj?.lineEnding1 ? pdfLineEndingToArrowheadStyle(obj.lineEnding1) : ARROWHEAD_STYLES.NONE);
+  const endStyle = pdfLineEndings
+    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1])
+    : (obj?.lineEnding2
+      ? pdfLineEndingToArrowheadStyle(obj.lineEnding2)
+      : (explicitStyle ?? (legacyArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE)));
+  return { startStyle, endStyle };
+};
+
+// Polyline endings: same styles, placed on the first and last segments in
+// world space (imported polylines are unscaled), as the screen's renderPolyline.
+const drawFlattenedPolylineEndings = (page, obj, pageHeight) => {
+  const points = fabricPolygonWorldPoints(obj);
+  if (points.length < 2) return;
+  const { startStyle, endStyle } = resolveFlattenedLineEndingStyles(obj);
+  if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return;
+  const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
+  const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
+  const first = points[0]; const second = points[1];
+  const last = points[points.length - 1]; const beforeLast = points[points.length - 2];
+  const startAngle = (Math.atan2(first.y - second.y, first.x - second.x) * 180) / Math.PI;
+  const endAngle = (Math.atan2(last.y - beforeLast.y, last.x - beforeLast.x) * 180) / Math.PI;
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(startStyle, first.x, first.y, startAngle, strokeHex, width), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endStyle, last.x, last.y, endAngle, strokeHex, width), pageHeight);
 };
 
 // UX 2026-07-17 (print text style): pick the embedded Helvetica variant that
@@ -4040,7 +4095,11 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'polygon') return drawFlattenedPolygon(page, shifted, pageHeight, true) ? 1 : 0;
-  if (type === 'polyline') return drawFlattenedPolygon(page, shifted, pageHeight, false) ? 1 : 0;
+  if (type === 'polyline') {
+    if (!drawFlattenedPolygon(page, shifted, pageHeight, false)) return 0;
+    drawFlattenedPolylineEndings(page, shifted, pageHeight);
+    return 1;
+  }
   if (type === 'textbox' || type === 'text' || type === 'i-text') {
     // UX 2026-07-17: pass the whole fonts map so bold/italic text prints in
     // the matching Helvetica variant instead of always regular.
