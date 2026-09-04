@@ -556,7 +556,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       showThenFade();
       requestFrame();
     };
-    const onPointerMove = (event) => {
+    const onScrollbarProximityMove = (event) => {
       if (dragRef.current) return;
       const rect = scroller.getBoundingClientRect();
       const nearVertical = event.clientX >= rect.right - VIEWPORT_SCROLLBAR_SIZE;
@@ -568,10 +568,10 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       if (axis) showThenFade();
     };
     scroller.addEventListener('scroll', onScroll, { passive: true });
-    scroller.addEventListener('pointermove', onPointerMove, { passive: true });
+    scroller.addEventListener('pointermove', onScrollbarProximityMove, { passive: true });
     return () => {
       scroller.removeEventListener('scroll', onScroll);
-      scroller.removeEventListener('pointermove', onPointerMove);
+      scroller.removeEventListener('pointermove', onScrollbarProximityMove);
     };
   }, [disabled, requestFrame, scrollerRef, showThenFade]);
 
