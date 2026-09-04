@@ -1628,7 +1628,10 @@ export default function App({ devPreviewReturnTab = null }) {
                             bottomToolbarApi.setActiveTool(opt.tool);
                             setSelectModeMenuOpen(false);
                             bottomToolbarApi.setTooltip?.({ visible: false });
-                            window.requestAnimationFrame(() => selectModeButtonRef.current?.focus?.());
+                            window.requestAnimationFrame(() => {
+                              selectModeButtonRef.current?.focus?.();
+                              bottomToolbarApi.setTooltip?.({ visible: false });
+                            });
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}

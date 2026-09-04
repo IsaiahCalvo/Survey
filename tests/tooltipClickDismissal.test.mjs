@@ -17,6 +17,7 @@ test('shared tooltips stay hidden after a press until the pointer leaves', () =>
 
 test('choosing a select mode clears the open tooltip before focus returns', () => {
   assert.match(appShellSource, /bottomToolbarApi\.setTooltip\?\.\(\{ visible: false \}\);[\s\S]{0,160}selectModeButtonRef\.current\?\.focus/);
+  assert.match(appShellSource, /selectModeButtonRef\.current\?\.focus\?\.\(\);[\s\S]{0,120}bottomToolbarApi\.setTooltip\?\.\(\{ visible: false \}\)/);
 });
 
 test('desktop tool buttons use the shared click-safe tooltip binding', () => {

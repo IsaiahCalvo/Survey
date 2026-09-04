@@ -3800,14 +3800,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const onDown = (event) => {
       if (event.button !== 0) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
-      downAt = { x: event.clientX, y: event.clientY };
+      downAt = {
+        x: event.clientX,
+        y: event.clientY,
+        timeStamp: event.timeStamp,
+        pointerType: event.pointerType,
+      };
     };
     const onUp = (event) => {
       const start = downAt;
       downAt = null;
       if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > QUICK_CLICK_PX) return;
+      if (event.detail > 1) return;
+      if (event.pointerType === 'touch' && event.timeStamp - start.timeStamp > 350) return;
       const hit = resolveAnnotationAt(event);
       if (!hit) return;
+      if (!['annotation', 'callout'].includes(hit.kind)) return;
       try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
       liveTextSelectionRef.current = null;
       setLiveTextSelection(null);
@@ -31958,7 +31966,7 @@ ${pageBlocks}
                           <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
                             pageSize={resolvedPageSize}
-                            interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' ? 'select' : 'disabled'}
+                            interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' || activeTool === 'text-select' ? 'select' : 'disabled'}
                             onPageNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
                             onSelectLink={(region) => {
                               const annotation = pageAnnotationObjects[region.annotationIndex];

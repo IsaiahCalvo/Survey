@@ -127,5 +127,11 @@ test('both annotation render paths route imported marks through native text-mark
   assert.match(interactionSource, /isAnnotationTransformHandleLocked\(obj, handleId\)/);
   assert.match(rendererSource, /getTextMarkupUnderlineInset\(obj, height, lineWidth\)/);
   assert.match(rendererSource, /isUnappliedImportedRedaction/);
+  assert.match(rendererSource, /obj\.fill !== 'transparent'/);
   assert.match(rendererSource, /if \(type === 'link' && obj\?\.isPdfImported\) return null/);
+});
+
+test('Text Select routes imported hyperlinks through the selectable link layer', () => {
+  const viewerSource = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewerSource, /activeTool === 'select' \|\| activeTool === 'text-select' \? 'select'/);
 });

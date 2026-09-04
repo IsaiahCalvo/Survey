@@ -898,6 +898,9 @@ const SVGAnnotationLayer = memo(({
       return undefined;
     }
     const updatePointerOwnership = (event) => {
+      // Touch must stay with the native text layer so long-press selection and
+      // the OS copy menu keep working after a mark has been selected.
+      if (event.pointerType === 'touch') return;
       lastTextSelectPointerRef.current = { x: event.clientX, y: event.clientY };
       if (interactionState !== 'idle') {
         applyTextSelectPointerOwnership(true);
@@ -908,6 +911,7 @@ const SVGAnnotationLayer = memo(({
       );
     };
     const releaseTouchOwnership = () => {
+      lastTextSelectPointerRef.current = null;
       window.requestAnimationFrame(() => applyTextSelectPointerOwnership(false));
     };
     window.addEventListener('pointermove', updatePointerOwnership, true);

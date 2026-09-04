@@ -13,12 +13,17 @@ test('Text Select installs existing-mark hit handling while preserving native dr
   assert.match(source, /const handleSelectPdfjsTextMarkup = useCallback\([^]*?!\['select', 'text-select'\]\.includes\(activeTool\)/);
   assert.match(source, /const handleSelectPdfjsTextMarkupFromClientPoint = useCallback\([^]*?!\['select', 'text-select'\]\.includes\(activeTool\)/);
   assert.match(source, /if \(activeTool !== 'text-select'\) return undefined;[^]*?Math\.hypot\([^]*?const hit = resolveAnnotationAt\(event\)/);
+  assert.match(source, /event\.detail > 1/);
+  assert.match(source, /event\.pointerType === 'touch'[\s\S]{0,180}350/);
+  assert.match(source, /if \(!\['annotation', 'callout'\]\.includes\(hit\.kind\)\) return/);
 });
 
 test('Text Select enables SVG selection state but leaves the root inert so native text still receives drags', () => {
   assert.match(source, /const svgInteractive = activeTool === 'select' \|\| activeTool === 'text-select';/);
   assert.match(svgSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
   assert.match(svgSource, /activeTool !== 'text-select' \|\| textSelectManipulationArmed \|\| interactionState !== 'idle'/);
+  assert.match(svgSource, /if \(event\.pointerType === 'touch'\) return/);
+  assert.match(svgSource, /const releaseTouchOwnership = \(\) => \{[\s\S]{0,140}lastTextSelectPointerRef\.current = null/);
 });
 
 test('only the selected page owns annotation handles', () => {
