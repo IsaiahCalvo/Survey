@@ -313,7 +313,7 @@ test('print flatten uses widget colours and DA size and wraps multiline text', a
   await loadingTask.destroy();
 });
 
-test('print flatten removes a native link border and keeps only the screen link paint', async () => {
+test('print flatten removes a native link border without inventing screen-hidden paint', async () => {
   const sourceDoc = await PDFDocument.create();
   const page = sourceDoc.addPage([200, 200]);
   const linkRef = sourceDoc.context.register(sourceDoc.context.obj({
@@ -340,6 +340,32 @@ test('print flatten removes a native link border and keeps only the screen link 
     { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
   );
   assert.equal(await countNativeAnnots(bytes), 0);
+  const flattened = await PDFDocument.load(bytes);
+  assert.doesNotMatch(pageContentText(flattened), /\b(?:RG|m|l)\b/, 'an invisible screen link must add no painted line');
+});
+
+test('print flatten keeps the visible line for an app-created link', async () => {
+  const sourceDoc = await PDFDocument.create();
+  sourceDoc.addPage([200, 200]);
+  const sourceBytes = await sourceDoc.save();
+  const bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+    {
+      name: 'app-link.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+      },
+    },
+    { 1: { objects: [{
+      id: 'app-link', type: 'group', fill: '#2563eb', stroke: '#2563eb', opacity: 1,
+      data: { type: 'text-markup', markupType: 'link', quads: [{
+        x1: 20, y1: 35, x2: 160, y2: 35, x3: 20, y3: 60, x4: 160, y4: 60,
+      }] },
+    }] } },
+    { 1: { width: 200, height: 200 } },
+    { actionType: 'pdf-print-flattened-regular-annotations', documentId: 'doc-test' },
+  );
+  const flattened = await PDFDocument.load(bytes);
+  assert.match(pageContentText(flattened), /\bRG\b[\s\S]*\bm\b[\s\S]*\bl\b/);
 });
 
 test('print flatten defaults thick pen paths to round caps and joins', async () => {

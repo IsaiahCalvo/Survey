@@ -3907,6 +3907,9 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       || parsePdfDrawColor('#f4d35e');
     const opacity = Math.max(0.05, Math.min(1, Number(obj.opacity ?? 1)));
     const markupType = String(obj.data.markupType || obj.exportType || 'highlight').toLowerCase();
+    // Imported links have no app-side paint. Count the no-op as handled so the
+    // native border can be removed without sending it through the underline path.
+    if (markupType === 'link' && obj.isPdfImported) return 1;
     let count = 0;
     obj.data.quads.forEach((quad) => {
       const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
