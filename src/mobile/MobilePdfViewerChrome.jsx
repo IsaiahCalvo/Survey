@@ -25,7 +25,7 @@ const TOOL_GROUPS = {
   },
   shape: {
     label: 'Shapes',
-    icon: 'rect',
+    icon: 'shapes',
     fallback: 'rect',
     tools: [
       { id: 'rect', label: 'Rectangle', icon: 'rect' },
@@ -40,7 +40,7 @@ const TOOL_GROUPS = {
     icon: 'text',
     fallback: 'text',
     tools: [
-      { id: 'text', label: 'Text', icon: 'text' },
+      { id: 'text', label: 'Text', icon: 'textBox' },
       { id: 'callout', label: 'Callout', icon: 'callout' },
     ],
   },
@@ -1627,7 +1627,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 );
               }}
             >
-              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={19} color="currentColor" />
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" />
             </RailButton>
             <button
               ref={selectModeCaretRef}
@@ -1914,7 +1914,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                   onClick={() => chooseSelectMode(option.mode)}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Icon name={getSelectModeIconName(option.mode)} size={17} color="currentColor" />
+                    <Icon name={getSelectModeIconName(option.mode)} size={19} color="currentColor" />
                     <span>{option.label}</span>
                   </span>
                   {selected && <Icon name="check" size={14} color="currentColor" />}

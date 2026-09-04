@@ -31,6 +31,21 @@ test('drag pan batches pointer deltas into one scroll write per animation frame'
   assert.match(SOURCE, /schedulePan\(dx, dy\)/);
 });
 
+test('custom scrollbar drag keeps the thumb on the pointer without animation lag', () => {
+  const scrollbarStart = SOURCE.indexOf('function ViewportScrollbars');
+  const scrollbarEnd = SOURCE.indexOf('let pdfjsContainerSeq', scrollbarStart);
+  const scrollbarSource = SOURCE.slice(scrollbarStart, scrollbarEnd);
+
+  assert.match(scrollbarSource, /horizontalThumbRef\.current\.style\.left/);
+  assert.match(scrollbarSource, /verticalThumbRef\.current\.style\.top/);
+  assert.match(scrollbarSource, /transition: 'width 120ms ease-out, height 120ms ease-out'/);
+  assert.doesNotMatch(scrollbarSource, /left 120ms|top 120ms/);
+
+  const pointerMoveStart = scrollbarSource.indexOf('const onPointerMove');
+  const pointerMoveEnd = scrollbarSource.indexOf('const finishDrag', pointerMoveStart);
+  assert.doesNotMatch(scrollbarSource.slice(pointerMoveStart, pointerMoveEnd), /showThenFade\(\)/);
+});
+
 test('deep zoom detail work pauses during pan and resumes afterward', () => {
   assert.match(SOURCE, /function DetailTile\([^)]*interactionRef/);
   assert.match(SOURCE, /if \(interactionRef\?\.current\) return;/);

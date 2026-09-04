@@ -15,7 +15,7 @@ const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 const ACCEPTED_ICON_HASHES = {
-  'pan-hand-closed.svg': '0d4771fd7ba8908ce964de0c36b556194496e53ba0a25db314ac0b082119c2e5',
+  'pan-hand-closed.svg': 'fad3b440787ce0d89d718c2a849fb102ec48a584bc4392d04f8e221065f0a00e',
   'text-highlight.svg': 'bfe4a937890f2bd90e59aa3eb8d2f9e3e0224bd77c9c7a2f3e75919f21e6e932',
   'text-underline.svg': '55c5967c981f7ccaf9389884ccde723f1cd3334564424f10b83a8c12d89c9f88',
   'text-squiggle.svg': '5d758e7ceef171af4c6a20d10844dec95860144d93e6fa6a0225c95ba9fa6c40',
@@ -31,14 +31,15 @@ test('shared accepted icons stay byte-exact to the accepted icon lineup', async 
   }
 });
 
-test('pan icon uses the approved closed-wrist asset and inset size', async () => {
+test('pan icon uses the approved closed-wrist asset at its full requested size', async () => {
   const iconsSource = await readFile(path.join(repoRoot, 'src/Icons.jsx'), 'utf8');
   assert.match(iconsSource, /import panHandUrl from '.\/assets\/icons\/pan-hand-closed\.svg'/);
   assert.doesNotMatch(iconsSource, /import panHandUrl from '.\/assets\/icons\/pan-hand\.svg'/);
   assert.match(
     iconsSource,
-    /formatPan:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(panHandUrl, size, color, style, className, size \* 0\.88\)/,
+    /formatPan:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(panHandUrl, size, color, style, className\)/,
   );
+  assert.doesNotMatch(iconsSource, /renderMaskIcon\(panHandUrl,[^\n]*size \* 0\.88/);
 });
 
 async function loadActionBar() {
@@ -109,22 +110,22 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.ok(toolbar);
     assert.equal(toolbar.className, 'text-selection-action-bar__toolbar');
     assert.equal(toolbar.getAttribute('aria-orientation'), 'horizontal');
-    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.children.length, 7);
-    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.firstElementChild?.getAttribute('aria-label'), 'Copy');
+    assert.equal(toolbar.querySelector('.text-selection-action-bar__tools')?.children.length, 6);
+    assert.equal(toolbar.querySelector('button[aria-label="Copy"]'), null);
     const highlightControl = document.querySelector('[data-text-mark-control="highlight"]');
     assert.equal(highlightControl.className, 'text-selection-action-bar__mark');
     assert.equal(highlightControl.getAttribute('data-focused'), 'true');
     assert.ok(document.querySelector('button[aria-label="Set Highlight color"]').classList.contains('text-selection-action-bar__button'));
-    for (const [label, iconName] of [['Copy', 'copy'], ['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
+    for (const [label, iconName] of [['Remove Highlight', 'formatHighlight'], ['Apply Underline', 'formatUnderline'], ['Apply Squiggle', 'formatSquiggle'], ['Remove Strike Through', 'formatStrikethrough'], ['Add Hyperlink', 'formatHyperlink'], ['Apply Redact', 'formatRedact']]) {
       assert.equal(document.querySelector(`button[aria-label="${label}"] [data-icon-name]`)?.getAttribute('data-icon-name'), iconName);
     }
     const highlightSwatch = document.querySelector('button[aria-label="Set Highlight color"] span');
     assert.equal(highlightSwatch.style.background, 'rgb(245, 194, 41)');
     assert.equal(highlightSwatch.style.opacity, '1');
-    await act(async () => document.querySelector('button[aria-label="Copy"]').click());
-    assert.deepEqual(actions, ['copy']);
+    assert.deepEqual(actions, []);
     assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
     assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
+    assert.equal(document.querySelector('button[aria-label="Apply Underline"] [data-icon-name]')?.style.opacity, '1');
     await act(async () => document.querySelector('button[aria-label="Remove Highlight"]').click());
     assert.equal(document.querySelector('button[aria-label="Apply Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
     await act(async () => document.querySelector('button[aria-label="Apply Highlight"]').click());
@@ -136,12 +137,12 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(document.querySelector('button[aria-label*="redaction"][aria-label*="permanently"]'), null);
     const underline = document.querySelector('button[aria-label="Apply Underline"]');
     await act(async () => underline.click());
-    assert.deepEqual(actions, ['copy', 'highlight', 'highlight', 'underline']);
+    assert.deepEqual(actions, ['highlight', 'highlight', 'underline']);
     assert.equal(document.querySelector('button[aria-label="Remove Underline"]').getAttribute('aria-pressed'), 'true');
     const squiggleTouch = new dom.window.Event('touchend', { bubbles: true, cancelable: true });
     await act(async () => document.querySelector('button[aria-label="Apply Squiggle"]').dispatchEvent(squiggleTouch));
     assert.equal(squiggleTouch.defaultPrevented, true);
-    assert.deepEqual(actions, ['copy', 'highlight', 'highlight', 'underline', 'squiggly']);
+    assert.deepEqual(actions, ['highlight', 'highlight', 'underline', 'squiggly']);
     assert.equal(document.querySelector('button[aria-label="Remove Squiggle"]').getAttribute('aria-pressed'), 'true');
     const squigglePaintTouch = new dom.window.Event('touchend', { bubbles: true, cancelable: true });
     await act(async () => document.querySelector('button[aria-label="Set Squiggle color"]').dispatchEvent(squigglePaintTouch));

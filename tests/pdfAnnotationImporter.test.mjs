@@ -1451,7 +1451,7 @@ test('convertPdfAnnotationToFabric preserves InkList path commands and native st
   );
 });
 
-test('convertPdfAnnotationToFabric maps PDF Squiggly to stroke path contract', () => {
+test('convertPdfAnnotationToFabric maps PDF Squiggly to native text markup', () => {
   const viewport = makeViewport({ pageHeight: 200 });
 
   const annotation = {
@@ -1465,18 +1465,14 @@ test('convertPdfAnnotationToFabric maps PDF Squiggly to stroke path contract', (
 
   const obj = convertPdfAnnotationToFabric(annotation, viewport);
 
-  assert.equal(obj.type, 'path');
+  assert.equal(obj.type, 'group');
+  assert.equal(obj.data.type, 'text-markup');
+  assert.equal(obj.data.markupType, 'squiggly');
   assert.equal(obj.pdfAnnotationType, 'Squiggly');
   assert.equal(obj.pdfAnnotationId, 'squiggly-1');
   assert.equal(obj.isPdfImported, true);
-  assert.equal(obj.stroke, 'rgba(255, 0, 0, 0.75)');
-  assert.equal(obj.fill, null);
-  assert.equal(obj.strokeLineCap, 'round');
-  assert.equal(obj.strokeLineJoin, 'round');
-  assert.ok(obj.strokeWidth <= 1.1);
-  assert.equal(obj.strokeUniform, undefined);
-  assert.equal(obj.left, 0);
-  assert.equal(obj.top, 0);
+  assert.equal(obj.stroke, '#ff0000');
+  assert.equal(obj.opacity, 0.75);
   assert.equal(obj.selectable, true);
   assert.equal(obj.evented, true);
   assert.equal(obj.hasControls, false);
@@ -1485,14 +1481,11 @@ test('convertPdfAnnotationToFabric maps PDF Squiggly to stroke path contract', (
   assert.equal(obj.lockScalingX, true);
   assert.equal(obj.lockScalingY, true);
   assert.equal(obj.lockRotation, true);
-  assert.ok(Array.isArray(obj.path));
-  assert.ok(obj.path.length >= 80);
-  const yValues = obj.path.map((segment) => segment[2]).filter(Number.isFinite);
-  const peakToValley = Math.max(...yValues) - Math.min(...yValues);
-  assert.ok(peakToValley < 3);
+  assert.ok(Array.isArray(obj.data.quads));
+  assert.equal(obj.data.textRangeModel, undefined);
 });
 
-test('convertPdfAnnotationToFabric imports PDF text markup as select-delete only', () => {
+test('convertPdfAnnotationToFabric imports unmatched PDF text markup without stretch handles', () => {
   const viewport = makeViewport({ pageHeight: 200 });
 
   for (const subtype of ['Underline', 'StrikeOut']) {
@@ -1503,7 +1496,8 @@ test('convertPdfAnnotationToFabric imports PDF text markup as select-delete only
       color: [1, 0, 0],
     }, viewport);
 
-    assert.equal(obj.type, 'rect');
+    assert.equal(obj.type, 'group');
+    assert.equal(obj.data.type, 'text-markup');
     assert.equal(obj.pdfAnnotationType, subtype);
     assert.equal(obj.selectable, true);
     assert.equal(obj.evented, true);
@@ -1960,9 +1954,8 @@ test('importAnnotationsFromPdf imports AutoCAD SHX helper squares as invisible i
 //     from a real PDF fixture that is known to carry annotations.
 //
 // Fixture: debug/fixtures/clickable-link-test.pdf
-//   Confirmed embedded annotation count: 8 marks (see fixture probe at
-//   repo root — `importAnnotationsFromPdf` returned totalMarks=8 on this
-//   file during test authoring).
+//   The importer currently returns 9 editable marks, including the native
+//   hyperlink that used to live only in the pdf.js link overlay.
 //
 // Fixture: debug/fixtures/se011.pdf
 //   Confirmed embedded annotation count: 500 marks across 99 pages.
@@ -1973,7 +1966,7 @@ test('importAnnotationsFromPdf imports AutoCAD SHX helper squares as invisible i
 // documented in comments for reference.
 // ---------------------------------------------------------------------------
 
-test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFromPdf returns isPdfImported marks from real fixture (clickable-link-test.pdf, 8 known embedded marks)', async () => {
+test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFromPdf returns editable marks from clickable-link-test.pdf', async () => {
   const fixturePath = join(__dirname, '..', 'debug', 'fixtures', 'clickable-link-test.pdf');
   const bytes = readFileSync(fixturePath);
 
@@ -2003,6 +1996,15 @@ test('[KAL-256] patch-deletion safety: self-heal effect — importAnnotationsFro
     withFlag.length,
     totalImported,
     'every imported object must have isPdfImported===true'
+  );
+  const importedTextMarkup = allObjects.filter((object) => object?.data?.type === 'text-markup');
+  assert.deepEqual(
+    importedTextMarkup.map((object) => object.data.markupType).sort(),
+    ['link', 'squiggly', 'strikeout', 'underline'],
+  );
+  assert.ok(
+    importedTextMarkup.every((object) => object.data.textRangeModel?.runs?.length > 0),
+    'every imported fixture text mark must be attached to PDF text runs',
   );
 });
 

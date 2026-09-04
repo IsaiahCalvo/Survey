@@ -23,7 +23,10 @@ import {
   getEraserCandidateId,
   sampleEraserStroke,
 } from '../utils/eraserHitTest.js';
-import { erasePageAnnotations } from '../utils/pageSpaceEraser.js';
+import {
+  erasePageAnnotations,
+  pathObjectToPagePolygons,
+} from '../utils/pageSpaceEraser.js';
 import {
   BOUNDS_PAD,
   CALLOUT_BOUNDS_PAD,
@@ -54,6 +57,10 @@ import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 import {
+  recordAtomicEraseDiagnostic,
+  updateAtomicEraseDiagnostic,
+} from '../utils/atomicEraseDiagnostics.js';
+import {
   getSurveyMarkerEraserHitIds,
   surveyMarkerToEraserObject,
 } from '../utils/surveyMarkerEraser.js';
@@ -65,6 +72,22 @@ const getEraserHandoffTestFlags = () => (
     ? window.__eraserHandoffTest
     : null
 );
+
+const MAX_NATIVE_ERASER_CURSOR_DIAMETER = 120;
+
+function nativeEraserCursor(diameter) {
+  const size = Math.max(4, Math.round(Number(diameter) || 20));
+  if (size > MAX_NATIVE_ERASER_CURSOR_DIAMETER) return null;
+  const center = size / 2;
+  const radius = Math.max(1, center - 2);
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
+    `<circle cx="${center}" cy="${center}" r="${radius}" fill="rgba(255,255,255,0.18)" stroke="white" stroke-width="3"/>`,
+    `<circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(17,24,39,0.9)" stroke-width="1"/>`,
+    '</svg>',
+  ].join('');
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${Math.floor(center)} ${Math.floor(center)}, crosshair`;
+}
 
 // Keep live mask reparsing independent of gesture length. A growing `d`
 // rewritten on every pointermove makes the browser repeatedly parse the whole
@@ -339,16 +362,19 @@ const FabricEraserCanvas = memo(({
   // settle. Keep accepting/previewing later gestures, but serialize their
   // geometry plans so each one rebases on the previous committed survivor.
   const eraseCommitTailRef = useRef(Promise.resolve());
+  const erasePlannerWorkerRef = useRef(null);
+  const erasePlannerRequestsRef = useRef(new Map());
+  const erasePlannerSequenceRef = useRef(0);
+  const eraseAuditWorkerRef = useRef(null);
+  const eraseCommitTimingRef = useRef(new Map());
   const eraseGestureSequenceRef = useRef(0);
   const latestEraseGestureRef = useRef(0);
   const mountedRef = useRef(true);
   const spaceHeldRef = useRef(false);
   // Last known pointer position in CLIENT coordinates (plus pointerType).
-  // The wrapper hardcodes cursor:'none', so any window where the custom
-  // circle is hidden while the pointer hovers the wrapper leaves the user
-  // with NO visible cursor until the next pointermove. This ref lets the
-  // hide paths that are not real pointer exits (zoom re-layout, pointer
-  // cancel, lost capture) put the circle back under a stationary pointer.
+  // Large eraser sizes use the custom circle because native cursor images are
+  // size-limited. This ref lets non-exit hide paths put that circle back under
+  // a stationary pointer.
   const lastClientPosRef = useRef(null);
   const eraserDiagGestureRef = useRef(null);
   const initialZoomGenerationRef = useRef(zoomGeneration);
@@ -368,6 +394,7 @@ const FabricEraserCanvas = memo(({
   const eraserModeRef = useRef(eraserMode);
   const eraserSizeRef = useRef(eraserSize);
   const viewerScaleRef = useRef(viewerScale);
+  const nativeCursorRef = useRef(true);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
   const spacesRef = useRef(spaces);
@@ -387,6 +414,100 @@ const FabricEraserCanvas = memo(({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof Worker === 'undefined') return undefined;
+    const worker = new Worker(
+      new URL('../workers/atomicEraseAuditWorker.js', import.meta.url),
+      { type: 'module' },
+    );
+    eraseAuditWorkerRef.current = worker;
+    worker.onmessage = ({ data }) => {
+      const {
+        mutationId,
+        geometryAudits = [],
+        geometryAuditSummaries = [],
+        error,
+      } = data || {};
+      const record = updateAtomicEraseDiagnostic(window, mutationId, {
+        auditStatus: error ? 'failed' : 'complete',
+        geometryAudits,
+        geometryAuditSummaries,
+        ...(error ? { auditError: error } : {}),
+      });
+      const violations = geometryAuditSummaries.filter((audit) => (
+        Object.values(audit.violations || {}).some(Boolean)
+      ));
+      if (containerRef.current) {
+        containerRef.current.dataset.eraserAuditMutationId = String(mutationId);
+        containerRef.current.dataset.eraserAuditStatus = error
+          ? 'failed'
+          : (violations.length ? 'violation' : 'clean');
+        containerRef.current.dataset.eraserAuditViolationCount = String(violations.length);
+        containerRef.current.dataset.eraserAuditViolations = JSON.stringify(violations);
+        const syncCommitTiming = () => {
+          const commitMs = eraseCommitTimingRef.current.get(String(mutationId));
+          if (containerRef.current && Number.isFinite(commitMs)) {
+            containerRef.current.dataset.eraserCommitMs = String(commitMs);
+            eraseCommitTimingRef.current.delete(String(mutationId));
+          }
+        };
+        syncCommitTiming();
+        if (!Number.isFinite(eraseCommitTimingRef.current.get(String(mutationId)))) {
+          setTimeout(syncCommitTiming, 0);
+        }
+      }
+      if (violations.length) {
+        console.error('[EraserAuditViolation]', JSON.stringify({
+          mutationId,
+          pageNumber: record?.pageNumber,
+          violations,
+        }));
+      } else if (record) {
+        console.info('[EraserAudit]', {
+          mutationId,
+          pageNumber: record.pageNumber,
+          targetCount: geometryAuditSummaries.length,
+          status: error ? 'failed' : 'clean',
+        });
+      }
+    };
+    worker.onerror = (event) => {
+      console.error('[EraserAuditWorker]', event?.message || 'audit worker failed');
+    };
+    return () => {
+      eraseAuditWorkerRef.current = null;
+      worker.terminate();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof Worker === 'undefined') return undefined;
+    const worker = new Worker(
+      new URL('../workers/pageSpaceEraserWorker.js', import.meta.url),
+      { type: 'module' },
+    );
+    erasePlannerWorkerRef.current = worker;
+    worker.onmessage = ({ data }) => {
+      const pending = erasePlannerRequestsRef.current.get(data?.requestId);
+      if (!pending) return;
+      erasePlannerRequestsRef.current.delete(data.requestId);
+      if (data.error) pending.reject(new Error(data.error));
+      else pending.resolve(data.result);
+    };
+    worker.onerror = (event) => {
+      const error = new Error(event?.message || 'Eraser planner worker failed');
+      for (const pending of erasePlannerRequestsRef.current.values()) pending.reject(error);
+      erasePlannerRequestsRef.current.clear();
+    };
+    return () => {
+      erasePlannerWorkerRef.current = null;
+      worker.terminate();
+      const error = new Error('Eraser planner stopped');
+      for (const pending of erasePlannerRequestsRef.current.values()) pending.reject(error);
+      erasePlannerRequestsRef.current.clear();
+    };
+  }, []);
+
   annotationsRef.current = annotations;
   calloutsRef.current = callouts;
   surveyMarkersRef.current = surveyMarkers;
@@ -399,6 +520,10 @@ const FabricEraserCanvas = memo(({
   eraserSizeRef.current = eraserSize;
   interruptionPolicyRef.current = interruptionPolicy;
   viewerScaleRef.current = viewerScale;
+  const displayEraserDiameter = Math.max(1, Number(eraserSize) || 20)
+    * Math.max(0.01, Number(viewerScale) || 1);
+  const eraserCursor = nativeEraserCursor(displayEraserDiameter);
+  nativeCursorRef.current = Boolean(eraserCursor);
   selectedSpaceIdRef.current = selectedSpaceId;
   activeSpaceIdRef.current = activeSpaceId;
   spacesRef.current = spaces;
@@ -412,6 +537,42 @@ const FabricEraserCanvas = memo(({
     () => eraserDiameterToPageRadius(eraserSizeRef.current),
     [],
   );
+  const planPageErase = useCallback((args, blockedByIndex) => {
+    const worker = erasePlannerWorkerRef.current;
+    if (!worker) {
+      const rejectedAnnotations = [];
+      const result = erasePageAnnotations({
+        ...args,
+        canErase: (object, index) => {
+          const blocked = blockedByIndex[index];
+          if (blocked) rejectedAnnotations.push(blocked);
+          return !blocked;
+        },
+      });
+      return Promise.resolve({ ...result, rejectedAnnotations });
+    }
+    const requestId = erasePlannerSequenceRef.current + 1;
+    erasePlannerSequenceRef.current = requestId;
+    return new Promise((resolve, reject) => {
+      erasePlannerRequestsRef.current.set(requestId, { resolve, reject });
+      worker.postMessage({ requestId, args, blockedByIndex });
+    });
+  }, []);
+  const scheduleAtomicEraseAudit = useCallback((message) => {
+    const send = () => {
+      const worker = eraseAuditWorkerRef.current;
+      if (worker) worker.postMessage(message);
+      else updateAtomicEraseDiagnostic(window, message.mutationId, {
+        auditStatus: 'unavailable',
+        auditError: 'Eraser audit worker unavailable',
+      });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(send, { timeout: 1000 });
+    } else {
+      window.setTimeout(send, 0);
+    }
+  }, []);
   const getInterruptionPolicy = useCallback(() => (
     parentInterruptionPolicyRef?.current === 'cancel'
     || interruptionPolicyRef.current === 'cancel'
@@ -514,7 +675,7 @@ const FabricEraserCanvas = memo(({
     const cursor = cursorRef.current;
     if (!cursor) return;
     const shouldShow = visible && !spaceHeldRef.current && point;
-    cursor.style.display = shouldShow ? 'block' : 'none';
+    cursor.style.display = shouldShow && !nativeCursorRef.current ? 'block' : 'none';
     if (!shouldShow) return;
     const displayScale = Math.max(
       0.01,
@@ -1856,22 +2017,39 @@ const FabricEraserCanvas = memo(({
     const mode = gestureConfig?.mode === 'entire' || gestureConfig?.mode === 'full'
       ? gestureConfig.mode
       : (gestureConfig?.mode === 'partial' ? 'partial' : eraserModeRef.current);
-    const rejectedById = new Map();
-    const canErase = (object, index) => {
+    const mutationId = nextEraserMutationId();
+    recordAtomicEraseDiagnostic(window, {
+      mutationId,
+      pageNumber,
+      renderer,
+      gesture: {
+        mode,
+        radius,
+        points: eraserPoints.map((point) => ({ x: point.x, y: point.y })),
+        bounds: getEraserStrokeBounds(eraserPoints, radius),
+      },
+      auditStatus: 'planning',
+      geometryAudits: [],
+      geometryAuditSummaries: [],
+    });
+    if (containerRef.current) {
+      containerRef.current.dataset.eraserMutationId = String(mutationId);
+      containerRef.current.dataset.eraserAuditStatus = 'planning';
+      containerRef.current.dataset.eraserAuditViolationCount = '0';
+      containerRef.current.dataset.eraserAuditViolations = '[]';
+    }
+    const blockedByIndex = (latestPage.objects || []).map((object, index) => {
       const reason = getEraseBlockReason(object);
-      if (reason) {
-        const id = object?.id || object?.annotationId || object?.pdfAnnotationId || `index:${index}`;
-        rejectedById.set(id, { id, reason });
-      }
-      return !reason;
-    };
-    const result = erasePageAnnotations({
+      if (!reason) return null;
+      const id = object?.id || object?.annotationId || object?.pdfAnnotationId || `index:${index}`;
+      return { id, reason };
+    });
+    const result = await planPageErase({
       pageAnnotations: latestPage,
       eraserPoints,
       eraserRadius: radius,
       mode,
-      canErase,
-    });
+    }, blockedByIndex);
 
     // Commit recomputes the same permitted hit lists used by the live preview.
     // Raw geometry-only hits here previously let callout commit bypass preview's
@@ -1928,6 +2106,27 @@ const FabricEraserCanvas = memo(({
       containerRef.current.dataset.eraserPlanTargetCount = String(targets.length);
       containerRef.current.dataset.eraserPlanKinds = targets.map((target) => target.kind).join(',');
     }
+    const auditTargets = mode === 'partial'
+      ? targets
+        .filter((target) => String(target.before?.type || '').toLowerCase() === 'path')
+        .map((target) => ({
+          storageKey: target.storageKey,
+          annotationId: getEraseObjectId(target.before),
+          before: pathObjectToPagePolygons(target.before, radius),
+          after: target.operation === 'delete' ? [] : (target.after?.polygons || []),
+        }))
+      : [];
+    updateAtomicEraseDiagnostic(window, mutationId, {
+      auditStatus: auditTargets.length ? 'pending-commit' : 'not-needed',
+      candidateAnnotationIds: result.touchedIds,
+      rejectedAnnotations: result.rejectedAnnotations || [],
+      targets: targets.map((target) => ({
+        storageKey: target.storageKey,
+        annotationId: getEraseObjectId(target.before),
+        kind: target.kind,
+        operation: target.operation,
+      })),
+    });
     if (targets.length === 0) {
       const didEraseTextMarkup = commitLocalTextMarkupErase();
       for (const annotationId of surveyMarkerHitIds) {
@@ -1943,7 +2142,6 @@ const FabricEraserCanvas = memo(({
       };
     }
 
-    const mutationId = nextEraserMutationId();
     const expectedRevision = mutationId;
     const calloutObjectMutations = buildLocalCalloutEraseMutations(targets);
     const committedObjectMutations = [
@@ -1964,12 +2162,22 @@ const FabricEraserCanvas = memo(({
       eraserGestureId: eraserDiagGestureRef.current || null,
       eraserPointerBounds: getEraserStrokeBounds(eraserPoints, radius),
       candidateAnnotationIds: result.touchedIds,
-      rejectedAnnotations: [...rejectedById.values()],
+      rejectedAnnotations: result.rejectedAnnotations || [],
       touchedAnnotationIds: [...new Set([...result.touchedIds, ...committedCalloutIds])],
       finalDeletedAnnotationIds: [...new Set([...result.deletedIds, ...committedCalloutIds])],
       finalChangedAnnotationIds: result.changedIds,
       objectMutations: committedObjectMutations,
       changedObjectsCount: targets.length,
+    };
+    const commitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const recordCommitTiming = () => {
+      const commitEndedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const commitMs = Math.round((commitEndedAt - commitStartedAt) * 10) / 10;
+      eraseCommitTimingRef.current.set(String(mutationId), commitMs);
+      updateAtomicEraseDiagnostic(window, mutationId, { timing: { commitMs } });
+      if (containerRef.current) {
+        containerRef.current.dataset.eraserCommitMs = String(commitMs);
+      }
     };
     if (typeof onEraseIntentRef.current !== 'function') {
       const updatedJSON = {
@@ -1989,6 +2197,16 @@ const FabricEraserCanvas = memo(({
         for (const annotationId of surveyMarkerHitIds) {
           onEraseSurveyMarkerRef.current?.(annotationId);
         }
+        if (auditTargets.length) {
+          updateAtomicEraseDiagnostic(window, mutationId, { auditStatus: 'pending' });
+          scheduleAtomicEraseAudit({
+            mutationId,
+            targets: auditTargets,
+            eraserPoints,
+            radius,
+          });
+        }
+        recordCommitTiming();
         return {
           didPaint: true,
           expectedRevision,
@@ -2012,7 +2230,6 @@ const FabricEraserCanvas = memo(({
       diagnostics,
       presentationRevision: expectedRevision,
     });
-    const commitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
     try {
       if (
         import.meta.env.DEV
@@ -2048,20 +2265,28 @@ const FabricEraserCanvas = memo(({
           console.error('Survey marker erase failed:', error);
         }
       }
+      if (auditTargets.length) {
+        updateAtomicEraseDiagnostic(window, mutationId, { auditStatus: 'pending' });
+        scheduleAtomicEraseAudit({
+          mutationId,
+          targets: auditTargets,
+          eraserPoints,
+          radius,
+        });
+      }
       return {
         didPaint: true,
         expectedRevision,
       };
     } catch (error) {
+      updateAtomicEraseDiagnostic(window, mutationId, {
+        auditStatus: 'commit-failed',
+        commitError: String(error?.message || error),
+      });
       console.error('Atomic eraser commit failed:', error);
       return { didPaint: false, expectedRevision: null };
     } finally {
-      const commitEndedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      if (containerRef.current) {
-        containerRef.current.dataset.eraserCommitMs = String(
-          Math.round((commitEndedAt - commitStartedAt) * 10) / 10,
-        );
-      }
+      recordCommitTiming();
     }
   }, [
     getEraseBlockReason,
@@ -2069,7 +2294,9 @@ const FabricEraserCanvas = memo(({
     getPermittedCalloutHitIds,
     getPermittedSurveyMarkerHitIds,
     pageNumber,
+    planPageErase,
     renderer,
+    scheduleAtomicEraseAudit,
   ]);
 
   const queueEraserCommit = useCallback((pointer) => {
@@ -2241,9 +2468,8 @@ const FabricEraserCanvas = memo(({
       // pointercancel (OS gesture takeover etc.): commit the erase performed
       // so far — the user already saw it happen live.
       void commitInterruptedPointer(pointer);
-      // Not a real pointer exit: if the pointer still hovers the wrapper the
-      // native cursor is 'none', so hiding the circle here would leave no
-      // visible cursor until the next move. Re-show at the last known spot.
+      // Large sizes still use the custom circle. Re-show it at the last known
+      // spot after the preview swap.
       reshowCursorAtLastClientPos();
       return;
     }
@@ -2323,9 +2549,7 @@ const FabricEraserCanvas = memo(({
     // re-layouts; a cancel here silently threw away the user's erase.
     void commitPointerForZoom();
     updateEraserCursor(null, false);
-    // Cursor-visibility fix: the hide above plus the wrapper's cursor:'none'
-    // means a stationary pointer has NO visible cursor from zoom-start until
-    // the next pointermove. Re-show the circle once the zoom re-layout lands:
+    // Large sizes use the custom circle. Re-show it once the zoom re-layout lands:
     // primary signal is the wrapper's actual resize (fresh rect at that
     // moment, so placement is exact); the timeout is a fallback for clamped
     // zooms where zoomGeneration bumped but the size never changes.
@@ -2368,8 +2592,8 @@ const FabricEraserCanvas = memo(({
     // Window blur must ALWAYS release the space-pan latch (the keyup is lost
     // to the other window). Passing the FocusEvent into releaseSpacePan used
     // to trip its isSpaceKey guard and leave spaceHeldRef stuck true — the
-    // circle could then never re-show (wrapper cursor is 'none' → no visible
-    // cursor at all) until space was pressed and released again.
+    // large custom circle could then stay hidden until space was pressed and
+    // released again.
     const releaseSpacePanOnBlur = () => releaseSpacePan(null);
     window.addEventListener('keydown', activateSpacePan, true);
     window.addEventListener('keyup', releaseSpacePan, true);
@@ -2443,7 +2667,10 @@ const FabricEraserCanvas = memo(({
         pointerEvents: 'auto',
         touchAction: 'none',
         zIndex: 101,
-        cursor: 'none',
+        // Keep ordinary pointer motion in the browser/OS cursor path. The old
+        // JS-only circle froze whenever a settled erase briefly used the main
+        // thread, even though the physical pointer had kept moving.
+        cursor: eraserCursor || 'crosshair',
       }}
     >
       <canvas

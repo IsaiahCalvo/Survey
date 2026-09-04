@@ -21,6 +21,10 @@ const ERASER_SOURCE = readFileSync(
   new URL('../src/components/FabricEraserCanvas.jsx', import.meta.url),
   'utf8',
 );
+const ATOMIC_ERASE_DIAGNOSTICS_SOURCE = readFileSync(
+  new URL('../src/utils/atomicEraseDiagnostics.js', import.meta.url),
+  'utf8',
+);
 const LEGACY_LAYER_SOURCE = readFileSync(
   new URL('../src/PageAnnotationLayer.jsx', import.meta.url),
   'utf8',
@@ -50,6 +54,9 @@ test('production eraser cursor renders the selected diameter', () => {
 
 test('pdf.js eraser cursor is page-local and advances on the same pointer stream as erase samples', () => {
   assert.match(ERASER_SOURCE, /const cursorRef = useRef\(null\)/);
+  assert.match(ERASER_SOURCE, /function nativeEraserCursor\(diameter\)/);
+  assert.match(ERASER_SOURCE, /cursor: eraserCursor \|\| 'crosshair'/);
+  assert.doesNotMatch(ERASER_SOURCE, /cursor:\s*'none'/);
   assert.match(ERASER_SOURCE, /const updateEraserCursor = useCallback/);
   assert.match(ERASER_SOURCE, /const handlePointerMove[\s\S]*?updateEraserCursor\(point, true\)[\s\S]*?const pointer = pointerRef\.current/);
   assert.match(ERASER_SOURCE, /data-eraser-cursor="true"/);
@@ -57,6 +64,14 @@ test('pdf.js eraser cursor is page-local and advances on the same pointer stream
   assert.match(VIEWER_SOURCE, /!usePdfjsRenderer && activeTool === 'eraser'/);
   assert.match(VIEWER_SOURCE, /viewerScale=\{layerScale\}/);
   assert.doesNotMatch(ERASER_SOURCE, /viewerScaleRef\.current\s*\|\|\s*getInteractionScale/);
+});
+
+test('production eraser records exact-contact geometry audits off the page thread', () => {
+  assert.match(ERASER_SOURCE, /atomicEraseAuditWorker/);
+  assert.match(ERASER_SOURCE, /recordAtomicEraseDiagnostic/);
+  assert.match(ERASER_SOURCE, /updateAtomicEraseDiagnostic/);
+  assert.match(ERASER_SOURCE, /eraserAuditViolationCount/);
+  assert.match(ATOMIC_ERASE_DIAGNOSTICS_SOURCE, /__exportEraserDiagnostics/);
 });
 
 test('eraser preview copies the active detail tile without stretching it over the page', () => {

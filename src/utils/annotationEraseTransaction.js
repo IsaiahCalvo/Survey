@@ -459,6 +459,17 @@ export async function commitEraseIntent({
   const outbox = doc.getMap(ERASE_OUTBOX_MAP);
   const eraserOps = getEraserOpsMap(doc);
   const deletedPdfAnnotations = getDeletedPdfAnnotationsMap(doc);
+  const foreignEraserLaneStorageKeys = new Set();
+  if (eraserWriterId) {
+    eraserOps.forEach((lane) => {
+      if (
+        lane?.storageKey != null
+        && String(lane.writerId) !== String(eraserWriterId)
+      ) {
+        foreignEraserLaneStorageKeys.add(String(lane.storageKey));
+      }
+    });
+  }
 
   if (outbox.has(intent.mutationId)) {
     return { status: 'noop', mutationId: intent.mutationId };
@@ -541,6 +552,15 @@ export async function commitEraseIntent({
         pageNumber: target.pageNumber ?? intent.pageNumber,
         operationId: intent.mutationId,
         baseObject: snapshot.stored?.o ?? snapshot.stored,
+        capturedBase: target.before,
+        // pageSpaceEraser already computed target.after in a worker. When no
+        // other writer has a lane for this object, that survivor is also this
+        // writer's exact lane result. Replaying the same cut here used to block
+        // the browser thread after every pointer release. Keep the replay only
+        // for the cross-writer case where it is needed to isolate each bite.
+        preferCapturedSurvivor: !foreignEraserLaneStorageKeys.has(
+          String(target.storageKey),
+        ),
         previousLane,
         deleted: target.operation === 'delete',
         survivor: target.operation === 'delete' ? null : clone(target.after),

@@ -10,7 +10,7 @@
 // prefix everything with `form-` so the existing `activeTool !== 'pan' &&
 // activeTool !== 'select'` chrome rules don't trip on Form mode.
 export const FORM_TOOLS = [
-  { id: 'form-textbox', label: 'Text field', formFieldType: 'Textbox', iconName: 'text' },
+  { id: 'form-textbox', label: 'Text field', formFieldType: 'Textbox', iconName: 'textBox' },
   { id: 'form-checkbox', label: 'Checkbox', formFieldType: 'CheckBox', iconName: 'rect' },
   { id: 'form-radio', label: 'Radio button', formFieldType: 'RadioButton', iconName: 'ellipse' },
   { id: 'form-signature', label: 'Signature', formFieldType: 'SignatureField', iconName: 'pen' }

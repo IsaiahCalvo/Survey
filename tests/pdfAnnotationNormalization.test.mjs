@@ -53,7 +53,7 @@ test('imported Ink has the same core Fabric properties as an internal pen stroke
   }
 });
 
-test('imported PDF Squiggly has the same core stroke behavior as an internal pen stroke', () => {
+test('imported PDF Squiggly uses the native text-markup contract, not a pen path', () => {
   const imported = convertPdfAnnotationToFabric({
     id: 'squiggly-norm-1',
     subtype: 'Squiggly',
@@ -62,19 +62,15 @@ test('imported PDF Squiggly has the same core stroke behavior as an internal pen
     borderStyle: { width: 1.5 },
   }, viewport, 1);
   assert.ok(imported, 'convertPdfAnnotationToFabric should return a Fabric spec');
-  const internal = makeInternalPenPathSpec({
-    stroke: imported.stroke,
-    strokeWidth: imported.strokeWidth,
-  });
-
-  const sharedKeys = ['type', 'fill', 'strokeUniform', 'strokeLineCap', 'strokeLineJoin'];
-  for (const key of sharedKeys) {
-    assert.equal(
-      imported[key],
-      internal[key],
-      `Field drift on ${key}: imported=${JSON.stringify(imported[key])}, internal=${JSON.stringify(internal[key])}`
-    );
-  }
+  assert.equal(imported.type, 'group');
+  assert.equal(imported.data.type, 'text-markup');
+  assert.equal(imported.data.markupType, 'squiggly');
+  assert.ok(imported.data.quads.length > 0);
+  assert.equal(imported.lockMovementX, true);
+  assert.equal(imported.lockMovementY, true);
+  assert.equal(imported.lockScalingX, true);
+  assert.equal(imported.lockScalingY, true);
+  assert.equal(imported.lockRotation, true);
   assert.equal(imported.pdfAnnotationType, 'Squiggly');
   assert.equal(imported.isPdfImported, true);
 });
@@ -251,9 +247,7 @@ test('thin imported Ink preserves its exact native page-unit width at import', (
   assert.equal(legacyUniform.vectorEffect, undefined, 'legacy strokeUniform no longer pins stroke width');
 });
 
-test('imported PDF Squiggly stores a lightweight width at import; render passes it through', () => {
-  // Item 5a: the squiggly 0.6–1.1 cap lives in convertSquigglyToFabricPath
-  // (stored value), not in the renderer.
+test('imported PDF Squiggly stores text quads and never exposes generic stroke scaling', () => {
   const imported = convertPdfAnnotationToFabric({
     id: 'squiggly-width-1',
     subtype: 'Squiggly',
@@ -261,14 +255,12 @@ test('imported PDF Squiggly stores a lightweight width at import; render passes 
     color: [1, 0, 0],
     borderStyle: { width: 4 },
   }, viewport, 1);
-  assert.ok(imported.strokeWidth <= 1.1, `stored squiggle width is capped, got ${imported.strokeWidth}`);
-  assert.ok(imported.strokeWidth >= 0.6, `stored squiggle width has a floor, got ${imported.strokeWidth}`);
-
-  const attrs = renderPathToSvgAttrs(imported);
-  assert.equal(attrs.strokeWidth, imported.strokeWidth, 'render passes the stored width through');
-  // 2026-07-14 zoom-scaling unification: page-unit width that scales with
-  // zoom — no non-scaling-stroke pin.
-  assert.equal(attrs.vectorEffect, undefined);
+  assert.equal(imported.data.type, 'text-markup');
+  assert.equal(imported.data.markupType, 'squiggly');
+  assert.ok(imported.data.quads.length > 0);
+  assert.equal(imported.strokeWidth, undefined);
+  assert.equal(imported.lockScalingX, true);
+  assert.equal(imported.lockScalingY, true);
 });
 
 test('closed zero-width PDF Ink imports as a filled outline, not a hollow stroke', () => {

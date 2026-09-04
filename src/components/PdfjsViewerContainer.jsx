@@ -44,6 +44,7 @@ import {
   getDocumentMinimumScale,
   getWheelZoomScale,
 } from '../utils/pdfZoomMath';
+import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -73,6 +74,7 @@ const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
+const LIVE_ZOOM_EVENT = 'survey-pdfjs-live-zoom';
 
 function postNativePdfDiagnostic(event, detail = {}) {
   trackSurveyAnalyticsEvent(`survey_pdf_${String(event || 'diagnostic').replaceAll('-', '_')}`, detail);
@@ -515,6 +517,212 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, interactionRef,
   );
 }
 
+const VIEWPORT_SCROLLBAR_SIZE = 12;
+const VIEWPORT_SCROLLBAR_FADE_MS = 200;
+const VIEWPORT_SCROLLBAR_HOLD_MS = 700;
+
+function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
+  const [visible, setVisible] = useState(false);
+  const [hoveredAxis, setHoveredAxis] = useState(null);
+  const [, setFrame] = useState(0);
+  const fadeTimerRef = useRef(null);
+  const frameRef = useRef(0);
+  const dragRef = useRef(null);
+  const horizontalThumbRef = useRef(null);
+  const verticalThumbRef = useRef(null);
+
+  const requestFrame = useCallback(() => {
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      setFrame((frame) => frame + 1);
+    });
+  }, []);
+
+  const showThenFade = useCallback(() => {
+    setVisible(true);
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    fadeTimerRef.current = setTimeout(() => {
+      fadeTimerRef.current = null;
+      if (!dragRef.current) setVisible(false);
+    }, VIEWPORT_SCROLLBAR_HOLD_MS);
+  }, []);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || disabled) return undefined;
+    const onScroll = () => {
+      showThenFade();
+      requestFrame();
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, [disabled, requestFrame, scrollerRef, showThenFade]);
+
+  useLayoutEffect(() => {
+    if (!previewMetrics || disabled) return;
+    showThenFade();
+    requestFrame();
+  }, [disabled, previewMetrics, requestFrame, showThenFade]);
+
+  useEffect(() => {
+    if (disabled) return undefined;
+    const onPointerMove = (event) => {
+      const drag = dragRef.current;
+      const scroller = scrollerRef.current;
+      if (!drag || !scroller || drag.travel <= 0) return;
+      const pointer = drag.axis === 'horizontal' ? event.clientX : event.clientY;
+      const nextThumbStart = Math.max(0, Math.min(drag.travel, drag.thumbStart + pointer - drag.pointerStart));
+      const nextScroll = (nextThumbStart / drag.travel) * drag.maxScroll;
+      if (drag.axis === 'horizontal') {
+        if (horizontalThumbRef.current) horizontalThumbRef.current.style.left = `${nextThumbStart + 6}px`;
+        scroller.scrollLeft = nextScroll;
+      } else {
+        if (verticalThumbRef.current) verticalThumbRef.current.style.top = `${nextThumbStart + 6}px`;
+        scroller.scrollTop = nextScroll;
+      }
+      requestFrame();
+    };
+    const finishDrag = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      setHoveredAxis(null);
+      showThenFade();
+      document.documentElement.style.removeProperty('cursor');
+      document.documentElement.style.removeProperty('user-select');
+    };
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', finishDrag, true);
+    window.addEventListener('pointercancel', finishDrag, true);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', finishDrag, true);
+      window.removeEventListener('pointercancel', finishDrag, true);
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      document.documentElement.style.removeProperty('cursor');
+      document.documentElement.style.removeProperty('user-select');
+    };
+  }, [disabled, requestFrame, scrollerRef, showThenFade]);
+
+  if (disabled) return null;
+  const scroller = scrollerRef.current;
+  const viewportWidth = previewMetrics?.viewportWidth ?? scroller?.clientWidth ?? 0;
+  const viewportHeight = previewMetrics?.viewportHeight ?? scroller?.clientHeight ?? 0;
+  const contentWidth = previewMetrics?.contentWidth ?? scroller?.scrollWidth ?? viewportWidth;
+  const contentHeight = previewMetrics?.contentHeight ?? scroller?.scrollHeight ?? viewportHeight;
+  const scrollLeft = previewMetrics?.scrollLeft ?? scroller?.scrollLeft ?? 0;
+  const scrollTop = previewMetrics?.scrollTop ?? scroller?.scrollTop ?? 0;
+  const horizontalTrackSize = Math.max(0, viewportWidth - VIEWPORT_SCROLLBAR_SIZE);
+  const verticalTrackSize = Math.max(0, viewportHeight - VIEWPORT_SCROLLBAR_SIZE);
+  const horizontal = getViewportScrollbarAxis({
+    viewportSize: viewportWidth,
+    contentSize: contentWidth,
+    scrollOffset: scrollLeft,
+    trackSize: horizontalTrackSize,
+  });
+  const vertical = getViewportScrollbarAxis({
+    viewportSize: viewportHeight,
+    contentSize: contentHeight,
+    scrollOffset: scrollTop,
+    trackSize: verticalTrackSize,
+  });
+
+  const startDrag = (axis, metrics) => (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const pointer = axis === 'horizontal' ? event.clientX : event.clientY;
+    dragRef.current = {
+      axis,
+      pointerStart: pointer,
+      thumbStart: metrics.start - 6,
+      travel: metrics.travel,
+      maxScroll: metrics.maxScroll,
+    };
+    setHoveredAxis(axis);
+    document.documentElement.style.cursor = 'grabbing';
+    document.documentElement.style.userSelect = 'none';
+    setVisible(true);
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+  };
+
+  const jumpToTrackPoint = (axis, metrics) => (event) => {
+    if (event.target !== event.currentTarget || metrics.maxScroll <= 0) return;
+    const scrollerNode = scrollerRef.current;
+    if (!scrollerNode) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const pointer = axis === 'horizontal' ? event.clientX - rect.left : event.clientY - rect.top;
+    const thumbStart = Math.max(0, Math.min(metrics.travel, pointer - 6 - (metrics.size / 2)));
+    const nextScroll = metrics.travel > 0 ? (thumbStart / metrics.travel) * metrics.maxScroll : 0;
+    if (axis === 'horizontal') scrollerNode.scrollLeft = nextScroll;
+    else scrollerNode.scrollTop = nextScroll;
+    showThenFade();
+    requestFrame();
+  };
+
+  const railStyle = {
+    position: 'absolute',
+    zIndex: 80,
+    opacity: visible ? 1 : 0,
+    transition: `opacity ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out, background-color ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out`,
+    background: 'transparent',
+    pointerEvents: 'all',
+  };
+  const thumbStyle = {
+    position: 'absolute',
+    background: '#878e97',
+    borderRadius: 999,
+    cursor: dragRef.current ? 'grabbing' : 'grab',
+    touchAction: 'none',
+    transition: 'width 120ms ease-out, height 120ms ease-out',
+  };
+
+  return (
+    <>
+      <div
+        aria-label="Viewport vertical scroll bar"
+        onPointerEnter={() => { setHoveredAxis('vertical'); showThenFade(); }}
+        onPointerLeave={() => { if (!dragRef.current) setHoveredAxis(null); }}
+        onPointerDown={jumpToTrackPoint('vertical', vertical)}
+        style={{ ...railStyle, top: 0, right: 0, bottom: VIEWPORT_SCROLLBAR_SIZE, width: VIEWPORT_SCROLLBAR_SIZE }}
+      >
+        <div
+          ref={verticalThumbRef}
+          aria-label="Scrollbar shuttle"
+          onPointerDown={startDrag('vertical', vertical)}
+          style={{
+            ...thumbStyle,
+            top: vertical.start,
+            left: hoveredAxis === 'vertical' ? 3 : 4.5,
+            width: hoveredAxis === 'vertical' ? 6 : 3,
+            height: vertical.size,
+          }}
+        />
+      </div>
+      <div
+        aria-label="Viewport horizontal scroll bar"
+        onPointerEnter={() => { setHoveredAxis('horizontal'); showThenFade(); }}
+        onPointerLeave={() => { if (!dragRef.current) setHoveredAxis(null); }}
+        onPointerDown={jumpToTrackPoint('horizontal', horizontal)}
+        style={{ ...railStyle, left: 0, right: VIEWPORT_SCROLLBAR_SIZE, bottom: 0, height: VIEWPORT_SCROLLBAR_SIZE }}
+      >
+        <div
+          ref={horizontalThumbRef}
+          aria-label="Scrollbar shuttle"
+          onPointerDown={startDrag('horizontal', horizontal)}
+          style={{
+            ...thumbStyle,
+            left: horizontal.start,
+            top: hoveredAxis === 'horizontal' ? 3 : 4.5,
+            width: horizontal.size,
+            height: hoveredAxis === 'horizontal' ? 6 : 3,
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
 let pdfjsContainerSeq = 0;
 
 const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
@@ -553,6 +761,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // eslint-disable-next-line no-unused-vars
   textMarkupOpacity = null,
   textSelectionLayerActive = false,
+  textSelectionLayerInteractive = textSelectionLayerActive,
   className = '',
   style = {},
   // eslint-disable-next-line no-unused-vars
@@ -1148,6 +1357,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     zoomInteractionRef.current = active;
     window.dispatchEvent(new Event(active ? ZOOM_START_EVENT : ZOOM_END_EVENT));
   }, []);
+
+  useLayoutEffect(() => {
+    const liveScale = scale * liveZoom;
+    window.dispatchEvent(new CustomEvent(LIVE_ZOOM_EVENT, {
+      detail: {
+        scale: liveScale,
+        percentage: Math.round(liveScale * 100),
+        active: zoomInteractionRef.current,
+      },
+    }));
+  }, [liveZoom, scale]);
 
   const commitGesture = useCallback(() => {
     const g = gestureRef.current;
@@ -2084,18 +2304,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   let liveTranslateX = 0;
   let liveTranslateY = 0;
   let renderedLiveZoom = liveZoom;
+  let livePreview = null;
   const zoomGesture = gestureRef.current;
   if (zoomGesture) {
     const preview = resolveGesturePreview(zoomGesture, scale * liveZoom);
     liveTransformOrigin = `${zoomGesture.originContentX}px ${zoomGesture.originContentY - layout.padTop}px`;
     if (preview) {
+      livePreview = preview;
       renderedLiveZoom = preview.targetScale / scale;
       liveTranslateX = preview.translateX;
       liveTranslateY = preview.translateY;
     }
   }
 
+  const scrollbarPreviewMetrics = livePreview ? (() => {
+    const targetScale = livePreview.targetScale;
+    const metrics = layoutMetricsRef.current;
+    const gapPx = metrics.gap * targetScale;
+    let rawHeight = metrics.padTop + gapPx;
+    let maximumPageWidth = 0;
+    layout.dims.forEach((dim) => {
+      rawHeight += dim.h * targetScale + gapPx;
+      maximumPageWidth = Math.max(maximumPageWidth, dim.w * targetScale);
+    });
+    rawHeight += metrics.padBottom;
+    const contentWidth = maximumPageWidth <= containerW
+      ? containerW
+      : maximumPageWidth + (2 * metrics.padX);
+    const contentHeight = rawHeight + Math.max(0, (containerH - rawHeight) / 2);
+    return {
+      viewportWidth: containerW,
+      viewportHeight: containerH,
+      contentWidth,
+      contentHeight,
+      scrollLeft: livePreview.left,
+      scrollTop: livePreview.top,
+    };
+  })() : null;
+
   return (
+    <>
     <div
       ref={scrollerRef}
       id={viewerId}
@@ -2106,7 +2354,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         position: 'absolute',
         inset: 0,
         overflow: 'auto',
-        background: isMobileSurface ? '#070A0D' : '#3a3d42',
+        background: isMobileSurface ? '#070A0D' : '#12151c',
         contain: 'strict',
         overscrollBehavior: 'contain',
         WebkitOverflowScrolling: 'touch',
@@ -2282,7 +2530,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                         pageNumber={i + 1}
                         scale={scale}
                         rotation={rotation}
-                        interactive
+                        interactive={textSelectionLayerInteractive}
                         onTextAvailability={onTextAvailability}
                       />
                     )}
@@ -2307,6 +2555,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         </div>
       )}
     </div>
+    <ViewportScrollbars
+      scrollerRef={scrollerRef}
+      previewMetrics={scrollbarPreviewMetrics}
+      disabled={isMobileSurface}
+    />
+    </>
   );
 });
 

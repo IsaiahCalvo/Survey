@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import * as Y from 'yjs';
 import FabricEraserCanvas from '../components/FabricEraserCanvas.jsx';
 import {
@@ -14,6 +21,7 @@ import {
 import { createDetachedYDoc } from '../lib/collab/ydocRegistry.js';
 import { createAnnotationStorageKeyResolver } from '../utils/annotationStorageIdentity.js';
 import { getCounterRenderGeometry } from '../utils/counterGeometry.js';
+import { summarizeAtomicEraseDebugIntent } from '../utils/atomicEraseDiagnostics.js';
 
 const PAGE_WIDTH = 640;
 const PAGE_HEIGHT = 480;
@@ -142,6 +150,9 @@ function AtomicObject({ object, index }) {
 
 export default function AtomicEraseHarness() {
   const runtimeRef = useRef(null);
+  const harnessRootRef = useRef(null);
+  const pendingCommitStartedAtRef = useRef(0);
+  const auditWorkerRef = useRef(null);
   if (!runtimeRef.current) {
     const doc = createDetachedYDoc(DOCUMENT_ID);
     syncByPageToDoc(doc, seedAnnotations());
@@ -158,7 +169,58 @@ export default function AtomicEraseHarness() {
   const [eraserMode, setEraserMode] = useState('partial');
   const [eraserSize, setEraserSize] = useState(24);
   const [revision, setRevision] = useState('');
+  const [debugIntents, setDebugIntents] = useState([]);
+  const [showTrace, setShowTrace] = useState(false);
   const annotations = annotationsByPage[1] || { objects: [] };
+  const debugLogText = useMemo(
+    () => JSON.stringify(debugIntents.map(summarizeAtomicEraseDebugIntent), null, 2),
+    [debugIntents],
+  );
+
+  useLayoutEffect(() => {
+    const startedAt = pendingCommitStartedAtRef.current;
+    if (!startedAt || !harnessRootRef.current) return;
+    harnessRootRef.current.dataset.eraserCommitToLayoutMs = String(
+      Math.round((performance.now() - startedAt) * 10) / 10,
+    );
+    pendingCommitStartedAtRef.current = 0;
+  }, [annotationsByPage, debugIntents]);
+
+  useEffect(() => {
+    const worker = new Worker(
+      new URL('../workers/atomicEraseAuditWorker.js', import.meta.url),
+      { type: 'module' },
+    );
+    auditWorkerRef.current = worker;
+    worker.onmessage = ({ data }) => {
+      const { mutationId, geometryAudits, error } = data || {};
+      const transaction = window.__atomicEraseHarnessTransactions.find(
+        (entry) => entry.mutationId === mutationId,
+      );
+      if (transaction) {
+        transaction.auditStatus = error ? 'failed' : 'complete';
+        transaction.geometryAudits = geometryAudits || [];
+        if (error) transaction.auditError = error;
+      }
+      if (window.__lastEraseTransaction?.mutationId === mutationId) {
+        window.__lastEraseTransaction = transaction || window.__lastEraseTransaction;
+      }
+      setDebugIntents((current) => current.map((entry) => (
+        entry.mutationId === mutationId
+          ? {
+              ...entry,
+              auditStatus: error ? 'failed' : 'complete',
+              geometryAudits: geometryAudits || [],
+              ...(error ? { auditError: error } : {}),
+            }
+          : entry
+      )));
+    };
+    return () => {
+      auditWorkerRef.current = null;
+      worker.terminate();
+    };
+  }, []);
 
   const materialize = useCallback((presentationRevision = '') => {
     const byPage = docToByPage(runtimeRef.current.doc);
@@ -175,6 +237,15 @@ export default function AtomicEraseHarness() {
   }, []);
 
   const commit = useCallback(async (rawIntent) => {
+    const harnessCommitStartedAt = performance.now();
+    let stageStartedAt = harnessCommitStartedAt;
+    const stageTiming = {};
+    const finishStage = (name) => {
+      const now = performance.now();
+      stageTiming[name] = Math.round((now - stageStartedAt) * 10) / 10;
+      stageStartedAt = now;
+    };
+    pendingCommitStartedAtRef.current = harnessCommitStartedAt;
     const before = docToByPage(runtimeRef.current.doc);
     const currentByStorageKey = new Map();
     const resolveStorageKey = createAnnotationStorageKeyResolver();
@@ -186,12 +257,14 @@ export default function AtomicEraseHarness() {
         );
       }
     }
+    finishStage('readCurrentMs');
     const intent = prepareEraseIntentForCommit({
       intent: buildEraseIntent(rawIntent),
       annotationsByPage: before,
       userId: ACTOR_ID,
       includeDeleteHistory: false,
     });
+    finishStage('prepareIntentMs');
     const result = await commitEraseIntent({
       doc: runtimeRef.current.doc,
       intent,
@@ -204,7 +277,19 @@ export default function AtomicEraseHarness() {
         currentByStorageKey.get(String(target.storageKey))
       ),
     });
+    finishStage('writeAtomicMs');
     const byPage = materialize(intent.presentationRevision);
+    finishStage('materializeMs');
+    const auditTargets = intent.gesture?.mode === 'partial'
+      ? intent.targets
+        .filter((target) => String(target.before?.type || '').toLowerCase() === 'path')
+        .map((target) => ({
+          storageKey: target.storageKey,
+          annotationId: objectId(target.before),
+          before: target.before?.polygons,
+          after: target.operation === 'delete' ? [] : target.after?.polygons,
+        }))
+      : [];
     if (result.status === 'committed' && result.historyTransition) {
       runtimeRef.current.undoTransitions.push(result.historyTransition);
       runtimeRef.current.redoTransitions.length = 0;
@@ -215,14 +300,40 @@ export default function AtomicEraseHarness() {
       status: result.status,
       reason: result.reason || null,
       targetCount: intent.targets.length,
-      historyTransition: result.historyTransition
-        ? structuredClone(result.historyTransition)
-        : null,
+      historyTransition: result.historyTransition || null,
+      auditStatus: auditTargets.length ? 'pending' : 'not-needed',
+      geometryAudits: [],
+      timing: stageTiming,
     };
-    window.__atomicEraseHarnessTransactions.push(
-      structuredClone(window.__lastEraseTransaction),
-    );
-    window.__atomicEraseHarnessIntents.push(structuredClone(intent));
+    window.__atomicEraseHarnessTransactions.push(window.__lastEraseTransaction);
+    window.__atomicEraseHarnessIntents.push(intent);
+    setDebugIntents((current) => [...current, {
+      mutationId: intent.mutationId,
+      pageNumber: intent.pageNumber,
+      gesture: structuredClone(intent.gesture),
+      targets: intent.targets.map((target) => ({
+        storageKey: target.storageKey,
+        operation: target.operation,
+      })),
+      result: { status: result.status, reason: result.reason || null },
+      auditStatus: auditTargets.length ? 'pending' : 'not-needed',
+      geometryAudits: [],
+      timing: {
+        ...stageTiming,
+        commitWorkMs: Math.round((performance.now() - harnessCommitStartedAt) * 10) / 10,
+      },
+    }]);
+    if (auditTargets.length) {
+      const auditMessage = {
+        mutationId: intent.mutationId,
+        targets: auditTargets,
+        eraserPoints: intent.gesture.points,
+        radius: intent.gesture.radius,
+      };
+      const sendAudit = () => auditWorkerRef.current?.postMessage(auditMessage);
+      if ('requestIdleCallback' in window) window.requestIdleCallback(sendAudit);
+      else window.setTimeout(sendAudit, 0);
+    }
     return { ...result, byPage };
   }, [materialize]);
 
@@ -332,7 +443,9 @@ export default function AtomicEraseHarness() {
 
   return (
     <main
+      ref={harnessRootRef}
       data-atomic-erase-harness-ready="true"
+      data-eraser-debug-char-count={debugLogText.length}
       style={{
         minHeight: '100vh',
         padding: 24,
@@ -368,8 +481,28 @@ export default function AtomicEraseHarness() {
         </label>
         <button type="button" onClick={undo}>Undo</button>
         <button type="button" onClick={redo}>Redo</button>
+        <label>
+          <input
+            type="checkbox"
+            checked={showTrace}
+            onChange={(event) => setShowTrace(event.target.checked)}
+          />{' '}
+          Show trace
+        </label>
         <span data-harness-object-count>{annotations.objects?.length || 0} objects</span>
       </div>
+
+      <details style={{ marginBottom: 12 }}>
+        <summary data-eraser-debug-summary>
+          Eraser trace: {debugIntents.length} gesture{debugIntents.length === 1 ? '' : 's'}
+        </summary>
+        <pre
+          data-eraser-debug-log
+          style={{ maxHeight: 220, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 11 }}
+        >
+          {debugLogText}
+        </pre>
+      </details>
 
       <div
         data-annotation-real-surface
@@ -397,6 +530,33 @@ export default function AtomicEraseHarness() {
             {(annotations.objects || []).map((object, index) => (
               <AtomicObject key={objectId(object) || index} object={object} index={index} />
             ))}
+            {showTrace && debugIntents.map((intent) => {
+              const points = intent.gesture?.points || [];
+              const radius = Number(intent.gesture?.radius) || 0;
+              if (!points.length || radius <= 0) return null;
+              return (
+                <g key={`trace-${intent.mutationId}`} pointerEvents="none">
+                  {points.length > 1 && (
+                    <polyline
+                      points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+                      fill="none"
+                      stroke="#2563eb"
+                      strokeWidth={radius * 2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.22"
+                    />
+                  )}
+                  <circle
+                    cx={points[0].x}
+                    cy={points[0].y}
+                    r={radius}
+                    fill="#2563eb"
+                    opacity="0.22"
+                  />
+                </g>
+              );
+            })}
           </svg>
         </div>
         <FabricEraserCanvas

@@ -55,6 +55,7 @@ import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 // when their Fabric input fields match.
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
+import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -546,10 +547,16 @@ export const renderTextMarkup = (obj, index) => {
 
   const paths = quads.map((q) => {
     const height = Math.max(1, Math.hypot(q.x3 - q.x1, q.y3 - q.y1));
+    // PDF underline imports paint a thin rect whose center sits just inside
+    // the text quad. Match that baseline instead of putting our stroke center
+    // on the quad edge, which left the whole stroke too far below the text.
+    const underlineInset = type === 'underline'
+      ? getTextMarkupUnderlineInset(obj, height, lineWidth)
+      : 0;
     const startX = type === 'strikeout' ? (q.x1 + q.x3) / 2 : q.x3;
-    const startY = type === 'strikeout' ? (q.y1 + q.y3) / 2 : q.y3;
+    const startY = type === 'strikeout' ? (q.y1 + q.y3) / 2 : q.y3 - underlineInset;
     const endX = type === 'strikeout' ? (q.x2 + q.x4) / 2 : q.x4;
-    const endY = type === 'strikeout' ? (q.y2 + q.y4) / 2 : q.y4;
+    const endY = type === 'strikeout' ? (q.y2 + q.y4) / 2 : q.y4 - underlineInset;
     if (type !== 'squiggly') return `M ${startX} ${startY} L ${endX} ${endY}`;
     const length = Math.max(1, Math.hypot(endX - startX, endY - startY));
     const ux = (endX - startX) / length;

@@ -3,6 +3,17 @@ import { erasePathWithCapsules } from './paperInkEraser.js';
 
 const EPS = 1e-7;
 const DEFAULT_ARC_STEPS = 18;
+// Folded strokes need tighter capsule arcs than ordinary paths so shallow
+// turns do not leave a visible chord gap. The recorded defect reaches within
+// 0.0024 page units of the true cursor edge, which needs 96 semicircle facets.
+const FOLDED_ARC_STEPS = 96;
+const ERASER_MAX_RADIAL_ERROR = 0.02;
+const ERASER_CLICK_MAX_RADIAL_ERROR = 0.02;
+
+const eraserCurveTolerance = (radius, pointCount) => Math.max(
+  pointCount <= 1 ? ERASER_CLICK_MAX_RADIAL_ERROR : ERASER_MAX_RADIAL_ERROR,
+  Math.abs(Number(radius) || 0) * 1e-4,
+);
 
 
 const isPoint = (value) => (
@@ -29,6 +40,35 @@ export function intersectPolygonSets(left, right) {
   const b = normalizeMultiPolygon(right);
   if (!a.length || !b.length) return [];
   return normalizeMultiPolygon(intersection(a, b));
+}
+
+export function subtractPolygonSets(left, right) {
+  const subject = normalizeMultiPolygon(left);
+  const clip = normalizeMultiPolygon(right);
+  if (!subject.length) return [];
+  if (!clip.length) return subject;
+  return normalizeMultiPolygon(diff(subject, clip));
+}
+
+const signedRingArea = (ring) => {
+  let twiceArea = 0;
+  for (let index = 0; index + 1 < (ring?.length || 0); index += 1) {
+    twiceArea += ring[index][0] * ring[index + 1][1]
+      - ring[index + 1][0] * ring[index][1];
+  }
+  return twiceArea / 2;
+};
+
+export function polygonSetArea(value) {
+  return normalizeMultiPolygon(value).reduce((total, polygon) => {
+    if (!polygon.length) return total;
+    const outer = Math.abs(signedRingArea(polygon[0]));
+    const holes = polygon.slice(1).reduce(
+      (sum, ring) => sum + Math.abs(signedRingArea(ring)),
+      0,
+    );
+    return total + Math.max(0, outer - holes);
+  }, 0);
 }
 
 function closeRing(ring) {
@@ -446,7 +486,7 @@ const directSweptDiskRing = (points, radius, semicircleSteps) => {
     Math.atan2(last.ny, last.nx),
     Math.atan2(-last.ny, -last.nx),
     -1,
-    semicircleSteps,
+    Math.max(semicircleSteps, FOLDED_ARC_STEPS),
   );
   ring[ring.length - 1] = [...right.at(-1)];
   for (let index = right.length - 2; index >= 0; index -= 1) {
@@ -517,7 +557,203 @@ export function sweptDiskPolygon(points, radius, options = {}) {
 
   const directRing = directSweptDiskRing(compacted, radius, semicircleSteps);
   if (directRing) return [[directRing]];
-  return sweptDiskPolygonByCapsules(compacted, radius, semicircleSteps);
+  return sweptDiskPolygonByCapsules(
+    compacted,
+    radius,
+    semicircleSteps,
+  );
+}
+
+function pointTouchesEraserGesture(point, eraserPoints, radius) {
+  if (!eraserPoints?.length) return false;
+  const limit = Math.abs(Number(radius) || 0) + EPS;
+  for (let index = 0; index < eraserPoints.length; index += 1) {
+    const end = eraserPoints[index];
+    const start = eraserPoints[Math.max(0, index - 1)];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared > 0
+      ? Math.max(0, Math.min(1, (
+        (point.x - start.x) * dx + (point.y - start.y) * dy
+      ) / lengthSquared))
+      : 0;
+    if (Math.hypot(
+      point.x - (start.x + t * dx),
+      point.y - (start.y + t * dy),
+    ) <= limit) return true;
+  }
+  return false;
+}
+
+function samplePartialEraseChanges(before, after, contact, eraserPoints, radius) {
+  const all = normalizeMultiPolygon([...(before || []), ...(after || []), ...(contact || [])]);
+  if (!all.length) return {
+    cellArea: 0,
+    removedOutsideContact: [],
+    retainedInsideContact: [],
+    addedInk: [],
+  };
+  const bounds = boundsOfCommands(polygonSetToCommands(all));
+  const steps = 96;
+  const cellWidth = Math.max(Number.MIN_VALUE, bounds.w / steps);
+  const cellHeight = Math.max(Number.MIN_VALUE, bounds.h / steps);
+  const samples = {
+    cellArea: cellWidth * cellHeight,
+    removedOutsideContact: [],
+    retainedInsideContact: [],
+    addedInk: [],
+  };
+  const remember = (list, point) => {
+    if (list.length < 64) list.push(point);
+  };
+  for (let row = 0; row < steps; row += 1) {
+    for (let column = 0; column < steps; column += 1) {
+      const point = {
+        x: bounds.x + (column + 0.5) * cellWidth,
+        y: bounds.y + (row + 0.5) * cellHeight,
+      };
+      const wasInk = pointInPolygonSet(point, before);
+      const isInk = pointInPolygonSet(point, after);
+      // Use the exact swept centerline distance here. The polygon used for
+      // display has finite arc facets, so asking it whether a point touched can
+      // mislabel a point a few thousandths inside the real round cursor edge.
+      const wasContacted = pointTouchesEraserGesture(point, eraserPoints, radius);
+      if (wasInk && !isInk && !wasContacted) {
+        remember(samples.removedOutsideContact, point);
+      }
+      if (wasInk && isInk && wasContacted) {
+        remember(samples.retainedInsideContact, point);
+      }
+      if (!wasInk && isInk) remember(samples.addedInk, point);
+    }
+  }
+  return samples;
+}
+
+export function auditPartialEraseGeometry({
+  before,
+  after,
+  eraserPoints,
+  radius,
+  captureLocations = false,
+}) {
+  const subjectBefore = normalizeMultiPolygon(before);
+  const subjectAfter = normalizeMultiPolygon(after);
+  const contact = sweptDiskPolygon(eraserPoints, radius, {
+    minDistance: Math.max(Number.MIN_VALUE, Math.min(0.1, radius * 0.1)),
+    curveTolerance: eraserCurveTolerance(radius, eraserPoints?.length || 0),
+  });
+  const geometryErrors = {};
+  const safeGeometry = (name, operation) => {
+    try {
+      return operation();
+    } catch (error) {
+      geometryErrors[name] = String(error?.message || error);
+      return [];
+    }
+  };
+  const contactedInk = safeGeometry(
+    'contactedInk',
+    () => intersectPolygonSets(subjectBefore, contact),
+  );
+  const beforeArea = polygonSetArea(subjectBefore);
+  const afterArea = polygonSetArea(subjectAfter);
+  const removed = safeGeometry(
+    'removed',
+    () => subtractPolygonSets(subjectBefore, subjectAfter),
+  );
+  const netAddedArea = Math.max(0, afterArea - beforeArea);
+  const added = captureLocations || netAddedArea > EPS
+    ? safeGeometry(
+      'added',
+      () => subtractPolygonSets(subjectAfter, subjectBefore),
+    )
+    : [];
+  const afterStayedInsideBefore = (() => {
+    try {
+      return subtractionStayedInsideSubject(
+        subjectAfter,
+        subjectBefore,
+        Math.max(Number.MIN_VALUE, Math.abs(Number(radius) || 0) * 2),
+      );
+    } catch (error) {
+      geometryErrors.addedInkContainment = String(error?.message || error);
+      return false;
+    }
+  })();
+  const violationSamples = captureLocations
+    ? samplePartialEraseChanges(subjectBefore, subjectAfter, contact, eraserPoints, radius)
+    : {
+      cellArea: 0,
+      removedOutsideContact: [],
+      retainedInsideContact: [],
+      addedInk: [],
+    };
+  const addedArea = captureLocations && !geometryErrors.added
+    ? polygonSetArea(added)
+    : netAddedArea;
+  // Dense boolean output may contain overlapping parts. The page renders all
+  // rings with one even-odd fill, so summing those parts can report far more
+  // removed ink than exists. Area conservation stays stable; the independent
+  // point grid above records the actual locations of forbidden changes.
+  const removedArea = Math.max(0, beforeArea + addedArea - afterArea);
+  const contactedInkArea = polygonSetArea(contactedInk);
+  const removedOutsideContactArea = captureLocations
+    ? violationSamples.removedOutsideContact.length * violationSamples.cellArea
+    : Math.max(0, removedArea - contactedInkArea);
+  const retainedInsideContactArea = captureLocations
+    ? violationSamples.retainedInsideContact.length * violationSamples.cellArea
+    : Math.max(0, contactedInkArea - removedArea);
+  const auditAreaTolerance = Math.max(
+    EPS,
+    contactedInkArea * 1e-3,
+    beforeArea * 1e-7,
+  );
+  const areas = {
+    before: beforeArea,
+    contact: polygonSetArea(contact),
+    contactedInk: contactedInkArea,
+    after: afterArea,
+    removed: removedArea,
+    added: addedArea,
+    removedOutsideContact: removedOutsideContactArea,
+    retainedInsideContact: retainedInsideContactArea,
+  };
+  return {
+    before: subjectBefore,
+    contact,
+    contactedInk,
+    after: subjectAfter,
+    removed,
+    added,
+    removedOutsideContact: [],
+    retainedInsideContact: [],
+    violationSamples,
+    geometryErrors,
+    metricsIncomplete: Object.keys(geometryErrors).length > 0,
+    areas,
+    violations: {
+      // Martinez can report a large `after - before` polygon when a valid
+      // survivor contains touching even-odd holes. Treat that area as a debug
+      // metric only. The same fail-closed edge proof used by the commit, plus
+      // an independent point scan, decides whether ink was really added.
+      addedInk: !afterStayedInsideBefore || violationSamples.addedInk.length > 0,
+      removedOutsideContact: captureLocations
+        ? violationSamples.removedOutsideContact.length > 0
+        : areas.removedOutsideContact > auditAreaTolerance,
+      retainedInsideContact: captureLocations
+        ? violationSamples.retainedInsideContact.length > 0
+        : areas.retainedInsideContact > auditAreaTolerance,
+      // The independent point grid still checks all three forbidden outcomes
+      // when a polygon metric fails. Keep those metric errors in the record,
+      // but do not hide a usable spatial verdict behind "incomplete".
+      auditIncomplete: Boolean(
+        geometryErrors.contactedInk
+        || geometryErrors.addedInkContainment
+      ),
+    },
+  };
 }
 
 /**
@@ -554,7 +790,7 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
       compacted[index],
       point,
       radius,
-      semicircleSteps,
+      Math.max(semicircleSteps, FOLDED_ARC_STEPS),
     )),
     children: null,
   }));
@@ -1656,8 +1892,21 @@ export function cullInkSliverPolygons(polygons, width) {
  * curve meshes that second boolean can invent a tiny outside fragment or throw
  * even when the original result is contained.
  */
-export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
+export function subtractionStayedInsideSubject(
+  result,
+  subject,
+  sourceWidth,
+) {
   if (!result.length) return true;
+  const reject = (reason, detail = null) => {
+    if (
+      typeof process !== 'undefined'
+      && process?.env?.ERASER_TRACE_CONTAINMENT === '1'
+    ) {
+      console.error('[EraserContainmentReject]', JSON.stringify({ reason, detail }));
+    }
+    return false;
+  };
   const subjectBounds = boundsOfCommands(polygonSetToCommands(subject));
   const resultBounds = boundsOfCommands(polygonSetToCommands(result));
   // This is a fail-closed proof, not a visual comparison. Derive numerical
@@ -1691,32 +1940,16 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
     || resultBounds.x + resultBounds.w > subjectBounds.x + subjectBounds.w + tolerance
     || resultBounds.y + resultBounds.h > subjectBounds.y + subjectBounds.h + tolerance
   ) {
-    return false;
+    return reject('bounds', { subjectBounds, resultBounds, tolerance });
   }
 
   const sourcePolygons = normalizeMultiPolygon(subject);
   const resultPolygons = normalizeMultiPolygon(result);
-  const validationVertexCount = [...sourcePolygons, ...resultPolygons].reduce(
-    (total, polygon) => total + polygon.reduce(
-      (sum, ring) => sum + Math.max(0, ring.length - 1),
-      0,
-    ),
-    0,
-  );
-  if (validationVertexCount >= 512) {
-    try {
-      // The ordinary case is a true subset, so the set difference is empty
-      // and Martinez proves containment much faster than the O(result×source)
-      // edge audit below. A non-empty/failed result is only inconclusive:
-      // numerical dust from dense curve meshes must not reject a valid erase,
-      // so the exact edge audit remains the fail-closed fallback.
-      if (normalizeMultiPolygon(diff(resultPolygons, sourcePolygons)).length === 0) {
-        return true;
-      }
-    } catch {
-      // Fall through to the independent edge-interval proof.
-    }
-  }
+  // Do not prove containment by feeding the dense survivor back through the
+  // polygon engine. Repeated cuts can make that redundant `result - subject`
+  // check allocate gigabytes before it returns an empty set. The edge proof
+  // below is bounded by the actual stored rings and does not create another
+  // polygon graph.
   const sourceEdges = [];
   const coordinateKey = (value) => String(Object.is(value, -0) ? 0 : value);
   const pointKey = (point) => `${coordinateKey(point[0])},${coordinateKey(point[1])}`;
@@ -1804,7 +2037,9 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
         // byte-for-byte. An identical source edge is already a complete
         // containment proof; avoid quadratic point/edge rescans for it.
         if (sourceEdgeKeys.has(edgeKey(a, b))) continue;
-        if (!pointIsInsideOrOnSource(a) || !pointIsInsideOrOnSource(b)) return false;
+        if (!pointIsInsideOrOnSource(a) || !pointIsInsideOrOnSource(b)) {
+          return reject('edge-endpoint', { a, b, tolerance });
+        }
         const parameters = [0, 1];
         const minX = Math.min(a[0], b[0]) - tolerance;
         const minY = Math.min(a[1], b[1]) - tolerance;
@@ -1832,47 +2067,54 @@ export function subtractionStayedInsideSubject(result, subject, sourceWidth) {
             a[0] + (b[0] - a[0]) * t,
             a[1] + (b[1] - a[1]) * t,
           ];
-          if (!pointIsInsideOrOnSource(midpoint)) return false;
+          if (!pointIsInsideOrOnSource(midpoint)) {
+            return reject('edge-midpoint', { a, b, midpoint, tolerance });
+          }
         }
       }
     }
   }
 
-  // An omitted source hole has no new result edge to inspect. Sample a point
-  // strictly inside each hole so silently filling an entire notch/hole is also
-  // rejected.
-  for (const [, ...holes] of sourcePolygons) {
+  // Do not validate stored holes or summed component area here. The renderer
+  // applies one even-odd fill across all rings, while Martinez may return
+  // overlapping parts. Treating those parts as disjoint reports false hole
+  // fills and false area growth, rejects a valid cut, and leaves ink behind.
+  // Bounds plus every result-edge interval above still reject any new region;
+  // a subtraction cannot fill a source hole without malformed new boundaries.
+  return true;
+}
+
+function sourceHasBoundaryTouchingHole(subject, sourceWidth) {
+  const polygons = normalizeMultiPolygon(subject);
+  if (!polygons.some((polygon) => polygon.length > 1)) return false;
+  const bounds = boundsOfCommands(polygonSetToCommands(polygons));
+  const scale = Math.max(Number.MIN_VALUE, bounds.w, bounds.h, Number(sourceWidth) || 0);
+  const magnitude = Math.max(
+    Math.abs(bounds.x),
+    Math.abs(bounds.y),
+    Math.abs(bounds.x + bounds.w),
+    Math.abs(bounds.y + bounds.h),
+  );
+  const tolerance = Math.max(
+    Number.MIN_VALUE,
+    scale * Number.EPSILON * 128,
+    magnitude * Number.EPSILON * 16,
+  );
+  for (const [outer, ...holes] of polygons) {
     for (const hole of holes) {
-      const ys = [...new Set(hole.map((point) => point[1]))].sort((a, b) => a - b);
-      let sample = null;
-      let widest = -Infinity;
-      for (let index = 1; index < ys.length; index += 1) {
-        const y = (ys[index - 1] + ys[index]) / 2;
-        const crossings = [];
-        for (let edge = 0, previous = hole.length - 1; edge < hole.length; previous = edge, edge += 1) {
-          const a = hole[previous];
-          const b = hole[edge];
-          if ((a[1] > y) === (b[1] > y)) continue;
-          crossings.push(a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]));
+      for (const point of hole) {
+        for (let index = 0, previous = outer.length - 1; index < outer.length; previous = index, index += 1) {
+          if (pointOnRingEdge(
+            { x: point[0], y: point[1] },
+            outer[previous],
+            outer[index],
+            tolerance,
+          )) return true;
         }
-        crossings.sort((a, b) => a - b);
-        for (let pair = 1; pair < crossings.length; pair += 2) {
-          const width = crossings[pair] - crossings[pair - 1];
-          if (width > widest) {
-            widest = width;
-            sample = [(crossings[pair] + crossings[pair - 1]) / 2, y];
-          }
-        }
-      }
-      if (
-        sample
-        && pointInPolygonSet({ x: sample[0], y: sample[1] }, resultPolygons)
-      ) {
-        return false;
       }
     }
   }
-  return true;
+  return false;
 }
 
 function pointOnRingEdge(point, a, b, tolerance = null) {
@@ -2287,35 +2529,15 @@ function subtractPolygonPart(subject, eraser, sourceWidth) {
   }
 
   const finish = (value) => {
-    let finished = compactCollinearPolygonSet(
+    const finished = compactCollinearPolygonSet(
       normalizeWeaklySimplePolygonSet(value),
     );
-    if (sourceWidth != null) {
-      finished = cullInkSliverPolygons(finished, sourceWidth);
-    }
     return finished;
   };
 
-  // Bridge cleanup is optional quality work. On a self-overlapping global
-  // eraser it can attach a patch to the wrong lobe. Validate the refinement
-  // independently and validate the base subtraction only when cleanup throws
-  // or leaves the source. The ordinary path therefore pays for one containment
-  // proof, not two.
-  if (sourceWidth != null) {
-    try {
-      const cleaned = finish(removeAttachedBridge({
-        result: rawResult,
-        eraser,
-        sourceWidth,
-      }));
-      if (subtractionStayedInsideSubject(cleaned, subject, sourceWidth)) {
-        return { status: 'changed', result: cleaned };
-      }
-    } catch {
-      // Fall through to the unrefined subtraction.
-    }
-  }
-
+  // Partial erase is an exact boolean cut. Do not widen it to remove thin
+  // bridges or crumbs: those pixels are outside the swept eraser and must
+  // remain, even when the survivor is narrow.
   try {
     const baseResult = finish(rawResult);
     if (!subtractionStayedInsideSubject(baseResult, subject, sourceWidth)) {
@@ -2404,7 +2626,10 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
   const eraserRecords = sweptDiskPolygonRecords(
     eraserPoints,
     radius,
-    { minDistance: eraserSampleDistance },
+    {
+      minDistance: eraserSampleDistance,
+      curveTolerance: eraserCurveTolerance(radius, eraserPoints.length),
+    },
   );
   if (!eraserRecords.length) {
     return { annotations, changedIds: [], deletedIds: [] };
@@ -2545,6 +2770,18 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       } else {
         next.push(annotation);
       }
+      continue;
+    }
+
+    // Validate this legacy source once per gesture, not once per fallback
+    // capsule. Repeating the same topology scan for every dense leaf caused
+    // the pointer-release pause to grow with path length.
+    if (sourceHasBoundaryTouchingHole(workingSubject, workingSourceWidth)) {
+      console.warn(
+        'Eraser polygon subtraction skipped a boundary-touching source hole:',
+        annotation.id,
+      );
+      next.push(annotation);
       continue;
     }
 

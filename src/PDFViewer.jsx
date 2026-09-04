@@ -3678,6 +3678,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Null when no command is pending. Callouts are handled by a separate
   // session and are intentionally skipped here.
   const [pendingSvgSelection, setPendingSvgSelection] = useState(null);
+  const [textSelectManipulationPageNumber, setTextSelectManipulationPageNumber] = useState(null);
+  const handleTextSelectManipulationChange = useCallback((pageNumber, active) => {
+    setTextSelectManipulationPageNumber((current) => {
+      if (active) return pageNumber;
+      return current === pageNumber ? null : current;
+    });
+  }, []);
   const [pendingSurveyMarkerSelection, setPendingSurveyMarkerSelection] = useState(null);
   const [annotationSelectionClearToken, setAnnotationSelectionClearToken] = useState(0);
   // UX: pan-mode hover broadcast. Set by the document-level mousemove
@@ -3782,6 +3789,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       window.removeEventListener('pointerup', onUp, true);
     };
   }, [activeTool, activateSelectFamilyMode]);
+
+  // Text Select keeps the SVG surface pointer-inert so native PDF text drags
+  // work. Reuse the same page-space hit test as Pan for a short click: a click
+  // selects any annotation, while a real drag remains a native text range.
+  useEffect(() => {
+    if (activeTool !== 'text-select') return undefined;
+    const QUICK_CLICK_PX = 4;
+    let downAt = null;
+    const onDown = (event) => {
+      if (event.button !== 0) return;
+      if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
+      downAt = { x: event.clientX, y: event.clientY };
+    };
+    const onUp = (event) => {
+      const start = downAt;
+      downAt = null;
+      if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > QUICK_CLICK_PX) return;
+      const hit = resolveAnnotationAt(event);
+      if (!hit) return;
+      try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+      liveTextSelectionRef.current = null;
+      setLiveTextSelection(null);
+      if (hit.kind === 'callout' && hit.calloutId) {
+        setSelectedCalloutIds(new Set([hit.calloutId]));
+      } else if (hit.kind === 'annotation' && typeof hit.annotationIndex === 'number' && hit.pageNumber != null) {
+        setSelectedCalloutIds(new Set());
+        setPendingSvgSelection({
+          pageNumber: hit.pageNumber,
+          annotationIndex: hit.annotationIndex,
+          tick: Date.now(),
+        });
+      } else {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+    };
+  }, [activeTool, resolveAnnotationAt]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
   // show the same blue hover glow the Select tool shows AND switch the
@@ -28360,6 +28411,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         height: rangeRect.height,
       },
     };
+    // A fresh native text range becomes the one active selection. Clear any
+    // annotation that Text Select had picked before this drag so the toolbar
+    // and selection chrome cannot stay bound to stale annotation state.
+    if (selectedToolbarAnnotationRef.current) {
+      selectedToolbarAnnotationRef.current = null;
+      setSelectedToolbarAnnotation(null);
+      setAnnotationSelectionClearToken((token) => token + 1);
+    }
     liveTextSelectionRef.current = payload;
     setLiveTextSelection(payload);
     return payload;
@@ -28415,7 +28474,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const [selectedTextMarkupAnchorTick, setSelectedTextMarkupAnchorTick] = useState(0);
   useEffect(() => {
-    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return undefined;
+    if (!['select', 'text-select'].includes(activeTool) || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return undefined;
     let frame = 0;
     const refreshAnchor = () => {
       if (frame) return;
@@ -28434,7 +28493,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, selectedToolbarAnnotation]);
 
   const selectedTextMarkupActionSelection = useMemo(() => {
-    if (activeTool !== 'select' || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return null;
+    if (!['select', 'text-select'].includes(activeTool) || selectedToolbarAnnotation?.annotation?.data?.type !== 'text-markup') return null;
     const { annotation, pageNumber } = selectedToolbarAnnotation;
     const sourceGroupId = annotation.data.selectionGroupId;
     const sourceMarks = Object.values(annotationsByPageRef.current || {})
@@ -28516,6 +28575,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [annotationsByPage, liveTextMarkupRangeProbes, liveTextSelection, textMarkupPaintByType]);
 
+  const activeTextMarkupActionSelection = activeTool === 'text-select'
+    ? (selectedTextMarkupActionSelection || liveTextSelectionActionSelection)
+    : selectedTextMarkupActionSelection;
+
   useEffect(() => {
     if (!selectedTextMarkupActionSelection?.paintByMark) return;
     setTextMarkupPaintByType((current) => ({
@@ -28567,37 +28630,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [liveTextSelectionActionSelection, selectedTextMarkupActionSelection, textMarkupPaintByType]);
 
   const handleTextSelectionAction = useCallback(async (action, options = {}) => {
-    const selectedMarkup = activeTool === 'select'
+    const selectedMarkup = ['select', 'text-select'].includes(activeTool)
       ? selectedToolbarAnnotationRef.current?.annotation
       : null;
     const selection = selectedMarkup?.data?.type === 'text-markup'
       ? selectedTextMarkupActionSelection
       : (liveTextSelectionActionSelection || liveTextSelectionRef.current || capturePdfjsTextSelection());
     if (!selection) return;
-    if (action === 'copy') {
-      try {
-        await navigator.clipboard.writeText(selection.text);
-        let readBack = null;
-        try {
-          readBack = await Promise.race([
-            navigator.clipboard.readText(),
-            new Promise((resolve) => setTimeout(() => resolve(null), 750)),
-          ]);
-        } catch { /* write access can exist without read access */ }
-        const verified = readBack === selection.text;
-        if (typeof window !== 'undefined') {
-          window.__surveyLastCopyProof = {
-            expected: selection.text,
-            actual: readBack,
-            verified,
-          };
-        }
-        showToast(verified ? 'Text copied and checked.' : 'Text copied.', 'success');
-      } catch {
-        try { document.execCommand('copy'); } catch { /* browser copy remains available */ }
-      }
-      return;
-    }
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'].includes(markupType)) return;
     if (markupType === 'link' && !options.commit && !options.remove) {
@@ -28822,20 +28861,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [activeTool, capturePdfjsTextSelection, commitTextMarkupDocumentTransaction, liveTextSelectionActionSelection, numPages, queuePermanentRedactionConfirmation, selectedTextMarkupActionSelection, textMarkupOverlapMode, textMarkupPaintByType, user?.id]);
 
-  useEffect(() => {
-    if (activeTool !== 'text-select') return undefined;
-    const copySelectedPdfText = (event) => {
-      if (String(event.key).toLowerCase() !== 'c' || (!event.metaKey && !event.ctrlKey) || event.altKey) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest?.('input, textarea, [contenteditable="true"]')) return;
-      if (!liveTextSelectionRef.current?.pages?.length) return;
-      // Keep the browser's native copy event, then add the app's proof and toast.
-      void handleTextSelectionAction('copy');
-    };
-    document.addEventListener('keydown', copySelectedPdfText, true);
-    return () => document.removeEventListener('keydown', copySelectedPdfText, true);
-  }, [activeTool, handleTextSelectionAction]);
-
   const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
     if (!selectedId) return false;
     const pageAnnotations = annotationsByPage?.[pageNumber] || annotationsByPage?.[String(pageNumber)];
@@ -28908,7 +28933,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const handleSelectPdfjsTextMarkup = useCallback((pageNumber, event, pageSize) => {
-    if (activeTool !== 'select') return false;
+    if (!['select', 'text-select'].includes(activeTool)) return false;
     const target = event?.currentTarget;
     if (!target || !pageSize?.width || !pageSize?.height) return false;
     const rect = target.getBoundingClientRect();
@@ -28973,7 +28998,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
-    if (activeTool !== 'select') return false;
+    if (!['select', 'text-select'].includes(activeTool)) return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
     if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .survey-pdfjs-hyperlink, .survey-pdfjs-pdfviewer-formFields')) return false;
     const isPlainPdfTextTarget = !!event.target?.closest?.('.survey-pdfjs-text-layer, .survey-pdfjs-text');
@@ -29122,7 +29147,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, pageSizes, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   useEffect(() => {
-    if (activeTool !== 'select') return undefined;
+    if (!['select', 'text-select'].includes(activeTool)) return undefined;
     const handlePointerDownCapture = (event) => {
       handleSelectPdfjsTextMarkupFromClientPoint(event);
     };
@@ -31535,6 +31560,7 @@ ${pageBlocks}
                     textMarkupColor={strokeColor}
                     textMarkupOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 1))}
                     textSelectionLayerActive={activeTool === 'text-select'}
+                    textSelectionLayerInteractive={activeTool === 'text-select' && textSelectManipulationPageNumber == null}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}
@@ -31757,6 +31783,14 @@ ${pageBlocks}
                       const appImportedPdfAnnotationIds = pageAnnotationObjects
                         .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
                         .map((obj) => obj.pdfAnnotationId);
+                      const importedTextMarkupIdsByType = pageAnnotationObjects.reduce((result, obj) => {
+                        if (obj?.isPdfImported && obj?.data?.type === 'text-markup' && obj?.pdfAnnotationId) {
+                          const subtype = String(obj.pdfAnnotationType || '');
+                          if (!result[subtype]) result[subtype] = [];
+                          result[subtype].push(obj.pdfAnnotationId);
+                        }
+                        return result;
+                      }, {});
                       const requiredImportedPdfAnnotationIds = Array.isArray(nativePdfAnnotationPolicy?.importedIds)
                         ? nativePdfAnnotationPolicy.importedIds
                         : [];
@@ -31902,10 +31936,15 @@ ${pageBlocks}
                               pageNumber={pageNumber}
                               interactive={activeTool === 'pan' || activeTool === 'select'}
                               onInternalNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
+                              excludedAnnotationIds={importedTextMarkupIdsByType.Link || []}
                             />
                           )}
                           {pdfDoc && (
-                            <PdfjsRedactionMarkLayer pdf={pdfDoc} pageNumber={pageNumber} />
+                            <PdfjsRedactionMarkLayer
+                              pdf={pdfDoc}
+                              pageNumber={pageNumber}
+                              excludedAnnotationIds={importedTextMarkupIdsByType.Redact || []}
+                            />
                           )}
                           <TextMarkupLinkLayer
                             annotations={pageAnnotationObjects}
@@ -32161,9 +32200,10 @@ ${pageBlocks}
                                 }
                               } catch (_e) { /* swallow */ }
                             }
-                            // Native Text Select must own the pointer path, including over
-                            // existing marks, so users can add a new stacked range.
-                            const svgInteractive = activeTool === 'select';
+                            // All selection modes can select annotations. Text Select keeps
+                            // the SVG root pointer-inert, so only annotation-shaped hit targets
+                            // intercept it and the rest of the page still selects PDF text.
+                            const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             // UX: callout creation has NO Fabric canvas — the drag that
                             // places arrowTip→textBox starts on the SVG layer itself
                             // (SVGAnnotationLayer isCreationTool / onPointerDown callout
@@ -32545,6 +32585,7 @@ ${pageBlocks}
                                   selectionClearToken={annotationSelectionClearToken}
                                   selectionOwnerPageNumber={selectedToolbarAnnotation?.pageNumber ?? null}
                                   onSelectionChange={handleSelectionForToolbar}
+                                  onTextSelectManipulationChange={handleTextSelectManipulationChange}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
                                   // Phase 35 Plan 03 — per-user delete authority. viewerId
@@ -33266,11 +33307,7 @@ ${pageBlocks}
                         setActiveTool(t.id);
                         setHighlighterCaretPopupOpen(false);
                       }}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
-                      }}
-                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      {...chromeTip(isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full stroke erase' : 'Partial erase') : t.label, 'below')}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
                       style={{
                         position: 'relative',
@@ -33477,11 +33514,7 @@ ${pageBlocks}
                           });
                         }
                       }}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
-                      }}
-                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      {...chromeTip(t.label, 'below')}
                       className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
                       style={{
                         position: 'relative',
@@ -33852,7 +33885,7 @@ ${pageBlocks}
             {activeCategoryDropdown === 'review' && (
               <>
                 {[
-                  { id: 'text', label: 'Text', iconName: 'text' },
+                  { id: 'text', label: 'Text', iconName: 'textBox' },
                   { id: 'callout', label: 'Callout', iconName: 'callout' }
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
@@ -33897,11 +33930,7 @@ ${pageBlocks}
                       key={t.id}
                       {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
                       onClick={onMainClick}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({ visible: true, text: isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, x: rect.left + rect.width / 2, y: rect.bottom + 10, placement: 'below' });
-                      }}
-                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
                       className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
                       style={{
                         position: 'relative',
@@ -34114,17 +34143,7 @@ ${pageBlocks}
 	                              setSelectedCategoryId(category.id);
 	                              setActiveTool('survey-marker');
 	                            }}
-	                            onMouseEnter={(e) => {
-	                              const rect = e.currentTarget.getBoundingClientRect();
-	                              setTooltip({
-	                                visible: true,
-	                                text: category.name || 'Untitled category',
-	                                x: rect.left + rect.width / 2,
-	                                y: rect.bottom + 10,
-	                                placement: 'below'
-	                              });
-	                            }}
-	                            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+	                            {...chromeTip(category.name || 'Untitled category', 'below')}
 	                            className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
 	                            // KAL-65: instant chip above is the tooltip; a native
 	                            // title= would stack the OS tooltip on top of it.
@@ -34203,17 +34222,7 @@ ${pageBlocks}
                       onClick={() => {
                         setActiveTool(t.id);
                       }}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setTooltip({
-                          visible: true,
-                          text: t.label,
-                          x: rect.left + rect.width / 2,
-                          y: rect.bottom + 10,
-                          placement: 'below'
-                        });
-                      }}
-                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      {...chromeTip(t.label, 'below')}
                       className={`btn btn-md ${isActive ? 'btn-active' : 'btn-default'}`}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
                       // KAL-65: instant chip above is the tooltip, and the visible
@@ -37660,15 +37669,11 @@ ${pageBlocks}
       />
       {typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
         <TextSelectionActionBar
-          selection={activeTool === 'text-select' ? liveTextSelectionActionSelection : selectedTextMarkupActionSelection}
-          activeMarkupTypes={(activeTool === 'text-select'
-            ? liveTextSelectionActionSelection
-            : selectedTextMarkupActionSelection)?.activeMarkupTypes || []}
+          selection={activeTextMarkupActionSelection}
+          activeMarkupTypes={activeTextMarkupActionSelection?.activeMarkupTypes || []}
           paintByMark={{
             ...textMarkupPaintByType,
-            ...((activeTool === 'text-select'
-              ? liveTextSelectionActionSelection
-              : selectedTextMarkupActionSelection)?.paintByMark || {}),
+            ...(activeTextMarkupActionSelection?.paintByMark || {}),
           }}
           focusedPaintMark={focusedTextMarkupPaint}
           linkEditorOpen={textLinkEditorOpen}

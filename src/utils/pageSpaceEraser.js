@@ -761,6 +761,14 @@ function pathToPageAnnotation(
   };
 }
 
+export function pathObjectToPagePolygons(object, eraserRadius = null) {
+  return normalizeMultiPolygon(pathToPageAnnotation(
+    object,
+    'erase-audit',
+    { forcePolygon: true, eraserRadius },
+  )?.polygons);
+}
+
 function bakePagePathResult(object, result) {
   const {
     left: _left,

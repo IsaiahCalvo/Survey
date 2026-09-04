@@ -44,7 +44,7 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
-import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
+import { getNextSelectModeMenuOpen, getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -54,6 +54,22 @@ import { useStorage, useTemplates } from './hooks/useDatabase';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+
+function RailLiveZoomText({ fallback }) {
+  const [livePercentage, setLivePercentage] = useState(null);
+
+  useEffect(() => {
+    const onLiveZoom = (event) => {
+      const percentage = Number(event?.detail?.percentage);
+      if (Number.isFinite(percentage)) setLivePercentage(percentage);
+    };
+    window.addEventListener('survey-pdfjs-live-zoom', onLiveZoom);
+    return () => window.removeEventListener('survey-pdfjs-live-zoom', onLiveZoom);
+  }, []);
+
+  return <>{livePercentage ?? fallback}%</>;
+}
+
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened.
@@ -400,16 +416,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
-  // KAL-239: the Select tool's selection-mode menu. A caret on the Select button
-  // opens the shared Rectangle / Lasso / Text menu, the
-  // same split-button shape the Eraser uses for its erase modes, so the user has
-  // an obvious way to reach text selection without a new kind of control. The
+  // KAL-239: the Select tool's selection-mode menu. The current selection tool
+  // and its menu indicator share one button, matching Drawboard's compact
+  // Select / Lasso Select / Text Select switcher. The
   // menu is a fixed-position portal anchored under the button (matching the
   // Draw sub-toolbar popups) and closes on any outside click or Escape.
   const [selectModeMenuOpen, setSelectModeMenuOpen] = useState(false);
   const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
   const selectModeButtonRef = useRef(null);
-  const selectModeCaretRef = useRef(null);
   const selectModeMenuRef = useRef(null);
   useEffect(() => {
     if (!selectModeMenuOpen) return undefined;
@@ -424,13 +438,13 @@ export default function App({ devPreviewReturnTab = null }) {
       (selected || menu?.querySelector?.('[role="menuitemradio"]'))?.focus?.();
     });
     const onDown = (e) => {
-      if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-caret]'))) return;
+      if (e.target.closest && (e.target.closest('[data-select-mode-menu]') || e.target.closest('[data-select-mode-trigger]'))) return;
       setSelectModeMenuOpen(false);
     };
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return;
       setSelectModeMenuOpen(false);
-      window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+      window.requestAnimationFrame(() => selectModeButtonRef.current?.focus?.());
     };
     document.addEventListener('mousedown', onDown, true);
     document.addEventListener('keydown', onKeyDown);
@@ -1464,12 +1478,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
                 { id: 'select', label: 'Select', iconName: 'selectCursor' }
               ].map(t => {
-                // Select-family modes share one list with mobile so the main
-                // button and menu stay ready for future modes. The button keeps working
-                // exactly as before (click = Select, and it never changes the mode
-                // already chosen in the menu, same as the Eraser button), while a
-                // small caret opens a mode menu. This mirrors the Eraser split menu
-                // in the Draw sub-toolbar rather than inventing a new control.
+                // Select-family modes share one compact Drawboard-style button.
+                // The full button activates the last mode and opens the mode list.
                 const isSelect = t.id === 'select';
                 const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
                 const isActive = isSelect
@@ -1481,67 +1491,75 @@ export default function App({ devPreviewReturnTab = null }) {
                 return (
                 <div
                   key={t.id}
-                  ref={isSelect ? selectModeButtonRef : undefined}
                   style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
                 >
                 <button
+                  ref={isSelect ? selectModeButtonRef : undefined}
                   type="button"
+                  data-select-mode-trigger={isSelect ? 'true' : undefined}
                   aria-label={label}
+                  aria-haspopup={isSelect ? 'menu' : undefined}
+                  aria-expanded={isSelect ? selectModeMenuOpen : undefined}
+                  aria-controls={isSelect ? 'desktop-select-mode-menu' : undefined}
                   onClick={() => {
-                    // Activate Select without discarding the mode picked in the
-                    // menu (Eraser button does the same with its erase mode).
-                    bottomToolbarApi.setActiveTool(
-                      isSelect && (isTextSelect || bottomToolbarApi.selectionMode === 'text')
-                        ? 'text-select'
-                        : t.id,
-                    );
+                    if (isSelect) {
+                      bottomToolbarApi.setActiveTool(
+                        isTextSelect || bottomToolbarApi.selectionMode === 'text'
+                          ? 'text-select'
+                          : 'select',
+                      );
+                      bottomToolbarApi.setActiveCategoryDropdown(null);
+                      setSelectModeMenuOpen((open) => getNextSelectModeMenuOpen(open, isActive));
+                      return;
+                    }
+                    bottomToolbarApi.setActiveTool(t.id);
                     bottomToolbarApi.setActiveCategoryDropdown(null);
                     setSelectModeMenuOpen(false);
                   }}
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    bottomToolbarApi.setTooltip({
-                      visible: true,
-                      text: label,
-                      x: rect.left + rect.width / 2,
-                      y: rect.bottom + 10,
-                      placement: 'below'
-                    });
+                  onKeyDown={(event) => {
+                    if (!isSelect || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+                    event.preventDefault();
+                    bottomToolbarApi.setActiveCategoryDropdown(null);
+                    setSelectModeMenuOpen(true);
                   }}
-                  onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                  {...chromeTip(label, 'below')}
                   className={`btn btn-icon ${isActive ? 'btn-active' : ''}`}
                   style={isSelect ? {
                     position: 'relative',
-                    paddingRight: '4px',
-                    borderTopRightRadius: 0,
-                    borderBottomRightRadius: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '40px',
+                    minWidth: '40px',
+                    height: '28px',
+                    padding: 0,
                   } : undefined}
                 >
-                  <Icon name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName} size={16} />
+                  <Icon
+                    name={isSelect ? getSelectFamilyIconName(bottomToolbarApi.activeTool, bottomToolbarApi.selectionMode) : t.iconName}
+                    size={isSelect ? 22 : 20}
+                    style={isSelect ? { transform: 'translateX(-3px)' } : undefined}
+                  />
+                  {isSelect && (
+                    <span
+                      data-select-mode-indicator="true"
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 1,
+                        width: '13px',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: isActive ? '#e8e2d4' : '#8d96a6',
+                      }}
+                    >
+                      <Icon name="chevronDown" size={7} color="currentColor" />
+                    </span>
+                  )}
                 </button>
-                {isSelect && (
-                  <button
-                    ref={selectModeCaretRef}
-                    type="button"
-                    data-select-mode-caret="true"
-                    aria-label="Selection mode"
-                    aria-haspopup="menu"
-                    aria-expanded={selectModeMenuOpen}
-                    aria-controls="desktop-select-mode-menu"
-                    onClick={() => setSelectModeMenuOpen((open) => !open)}
-                    style={{
-                      position: 'static', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center',
-                      width: '18px', height: '28px', padding: 0,
-                      color: 'inherit', background: 'transparent',
-                      border: 0, borderLeft: '1px solid rgba(141, 150, 166, 0.35)',
-                      borderRadius: '0 4px 4px 0',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <Icon name="chevronDown" size={10} color="#8d96a6" />
-                  </button>
-                )}
                 {isSelect && selectModeMenuOpen && createPortal(
                   <div
                     id="desktop-select-mode-menu"
@@ -1563,7 +1581,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       top: `${selectModeMenuAnchor.top}px`,
                       left: `${selectModeMenuAnchor.left}px`,
                       transform: 'translate(-50%, 0)',
-                      backgroundColor: 'rgb(30, 30, 30)',
+                      backgroundColor: '#1E1E1E',
                       backgroundImage: 'none',
                       border: '1px solid #2a3140',
                       borderRadius: '6px',
@@ -1580,17 +1598,6 @@ export default function App({ devPreviewReturnTab = null }) {
                       fontSize: '12px'
                     }}
                   >
-                    <div style={{
-                      padding: '4px 8px',
-                      fontSize: '10px',
-                      color: '#8d96a6',
-                      textTransform: 'uppercase',
-                      fontWeight: 600,
-                      borderBottom: '1px solid #2a3140',
-                      marginBottom: '4px'
-                    }}>
-                      Selection Mode
-                    </div>
                     {SELECT_MODE_OPTIONS.map((opt) => {
                       const selected = isSelectModeActive(opt, bottomToolbarApi.selectionMode);
                       const optionStyle = {
@@ -1599,7 +1606,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         justifyContent: 'space-between',
                         gap: '12px',
                         padding: '6px 10px',
-                        background: selected ? '#1f2430' : 'transparent',
+                        background: 'transparent',
                         border: 'none',
                         borderRadius: '4px',
                         color: '#e8e2d4',
@@ -1620,15 +1627,15 @@ export default function App({ devPreviewReturnTab = null }) {
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
                             setSelectModeMenuOpen(false);
-                            window.requestAnimationFrame(() => selectModeCaretRef.current?.focus?.());
+                            window.requestAnimationFrame(() => selectModeButtonRef.current?.focus?.());
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#1f2430' : 'transparent'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           style={optionStyle}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Icon name={getSelectModeIconName(opt.mode)} size={16} color="currentColor" />
-                            <span>{opt.label}</span>
+                            <Icon name={getSelectModeIconName(opt.mode)} size={20} color="currentColor" />
+                            <span>{opt.mode === 'rectangle' ? 'Select' : opt.label}</span>
                           </span>
                           <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
                         </button>
@@ -1660,7 +1667,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
                 aria-label="Draw"
               >
-                <Icon name="pen" size={18} />
+                <Icon name="drawGroup" size={18} />
               </button>
 
               {/* Shapes category */}
@@ -1679,7 +1686,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
                 aria-label="Shapes"
               >
-                <Icon name="rect" size={18} />
+                <Icon name="shapes" size={18} />
               </button>
 
               {/* Text category */}
@@ -3019,7 +3026,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   {...chromeTip('Zoom level — click to type a percentage', 'left')}
                   style={{ background: 'transparent', border: 'none', color: '#8d96a6', fontSize: '10px', fontFamily: FONT_FAMILY, fontWeight: '500', fontVariantNumeric: 'tabular-nums', padding: '1px 4px', borderRadius: '3px', cursor: 'pointer', lineHeight: 1, textAlign: 'center' }}
                 >
-                  {api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}%
+                  <RailLiveZoomText
+                    fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
+                  />
                 </button>
               );
               // Editable current page — plain accent-colored number by

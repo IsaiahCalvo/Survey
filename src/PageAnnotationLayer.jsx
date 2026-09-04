@@ -68,45 +68,9 @@ const CONTEXT_MENU_Z_INDEX = 120000;
 const EDIT_MODAL_Z_INDEX = CONTEXT_MENU_Z_INDEX + 1;
 const OVERLAY_OPEN_EVENT = 'survey:page-annotation-overlay-open';
 const OVERLAY_DISMISS_ANIMATION_MS = 100;
-// UX / INTENTIONAL BEHAVIOR (KAL-91): imported Underline / StrikeOut / Squiggly
-// are select+delete only — never move/scale/rotate. This is the SECOND
-// enforcement of the deliberate text-markup lock (re-applied on selection so it
-// survives re-hydration); the reasoning lives at the import-time source of truth,
-// SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES in src/utils/pdfAnnotationImporter.js.
-// Do NOT unlock without a real word-geometry anchoring engine.
-const SELECT_DELETE_ONLY_PDF_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
-
 const palDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PAL_DEBUG !== true) return;
   try { console.debug(...args); } catch { /* ignore debug logging failures */ }
-};
-
-const getPdfAnnotationType = (obj) => obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || null;
-const isSelectDeleteOnlyPdfMarkupObject = (obj) => (
-  Boolean(obj?.isPdfImported) && SELECT_DELETE_ONLY_PDF_MARKUP_TYPES.has(getPdfAnnotationType(obj))
-);
-
-const lockSelectDeleteOnlyPdfMarkupObject = (obj) => {
-  if (!isSelectDeleteOnlyPdfMarkupObject(obj)) return false;
-  obj.set({
-    selectable: true,
-    evented: true,
-    hasControls: false,
-    hasBorders: true,
-    lockMovementX: true,
-    lockMovementY: true,
-    lockScalingX: true,
-    lockScalingY: true,
-    lockRotation: true
-  });
-  if (typeof obj.setControlsVisibility === 'function') {
-    obj.setControlsVisibility({
-      tl: false, tr: false, bl: false, br: false,
-      ml: false, mt: false, mr: false, mb: false,
-      mtr: false
-    });
-  }
-  return true;
 };
 
 const toDebugNumber = (value, digits = 2) => {
@@ -4690,7 +4654,17 @@ const PageAnnotationLayer = memo(({
               perPixelTargetFind: (isShxProxy || isCalloutGroup) ? false : true,
               targetFindTolerance: isShxProxy ? 8 : (isCalloutGroup ? 10 : 5)
             });
-            lockSelectDeleteOnlyPdfMarkupObject(obj);
+            if (objData?.data?.type === 'text-markup') {
+              obj.set({
+                lockMovementX: true,
+                lockMovementY: true,
+                lockScalingX: true,
+                lockScalingY: true,
+                lockRotation: true,
+                hasControls: false,
+                hasBorders: true
+              });
+            }
           }
 
           // Preserve layer property
@@ -5164,9 +5138,6 @@ const PageAnnotationLayer = memo(({
         });
       }
 
-      if (e.selected?.some(lockSelectDeleteOnlyPdfMarkupObject)) {
-        canvas.requestRenderAll();
-      }
       setPerPixelTargetFind(e.selected, false);
     });
 
@@ -5214,9 +5185,6 @@ const PageAnnotationLayer = memo(({
         }
       }
 
-      if (e.selected?.some(lockSelectDeleteOnlyPdfMarkupObject)) {
-        canvas.requestRenderAll();
-      }
       setPerPixelTargetFind(e.deselected, true);
       setPerPixelTargetFind(e.selected, false);
     });

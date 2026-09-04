@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MIN_DRAG_PX,
+  cycleMarqueeDirection,
   getMarqueeDirection,
   getMarqueeRect,
   isBBoxFullyContained,
@@ -24,6 +25,13 @@ test('getMarqueeDirection: endX >= startX is window (left to right)', () => {
 
 test('getMarqueeDirection: endX < startX is crossing (right to left)', () => {
   assert.equal(getMarqueeDirection({ startX: 50, endX: 10 }), 'crossing');
+});
+
+test('Space override switches rectangle selection between window and crossing', () => {
+  assert.equal(cycleMarqueeDirection('window'), 'crossing');
+  assert.equal(cycleMarqueeDirection('crossing'), 'window');
+  assert.equal(getMarqueeDirection({ startX: 10, endX: 50, modeOverride: 'crossing' }), 'crossing');
+  assert.equal(getMarqueeDirection({ startX: 50, endX: 10, modeOverride: 'window' }), 'window');
 });
 
 test('getMarqueeRect: normalizes regardless of drag direction', () => {

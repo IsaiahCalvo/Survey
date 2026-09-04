@@ -14,7 +14,7 @@ const buttonBase = {
 };
 
 function ToolIcon({ name, emphasized = false, size = 18 }) {
-  return <Icon name={name} size={size} color={emphasized ? GOLD : '#e8e2d4'} style={{ display: 'block', opacity: emphasized ? 1 : 0.68 }} />;
+  return <Icon name={name} size={size} color={emphasized ? GOLD : '#e8e2d4'} style={{ display: 'block', opacity: 1 }} />;
 }
 
 function activateFromTouch(event, activate) {
@@ -83,7 +83,6 @@ export default function TextSelectionActionBar({
         onPointerDown={(event) => { if (!event.target.closest('input, [data-text-link-control]')) event.preventDefault(); }}
       >
         <div className="text-selection-action-bar__tools">
-          <button className="text-selection-action-bar__button" type="button" aria-label="Copy" onClick={() => onAction('copy')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('copy'))} style={buttonBase}><ToolIcon name="copy" /></button>
           {MARKS.map((mark) => <MarkControl key={mark.id} mark={mark} active={activeMarkupTypes.includes(mark.id)} focused={focusedPaintMark === mark.id} paint={paintByMark[mark.id]} onToggle={onAction} onFocusPaint={onFocusPaint} />)}
           <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} aria-pressed={linkActive} onClick={() => onAction('link')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('link'))} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
           <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} size={21} /></button>

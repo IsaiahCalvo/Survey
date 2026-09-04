@@ -107,10 +107,15 @@ function pointInRing({ x, y }, ring) {
 }
 
 function pointInGeometry(point, polygons) {
-  return (polygons || []).some(([outer, ...holes]) => (
-    pointInRing(point, outer)
-    && !holes.some((hole) => pointInRing(point, hole))
-  ));
+  // Paper ink renders every ring in one SVG path with evenodd fill. A fully
+  // enclosed eraser disk can be stored as its own nested polygon, so evaluate
+  // parity across the whole path instead of treating each polygon as solid.
+  return (polygons || []).reduce((inside, polygon) => (
+    polygon.reduce(
+      (polygonInside, ring) => (pointInRing(point, ring) ? !polygonInside : polygonInside),
+      inside,
+    )
+  ), false);
 }
 
 function copyPageWithStorageKeys(page, clone = structuredClone(page)) {
@@ -341,7 +346,9 @@ export function runComplexityScenario({
   const lastBiteX = endpointMargin + Math.max(0, count - 1) * spacing;
   const biteProbe = family === 'crossing'
     ? { x: lastBiteX, y: centerY }
-    : { x: lastBiteX, y: centerY - width / 2 + Math.min(1, radius / 2) };
+    : family === 'shallow'
+      ? { x: lastBiteX, y: centerY - width / 2 - radius + 2 }
+      : { x: lastBiteX, y: centerY - width / 2 + Math.min(1, radius / 2) };
   const finalMetrics = snapshotMetrics(reloaded, commitTimes, commitCpuTimes, peak);
 
   return {

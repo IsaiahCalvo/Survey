@@ -11,7 +11,7 @@ const hasCoarsePointer = () => (
   && window.matchMedia('(pointer: coarse)').matches
 );
 
-export default function PdfjsRedactionMarkLayer({ pdf, pageNumber }) {
+export default function PdfjsRedactionMarkLayer({ pdf, pageNumber, excludedAnnotationIds = [] }) {
   const [marks, setMarks] = useState([]);
   const [hoveredMarkId, setHoveredMarkId] = useState(null);
   const [previewMarkId, setPreviewMarkId] = useState(null);
@@ -32,6 +32,7 @@ export default function PdfjsRedactionMarkLayer({ pdf, pageNumber }) {
     document.addEventListener('pointerdown', clearPreview);
     return () => document.removeEventListener('pointerdown', clearPreview);
   }, [isCoarsePointer, previewMarkId]);
+  const excludedIdsKey = excludedAnnotationIds.map(String).sort().join('\u0000');
 
   useEffect(() => {
     let cancelled = false;
@@ -44,13 +45,17 @@ export default function PdfjsRedactionMarkLayer({ pdf, pageNumber }) {
         const annotations = await page.getAnnotations({ intent: 'display' });
         if (cancelled) return;
         const viewport = page.getViewport({ scale: 1, rotation: page.rotate });
-        setMarks(getImportedRedactionOverlayMarks(annotations, viewport));
+        const excludedIds = new Set(excludedIdsKey ? excludedIdsKey.split('\u0000') : []);
+        setMarks(getImportedRedactionOverlayMarks(
+          annotations.filter((annotation) => !excludedIds.has(String(annotation?.id || annotation?.name || ''))),
+          viewport,
+        ));
       } catch {
         if (!cancelled) setMarks([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [pdf, pageNumber]);
+  }, [pdf, pageNumber, excludedIdsKey]);
 
   if (marks.length === 0) return null;
   return (
