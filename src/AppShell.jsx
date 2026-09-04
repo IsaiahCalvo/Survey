@@ -2675,6 +2675,37 @@ export default function App({ devPreviewReturnTab = null }) {
                     dataMarker="data-arrowhead-menu"
                   />
                 )}
+                {/* UX (owner, 2026-09-02): "Both ends" — mirrors the picked
+                    ending onto the start of the arrow. One picker + a toggle
+                    instead of two pickers: double-headed arrows are common in
+                    survey markup, mismatched ends are rare, and the toolbar
+                    stays compact. Arrow tool only (callouts have one end). */}
+                {bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.setArrowBothEnds && (
+                  <button
+                    type="button"
+                    onClick={() => bottomToolbarApi.setArrowBothEnds(!bottomToolbarApi.arrowBothEnds)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      height: '24px',
+                      padding: '0 8px',
+                      background: bottomToolbarApi.arrowBothEnds ? 'rgba(216,168,78,0.18)' : '#3a4252',
+                      color: bottomToolbarApi.arrowBothEnds ? '#d8a84e' : '#e8e2d4',
+                      border: '1px solid transparent',
+                      borderRadius: '5px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      fontFamily: FONT_FAMILY,
+                      cursor: 'pointer',
+                      lineHeight: 1,
+                      whiteSpace: 'nowrap',
+                    }}
+                    {...chromeTip(bottomToolbarApi.arrowBothEnds ? 'Arrowhead on both ends (on)' : 'Put the arrowhead on both ends', 'below')}
+                    aria-label="Arrowhead on both ends"
+                    aria-pressed={!!bottomToolbarApi.arrowBothEnds}
+                  >
+                    ⇔ Both ends
+                  </button>
+                )}
                 {/* 2026-05-25: Rich-text edit entry button. Only renders when
                     the user is on the text box / callout tool or has one of
                     those selected. Disabled when nothing editable is picked.

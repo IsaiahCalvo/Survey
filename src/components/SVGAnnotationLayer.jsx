@@ -447,6 +447,8 @@ const SVGAnnotationLayer = memo(({
   highlightColor = 'rgba(255, 193, 7, 0.3)',
   strokeWidth = 3,
   arrowheadStyle = null,
+  // 'Both ends' toggle: the ending mirrored onto the start of a new arrow.
+  arrowStartStyle = null,
   lineBorderStyle = null,
   cloudIntensity = 2,
   // Zoom-start signal (CLAUDE.md invariant): commit in-flight freehand work
@@ -1325,11 +1327,11 @@ const SVGAnnotationLayer = memo(({
       activeRegionId,
     };
     const json = (tool === 'line' || tool === 'arrow')
-      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle })
+      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle, arrowStartStyle })
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json) dispatchCommit(json);
   }, [
-    activeRegionId, arrowheadStyle, cloudIntensity, fillColor, fillOpacity,
+    activeRegionId, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,

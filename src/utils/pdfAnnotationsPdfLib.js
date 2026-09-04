@@ -81,7 +81,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray, pdfLineEndingToArrowheadStyle } from './lineRenderHelpers.js';
+import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import {
   adaptHighlight,
@@ -471,7 +471,12 @@ const legacyArrowGroupToLine = (obj) => {
     y2: top + Number(lineChild.y2),
     stroke: obj.stroke || lineChild.stroke || '#000000',
     strokeWidth: obj.strokeWidth || lineChild.strokeWidth || 2,
-    ...(hasArrowHead ? { lineEnding2: 'ClosedArrow' } : {}),
+    // Legacy arrow groups: picked styles live in data and are resolved by
+    // resolveLineEndingStyles; a head child with no recorded style is the old
+    // default solid triangle.
+    ...(obj?.data?.arrowheadStyle || obj?.data?.startArrowheadStyle
+      ? {}
+      : (hasArrowHead ? { lineEnding2: 'ClosedArrow' } : {})),
   };
 };
 
@@ -2432,11 +2437,20 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       applyAppAnnotationMetadataToDict(annotationDict, options);
     }
 
-    // Add line endings (arrows, etc.)
+    // Line endings: explicit lineEnding1/2 win; otherwise resolve them the way
+    // the screen does (data.arrowheadStyle / startArrowheadStyle / tool arrow /
+    // imported pdfLineEndings) so an app-drawn arrow round-trips as a standard
+    // /LE pair and other viewers show the same heads. (Before 2026-09-02 an
+    // app arrow exported with no /LE at all.)
     if (fabricObj.lineEnding1 || fabricObj.lineEnding2) {
       const le1 = fabricObj.lineEnding1 || 'None';
       const le2 = fabricObj.lineEnding2 || 'None';
       annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
+    } else {
+      const { startStyle, endStyle } = resolveLineEndingStyles(fabricObj);
+      const le1 = ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[startStyle] || 'None';
+      const le2 = ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[endStyle] || 'None';
+      if (le1 !== 'None' || le2 !== 'None') annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
     }
 
     // UX (2026-07-17, callout line style): dashed/dotted strokes export as a
@@ -3500,20 +3514,20 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
     : null;
   // Triangle heads: pull the line body back by headSize/3 so its tail does
   // not poke through the head (same rule as buildLineRenderSpec on screen).
-  const endingStyles = resolveFlattenedLineEndingStyles(obj);
-  const isTriangle = (style) => style === ARROWHEAD_STYLES.SOLID_TRIANGLE || style === ARROWHEAD_STYLES.OPEN_TRIANGLE;
-  const headInset = Math.max(8, width * 3) / 3;
+  // Shaft insets and round caps follow the screen (lineEndingBodyInset).
+  const endingStyles = resolveLineEndingStyles(obj);
   const bodyAngle = Math.atan2(y2 - y1, x2 - x1);
-  const bodyStart = isTriangle(endingStyles.startStyle)
-    ? { x: x1 + headInset * Math.cos(bodyAngle), y: y1 + headInset * Math.sin(bodyAngle) } : { x: x1, y: y1 };
-  const bodyEnd = isTriangle(endingStyles.endStyle)
-    ? { x: x2 - headInset * Math.cos(bodyAngle), y: y2 - headInset * Math.sin(bodyAngle) } : { x: x2, y: y2 };
+  const startInset = lineEndingBodyInset(endingStyles.startStyle, width);
+  const endInset = lineEndingBodyInset(endingStyles.endStyle, width);
+  const bodyStart = { x: x1 + startInset * Math.cos(bodyAngle), y: y1 + startInset * Math.sin(bodyAngle) };
+  const bodyEnd = { x: x2 - endInset * Math.cos(bodyAngle), y: y2 - endInset * Math.sin(bodyAngle) };
   page.drawLine({
     start: { x: bodyStart.x, y: getPdfY(pageHeight, bodyStart.y) },
     end: { x: bodyEnd.x, y: getPdfY(pageHeight, bodyEnd.y) },
     color: stroke.color,
     thickness: width,
     opacity: stroke.opacity,
+    lineCap: LineCapStyle.Round,
     ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
   });
   // Line endings print exactly as the screen resolves them (owner request
@@ -3521,32 +3535,11 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // /LE style the screen knows: Open/ClosedArrow → triangles, Circle → open
   // circle, Butt/Square → bar, Slash/Diamond → V (the screen's own
   // approximation for those two, so print matches the screen).
-  const { startStyle, endStyle } = resolveFlattenedLineEndingStyles(obj);
+  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
   const angleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
   drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endStyle, x2, y2, angleDeg, strokeHex, width), pageHeight);
   drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(startStyle, x1, y1, angleDeg + 180, strokeHex, width), pageHeight);
-};
-
-// Mirrors buildLineRenderSpec's style resolution (lineRenderHelpers): imported
-// lines carry both raw /LE names in data.pdfLineEndings; app arrows carry
-// data.arrowheadStyle or tool === 'arrow'; legacy objects may carry
-// lineEnding1/lineEnding2 directly.
-const resolveFlattenedLineEndingStyles = (obj) => {
-  const pdfLineEndings = Array.isArray(obj?.data?.pdfLineEndings) ? obj.data.pdfLineEndings : null;
-  const explicitStyle = obj?.data?.arrowheadStyle;
-  const legacyArrow = obj?.tool === 'arrow'
-    || obj?.data?.annotationType === 'arrow'
-    || String(obj?.lineEnding2 || obj?.data?.lineEnding2 || '').toLowerCase().includes('arrow');
-  const startStyle = pdfLineEndings
-    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0])
-    : (obj?.lineEnding1 ? pdfLineEndingToArrowheadStyle(obj.lineEnding1) : ARROWHEAD_STYLES.NONE);
-  const endStyle = pdfLineEndings
-    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1])
-    : (obj?.lineEnding2
-      ? pdfLineEndingToArrowheadStyle(obj.lineEnding2)
-      : (explicitStyle ?? (legacyArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE)));
-  return { startStyle, endStyle };
 };
 
 // Polyline endings: same styles, placed on the first and last segments in
@@ -3554,7 +3547,7 @@ const resolveFlattenedLineEndingStyles = (obj) => {
 const drawFlattenedPolylineEndings = (page, obj, pageHeight) => {
   const points = fabricPolygonWorldPoints(obj);
   if (points.length < 2) return;
-  const { startStyle, endStyle } = resolveFlattenedLineEndingStyles(obj);
+  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
   if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return;
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';

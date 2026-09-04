@@ -316,6 +316,13 @@ const annotationsByPage = {
       stroke: '#b91c1c', strokeWidth: 4, fill: 'none', data: { pdfLineEndings: ['None', 'OpenArrow'] } },
     { id: 'imported-endings-line', type: 'line', x1: 500, y1: 420, x2: 700, y2: 470, stroke: '#1c4fd9', strokeWidth: 4,
       isPdfImported: true, pdfAnnotationId: `${nativeEndingsLine.objectNumber}R`, pdfAnnotationType: 'Line' },
+    // Arrow-tool rulings (owner 2026-09-02): the shaft stops at the edge of a
+    // hollow ending (open circle / open triangle) instead of running into it,
+    // and the "Both ends" toggle mirrors the picked ending onto the start.
+    { id: 'app-arrow-both-ends-circle', type: 'line', tool: 'arrow', x1: 80, y1: 540, x2: 300, y2: 540, stroke: '#7c3aed', strokeWidth: 4,
+      data: { arrowheadStyle: 'openCircle', startArrowheadStyle: 'openCircle' } },
+    { id: 'app-arrow-open-triangle', type: 'line', tool: 'arrow', x1: 350, y1: 560, x2: 560, y2: 520, stroke: '#c2410c', strokeWidth: 4,
+      data: { arrowheadStyle: 'openTriangle' } },
     { id: 'imported-sticky-note', type: 'rect', left: 100, top: 320, width: 24, height: 24,
       fill: 'rgba(255, 217, 51, 0.92)', stroke: 'rgba(65, 57, 12, 0.72)', strokeWidth: 1,
       data: { type: 'note', pdfNoteGlyph: 'note', pdfNoteIcon: 'Comment', noteText: 'Print glyph check' },
@@ -383,6 +390,8 @@ const regions = [
   region('double-arrow-line', 'line-endings', 11, [60, 380, 320, 490], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
   region('polyline-arrow-end', 'line-endings', 11, [335, 360, 500, 440], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
   region('imported-endings-line', 'native-line-endings', 11, [485, 405, 712, 478], ['bounds', 'colour'], { boundsPixels: 6 }),
+  region('app-arrow-both-ends-circle', 'line-endings', 11, [60, 520, 320, 560], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
+  region('app-arrow-open-triangle', 'line-endings', 11, [330, 500, 580, 580], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
 ];
 
 await mkdir(fixtureDir, { recursive: true });

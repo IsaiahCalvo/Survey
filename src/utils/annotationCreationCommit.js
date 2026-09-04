@@ -208,6 +208,7 @@ export function buildLineCommitJSON({
   strokeOpacity,
   strokeWidth,
   arrowheadStyle,
+  arrowStartStyle = null,
   lineBorderStyle,
   cloudIntensity,
   selectedModuleId,
@@ -250,7 +251,9 @@ export function buildLineCommitJSON({
     // Line and Arrow are separate tools — line starts with plain ends, arrow
     // starts with the picked head; both stay editable via the ending picker,
     // which writes data.arrowheadStyle explicitly on the committed object.
-    data: (tool === 'arrow' && arrowheadStyle) ? { id, arrowheadStyle } : { id },
+    data: (tool === 'arrow' && arrowheadStyle)
+      ? { id, arrowheadStyle, ...(arrowStartStyle && arrowStartStyle !== 'none' ? { startArrowheadStyle: arrowStartStyle } : {}) }
+      : { id },
   };
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   applyBorderStyle(json, { tool, lineBorderStyle, cloudIntensity });

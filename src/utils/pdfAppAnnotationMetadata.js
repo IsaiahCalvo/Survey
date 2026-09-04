@@ -48,6 +48,7 @@ const DATA_ALLOWLIST = [
   'createdAt',
   'updatedAt',
   'arrowheadStyle',
+  'startArrowheadStyle',
   'lineEnding1',
   'lineEnding2',
 ];
@@ -117,6 +118,7 @@ const GEOMETRY_KEYS = [
   'lineEnding1',
   'lineEnding2',
   'arrowheadStyle',
+  'startArrowheadStyle',
 ];
 
 const OWNER_KEYS = [
@@ -235,6 +237,7 @@ export function buildPdfAppAnnotationMetadata(fabricObj, item = {}) {
       lineEnding1: fabricObj.lineEnding1 || fabricObj.data?.lineEnding1 || null,
       lineEnding2: fabricObj.lineEnding2 || fabricObj.data?.lineEnding2 || null,
       arrowheadStyle: fabricObj.arrowheadStyle || fabricObj.data?.arrowheadStyle || null,
+      startArrowheadStyle: fabricObj.startArrowheadStyle || fabricObj.data?.startArrowheadStyle || null,
     },
     ...(Object.keys(data).length > 0 ? { data } : {}),
     ...(Object.keys(style).length > 0 ? { style } : {}),
@@ -316,6 +319,9 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
   }
   if (metadata.flags?.lineEnding2 && out.lineEnding2 === undefined) {
     out.lineEnding2 = metadata.flags.lineEnding2;
+  }
+  if (metadata.flags?.startArrowheadStyle && out.startArrowheadStyle === undefined) {
+    out.startArrowheadStyle = metadata.flags.startArrowheadStyle;
   }
   if (metadata.flags?.arrowheadStyle && out.arrowheadStyle === undefined) {
     out.arrowheadStyle = metadata.flags.arrowheadStyle;

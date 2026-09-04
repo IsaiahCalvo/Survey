@@ -3497,6 +3497,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // newTextPlacement removed — text tool creates text-only callouts via CalloutCanvas
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
+  // UX (owner, 2026-09-02): "Both ends" — one ending picker plus a toggle that
+  // mirrors the chosen ending onto the start of the arrow. Persists like the
+  // other tool choices (localStorage), stamps data.startArrowheadStyle on new
+  // arrows and on the selected arrow.
+  const [arrowBothEnds, setArrowBothEnds] = useState(() => {
+    try { return localStorage.getItem('arrowBothEnds') === '1'; } catch { return false; }
+  });
   const [lineBorderStyle, setLineBorderStyle] = useState('solid');
 
   // Callout overlay state — R2.2 Slice 2 (THE FLIP): `callouts` is no longer an
@@ -3984,6 +3991,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     if (type === 'line' && annot.data?.arrowheadStyle) {
       setArrowheadStyle(annot.data.arrowheadStyle);
+    }
+    if (type === 'line' && (annot.tool === 'arrow' || annot.data?.arrowheadStyle)) {
+      // Reflect the selected arrow: "both ends" is on only when its start
+      // ending explicitly matches its end ending. An imported line with two
+      // different endings therefore shows the toggle OFF and keeps both.
+      const startStyle = annot.data?.startArrowheadStyle ?? null;
+      const endStyle = annot.data?.arrowheadStyle ?? null;
+      setArrowBothEnds(Boolean(startStyle && startStyle !== ARROWHEAD_STYLES.NONE && startStyle === endStyle));
     }
   }, [selectedToolbarAnnotation]);
 
@@ -7880,8 +7895,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       || sel?.annotation?.data?.tool === 'arrow'
       || sel?.annotation?.data?.arrowheadStyle != null);
     if (!isArrow) return;
-    handlePatchSelectedAnnotation({ data: { arrowheadStyle: next } });
-  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+    // With "both ends" on, the new ending goes on the start as well; with it
+    // off only the end changes (an imported line keeps its own start ending).
+    handlePatchSelectedAnnotation({
+      data: { arrowheadStyle: next, ...(arrowBothEnds ? { startArrowheadStyle: next } : {}) },
+    });
+  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout, arrowBothEnds]);
+
+  const handleArrowBothEndsChange = useCallback((next) => {
+    const on = Boolean(next);
+    setArrowBothEnds(on);
+    try { localStorage.setItem('arrowBothEnds', on ? '1' : '0'); } catch {}
+    const sel = selectedToolbarAnnotationRef.current;
+    const type = String(sel?.annotation?.type || '').toLowerCase();
+    const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
+      || sel?.annotation?.data?.tool === 'arrow'
+      || sel?.annotation?.data?.arrowheadStyle != null);
+    if (!isArrow) return;
+    const endStyle = sel?.annotation?.data?.arrowheadStyle || arrowheadStyle || ARROWHEAD_STYLES.SOLID_TRIANGLE;
+    handlePatchSelectedAnnotation({ data: { startArrowheadStyle: on ? endStyle : ARROWHEAD_STYLES.NONE } });
+  }, [handlePatchSelectedAnnotation, arrowheadStyle]);
 
   // Handle width input changes (allows empty string while typing)
   const handleStrokeWidthInputChange = useCallback((e) => {
@@ -23449,6 +23482,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setEraserMode,
       arrowheadStyle,
       setArrowheadStyle: handleArrowheadStyleChange,
+      arrowBothEnds,
+      setArrowBothEnds: handleArrowBothEndsChange,
       onEnterTextEdit: handleEnterTextEditFromStrip,
       canEnterTextEdit: !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
@@ -23571,6 +23606,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     eraserMode,
     arrowheadStyle,
     handleArrowheadStyleChange,
+    arrowBothEnds,
+    handleArrowBothEndsChange,
     handleEnterTextEditFromStrip,
     handleEnterBBoxEditFromStrip,
     richTextEditor,
@@ -31945,6 +31982,7 @@ ${pageBlocks}
                                 strokeColor={strokeColor}
                                 strokeWidth={Number(strokeWidth) || 3}
                                 arrowheadStyle={arrowheadStyle}
+                                arrowStartStyle={arrowBothEnds ? arrowheadStyle : null}
                                 annotations={pageAnnotations}
                                 onSaveAnnotations={handleSaveAnnotationsWithTextMarkupAtomicity}
                                 onToolChange={setActiveTool}
@@ -32532,6 +32570,7 @@ ${pageBlocks}
                                   highlightColor="rgba(255, 193, 7, 0.3)"
                                   strokeWidth={strokeWidth}
                                   arrowheadStyle={arrowheadStyle}
+                                arrowStartStyle={arrowBothEnds ? arrowheadStyle : null}
                                   lineBorderStyle={lineBorderStyle}
                                   cloudIntensity={cloudIntensity}
                                   zoomGeneration={zoomGeneration}

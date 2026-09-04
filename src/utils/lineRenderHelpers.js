@@ -212,32 +212,59 @@ export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw)
  * @returns {object} - Spec with `.kind` ∈ {straight, curved}, `.line` or
  *   `.path`, and `.arrowhead` (always present, may be { kind: 'none' }).
  */
+/**
+ * Single source of truth for which ending sits on each end of a line (screen,
+ * print and export all call this). Precedence per end:
+ *   1. an explicit app choice — data.arrowheadStyle (end) /
+ *      data.startArrowheadStyle (start): the user picked it, so it wins even on
+ *      an imported line (that is how the "both ends" toggle and the picker edit
+ *      one end of an imported line without touching the other);
+ *   2. the file's own /LE names in data.pdfLineEndings (imported lines);
+ *   3. legacy lineEnding1/lineEnding2 fields;
+ *   4. the arrow tool's default solid triangle at the end, nothing at the start.
+ */
+export function resolveLineEndingStyles(obj) {
+  const pdfLineEndings = Array.isArray(obj?.data?.pdfLineEndings) ? obj.data.pdfLineEndings : null;
+  const isArrow = obj?.tool === 'arrow' || obj?.data?.type === 'arrow' || obj?.data?.annotationType === 'arrow';
+  const explicitEnd = obj?.data?.arrowheadStyle;
+  const explicitStart = obj?.data?.startArrowheadStyle;
+  const endStyle = explicitEnd
+    ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1]) : null)
+    ?? (obj?.lineEnding2 ? pdfLineEndingToArrowheadStyle(obj.lineEnding2) : null)
+    ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
+  const startStyle = explicitStart
+    ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0]) : null)
+    ?? (obj?.lineEnding1 ? pdfLineEndingToArrowheadStyle(obj.lineEnding1) : null)
+    ?? ARROWHEAD_STYLES.NONE;
+  return { startStyle, endStyle };
+}
+
+/**
+ * How far the line body stops short of the tip so it does not run into a
+ * hollow ending (owner, 2026-09-02: "the circle should read as a clean ring on
+ * the end of the line, not a circle with a line stabbed through it"). Solid
+ * heads hide the shaft, so they keep the classic headSize/3 tuck; the open
+ * triangle stops at its base plus the round cap; the open circle stops at its
+ * near edge plus the round cap. V and bar endings meet the shaft at the tip by
+ * design (an open "->" or a "-|" terminator).
+ */
+export function lineEndingBodyInset(style, sw) {
+  const width = Number(sw) || 2;
+  const headSize = Math.max(8, width * 3);
+  if (style === ARROWHEAD_STYLES.SOLID_TRIANGLE) return headSize / 3;
+  if (style === ARROWHEAD_STYLES.OPEN_TRIANGLE) return headSize / 3 + width / 2;
+  if (style === ARROWHEAD_STYLES.OPEN_CIRCLE) return headSize / 2 + width / 2;
+  return 0;
+}
+
 export function buildLineRenderSpec(obj) {
   const { start, end } = getAbsoluteEndpoints(obj);
   const { x: x1, y: y1 } = start;
   const { x: x2, y: y2 } = end;
-  const isArrow = obj.tool === 'arrow';
   const strokeColor = obj.stroke || '#000';
   const sw = obj.strokeWidth || 2;
+  const { startStyle, endStyle: effectiveStyle } = resolveLineEndingStyles(obj);
 
-  // Arrowhead style resolution — explicit override wins, else tool-based
-  // fallback per UI-SPEC §"Section C". `??` honors 'none' as an explicit
-  // override (callers can force-disable the arrowhead on a `tool: 'arrow'`).
-  const explicitStyle = obj.data?.arrowheadStyle;
-  const pdfLineEndings = Array.isArray(obj.data?.pdfLineEndings)
-    ? obj.data.pdfLineEndings
-    : null;
-  const startStyle = pdfLineEndings
-    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0])
-    : ARROWHEAD_STYLES.NONE;
-  const effectiveStyle = pdfLineEndings
-    ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1])
-    : (explicitStyle ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE));
-
-  // Curved branch activation — 1px render hysteresis per UI-SPEC §"Section B".
-  // Clamp to straight when data.midpoint sits within 1px of the straight
-  // baseline to prevent visible "1-pixel curve" artifacts from floating-point
-  // noise introduced by drag handles.
   const midpoint = obj.data?.midpoint;
   const isCurved = !!midpoint
     && distanceToLineSegment(midpoint, start, end) > 1;
@@ -276,26 +303,12 @@ export function buildLineRenderSpec(obj) {
   const angleRad = Math.atan2(dy, dx);
   const angleDeg = angleRad * (180 / Math.PI);
 
-  let lineEndX = x2;
-  let lineEndY = y2;
-  let lineStartX = x1;
-  let lineStartY = y1;
-  if (
-    startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
-    || startStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE
-  ) {
-    const headSize = Math.max(8, sw * 3);
-    lineStartX = x1 + (headSize / 3) * Math.cos(angleRad);
-    lineStartY = y1 + (headSize / 3) * Math.sin(angleRad);
-  }
-  if (
-    effectiveStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
-    || effectiveStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE
-  ) {
-    const headSize = Math.max(8, sw * 3);
-    lineEndX = x2 - (headSize / 3) * Math.cos(angleRad);
-    lineEndY = y2 - (headSize / 3) * Math.sin(angleRad);
-  }
+  const startInset = lineEndingBodyInset(startStyle, sw);
+  const endInset = lineEndingBodyInset(effectiveStyle, sw);
+  const lineStartX = x1 + startInset * Math.cos(angleRad);
+  const lineStartY = y1 + startInset * Math.sin(angleRad);
+  const lineEndX = x2 - endInset * Math.cos(angleRad);
+  const lineEndY = y2 - endInset * Math.sin(angleRad);
 
   return {
     kind: 'straight',

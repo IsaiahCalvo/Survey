@@ -1183,6 +1183,35 @@
           "pdfAnnotationType": "Line"
         },
         {
+          "id": "app-arrow-both-ends-circle",
+          "type": "line",
+          "tool": "arrow",
+          "x1": 80,
+          "y1": 540,
+          "x2": 300,
+          "y2": 540,
+          "stroke": "#7c3aed",
+          "strokeWidth": 4,
+          "data": {
+            "arrowheadStyle": "openCircle",
+            "startArrowheadStyle": "openCircle"
+          }
+        },
+        {
+          "id": "app-arrow-open-triangle",
+          "type": "line",
+          "tool": "arrow",
+          "x1": 350,
+          "y1": 560,
+          "x2": 560,
+          "y2": 520,
+          "stroke": "#c2410c",
+          "strokeWidth": 4,
+          "data": {
+            "arrowheadStyle": "openTriangle"
+          }
+        },
+        {
           "id": "imported-sticky-note",
           "type": "rect",
           "left": 100,
@@ -2128,6 +2157,44 @@
       ],
       "checks": [
         "bounds",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "app-arrow-both-ends-circle",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        60,
+        520,
+        320,
+        560
+      ],
+      "checks": [
+        "bounds",
+        "orientation",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "app-arrow-open-triangle",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        330,
+        500,
+        580,
+        580
+      ],
+      "checks": [
+        "bounds",
+        "orientation",
         "colour"
       ],
       "tolerance": {
