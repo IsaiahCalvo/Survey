@@ -36,6 +36,9 @@ async function printAndRasterise(page, { expectedCalls, pdfPath, rasterDir }) {
 }
 
 test('every supported annotation matches the real browser print path', async ({ page }) => {
+  // Twelve fixture pages printed twice (regular + survey mode) plus ~100
+  // region crops: the 2-minute default is too tight on a loaded machine.
+  test.setTimeout(300_000);
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   await rm(outputRoot, { recursive: true, force: true });
   await mkdir(screenDir, { recursive: true });
@@ -70,6 +73,11 @@ test('every supported annotation matches the real browser print path', async ({ 
   const pdfIdOf = (id) => manifest.annotationsByPage[10].objects.find((obj) => obj.id === id).pdfAnnotationId;
   const deleteSelector = `[data-pdf-annotation-id="${pdfIdOf('imported-delete-square')}"]`;
   const eraseSelector = `[data-pdf-annotation-id="${pdfIdOf('imported-erase-ink')}"]`;
+  // The page loop ends on the last page; pages more than one away are
+  // unmounted (virtualised), so bring page 10 back before locating its marks.
+  const pageTenEl = page.locator('.survey-pdfjs-page-div[data-page-number="10"]');
+  await pageTenEl.scrollIntoViewIfNeeded();
+  await expect(pageTenEl).toBeVisible();
   const deleteTarget = page.locator(deleteSelector).first();
   await deleteTarget.scrollIntoViewIfNeeded();
   await page.keyboard.press('v');

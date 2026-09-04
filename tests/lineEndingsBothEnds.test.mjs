@@ -98,6 +98,89 @@ test('diamond and slash endings are their own shapes (never a V), sized like the
   assert.equal(spec.startArrowhead.kind, 'slash');
 });
 
+// The full arrow matrix (owner 2026-09-04: enumerate, never sample): every
+// ending × straight / bent × one end / both ends. For every cell the shaft
+// must end exactly `inset` before the tip along the tangent arriving there,
+// and each head must sit on the tangent of its own end.
+const MATRIX_STYLES = Object.values(ARROWHEAD_STYLES);
+const parseQuad = (d) => {
+  const m = /^M ([-\d.e]+),([-\d.e]+) Q ([-\d.e]+),([-\d.e]+) ([-\d.e]+),([-\d.e]+)$/.exec(d);
+  assert.ok(m, `quadratic path expected, got ${d}`);
+  const n = m.slice(1).map(Number);
+  return { p0: { x: n[0], y: n[1] }, c: { x: n[2], y: n[3] }, p2: { x: n[4], y: n[5] } };
+};
+for (const style of MATRIX_STYLES) {
+  for (const bent of [false, true]) {
+    for (const both of [false, true]) {
+      test(`matrix: ${style} · ${bent ? 'bent' : 'straight'} · ${both ? 'both ends' : 'end only'}`, () => {
+        const sw = 3;
+        const inset = lineEndingBodyInset(style, sw);
+        const obj = arrow({ arrowheadStyle: style, ...(both ? { startArrowheadStyle: style } : {}),
+          ...(bent ? { midpoint: { x: 260, y: 340 } } : {}) },
+          { x1: -60, y1: 30, x2: 60, y2: -30, left: 190, top: 270, width: 120, height: 60, strokeWidth: sw });
+        const spec = buildLineRenderSpec(obj);
+        const tipStart = { x: 190, y: 330 }; const tipEnd = { x: 310, y: 270 };
+        const startInset = both ? inset : 0;
+        assert.equal(spec.arrowhead.kind === 'none', style === 'none');
+        assert.equal(spec.startArrowhead.kind === 'none', !both || style === 'none');
+        if (!bent) {
+          assert.equal(spec.kind, 'straight');
+          const ang = Math.atan2(tipEnd.y - tipStart.y, tipEnd.x - tipStart.x);
+          assert.ok(Math.abs(Math.hypot(spec.line.x2 - tipEnd.x, spec.line.y2 - tipEnd.y) - inset) < 1e-9, 'end inset');
+          assert.ok(Math.abs(Math.hypot(spec.line.x1 - tipStart.x, spec.line.y1 - tipStart.y) - startInset) < 1e-9, 'start inset');
+          if (style !== 'none') assert.ok(Math.abs(spec.arrowhead.angleDeg - ang * 180 / Math.PI) < 1e-9);
+          if (both && style !== 'none') assert.ok(Math.abs(((spec.startArrowhead.angleDeg - spec.arrowhead.angleDeg) % 360 + 360) % 360 - 180) < 1e-9);
+        } else {
+          assert.equal(spec.kind, 'curved');
+          const { p0, c, p2 } = parseQuad(spec.path.d);
+          // body ends are `inset` away from the tips, measured along the curve
+          // (chord distance is within 2% of arc distance for these insets)
+          const dEnd = Math.hypot(p2.x - tipEnd.x, p2.y - tipEnd.y);
+          const dStart = Math.hypot(p0.x - tipStart.x, p0.y - tipStart.y);
+          assert.ok(Math.abs(dEnd - inset) <= Math.max(0.02 * inset, 1e-6), `end inset ${dEnd} vs ${inset}`);
+          assert.ok(Math.abs(dStart - startInset) <= Math.max(0.02 * startInset, 1e-6), `start inset ${dStart} vs ${startInset}`);
+          // the body's own end tangent points at the tip (so the shaft never cuts into the head)
+          if (inset > 0) {
+            const tangent = Math.atan2(p2.y - c.y, p2.x - c.x);
+            const toTip = Math.atan2(tipEnd.y - p2.y, tipEnd.x - p2.x);
+            assert.ok(Math.abs(((tangent - toTip) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI) < 0.15, 'end tangent aims at tip');
+          }
+          // heads use their own end's tangent: start head must NOT equal end head + 180 on a bent arrow
+          if (both && style !== 'none') {
+            const control = { x: 2 * 260 - 0.5 * tipStart.x - 0.5 * tipEnd.x, y: 2 * 340 - 0.5 * tipStart.y - 0.5 * tipEnd.y };
+            const expectedStart = Math.atan2(tipStart.y - control.y, tipStart.x - control.x) * 180 / Math.PI;
+            const expectedEnd = Math.atan2(tipEnd.y - control.y, tipEnd.x - control.x) * 180 / Math.PI;
+            assert.ok(Math.abs(spec.startArrowhead.angleDeg - expectedStart) < 1e-9, 'start head on start tangent');
+            assert.ok(Math.abs(spec.arrowhead.angleDeg - expectedEnd) < 1e-9, 'end head on end tangent');
+            assert.ok(Math.abs(((spec.startArrowhead.angleDeg - spec.arrowhead.angleDeg) % 360 + 360) % 360 - 180) > 1, 'bent: the two tangents differ');
+          }
+        }
+      });
+    }
+  }
+}
+
+test('polyline body stops at hollow endings on its first and last segment', () => {
+  const pts = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+  const out = lineHelpers.insetOpenPolylinePoints(pts, 8, 5);
+  assert.deepEqual(out, [{ x: 8, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 95 }]);
+  // never past the segment's other end
+  assert.deepEqual(lineHelpers.insetOpenPolylinePoints([{ x: 0, y: 0 }, { x: 3, y: 0 }], 10, 0), [{ x: 3, y: 0 }, { x: 3, y: 0 }]);
+});
+
+test('imported OpenArrow is the V; ClosedArrow is filled only with an interior colour', () => {
+  const { pdfLineEndingToArrowheadStyle } = lineHelpers;
+  assert.equal(pdfLineEndingToArrowheadStyle('OpenArrow'), 'vShape');
+  assert.equal(pdfLineEndingToArrowheadStyle('ClosedArrow'), 'solidTriangle');
+  assert.equal(pdfLineEndingToArrowheadStyle('ClosedArrow', { hasInteriorColor: false }), 'openTriangle');
+  const imported = { type: 'line', isPdfImported: true, data: { pdfLineEndings: ['ClosedArrow', 'OpenArrow'] } };
+  assert.deepEqual(resolveLineEndingStyles(imported), { startStyle: 'openTriangle', endStyle: 'vShape' });
+  assert.deepEqual(resolveLineEndingStyles({ ...imported, data: { ...imported.data, pdfInteriorColor: '#ff0000' } }),
+    { startStyle: 'solidTriangle', endStyle: 'vShape' });
+  // app-drawn: no /IC ever, the classic filled head stays filled
+  assert.deepEqual(resolveLineEndingStyles({ type: 'line', tool: 'arrow', lineEnding2: 'ClosedArrow', data: {} }).endStyle, 'solidTriangle');
+});
+
 async function exportLE(objects) {
   const doc = await PDFDocument.create();
   doc.addPage([612, 792]);
@@ -118,7 +201,7 @@ async function exportLE(objects) {
       .filter((a) => a.get(PDFName.of('Subtype'))?.toString() === '/Line')
       .map((a) => {
         const le = a.lookup(PDFName.of('LE'));
-        return le ? le.asArray().map((n) => n.toString()) : null;
+        return le ? { le: le.asArray().map((n) => n.toString()), hasIC: Boolean(a.get(PDFName.of('IC'))) } : null;
       });
   } finally {
     globalThis.window = originalWindow;
@@ -135,13 +218,17 @@ test('export: both-ends arrow writes /LE on both ends; single arrow only at the 
     arrow({ id: 'plain' }, { tool: 'line' }),
     arrow({ id: 'diamond-slash', arrowheadStyle: 'diamond', startArrowheadStyle: 'slash' }),
     arrow({ id: 'v', arrowheadStyle: 'vShape' }),
+    arrow({ id: 'hollow', arrowheadStyle: 'openTriangle' }),
   ]);
-  assert.deepEqual(les, [
+  assert.deepEqual(les.map((l) => l && l.le), [
     ['/Circle', '/Circle'],
     ['/None', '/ClosedArrow'],
     ['/Circle', '/Butt'],
     null,
     ['/Slash', '/Diamond'],
     ['/None', '/OpenArrow'], // the V is the spec's OpenArrow, never a Slash
+    ['/None', '/ClosedArrow'], // hollow triangle = ClosedArrow without /IC
   ]);
+  // a filled head carries /IC so other viewers fill it; hollow-only lines carry none
+  assert.deepEqual(les.map((l) => l && l.hasIC), [false, true, false, null, false, false, false]);
 });

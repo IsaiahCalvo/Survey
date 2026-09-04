@@ -98,7 +98,10 @@ test('each callout arrowhead style maps to its closest PDF /LE name', async () =
   // OpenArrow as two short lines meeting at an acute angle, i.e. the V.
   const expected = {
     solidTriangle: 'ClosedArrow',
-    openTriangle: 'OpenArrow',
+    // Ruled 2026-09-04: the hollow triangle is the spec's ClosedArrow without an
+    // interior colour (OpenArrow is the V); the old 'OpenArrow' pin made other
+    // viewers draw a V where the app showed a closed triangle.
+    openTriangle: 'ClosedArrow',
     openCircle: 'Circle',
     vShape: 'OpenArrow',
     horizontalLine: 'Butt',

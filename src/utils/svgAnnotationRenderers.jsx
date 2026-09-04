@@ -25,6 +25,9 @@ import {
   pdfLineEndingToArrowheadStyle,
   ARROWHEAD_STYLES,
   calloutLineDashArray,
+  resolveLineEndingStyles,
+  insetOpenPolylinePoints,
+  lineEndingBodyInset,
 } from './lineRenderHelpers.js';
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
@@ -1050,15 +1053,24 @@ export const renderPolyline = (obj, index) => {
     ? obj.strokeDashArray.join(' ')
     : undefined;
 
-  const endings = Array.isArray(obj.data?.pdfLineEndings) ? obj.data.pdfLineEndings : [];
+  // Endings resolve through the shared resolver (imported /LE incl. the
+  // interior-colour rule) and the body's first / last segment is pulled back
+  // so it stops at the edge of a hollow ending — same rule as lines, and the
+  // print flattener uses the same helpers.
+  const { startStyle: plStartStyle, endStyle: plEndStyle } = resolveLineEndingStyles(obj);
   const first = obj.points[0];
   const second = obj.points[1];
   const beforeLast = obj.points[obj.points.length - 2];
   const last = obj.points[obj.points.length - 1];
   const stroke = obj.stroke || '#000';
   const strokeWidth = obj.strokeWidth || 1;
+  const bodyPointsStr = insetOpenPolylinePoints(
+    obj.points,
+    lineEndingBodyInset(plStartStyle, strokeWidth),
+    lineEndingBodyInset(plEndStyle, strokeWidth),
+  ).map((p) => `${p.x},${p.y}`).join(' ');
   const startSpec = buildArrowheadRenderSpec(
-    pdfLineEndingToArrowheadStyle(endings[0]),
+    plStartStyle,
     toNumber(first?.x),
     toNumber(first?.y),
     Math.atan2(toNumber(first?.y) - toNumber(second?.y), toNumber(first?.x) - toNumber(second?.x)) * 180 / Math.PI,
@@ -1066,7 +1078,7 @@ export const renderPolyline = (obj, index) => {
     strokeWidth,
   );
   const endSpec = buildArrowheadRenderSpec(
-    pdfLineEndingToArrowheadStyle(endings[1]),
+    plEndStyle,
     toNumber(last?.x),
     toNumber(last?.y),
     Math.atan2(toNumber(last?.y) - toNumber(beforeLast?.y), toNumber(last?.x) - toNumber(beforeLast?.x)) * 180 / Math.PI,
@@ -1075,7 +1087,7 @@ export const renderPolyline = (obj, index) => {
   );
   const body = (
     <polyline
-      points={pointsStr}
+      points={bodyPointsStr}
       fill={fill}
       stroke={stroke}
       strokeWidth={strokeWidth}

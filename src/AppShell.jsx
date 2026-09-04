@@ -2679,7 +2679,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     ending onto the start of the arrow. One picker + a toggle
                     instead of two pickers: double-headed arrows are common in
                     survey markup, mismatched ends are rare, and the toolbar
-                    stays compact. Arrow tool only (callouts have one end). */}
+                    stays compact. Arrow tool only (callouts have one end).
+                    Visual (design review 2026-09-04): the glyph comes from the
+                    shared icon set (24-grid, 1.5 stroke, round joins) at the
+                    same optical size as its neighbours, inside the same
+                    24px trigger chrome as the Arrowhead dropdown — no bespoke
+                    unicode arrow. */}
                 {bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.setArrowBothEnds && (
                   <button
                     type="button"
@@ -2687,23 +2692,23 @@ export default function App({ devPreviewReturnTab = null }) {
                     onMouseDown={(e) => e.stopPropagation()}
                     style={{
                       height: '24px',
-                      padding: '0 8px',
+                      width: '28px',
+                      padding: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       background: bottomToolbarApi.arrowBothEnds ? 'rgba(216,168,78,0.18)' : '#3a4252',
                       color: bottomToolbarApi.arrowBothEnds ? '#d8a84e' : '#e8e2d4',
                       border: '1px solid transparent',
                       borderRadius: '5px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      fontFamily: FONT_FAMILY,
                       cursor: 'pointer',
                       lineHeight: 1,
-                      whiteSpace: 'nowrap',
                     }}
                     {...chromeTip(bottomToolbarApi.arrowBothEnds ? 'Arrowhead on both ends (on)' : 'Put the arrowhead on both ends', 'below')}
                     aria-label="Arrowhead on both ends"
                     aria-pressed={!!bottomToolbarApi.arrowBothEnds}
                   >
-                    ⇔ Both ends
+                    <Icon name="arrowBothEnds" size={16} color="currentColor" />
                   </button>
                 )}
                 {/* 2026-05-25: Rich-text edit entry button. Only renders when

@@ -66,11 +66,19 @@ test('print-fidelity manifest covers every required app and native type on rotat
     'native-cloud', 'native-sticky-note', 'native-arrow', 'native-strikeout', 'form-checkbox', 'form-text', 'native-stamp',
     'landscape-page',
   ]) assert.ok(types.has(required), `manifest must cover ${required}`);
-  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0, 0, 0]);
+  // Page 12 (2026-09-04) is the arrow-ending matrix page: portrait, unrotated.
+  assert.deepEqual(manifest.pages.map((page) => page.rotation), [0, 90, 180, 270, 0, 0, 0, 0, 0, 0, 0, 0]);
+  // The landscape page stays at 11; page 12 (2026-09-04) is the portrait
+  // arrow-ending matrix (8 endings × straight/bent × one/both ends).
   assert.deepEqual(
-    manifest.pages.at(-1),
+    manifest.pages.at(-2),
     { page: 11, rotation: 0, width: 792, height: 612 },
   );
+  assert.deepEqual(
+    manifest.pages.at(-1),
+    { page: 12, rotation: 0, width: 612, height: 792 },
+  );
+  assert.equal(manifest.regions.filter((entry) => entry.id.startsWith('matrix-')).length, 8 * 2 * 2);
   assert.deepEqual(manifest.pages[4].cropBox, [36, 72, 576, 720]);
   assert.equal(manifest.pages[5].requiresSurveyMode, true);
 });

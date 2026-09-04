@@ -81,7 +81,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, calloutLineDashArray, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
+import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, buildCurvedLineBody, calloutLineDashArray, insetOpenPolylinePoints, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import {
   adaptHighlight,
@@ -2452,6 +2452,14 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       const le2 = ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[endStyle] || 'None';
       if (le1 !== 'None' || le2 !== 'None') annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
     }
+    // A filled head needs an interior colour, or other viewers draw ClosedArrow
+    // hollow (PDF 32000 §12.5.6.7). Hollow-only lines write no /IC.
+    {
+      const { startStyle, endStyle } = resolveLineEndingStyles(fabricObj);
+      if (startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE || endStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE) {
+        annotationDict.IC = [color.red, color.green, color.blue];
+      }
+    }
 
     // UX (2026-07-17, callout line style): dashed/dotted strokes export as a
     // /BS border-style dict (/S /D + /D dash array) so external viewers draw
@@ -2568,7 +2576,9 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
 const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.NONE]: 'None',
   [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'ClosedArrow',
-  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'OpenArrow',
+  // Spec / Acrobat (ruled 2026-09-04): the hollow triangle is a ClosedArrow
+  // with no interior colour; the filled one is a ClosedArrow with /IC.
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'ClosedArrow',
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
   [ARROWHEAD_STYLES.V_SHAPE]: 'OpenArrow',
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
@@ -3534,32 +3544,62 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
     : null;
   // Triangle heads: pull the line body back by headSize/3 so its tail does
   // not poke through the head (same rule as buildLineRenderSpec on screen).
-  // Shaft insets and round caps follow the screen (lineEndingBodyInset).
+  // Shaft insets, round caps and bent bodies follow the screen exactly
+  // (buildLineRenderSpec → lineEndingBodyInset / buildCurvedLineBody).
   const endingStyles = resolveLineEndingStyles(obj);
-  const bodyAngle = Math.atan2(y2 - y1, x2 - x1);
   const startInset = lineEndingBodyInset(endingStyles.startStyle, width);
   const endInset = lineEndingBodyInset(endingStyles.endStyle, width);
-  const bodyStart = { x: x1 + startInset * Math.cos(bodyAngle), y: y1 + startInset * Math.sin(bodyAngle) };
-  const bodyEnd = { x: x2 - endInset * Math.cos(bodyAngle), y: y2 - endInset * Math.sin(bodyAngle) };
-  page.drawLine({
-    start: { x: bodyStart.x, y: getPdfY(pageHeight, bodyStart.y) },
-    end: { x: bodyEnd.x, y: getPdfY(pageHeight, bodyEnd.y) },
-    color: stroke.color,
-    thickness: width,
-    opacity: stroke.opacity,
-    lineCap: LineCapStyle.Round,
-    ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
-  });
+  const midpoint = obj?.data?.midpoint;
+  const midpointOffset = midpoint && Number.isFinite(Number(midpoint.x)) && Number.isFinite(Number(midpoint.y))
+    ? (() => {
+        // distance from the chord — the screen treats ≤ 1px as straight
+        const dxm = x2 - x1; const dym = y2 - y1; const len2 = dxm * dxm + dym * dym;
+        if (len2 === 0) return 0;
+        const t = Math.max(0, Math.min(1, ((midpoint.x - x1) * dxm + (midpoint.y - y1) * dym) / len2));
+        return Math.hypot(midpoint.x - (x1 + t * dxm), midpoint.y - (y1 + t * dym));
+      })()
+    : 0;
+  const isCurved = midpointOffset > 1;
+  let startAngleDeg;
+  let endAngleDeg;
+  if (isCurved) {
+    const body = buildCurvedLineBody({ x: x1, y: y1 }, { x: x2, y: y2 }, { x: Number(midpoint.x), y: Number(midpoint.y) }, startInset, endInset);
+    startAngleDeg = body.startAngleDeg;
+    endAngleDeg = body.endAngleDeg;
+    page.drawSvgPath(body.d, {
+      x: 0,
+      y: pageHeight,
+      borderColor: stroke.color,
+      borderOpacity: stroke.opacity,
+      borderWidth: width,
+      borderLineCap: LineCapStyle.Round,
+      ...(dash ? { borderDashArray: dash, borderDashPhase: 0 } : {}),
+    });
+  } else {
+    const bodyAngle = Math.atan2(y2 - y1, x2 - x1);
+    startAngleDeg = ((bodyAngle + Math.PI) * 180) / Math.PI;
+    endAngleDeg = (bodyAngle * 180) / Math.PI;
+    const bodyStart = { x: x1 + startInset * Math.cos(bodyAngle), y: y1 + startInset * Math.sin(bodyAngle) };
+    const bodyEnd = { x: x2 - endInset * Math.cos(bodyAngle), y: y2 - endInset * Math.sin(bodyAngle) };
+    page.drawLine({
+      start: { x: bodyStart.x, y: getPdfY(pageHeight, bodyStart.y) },
+      end: { x: bodyEnd.x, y: getPdfY(pageHeight, bodyEnd.y) },
+      color: stroke.color,
+      thickness: width,
+      opacity: stroke.opacity,
+      lineCap: LineCapStyle.Round,
+      ...(dash ? { dashArray: dash, dashPhase: 0 } : {}),
+    });
+  }
   // Line endings print exactly as the screen resolves them (owner request
   // 2026-09-02: imported arrows printed as plain lines). Both ends, every
   // /LE style the screen knows: Open/ClosedArrow → triangles, Circle → open
   // circle, Butt/Square → bar, Diamond → diamond, Slash → slash (same
   // shared resolver as the screen, so print matches the screen).
-  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
-  const angleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+  // Each head sits on the tangent at its own end (bent lines differ per end).
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
-  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endStyle, x2, y2, angleDeg, strokeHex, width), pageHeight);
-  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(startStyle, x1, y1, angleDeg + 180, strokeHex, width), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.endStyle, x2, y2, endAngleDeg, strokeHex, width), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.startStyle, x1, y1, startAngleDeg, strokeHex, width), pageHeight);
 };
 
 // Polyline endings: same styles, placed on the first and last segments in
@@ -3788,8 +3828,16 @@ const drawFlattenedCounterPin = (page, obj, pageHeight, font) => {
 };
 
 const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
-  const points = fabricPolygonWorldPoints(obj);
-  if (points.length < (closePath ? 3 : 2)) return false;
+  const rawPoints = fabricPolygonWorldPoints(obj);
+  if (rawPoints.length < (closePath ? 3 : 2)) return false;
+  // Open polylines: pull the first / last point back so the body stops at the
+  // edge of a hollow ending — identical to the screen renderer.
+  const plEndings = closePath ? null : resolveLineEndingStyles(obj);
+  const points = closePath ? rawPoints : insetOpenPolylinePoints(
+    rawPoints,
+    lineEndingBodyInset(plEndings.startStyle, Number(obj?.strokeWidth) || 1),
+    lineEndingBodyInset(plEndings.endStyle, Number(obj?.strokeWidth) || 1),
+  );
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the
   // default origin (page bottom-left) negates y and lands the shape off-page.

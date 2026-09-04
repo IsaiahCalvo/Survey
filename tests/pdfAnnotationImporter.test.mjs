@@ -1807,10 +1807,14 @@ test('synthetic Line and PolyLine keep both LE ends and target the PolyLine last
     const [line, polyline] = imported.annotationsByPage[1].objects;
     assert.deepEqual(line.data?.pdfLineEndings, ['OpenArrow', 'ClosedArrow']);
     const lineSpec = buildLineRenderSpec(line);
-    assert.equal(lineSpec.startArrowhead.kind, 'openTriangle');
-    assert.equal(lineSpec.arrowhead.kind, 'solidTriangle');
+    // Ruled 2026-09-04 (spec + Acrobat): OpenArrow is the open V with no base;
+    // the old expectation (hollow closed triangle) drew a shape the file did not ask for.
+    assert.equal(lineSpec.startArrowhead.kind, 'vShape');
+    // Same ruling: this fixture line has no /IC, so its ClosedArrow is the hollow
+    // triangle (a filled one needs an interior colour, PDF 32000 §12.5.6.7).
+    assert.equal(lineSpec.arrowhead.kind, 'openTriangle');
     assert.deepEqual(polyline.data?.pdfLineEndings, ['None', 'OpenArrow']);
-    assert.equal(pdfLineEndingToArrowheadStyle(polyline.data.pdfLineEndings[1]), 'openTriangle');
+    assert.equal(pdfLineEndingToArrowheadStyle(polyline.data.pdfLineEndings[1]), 'vShape');
     const points = polyline.points;
     assert.deepEqual(points.slice(-2), [{ x: 100, y: 55 }, { x: 145, y: 0 }]);
   } finally {

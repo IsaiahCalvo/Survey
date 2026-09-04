@@ -39,10 +39,23 @@ export {
   calloutLineStyleFromDash,
 };
 
-export function pdfLineEndingToArrowheadStyle(value) {
+/**
+ * Map a PDF /LE name onto the app's arrowhead styles, exactly as the spec and
+ * Acrobat draw them (owner ruling 2026-09-04: the mark on screen must be what
+ * the author drew):
+ *   OpenArrow   → V-shape ("two short lines meeting at an acute angle", no base)
+ *   ClosedArrow → solid triangle when the line has an interior colour (/IC),
+ *                 hollow triangle when it has none
+ *   Circle / Butt+Square / Diamond / Slash → themselves.
+ * `hasInteriorColor` defaults to true so app-authored lines (which never carry
+ * /IC) keep their classic filled head.
+ */
+export function pdfLineEndingToArrowheadStyle(value, { hasInteriorColor = true } = {}) {
   const ending = String(value || '').replace(/^\//, '');
-  if (ending === 'OpenArrow' || ending === 'ROpenArrow') return ARROWHEAD_STYLES.OPEN_TRIANGLE;
-  if (ending === 'ClosedArrow' || ending === 'RClosedArrow') return ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  if (ending === 'OpenArrow' || ending === 'ROpenArrow') return ARROWHEAD_STYLES.V_SHAPE;
+  if (ending === 'ClosedArrow' || ending === 'RClosedArrow') {
+    return hasInteriorColor ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.OPEN_TRIANGLE;
+  }
   if (ending === 'Circle') return ARROWHEAD_STYLES.OPEN_CIRCLE;
   if (ending === 'Butt' || ending === 'Square') return ARROWHEAD_STYLES.HORIZONTAL_LINE;
   if (ending === 'Diamond') return ARROWHEAD_STYLES.DIAMOND;
@@ -266,15 +279,103 @@ export function resolveLineEndingStyles(obj) {
   const isArrow = obj?.tool === 'arrow' || obj?.data?.type === 'arrow' || obj?.data?.annotationType === 'arrow';
   const explicitEnd = obj?.data?.arrowheadStyle;
   const explicitStart = obj?.data?.startArrowheadStyle;
+  // Imported lines: a ClosedArrow is filled only when the file gives an
+  // interior colour (/IC → data.pdfInteriorColor). App-drawn lines never
+  // carry /IC and keep the classic filled head.
+  const isImported = Boolean(obj?.isPdfImported || obj?.pdfAnnotationId);
+  const leOptions = { hasInteriorColor: isImported ? Boolean(obj?.data?.pdfInteriorColor) : true };
   const endStyle = explicitEnd
-    ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1]) : null)
-    ?? (obj?.lineEnding2 ? pdfLineEndingToArrowheadStyle(obj.lineEnding2) : null)
+    ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[1], leOptions) : null)
+    ?? (obj?.lineEnding2 ? pdfLineEndingToArrowheadStyle(obj.lineEnding2, leOptions) : null)
     ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
   const startStyle = explicitStart
-    ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0]) : null)
-    ?? (obj?.lineEnding1 ? pdfLineEndingToArrowheadStyle(obj.lineEnding1) : null)
+    ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0], leOptions) : null)
+    ?? (obj?.lineEnding1 ? pdfLineEndingToArrowheadStyle(obj.lineEnding1, leOptions) : null)
     ?? ARROWHEAD_STYLES.NONE;
   return { startStyle, endStyle };
+}
+
+// ---- Geometry shared by the screen renderer and the print flattener --------
+// Both must agree exactly on where the shaft stops, on straight, bent and
+// multi-segment lines, or the printed sheet will not match the screen.
+
+const quadControlPoint = (start, end, midpoint) => ({
+  x: 2 * midpoint.x - 0.5 * start.x - 0.5 * end.x,
+  y: 2 * midpoint.y - 0.5 * start.y - 0.5 * end.y,
+});
+const quadPointAt = (p0, c, p2, t) => {
+  const u = 1 - t;
+  return {
+    x: u * u * p0.x + 2 * u * t * c.x + t * t * p2.x,
+    y: u * u * p0.y + 2 * u * t * c.y + t * t * p2.y,
+  };
+};
+// Parameter at which the arc length measured from t=0 reaches `distance`
+// (numeric march; 256 samples is well under 0.05px on any on-page curve).
+const quadParamAtArcLength = (p0, c, p2, distance) => {
+  if (!(distance > 0)) return 0;
+  const steps = 256;
+  let prev = p0;
+  let travelled = 0;
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const pt = quadPointAt(p0, c, p2, t);
+    const seg = Math.hypot(pt.x - prev.x, pt.y - prev.y);
+    if (travelled + seg >= distance) {
+      const frac = seg > 0 ? (distance - travelled) / seg : 0;
+      return (i - 1 + frac) / steps;
+    }
+    travelled += seg;
+    prev = pt;
+  }
+  return 1;
+};
+
+/**
+ * Body of a bent (quadratic) line with each end pulled back along the curve by
+ * an inset so it stops at the edge of a hollow ending. Returns the sub-curve
+ * path plus the OUTWARD tangent angle at each true endpoint (start angle
+ * already reversed for a start arrowhead).
+ */
+export function buildCurvedLineBody(start, end, midpoint, startInset = 0, endInset = 0) {
+  const c = quadControlPoint(start, end, midpoint);
+  let t0 = quadParamAtArcLength(start, c, end, startInset);
+  let t1 = 1 - quadParamAtArcLength(end, c, start, endInset);
+  if (t0 > t1) { const mid = (t0 + t1) / 2; t0 = mid; t1 = mid; }
+  // de Casteljau blossom: control point of the sub-curve [t0, t1].
+  const subC = {
+    x: (1 - t0) * (1 - t1) * start.x + ((1 - t0) * t1 + t0 * (1 - t1)) * c.x + t0 * t1 * end.x,
+    y: (1 - t0) * (1 - t1) * start.y + ((1 - t0) * t1 + t0 * (1 - t1)) * c.y + t0 * t1 * end.y,
+  };
+  const p0 = quadPointAt(start, c, end, t0);
+  const p2 = quadPointAt(start, c, end, t1);
+  return {
+    d: `M ${p0.x},${p0.y} Q ${subC.x},${subC.y} ${p2.x},${p2.y}`,
+    bodyStart: p0,
+    bodyEnd: p2,
+    startAngleDeg: (Math.atan2(start.y - c.y, start.x - c.x) * 180) / Math.PI,
+    endAngleDeg: (Math.atan2(end.y - c.y, end.x - c.x) * 180) / Math.PI,
+  };
+}
+
+/**
+ * Open polyline body with its first / last point pulled back along the first /
+ * last segment by an inset (never past that segment's other end).
+ */
+export function insetOpenPolylinePoints(points, startInset = 0, endInset = 0) {
+  if (!Array.isArray(points) || points.length < 2) return Array.isArray(points) ? points.slice() : [];
+  const out = points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 }));
+  const pull = (from, towards, inset) => {
+    const dx = towards.x - from.x;
+    const dy = towards.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (!(inset > 0) || len === 0) return from;
+    const k = Math.min(inset, len) / len;
+    return { x: from.x + dx * k, y: from.y + dy * k };
+  };
+  out[0] = pull(out[0], out[1], startInset);
+  out[out.length - 1] = pull(out[out.length - 1], out[out.length - 2], endInset);
+  return out;
 }
 
 /**
@@ -309,13 +410,21 @@ export function buildLineRenderSpec(obj) {
     && distanceToLineSegment(midpoint, start, end) > 1;
 
   if (isCurved) {
-    // UX: Curved arrow arrowhead rotates to the curve's tangent at t=1
-    // (ARROW-01/02) — use getCurveEndAngle, NOT Math.atan2(dy, dx).
-    const angleDeg = getCurveEndAngle(start, end, midpoint);
+    // UX: each arrowhead sits on the tangent of the curve at ITS OWN end (the
+    // start head is not the end head rotated 180° — on a bent arrow those
+    // differ), and the body is trimmed along the curve so it stops at the
+    // edge of hollow endings exactly like the straight branch (owner,
+    // 2026-09-04: "bend an arrow with an open circle and the line cuts into
+    // the circle again").
+    const body = buildCurvedLineBody(
+      start, end, midpoint,
+      lineEndingBodyInset(startStyle, sw), lineEndingBodyInset(effectiveStyle, sw),
+    );
+    const angleDeg = body.endAngleDeg;
     return {
       kind: 'curved',
       path: {
-        d: getCurvedPath(start, end, midpoint),
+        d: body.d,
         stroke: strokeColor,
         strokeWidth: sw,
         strokeLinecap: 'round',
@@ -328,7 +437,7 @@ export function buildLineRenderSpec(obj) {
         effectiveStyle, x2, y2, angleDeg, strokeColor, sw
       ),
       startArrowhead: buildArrowheadRenderSpec(
-        startStyle, x1, y1, angleDeg + 180, strokeColor, sw
+        startStyle, x1, y1, body.startAngleDeg, strokeColor, sw
       ),
     };
   }

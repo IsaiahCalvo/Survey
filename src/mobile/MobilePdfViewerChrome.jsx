@@ -1088,6 +1088,18 @@ export function MobileToolProperties({ api }) {
           onChange={(value) => api.setArrowheadStyle(value)}
         />
       )}
+      {/* "Both ends" (owner 2026-09-02) — same toggle as desktop, mobile chrome. */}
+      {showArrowhead && tool === 'arrow' && typeof api.setArrowBothEnds === 'function' && (
+        <button
+          type="button"
+          className={`mobile-pdf-properties__edit${api.arrowBothEnds ? ' is-active' : ''}`}
+          onClick={() => api.setArrowBothEnds(!api.arrowBothEnds)}
+          aria-label="Arrowhead on both ends"
+          aria-pressed={!!api.arrowBothEnds}
+        >
+          Both ends
+        </button>
+      )}
       {api.onEnterTextEdit && (tool === 'text' || tool === 'callout' || api.richTextEditor) && (
         <button
           type="button"
@@ -1379,6 +1391,17 @@ export function MobileToolProperties({ api }) {
                       options={Object.entries(MOBILE_ARROWHEAD_STYLE_LABELS).map(([value, label]) => ({ value, label }))}
                       onChange={(value) => api.setArrowheadStyle?.(value)}
                     />
+                    {tool === 'arrow' && typeof api.setArrowBothEnds === 'function' && (
+                      <button
+                        type="button"
+                        className={`mobile-pdf-properties__edit${api.arrowBothEnds ? ' is-active' : ''}`}
+                        onClick={() => api.setArrowBothEnds(!api.arrowBothEnds)}
+                        aria-label="Arrowhead on both ends"
+                        aria-pressed={!!api.arrowBothEnds}
+                      >
+                        Both ends
+                      </button>
+                    )}
                   </section>
                 )}
               </>

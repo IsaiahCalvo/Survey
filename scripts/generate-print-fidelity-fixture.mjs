@@ -48,6 +48,9 @@ const font = await pdf.embedFont(StandardFonts.Helvetica);
 const pageSpecs = [
   ...[0, 90, 180, 270, 0, 0, 0, 0, 0, 0].map((rotation) => ({ ...PAGE, rotation })),
   { width: 792, height: 612, rotation: 0 },
+  // Page 12: the complete arrow matrix — every ending × straight / bent ×
+  // one end / both ends (owner, 2026-09-04: enumerate, do not sample).
+  { ...PAGE, rotation: 0 },
 ];
 const pages = pageSpecs.map(({ width, height, rotation }, index) => {
   const page = pdf.addPage([width, height]);
@@ -229,6 +232,40 @@ const fixtureCallout = {
   style: { lineColor: '#be123c', borderColor: '#be123c', lineThickness: 3, backgroundColor: '#fff1f2', fontColor: '#881337', fontSize: 16, bold: true, arrowheadStyle: 'none' },
 };
 
+// Arrow matrix (page 12): 8 endings × {straight, bent} × {end only, both ends}.
+// Rows are endings, columns are geometry × ends. Bent arrows carry
+// data.midpoint (the point the curve passes through). Regions cover each cell.
+const ARROW_MATRIX_STYLES = ['none', 'solidTriangle', 'vShape', 'openCircle', 'openTriangle', 'horizontalLine', 'diamond', 'slash'];
+const ARROW_MATRIX_COLUMNS = [
+  { key: 'straight-end', bent: false, both: false },
+  { key: 'straight-both', bent: false, both: true },
+  { key: 'bent-end', bent: true, both: false },
+  { key: 'bent-both', bent: true, both: true },
+];
+const arrowMatrixObjects = [];
+const arrowMatrixRegions = [];
+ARROW_MATRIX_STYLES.forEach((style, row) => {
+  // Rows stop well above y≈650: the app's redaction notice covers the
+  // bottom-right of the viewport during the screen capture (see page 11 note).
+  const rowTop = 36 + row * 70;
+  ARROW_MATRIX_COLUMNS.forEach((column, col) => {
+    const left = 20 + col * 140;
+    const x1 = left + 14; const y1 = rowTop + 52;
+    const x2 = left + 116; const y2 = rowTop + 14;
+    const id = `matrix-${style}-${column.key}`;
+    arrowMatrixObjects.push({
+      id, type: 'line', tool: 'arrow', x1, y1, x2, y2, stroke: '#1d4ed8', strokeWidth: 3,
+      data: {
+        arrowheadStyle: style,
+        ...(column.both ? { startArrowheadStyle: style } : {}),
+        ...(column.bent ? { midpoint: { x: (x1 + x2) / 2 + 22, y: (y1 + y2) / 2 + 20 } } : {}),
+      },
+    });
+    arrowMatrixRegions.push(region(id, 'line-endings', 12, [left, rowTop, left + 132, rowTop + 68], ['bounds', 'colour'], { boundsPixels: 6 }));
+  });
+});
+
+
 const annotationsByPage = {
   1: { width: 612, height: 792, objects: [
     pathObject('pen-fresh', [['M', 45, 95], ['Q', 85, 65, 125, 100], ['L', 165, 82]]),
@@ -346,6 +383,7 @@ const annotationsByPage = {
       data: { type: 'note', pdfNoteGlyph: 'note', pdfNoteIcon: 'Comment', noteText: 'Print glyph check' },
       isPdfImported: true, pdfAnnotationId: `${nativeStickyNote.objectNumber}R`, pdfAnnotationType: 'Text' },
   ] },
+  12: { width: 612, height: 792, objects: arrowMatrixObjects },
 };
 
 const regions = [
@@ -414,6 +452,7 @@ const regions = [
   region('app-arrow-diamond-both-ends', 'line-endings', 11, [385, 240, 575, 300], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
   region('polyline-slash-diamond', 'line-endings', 11, [585, 235, 740, 300], ['bounds', 'colour'], { boundsPixels: 6 }),
   region('app-arrow-slash-end', 'line-endings', 11, [60, 562, 320, 610], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
+  ...arrowMatrixRegions,
 ];
 
 await mkdir(fixtureDir, { recursive: true });

@@ -4417,6 +4417,9 @@ function convertPolyLineToFabricPolyline(annotation, viewport, scale = 1) {
 
   const data = {
     ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
+    // /IC decides whether a ClosedArrow ending is filled or hollow.
+    ...(Array.isArray(annotation.interiorColor) && annotation.interiorColor.length >= 3
+      ? { pdfInteriorColor: pdfColorToHex(annotation.interiorColor, annotation) } : {}),
     ...(intent ? { pdfIntent: intent } : {})
   };
 
@@ -4942,6 +4945,9 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
   const detectedArrow = startArrow || endArrow;
   const data = {
     ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
+    // /IC decides whether a ClosedArrow ending is filled or hollow.
+    ...(Array.isArray(annotation.interiorColor) && annotation.interiorColor.length >= 3
+      ? { pdfInteriorColor: pdfColorToHex(annotation.interiorColor, annotation) } : {}),
     ...(intent ? { pdfIntent: intent } : {}),
     ...(calloutPoints.length >= 2 ? { pdfCalloutPoints: calloutPoints } : {})
   };

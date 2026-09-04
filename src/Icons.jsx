@@ -504,6 +504,12 @@ const ICON_RENDERERS = {
         <path d="M2 20A7 7 0 0 1 16 20M17 11A3 3 0 1 0 15 6M22 19A5 5 0 0 0 17 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    // Line with an arrowhead at each end — the "Both ends" arrow toggle.
+    arrowBothEnds: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M4 12H20M9 7L4 12L9 17M15 7L20 12L15 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     arrowRight: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M5 12H19M13 6L19 12L13 18" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
