@@ -9,6 +9,10 @@ function polygonVertexCount(polygons) {
 
 const MAX_ATOMIC_ERASE_DIAGNOSTICS = 20;
 
+export function isAtomicEraseGeometryAuditEnabled(host, devMode) {
+  return devMode === true && host?.__ERASER_GEOMETRY_AUDIT === true;
+}
+
 const cloneDiagnosticValue = (value) => {
   if (typeof structuredClone === 'function') return structuredClone(value);
   return JSON.parse(JSON.stringify(value));

@@ -2,11 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  isAtomicEraseGeometryAuditEnabled,
   recordAtomicEraseDiagnostic,
   summarizeAtomicEraseDebugIntent,
   summarizeGeometryAudit,
   updateAtomicEraseDiagnostic,
 } from '../src/utils/atomicEraseDiagnostics.js';
+
+test('full geometry audit is opt-in even in a dev build', () => {
+  assert.equal(isAtomicEraseGeometryAuditEnabled({}, true), false);
+  assert.equal(isAtomicEraseGeometryAuditEnabled({ __ERASER_GEOMETRY_AUDIT: true }, true), true);
+  assert.equal(isAtomicEraseGeometryAuditEnabled({ __ERASER_GEOMETRY_AUDIT: true }, false), false);
+});
 import { auditPartialEraseGeometry } from '../src/utils/paperAnnotationGeometry.js';
 
 const rectangle = (left, top, right, bottom) => [[[

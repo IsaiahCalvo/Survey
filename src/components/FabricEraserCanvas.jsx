@@ -57,6 +57,7 @@ import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 import {
+  isAtomicEraseGeometryAuditEnabled,
   recordAtomicEraseDiagnostic,
   updateAtomicEraseDiagnostic,
 } from '../utils/atomicEraseDiagnostics.js';
@@ -469,13 +470,13 @@ const FabricEraserCanvas = memo(({
           setTimeout(syncCommitTiming, 0);
         }
       }
-      if (violations.length) {
+      if (violations.length && isAtomicEraseGeometryAuditEnabled(window, import.meta.env.DEV)) {
         console.error('[EraserAuditViolation]', JSON.stringify({
           mutationId,
           pageNumber: record?.pageNumber,
           violations,
         }));
-      } else if (record) {
+      } else if (record && isAtomicEraseGeometryAuditEnabled(window, import.meta.env.DEV)) {
         console.info('[EraserAudit]', {
           mutationId,
           pageNumber: record.pageNumber,
@@ -2136,8 +2137,12 @@ const FabricEraserCanvas = memo(({
           after: target.operation === 'delete' ? [] : (target.after?.polygons || []),
         }))
       : [];
+    const geometryAuditEnabled = isAtomicEraseGeometryAuditEnabled(
+      window,
+      import.meta.env.DEV,
+    );
     updateAtomicEraseDiagnostic(window, mutationId, {
-      auditStatus: auditTargets.length ? 'pending-commit' : 'not-needed',
+      auditStatus: auditTargets.length && geometryAuditEnabled ? 'pending-commit' : 'not-needed',
       candidateAnnotationIds: result.touchedIds,
       rejectedAnnotations: result.rejectedAnnotations || [],
       targets: targets.map((target) => ({
@@ -2217,7 +2222,7 @@ const FabricEraserCanvas = memo(({
         for (const annotationId of surveyMarkerHitIds) {
           onEraseSurveyMarkerRef.current?.(annotationId);
         }
-        if (auditTargets.length) {
+        if (auditTargets.length && geometryAuditEnabled) {
           updateAtomicEraseDiagnostic(window, mutationId, { auditStatus: 'pending' });
           scheduleAtomicEraseAudit({
             mutationId,
@@ -2227,6 +2232,7 @@ const FabricEraserCanvas = memo(({
           });
         }
         recordCommitTiming();
+        if (!geometryAuditEnabled) eraseCommitTimingRef.current.delete(String(mutationId));
         return {
           didPaint: true,
           expectedRevision,
@@ -2285,7 +2291,7 @@ const FabricEraserCanvas = memo(({
           console.error('Survey marker erase failed:', error);
         }
       }
-      if (auditTargets.length) {
+      if (auditTargets.length && geometryAuditEnabled) {
         updateAtomicEraseDiagnostic(window, mutationId, { auditStatus: 'pending' });
         scheduleAtomicEraseAudit({
           mutationId,
@@ -2307,6 +2313,7 @@ const FabricEraserCanvas = memo(({
       return { didPaint: false, expectedRevision: null };
     } finally {
       recordCommitTiming();
+      if (!geometryAuditEnabled) eraseCommitTimingRef.current.delete(String(mutationId));
     }
   }, [
     getEraseBlockReason,
