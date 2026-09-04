@@ -30,4 +30,6 @@ test('Text Select arms SVG pointer handling only near the current selection', ()
   assert.match(layerSource, /onTextSelectManipulationChange\?\.\(pageNumber, textSelectOwnsPointer\)/);
   assert.match(viewerSource, /textSelectionLayerInteractive=\{activeTool === 'text-select' && textSelectManipulationPageNumber == null\}/);
   assert.match(containerSource, /interactive=\{textSelectionLayerInteractive\}/);
+  assert.match(layerSource, /window\.addEventListener\('touchend', releaseTouchOwnership, true\)/);
+  assert.match(layerSource, /releaseTouchOwnership[\s\S]{0,180}applyTextSelectPointerOwnership\(false\)/);
 });

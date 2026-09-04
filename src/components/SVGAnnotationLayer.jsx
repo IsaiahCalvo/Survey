@@ -907,11 +907,18 @@ const SVGAnnotationLayer = memo(({
         isPointNearCurrentSelection(event.clientX, event.clientY),
       );
     };
+    const releaseTouchOwnership = () => {
+      window.requestAnimationFrame(() => applyTextSelectPointerOwnership(false));
+    };
     window.addEventListener('pointermove', updatePointerOwnership, true);
     window.addEventListener('pointerdown', updatePointerOwnership, true);
+    window.addEventListener('touchend', releaseTouchOwnership, true);
+    window.addEventListener('touchcancel', releaseTouchOwnership, true);
     return () => {
       window.removeEventListener('pointermove', updatePointerOwnership, true);
       window.removeEventListener('pointerdown', updatePointerOwnership, true);
+      window.removeEventListener('touchend', releaseTouchOwnership, true);
+      window.removeEventListener('touchcancel', releaseTouchOwnership, true);
       const root = svgRef.current;
       if (root) {
         root.style.pointerEvents = '';
