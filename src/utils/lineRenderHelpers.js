@@ -46,7 +46,7 @@ export {
  *   OpenArrow   → V-shape ("two short lines meeting at an acute angle", no base)
  *   ClosedArrow → solid triangle when the line has an interior colour (/IC),
  *                 hollow triangle when it has none
- *   Circle / Butt+Square / Diamond / Slash → themselves.
+ *   Circle / Butt / Square / Diamond / Slash → themselves.
  * `hasInteriorColor` defaults to true so app-authored lines (which never carry
  * /IC) keep their classic filled head.
  */
@@ -57,7 +57,8 @@ export function pdfLineEndingToArrowheadStyle(value, { hasInteriorColor = true }
     return hasInteriorColor ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.OPEN_TRIANGLE;
   }
   if (ending === 'Circle') return ARROWHEAD_STYLES.OPEN_CIRCLE;
-  if (ending === 'Butt' || ending === 'Square') return ARROWHEAD_STYLES.HORIZONTAL_LINE;
+  if (ending === 'Butt') return ARROWHEAD_STYLES.HORIZONTAL_LINE;
+  if (ending === 'Square') return ARROWHEAD_STYLES.SQUARE;
   if (ending === 'Diamond') return ARROWHEAD_STYLES.DIAMOND;
   if (ending === 'Slash') return ARROWHEAD_STYLES.SLASH;
   return ARROWHEAD_STYLES.NONE;
@@ -104,10 +105,14 @@ function getAbsoluteEndpoints(obj) {
  * @returns {object} - Spec with `.kind` ∈ {none, solidTriangle, openTriangle,
  *                     openCircle, vShape, horizontalLine, diamond, slash} + primitive attrs
  */
-export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw) {
+export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw, options = {}) {
   if (style === ARROWHEAD_STYLES.NONE || style == null) {
     return { kind: 'none' };
   }
+  // Interior colour (PDF /IC, ruled 2026-09-04): Circle, Diamond and Square
+  // endings are FILLED with it when the file carries one, hollow otherwise.
+  const interiorFill = typeof options?.fill === 'string' && options.fill && options.fill !== 'transparent'
+    ? options.fill : 'none';
   // UX: Head-size formula floors at 8 (not 12) to preserve pre-Phase-15 arrow
   // visuals per UI-SPEC §D. Stroke-width floor of 2 on the 5 non-SOLID_TRIANGLE
   // styles ensures visibility on 1px lines (lifted from legacy PAL createArrowhead).
@@ -152,7 +157,7 @@ export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw)
           cx: tipX,
           cy: tipY,
           r: headSize / 2,
-          fill: 'none',
+          fill: interiorFill,
           stroke: color,
           strokeWidth,
         },
@@ -209,7 +214,24 @@ export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw)
         ...shared,
         polygon: {
           points: `${half},0 0,${half} ${-half},0 0,${-half}`,
-          fill: 'none',
+          fill: interiorFill,
+          stroke: color,
+          strokeWidth,
+          strokeLinejoin: 'round',
+          transform,
+        },
+      };
+    }
+    case ARROWHEAD_STYLES.SQUARE: {
+      // PDF /LE Square: a square centred on the endpoint, sides along and
+      // across the line, headSize wide; filled with the interior colour if any.
+      const half = headSize / 2;
+      return {
+        kind: 'square',
+        ...shared,
+        polygon: {
+          points: `${-half},${-half} ${half},${-half} ${half},${half} ${-half},${half}`,
+          fill: interiorFill,
           stroke: color,
           strokeWidth,
           strokeLinejoin: 'round',
@@ -292,7 +314,9 @@ export function resolveLineEndingStyles(obj) {
     ?? (pdfLineEndings ? pdfLineEndingToArrowheadStyle(pdfLineEndings[0], leOptions) : null)
     ?? (obj?.lineEnding1 ? pdfLineEndingToArrowheadStyle(obj.lineEnding1, leOptions) : null)
     ?? ARROWHEAD_STYLES.NONE;
-  return { startStyle, endStyle };
+  // Interior colour for Circle / Diamond / Square endings (imported /IC).
+  const interiorColor = typeof obj?.data?.pdfInteriorColor === 'string' ? obj.data.pdfInteriorColor : null;
+  return { startStyle, endStyle, interiorColor };
 }
 
 // ---- Geometry shared by the screen renderer and the print flattener --------
@@ -394,6 +418,7 @@ export function lineEndingBodyInset(style, sw) {
   if (style === ARROWHEAD_STYLES.OPEN_TRIANGLE) return headSize / 3 + width / 2;
   if (style === ARROWHEAD_STYLES.OPEN_CIRCLE) return headSize / 2 + width / 2;
   if (style === ARROWHEAD_STYLES.DIAMOND) return headSize / 2 + width / 2;
+  if (style === ARROWHEAD_STYLES.SQUARE) return headSize / 2 + width / 2;
   return 0;
 }
 
@@ -403,7 +428,8 @@ export function buildLineRenderSpec(obj) {
   const { x: x2, y: y2 } = end;
   const strokeColor = obj.stroke || '#000';
   const sw = obj.strokeWidth || 2;
-  const { startStyle, endStyle: effectiveStyle } = resolveLineEndingStyles(obj);
+  const { startStyle, endStyle: effectiveStyle, interiorColor } = resolveLineEndingStyles(obj);
+  const headOptions = { fill: interiorColor };
 
   const midpoint = obj.data?.midpoint;
   const isCurved = !!midpoint
@@ -434,10 +460,10 @@ export function buildLineRenderSpec(obj) {
         fill: 'none',
       },
       arrowhead: buildArrowheadRenderSpec(
-        effectiveStyle, x2, y2, angleDeg, strokeColor, sw
+        effectiveStyle, x2, y2, angleDeg, strokeColor, sw, headOptions
       ),
       startArrowhead: buildArrowheadRenderSpec(
-        startStyle, x1, y1, body.startAngleDeg, strokeColor, sw
+        startStyle, x1, y1, body.startAngleDeg, strokeColor, sw, headOptions
       ),
     };
   }
@@ -470,10 +496,10 @@ export function buildLineRenderSpec(obj) {
       strokeLinecap: 'round',
     },
     arrowhead: buildArrowheadRenderSpec(
-      effectiveStyle, x2, y2, angleDeg, strokeColor, sw
+      effectiveStyle, x2, y2, angleDeg, strokeColor, sw, headOptions
     ),
     startArrowhead: buildArrowheadRenderSpec(
-      startStyle, x1, y1, angleDeg + 180, strokeColor, sw
+      startStyle, x1, y1, angleDeg + 180, strokeColor, sw, headOptions
     ),
   };
 }

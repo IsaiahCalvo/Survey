@@ -235,7 +235,7 @@ const fixtureCallout = {
 // Arrow matrix (page 12): 8 endings × {straight, bent} × {end only, both ends}.
 // Rows are endings, columns are geometry × ends. Bent arrows carry
 // data.midpoint (the point the curve passes through). Regions cover each cell.
-const ARROW_MATRIX_STYLES = ['none', 'solidTriangle', 'vShape', 'openCircle', 'openTriangle', 'horizontalLine', 'diamond', 'slash'];
+const ARROW_MATRIX_STYLES = ['none', 'solidTriangle', 'vShape', 'openCircle', 'openTriangle', 'horizontalLine', 'diamond', 'slash', 'square'];
 const ARROW_MATRIX_COLUMNS = [
   { key: 'straight-end', bent: false, both: false },
   { key: 'straight-both', bent: false, both: true },
@@ -247,23 +247,55 @@ const arrowMatrixRegions = [];
 ARROW_MATRIX_STYLES.forEach((style, row) => {
   // Rows stop well above y≈650: the app's redaction notice covers the
   // bottom-right of the viewport during the screen capture (see page 11 note).
-  const rowTop = 36 + row * 70;
+  const rowTop = 30 + row * 64;
   ARROW_MATRIX_COLUMNS.forEach((column, col) => {
     const left = 20 + col * 140;
-    const x1 = left + 14; const y1 = rowTop + 52;
-    const x2 = left + 116; const y2 = rowTop + 14;
+    const x1 = left + 14; const y1 = rowTop + 48;
+    const x2 = left + 116; const y2 = rowTop + 12;
     const id = `matrix-${style}-${column.key}`;
     arrowMatrixObjects.push({
       id, type: 'line', tool: 'arrow', x1, y1, x2, y2, stroke: '#1d4ed8', strokeWidth: 3,
       data: {
         arrowheadStyle: style,
         ...(column.both ? { startArrowheadStyle: style } : {}),
-        ...(column.bent ? { midpoint: { x: (x1 + x2) / 2 + 22, y: (y1 + y2) / 2 + 20 } } : {}),
+        ...(column.bent ? { midpoint: { x: (x1 + x2) / 2 + 22, y: (y1 + y2) / 2 + 18 } } : {}),
       },
     });
-    arrowMatrixRegions.push(region(id, 'line-endings', 12, [left, rowTop, left + 132, rowTop + 68], ['bounds', 'colour'], { boundsPixels: 6 }));
+    arrowMatrixRegions.push(region(id, 'line-endings', 12, [left, rowTop, left + 132, rowTop + 62], ['bounds', 'colour'], { boundsPixels: 6 }));
   });
 });
+// Interior colour (ruled 2026-09-04): imported Circle / Diamond / Square endings
+// fill with /IC when the file has one, and stay hollow when it does not. Kept
+// left of x=400 — the redaction notice covers the bottom-right on screen.
+const nativeFilledEndingsLine = addNative(pages[11], {
+  Subtype: 'Line', Rect: [20, 122, 150, 172], L: [32, 148, 138, 148], LE: ['Diamond', 'Circle'],
+  C: [0.55, 0.12, 0.12], IC: [0.98, 0.75, 0.2], CA: 1, Border: [0, 0, 4], NM: 'native-filled-endings-line',
+});
+const nativeHollowSquareLine = addNative(pages[11], {
+  Subtype: 'Line', Rect: [150, 122, 280, 172], L: [162, 148, 268, 148], LE: ['Square', 'Diamond'],
+  C: [0.12, 0.35, 0.6], CA: 1, Border: [0, 0, 4], NM: 'native-hollow-square-line',
+});
+const nativeFilledPolyline = addNative(pages[11], {
+  Subtype: 'PolyLine', Rect: [290, 118, 400, 178], Vertices: [300, 132, 330, 164, 360, 132, 390, 164], LE: ['Circle', 'Square'],
+  C: [0.2, 0.5, 0.2], IC: [0.2, 0.5, 0.2], CA: 1, Border: [0, 0, 4], NM: 'native-filled-polyline',
+});
+arrowMatrixObjects.push(
+  { id: 'imported-filled-endings-line', type: 'line', x1: 32, y1: 644, x2: 138, y2: 644, stroke: '#8c1f1f', strokeWidth: 4,
+    isPdfImported: true, pdfAnnotationId: `${nativeFilledEndingsLine.objectNumber}R`, pdfAnnotationType: 'Line',
+    data: { pdfLineEndings: ['Diamond', 'Circle'], pdfInteriorColor: '#fabf33' } },
+  { id: 'imported-hollow-square-line', type: 'line', x1: 162, y1: 644, x2: 268, y2: 644, stroke: '#1f5999', strokeWidth: 4,
+    isPdfImported: true, pdfAnnotationId: `${nativeHollowSquareLine.objectNumber}R`, pdfAnnotationType: 'Line',
+    data: { pdfLineEndings: ['Square', 'Diamond'] } },
+  { id: 'imported-filled-polyline', type: 'polyline', left: 300, top: 628, points: [{ x: 0, y: 32 }, { x: 30, y: 0 }, { x: 60, y: 32 }, { x: 90, y: 0 }],
+    stroke: '#338033', strokeWidth: 4, fill: 'none',
+    isPdfImported: true, pdfAnnotationId: `${nativeFilledPolyline.objectNumber}R`, pdfAnnotationType: 'PolyLine',
+    data: { pdfLineEndings: ['Circle', 'Square'], pdfInteriorColor: '#338033' } },
+);
+arrowMatrixRegions.push(
+  region('imported-filled-endings-line', 'native-line-endings', 12, [18, 618, 152, 670], ['bounds', 'colour'], { boundsPixels: 6 }),
+  region('imported-hollow-square-line', 'native-line-endings', 12, [148, 618, 282, 670], ['bounds', 'colour'], { boundsPixels: 6 }),
+  region('imported-filled-polyline', 'native-line-endings', 12, [288, 614, 402, 674], ['bounds', 'colour'], { boundsPixels: 6 }),
+);
 
 
 const annotationsByPage = {

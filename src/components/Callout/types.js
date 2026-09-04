@@ -16,7 +16,9 @@ export const ARROWHEAD_STYLES = {
   // PDF /LE Diamond and /LE Slash drawn as themselves (owner ruling 2026-09-03:
   // never substitute a V for what the file asked for).
   DIAMOND: 'diamond',
-  SLASH: 'slash'
+  SLASH: 'slash',
+  // PDF /LE Square: a square centred on the endpoint (was drawn as a bar).
+  SQUARE: 'square'
 };
 
 export const ARROWHEAD_STYLE_LABELS = {
@@ -27,7 +29,8 @@ export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open triangle',
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line',
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
-  [ARROWHEAD_STYLES.SLASH]: 'Slash'
+  [ARROWHEAD_STYLES.SLASH]: 'Slash',
+  [ARROWHEAD_STYLES.SQUARE]: 'Square'
 };
 
 /**

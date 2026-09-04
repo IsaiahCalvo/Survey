@@ -58,11 +58,11 @@ test('buildLineRenderSpec: start ending is mirrored (opposite angle) for a diago
 
 test('resolveLineEndingStyles: imported mismatched endings survive; app arrow defaults', () => {
   assert.deepEqual(resolveLineEndingStyles({ type: 'line', isPdfImported: true, data: { pdfLineEndings: ['Circle', 'Butt'] } }),
-    { startStyle: 'openCircle', endStyle: 'horizontalLine' });
+    { startStyle: 'openCircle', endStyle: 'horizontalLine', interiorColor: null });
   assert.deepEqual(resolveLineEndingStyles(arrow({ arrowheadStyle: 'openTriangle' })),
-    { startStyle: 'none', endStyle: 'openTriangle' });
+    { startStyle: 'none', endStyle: 'openTriangle', interiorColor: null });
   assert.deepEqual(resolveLineEndingStyles({ type: 'line', data: { id: 'p' } }),
-    { startStyle: 'none', endStyle: 'none' });
+    { startStyle: 'none', endStyle: 'none', interiorColor: null });
 });
 
 // The exporter reads x1..y2 as page coordinates (no centre box), like the
@@ -168,15 +168,46 @@ test('polyline body stops at hollow endings on its first and last segment', () =
   assert.deepEqual(lineHelpers.insetOpenPolylinePoints([{ x: 0, y: 0 }, { x: 3, y: 0 }], 10, 0), [{ x: 3, y: 0 }, { x: 3, y: 0 }]);
 });
 
+test('Circle / Diamond / Square endings fill with the interior colour and stay hollow without one; Square is a square, not a bar', () => {
+  const { pdfLineEndingToArrowheadStyle, buildArrowheadRenderSpec } = lineHelpers;
+  assert.equal(pdfLineEndingToArrowheadStyle('Square'), 'square');
+  assert.equal(pdfLineEndingToArrowheadStyle('Butt'), 'horizontalLine');
+  const sq = buildArrowheadRenderSpec('square', 100, 50, 0, '#000', 4);
+  assert.equal(sq.kind, 'square');
+  assert.equal(sq.polygon.points, '-6,-6 6,-6 6,6 -6,6');
+  assert.equal(sq.polygon.fill, 'none');
+  assert.equal(lineEndingBodyInset('square', 4), 8);
+  for (const style of ['openCircle', 'diamond', 'square']) {
+    const filled = buildArrowheadRenderSpec(style, 100, 50, 0, '#000', 4, { fill: '#fabf33' });
+    const hollow = buildArrowheadRenderSpec(style, 100, 50, 0, '#000', 4);
+    const shape = (spec) => spec.circle || spec.polygon;
+    assert.equal(shape(filled).fill, '#fabf33', `${style} filled`);
+    assert.equal(shape(hollow).fill, 'none', `${style} hollow`);
+  }
+  // triangles / V / bar / slash ignore the interior colour (solid keeps the stroke colour)
+  assert.equal(buildArrowheadRenderSpec('solidTriangle', 0, 0, 0, '#000', 4, { fill: '#fabf33' }).polygon.fill, '#000');
+  assert.equal(buildArrowheadRenderSpec('openTriangle', 0, 0, 0, '#000', 4, { fill: '#fabf33' }).polygon.fill, 'none');
+  // whole-line resolution: imported with /IC → filled; without → hollow; app-drawn → hollow
+  const imported = { type: 'line', isPdfImported: true, x1: 0, y1: 0, x2: 100, y2: 0, strokeWidth: 4, data: { pdfLineEndings: ['Diamond', 'Circle'], pdfInteriorColor: '#fabf33' } };
+  const filledSpec = buildLineRenderSpec(imported);
+  assert.equal(filledSpec.startArrowhead.polygon.fill, '#fabf33');
+  assert.equal(filledSpec.arrowhead.circle.fill, '#fabf33');
+  const hollowSpec = buildLineRenderSpec({ ...imported, data: { pdfLineEndings: ['Square', 'Diamond'] } });
+  assert.equal(hollowSpec.startArrowhead.kind, 'square');
+  assert.equal(hollowSpec.startArrowhead.polygon.fill, 'none');
+  assert.equal(hollowSpec.arrowhead.polygon.fill, 'none');
+  assert.equal(buildLineRenderSpec(arrow({ arrowheadStyle: 'diamond' })).arrowhead.polygon.fill, 'none');
+});
+
 test('imported OpenArrow is the V; ClosedArrow is filled only with an interior colour', () => {
   const { pdfLineEndingToArrowheadStyle } = lineHelpers;
   assert.equal(pdfLineEndingToArrowheadStyle('OpenArrow'), 'vShape');
   assert.equal(pdfLineEndingToArrowheadStyle('ClosedArrow'), 'solidTriangle');
   assert.equal(pdfLineEndingToArrowheadStyle('ClosedArrow', { hasInteriorColor: false }), 'openTriangle');
   const imported = { type: 'line', isPdfImported: true, data: { pdfLineEndings: ['ClosedArrow', 'OpenArrow'] } };
-  assert.deepEqual(resolveLineEndingStyles(imported), { startStyle: 'openTriangle', endStyle: 'vShape' });
+  assert.deepEqual(resolveLineEndingStyles(imported), { startStyle: 'openTriangle', endStyle: 'vShape', interiorColor: null });
   assert.deepEqual(resolveLineEndingStyles({ ...imported, data: { ...imported.data, pdfInteriorColor: '#ff0000' } }),
-    { startStyle: 'solidTriangle', endStyle: 'vShape' });
+    { startStyle: 'solidTriangle', endStyle: 'vShape', interiorColor: '#ff0000' });
   // app-drawn: no /IC ever, the classic filled head stays filled
   assert.deepEqual(resolveLineEndingStyles({ type: 'line', tool: 'arrow', lineEnding2: 'ClosedArrow', data: {} }).endStyle, 'solidTriangle');
 });
@@ -219,6 +250,8 @@ test('export: both-ends arrow writes /LE on both ends; single arrow only at the 
     arrow({ id: 'diamond-slash', arrowheadStyle: 'diamond', startArrowheadStyle: 'slash' }),
     arrow({ id: 'v', arrowheadStyle: 'vShape' }),
     arrow({ id: 'hollow', arrowheadStyle: 'openTriangle' }),
+    arrow({ id: 'filled-imported', pdfLineEndings: ['Diamond', 'Circle'], pdfInteriorColor: '#fabf33', pdfImportedEditState: 'edited' }, { tool: undefined, isPdfImported: true, pdfAnnotationId: 'native-2' }),
+    arrow({ id: 'square-app', arrowheadStyle: 'square' }),
   ]);
   assert.deepEqual(les.map((l) => l && l.le), [
     ['/Circle', '/Circle'],
@@ -228,7 +261,9 @@ test('export: both-ends arrow writes /LE on both ends; single arrow only at the 
     ['/Slash', '/Diamond'],
     ['/None', '/OpenArrow'], // the V is the spec's OpenArrow, never a Slash
     ['/None', '/ClosedArrow'], // hollow triangle = ClosedArrow without /IC
+    ['/Diamond', '/Circle'], // imported filled endings keep their own /IC
+    ['/None', '/Square'],
   ]);
   // a filled head carries /IC so other viewers fill it; hollow-only lines carry none
-  assert.deepEqual(les.map((l) => l && l.hasIC), [false, true, false, null, false, false, false]);
+  assert.deepEqual(les.map((l) => l && l.hasIC), [false, true, false, null, false, false, false, true, false]);
 });

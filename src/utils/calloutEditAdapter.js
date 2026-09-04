@@ -535,6 +535,7 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
       case 'solidTriangle':
       case 'openTriangle':
       case 'diamond':
+      case 'square':
         return { type: 'polygon', key: 'arrowhead', attrs: { ...arrowheadSpec.polygon } };
       case 'openCircle':
         return { type: 'circle', key: 'arrowhead', attrs: { ...arrowheadSpec.circle } };

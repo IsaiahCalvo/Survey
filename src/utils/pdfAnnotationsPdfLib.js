@@ -2390,6 +2390,10 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Contents: PDFString.of(''),
       P: page.ref,
     };
+    // Endings + interior colour round-trip for polylines too (imported
+    // polylines with /LE used to re-export bare).
+    applyLineEndingsToDict(annotationDict, fabricObj);
+    applyLineEndingInteriorColor(annotationDict, fabricObj, color);
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
@@ -2398,6 +2402,29 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     console.error('Error creating polyline annotation:', e);
     return null;
   }
+};
+
+// Interior colour on export (PDF 32000 §12.5.6.7): a filled triangle needs
+// /IC or other viewers draw ClosedArrow hollow; an imported Circle / Diamond /
+// Square that came in filled keeps its own interior colour. Hollow-only lines
+// write no /IC (ruled 2026-09-04: never swing the defect the other way).
+const applyLineEndingInteriorColor = (annotationDict, fabricObj, strokeColor) => {
+  const { startStyle, endStyle, interiorColor } = resolveLineEndingStyles(fabricObj);
+  if (startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE || endStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE) {
+    annotationDict.IC = [strokeColor.red, strokeColor.green, strokeColor.blue];
+    return;
+  }
+  if (interiorColor) {
+    const ic = hexToRGB(interiorColor);
+    if (ic) annotationDict.IC = [ic.red, ic.green, ic.blue];
+  }
+};
+
+const applyLineEndingsToDict = (annotationDict, fabricObj) => {
+  const { startStyle, endStyle } = resolveLineEndingStyles(fabricObj);
+  const le1 = ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[startStyle] || 'None';
+  const le2 = ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[endStyle] || 'None';
+  if (le1 !== 'None' || le2 !== 'None') annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
 };
 
 /**
@@ -2452,14 +2479,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       const le2 = ARROWHEAD_STYLE_TO_PDF_LINE_ENDING[endStyle] || 'None';
       if (le1 !== 'None' || le2 !== 'None') annotationDict.LE = [PDFName.of(le1), PDFName.of(le2)];
     }
-    // A filled head needs an interior colour, or other viewers draw ClosedArrow
-    // hollow (PDF 32000 §12.5.6.7). Hollow-only lines write no /IC.
-    {
-      const { startStyle, endStyle } = resolveLineEndingStyles(fabricObj);
-      if (startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE || endStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE) {
-        annotationDict.IC = [color.red, color.green, color.blue];
-      }
-    }
+    applyLineEndingInteriorColor(annotationDict, fabricObj, color);
 
     // UX (2026-07-17, callout line style): dashed/dotted strokes export as a
     // /BS border-style dict (/S /D + /D dash array) so external viewers draw
@@ -2584,6 +2604,7 @@ const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
   [ARROWHEAD_STYLES.SLASH]: 'Slash',
+  [ARROWHEAD_STYLES.SQUARE]: 'Square',
 };
 
 // Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
@@ -3485,6 +3506,7 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
       });
     }
   } else if (spec.kind === 'openCircle') {
+    const circleFill = spec.circle.fill && spec.circle.fill !== 'none' ? parsePdfDrawColor(spec.circle.fill, null) : null;
     page.drawCircle({
       x: spec.circle.cx,
       y: getPdfY(pageHeight, spec.circle.cy),
@@ -3492,6 +3514,7 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
       borderColor: stroke.color,
       borderOpacity: stroke.opacity,
       borderWidth: spec.circle.strokeWidth,
+      ...(circleFill ? { color: circleFill.color, opacity: circleFill.opacity } : {}),
     });
   } else if (spec.kind === 'vShape') {
     const pts = String(spec.polyline.points).split(' ').map((pair) => pair.split(',').map(Number));
@@ -3504,19 +3527,21 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
         thickness: spec.polyline.strokeWidth,
       });
     }
-  } else if (spec.kind === 'diamond') {
+  } else if (spec.kind === 'diamond' || spec.kind === 'square') {
     const angleRad = ((spec.angleDeg || 0) * Math.PI) / 180;
     const cos = Math.cos(angleRad);
     const sin = Math.sin(angleRad);
     const pts = String(spec.polygon.points).split(' ').map((pair) => pair.split(',').map(Number))
       .map(([lx, ly]) => [spec.tipX + (lx * cos) - (ly * sin), spec.tipY + (lx * sin) + (ly * cos)]);
     const d = `M ${pts.map(([x, y]) => `${x} ${y}`).join(' L ')} Z`;
+    const polyFill = spec.polygon.fill && spec.polygon.fill !== 'none' ? parsePdfDrawColor(spec.polygon.fill, null) : null;
     page.drawSvgPath(d, {
       x: 0,
       y: pageHeight,
       borderColor: stroke.color,
       borderOpacity: stroke.opacity,
       borderWidth: spec.polygon.strokeWidth,
+      ...(polyFill ? { color: polyFill.color, opacity: polyFill.opacity } : {}),
     });
   } else if (spec.kind === 'horizontalLine' || spec.kind === 'slash') {
     page.drawLine({
@@ -3598,8 +3623,9 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // shared resolver as the screen, so print matches the screen).
   // Each head sits on the tangent at its own end (bent lines differ per end).
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
-  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.endStyle, x2, y2, endAngleDeg, strokeHex, width), pageHeight);
-  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.startStyle, x1, y1, startAngleDeg, strokeHex, width), pageHeight);
+  const headOptions = { fill: endingStyles.interiorColor };
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.endStyle, x2, y2, endAngleDeg, strokeHex, width, headOptions), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.startStyle, x1, y1, startAngleDeg, strokeHex, width, headOptions), pageHeight);
 };
 
 // Polyline endings: same styles, placed on the first and last segments in
@@ -3607,16 +3633,17 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
 const drawFlattenedPolylineEndings = (page, obj, pageHeight) => {
   const points = fabricPolygonWorldPoints(obj);
   if (points.length < 2) return;
-  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
+  const { startStyle, endStyle, interiorColor } = resolveLineEndingStyles(obj);
   if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return;
+  const headOptions = { fill: interiorColor };
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
   const first = points[0]; const second = points[1];
   const last = points[points.length - 1]; const beforeLast = points[points.length - 2];
   const startAngle = (Math.atan2(first.y - second.y, first.x - second.x) * 180) / Math.PI;
   const endAngle = (Math.atan2(last.y - beforeLast.y, last.x - beforeLast.x) * 180) / Math.PI;
-  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(startStyle, first.x, first.y, startAngle, strokeHex, width), pageHeight);
-  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endStyle, last.x, last.y, endAngle, strokeHex, width), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(startStyle, first.x, first.y, startAngle, strokeHex, width, headOptions), pageHeight);
+  drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endStyle, last.x, last.y, endAngle, strokeHex, width, headOptions), pageHeight);
 };
 
 // UX 2026-07-17 (print text style): pick the embedded Helvetica variant that

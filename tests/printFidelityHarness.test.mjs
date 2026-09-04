@@ -78,7 +78,7 @@ test('print-fidelity manifest covers every required app and native type on rotat
     manifest.pages.at(-1),
     { page: 12, rotation: 0, width: 612, height: 792 },
   );
-  assert.equal(manifest.regions.filter((entry) => entry.id.startsWith('matrix-')).length, 8 * 2 * 2);
+  assert.equal(manifest.regions.filter((entry) => entry.id.startsWith('matrix-')).length, 9 * 2 * 2);
   assert.deepEqual(manifest.pages[4].cropBox, [36, 72, 576, 720]);
   assert.equal(manifest.pages[5].requiresSurveyMode, true);
 });

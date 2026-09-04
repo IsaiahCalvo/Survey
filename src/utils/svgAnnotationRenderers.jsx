@@ -604,6 +604,7 @@ const renderArrowheadFromSpec = (spec) => {
     case 'vShape': return <polyline {...spec.polyline} />;
     case 'horizontalLine': return <line {...spec.line} />;
     case 'diamond': return <polygon {...spec.polygon} />;
+    case 'square': return <polygon {...spec.polygon} />;
     case 'slash': return <line {...spec.line} />;
     default: return null;
   }
@@ -1057,7 +1058,8 @@ export const renderPolyline = (obj, index) => {
   // interior-colour rule) and the body's first / last segment is pulled back
   // so it stops at the edge of a hollow ending — same rule as lines, and the
   // print flattener uses the same helpers.
-  const { startStyle: plStartStyle, endStyle: plEndStyle } = resolveLineEndingStyles(obj);
+  const { startStyle: plStartStyle, endStyle: plEndStyle, interiorColor: plInterior } = resolveLineEndingStyles(obj);
+  const plHeadOptions = { fill: plInterior };
   const first = obj.points[0];
   const second = obj.points[1];
   const beforeLast = obj.points[obj.points.length - 2];
@@ -1076,6 +1078,7 @@ export const renderPolyline = (obj, index) => {
     Math.atan2(toNumber(first?.y) - toNumber(second?.y), toNumber(first?.x) - toNumber(second?.x)) * 180 / Math.PI,
     stroke,
     strokeWidth,
+    plHeadOptions,
   );
   const endSpec = buildArrowheadRenderSpec(
     plEndStyle,
@@ -1084,6 +1087,7 @@ export const renderPolyline = (obj, index) => {
     Math.atan2(toNumber(last?.y) - toNumber(beforeLast?.y), toNumber(last?.x) - toNumber(beforeLast?.x)) * 180 / Math.PI,
     stroke,
     strokeWidth,
+    plHeadOptions,
   );
   const body = (
     <polyline
@@ -1614,6 +1618,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
       case 'vShape': return <polyline {...arrowheadSpec.polyline} />;
       case 'horizontalLine': return <line {...arrowheadSpec.line} />;
       case 'diamond': return <polygon {...arrowheadSpec.polygon} />;
+      case 'square': return <polygon {...arrowheadSpec.polygon} />;
       case 'slash': return <line {...arrowheadSpec.line} />;
       default: return null;
     }

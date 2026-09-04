@@ -343,6 +343,10 @@ function paintArrowheadSpec(context, spec) {
   } else if (spec.kind === 'openCircle') {
     context.beginPath();
     context.arc(spec.circle.cx, spec.circle.cy, spec.circle.r, 0, Math.PI * 2);
+    if (spec.circle.fill && spec.circle.fill !== 'none') {
+      context.fillStyle = spec.circle.fill;
+      context.fill();
+    }
     context.strokeStyle = spec.circle.stroke;
     context.lineWidth = spec.circle.strokeWidth;
     context.stroke();
@@ -355,13 +359,17 @@ function paintArrowheadSpec(context, spec) {
     context.lineCap = 'round';
     context.lineJoin = 'round';
     context.stroke();
-  } else if (spec.kind === 'diamond') {
+  } else if (spec.kind === 'diamond' || spec.kind === 'square') {
     const local = String(spec.polygon.points).split(' ').map((pair) => pair.split(',').map(Number));
     context.translate(spec.tipX, spec.tipY);
     context.rotate(((spec.angleDeg || 0) * Math.PI) / 180);
     context.beginPath();
     local.forEach(([x, y], i) => (i === 0 ? context.moveTo(x, y) : context.lineTo(x, y)));
     context.closePath();
+    if (spec.polygon.fill && spec.polygon.fill !== 'none') {
+      context.fillStyle = spec.polygon.fill;
+      context.fill();
+    }
     context.strokeStyle = spec.polygon.stroke;
     context.lineWidth = spec.polygon.strokeWidth;
     context.lineJoin = 'round';

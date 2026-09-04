@@ -252,7 +252,8 @@ export const ARROWHEAD_STYLES = {
   OPEN_TRIANGLE: 'openTriangle',
   HORIZONTAL_LINE: 'horizontalLine',
   DIAMOND: 'diamond',
-  SLASH: 'slash'
+  SLASH: 'slash',
+  SQUARE: 'square'
 };
 
 const DRAWING_TOOLS = new Set(['pen', 'highlighter']);
@@ -265,7 +266,8 @@ export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open triangle',
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line',
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
-  [ARROWHEAD_STYLES.SLASH]: 'Slash'
+  [ARROWHEAD_STYLES.SLASH]: 'Slash',
+  [ARROWHEAD_STYLES.SQUARE]: 'Square'
 };
 
 const PDF_LINE_ENDING_TO_ARROW_STYLE = {
@@ -277,7 +279,7 @@ const PDF_LINE_ENDING_TO_ARROW_STYLE = {
   Circle: ARROWHEAD_STYLES.OPEN_CIRCLE,
   Butt: ARROWHEAD_STYLES.HORIZONTAL_LINE,
   Slash: ARROWHEAD_STYLES.SLASH,
-  Square: ARROWHEAD_STYLES.HORIZONTAL_LINE,
+  Square: ARROWHEAD_STYLES.SQUARE,
   Diamond: ARROWHEAD_STYLES.DIAMOND
 };
 

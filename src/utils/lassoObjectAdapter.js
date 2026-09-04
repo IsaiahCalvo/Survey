@@ -96,7 +96,7 @@ const pointsFromString = (value) => String(value || '').trim().split(/\s+/).map(
 
 const arrowheadOutlines = (spec) => {
   if (!spec || spec.kind === 'none') return [];
-  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle' || spec.kind === 'diamond') {
+  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle' || spec.kind === 'diamond' || spec.kind === 'square') {
     const local = pointsFromString(spec.polygon?.points);
     const angle = Number(spec.angleDeg) || 0;
     const radians = angle * Math.PI / 180;
@@ -106,7 +106,9 @@ const arrowheadOutlines = (spec) => {
       x: spec.tipX + point.x * cos - point.y * sin,
       y: spec.tipY + point.x * sin + point.y * cos,
     }));
-    const radius = spec.kind === 'solidTriangle' ? 0 : (Number(spec.polygon?.strokeWidth) || 0) / 2;
+    // A filled head hits on its whole area; a hollow one on its outline ring.
+    const filled = spec.kind === 'solidTriangle' || (spec.polygon?.fill && spec.polygon.fill !== 'none');
+    const radius = filled ? 0 : (Number(spec.polygon?.strokeWidth) || 0) / 2;
     return radius > EPSILON ? strokeOutlines(points, radius, true) : [points];
   }
   if (spec.kind === 'openCircle') {
