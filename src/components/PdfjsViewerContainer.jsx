@@ -683,7 +683,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     opacity: visible ? 1 : 0,
     transition: `opacity ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out, background-color ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out`,
     background: 'transparent',
-    pointerEvents: visible ? 'all' : 'none',
+    pointerEvents: 'none',
   };
   const thumbStyle = {
     position: 'absolute',
@@ -691,6 +691,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     borderRadius: 999,
     cursor: dragRef.current ? 'grabbing' : 'grab',
     touchAction: 'none',
+    pointerEvents: visible ? 'auto' : 'none',
     transition: 'width 120ms ease-out, height 120ms ease-out',
   };
 

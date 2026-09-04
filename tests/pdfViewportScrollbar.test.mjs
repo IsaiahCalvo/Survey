@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { getViewportScrollbarAxis } from '../src/utils/pdfViewportScrollbar.js';
+
+const viewerSource = readFileSync(
+  new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url),
+  'utf8',
+);
+
+test('only a visible scrollbar thumb can cover page input', () => {
+  assert.match(viewerSource, /pointerEvents: 'none',[\s\S]{0,500}pointerEvents: visible \? 'auto' : 'none'/);
+});
 
 test('scrollbar thumb reflects the visible share and current scroll position', () => {
   const axis = getViewportScrollbarAxis({
