@@ -30,5 +30,5 @@ test('mobile PDF root allows native selection while Text Select is active', () =
     /const nativeTarget = target\?\.nodeType === 3 \? target\.parentElement : target;/,
     'selectstart can target a Text node, so the mobile guard must resolve its parent element',
   );
-  assert.match(source, /nativeTarget\?\.closest\?\.\('\.textLayer, \.pdfjsTextLayer, \.annotationLayer'\)/);
+  assert.match(source, /nativeTarget\?\.closest\?\.\('\.textLayer, \.pdfjsTextLayer, \.annotationLayer, \[data-shape-kind\^="text-markup-"\]'\)/);
 });

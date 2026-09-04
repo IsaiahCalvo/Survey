@@ -14,6 +14,7 @@
 
 import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.js';
 import { resolveAnnotationAt } from './annotationHitTest.js';
+import { selectionUsesPdfTextLayer } from './pdfNativeTextInteraction.js';
 
 // 2026-04-25 — Build stamp so save-logs reveal which version of this
 // dispatcher is actually live. If HMR mis-replaces the listener, the
@@ -134,6 +135,13 @@ function diag(line) {
     // dispatcher fired, even if logEvent or downstream code throws.
     diag(`[CTXDIAG enter ${CTX_DIAG_BUILD}] type=${e.type} button=${e.button} clientX=${e.clientX} clientY=${e.clientY} target=${shortTag(e.target)}`);
     logEvent('capture', e);
+
+    // PDF text owns its native copy menu while a real range is selected.
+    // Do not replace it with the annotation/page menu.
+    if (selectionUsesPdfTextLayer(window.getSelection?.())) {
+      diag('[CTXDIAG] native — selected PDF text');
+      return;
+    }
 
     // The counter-series toolbar owns its own compact action menu. Because
     // this dispatcher resolves annotations beneath floating UI, a right-click

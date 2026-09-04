@@ -174,6 +174,7 @@ export function makeTooltipBinding(setTooltip) {
       const el = e?.currentTarget;
       if (!el?.getBoundingClientRect) return;
       if (pressedControls.has(el)) return;
+      if (e?.type === 'focus' && !el.matches?.(':focus-visible')) return;
       const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
       setTooltip?.({ visible: true, text, x, y, placement });
     };

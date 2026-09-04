@@ -1627,6 +1627,7 @@ export default function App({ devPreviewReturnTab = null }) {
                             bottomToolbarApi.setSelectionMode?.(opt.mode);
                             bottomToolbarApi.setActiveTool(opt.tool);
                             setSelectModeMenuOpen(false);
+                            bottomToolbarApi.setTooltip?.({ visible: false });
                             window.requestAnimationFrame(() => selectModeButtonRef.current?.focus?.());
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}

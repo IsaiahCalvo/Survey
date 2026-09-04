@@ -526,6 +526,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   const [hoveredAxis, setHoveredAxis] = useState(null);
   const [, setFrame] = useState(0);
   const fadeTimerRef = useRef(null);
+  const hoveredAxisRef = useRef(null);
   const frameRef = useRef(0);
   const dragRef = useRef(null);
   const horizontalThumbRef = useRef(null);
@@ -544,7 +545,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     fadeTimerRef.current = setTimeout(() => {
       fadeTimerRef.current = null;
-      if (!dragRef.current) setVisible(false);
+      if (!dragRef.current && !hoveredAxisRef.current) setVisible(false);
     }, VIEWPORT_SCROLLBAR_HOLD_MS);
   }, []);
 
@@ -555,8 +556,23 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       showThenFade();
       requestFrame();
     };
+    const onPointerMove = (event) => {
+      if (dragRef.current) return;
+      const rect = scroller.getBoundingClientRect();
+      const nearVertical = event.clientX >= rect.right - VIEWPORT_SCROLLBAR_SIZE;
+      const nearHorizontal = event.clientY >= rect.bottom - VIEWPORT_SCROLLBAR_SIZE;
+      const axis = nearVertical ? 'vertical' : nearHorizontal ? 'horizontal' : null;
+      if (axis === hoveredAxisRef.current) return;
+      hoveredAxisRef.current = axis;
+      setHoveredAxis(axis);
+      if (axis) showThenFade();
+    };
     scroller.addEventListener('scroll', onScroll, { passive: true });
-    return () => scroller.removeEventListener('scroll', onScroll);
+    scroller.addEventListener('pointermove', onPointerMove, { passive: true });
+    return () => {
+      scroller.removeEventListener('scroll', onScroll);
+      scroller.removeEventListener('pointermove', onPointerMove);
+    };
   }, [disabled, requestFrame, scrollerRef, showThenFade]);
 
   useLayoutEffect(() => {
@@ -586,6 +602,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     const finishDrag = () => {
       if (!dragRef.current) return;
       dragRef.current = null;
+      hoveredAxisRef.current = null;
       setHoveredAxis(null);
       showThenFade();
       document.documentElement.style.removeProperty('cursor');
@@ -666,7 +683,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     opacity: visible ? 1 : 0,
     transition: `opacity ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out, background-color ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out`,
     background: 'transparent',
-    pointerEvents: 'all',
+    pointerEvents: visible ? 'all' : 'none',
   };
   const thumbStyle = {
     position: 'absolute',
@@ -679,10 +696,15 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
 
   return (
     <>
-      <div
+      {vertical.maxScroll > 0 && <div
         aria-label="Viewport vertical scroll bar"
-        onPointerEnter={() => { setHoveredAxis('vertical'); showThenFade(); }}
-        onPointerLeave={() => { if (!dragRef.current) setHoveredAxis(null); }}
+        onPointerEnter={() => { hoveredAxisRef.current = 'vertical'; setHoveredAxis('vertical'); showThenFade(); }}
+        onPointerLeave={() => {
+          if (dragRef.current) return;
+          hoveredAxisRef.current = null;
+          setHoveredAxis(null);
+          showThenFade();
+        }}
         onPointerDown={jumpToTrackPoint('vertical', vertical)}
         style={{ ...railStyle, top: 0, right: 0, bottom: VIEWPORT_SCROLLBAR_SIZE, width: VIEWPORT_SCROLLBAR_SIZE }}
       >
@@ -698,11 +720,16 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
             height: vertical.size,
           }}
         />
-      </div>
-      <div
+      </div>}
+      {horizontal.maxScroll > 0 && <div
         aria-label="Viewport horizontal scroll bar"
-        onPointerEnter={() => { setHoveredAxis('horizontal'); showThenFade(); }}
-        onPointerLeave={() => { if (!dragRef.current) setHoveredAxis(null); }}
+        onPointerEnter={() => { hoveredAxisRef.current = 'horizontal'; setHoveredAxis('horizontal'); showThenFade(); }}
+        onPointerLeave={() => {
+          if (dragRef.current) return;
+          hoveredAxisRef.current = null;
+          setHoveredAxis(null);
+          showThenFade();
+        }}
         onPointerDown={jumpToTrackPoint('horizontal', horizontal)}
         style={{ ...railStyle, left: 0, right: VIEWPORT_SCROLLBAR_SIZE, bottom: 0, height: VIEWPORT_SCROLLBAR_SIZE }}
       >
@@ -718,7 +745,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
             height: hoveredAxis === 'horizontal' ? 6 : 3,
           }}
         />
-      </div>
+      </div>}
     </>
   );
 }
@@ -1777,7 +1804,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (isEditableTarget(nativeTarget)) return true;
       if (nativeTarget?.closest?.('a[href], .linkAnnotation, [data-element-id="link"]')) return true;
       return interactionModeRef.current === 'TextSelection'
-        && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer'));
+        && Boolean(nativeTarget?.closest?.('.textLayer, .pdfjsTextLayer, .annotationLayer, [data-shape-kind^="text-markup-"]'));
     };
 
     const onTouchStart = (event) => {
