@@ -164,6 +164,11 @@ const nativeEndingsLine = addNative(pages[10], {
   Subtype: 'Line', Rect: [490, 130, 710, 205], L: [500, 192, 700, 142], LE: ['Circle', 'Butt'],
   C: [0.11, 0.31, 0.85], CA: 1, Border: [0, 0, 4], NM: 'native-endings-line',
 });
+// Diamond and Slash endings drawn as themselves (owner ruling 2026-09-03).
+const nativeDiamondSlashLine = addNative(pages[10], {
+  Subtype: 'Line', Rect: [150, 325, 370, 360], L: [160, 342, 360, 342], LE: ['Diamond', 'Slash'],
+  C: [0.55, 0.16, 0.16], CA: 1, Border: [0, 0, 4], NM: 'native-diamond-slash-line',
+});
 
 const form = pdf.getForm();
 const checked = form.createCheckBox('fidelity.checked');
@@ -323,6 +328,19 @@ const annotationsByPage = {
       data: { arrowheadStyle: 'openCircle', startArrowheadStyle: 'openCircle' } },
     { id: 'app-arrow-open-triangle', type: 'line', tool: 'arrow', x1: 350, y1: 560, x2: 560, y2: 520, stroke: '#c2410c', strokeWidth: 4,
       data: { arrowheadStyle: 'openTriangle' } },
+    // Diamond / Slash endings (owner ruling 2026-09-03): true shapes on
+    // imported lines, app arrows and polylines; the shaft stops at the
+    // diamond's near vertex.
+    { id: 'imported-diamond-slash-line', type: 'line', x1: 160, y1: 270, x2: 360, y2: 270, stroke: '#8c2929', strokeWidth: 4,
+      isPdfImported: true, pdfAnnotationId: `${nativeDiamondSlashLine.objectNumber}R`, pdfAnnotationType: 'Line' },
+    { id: 'app-arrow-diamond-both-ends', type: 'line', tool: 'arrow', x1: 400, y1: 285, x2: 560, y2: 255, stroke: '#0e7490', strokeWidth: 4,
+      data: { arrowheadStyle: 'diamond', startArrowheadStyle: 'diamond' } },
+    { id: 'polyline-slash-diamond', type: 'polyline', left: 600, top: 255, points: [{ x: 0, y: 30 }, { x: 40, y: 0 }, { x: 80, y: 30 }, { x: 120, y: 0 }],
+      stroke: '#6d28d9', strokeWidth: 4, fill: 'none', data: { pdfLineEndings: ['Slash', 'Diamond'] } },
+    // Bottom-left: the bottom-right corner sits under the app's redaction notice
+    // during the screen capture, which would contaminate the crop.
+    { id: 'app-arrow-slash-end', type: 'line', tool: 'arrow', x1: 80, y1: 600, x2: 300, y2: 575, stroke: '#15803d', strokeWidth: 4,
+      data: { arrowheadStyle: 'slash' } },
     { id: 'imported-sticky-note', type: 'rect', left: 100, top: 320, width: 24, height: 24,
       fill: 'rgba(255, 217, 51, 0.92)', stroke: 'rgba(65, 57, 12, 0.72)', strokeWidth: 1,
       data: { type: 'note', pdfNoteGlyph: 'note', pdfNoteIcon: 'Comment', noteText: 'Print glyph check' },
@@ -392,6 +410,10 @@ const regions = [
   region('imported-endings-line', 'native-line-endings', 11, [485, 405, 712, 478], ['bounds', 'colour'], { boundsPixels: 6 }),
   region('app-arrow-both-ends-circle', 'line-endings', 11, [60, 520, 320, 560], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
   region('app-arrow-open-triangle', 'line-endings', 11, [330, 500, 580, 580], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
+  region('imported-diamond-slash-line', 'native-line-endings', 11, [140, 250, 380, 292], ['bounds', 'colour'], { boundsPixels: 6 }),
+  region('app-arrow-diamond-both-ends', 'line-endings', 11, [385, 240, 575, 300], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
+  region('polyline-slash-diamond', 'line-endings', 11, [585, 235, 740, 300], ['bounds', 'colour'], { boundsPixels: 6 }),
+  region('app-arrow-slash-end', 'line-endings', 11, [60, 562, 320, 610], ['bounds', 'orientation', 'colour'], { boundsPixels: 6 }),
 ];
 
 await mkdir(fixtureDir, { recursive: true });

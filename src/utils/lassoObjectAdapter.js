@@ -96,7 +96,7 @@ const pointsFromString = (value) => String(value || '').trim().split(/\s+/).map(
 
 const arrowheadOutlines = (spec) => {
   if (!spec || spec.kind === 'none') return [];
-  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
+  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle' || spec.kind === 'diamond') {
     const local = pointsFromString(spec.polygon?.points);
     const angle = Number(spec.angleDeg) || 0;
     const radians = angle * Math.PI / 180;
@@ -106,7 +106,7 @@ const arrowheadOutlines = (spec) => {
       x: spec.tipX + point.x * cos - point.y * sin,
       y: spec.tipY + point.x * sin + point.y * cos,
     }));
-    const radius = spec.kind === 'openTriangle' ? (Number(spec.polygon?.strokeWidth) || 0) / 2 : 0;
+    const radius = spec.kind === 'solidTriangle' ? 0 : (Number(spec.polygon?.strokeWidth) || 0) / 2;
     return radius > EPSILON ? strokeOutlines(points, radius, true) : [points];
   }
   if (spec.kind === 'openCircle') {
@@ -121,7 +121,7 @@ const arrowheadOutlines = (spec) => {
       (Number(spec.polyline?.strokeWidth) || 0) / 2,
     );
   }
-  if (spec.kind === 'horizontalLine') {
+  if (spec.kind === 'horizontalLine' || spec.kind === 'slash') {
     return strokeOutlines([
       { x: spec.line.x1, y: spec.line.y1 },
       { x: spec.line.x2, y: spec.line.y2 },

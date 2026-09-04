@@ -600,6 +600,8 @@ const renderArrowheadFromSpec = (spec) => {
     case 'openCircle': return <circle {...spec.circle} />;
     case 'vShape': return <polyline {...spec.polyline} />;
     case 'horizontalLine': return <line {...spec.line} />;
+    case 'diamond': return <polygon {...spec.polygon} />;
+    case 'slash': return <line {...spec.line} />;
     default: return null;
   }
 };
@@ -1599,6 +1601,8 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
       case 'openCircle': return <circle {...arrowheadSpec.circle} />;
       case 'vShape': return <polyline {...arrowheadSpec.polyline} />;
       case 'horizontalLine': return <line {...arrowheadSpec.line} />;
+      case 'diamond': return <polygon {...arrowheadSpec.polygon} />;
+      case 'slash': return <line {...arrowheadSpec.line} />;
       default: return null;
     }
   };

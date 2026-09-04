@@ -1,7 +1,7 @@
 {
   "version": 1,
   "pdfFile": "print-fidelity.pdf",
-  "pdfSize": 6988,
+  "pdfSize": 7055,
   "fixedZoom": 1,
   "rasterScale": 2,
   "pages": [
@@ -435,7 +435,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "50R",
+            "fieldId": "51R",
             "fieldName": "fidelity.checked",
             "fieldType": "Btn",
             "value": true
@@ -445,7 +445,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "56R",
+            "fieldId": "57R",
             "fieldName": "fidelity.text",
             "fieldType": "Tx",
             "value": "BLUE BORDER"
@@ -999,7 +999,7 @@
           "type": "form-field",
           "data": {
             "type": "form-field",
-            "fieldId": "59R",
+            "fieldId": "60R",
             "fieldName": "fidelity.multiline",
             "fieldType": "Tx",
             "value": "First line wraps within the green field.\nSecond line stays inside."
@@ -1209,6 +1209,81 @@
           "strokeWidth": 4,
           "data": {
             "arrowheadStyle": "openTriangle"
+          }
+        },
+        {
+          "id": "imported-diamond-slash-line",
+          "type": "line",
+          "x1": 160,
+          "y1": 270,
+          "x2": 360,
+          "y2": 270,
+          "stroke": "#8c2929",
+          "strokeWidth": 4,
+          "isPdfImported": true,
+          "pdfAnnotationId": "46R",
+          "pdfAnnotationType": "Line"
+        },
+        {
+          "id": "app-arrow-diamond-both-ends",
+          "type": "line",
+          "tool": "arrow",
+          "x1": 400,
+          "y1": 285,
+          "x2": 560,
+          "y2": 255,
+          "stroke": "#0e7490",
+          "strokeWidth": 4,
+          "data": {
+            "arrowheadStyle": "diamond",
+            "startArrowheadStyle": "diamond"
+          }
+        },
+        {
+          "id": "polyline-slash-diamond",
+          "type": "polyline",
+          "left": 600,
+          "top": 255,
+          "points": [
+            {
+              "x": 0,
+              "y": 30
+            },
+            {
+              "x": 40,
+              "y": 0
+            },
+            {
+              "x": 80,
+              "y": 30
+            },
+            {
+              "x": 120,
+              "y": 0
+            }
+          ],
+          "stroke": "#6d28d9",
+          "strokeWidth": 4,
+          "fill": "none",
+          "data": {
+            "pdfLineEndings": [
+              "Slash",
+              "Diamond"
+            ]
+          }
+        },
+        {
+          "id": "app-arrow-slash-end",
+          "type": "line",
+          "tool": "arrow",
+          "x1": 80,
+          "y1": 600,
+          "x2": 300,
+          "y2": 575,
+          "stroke": "#15803d",
+          "strokeWidth": 4,
+          "data": {
+            "arrowheadStyle": "slash"
           }
         },
         {
@@ -2191,6 +2266,80 @@
         500,
         580,
         580
+      ],
+      "checks": [
+        "bounds",
+        "orientation",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "imported-diamond-slash-line",
+      "type": "native-line-endings",
+      "page": 11,
+      "bounds": [
+        140,
+        250,
+        380,
+        292
+      ],
+      "checks": [
+        "bounds",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "app-arrow-diamond-both-ends",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        385,
+        240,
+        575,
+        300
+      ],
+      "checks": [
+        "bounds",
+        "orientation",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "polyline-slash-diamond",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        585,
+        235,
+        740,
+        300
+      ],
+      "checks": [
+        "bounds",
+        "colour"
+      ],
+      "tolerance": {
+        "boundsPixels": 6
+      }
+    },
+    {
+      "id": "app-arrow-slash-end",
+      "type": "line-endings",
+      "page": 11,
+      "bounds": [
+        60,
+        562,
+        320,
+        610
       ],
       "checks": [
         "bounds",

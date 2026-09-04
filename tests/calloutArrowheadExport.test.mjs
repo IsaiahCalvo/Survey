@@ -91,12 +91,19 @@ test('callout with no arrowheadStyle exports the legacy ClosedArrow ending (visu
 });
 
 test('each callout arrowhead style maps to its closest PDF /LE name', async () => {
+  // Ruled change 2026-09-03 (owner, via the arrow-endings batch): Slash is now
+  // drawn as a true slash, so the V may no longer export as Slash — a V that
+  // came back as a slash would be exactly the "file asks for a different shape
+  // than the one drawn" defect this batch removes. PDF 32000 §12.5.6.7 defines
+  // OpenArrow as two short lines meeting at an acute angle, i.e. the V.
   const expected = {
     solidTriangle: 'ClosedArrow',
     openTriangle: 'OpenArrow',
     openCircle: 'Circle',
-    vShape: 'Slash',
+    vShape: 'OpenArrow',
     horizontalLine: 'Butt',
+    diamond: 'Diamond',
+    slash: 'Slash',
     none: 'None',
   };
   for (const [style, leName] of Object.entries(expected)) {

@@ -45,7 +45,8 @@ export function pdfLineEndingToArrowheadStyle(value) {
   if (ending === 'ClosedArrow' || ending === 'RClosedArrow') return ARROWHEAD_STYLES.SOLID_TRIANGLE;
   if (ending === 'Circle') return ARROWHEAD_STYLES.OPEN_CIRCLE;
   if (ending === 'Butt' || ending === 'Square') return ARROWHEAD_STYLES.HORIZONTAL_LINE;
-  if (ending === 'Slash' || ending === 'Diamond') return ARROWHEAD_STYLES.V_SHAPE;
+  if (ending === 'Diamond') return ARROWHEAD_STYLES.DIAMOND;
+  if (ending === 'Slash') return ARROWHEAD_STYLES.SLASH;
   return ARROWHEAD_STYLES.NONE;
 }
 
@@ -88,7 +89,7 @@ function getAbsoluteEndpoints(obj) {
  * @param {string} color - Stroke/fill color
  * @param {number} sw - Base line strokeWidth
  * @returns {object} - Spec with `.kind` ∈ {none, solidTriangle, openTriangle,
- *                     openCircle, vShape, horizontalLine} + primitive attrs
+ *                     openCircle, vShape, horizontalLine, diamond, slash} + primitive attrs
  */
 export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw) {
   if (style === ARROWHEAD_STYLES.NONE || style == null) {
@@ -185,6 +186,43 @@ export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw)
         },
       };
     }
+    case ARROWHEAD_STYLES.DIAMOND: {
+      // PDF /LE Diamond: a rhombus centred on the endpoint, oriented along the
+      // line, spanning headSize tip-to-tip (same footprint as the open circle).
+      // Drawn hollow in the stroke colour; the shaft stops at its near vertex.
+      const half = headSize / 2;
+      return {
+        kind: 'diamond',
+        ...shared,
+        polygon: {
+          points: `${half},0 0,${half} ${-half},0 0,${-half}`,
+          fill: 'none',
+          stroke: color,
+          strokeWidth,
+          strokeLinejoin: 'round',
+          transform,
+        },
+      };
+    }
+    case ARROWHEAD_STYLES.SLASH: {
+      // PDF /LE Slash: a short stroke crossing the endpoint, 30° clockwise
+      // from the perpendicular (PDF 32000 §12.5.6.7), headSize long.
+      const halfL = headSize / 2;
+      const dir = angleRad + Math.PI / 2 + Math.PI / 6;
+      return {
+        kind: 'slash',
+        ...shared,
+        line: {
+          x1: tipX + halfL * Math.cos(dir),
+          y1: tipY + halfL * Math.sin(dir),
+          x2: tipX - halfL * Math.cos(dir),
+          y2: tipY - halfL * Math.sin(dir),
+          stroke: color,
+          strokeWidth,
+          strokeLinecap: 'round',
+        },
+      };
+    }
     default:
       return { kind: 'none' };
   }
@@ -254,6 +292,7 @@ export function lineEndingBodyInset(style, sw) {
   if (style === ARROWHEAD_STYLES.SOLID_TRIANGLE) return headSize / 3;
   if (style === ARROWHEAD_STYLES.OPEN_TRIANGLE) return headSize / 3 + width / 2;
   if (style === ARROWHEAD_STYLES.OPEN_CIRCLE) return headSize / 2 + width / 2;
+  if (style === ARROWHEAD_STYLES.DIAMOND) return headSize / 2 + width / 2;
   return 0;
 }
 

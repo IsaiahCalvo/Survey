@@ -534,11 +534,13 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
     switch (arrowheadSpec.kind) {
       case 'solidTriangle':
       case 'openTriangle':
+      case 'diamond':
         return { type: 'polygon', key: 'arrowhead', attrs: { ...arrowheadSpec.polygon } };
       case 'openCircle':
         return { type: 'circle', key: 'arrowhead', attrs: { ...arrowheadSpec.circle } };
       case 'vShape':
         return { type: 'polyline', key: 'arrowhead', attrs: { ...arrowheadSpec.polyline } };
+      case 'slash':
       case 'horizontalLine':
         return { type: 'line', key: 'arrowhead', attrs: { ...arrowheadSpec.line } };
       default:

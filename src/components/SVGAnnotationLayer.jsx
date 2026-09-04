@@ -3175,6 +3175,7 @@ const SVGAnnotationLayer = memo(({
               switch (spec.kind) {
                 case 'solidTriangle':
                 case 'openTriangle':
+                case 'diamond':
                   return (
                     <polygon
                       points={spec.polygon.points}
@@ -3213,6 +3214,7 @@ const SVGAnnotationLayer = memo(({
                       style={{ pointerEvents: 'none' }}
                     />
                   );
+                case 'slash':
                 case 'horizontalLine':
                   return (
                     <line
@@ -4074,6 +4076,7 @@ const SVGAnnotationLayer = memo(({
                   switch (spec.kind) {
                     case 'solidTriangle':
                     case 'openTriangle':
+                    case 'diamond':
                       return (
                         <polygon
                           points={spec.polygon.points}
@@ -4105,6 +4108,7 @@ const SVGAnnotationLayer = memo(({
                           style={{ pointerEvents: 'none' }}
                         />
                       );
+                    case 'slash':
                     case 'horizontalLine':
                       return (
                         <line

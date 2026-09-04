@@ -2557,17 +2557,23 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
 // keeping export→re-import stable. Documented degradations (PDF /LE has no
 // richer vocabulary): OPEN_TRIANGLE → OpenArrow (PDF has no unfilled *closed*
 // triangle ending; OpenArrow is what the importer maps back to OPEN_TRIANGLE)
-// and V_SHAPE → Slash (OpenArrow already belongs to OPEN_TRIANGLE in the
-// import map; Slash keeps the mapping bijective). The app's own re-import
-// never reads /LE for callouts — style rides verbatim inside the callout
-// metadata blob — so /LE is purely for third-party viewer fidelity.
+// and V_SHAPE → OpenArrow (PDF 32000 §12.5.6.7 defines OpenArrow as "two
+// short lines meeting at an acute angle" — exactly the V. It used to export as
+// Slash; since 2026-09-03 Slash is drawn as a true slash, so a V exported as
+// Slash would come back as the wrong shape — ruled: the file must never ask
+// for a different shape than the one drawn). DIAMOND / SLASH export as
+// themselves. The app's own re-import never reads /LE for callouts — style
+// rides verbatim inside the callout metadata blob — so /LE is purely for
+// third-party viewer fidelity.
 const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.NONE]: 'None',
   [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'ClosedArrow',
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'OpenArrow',
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
-  [ARROWHEAD_STYLES.V_SHAPE]: 'Slash',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'OpenArrow',
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
+  [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
+  [ARROWHEAD_STYLES.SLASH]: 'Slash',
 };
 
 // Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
@@ -3488,7 +3494,21 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
         thickness: spec.polyline.strokeWidth,
       });
     }
-  } else if (spec.kind === 'horizontalLine') {
+  } else if (spec.kind === 'diamond') {
+    const angleRad = ((spec.angleDeg || 0) * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    const pts = String(spec.polygon.points).split(' ').map((pair) => pair.split(',').map(Number))
+      .map(([lx, ly]) => [spec.tipX + (lx * cos) - (ly * sin), spec.tipY + (lx * sin) + (ly * cos)]);
+    const d = `M ${pts.map(([x, y]) => `${x} ${y}`).join(' L ')} Z`;
+    page.drawSvgPath(d, {
+      x: 0,
+      y: pageHeight,
+      borderColor: stroke.color,
+      borderOpacity: stroke.opacity,
+      borderWidth: spec.polygon.strokeWidth,
+    });
+  } else if (spec.kind === 'horizontalLine' || spec.kind === 'slash') {
     page.drawLine({
       start: { x: spec.line.x1, y: getPdfY(pageHeight, spec.line.y1) },
       end: { x: spec.line.x2, y: getPdfY(pageHeight, spec.line.y2) },
@@ -3533,8 +3553,8 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // Line endings print exactly as the screen resolves them (owner request
   // 2026-09-02: imported arrows printed as plain lines). Both ends, every
   // /LE style the screen knows: Open/ClosedArrow → triangles, Circle → open
-  // circle, Butt/Square → bar, Slash/Diamond → V (the screen's own
-  // approximation for those two, so print matches the screen).
+  // circle, Butt/Square → bar, Diamond → diamond, Slash → slash (same
+  // shared resolver as the screen, so print matches the screen).
   const { startStyle, endStyle } = resolveLineEndingStyles(obj);
   const angleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';

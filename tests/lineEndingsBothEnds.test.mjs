@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName } from 'pdf-lib';
+import * as lineHelpers from '../src/utils/lineRenderHelpers.js';
 import {
   ARROWHEAD_STYLES,
   buildLineRenderSpec,
@@ -69,6 +70,34 @@ test('resolveLineEndingStyles: imported mismatched endings survive; app arrow de
 // on-screen form.
 const forExport = (obj) => ({ ...obj, left: undefined, top: undefined, width: undefined, height: undefined, x1: 200, y1: 300, x2: 300, y2: 300 });
 
+test('diamond and slash endings are their own shapes (never a V), sized like the other endings', () => {
+  const { pdfLineEndingToArrowheadStyle } = lineHelpers;
+  assert.equal(pdfLineEndingToArrowheadStyle('Diamond'), ARROWHEAD_STYLES.DIAMOND);
+  assert.equal(pdfLineEndingToArrowheadStyle('Slash'), ARROWHEAD_STYLES.SLASH);
+  const sw = 4; // headSize 12
+  const diamond = lineHelpers.buildArrowheadRenderSpec(ARROWHEAD_STYLES.DIAMOND, 100, 50, 0, '#000', sw);
+  assert.equal(diamond.kind, 'diamond');
+  assert.equal(diamond.polygon.fill, 'none');
+  assert.equal(diamond.polygon.points, '6,0 0,6 -6,0 0,-6'); // rhombus centred on the tip, along the line
+  const slash = lineHelpers.buildArrowheadRenderSpec(ARROWHEAD_STYLES.SLASH, 100, 50, 0, '#000', sw);
+  assert.equal(slash.kind, 'slash');
+  // 12 long, crossing the tip, 30° clockwise from the perpendicular
+  const len = Math.hypot(slash.line.x2 - slash.line.x1, slash.line.y2 - slash.line.y1);
+  assert.ok(Math.abs(len - 12) < 1e-9);
+  assert.ok(Math.abs((slash.line.x1 + slash.line.x2) / 2 - 100) < 1e-9);
+  assert.ok(Math.abs((slash.line.y1 + slash.line.y2) / 2 - 50) < 1e-9);
+  const ang = Math.abs(Math.atan2(slash.line.y2 - slash.line.y1, slash.line.x2 - slash.line.x1) * 180 / Math.PI) % 180;
+  assert.ok(Math.abs(ang - 120) < 1e-6 || Math.abs(ang - 60) < 1e-6, `slash angle ${ang}`);
+  // the diamond has an interior: the shaft stops at its near vertex; the slash crosses the tip
+  assert.equal(lineEndingBodyInset(ARROWHEAD_STYLES.DIAMOND, sw), 6 + 2);
+  assert.equal(lineEndingBodyInset(ARROWHEAD_STYLES.SLASH, sw), 0);
+  const spec = buildLineRenderSpec(arrow({ arrowheadStyle: 'diamond', startArrowheadStyle: 'slash' }));
+  assert.equal(spec.line.x1, 200); // slash end: no inset
+  assert.equal(spec.line.x2, 292); // diamond end: 300 - 8
+  assert.equal(spec.arrowhead.kind, 'diamond');
+  assert.equal(spec.startArrowhead.kind, 'slash');
+});
+
 async function exportLE(objects) {
   const doc = await PDFDocument.create();
   doc.addPage([612, 792]);
@@ -104,11 +133,15 @@ test('export: both-ends arrow writes /LE on both ends; single arrow only at the 
     // different endings must survive untouched.
     arrow({ id: 'imported', pdfLineEndings: ['Circle', 'Butt'], pdfImportedEditState: 'edited' }, { tool: undefined, isPdfImported: true, pdfAnnotationId: 'native-1' }),
     arrow({ id: 'plain' }, { tool: 'line' }),
+    arrow({ id: 'diamond-slash', arrowheadStyle: 'diamond', startArrowheadStyle: 'slash' }),
+    arrow({ id: 'v', arrowheadStyle: 'vShape' }),
   ]);
   assert.deepEqual(les, [
     ['/Circle', '/Circle'],
     ['/None', '/ClosedArrow'],
     ['/Circle', '/Butt'],
     null,
+    ['/Slash', '/Diamond'],
+    ['/None', '/OpenArrow'], // the V is the spec's OpenArrow, never a Slash
   ]);
 });

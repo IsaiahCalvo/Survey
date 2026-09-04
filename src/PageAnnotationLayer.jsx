@@ -250,7 +250,9 @@ export const ARROWHEAD_STYLES = {
   V_SHAPE: 'vShape',
   OPEN_CIRCLE: 'openCircle',
   OPEN_TRIANGLE: 'openTriangle',
-  HORIZONTAL_LINE: 'horizontalLine'
+  HORIZONTAL_LINE: 'horizontalLine',
+  DIAMOND: 'diamond',
+  SLASH: 'slash'
 };
 
 const DRAWING_TOOLS = new Set(['pen', 'highlighter']);
@@ -261,7 +263,9 @@ export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.V_SHAPE]: 'V-shape',
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open circle',
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open triangle',
-  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line'
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line',
+  [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
+  [ARROWHEAD_STYLES.SLASH]: 'Slash'
 };
 
 const PDF_LINE_ENDING_TO_ARROW_STYLE = {
@@ -272,9 +276,9 @@ const PDF_LINE_ENDING_TO_ARROW_STYLE = {
   RClosedArrow: ARROWHEAD_STYLES.SOLID_TRIANGLE,
   Circle: ARROWHEAD_STYLES.OPEN_CIRCLE,
   Butt: ARROWHEAD_STYLES.HORIZONTAL_LINE,
-  Slash: ARROWHEAD_STYLES.V_SHAPE,
+  Slash: ARROWHEAD_STYLES.SLASH,
   Square: ARROWHEAD_STYLES.HORIZONTAL_LINE,
-  Diamond: ARROWHEAD_STYLES.OPEN_TRIANGLE
+  Diamond: ARROWHEAD_STYLES.DIAMOND
 };
 
 const normalizePdfLineEnding = (value) => {

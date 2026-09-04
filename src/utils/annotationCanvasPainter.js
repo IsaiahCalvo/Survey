@@ -355,7 +355,18 @@ function paintArrowheadSpec(context, spec) {
     context.lineCap = 'round';
     context.lineJoin = 'round';
     context.stroke();
-  } else if (spec.kind === 'horizontalLine') {
+  } else if (spec.kind === 'diamond') {
+    const local = String(spec.polygon.points).split(' ').map((pair) => pair.split(',').map(Number));
+    context.translate(spec.tipX, spec.tipY);
+    context.rotate(((spec.angleDeg || 0) * Math.PI) / 180);
+    context.beginPath();
+    local.forEach(([x, y], i) => (i === 0 ? context.moveTo(x, y) : context.lineTo(x, y)));
+    context.closePath();
+    context.strokeStyle = spec.polygon.stroke;
+    context.lineWidth = spec.polygon.strokeWidth;
+    context.lineJoin = 'round';
+    context.stroke();
+  } else if (spec.kind === 'horizontalLine' || spec.kind === 'slash') {
     context.beginPath();
     context.moveTo(spec.line.x1, spec.line.y1);
     context.lineTo(spec.line.x2, spec.line.y2);

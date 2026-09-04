@@ -12,7 +12,11 @@ export const ARROWHEAD_STYLES = {
   V_SHAPE: 'vShape',
   OPEN_CIRCLE: 'openCircle',
   OPEN_TRIANGLE: 'openTriangle',
-  HORIZONTAL_LINE: 'horizontalLine'
+  HORIZONTAL_LINE: 'horizontalLine',
+  // PDF /LE Diamond and /LE Slash drawn as themselves (owner ruling 2026-09-03:
+  // never substitute a V for what the file asked for).
+  DIAMOND: 'diamond',
+  SLASH: 'slash'
 };
 
 export const ARROWHEAD_STYLE_LABELS = {
@@ -21,7 +25,9 @@ export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.V_SHAPE]: 'V-shape',
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Open circle',
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open triangle',
-  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line'
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line',
+  [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
+  [ARROWHEAD_STYLES.SLASH]: 'Slash'
 };
 
 /**
