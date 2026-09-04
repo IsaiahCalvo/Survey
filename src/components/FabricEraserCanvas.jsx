@@ -75,6 +75,19 @@ const getEraserHandoffTestFlags = () => (
 
 const MAX_NATIVE_ERASER_CURSOR_DIAMETER = 120;
 
+const planPageEraseLocally = (args, blockedByIndex = []) => {
+  const rejectedAnnotations = [];
+  const result = erasePageAnnotations({
+    ...args,
+    canErase: (_object, index) => {
+      const blocked = blockedByIndex[index];
+      if (blocked) rejectedAnnotations.push(blocked);
+      return !blocked;
+    },
+  });
+  return { ...result, rejectedAnnotations };
+};
+
 function nativeEraserCursor(diameter) {
   const size = Math.max(4, Math.round(Number(diameter) || 20));
   if (size > MAX_NATIVE_ERASER_CURSOR_DIAMETER) return null;
@@ -496,14 +509,25 @@ const FabricEraserCanvas = memo(({
     };
     worker.onerror = (event) => {
       const error = new Error(event?.message || 'Eraser planner worker failed');
-      for (const pending of erasePlannerRequestsRef.current.values()) pending.reject(error);
+      for (const pending of erasePlannerRequestsRef.current.values()) {
+        try {
+          pending.resolve(planPageEraseLocally(pending.args, pending.blockedByIndex));
+        } catch {
+          pending.reject(error);
+        }
+      }
       erasePlannerRequestsRef.current.clear();
     };
     return () => {
       erasePlannerWorkerRef.current = null;
       worker.terminate();
-      const error = new Error('Eraser planner stopped');
-      for (const pending of erasePlannerRequestsRef.current.values()) pending.reject(error);
+      for (const pending of erasePlannerRequestsRef.current.values()) {
+        try {
+          pending.resolve(planPageEraseLocally(pending.args, pending.blockedByIndex));
+        } catch (error) {
+          pending.reject(error);
+        }
+      }
       erasePlannerRequestsRef.current.clear();
     };
   }, []);
@@ -540,21 +564,17 @@ const FabricEraserCanvas = memo(({
   const planPageErase = useCallback((args, blockedByIndex) => {
     const worker = erasePlannerWorkerRef.current;
     if (!worker) {
-      const rejectedAnnotations = [];
-      const result = erasePageAnnotations({
-        ...args,
-        canErase: (object, index) => {
-          const blocked = blockedByIndex[index];
-          if (blocked) rejectedAnnotations.push(blocked);
-          return !blocked;
-        },
-      });
-      return Promise.resolve({ ...result, rejectedAnnotations });
+      return Promise.resolve(planPageEraseLocally(args, blockedByIndex));
     }
     const requestId = erasePlannerSequenceRef.current + 1;
     erasePlannerSequenceRef.current = requestId;
     return new Promise((resolve, reject) => {
-      erasePlannerRequestsRef.current.set(requestId, { resolve, reject });
+      erasePlannerRequestsRef.current.set(requestId, {
+        resolve,
+        reject,
+        args,
+        blockedByIndex,
+      });
       worker.postMessage({ requestId, args, blockedByIndex });
     });
   }, []);

@@ -296,6 +296,48 @@ test('mounted eraser commits an active visible gesture exactly once on unmount',
   assert.notDeepEqual(mounted.commits[0].objects, [ink()]);
 });
 
+test('mounted eraser falls back to local planning when its worker stops during unmount', async () => {
+  const workers = [];
+  globalThis.Worker = class DelayedWorker {
+    constructor(url) {
+      this.url = String(url);
+      workers.push(this);
+    }
+
+    postMessage(message) {
+      this.message = message;
+    }
+
+    terminate() {
+      this.terminated = true;
+    }
+  };
+  try {
+    const mounted = await mountEraser();
+    await act(async () => {
+      mounted.surface.dispatchEvent(pointer('pointerdown', {
+        pointerId: 81, x: 30, y: 50, buttons: 1,
+      }));
+      mounted.surface.dispatchEvent(pointer('pointermove', {
+        pointerId: 81, x: 55, y: 50, buttons: 1,
+      }));
+      mounted.surface.dispatchEvent(pointer('pointerup', {
+        pointerId: 81, x: 70, y: 50, buttons: 0,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(workers.some((worker) => worker.message?.requestId), true);
+    await act(async () => mounted.root.unmount());
+    await act(async () => Promise.resolve());
+
+    assert.equal(workers.some((worker) => worker.url.includes('pageSpaceEraserWorker')), true);
+    assert.equal(mounted.commits.length, 1);
+    assert.notDeepEqual(mounted.commits[0].objects, [ink()]);
+  } finally {
+    delete globalThis.Worker;
+  }
+});
+
 test('mounted eraser snapshots mode and radius at pointer-down', async () => {
   const mounted = await mountEraser();
   const gesturePoints = [
