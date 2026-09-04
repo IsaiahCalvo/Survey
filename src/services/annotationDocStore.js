@@ -340,6 +340,7 @@ export function deriveWriterEraserLane({
   operationId,
   baseObject,
   capturedBase = null,
+  preferCapturedSurvivor = false,
   previousLane = null,
   deleted = false,
   survivor = null,
@@ -378,7 +379,8 @@ export function deriveWriterEraserLane({
   const capturedWasMaterialized = capturedBase?.paperEraserGeometry === 'v1';
   const capturedTransform = capturedBase?.paperEraserBaseTransform || capturedBase;
   const useCapturedSurvivor = Boolean(capturedBase) && (
-    !capturedWasMaterialized
+    (preferCapturedSurvivor && Boolean(capturedSurvivor))
+    || !capturedWasMaterialized
     || (
       previousLane
       && (

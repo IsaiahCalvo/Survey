@@ -53,6 +53,10 @@ export function getSelectModeMenuFocusIndex(key, currentIndex, itemCount) {
   return null;
 }
 
+export function getNextSelectModeMenuOpen(isOpen, isActive) {
+  return isActive ? !isOpen : true;
+}
+
 export function getSelectFamilyLabel(activeTool, selectionMode = 'rectangle') {
   if (activeTool === 'text-select' || selectionMode === 'text') return 'Text Select';
   return selectionMode === 'lasso' ? 'Lasso Select' : 'Rectangle Select';

@@ -283,3 +283,60 @@ test('two dashed-hairline writer lanes compose both analytic bites without delet
     doc.destroy();
   }
 });
+
+test('same-writer commit accepts the worker survivor without replaying its cut', () => {
+  const base = {
+    id: 'worker-survivor',
+    type: 'path',
+    path: [['M', 0, 50], ['L', 120, 50]],
+    left: 0,
+    top: 0,
+    stroke: '#111',
+    strokeWidth: 18,
+    fill: null,
+    data: { id: 'worker-survivor', tool: 'pen' },
+  };
+  const firstPoint = { x: 35, y: 50 };
+  const first = erasePageAnnotations({
+    pageAnnotations: { objects: [base] },
+    eraserPoints: [firstPoint],
+    eraserRadius: 6,
+    mode: 'partial',
+  }).objectMutations[0].survivor;
+  const previousLane = deriveWriterEraserLane({
+    writerId: 'writer-a',
+    storageKey: 'worker-survivor',
+    annotationId: 'worker-survivor',
+    pageNumber: 1,
+    operationId: 'first',
+    baseObject: base,
+    capturedBase: base,
+    survivor: first,
+    gesture: { mode: 'partial', points: [firstPoint], radius: 6 },
+  });
+  const secondPoint = { x: 80, y: 50 };
+  const second = erasePageAnnotations({
+    pageAnnotations: { objects: [first] },
+    eraserPoints: [secondPoint],
+    eraserRadius: 6,
+    mode: 'partial',
+  }).objectMutations[0].survivor;
+
+  const lane = deriveWriterEraserLane({
+    writerId: 'writer-a',
+    storageKey: 'worker-survivor',
+    annotationId: 'worker-survivor',
+    pageNumber: 1,
+    operationId: 'second',
+    baseObject: base,
+    capturedBase: first,
+    previousLane,
+    survivor: second,
+    preferCapturedSurvivor: true,
+    // A replay of this point cannot create `second`; the trusted worker result
+    // must win on the no-foreign-writer path.
+    gesture: { mode: 'partial', points: [{ x: 500, y: 500 }], radius: 2 },
+  });
+
+  assert.deepEqual(lane.survivor.paperEraserCuts, second.paperEraserCuts);
+});

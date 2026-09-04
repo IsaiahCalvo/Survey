@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   getLassoPolygonValidation,
@@ -13,6 +14,11 @@ import {
   shouldSampleLassoPoint,
   simplifyLassoPoints,
 } from '../src/utils/lassoSelection.js';
+
+const SVG_INTERACTION_SOURCE = readFileSync(
+  new URL('../src/hooks/useSVGInteraction.js', import.meta.url),
+  'utf8',
+);
 
 test('lasso pointer sampling falls back to the live move when Chrome returns no coalesced events', () => {
   const liveMove = { clientX: 42, clientY: 19 };
@@ -96,6 +102,10 @@ test('self-crossing lasso is rejected before it can replace the selection', () =
     polygon: null,
     issue: 'self-intersection',
   });
+});
+
+test('invalid and cancelled lasso gestures stay silent', () => {
+  assert.doesNotMatch(SVG_INTERACTION_SOURCE, /showToast\([^\n]*Lasso/i);
 });
 
 test('crossing lasso selects geometry touched by the closed lasso', () => {

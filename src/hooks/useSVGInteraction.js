@@ -37,6 +37,7 @@ import { shouldRevertEndpointCurve, applyMidpointToAnnotation, clearMidpointFrom
 // pointer wiring, and Escape cancel plumbing.
 import {
   MIN_DRAG_PX as MARQUEE_MIN_DRAG_PX,
+  cycleMarqueeDirection,
   getMarqueeDirection,
   getMarqueeRect,
   resolveMarqueeHits,
@@ -53,7 +54,6 @@ import {
   shouldSampleLassoPoint,
   simplifyLassoPoints,
 } from '../utils/lassoSelection.js';
-import { showToast } from '../utils/toast.js';
 // Phase 35 Plan 03 — click hit-test gate, updated 2026-07-17 for the LOCKED
 // permissions model (contributors AND owners have full add/edit/delete on
 // everything; viewers look-only). Selection now gates on canDelete (any
@@ -78,7 +78,11 @@ import {
   markAnnotationPointerRelease,
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag.js';
-import { isTransformLockedAnnotation } from '../utils/annotationSelectionEligibility.js';
+import {
+  isAnnotationTransformHandleLocked,
+  isMovementLockedAnnotation,
+  isTransformLockedAnnotation,
+} from '../utils/annotationSelectionEligibility.js';
 import {
   finalizeTextMarkupHorizontalEdge,
   getTextMarkupRangeFixedOffset,
@@ -346,6 +350,13 @@ export function useSVGInteraction({
         const activeMode = current.modeOverride || current.mode || getLassoModeFromTrail(current.points) || 'window';
         const nextMode = cycleLassoMode(activeMode);
         applyLassoState({ ...current, modeOverride: nextMode });
+      } else if ((e.code === 'Space' || e.key === ' ') && marqueeStateRef.current) {
+        e.preventDefault();
+        const current = marqueeStateRef.current;
+        applyMarqueeState({
+          ...current,
+          modeOverride: cycleMarqueeDirection(getMarqueeDirection(current)),
+        });
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
@@ -432,7 +443,7 @@ export function useSVGInteraction({
     if (typeof window === 'undefined') return undefined;
     const ids = Array.from(selectedIds || []).map((idx) => {
       const obj = annotations?.objects?.[idx];
-      return obj?.id || null;
+      return obj?.data?.id || obj?.id || null;
     }).filter(Boolean);
     window.__selectedAnnotationIds = ids;
     return undefined;
@@ -712,7 +723,7 @@ export function useSVGInteraction({
     if (obj) {
       // Text markup is a range anchored to PDF text. It can change via its
       // two endpoint handles, but a body drag must never move the quads.
-      if (obj?.data?.type === 'text-markup') {
+      if (obj?.data?.type === 'text-markup' || isMovementLockedAnnotation(obj)) {
         dragStateRef.current = { ...dragStateRef.current, active: false };
         setVisualTransform(null);
         e.preventDefault();
@@ -749,7 +760,11 @@ export function useSVGInteraction({
         const originals = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (selObj && selObj?.data?.type !== 'text-markup' && !isTransformLockedAnnotation(selObj)) {
+          if (
+            selObj
+            && selObj?.data?.type !== 'text-markup'
+            && !isTransformLockedAnnotation(selObj)
+          ) {
             // Imported paths: use bbox position (from path data), not obj.left/top
             if (isImportedPath(selObj)) {
               const selBBox = getAnnotationBBox(selObj);
@@ -997,7 +1012,11 @@ export function useSVGInteraction({
         const annotationOriginalsCO = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
-          if (!selObj || selObj?.data?.type === 'text-markup' || isTransformLockedAnnotation(selObj)) continue;
+          if (
+            !selObj
+            || selObj?.data?.type === 'text-markup'
+            || isTransformLockedAnnotation(selObj)
+          ) continue;
           if (isImportedPath(selObj)) {
             const selBBox = getAnnotationBBox(selObj);
             annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top };
@@ -2910,10 +2929,7 @@ export function useSVGInteraction({
       const polygon = validation.polygon?.length >= (mode === 'fence' ? 2 : 3) ? validation.polygon : null;
       cancelLasso(e.pointerId);
       if (!polygon) {
-        if (validation.issue === 'self-intersection') {
-          showToast('Lasso cancelled because the path crossed itself.', 'info');
-          return;
-        }
+        if (validation.issue === 'self-intersection') return;
         if (!lasso.shiftHeld) {
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
@@ -3990,27 +4006,44 @@ export function useSVGInteraction({
 
   // Pointer capture normally sends the release back to this page's SVG. At
   // low zoom, a drag can cross into a sibling page before the browser grants
-  // or retains capture. Observe the window in capture phase so the page that
-  // started the lasso still owns its matching release. The page-local handler
-  // remains the one place that validates the trail and applies selection.
+  // or retains capture. A text-range handle also rerenders during its drag,
+  // which can drop capture held by that handle. Observe the window in capture
+  // phase so the page that started either gesture owns its matching release.
   useEffect(() => {
-    const onLassoWindowPointerUp = (e) => {
+    const onInteractionWindowPointerUp = (e) => {
       const current = lassoStateRef.current;
-      if (!current || current.pointerId !== e.pointerId) return;
-      handlePointerUp(e);
+      if (current?.pointerId === e.pointerId) {
+        handlePointerUp(e);
+        return;
+      }
+      const activeTextRangeDrag = dragStateRef.current;
+      if (
+        activeTextRangeDrag?.active
+        && activeTextRangeDrag.mode === 'text-markup-horizontal'
+        && activeTextRangeDrag.pointerId === e.pointerId
+      ) {
+        handlePointerUp(e);
+      }
     };
-    const onLassoWindowPointerCancel = (e) => {
+    const onInteractionWindowPointerCancel = (e) => {
       const current = lassoStateRef.current;
-      if (!current || current.pointerId !== e.pointerId) return;
-      cancelLasso(e.pointerId);
+      if (current?.pointerId === e.pointerId) cancelLasso(e.pointerId);
+      const activeTextRangeDrag = dragStateRef.current;
+      if (
+        activeTextRangeDrag?.active
+        && activeTextRangeDrag.mode === 'text-markup-horizontal'
+        && activeTextRangeDrag.pointerId === e.pointerId
+      ) {
+        handlePointerCancel(e);
+      }
     };
-    window.addEventListener('pointerup', onLassoWindowPointerUp, true);
-    window.addEventListener('pointercancel', onLassoWindowPointerCancel, true);
+    window.addEventListener('pointerup', onInteractionWindowPointerUp, true);
+    window.addEventListener('pointercancel', onInteractionWindowPointerCancel, true);
     return () => {
-      window.removeEventListener('pointerup', onLassoWindowPointerUp, true);
-      window.removeEventListener('pointercancel', onLassoWindowPointerCancel, true);
+      window.removeEventListener('pointerup', onInteractionWindowPointerUp, true);
+      window.removeEventListener('pointercancel', onInteractionWindowPointerCancel, true);
     };
-  }, [handlePointerUp, cancelLasso]);
+  }, [handlePointerUp, handlePointerCancel, cancelLasso]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
@@ -4297,6 +4330,8 @@ export function useSVGInteraction({
     const obj = annotations?.objects?.[selectedIndex];
     if (!obj) return;
 
+    if (isAnnotationTransformHandleLocked(obj, handleId)) return;
+
     const ctm = svgRef.current?.getScreenCTM();
     const ctmInverse = ctm ? ctm.inverse() : null;
     const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -4320,6 +4355,9 @@ export function useSVGInteraction({
     }
 
     if (obj?.data?.type === 'text-markup' && ['ml', 'mr'].includes(handleId)) {
+      // The handle node rerenders on every range preview. Move capture to the
+      // stable page SVG so pointerup cannot stay attached to a removed node.
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       dragStateRef.current = {
         active: true,
         mode: 'text-markup-horizontal',

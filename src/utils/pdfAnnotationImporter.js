@@ -11,6 +11,8 @@
  * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
  */
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
+import { createTextMarkupAnnotation } from './pdfTextMarkup.js';
+import { readPdfjsTextContent } from './pdfjsTextContent.js';
 // KAL-405 — single-tap ink dots. The detection rule and the circle geometry
 // live in one shared module so import and export cannot drift apart.
 // NOTE: these run only on PDF-imported ink; strokes drawn inside Survey never
@@ -98,24 +100,10 @@ const SUPPORTED_SUBTYPES = [
   'Underline',
   'StrikeOut',
   'Squiggly',
+  'Link',
+  'Redact',
   'Caret'
 ];
-
-// UX / INTENTIONAL BEHAVIOR (verified 2026-07-19, KAL-91): imported Underline /
-// StrikeOut / Squiggly are the one deliberate exception to "every imported PDF
-// annotation becomes a fully-native, freely-editable annotation." They render
-// natively (visible, correct color/position) and can be selected + deleted, but
-// they are LOCKED against move / scale / rotate (no handles). Why: text markup
-// anchors to the WORDS it covers via /QuadPoints. The app has no text-run /
-// word-geometry anchoring engine (pdf.js `getTextContent` is used for search and
-// the text layer, but nothing binds an annotation to a word run), so a movable
-// underline would silently detach from its text and become meaningless. Matches
-// Acrobat / Bluebeam, which also make text-markup delete-and-redraw, not drag.
-// The lock is enforced twice: here (import-time lock flags) AND at selection time
-// in PageAnnotationLayer (lockSelectDeleteOnlyPdfMarkupObject), so it survives
-// re-hydration. Do NOT unlock without first building a real word-geometry engine
-// (a multi-session feature) — otherwise the markup drifts off its text.
-const SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
 const LINE_CAP_MAP = ['butt', 'round', 'square'];
 const LINE_JOIN_MAP = ['miter', 'round', 'bevel'];
@@ -2585,6 +2573,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     // stay in lockstep with what the PDF author wrote.
     lineCoordinates: rawMetadata.lineCoordinates || annotation.lineCoordinates,
     vertices: annotation.vertices || rawMetadata.vertices || annotation.vertices,
+    quadPoints: annotation.quadPoints || rawMetadata.quadPoints || annotation.quadPoints,
     calloutLine: annotation.calloutLine || rawMetadata.calloutLine || annotation.calloutLine,
     rectangleDifferences:
       annotation.rectangleDifferences || rawMetadata.rectangleDifferences || null,
@@ -3843,11 +3832,191 @@ function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
     evented: true,
     hasControls: true,
     hasBorders: true,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockScalingX: false,
+    lockScalingY: true,
+    lockRotation: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Highlight',
     layer: 'pdf-annotations'
+  };
+}
+
+const PDF_TEXT_MARKUP_TYPES = Object.freeze({
+  Highlight: 'highlight',
+  Underline: 'underline',
+  StrikeOut: 'strikeout',
+  Squiggly: 'squiggly',
+  Link: 'link',
+  Redact: 'redact',
+});
+
+async function resolveImportedLinkPageNumber(pdf, destination) {
+  if (!pdf || destination === null || destination === undefined) return null;
+  try {
+    const resolved = typeof destination === 'string'
+      ? await pdf.getDestination(destination)
+      : destination;
+    if (!Array.isArray(resolved) || resolved.length === 0) return null;
+    const pageRef = resolved[0];
+    const pageIndex = typeof pageRef === 'number' ? pageRef : await pdf.getPageIndex(pageRef);
+    const pageNumber = Math.trunc(Number(pageIndex)) + 1;
+    return pageNumber >= 1 && pageNumber <= Number(pdf.numPages) ? pageNumber : null;
+  } catch {
+    return null;
+  }
+}
+
+const roundTextMarkupCoordinate = (value) => Math.round(Number(value) * 10_000) / 10_000;
+
+function pdfMarkupQuadsToPageQuads(annotation, viewport, scale = 1) {
+  let values = Array.from(annotation?.quadPoints || []).map(Number);
+  if (values.length === 0) values = Array.from(annotation?.rect || []).map(Number);
+  if (values.length === 4) {
+    const [x1, y1, x2, y2] = values;
+    values = [x1, y2, x2, y2, x1, y1, x2, y1];
+  }
+  if (values.length === 0 || values.length % 8 !== 0 || values.some((value) => !Number.isFinite(value))) {
+    return [];
+  }
+  const quads = [];
+  for (let index = 0; index < values.length; index += 8) {
+    const points = [];
+    for (let pointIndex = 0; pointIndex < 8; pointIndex += 2) {
+      const point = convertPdfPointToViewport(
+        values[index + pointIndex],
+        values[index + pointIndex + 1],
+        viewport,
+        scale,
+      );
+      points.push(point);
+    }
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+    if (right - left < 0.01 || bottom - top < 0.01) continue;
+    quads.push({
+      x1: roundTextMarkupCoordinate(left),
+      y1: roundTextMarkupCoordinate(top),
+      x2: roundTextMarkupCoordinate(right),
+      y2: roundTextMarkupCoordinate(top),
+      x3: roundTextMarkupCoordinate(left),
+      y3: roundTextMarkupCoordinate(bottom),
+      x4: roundTextMarkupCoordinate(right),
+      y4: roundTextMarkupCoordinate(bottom),
+    });
+  }
+  return quads;
+}
+
+function buildPdfTextRangeModel(textContent, viewport, scale = 1) {
+  const runs = [];
+  let text = '';
+  for (const item of textContent?.items || []) {
+    const value = String(item?.str || '');
+    if (!value) continue;
+    const transform = Array.from(item.transform || []).map(Number);
+    if (transform.length < 6 || transform.some((entry) => !Number.isFinite(entry))) continue;
+    const [a, b, c, d, e, f] = transform;
+    const baselineLength = Math.hypot(a, b) || 1;
+    const normalLength = Math.hypot(c, d) || baselineLength;
+    const width = Number.isFinite(Number(item.width)) ? Number(item.width) : baselineLength;
+    const height = Number.isFinite(Number(item.height)) && Number(item.height) > 0
+      ? Number(item.height)
+      : normalLength;
+    const ux = a / baselineLength;
+    const uy = b / baselineLength;
+    const nx = -uy;
+    const ny = ux;
+    const pdfPoints = [
+      [e, f],
+      [e + ux * width, f + uy * width],
+      [e + nx * height, f + ny * height],
+      [e + ux * width + nx * height, f + uy * width + ny * height],
+    ];
+    const viewportPoints = pdfPoints.map(([x, y]) => (
+      convertPdfPointToViewport(x, y, viewport, scale)
+    ));
+    const xs = viewportPoints.map((point) => point.x);
+    const ys = viewportPoints.map((point) => point.y);
+    const start = text.length;
+    text += value;
+    runs.push({
+      start,
+      end: text.length,
+      left: roundTextMarkupCoordinate(Math.min(...xs)),
+      top: roundTextMarkupCoordinate(Math.min(...ys)),
+      right: roundTextMarkupCoordinate(Math.max(...xs)),
+      bottom: roundTextMarkupCoordinate(Math.max(...ys)),
+      rtl: String(item.dir || '').toLowerCase() === 'rtl',
+    });
+    if (item.hasEOL) text += '\n';
+  }
+  return runs.length > 0 ? { text, runs } : null;
+}
+
+function matchMarkupQuadsToTextRange(quads, model) {
+  if (!quads.length || !model?.runs?.length) return null;
+  let start = Infinity;
+  let end = -Infinity;
+  for (const run of model.runs) {
+    const runWidth = run.right - run.left;
+    const runHeight = run.bottom - run.top;
+    if (runWidth <= 0 || runHeight <= 0 || run.end <= run.start) continue;
+    for (const quad of quads) {
+      const left = Math.max(run.left, Math.min(quad.x1, quad.x3));
+      const right = Math.min(run.right, Math.max(quad.x2, quad.x4));
+      const top = Math.max(run.top, Math.min(quad.y1, quad.y2));
+      const bottom = Math.min(run.bottom, Math.max(quad.y3, quad.y4));
+      if (right - left <= 0.01 || bottom - top <= 0.01) continue;
+      const length = run.end - run.start;
+      let first = Math.floor(((left - run.left) / runWidth) * length);
+      let last = Math.ceil(((right - run.left) / runWidth) * length);
+      first = Math.max(0, Math.min(length, first));
+      last = Math.max(first + 1, Math.min(length, last));
+      if (run.rtl) [first, last] = [length - last, length - first];
+      start = Math.min(start, run.start + first);
+      end = Math.max(end, run.start + last);
+    }
+  }
+  return Number.isFinite(start) && Number.isFinite(end) && end > start ? { start, end } : null;
+}
+
+function convertPdfTextMarkupToNative(annotation, viewport, scale = 1, context = {}) {
+  const markupType = PDF_TEXT_MARKUP_TYPES[annotation?.subtype];
+  if (!markupType) return null;
+  const quads = pdfMarkupQuadsToPageQuads(annotation, viewport, scale);
+  if (!quads.length) return null;
+  const textRangeModel = buildPdfTextRangeModel(context.textContent, viewport, scale);
+  const textRange = matchMarkupQuadsToTextRange(quads, textRangeModel);
+  const id = String(annotation.id || annotation.name || `pdf-${markupType}-${context.pageNumber || 1}`);
+  const native = createTextMarkupAnnotation({
+    id,
+    pageNumber: Number(context.pageNumber) || 1,
+    selectionGroupId: id,
+    markupType,
+    selectedText: textRange ? textRangeModel.text.slice(textRange.start, textRange.end) : '',
+    textRange,
+    textRangeModel: textRange ? textRangeModel : null,
+    quads,
+    color: pdfColorToHex(annotation.color || [1, 0, 0], annotation),
+    opacity: extractAnnotationOpacity(annotation, markupType === 'highlight' ? 0.3 : 1),
+    linkUrl: annotation.url || annotation.unsafeUrl || null,
+    linkPageNumber: context.linkPageNumber || null,
+  });
+  if (!native) return null;
+  return {
+    ...native,
+    isPdfImported: true,
+    pdfAnnotationId: annotation.id || annotation.name || id,
+    pdfAnnotationType: annotation.subtype,
+    layer: 'pdf-annotations',
   };
 }
 
@@ -4682,8 +4851,6 @@ function convertUnderlineToFabricRect(annotation, viewport, scale = 1) {
   const height = Math.max(2 * scale, viewportRect.height * 0.1); // Thin line
 
   const color = pdfColorToHex(annotation.color || [1, 0, 0], annotation); // Default red
-  const isSelectDeleteOnly = SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES.has(annotation.subtype);
-
   // Position at bottom for underline, middle for strikeout
   const isStrikeOut = annotation.subtype === 'StrikeOut';
   const top = isStrikeOut
@@ -4702,13 +4869,13 @@ function convertUnderlineToFabricRect(annotation, viewport, scale = 1) {
     // Required Fabric.js properties for proper interaction
     selectable: true,
     evented: true,
-    hasControls: !isSelectDeleteOnly,
+    hasControls: true,
     hasBorders: true,
-    lockMovementX: isSelectDeleteOnly,
-    lockMovementY: isSelectDeleteOnly,
-    lockScalingX: isSelectDeleteOnly,
-    lockScalingY: isSelectDeleteOnly,
-    lockRotation: isSelectDeleteOnly,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockScalingX: false,
+    lockScalingY: true,
+    lockRotation: true,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -4753,7 +4920,6 @@ function convertSquigglyToFabricPath(annotation, viewport, scale = 1) {
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
   const rawStrokeWidth = getBorderWidth(annotation, 1);
   const strokeWidth = Math.min(1.1 * scale, Math.max(0.6 * scale, rawStrokeWidth * 0.55 * scale));
-  const isSelectDeleteOnly = SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES.has(annotation.subtype);
   const internal = makeInternalPenPathSpec({
     stroke: hexToRgba(strokeColor, strokeOpacity),
     strokeWidth
@@ -4769,11 +4935,11 @@ function convertSquigglyToFabricPath(annotation, viewport, scale = 1) {
     path,
     selectable: true,
     evented: true,
-    hasControls: !isSelectDeleteOnly,
+    hasControls: true,
     hasBorders: true,
     lockMovementX: true,
     lockMovementY: true,
-    lockScalingX: true,
+    lockScalingX: false,
     lockScalingY: true,
     lockRotation: true,
     perPixelTargetFind: true,
@@ -4830,7 +4996,7 @@ function convertCaretToFabricPolyline(annotation, viewport, scale = 1) {
  * @param {number} scale - Scale factor (default 1)
  * @returns {Object|null} Fabric.js object data or null if unsupported
  */
-export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null) {
+export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null, context = {}) {
   const normalizedAnnotation = applyRawMetadataToAnnotation(annotation, rawMetadata);
   const subtype = normalizedAnnotation.subtype;
   const finish = (fabricObj) => {
@@ -4909,7 +5075,12 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
     case 'Ink':
       return finish(convertInkToFabricPath(normalizedAnnotation, viewport, scale));
     case 'Highlight':
-      return finish(convertSurveyMarkerToFabricRect(normalizedAnnotation, viewport, scale));
+    case 'Underline':
+    case 'StrikeOut':
+    case 'Squiggly':
+    case 'Link':
+    case 'Redact':
+      return finish(convertPdfTextMarkupToNative(normalizedAnnotation, viewport, scale, context));
     case 'FreeText':
       return finish(convertFreeTextToFabricTextbox(normalizedAnnotation, viewport, scale));
     case 'Square':
@@ -4927,11 +5098,6 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
       return finish(convertPolygonToFabricPolygon(normalizedAnnotation, viewport, scale));
     case 'Text':
       return convertTextToFabricNote(normalizedAnnotation, viewport, scale);
-    case 'Underline':
-    case 'StrikeOut':
-      return convertUnderlineToFabricRect(normalizedAnnotation, viewport, scale);
-    case 'Squiggly':
-      return convertSquigglyToFabricPath(normalizedAnnotation, viewport, scale);
     case 'Caret':
       return convertCaretToFabricPolyline(normalizedAnnotation, viewport, scale);
     default:
@@ -4957,7 +5123,7 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
 //             all fields, accepted input, kept /ReadOnly disabled, and the typed
 //             text + checkbox + radio selection SURVIVED a full save → reload →
 //             reopen round-trip. So dropping Widget here is correct, not a gap.
-const SILENT_IGNORE_SUBTYPES = ['Link', 'Popup', 'Widget'];
+const SILENT_IGNORE_SUBTYPES = ['Popup', 'Widget'];
 
 /**
  * Categorize annotations into supported and unsupported
@@ -5139,11 +5305,26 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         return seenNM.get(key) === idx;
       });
 
+      const hasTextMarkup = supported.some((annotation) => (
+        Boolean(PDF_TEXT_MARKUP_TYPES[annotation?.subtype])
+      ));
+      let textContent = null;
+      if (hasTextMarkup) {
+        try {
+          textContent = await readPdfjsTextContent(page);
+        } catch (error) {
+          pdfImportDebug('[PDFImport] page text could not be read for text-markup matching', {
+            pageNumber: pageNum,
+            error: error?.message || String(error),
+          });
+        }
+      }
+
       // Convert supported annotations to Fabric.js objects
       const fabricObjects = [];
       const appCalloutsById = new Map();
       const importedDiag = [];
-      supported.forEach(annotation => {
+      for (const annotation of supported) {
         try {
           const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
           const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
@@ -5167,7 +5348,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
                 calloutPart: normalized.calloutMetadata.part || null,
                 savedToAppState: true,
               });
-              return;
+              continue;
             }
           }
           const counterMetadataParseFailed = (
@@ -5183,11 +5364,20 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             });
           }
 
+          let linkPageNumber = null;
+          if (annotation.subtype === 'Link' && annotation.dest != null) {
+            try {
+              linkPageNumber = await resolveImportedLinkPageNumber(pdfDoc, annotation.dest);
+            } catch {
+              linkPageNumber = null;
+            }
+          }
           const converted = convertPdfAnnotationToFabric(
             annotation,
             viewport,
             1,
             rawMetadata,
+            { pageNumber: pageNum, textContent, linkPageNumber },
           );
           const convertedObjects = converted
             ? [
@@ -5237,7 +5427,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             errorMessage: error?.message || String(error),
           });
         }
-      });
+      }
 
       uniqueUnsupported.forEach((annotation) => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);

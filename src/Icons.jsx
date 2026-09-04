@@ -13,7 +13,11 @@ import textSquiggleUrl from './assets/icons/text-squiggle.svg';
 import textHyperlinkUrl from './assets/icons/text-hyperlink.svg';
 import textRedactUrl from './assets/icons/text-redact.svg';
 import panHandUrl from './assets/icons/pan-hand-closed.svg';
-import counterIconUrl from './assets/icons/counter.svg';
+import counterIconUrl from './assets/icons/counter-outline.svg';
+import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
+import textBoxIconUrl from './assets/icons/text-box-selection.svg';
+import shapesIconUrl from './assets/icons/shapes.svg';
+import drawGroupIconUrl from './assets/icons/draw-group-option-5.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
@@ -215,6 +219,8 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    drawGroup: (size, color, style, className) => renderMaskIcon(drawGroupIconUrl, size, color, style, className),
+
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
         <g transform="rotate(-45 12 12)">
@@ -232,13 +238,11 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    callout: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M20 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H18L22 24V6C22 4.9 21.1 4 20 4Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        <path d="M7 12H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M7 8H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
+    textBox: (size, color, style, className) => renderMaskIcon(textBoxIconUrl, size, color, style, className),
+
+    callout: (size, color, style, className) => renderMaskIcon(calloutIconUrl, size, color, style, className),
+
+    shapes: (size, color, style, className) => renderMaskIcon(shapesIconUrl, size, color, style, className),
 
     // Shape icons
     rect: (size, color, style, className) => (
@@ -363,6 +367,13 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Home tab icon — CC0 source: https://www.svgrepo.com/svg/504469/house
+    homeTab: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M41.733 160.134v-59.2H21.999L96 31.865l74 69.067h-19.733v59.201H110.8v-44.4H81.2v44.4z" stroke={color} strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" strokeMiterlimit="5" fill="none" />
+      </svg>
+    ),
+
     // Scissors/Cut icon
     scissors: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
@@ -480,7 +491,7 @@ const ICON_RENDERERS = {
     formatSquiggle: (size, color, style, className) => renderMaskIcon(textSquiggleUrl, size, color, style, className),
     formatHyperlink: (size, color, style, className) => renderMaskIcon(textHyperlinkUrl, size, color, style, className),
     formatRedact: (size, color, style, className) => renderMaskIcon(textRedactUrl, size, color, style, className),
-    formatPan: (size, color, style, className) => renderMaskIcon(panHandUrl, size, color, style, className, size * 0.88),
+    formatPan: (size, color, style, className) => renderMaskIcon(panHandUrl, size, color, style, className),
     filter: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M3 5H21M6 12H18M10 19H14" stroke={color} strokeWidth="1.5" strokeLinecap="round" />

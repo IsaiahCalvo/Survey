@@ -128,6 +128,16 @@ export function clientRectToPageQuad(clientRect, pageRect, pageSize) {
   };
 }
 
+export function getTextMarkupUnderlineInset(annotation, quadHeight, lineWidth = 1.2) {
+  const strokeInset = Math.max(0, Number(lineWidth) || 0) / 2;
+  if (annotation?.isPdfImported) return strokeInset;
+  // A browser Range rect covers the CSS line box, including leading below the
+  // glyph baseline. PDF QuadPoints already hug the glyphs. Pull marks created
+  // from a live browser selection up by one quarter of that line box so both
+  // sources paint on the same visual baseline.
+  return Math.max(strokeInset, Math.max(0, Number(quadHeight) || 0) / 4);
+}
+
 export function rotatePageQuad(quad, rotation, unrotatedWidth, unrotatedHeight) {
   const turn = ((Number(rotation) || 0) % 360 + 360) % 360;
   const map = (x, y) => {
@@ -414,6 +424,30 @@ const textRangeDragState = (handleId, candidate, fixed, crossedOverride) => ({
     : (handleId === 'ml' ? candidate > fixed : candidate < fixed),
 });
 
+const importedRunVerticalBounds = (annotation, run) => {
+  if (!annotation?.isPdfImported) return null;
+  const storedRange = annotation?.data?.textRange;
+  if (!Number.isFinite(storedRange?.start) || !Number.isFinite(storedRange?.end)) return null;
+  if (Math.min(Number(storedRange.end), Number(run.end)) <= Math.max(Number(storedRange.start), Number(run.start))) {
+    return null;
+  }
+  const runCenter = (Number(run.top) + Number(run.bottom)) / 2;
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const quad of annotation?.data?.quads || []) {
+    const values = [quad.y1, quad.y2, quad.y3, quad.y4].map(Number);
+    if (!values.every(Number.isFinite)) continue;
+    const top = Math.min(...values);
+    const bottom = Math.max(...values);
+    const distance = Math.abs(runCenter - ((top + bottom) / 2));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = { top, bottom };
+    }
+  }
+  return best;
+};
+
 const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOffset) => {
   const storedRange = annotation?.data?.textRange;
   const model = annotation?.data?.textRangeModel;
@@ -470,9 +504,15 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOff
     if (run.rtl) [leftRatio, rightRatio] = [1 - rightRatio, 1 - leftRatio];
     const left = run.left + (run.right - run.left) * leftRatio;
     const right = run.left + (run.right - run.left) * rightRatio;
+    // PDF authored QuadPoints can be tighter than pdf.js text-item bounds.
+    // Keep the authored Y values for lines that were already selected. A
+    // horizontal range resize must never make squiggles or strikeouts jump.
+    const authoredVertical = importedRunVerticalBounds(annotation, run);
+    const top = authoredVertical?.top ?? run.top;
+    const bottom = authoredVertical?.bottom ?? run.bottom;
     quads.push({
-      x1: round(left), y1: run.top, x2: round(right), y2: run.top,
-      x3: round(left), y3: run.bottom, x4: round(right), y4: run.bottom,
+      x1: round(left), y1: top, x2: round(right), y2: top,
+      x3: round(left), y3: bottom, x4: round(right), y4: bottom,
     });
   }
   const mergedQuads = mergeLineQuads(quads);

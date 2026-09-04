@@ -41,8 +41,13 @@ import { phase35Diag } from '../lib/collab/phase35Diag.js';
 
 export const MIN_DRAG_PX = 5;
 
-export function getMarqueeDirection({ startX, endX }) {
+export function getMarqueeDirection({ startX, endX, modeOverride }) {
+  if (modeOverride === 'window' || modeOverride === 'crossing') return modeOverride;
   return endX >= startX ? 'window' : 'crossing';
+}
+
+export function cycleMarqueeDirection(direction) {
+  return direction === 'window' ? 'crossing' : 'window';
 }
 
 export function getMarqueeRect({ startX, startY, endX, endY }) {

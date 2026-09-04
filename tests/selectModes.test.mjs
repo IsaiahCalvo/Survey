@@ -7,6 +7,7 @@ import {
   getSelectFamilyIconName,
   getSelectFamilyLabel,
   getSelectModeIconName,
+  getNextSelectModeMenuOpen,
   getSelectFamilyTransition,
   getSelectModeMenuFocusIndex,
   isSelectModeActive,
@@ -16,6 +17,8 @@ import {
 } from '../src/utils/selectModes.js';
 
 const PDF_VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+const APP_SHELL_SOURCE = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+const MOBILE_CHROME_SOURCE = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
 
 test('Select family keeps rectangle, lasso, and text in one stable mode list', () => {
   assert.deepEqual(SELECT_MODE_OPTIONS.map(({ mode, label }) => ({ mode, label })), [
@@ -55,13 +58,16 @@ test('Select family keeps distinct approved icons without changing its transitio
   assert.equal(getSelectFamilyIconName('text-select', 'rectangle'), 'textSelect');
 
   for (const [fileName, expectedHash] of [
-    ['selection-cursor-rounded.svg', 'bdccc5826285d0f6b00de134bd0febd34235255cc196f15225b91c0e05428722'],
-    ['lasso-select-rounded.svg', 'f364ce22bb11524edf56e4035a894d67dc61297fd8455e58db8010d5cad974a9'],
-    ['text-select-rounded.svg', 'b84a5baa309abbf8ed10d177f57c2d14f4f7cffe4df67c1785028c46d682b541'],
+    ['selection-cursor-rounded.svg', '07110d9e908d1d8099edaedeb01cac093212ddfd703415701c3a0d25de7151b9'],
+    ['lasso-select-rounded.svg', '9fe83afeef1c13c09aa557728badf71696341213210b5b2924e1becba8e50d22'],
+    ['text-select-rounded.svg', '7f75647ee4d328ec68eb867dfde598019fe1537db3861a7014273b812a80192e'],
   ]) {
     const bytes = readFileSync(new URL(`../src/assets/icons/${fileName}`, import.meta.url));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), expectedHash, fileName);
   }
+
+  const textSelectSource = readFileSync(new URL('../src/assets/icons/text-select-rounded.svg', import.meta.url), 'utf8');
+  assert.match(textSelectSource, /translate\(12 12\.6\)/);
 });
 
 test('the last Select-family mode survives reload and ignores invalid storage', () => {
@@ -88,6 +94,51 @@ test('Select mode menus wrap arrow keys and honor Home and End', () => {
   assert.equal(getSelectModeMenuFocusIndex('Home', 2, 3), 0);
   assert.equal(getSelectModeMenuFocusIndex('End', 0, 3), 2);
   assert.equal(getSelectModeMenuFocusIndex('Enter', 1, 3), null);
+});
+
+test('the full Select trigger opens in one click and toggles once active', () => {
+  assert.equal(getNextSelectModeMenuOpen(false, false), true);
+  assert.equal(getNextSelectModeMenuOpen(true, false), true);
+  assert.equal(getNextSelectModeMenuOpen(false, true), true);
+  assert.equal(getNextSelectModeMenuOpen(true, true), false);
+
+  let open = false;
+  for (let index = 0; index < 1000; index += 1) {
+    open = getNextSelectModeMenuOpen(open, true);
+    assert.equal(open, index % 2 === 0);
+  }
+});
+
+test('desktop Select uses one integrated Drawboard-style mode trigger', () => {
+  const selectToolbar = APP_SHELL_SOURCE.slice(
+    APP_SHELL_SOURCE.indexOf('// Select-family modes share one compact Drawboard-style button.'),
+    APP_SHELL_SOURCE.indexOf('{/* Draw category */}'),
+  );
+
+  assert.match(selectToolbar, /data-select-mode-trigger/);
+  assert.match(selectToolbar, /data-select-mode-indicator/);
+  assert.doesNotMatch(selectToolbar, /data-select-mode-caret/);
+  assert.doesNotMatch(selectToolbar, /indicatorClick|event\.target\.closest/);
+  assert.match(selectToolbar, /getNextSelectModeMenuOpen\(open, isActive\)/);
+  assert.match(selectToolbar, /backgroundColor: '#1E1E1E'/);
+  assert.doesNotMatch(selectToolbar, /background: selected \? '#1f2430'/);
+  assert.match(selectToolbar, /opt\.mode === 'rectangle' \? 'Select' : opt\.label/);
+  assert.match(selectToolbar, /size=\{isSelect \? 22 : 20\}/);
+  assert.match(selectToolbar, /getSelectModeIconName\(opt\.mode\)\} size=\{20\}/);
+});
+
+test('Draw uses the approved group icon at its optical size', () => {
+  const drawToolbar = APP_SHELL_SOURCE.slice(
+    APP_SHELL_SOURCE.indexOf('{/* Draw category */}'),
+    APP_SHELL_SOURCE.indexOf('{/* Shapes category */}'),
+  );
+
+  assert.match(drawToolbar, /<Icon name="drawGroup" size=\{18\} \/>/);
+});
+
+test('Select family uses the larger optical sizes on mobile', () => {
+  assert.match(MOBILE_CHROME_SOURCE, /getSelectFamilyIconName\(activeTool, bottomToolbarApi\?\.selectionMode\)\} size=\{21\}/);
+  assert.match(MOBILE_CHROME_SOURCE, /getSelectModeIconName\(option\.mode\)\} size=\{19\}/);
 });
 
 test('creating or toggling a text mark keeps the live Text Select range active', () => {

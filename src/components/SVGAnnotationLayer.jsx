@@ -63,7 +63,9 @@ import {
   stampAnnotationCreationIdentity,
 } from '../utils/annotationStorageIdentity.js';
 import { computeDrawnBoundaryShapePreviewGeometry } from '../utils/shapeCommitGeometry.js';
-import { isBlockedFromAreaSelection } from '../utils/annotationSelectionEligibility.js';
+import {
+  isBlockedFromAreaSelection,
+} from '../utils/annotationSelectionEligibility.js';
 import {
   beginAnnotationGesture,
   markAnnotationPointerRelease,
@@ -96,6 +98,7 @@ import {
 // Diagnostic: record every SVG callout's source data + DOM rects so Save Log
 // can dump a full geometry comparison against the Fabric edit-mode capture.
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
+import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
@@ -105,8 +108,6 @@ const svgAnnotationDebug = (...args) => {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
 // Refcount for the window.__onDeleteSelectedCallouts bridge (see the
 // registration effect near the Delete-key handler). One SVGAnnotationLayer
@@ -168,12 +169,6 @@ const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12
     strokeWidth: hasStroke ? Math.max(minStrokeWidth, Number(strokeWidth || 1) + 10) : 0,
     pointerEvents: !isInteractive ? 'none' : hasFill ? 'all' : (hasStroke ? 'stroke' : 'none'),
   };
-};
-
-const isSelectDeleteOnlyPdfTextMarkupObject = (obj) => {
-  if (!obj?.isPdfImported) return false;
-  const pdfType = obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType;
-  return SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES.has(String(pdfType || ''));
 };
 
 // 2026-05-03 — Per-page render caps deleted. Adobe / Drawboard PDF render
@@ -379,6 +374,7 @@ const SVGAnnotationLayer = memo(({
   selectionClearToken = 0,
   selectionOwnerPageNumber = null,
   onSelectionChange,
+  onTextSelectManipulationChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
   // listener in pan mode and, via resolveAnnotationAt, broadcasts
   // { pageNumber, annotationIndex } (or null) whenever the cursor enters
@@ -669,10 +665,11 @@ const SVGAnnotationLayer = memo(({
   // the SVG surface) WITHOUT re-enabling annotation click-to-select on those
   // tools. The three booleans have distinct jobs:
   //
-  //   isSelectTool   — click-to-select / hover / double-click edit gate. Only
-  //                    object Select drives annotation selection behavior.
-  //                    Text Select must leave every SVG hit target inert so
-  //                    the PDF.js text layer receives the native drag. Use
+  //   isSelectTool   — click-to-select / hover / double-click edit gate. All
+  //                    selection modes may select annotations. Text Select
+  //                    still leaves the SVG root inert below, so blank pixels
+  //                    and PDF text keep reaching the PDF.js text layer; only
+  //                    the annotation-shaped hit targets claim a pointer. Use
   //                    this for any guard that protects
   //                    select-mode-specific handlers (existing call sites at
   //                    988/1050/1084 KEEP isInteractive because they also
@@ -693,7 +690,7 @@ const SVGAnnotationLayer = memo(({
   // clicks, shape drags, and click-to-dismiss all keep working.
   const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
   const isCalloutTextEditMode = !!editingCalloutId;
-  const isSelectTool = activeTool === 'select'
+  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
     && !isCalloutTextEditMode
     && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: creation tools get pointerEvents=auto so the crosshair class shows
@@ -834,6 +831,113 @@ const SVGAnnotationLayer = memo(({
       : Array.isArray(effectiveSelectedCalloutIds)
         ? effectiveSelectedCalloutIds.length
         : 0;
+
+  // Text Select must leave blank page pixels with PDF.js so native text drag
+  // keeps working. Once an annotation is selected, though, its body and edit
+  // handles must own the pointer just like Rectangle/Lasso Select. Arm the SVG
+  // only while the pointer is near the current selection. This keeps the rest
+  // of the page transparent to PDF text and avoids a second, fake handle tree.
+  const [textSelectManipulationArmed, setTextSelectManipulationArmed] = useState(false);
+  const lastTextSelectPointerRef = useRef(null);
+  const applyTextSelectPointerOwnership = useCallback((active) => {
+    const ownsPointer = !!active;
+    const root = svgRef.current;
+    // Pointermove and pointerdown may arrive in the same browser task. Apply
+    // the two hit-layer flips now, then let React state make them durable.
+    // Without this sync bridge, a fast mouse move or touch could start on the
+    // stale owner for one frame and lose the whole drag.
+    if (root) {
+      root.style.pointerEvents = ownsPointer ? 'auto' : 'none';
+      const page = root.closest('[id*="_pageDiv_"]');
+      const textLayer = page?.querySelector?.('.pdfjsTextLayer');
+      if (textLayer) textLayer.style.pointerEvents = ownsPointer ? 'none' : 'auto';
+    }
+    setTextSelectManipulationArmed(ownsPointer);
+  }, []);
+  const isPointNearCurrentSelection = useCallback((clientX, clientY) => {
+    const root = svgRef.current;
+    if (!root) return false;
+    const nodes = new Set(root.querySelectorAll('.svg-selection-overlay'));
+    for (const selectedIndex of selectedIds || []) {
+      const annotationNode = root.querySelector(`[data-annotation-index="${selectedIndex}"]`);
+      if (annotationNode) nodes.add(annotationNode);
+    }
+    const selectedCalloutIdList = effectiveSelectedCalloutIds instanceof Set
+      ? Array.from(effectiveSelectedCalloutIds)
+      : Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds : [];
+    if (selectedCalloutIdList.length > 0) {
+      for (const calloutNode of root.querySelectorAll('[data-callout-id]')) {
+        if (selectedCalloutIdList.includes(calloutNode.getAttribute('data-callout-id'))) {
+          nodes.add(calloutNode);
+        }
+      }
+    }
+    if (selectedSurveyMarkerId) {
+      const markerNodes = root.querySelectorAll('[data-survey-marker-id]');
+      for (const markerNode of markerNodes) {
+        if (markerNode.getAttribute('data-survey-marker-id') === selectedSurveyMarkerId) {
+          nodes.add(markerNode);
+        }
+      }
+    }
+    for (const node of nodes) {
+      const rect = node.getBoundingClientRect?.();
+      if (rect?.width > 0 && rect?.height > 0 && isClientPointNearRect(clientX, clientY, rect, 14)) {
+        return true;
+      }
+    }
+    return false;
+  }, [effectiveSelectedCalloutIds, selectedIds, selectedSurveyMarkerId]);
+
+  useEffect(() => {
+    if (activeTool !== 'text-select') {
+      setTextSelectManipulationArmed(false);
+      return undefined;
+    }
+    const updatePointerOwnership = (event) => {
+      lastTextSelectPointerRef.current = { x: event.clientX, y: event.clientY };
+      if (interactionState !== 'idle') {
+        applyTextSelectPointerOwnership(true);
+        return;
+      }
+      applyTextSelectPointerOwnership(
+        isPointNearCurrentSelection(event.clientX, event.clientY),
+      );
+    };
+    window.addEventListener('pointermove', updatePointerOwnership, true);
+    window.addEventListener('pointerdown', updatePointerOwnership, true);
+    return () => {
+      window.removeEventListener('pointermove', updatePointerOwnership, true);
+      window.removeEventListener('pointerdown', updatePointerOwnership, true);
+      const root = svgRef.current;
+      if (root) {
+        root.style.pointerEvents = '';
+        const page = root.closest('[id*="_pageDiv_"]');
+        const textLayer = page?.querySelector?.('.pdfjsTextLayer');
+        if (textLayer) textLayer.style.pointerEvents = '';
+      }
+    };
+  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection]);
+
+  useLayoutEffect(() => {
+    if (activeTool !== 'text-select' || interactionState !== 'idle') return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const point = lastTextSelectPointerRef.current;
+      applyTextSelectPointerOwnership(
+        !!point && isPointNearCurrentSelection(point.x, point.y),
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection, selectedIds, effectiveSelectedCalloutIds, selectedSurveyMarkerId]);
+
+  const textSelectOwnsPointer = activeTool === 'text-select'
+    && (textSelectManipulationArmed || interactionState !== 'idle');
+  useEffect(() => {
+    onTextSelectManipulationChange?.(pageNumber, textSelectOwnsPointer);
+  }, [onTextSelectManipulationChange, pageNumber, textSelectOwnsPointer]);
+  useEffect(() => () => {
+    onTextSelectManipulationChange?.(pageNumber, false);
+  }, [onTextSelectManipulationChange, pageNumber]);
 
   // UX: right-click Delete parity — publish the gated callout delete callback
   // (PDFViewer's handleDeleteSelectedCallouts: canModify ownership check, undo
@@ -3984,7 +4088,6 @@ const SVGAnnotationLayer = memo(({
         {(() => {
           const objTypeLower = String(renderObj.type || '').toLowerCase();
           const isCounterObj = renderObj.data?.type === 'counter';
-          const isSelectDeleteOnlyPdfTextMarkupHitTarget = isSelectDeleteOnlyPdfTextMarkupObject(renderObj);
 
           if (objTypeLower === 'line') {
             const ep = getLineEndpoints(renderObj);
@@ -4571,8 +4674,6 @@ const SVGAnnotationLayer = memo(({
             const inkHitProps = getFilledInkHitTargetProps(pathAttrs, { strokeWidth: sw, inverseScale });
             const hitStrokeWidth = inkHitProps
               ? inkHitProps.strokeWidth
-              : isSelectDeleteOnlyPdfTextMarkupHitTarget
-                ? Math.max(4, pathAttrs.strokeWidth || sw || 1)
               : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
             const pathPointerEvents = isSelectTool && isObjectInteractive
               ? (isFilledPdfInkOutline ? 'all' : 'stroke')
@@ -4649,8 +4750,8 @@ const SVGAnnotationLayer = memo(({
               <rect
                 x={bbox.left}
                 y={bbox.top}
-                width={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.width, 1) : Math.max(bbox.width, 10)}
-                height={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.height, 1) : Math.max(bbox.height, 10)}
+                width={Math.max(bbox.width, 10)}
+                height={Math.max(bbox.height, 10)}
                 fill="transparent"
                 stroke="none"
                 // UX: Plan 14-02 UX-01 — generic annotation hit-area gated on
@@ -4715,13 +4816,15 @@ const SVGAnnotationLayer = memo(({
         // whole page. An `auto` root is hit-testable across its entire box, so
         // it sat on top of the selectable text layer and made text selection
         // impossible — the reason the mode was never usable. Individual
-        // annotation hit targets set their own pointerEvents (isSelectTool is
-        // still true here), and events on them still bubble to the handlers on
-        // this root, so clicking an annotation keeps selecting it; every other
+        // annotation hit targets set their own pointerEvents, and events on
+        // them still reach their own handlers, so clicking an annotation keeps
+        // selecting it; every other
         // pixel now falls through to the text layer underneath. Marquee
         // (empty-space drag) select is intentionally off in this mode — that
         // gesture IS the text selection.
-        pointerEvents: (isInteractive && activeTool !== 'text-select') ? 'auto' : 'none',
+        pointerEvents: isInteractive && (
+          activeTool !== 'text-select' || textSelectManipulationArmed || interactionState !== 'idle'
+        ) ? 'auto' : 'none',
         overflow: 'hidden',
         // One-finger creation strokes must not scroll the page on touch
         // devices — the fabric upper canvas used to set this implicitly.
@@ -5124,6 +5227,8 @@ const SVGAnnotationLayer = memo(({
           dormant Fabric reference (see 19-CONTEXT.md → Visual treatment). */}
       {marqueeRect && (
         <rect
+          data-marquee-selection-preview="true"
+          data-marquee-mode={marqueeDirection}
           x={marqueeRect.left}
           y={marqueeRect.top}
           width={marqueeRect.width}
@@ -5143,65 +5248,24 @@ const SVGAnnotationLayer = memo(({
       {lassoPoints?.length > 0 && (
         <g data-lasso-selection-preview="true" pointerEvents="none">
           <path
-            data-lasso-selection-halo="true"
-            d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
-            fill="none"
-            stroke="rgba(8, 12, 18, 0.72)"
-            strokeWidth={4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
             data-lasso-selection-trail="true"
             data-lasso-mode={lassoMode || 'window'}
             d={`${lassoPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}${lassoMode === 'fence' ? '' : ' Z'}`}
             fill={lassoMode === 'window'
-              ? 'rgba(0, 100, 255, 0.12)'
-              : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.12)' : 'none'}
+              ? 'rgba(0, 100, 255, 0.15)'
+              : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.15)' : 'none'}
             stroke={lassoMode === 'window'
-              ? 'rgba(72, 145, 255, 1)'
-              : lassoMode === 'crossing' ? 'rgba(30, 210, 120, 1)' : 'rgba(245, 174, 38, 1)'}
-            strokeWidth={1.5}
+              ? 'rgba(0, 100, 255, 0.8)'
+              : lassoMode === 'crossing' ? 'rgba(0, 200, 100, 0.8)' : 'rgba(245, 174, 38, 1)'}
+            strokeWidth={1}
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '7,5' : '3,4'}
+            strokeDasharray={lassoMode === 'window' ? undefined : lassoMode === 'crossing' ? '5,5' : '3,4'}
             fillRule="evenodd"
             vectorEffect="non-scaling-stroke"
           />
         </g>
       )}
-      {lassoPoints?.length > 0 && (() => {
-        const lastPoint = lassoPoints.at(-1);
-        const usesTouchControls = lassoPointerType === 'touch' || lassoPointerType === 'pen';
-        const modeLabel = lassoMode === 'crossing' ? 'Crossing' : lassoMode === 'fence' ? 'Fence' : 'Window';
-        const operationLabel = lassoOperation === 'add' ? 'Add' : lassoOperation === 'subtract' ? 'Subtract' : 'Replace';
-        const hint = usesTouchControls
-          ? `${modeLabel} · ${operationLabel}`
-          : `${modeLabel} · Space to change · Shift add · Alt subtract`;
-        const chipWidth = usesTouchControls ? 116 : 304;
-        const chipX = Math.max(4 * inverseScale, Math.min(
-          width - (chipWidth + 4) * inverseScale,
-          lastPoint.x + 12 * inverseScale,
-        ));
-        const chipY = Math.max(4 * inverseScale, Math.min(
-          height - 28 * inverseScale,
-          lastPoint.y + 12 * inverseScale,
-        ));
-        // UX: the chip makes the hidden lasso modes clear while the hand is
-        // still moving. It stays small and follows the trail without taking input.
-        return (
-          <g
-            data-lasso-gesture-hint="true"
-            pointerEvents="none"
-            transform={`translate(${chipX} ${chipY}) scale(${inverseScale})`}
-          >
-            <rect width={chipWidth} height={24} rx={6} fill="rgba(18, 21, 28, 0.92)" stroke="rgba(216, 168, 78, 0.72)" />
-            <text x={8} y={16} fill="#f0eadc" fontSize={11} fontWeight={600}>{hint}</text>
-          </g>
-        );
-      })()}
       {/* Selection overlays — rendered on top of all annotations */}
       {/* Single selection: individual bounding box with handles.
           UX: Phase 19 follow-up — suppress this when a callout is also
@@ -5212,8 +5276,6 @@ const SVGAnnotationLayer = memo(({
         const obj = visualTransform?.previewObjects?.[selectedIndex]
           || annotations?.objects?.[selectedIndex];
         if (!obj) return null;
-        const isSelectDeleteOnlyPdfTextMarkup = isSelectDeleteOnlyPdfTextMarkupObject(obj);
-
         // During edit: FabricEditCanvas provides its own handles. For border-flush types
         // (rect, text) there's no dashed bbox to preserve, so hide the overlay entirely.
         // For non-border-flush types (circle, ellipse, triangle), keep the dashed bbox
@@ -5236,7 +5298,7 @@ const SVGAnnotationLayer = memo(({
         // selectedIndex briefly doesn't match (e.g. mid-double-click frame).
         const counterInBboxMode = editIsCounter && isBeingEditedNow && editingAnnotationEditType === 'bbox';
         if (editIsCounter && editingAnnotationIndex != null && !counterInBboxMode) return null;
-        if (isBeingEditedNow && editIsBorderFlush && !isSelectDeleteOnlyPdfTextMarkup) return null;
+        if (isBeingEditedNow && editIsBorderFlush) return null;
 
         // Counter selection (not in bbox edit mode): render only the rotation handle at the
         // nubbin tip. No dashed bbox, no resize handles — Shottr-style minimal chrome.
@@ -5800,15 +5862,13 @@ const SVGAnnotationLayer = memo(({
               // surface — it must show the corner + edge + rotate handles
               // itself, so drop the mask in that case.
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
-              hideBoundingBox={textMarkupSelectionChrome.hideBoundingBox
-                || (isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup)}
-              padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
+              hideBoundingBox={textMarkupSelectionChrome.hideBoundingBox || isBorderFlush}
+              padding={isBorderFlush ? 0 : 2}
               rotationCenter={overlayRotationCenter}
-              selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
               // Legacy marks have no safe character-offset model for range
               // handles, so their standard box supplies visible selection feedback.
               hideResizeHandles={textMarkupSelectionChrome.hideResizeHandles}
-              horizontalResizeOnly={selectionObj?.data?.type === 'text-markup' && !isSelectDeleteOnlyPdfTextMarkup}
+              horizontalResizeOnly={selectionObj?.data?.type === 'text-markup'}
               horizontalHandlePositions={selectionObj?.data?.type === 'text-markup'
                 ? getTextMarkupRangeHandlePositions(selectionObj)
                 : null}

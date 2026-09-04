@@ -173,7 +173,7 @@ function TabItem({
     >
       {isHome ? (
         <Icon
-          name="home"
+          name="homeTab"
           size={13}
           style={{ marginRight: '7px', flexShrink: 0 }}
         />

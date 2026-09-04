@@ -7,22 +7,22 @@ import {
   getWheelZoomScale,
 } from '../src/utils/pdfZoomMath.js';
 
-test('one mouse-wheel notch zooms out modestly and reverses symmetrically', () => {
-  const zoomedOut = getWheelZoomScale(0.76, {
-    deltaY: 100,
+test('small trackpad ticks match Drawboard speed and reverse symmetrically', () => {
+  const zoomedIn = getWheelZoomScale(0.74, {
+    deltaY: -8,
     deltaMode: 0,
     viewportHeight: 643,
     minimumScale: 0.01,
   });
-  const zoomedBackIn = getWheelZoomScale(zoomedOut, {
-    deltaY: -100,
+  const zoomedBackOut = getWheelZoomScale(zoomedIn, {
+    deltaY: 8,
     deltaMode: 0,
     viewportHeight: 643,
     minimumScale: 0.01,
   });
 
-  assert.ok(zoomedOut > 0.68 && zoomedOut < 0.70, `expected a modest step, got ${zoomedOut}`);
-  assert.ok(Math.abs(zoomedBackIn - 0.76) < 1e-9, `expected a reversible step, got ${zoomedBackIn}`);
+  assert.ok(zoomedIn > 0.756 && zoomedIn < 0.759, `expected Drawboard's measured small-tick speed, got ${zoomedIn}`);
+  assert.ok(Math.abs(zoomedBackOut - 0.74) < 1e-9, `expected a reversible step, got ${zoomedBackOut}`);
 });
 
 test('one event cannot collapse zoom even when a device reports an enormous delta', () => {
@@ -30,7 +30,7 @@ test('one event cannot collapse zoom even when a device reports an enormous delt
   const enormousDelta = getWheelZoomScale(0.76, { deltaY: 10_000, minimumScale: 0.01 });
 
   assert.equal(enormousDelta, oneNotch);
-  assert.ok(enormousDelta > 0.68);
+  assert.ok(enormousDelta > 0.55);
 });
 
 test('line and page wheel deltas normalize without bypassing the per-event cap', () => {

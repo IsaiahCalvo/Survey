@@ -20,10 +20,17 @@ import { resolvePdfOutlinePageNumber } from '../utils/bookmarkOutline';
  * `interactive` should be true only in viewing/selection modes (pan/select) so
  * link boxes never steal clicks from an active drawing/markup tool.
  */
-export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, onInternalNavigate }) {
+export default function PdfjsLinkLayer({
+  pdf,
+  pageNumber,
+  interactive = true,
+  onInternalNavigate,
+  excludedAnnotationIds = [],
+}) {
   const [links, setLinks] = useState([]);
   const pdfRef = useRef(pdf);
   pdfRef.current = pdf;
+  const excludedIdsKey = excludedAnnotationIds.map(String).sort().join('\u0000');
 
   useEffect(() => {
     let cancelled = false;
@@ -38,8 +45,10 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
         const pageWidth = viewport.width || 1;
         const pageHeight = viewport.height || 1;
         const out = [];
+        const excludedIds = new Set(excludedIdsKey ? excludedIdsKey.split('\u0000') : []);
         for (const a of annots) {
           if (a.subtype !== 'Link') continue;
+          if (excludedIds.has(String(a.id || a.name || ''))) continue;
           if (!a.url && a.dest == null) continue;
           // pdf.js 5 removed PageViewport.convertToViewportRectangle. Convert
           // both corners with the supported point API and normalize below.
@@ -66,7 +75,7 @@ export default function PdfjsLinkLayer({ pdf, pageNumber, interactive = true, on
       }
     })();
     return () => { cancelled = true; };
-  }, [pdf, pageNumber]);
+  }, [pdf, pageNumber, excludedIdsKey]);
 
   const handleLink = async (link, event) => {
     event.preventDefault();

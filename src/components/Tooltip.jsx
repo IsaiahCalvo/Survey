@@ -142,21 +142,41 @@ export function FloatingTooltip({ tooltip }) {
  * hides on click so the chip does not sit over a menu the control just opened.
  */
 export function makeTooltipBinding(setTooltip) {
+  // A pointer press is followed by focus on most buttons. Without this guard,
+  // onMouseDown hides the tooltip and onFocus paints it again at once. Keep the
+  // pressed control quiet until the pointer leaves it, then allow a fresh hover.
+  const pressedControls = new WeakSet();
   return (text, placement = 'below') => {
     if (!text) return {};
     const show = (e) => {
       const el = e?.currentTarget;
       if (!el?.getBoundingClientRect) return;
+      if (pressedControls.has(el)) return;
       const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
       setTooltip?.({ visible: true, text, x, y, placement });
     };
     const hide = () => setTooltip?.({ ...TOOLTIP_HIDDEN });
+    const hideOnPress = (e) => {
+      const el = e?.currentTarget;
+      if (el && (typeof el === 'object' || typeof el === 'function')) {
+        pressedControls.add(el);
+      }
+      hide();
+    };
+    const resetAfterLeave = (e) => {
+      const el = e?.currentTarget;
+      if (el && (typeof el === 'object' || typeof el === 'function')) {
+        pressedControls.delete(el);
+      }
+      hide();
+    };
     return {
       onMouseEnter: show,
-      onMouseLeave: hide,
+      onMouseLeave: resetAfterLeave,
       onFocus: show,
-      onBlur: hide,
-      onMouseDown: hide,
+      onBlur: resetAfterLeave,
+      onMouseDown: hideOnPress,
+      onPointerDown: hideOnPress,
     };
   };
 }

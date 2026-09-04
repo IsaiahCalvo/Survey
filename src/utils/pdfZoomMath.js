@@ -2,8 +2,11 @@ const ABSOLUTE_MIN_SCALE = 0.01;
 const ABSOLUTE_MAX_SCALE = 40;
 const WHEEL_LINE_HEIGHT_PX = 16;
 const WHEEL_NOTCH_PX = 100;
-const WHEEL_NOTCH_FACTOR = 1.1;
-const WHEEL_EXPONENT = Math.log(WHEEL_NOTCH_FACTOR) / WHEEL_NOTCH_PX;
+// Measured against Drawboard's live viewer with repeated 8px Ctrl-wheel ticks:
+// 74% -> 97% over 12 ticks, with the reverse path returning to 73% after
+// display rounding. This keeps real trackpad movement at the same pace while
+// retaining the existing symmetric exponential zoom and per-event safety cap.
+const WHEEL_EXPONENT = 0.0029;
 
 export function getClampedZoomTranslation({
   zoomFactor,

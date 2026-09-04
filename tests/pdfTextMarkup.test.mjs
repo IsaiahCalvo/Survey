@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clientRectToPageQuad,
+  getTextMarkupUnderlineInset,
   computeTextSelectionActionBarPosition,
   computeTextMarkupPickerPosition,
   createTextMarkupAnnotation,
@@ -28,6 +29,38 @@ test('selection client geometry maps through mixed page sizes', () => {
     x1: 40, y1: 80, x2: 240, y2: 80, x3: 40, y3: 120, x4: 240, y4: 120,
   });
 });
+
+test('browser-created underlines remove line-box leading while PDF imports keep their authored baseline', () => {
+  assert.equal(getTextMarkupUnderlineInset({ isPdfImported: true }, 25.2715, 1.2), 0.6);
+  assert.equal(getTextMarkupUnderlineInset({ isPdfImported: false }, 25.2715, 1.2), 6.317875);
+  assert.equal(getTextMarkupUnderlineInset({}, 1.5, 1.2), 0.6);
+});
+
+for (const markupType of ['squiggly', 'strikeout']) {
+  test(`resizing an imported ${markupType} keeps its authored vertical quad geometry`, () => {
+    const annotation = createTextMarkupAnnotation({
+      id: `imported-${markupType}`,
+      pageNumber: 1,
+      markupType,
+      selectedText: 'words',
+      textRange: { start: 0, end: 5 },
+      textRangeModel: {
+        text: 'words here',
+        runs: [{ start: 0, end: 10, left: 10, right: 110, top: 40, bottom: 64, rtl: false }],
+      },
+      quads: [{ x1: 10, y1: 48, x2: 60, y2: 48, x3: 10, y3: 58, x4: 60, y4: 58 }],
+    });
+    annotation.isPdfImported = true;
+
+    const resized = resizeTextMarkupHorizontalEdge(annotation, 'mr', { x: 90, y: 53 }, 120, 100);
+
+    assert.deepEqual(resized.data.quads, [
+      { x1: 10, y1: 48, x2: 90, y2: 48, x3: 10, y3: 58, x4: 90, y4: 58 },
+    ]);
+    assert.equal(resized.top, 48);
+    assert.equal(resized.height, 10);
+  });
+}
 
 test('range action bar clears app chrome and stays inside a phone viewport', () => {
   assert.deepEqual(

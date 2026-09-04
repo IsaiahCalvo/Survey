@@ -15,12 +15,14 @@ const colorPickerSource = read('../src/components/CompactColorPicker.jsx');
 const sizeControlSource = read('../src/components/AnnotationSizeControl.jsx');
 const packageSource = read('../package.json');
 const iconsSource = read('../src/Icons.jsx');
-const counterIcon = readFileSync(new URL('../src/assets/icons/counter.svg', import.meta.url));
+const counterIcon = readFileSync(new URL('../src/assets/icons/counter-outline.svg', import.meta.url));
 
 test('counter tool uses the approved custom icon in every shared toolbar', () => {
-  assert.equal(createHash('sha256').update(counterIcon).digest('hex'), 'c0e643ddfe6689d0bea4428e2f240f69968602eeb8a5e43498248a2a14e27843');
-  assert.match(iconsSource, /import counterIconUrl from '.\/assets\/icons\/counter\.svg'/);
+  assert.equal(createHash('sha256').update(counterIcon).digest('hex'), '4696cf78adf779aa18868926b862eca387eb8f9afda1c004cfab6c3f2ff3c569');
+  assert.match(iconsSource, /import counterIconUrl from '.\/assets\/icons\/counter-outline\.svg'/);
   assert.match(iconsSource, /counter:\s*\(size, color, style, className\)\s*=>\s*renderMaskIcon\(counterIconUrl, size, color, style, className\)/);
+  assert.match(counterIcon.toString(), /fill="none" stroke="#fff"/);
+  assert.match(counterIcon.toString(), /fill="#fff" transform=/);
   assert.doesNotMatch(iconsSource, /<circle cx="13" cy="11" r="8"/);
 });
 
