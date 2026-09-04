@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clientRectToPageQuad,
   getTextMarkupUnderlineInset,
+  getExcludedPdfTextMarkupIds,
   computeTextSelectionActionBarPosition,
   computeTextMarkupPickerPosition,
   createTextMarkupAnnotation,
@@ -34,6 +35,29 @@ test('browser-created underlines remove line-box leading while PDF imports keep 
   assert.equal(getTextMarkupUnderlineInset({ isPdfImported: true }, 25.2715, 1.2), 0.6);
   assert.equal(getTextMarkupUnderlineInset({ isPdfImported: false }, 25.2715, 1.2), 6.317875);
   assert.equal(getTextMarkupUnderlineInset({}, 1.5, 1.2), 0.6);
+});
+
+test('current native text-markup underlines share the authored baseline', () => {
+  const annotation = createTextMarkupAnnotation({
+    id: 'underline-current',
+    pageNumber: 1,
+    markupType: 'underline',
+    quads: [{ x1: 0, y1: 0, x2: 40, y2: 0, x3: 0, y3: 12, x4: 40, y4: 12 }],
+  });
+  assert.equal(getTextMarkupUnderlineInset(annotation, 12, 1.2), 0.6);
+});
+
+test('PDF text-markup exclusions survive deletion through the import manifest and tombstones', () => {
+  assert.deepEqual(getExcludedPdfTextMarkupIds({
+    subtype: 'Redact',
+    pageNumber: 2,
+    manifestByType: { Redact: ['manifest-redact'] },
+    annotations: [],
+    deletedPdfAnnotations: [
+      { pageNumber: 2, pdfAnnotationId: 'deleted-redact', pdfAnnotationType: 'Redact' },
+      { pageNumber: 3, pdfAnnotationId: 'other-page', pdfAnnotationType: 'Redact' },
+    ],
+  }), ['manifest-redact', 'deleted-redact']);
 });
 
 for (const markupType of ['squiggly', 'strikeout']) {

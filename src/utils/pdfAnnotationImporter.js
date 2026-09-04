@@ -4281,10 +4281,12 @@ function convertPdfTextMarkupToNative(annotation, viewport, scale = 1, context =
     overlapMode: 'layered',
     linkUrl: annotation.url || annotation.unsafeUrl || null,
     linkPageNumber: context.linkPageNumber || null,
+    applied: markupType === 'redact' ? false : undefined,
   });
   if (!native) return null;
   return {
     ...native,
+    ...(markupType === 'redact' ? { fill: 'transparent', stroke: color } : {}),
     isPdfImported: true,
     pdfAnnotationId: annotation.id || annotation.name || id,
     pdfAnnotationType: annotation.subtype,
@@ -5806,6 +5808,14 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
         if (!key) return true;
         return seenNM.get(key) === idx;
       });
+      const pendingRedactionCount = supported.filter((ann) => ann?.subtype === 'Redact').length;
+      if (pendingRedactionCount > 0) {
+        localUnsupported.add('Redact');
+        localUnsupportedCounts.set(
+          'Redact',
+          (localUnsupportedCounts.get('Redact') || 0) + pendingRedactionCount,
+        );
+      }
 
       const hasTextMarkup = supported.some((annotation) => (
         Boolean(PDF_TEXT_MARKUP_TYPES[annotation?.subtype])
@@ -6043,6 +6053,14 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
               ? 'no-renderable-native-annotations'
               : 'renderable-native-annotations-not-imported'),
         importedIds: Array.from(importedIds),
+        importedTextMarkupIdsByType: fabricObjects.reduce((result, object) => {
+          if (object?.isPdfImported && object?.data?.type === 'text-markup' && object?.pdfAnnotationId) {
+            const subtype = String(object.pdfAnnotationType || '');
+            if (!result[subtype]) result[subtype] = [];
+            result[subtype].push(String(object.pdfAnnotationId));
+          }
+          return result;
+        }, {}),
         nativeRenderableAnnotationIds: diag.nativeRenderableAnnotationIds,
         nativeOnlyAnnotationIds: diag.nativeOnlyAnnotationIds,
       };

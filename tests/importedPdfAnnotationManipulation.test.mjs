@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { convertPdfAnnotationToFabric } from '../src/utils/pdfAnnotationImporter.js';
+import { convertPdfAnnotationToFabric, importAnnotationsFromPdf } from '../src/utils/pdfAnnotationImporter.js';
 import {
   isAnnotationTransformHandleLocked,
   isMovementLockedAnnotation,
@@ -66,6 +66,41 @@ test('imported underline, strike-through, and squiggle use native text-range han
   }
 });
 
+test('an imported pending redaction stays an outlined warning, not a black fill', () => {
+  const annotation = convertPdfAnnotationToFabric(
+    { id: 'redact-1', subtype: 'Redact', rect: [10, 76, 70, 90], color: [1, 0, 0] },
+    makeViewport(),
+    1,
+    null,
+    { pageNumber: 1 },
+  );
+
+  assert.equal(annotation.isPdfImported, true);
+  assert.equal(annotation.fill, 'transparent');
+  assert.equal(annotation.stroke, '#ff0000');
+  assert.equal(annotation.data.applied, false);
+});
+
+test('import reports converted redactions so the not-applied warning stays visible', async () => {
+  const viewport = makeViewport();
+  const result = await importAnnotationsFromPdf({
+    numPages: 1,
+    async getPage() {
+      return {
+        rotate: 0,
+        getViewport: () => viewport,
+        getTextContent: async () => ({ items: [] }),
+        getAnnotations: async () => [
+          { id: 'redact-1', subtype: 'Redact', rect: [10, 76, 70, 90], color: [1, 0, 0] },
+        ],
+      };
+    },
+  });
+
+  assert.equal(result.unsupportedCounts.Redact, 1);
+  assert.deepEqual(result.nativeLayerPolicyByPage[1].importedTextMarkupIdsByType.Redact, ['redact-1']);
+});
+
 test('both annotation render paths route imported marks through native text-markup controls', () => {
   const svgSource = readFileSync(
     new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url),
@@ -91,4 +126,6 @@ test('both annotation render paths route imported marks through native text-mark
   assert.match(interactionSource, /obj\?\.data\?\.type === 'text-markup' \|\| isMovementLockedAnnotation\(obj\)/);
   assert.match(interactionSource, /isAnnotationTransformHandleLocked\(obj, handleId\)/);
   assert.match(rendererSource, /getTextMarkupUnderlineInset\(obj, height, lineWidth\)/);
+  assert.match(rendererSource, /isUnappliedImportedRedaction/);
+  assert.match(rendererSource, /if \(type === 'link' && obj\?\.isPdfImported\) return null/);
 });

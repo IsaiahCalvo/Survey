@@ -526,6 +526,9 @@ export const renderTextMarkup = (obj, index) => {
   const shapeId = obj.id || data.id || key;
   const lineWidth = Math.max(0.8, Number(data.lineWidth) || 1.2);
 
+  const isUnappliedImportedRedaction = type === 'redact'
+    && obj?.isPdfImported
+    && data.applied !== true;
   if (type === 'highlight' || type === 'redact') {
     const d = quads.map((q) => (
       `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`
@@ -534,7 +537,9 @@ export const renderTextMarkup = (obj, index) => {
       <path
         key={key}
         d={d}
-        fill={type === 'redact' ? '#000000' : color}
+        fill={isUnappliedImportedRedaction ? 'none' : type === 'redact' ? '#000000' : color}
+        stroke={isUnappliedImportedRedaction ? color : undefined}
+        strokeWidth={isUnappliedImportedRedaction ? lineWidth : undefined}
         fillRule="nonzero"
         opacity={type === 'redact' ? 1 : opacity}
         style={data.overlapMode === 'layered' ? { mixBlendMode: 'multiply' } : undefined}
@@ -544,6 +549,8 @@ export const renderTextMarkup = (obj, index) => {
       />
     );
   }
+
+  if (type === 'link' && obj?.isPdfImported) return null;
 
   const paths = quads.map((q) => {
     const height = Math.max(1, Math.hypot(q.x3 - q.x1, q.y3 - q.y1));

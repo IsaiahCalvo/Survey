@@ -130,12 +130,39 @@ export function clientRectToPageQuad(clientRect, pageRect, pageSize) {
 
 export function getTextMarkupUnderlineInset(annotation, quadHeight, lineWidth = 1.2) {
   const strokeInset = Math.max(0, Number(lineWidth) || 0) / 2;
-  if (annotation?.isPdfImported) return strokeInset;
+  if (annotation?.isPdfImported || annotation?.data?.type === 'text-markup') return strokeInset;
   // A browser Range rect covers the CSS line box, including leading below the
   // glyph baseline. PDF QuadPoints already hug the glyphs. Pull marks created
   // from a live browser selection up by one quarter of that line box so both
   // sources paint on the same visual baseline.
   return Math.max(strokeInset, Math.max(0, Number(quadHeight) || 0) / 4);
+}
+
+export function getExcludedPdfTextMarkupIds({
+  subtype,
+  pageNumber,
+  manifestByType,
+  annotations,
+  deletedPdfAnnotations,
+} = {}) {
+  const wantedSubtype = String(subtype || '');
+  const ids = new Set((manifestByType?.[wantedSubtype] || []).map(String));
+  for (const annotation of annotations || []) {
+    if (
+      annotation?.isPdfImported
+      && annotation?.data?.type === 'text-markup'
+      && String(annotation?.pdfAnnotationType || '') === wantedSubtype
+      && annotation?.pdfAnnotationId
+    ) ids.add(String(annotation.pdfAnnotationId));
+  }
+  for (const entry of deletedPdfAnnotations || []) {
+    if (
+      Number(entry?.pageNumber) === Number(pageNumber)
+      && String(entry?.pdfAnnotationType || '') === wantedSubtype
+      && entry?.pdfAnnotationId
+    ) ids.add(String(entry.pdfAnnotationId));
+  }
+  return [...ids];
 }
 
 export function rotatePageQuad(quad, rotation, unrotatedWidth, unrotatedHeight) {
@@ -198,6 +225,7 @@ export function createTextMarkupAnnotation({
   linkUrl = null,
   linkPageNumber = null,
   authorId = null,
+  applied,
 }) {
   const type = normalizeTextMarkupType(markupType);
   const resolvedLinkUrl = type === 'link' ? normalizeTextLinkUrl(linkUrl) : null;
@@ -208,7 +236,9 @@ export function createTextMarkupAnnotation({
   const bounds = quadBounds(mergedQuads);
   if (!id || !type || !bounds || !Number.isFinite(Number(pageNumber)) || (type === 'link' && !resolvedLinkUrl && !resolvedLinkPageNumber)) return null;
   const defaultPaint = TEXT_MARKUP_DEFAULT_PAINT[type];
-  const resolvedColor = type === 'redact' ? '#000000' : type === 'link' ? '#2563eb' : (color || defaultPaint?.color);
+  const resolvedColor = type === 'redact' && applied !== false
+    ? '#000000'
+    : type === 'link' ? '#2563eb' : (color || defaultPaint?.color);
   const resolvedOpacity = type === 'redact' || type === 'link'
     ? 1
     : clamp01(opacity ?? ((defaultPaint?.opacity ?? 100) / 100));
@@ -257,6 +287,7 @@ export function createTextMarkupAnnotation({
       ...(resolvedLinkUrl ? { linkUrl: resolvedLinkUrl } : {}),
       ...(resolvedLinkPageNumber ? { linkPageNumber: resolvedLinkPageNumber } : {}),
       ...(authorId ? { authorId } : {}),
+      ...(typeof applied === 'boolean' ? { applied } : {}),
     },
     meta: authorId ? { authorId } : undefined,
   };

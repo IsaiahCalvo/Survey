@@ -392,7 +392,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
-import { createTextMarkupAnnotation, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
+import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -31791,6 +31791,15 @@ ${pageBlocks}
                         }
                         return result;
                       }, {});
+                      for (const subtype of ['Link', 'Redact']) {
+                        importedTextMarkupIdsByType[subtype] = getExcludedPdfTextMarkupIds({
+                          subtype,
+                          pageNumber,
+                          manifestByType: nativePdfAnnotationPolicy?.importedTextMarkupIdsByType,
+                          annotations: pageAnnotationObjects,
+                          deletedPdfAnnotations,
+                        });
+                      }
                       const requiredImportedPdfAnnotationIds = Array.isArray(nativePdfAnnotationPolicy?.importedIds)
                         ? nativePdfAnnotationPolicy.importedIds
                         : [];
