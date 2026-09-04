@@ -25,6 +25,16 @@ test('small trackpad ticks match Drawboard speed and reverse symmetrically', () 
   assert.ok(Math.abs(zoomedBackOut - 0.74) < 1e-9, `expected a reversible step, got ${zoomedBackOut}`);
 });
 
+test('one full mouse-wheel notch stays near the prior modest 1.1x step', () => {
+  const zoomedOut = getWheelZoomScale(0.76, {
+    deltaY: 100,
+    deltaMode: 0,
+    minimumScale: 0.01,
+  });
+
+  assert.ok(zoomedOut > 0.68 && zoomedOut < 0.70, `expected a modest wheel step, got ${zoomedOut}`);
+});
+
 test('one event cannot collapse zoom even when a device reports an enormous delta', () => {
   const oneNotch = getWheelZoomScale(0.76, { deltaY: 100, minimumScale: 0.01 });
   const enormousDelta = getWheelZoomScale(0.76, { deltaY: 10_000, minimumScale: 0.01 });

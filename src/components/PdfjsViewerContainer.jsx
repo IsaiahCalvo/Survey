@@ -565,13 +565,21 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       if (axis === hoveredAxisRef.current) return;
       hoveredAxisRef.current = axis;
       setHoveredAxis(axis);
-      if (axis) showThenFade();
+      showThenFade();
+    };
+    const onScrollbarProximityLeave = () => {
+      if (dragRef.current) return;
+      hoveredAxisRef.current = null;
+      setHoveredAxis(null);
+      showThenFade();
     };
     scroller.addEventListener('scroll', onScroll, { passive: true });
     scroller.addEventListener('pointermove', onScrollbarProximityMove, { passive: true });
+    scroller.addEventListener('pointerleave', onScrollbarProximityLeave, { passive: true });
     return () => {
       scroller.removeEventListener('scroll', onScroll);
       scroller.removeEventListener('pointermove', onScrollbarProximityMove);
+      scroller.removeEventListener('pointerleave', onScrollbarProximityLeave);
     };
   }, [disabled, requestFrame, scrollerRef, showThenFade]);
 
@@ -2573,7 +2581,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
                     position: 'absolute',
                     inset: 0,
                     pointerEvents: 'none',
-                    zIndex: 30,
+                    zIndex: textSelectionLayerActive ? 41 : 30,
                     overflow: 'visible',
                   }}
                 />

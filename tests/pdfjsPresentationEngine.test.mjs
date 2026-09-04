@@ -46,6 +46,20 @@ test('custom scrollbar drag keeps the thumb on the pointer without animation lag
   assert.doesNotMatch(scrollbarSource.slice(pointerMoveStart, pointerMoveEnd), /showThenFade\(\)/);
 });
 
+test('custom scrollbars restart fading when edge hover ends or leaves the scroller', () => {
+  const scrollbarStart = SOURCE.indexOf('function ViewportScrollbars');
+  const scrollbarEnd = SOURCE.indexOf('let pdfjsContainerSeq', scrollbarStart);
+  const scrollbarSource = SOURCE.slice(scrollbarStart, scrollbarEnd);
+
+  assert.match(scrollbarSource, /hoveredAxisRef\.current = axis;[\s\S]{0,120}showThenFade\(\)/);
+  assert.match(scrollbarSource, /const onScrollbarProximityLeave[\s\S]{0,240}hoveredAxisRef\.current = null[\s\S]{0,160}showThenFade\(\)/);
+  assert.match(scrollbarSource, /scroller\.addEventListener\('pointerleave', onScrollbarProximityLeave/);
+});
+
+test('Text Select annotation hits sit above the native text layer', () => {
+  assert.match(SOURCE, /zIndex: textSelectionLayerActive \? 41 : 30/);
+});
+
 test('deep zoom detail work pauses during pan and resumes afterward', () => {
   assert.match(SOURCE, /function DetailTile\([^)]*interactionRef/);
   assert.match(SOURCE, /if \(interactionRef\?\.current\) return;/);
