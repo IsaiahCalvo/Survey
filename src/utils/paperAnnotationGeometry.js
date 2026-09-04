@@ -814,7 +814,7 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
   }));
   // Keep sharp bends as exact local cuts. A merged mask can produce a weakly
   // simple concave join that leaves a small contacted island after one diff.
-  if (pathHasSharpTurn(compacted)) return leaves;
+  if (compacted.length <= 32 && pathHasSharpTurn(compacted)) return leaves;
   const mergeRange = (start, end) => {
     if (end - start === 1) return [leaves[start]];
     const middle = start + Math.floor((end - start) / 2);
