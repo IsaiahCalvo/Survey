@@ -43,6 +43,7 @@ import PdfjsTextLayer from './PdfjsTextLayer';
 import {
   getDocumentMinimumScale,
   getWheelZoomScale,
+  normalizeWheelDelta,
 } from '../utils/pdfZoomMath';
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
@@ -529,6 +530,8 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   const hoveredAxisRef = useRef(null);
   const frameRef = useRef(0);
   const dragRef = useRef(null);
+  const horizontalRailRef = useRef(null);
+  const verticalRailRef = useRef(null);
   const horizontalThumbRef = useRef(null);
   const verticalThumbRef = useRef(null);
 
@@ -548,6 +551,46 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       if (!dragRef.current && !hoveredAxisRef.current) setVisible(false);
     }, VIEWPORT_SCROLLBAR_HOLD_MS);
   }, []);
+
+  const forwardRailWheel = useCallback((event) => {
+    const scrollerNode = scrollerRef.current;
+    if (!scrollerNode) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.ctrlKey || event.metaKey) {
+      scrollerNode.dispatchEvent(new WheelEvent('wheel', {
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaZ: event.deltaZ,
+        deltaMode: event.deltaMode,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        bubbles: true,
+        cancelable: true,
+      }));
+      return;
+    }
+    let deltaX = normalizeWheelDelta(event.deltaX, event.deltaMode, scrollerNode.clientWidth);
+    let deltaY = normalizeWheelDelta(event.deltaY, event.deltaMode, scrollerNode.clientHeight);
+    if (event.shiftKey && deltaX === 0) {
+      deltaX = deltaY;
+      deltaY = 0;
+    }
+    scrollerNode.scrollLeft += deltaX;
+    scrollerNode.scrollTop += deltaY;
+    showThenFade();
+    requestFrame();
+  }, [requestFrame, scrollerRef, showThenFade]);
+
+  useEffect(() => {
+    const rails = [verticalRailRef.current, horizontalRailRef.current].filter(Boolean);
+    rails.forEach((rail) => rail.addEventListener('wheel', forwardRailWheel, { passive: false }));
+    return () => rails.forEach((rail) => rail.removeEventListener('wheel', forwardRailWheel));
+  });
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -691,7 +734,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     opacity: visible ? 1 : 0,
     transition: `opacity ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out, background-color ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out`,
     background: 'transparent',
-    pointerEvents: 'none',
+    pointerEvents: visible ? 'auto' : 'none',
   };
   const thumbStyle = {
     position: 'absolute',
@@ -706,8 +749,10 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   return (
     <>
       {vertical.maxScroll > 0 && <div
+        ref={verticalRailRef}
         aria-label="Viewport vertical scroll bar"
         onPointerEnter={() => { hoveredAxisRef.current = 'vertical'; setHoveredAxis('vertical'); showThenFade(); }}
+        onPointerMove={() => { hoveredAxisRef.current = 'vertical'; setHoveredAxis('vertical'); showThenFade(); }}
         onPointerLeave={() => {
           if (dragRef.current) return;
           hoveredAxisRef.current = null;
@@ -731,8 +776,10 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
         />
       </div>}
       {horizontal.maxScroll > 0 && <div
+        ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
         onPointerEnter={() => { hoveredAxisRef.current = 'horizontal'; setHoveredAxis('horizontal'); showThenFade(); }}
+        onPointerMove={() => { hoveredAxisRef.current = 'horizontal'; setHoveredAxis('horizontal'); showThenFade(); }}
         onPointerLeave={() => {
           if (dragRef.current) return;
           hoveredAxisRef.current = null;

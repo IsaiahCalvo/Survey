@@ -9,8 +9,11 @@ const viewerSource = readFileSync(
   'utf8',
 );
 
-test('only a visible scrollbar thumb can cover page input', () => {
-  assert.match(viewerSource, /pointerEvents: 'none',[\s\S]{0,500}pointerEvents: visible \? 'auto' : 'none'/);
+test('only a visible scrollbar rail and thumb can cover page input', () => {
+  assert.match(
+    viewerSource,
+    /const railStyle = \{[\s\S]{0,500}pointerEvents: visible \? 'auto' : 'none',[\s\S]{0,500}const thumbStyle = \{[\s\S]{0,500}pointerEvents: visible \? 'auto' : 'none'/,
+  );
 });
 
 test('scrollbar thumb reflects the visible share and current scroll position', () => {
