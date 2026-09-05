@@ -2,6 +2,47 @@ import { buildAnnotationHistoryAction } from './annotationLocalHistory.js';
 
 const pageObjects = (page) => (Array.isArray(page?.objects) ? page.objects : []);
 
+const pdfAnnotationKey = (pageNumber, pdfAnnotationId) => (
+  `${Number(pageNumber)}:${String(pdfAnnotationId)}`
+);
+
+export function getPdfAnnotationMutationState(previousByPage, nextByPage) {
+  const presentPdfAnnotationKeys = new Set();
+  for (const [pageKey, page] of Object.entries(nextByPage || {})) {
+    for (const annotation of pageObjects(page)) {
+      if (!annotation?.pdfAnnotationId) continue;
+      presentPdfAnnotationKeys.add(pdfAnnotationKey(pageKey, annotation.pdfAnnotationId));
+    }
+  }
+
+  const deletedPdfAnnotations = [];
+  const deletedKeys = new Set();
+  for (const [pageKey, page] of Object.entries(previousByPage || {})) {
+    for (const annotation of pageObjects(page)) {
+      if (!annotation?.pdfAnnotationId) continue;
+      const key = pdfAnnotationKey(pageKey, annotation.pdfAnnotationId);
+      if (presentPdfAnnotationKeys.has(key) || deletedKeys.has(key)) continue;
+      deletedKeys.add(key);
+      deletedPdfAnnotations.push({
+        pageNumber: Number(pageKey),
+        pdfAnnotationId: String(annotation.pdfAnnotationId),
+        pdfAnnotationType: annotation.pdfAnnotationType || annotation?.data?.pdfAnnotationType || null,
+        ...(annotation?.pdfNativeAnnotationIdentity || annotation?.data?.pdfNativeAnnotationIdentity
+          ? {
+            pdfNativeAnnotationIdentity: annotation.pdfNativeAnnotationIdentity
+              || annotation.data.pdfNativeAnnotationIdentity,
+          }
+          : {}),
+      });
+    }
+  }
+
+  return {
+    deletedPdfAnnotations,
+    presentPdfAnnotationKeys: [...presentPdfAnnotationKeys],
+  };
+}
+
 const textMarkupRangeFingerprint = (annotation) => {
   if (!isTextMarkupAnnotation(annotation)) return null;
   const quads = Array.isArray(annotation.data.quads)
@@ -320,10 +361,12 @@ export function buildAtomicTextMarkupPageMutation({
     }
   }
   const action = buildTextMarkupDocumentAction(previousByPage, nextByPage);
+  const pdfAnnotationMutationState = getPdfAnnotationMutationState(previousByPage, nextByPage);
   return action ? {
     action,
     nextByPage,
     selectionGroupIds: [...deletedGroupIds],
+    ...pdfAnnotationMutationState,
   } : null;
 }
 

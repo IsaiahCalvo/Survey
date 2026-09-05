@@ -24818,6 +24818,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     );
     if (!scopedAction) return false;
     pushLocalAnnotationHistoryAction(scopedAction);
+    setLocallyDeletedPdfAnnotations((previous) => {
+      const keyFor = (entry) => `${Number(entry.pageNumber)}:${String(entry.pdfAnnotationId)}`;
+      const next = new Map(previous.map((entry) => [keyFor(entry), entry]));
+      (transaction.deletedPdfAnnotations || []).forEach((entry) => {
+        next.set(keyFor(entry), entry);
+      });
+      (transaction.presentPdfAnnotationKeys || []).forEach((key) => next.delete(key));
+      const result = [...next.values()];
+      return JSON.stringify(result) === JSON.stringify(previous) ? previous : result;
+    });
     annotationsByPageRef.current = transaction.nextByPage;
     try {
       flushSync(() => setAnnotationsByPage(transaction.nextByPage));

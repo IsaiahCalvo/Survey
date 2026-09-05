@@ -10,6 +10,7 @@ import {
   buildTextMarkupPaintEditTransaction,
   buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
+  getPdfAnnotationMutationState,
   getTextMarkupRangeTypes,
   isExactTextMarkupDuplicate,
   preserveTextMarkupRangeResizeSiblings,
@@ -347,6 +348,55 @@ test('deleting one page member deletes the full selection group as one action', 
   const deletedAgain = applyAnnotationHistoryAction(restored, tx.action);
   assert.equal(deletedAgain['1'].objects.some((item) => item.data.selectionGroupId === 'range-1'), false);
   assert.equal(deletedAgain['2'].objects.some((item) => item.data.selectionGroupId === 'range-1'), false);
+});
+
+test('atomic text-markup deletion reports each removed imported PDF annotation for export', () => {
+  const importedHighlight = {
+    ...mark('imported-highlight', 1, 'imported-range', 'highlight'),
+    isPdfImported: true,
+    pdfAnnotationId: '41R',
+    pdfAnnotationType: 'Highlight',
+  };
+  const importedUnderline = {
+    ...mark('imported-underline', 2, 'imported-range', 'underline'),
+    isPdfImported: true,
+    pdfAnnotationId: '57R',
+    data: {
+      ...mark('imported-underline', 2, 'imported-range', 'underline').data,
+      pdfAnnotationType: 'Underline',
+      pdfNativeAnnotationIdentity: { objectNumber: 57, generationNumber: 0 },
+    },
+  };
+  const keptImportedMark = {
+    ...mark('kept-imported', 2, 'other-range', 'strikeout'),
+    isPdfImported: true,
+    pdfAnnotationId: '63R',
+    pdfAnnotationType: 'StrikeOut',
+  };
+  const before = {
+    1: { objects: [importedHighlight] },
+    2: { objects: [importedUnderline, keptImportedMark] },
+  };
+  const tx = buildAtomicTextMarkupPageMutation({
+    annotationsByPage: before,
+    pageNumber: 1,
+    nextPage: { objects: [] },
+  });
+
+  assert.deepEqual(tx.deletedPdfAnnotations, [
+    { pageNumber: 1, pdfAnnotationId: '41R', pdfAnnotationType: 'Highlight' },
+    {
+      pageNumber: 2,
+      pdfAnnotationId: '57R',
+      pdfAnnotationType: 'Underline',
+      pdfNativeAnnotationIdentity: { objectNumber: 57, generationNumber: 0 },
+    },
+  ]);
+  assert.deepEqual(tx.presentPdfAnnotationKeys, ['2:63R']);
+  assert.deepEqual(
+    getPdfAnnotationMutationState(tx.nextByPage, before).presentPdfAnnotationKeys.sort(),
+    ['1:41R', '2:57R', '2:63R'],
+  );
 });
 
 test('an eraser page mutation keeps unrelated page edits in the same atomic action', () => {
