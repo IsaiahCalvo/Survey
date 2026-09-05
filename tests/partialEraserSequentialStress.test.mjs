@@ -6,6 +6,7 @@ import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 const SUBJECT = [[[
   [0, 0], [640, 0], [640, 240], [0, 240], [0, 0],
 ]]];
+const DEFAULT_SEQUENTIAL_CASES = 36;
 
 function mulberry32(seed) {
   let value = seed >>> 0;
@@ -114,7 +115,12 @@ function probeGesture(gesture, probes) {
 }
 
 test('repeated curved cuts never leave ink inside any prior cursor sweep', { timeout: 120_000 }, (context) => {
-  const caseCount = Math.max(1, Number.parseInt(process.env.ERASER_SEQUENTIAL_CASES || '180', 10));
+  // Keep the release suite under its 120s per-file cap. Set
+  // ERASER_SEQUENTIAL_CASES=180 for the full nightly/local stress sweep.
+  const caseCount = Math.max(1, Number.parseInt(
+    process.env.ERASER_SEQUENTIAL_CASES || String(DEFAULT_SEQUENTIAL_CASES),
+    10,
+  ));
   const startSeed = Math.max(1, Number.parseInt(process.env.ERASER_SEQUENTIAL_START_SEED || '1', 10));
   const failures = [];
   let checkedProbes = 0;

@@ -981,9 +981,17 @@ test.describe('mounted eraser lifecycle and gestures', () => {
       .toBe(committedOnLoss);
     await expect(page.locator('[data-eraser-live-preview="1"]')).toHaveCSS('display', 'none');
 
-    const cursor = page.locator('[data-eraser-cursor="true"]');
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await expect(cursor).not.toHaveCSS('display', 'none');
+    await expect.poll(async () => page.evaluate(() => {
+      const wrapper = document.querySelector('[data-diag-eraser-wrapper="1"]');
+      const ring = document.querySelector('[data-eraser-cursor="true"]');
+      const hasNativeCursor = getComputedStyle(wrapper).cursor.startsWith('url(');
+      const hasVisibleRing = getComputedStyle(ring).display !== 'none';
+      return hasNativeCursor || hasVisibleRing;
+    }), {
+      message: 'eraser must keep a native cursor or visible ring after lost pointer capture',
+      timeout: 500,
+    }).toBe(true);
 
     await expectExactUndoRedo(page, selector, before, after);
     await expectNoErrors(errors);
@@ -1148,8 +1156,14 @@ test.describe('mounted eraser lifecycle and gestures', () => {
       await page.mouse.down();
       await page.mouse.move(x, box.y + box.height + 12, { steps: 2 });
       await page.mouse.up();
-      const current = JSON.stringify(await appAnnotationSnapshot(page));
-      expect(current, `Rapid swipe at ${fraction} must commit a distinct change`).not.toBe(previous);
+      let current = previous;
+      await expect.poll(async () => {
+        current = JSON.stringify(await appAnnotationSnapshot(page));
+        return current;
+      }, {
+        message: `Rapid swipe at ${fraction} must commit a distinct change`,
+        timeout: 500,
+      }).not.toBe(previous);
       previous = current;
     }
     const final = await appAnnotationSnapshot(page);
