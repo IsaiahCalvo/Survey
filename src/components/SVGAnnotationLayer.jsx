@@ -841,16 +841,18 @@ const SVGAnnotationLayer = memo(({
   // only while the pointer is near the current selection. This keeps the rest
   // of the page transparent to PDF text and avoids a second, fake handle tree.
   const [textSelectManipulationArmed, setTextSelectManipulationArmed] = useState(false);
+  const annotationHitTargetsInteractive = isSelectTool && (
+    activeTool !== 'text-select' || textSelectManipulationArmed
+  );
   const lastTextSelectPointerRef = useRef(null);
   const applyTextSelectPointerOwnership = useCallback((active) => {
     const ownsPointer = !!active;
-    const root = svgRef.current;
     // Pointermove and pointerdown may arrive in the same browser task. Apply
-    // the two hit-layer flips now, then let React state make them durable.
+    // the text-layer flip now, then let React state own the SVG root style.
     // Without this sync bridge, a fast mouse move or touch could start on the
     // stale owner for one frame and lose the whole drag.
+    const root = svgRef.current;
     if (root) {
-      root.style.pointerEvents = ownsPointer ? 'auto' : 'none';
       const page = root.closest('[id*="_pageDiv_"]');
       const textLayer = page?.querySelector?.('.pdfjsTextLayer');
       if (textLayer) textLayer.style.pointerEvents = ownsPointer ? 'none' : 'auto';
@@ -925,7 +927,6 @@ const SVGAnnotationLayer = memo(({
       window.removeEventListener('touchcancel', releaseTouchOwnership, true);
       const root = svgRef.current;
       if (root) {
-        root.style.pointerEvents = '';
         const page = root.closest('[id*="_pageDiv_"]');
         const textLayer = page?.querySelector?.('.pdfjsTextLayer');
         if (textLayer) textLayer.style.pointerEvents = '';
@@ -3000,7 +3001,7 @@ const SVGAnnotationLayer = memo(({
           fill="rgba(0,0,0,0.001)"
           stroke="none"
           transform={rotationTransform}
-          pointerEvents={isSelectTool ? 'all' : 'none'}
+          pointerEvents={annotationHitTargetsInteractive ? 'all' : 'none'}
           style={{ cursor: isSelectTool ? 'move' : undefined }}
           onPointerDown={(e) => handleSurveyMarkerPointerDown(e, entry)}
           onDoubleClick={(e) => handleSurveyMarkerDoubleClick(e, entry)}
@@ -4250,7 +4251,7 @@ const SVGAnnotationLayer = memo(({
                     strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
-                    pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
                     data-shape-hit-target="line"
                     onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                     onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
@@ -4270,7 +4271,7 @@ const SVGAnnotationLayer = memo(({
                     // tools flow their pointer events to handleSvgPointerDown
                     // on the SVG root instead of re-selecting this existing
                     // annotation mid-drag.
-                    pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
                     data-shape-hit-target="line"
                     onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                     onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
@@ -4309,7 +4310,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: renderObj.strokeWidth || 1,
-              isInteractive: isSelectTool && isObjectInteractive,
+              isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
               <g>
@@ -4404,7 +4405,7 @@ const SVGAnnotationLayer = memo(({
                     strokeWidth={hitStrokeWidth}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
-                    pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
                     data-shape-hit-target="group-line"
                     onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                     onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
@@ -4419,7 +4420,7 @@ const SVGAnnotationLayer = memo(({
                       strokeWidth={Math.max(2, renderObj.strokeWidth || 2)}
                       strokeLinejoin="round"
                       transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
-                      pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                      pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'all' : 'none'}
                       data-shape-hit-target="group-arrowhead"
                       onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                       onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
@@ -4481,7 +4482,7 @@ const SVGAnnotationLayer = memo(({
               fill: isPolygonShape ? renderObj.fill : 'none',
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              isInteractive: isSelectTool && isObjectInteractive,
+              isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
               <g>
@@ -4569,7 +4570,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              isInteractive: isSelectTool && isObjectInteractive,
+              isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
               <g>
@@ -4631,7 +4632,7 @@ const SVGAnnotationLayer = memo(({
               fill: renderObj.fill,
               stroke: renderObj.stroke,
               strokeWidth: sw,
-              isInteractive: isSelectTool && isObjectInteractive,
+              isInteractive: annotationHitTargetsInteractive && isObjectInteractive,
             });
             return (
               <g>
@@ -4697,7 +4698,7 @@ const SVGAnnotationLayer = memo(({
             const hitStrokeWidth = inkHitProps
               ? inkHitProps.strokeWidth
               : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
-            const pathPointerEvents = isSelectTool && isObjectInteractive
+            const pathPointerEvents = annotationHitTargetsInteractive && isObjectInteractive
               ? (isFilledPdfInkOutline ? 'all' : 'stroke')
               : 'none';
             return (
@@ -4780,7 +4781,7 @@ const SVGAnnotationLayer = memo(({
                 // isSelectTool so creation tools (line/arrow/callout) don't
                 // re-select existing annotations mid-drag. See the isSelectTool
                 // vs isInteractive comment at the derivation site (~line 142).
-                pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'all' : 'none'}
                 onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                 onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                 onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}

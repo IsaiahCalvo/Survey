@@ -29175,6 +29175,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!['select', 'text-select'].includes(activeTool)) return undefined;
     const handlePointerDownCapture = (event) => {
+      // Text Select decides annotation clicks on pointerup after its movement
+      // threshold. Claiming the pointer here blocks native text drags that
+      // start on a converted highlight, underline, strikeout, or squiggle.
+      if (activeTool === 'text-select') return;
       handleSelectPdfjsTextMarkupFromClientPoint(event);
     };
     document.addEventListener('pointerdown', handlePointerDownCapture, true);
