@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import {
   applyAnnotationHistoryAction,
   invertAnnotationHistoryAction,
@@ -16,6 +17,7 @@ import {
   preserveTextMarkupRangeResizeSiblings,
   resolveTextLinkEditorPrefill,
 } from '../src/utils/textMarkupGroupTransactions.js';
+import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
 
 const mark = (id, pageNumber, group = 'range-1', markupType = 'highlight') => ({
   type: 'group',
@@ -397,6 +399,49 @@ test('atomic text-markup deletion reports each removed imported PDF annotation f
     getPdfAnnotationMutationState(tx.nextByPage, before).presentPdfAnnotationKeys.sort(),
     ['1:41R', '2:57R', '2:63R'],
   );
+});
+
+test('atomic imported text-markup tombstone removes the native mark from exported PDF bytes', async () => {
+  const source = await PDFDocument.create();
+  const page = source.addPage([200, 200]);
+  const nativeRef = source.context.register(source.context.obj({
+    Type: 'Annot',
+    Subtype: 'Redact',
+    Rect: [20, 160, 80, 180],
+    F: 4,
+    P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), source.context.obj([nativeRef]));
+  const sourceBytes = await source.save();
+  const importedRedact = {
+    ...mark('imported-redact', 1, 'redact-range', 'redact'),
+    isPdfImported: true,
+    pdfAnnotationId: `${nativeRef.objectNumber}R`,
+    pdfAnnotationType: 'Redact',
+  };
+  const transaction = buildAtomicTextMarkupPageMutation({
+    annotationsByPage: { 1: { objects: [importedRedact] } },
+    pageNumber: 1,
+    nextPage: { objects: [] },
+  });
+  const exportedBytes = await savePDFWithAnnotationsPdfLib(
+    {
+      name: 'imported-redact.pdf',
+      async arrayBuffer() {
+        return sourceBytes.buffer.slice(
+          sourceBytes.byteOffset,
+          sourceBytes.byteOffset + sourceBytes.byteLength,
+        );
+      },
+    },
+    transaction.nextByPage,
+    { 1: { width: 200, height: 200 } },
+    null,
+    { returnBytes: true, deletedPdfAnnotations: transaction.deletedPdfAnnotations },
+  );
+  const exported = await PDFDocument.load(exportedBytes);
+
+  assert.equal(exported.getPage(0).node.lookup(PDFName.of('Annots'))?.size?.() || 0, 0);
 });
 
 test('an eraser page mutation keeps unrelated page edits in the same atomic action', () => {
