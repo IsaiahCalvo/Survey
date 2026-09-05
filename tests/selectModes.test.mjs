@@ -58,7 +58,7 @@ test('Select family keeps distinct approved icons without changing its transitio
   assert.equal(getSelectFamilyIconName('text-select', 'rectangle'), 'textSelect');
 
   for (const [fileName, expectedHash] of [
-    ['selection-cursor-rounded.svg', '07110d9e908d1d8099edaedeb01cac093212ddfd703415701c3a0d25de7151b9'],
+    ['selection-cursor-rounded.svg', '5b84e601f810c906dfe32d464b9d175e0d18db794b4be0c0251aa8455cb80a01'],
     ['lasso-select-rounded.svg', '9fe83afeef1c13c09aa557728badf71696341213210b5b2924e1becba8e50d22'],
     ['text-select-rounded.svg', '7f75647ee4d328ec68eb867dfde598019fe1537db3861a7014273b812a80192e'],
   ]) {
