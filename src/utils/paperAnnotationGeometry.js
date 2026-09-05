@@ -820,18 +820,23 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
   const directRing = directSweptDiskRing(compacted, radius, semicircleSteps);
   if (directRing) return [{ geometry: [[directRing]], children: null }];
 
+  const sharpTurn = pathHasSharpTurn(compacted);
+  const smoothLongTurn = !sharpTurn && pathAccumulatedTurn(compacted) >= Math.PI / 2;
+  const capsuleArcSteps = smoothLongTurn
+    ? Math.max(semicircleSteps, FOLDED_ARC_STEPS * 2)
+    : Math.max(semicircleSteps, FOLDED_ARC_STEPS);
   const leaves = compacted.slice(1).map((point, index) => ({
     geometry: normalizeMultiPolygon(capsulePolygon(
       compacted[index],
       point,
       radius,
-      Math.max(semicircleSteps, FOLDED_ARC_STEPS),
+      capsuleArcSteps,
     )),
     children: null,
   }));
   // Keep sharp bends as exact local cuts. A merged mask can produce a weakly
   // simple concave join that leaves a small contacted island after one diff.
-  if (compacted.length <= 32 && pathHasSharpTurn(compacted)) return leaves;
+  if (compacted.length <= 32 && sharpTurn) return leaves;
   const mergeRange = (start, end) => {
     if (end - start === 1) return [leaves[start]];
     const middle = start + Math.floor((end - start) / 2);
@@ -850,9 +855,9 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
       return [...left, ...right];
     }
   };
-  if (!pathHasSharpTurn(compacted) && pathAccumulatedTurn(compacted) >= Math.PI / 2) {
+  if (smoothLongTurn) {
     const records = [];
-    const chunkSize = 8;
+    const chunkSize = 16;
     for (let start = 0; start < leaves.length; start += chunkSize) {
       records.push(...mergeRange(start, Math.min(leaves.length, start + chunkSize)));
     }
@@ -2668,12 +2673,7 @@ const eraserRecordLeaves = (records) => (records || []).flatMap((record) => (
   record.children?.length ? eraserRecordLeaves(record.children) : [record]
 ));
 
-function cullPolygonsCoveredByEraserRecords(
-  polygons,
-  records,
-  eraserPoints,
-  radius,
-) {
+function cullPolygonsCoveredByEraserRecords(polygons, records) {
   const leaves = eraserRecordLeaves(records);
   if (!leaves.length) return polygons;
   const eraserBounds = boundsOfCommands(polygonSetToCommands(
@@ -2702,12 +2702,6 @@ function cullPolygonsCoveredByEraserRecords(
       }
       if (!uncovered.length) return false;
     }
-    const approximationRemainderIsInsideGesture = uncovered.every((part) => (
-      part.every((ring) => ring.every(([x, y]) => (
-        pointTouchesEraserGesture({ x, y }, eraserPoints, radius)
-      )))
-    ));
-    if (approximationRemainderIsInsideGesture) return false;
     return true;
   });
 }
@@ -2840,14 +2834,6 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     const workingSourceWidth = sourceWidth == null
       ? null
       : (useWorkingFrame ? sourceWidth / workingScale : sourceWidth);
-    const workingCenterlinePoints = useWorkingFrame
-      ? centerlinePoints.map((point) => {
-        const [x, y] = toWorking(point.x, point.y);
-        return { x, y };
-      })
-      : centerlinePoints;
-    const workingRadius = useWorkingFrame ? radius / workingScale : radius;
-
     if (annotationEraseMode === 'full') {
       let touched = false;
       let failedParts = 0;
@@ -2907,12 +2893,7 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       }
     }
     if (result.length) {
-      const culledResult = cullPolygonsCoveredByEraserRecords(
-        result,
-        workingEraserRecords,
-        workingCenterlinePoints,
-        workingRadius,
-      );
+      const culledResult = cullPolygonsCoveredByEraserRecords(result, workingEraserRecords);
       if (culledResult.length !== result.length) {
         result = culledResult;
         changed = true;
