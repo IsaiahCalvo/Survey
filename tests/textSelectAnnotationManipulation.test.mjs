@@ -24,7 +24,8 @@ test('Text Select arms SVG pointer handling only near the current selection', ()
   assert.match(layerSource, /const \[textSelectManipulationArmed, setTextSelectManipulationArmed\] = useState\(false\)/);
   assert.match(layerSource, /\.svg-selection-overlay/);
   assert.match(layerSource, /\[data-annotation-index="\$\{selectedIndex\}"\]/);
-  assert.match(layerSource, /root\.style\.pointerEvents = ownsPointer \? 'auto' : 'none'/);
+  assert.match(layerSource, /const annotationHitTargetsInteractive = isSelectTool && \([\s\S]{0,120}activeTool !== 'text-select' \|\| textSelectManipulationArmed/);
+  assert.doesNotMatch(layerSource, /root\.style\.pointerEvents = ownsPointer/);
   assert.match(layerSource, /textLayer\.style\.pointerEvents = ownsPointer \? 'none' : 'auto'/);
   assert.match(layerSource, /activeTool !== 'text-select' \|\| textSelectManipulationArmed \|\| interactionState !== 'idle'/);
   assert.match(layerSource, /onTextSelectManipulationChange\?\.\(pageNumber, textSelectOwnsPointer\)/);
