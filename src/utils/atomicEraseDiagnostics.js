@@ -13,6 +13,25 @@ export function isAtomicEraseGeometryAuditEnabled(host, devMode) {
   return devMode === true && host?.__ERASER_GEOMETRY_AUDIT === true;
 }
 
+export function collectAtomicEraseAuditTargets({
+  enabled,
+  mode,
+  targets,
+  radius,
+  getAnnotationId,
+  toPagePolygons,
+}) {
+  if (!enabled || mode !== 'partial') return [];
+  return (targets || [])
+    .filter((target) => String(target.before?.type || '').toLowerCase() === 'path')
+    .map((target) => ({
+      storageKey: target.storageKey,
+      annotationId: getAnnotationId(target.before),
+      before: toPagePolygons(target.before, radius),
+      after: target.operation === 'delete' ? [] : (target.after?.polygons || []),
+    }));
+}
+
 const cloneDiagnosticValue = (value) => {
   if (typeof structuredClone === 'function') return structuredClone(value);
   return JSON.parse(JSON.stringify(value));

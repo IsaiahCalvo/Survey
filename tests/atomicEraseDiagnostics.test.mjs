@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  collectAtomicEraseAuditTargets,
   isAtomicEraseGeometryAuditEnabled,
   recordAtomicEraseDiagnostic,
   summarizeAtomicEraseDebugIntent,
@@ -13,6 +14,32 @@ test('full geometry audit is opt-in even in a dev build', () => {
   assert.equal(isAtomicEraseGeometryAuditEnabled({}, true), false);
   assert.equal(isAtomicEraseGeometryAuditEnabled({ __ERASER_GEOMETRY_AUDIT: true }, true), true);
   assert.equal(isAtomicEraseGeometryAuditEnabled({ __ERASER_GEOMETRY_AUDIT: true }, false), false);
+});
+
+test('disabled geometry audit never converts target paths', () => {
+  let conversionCalls = 0;
+  const targets = [{
+    storageKey: 'ink-1',
+    operation: 'replace',
+    before: { type: 'path', data: { id: 'ink-1' } },
+    after: { polygons: [[[[0, 0], [1, 0], [0, 0]]]] },
+  }];
+  const collect = (enabled) => collectAtomicEraseAuditTargets({
+    enabled,
+    mode: 'partial',
+    targets,
+    radius: 12,
+    getAnnotationId: (annotation) => annotation.data.id,
+    toPagePolygons: () => {
+      conversionCalls += 1;
+      return [[[[0, 0], [1, 0], [0, 0]]]];
+    },
+  });
+
+  assert.deepEqual(collect(false), []);
+  assert.equal(conversionCalls, 0);
+  assert.equal(collect(true).length, 1);
+  assert.equal(conversionCalls, 1);
 });
 import { auditPartialEraseGeometry } from '../src/utils/paperAnnotationGeometry.js';
 

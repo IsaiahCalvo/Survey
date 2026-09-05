@@ -832,9 +832,6 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
   // Keep sharp bends as exact local cuts. A merged mask can produce a weakly
   // simple concave join that leaves a small contacted island after one diff.
   if (compacted.length <= 32 && pathHasSharpTurn(compacted)) return leaves;
-  if (!pathHasSharpTurn(compacted) && pathAccumulatedTurn(compacted) >= Math.PI / 2) {
-    return leaves;
-  }
   const mergeRange = (start, end) => {
     if (end - start === 1) return [leaves[start]];
     const middle = start + Math.floor((end - start) / 2);
@@ -853,6 +850,14 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
       return [...left, ...right];
     }
   };
+  if (!pathHasSharpTurn(compacted) && pathAccumulatedTurn(compacted) >= Math.PI / 2) {
+    const records = [];
+    const chunkSize = 8;
+    for (let start = 0; start < leaves.length; start += chunkSize) {
+      records.push(...mergeRange(start, Math.min(leaves.length, start + chunkSize)));
+    }
+    return records;
+  }
   return mergeRange(0, leaves.length);
 }
 
@@ -2659,6 +2664,54 @@ const mapEraserRecordCoordinates = (record, mapper) => ({
   )) || null,
 });
 
+const eraserRecordLeaves = (records) => (records || []).flatMap((record) => (
+  record.children?.length ? eraserRecordLeaves(record.children) : [record]
+));
+
+function cullPolygonsCoveredByEraserRecords(
+  polygons,
+  records,
+  eraserPoints,
+  radius,
+) {
+  const leaves = eraserRecordLeaves(records);
+  if (!leaves.length) return polygons;
+  const eraserBounds = boundsOfCommands(polygonSetToCommands(
+    records.flatMap((record) => record.geometry),
+  ));
+  const tolerance = Math.max(
+    Number.MIN_VALUE,
+    Math.max(eraserBounds.w, eraserBounds.h) * Number.EPSILON * 128,
+  );
+
+  return normalizeMultiPolygon(polygons).filter((polygon) => {
+    const bounds = boundsOfCommands(polygonSetToCommands([polygon]));
+    if (
+      bounds.x < eraserBounds.x - tolerance
+      || bounds.y < eraserBounds.y - tolerance
+      || bounds.x + bounds.w > eraserBounds.x + eraserBounds.w + tolerance
+      || bounds.y + bounds.h > eraserBounds.y + eraserBounds.h + tolerance
+    ) return true;
+
+    let uncovered = [polygon];
+    for (const leaf of leaves) {
+      try {
+        uncovered = normalizeWeaklySimplePolygonSet(diff(uncovered, leaf.geometry));
+      } catch {
+        return true;
+      }
+      if (!uncovered.length) return false;
+    }
+    const approximationRemainderIsInsideGesture = uncovered.every((part) => (
+      part.every((ring) => ring.every(([x, y]) => (
+        pointTouchesEraserGesture({ x, y }, eraserPoints, radius)
+      )))
+    ));
+    if (approximationRemainderIsInsideGesture) return false;
+    return true;
+  });
+}
+
 export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'partial') {
   const eraserSampleDistance = Math.max(
     Number.MIN_VALUE,
@@ -2787,6 +2840,13 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     const workingSourceWidth = sourceWidth == null
       ? null
       : (useWorkingFrame ? sourceWidth / workingScale : sourceWidth);
+    const workingCenterlinePoints = useWorkingFrame
+      ? centerlinePoints.map((point) => {
+        const [x, y] = toWorking(point.x, point.y);
+        return { x, y };
+      })
+      : centerlinePoints;
+    const workingRadius = useWorkingFrame ? radius / workingScale : radius;
 
     if (annotationEraseMode === 'full') {
       let touched = false;
@@ -2844,6 +2904,18 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
         result = subtraction.result;
         changed = true;
         if (!result.length) break;
+      }
+    }
+    if (result.length) {
+      const culledResult = cullPolygonsCoveredByEraserRecords(
+        result,
+        workingEraserRecords,
+        workingCenterlinePoints,
+        workingRadius,
+      );
+      if (culledResult.length !== result.length) {
+        result = culledResult;
+        changed = true;
       }
     }
     if (failedParts) {

@@ -57,6 +57,7 @@ import { getCoalescedOrCurrentEvents } from '../utils/eraserPointerSamples.js';
 import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 import {
+  collectAtomicEraseAuditTargets,
   isAtomicEraseGeometryAuditEnabled,
   recordAtomicEraseDiagnostic,
   updateAtomicEraseDiagnostic,
@@ -2131,16 +2132,14 @@ const FabricEraserCanvas = memo(({
       window,
       import.meta.env.DEV,
     );
-    const auditTargets = geometryAuditEnabled && mode === 'partial'
-      ? targets
-        .filter((target) => String(target.before?.type || '').toLowerCase() === 'path')
-        .map((target) => ({
-          storageKey: target.storageKey,
-          annotationId: getEraseObjectId(target.before),
-          before: pathObjectToPagePolygons(target.before, radius),
-          after: target.operation === 'delete' ? [] : (target.after?.polygons || []),
-        }))
-      : [];
+    const auditTargets = collectAtomicEraseAuditTargets({
+      enabled: geometryAuditEnabled,
+      mode,
+      targets,
+      radius,
+      getAnnotationId: getEraseObjectId,
+      toPagePolygons: pathObjectToPagePolygons,
+    });
     updateAtomicEraseDiagnostic(window, mutationId, {
       auditStatus: auditTargets.length && geometryAuditEnabled ? 'pending-commit' : 'not-needed',
       candidateAnnotationIds: result.touchedIds,
