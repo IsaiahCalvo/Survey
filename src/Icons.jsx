@@ -219,7 +219,7 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    drawGroup: (size, color, style, className) => renderMaskIcon(drawGroupIconUrl, size, color, style, className),
+    drawGroup: (size, color, style, className) => renderMaskIcon(drawGroupIconUrl, size, color, { ...style, transform: `${style?.transform || ''} translateY(-2px)`.trim() }, className),
 
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
@@ -231,10 +231,12 @@ const ICON_RENDERERS = {
     ),
 
     text: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <polyline points="4 7 4 4 20 4 20 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="9" y1="20" x2="15" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="12" y1="4" x2="12" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: `${style?.transform || ''} translateY(2px)`.trim() }} className={className}>
+        <g transform="translate(12 12) scale(1.2) translate(-12 -12)">
+          <polyline points="4 7 4 4 20 4 20 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="9" y1="20" x2="15" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="12" y1="4" x2="12" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
       </svg>
     ),
 
