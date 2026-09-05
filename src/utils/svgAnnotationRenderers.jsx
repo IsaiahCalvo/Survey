@@ -540,7 +540,7 @@ export const renderTextMarkup = (obj, index) => {
         key={key}
         d={d}
         fill={isUnappliedImportedRedaction ? 'none' : type === 'redact' ? '#000000' : color}
-        stroke={isUnappliedImportedRedaction ? color : undefined}
+        stroke={isUnappliedImportedRedaction ? UNAPPLIED_REDACTION_WARNING_COLOR : undefined}
         strokeWidth={isUnappliedImportedRedaction ? lineWidth : undefined}
         fillRule="nonzero"
         opacity={type === 'redact' ? 1 : opacity}
@@ -1928,3 +1928,4 @@ export const renderCounter = (obj, index) => {
     </g>
   );
 };
+export const UNAPPLIED_REDACTION_WARNING_COLOR = '#d0021b';
