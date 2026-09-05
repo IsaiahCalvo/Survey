@@ -3814,8 +3814,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.detail > 1) return;
       if (event.pointerType === 'touch' && event.timeStamp - start.timeStamp > 350) return;
       const hit = resolveAnnotationAt(event);
-      if (!hit) return;
-      if (!['annotation', 'callout'].includes(hit.kind)) return;
+      if (!hit || !['annotation', 'callout'].includes(hit.kind)) {
+        clearAnnotationSelectionForContextChange('text-select-empty-click');
+        return;
+      }
       try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
       liveTextSelectionRef.current = null;
       setLiveTextSelection(null);
@@ -3834,13 +3836,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       event.preventDefault();
       event.stopPropagation();
     };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        clearAnnotationSelectionForContextChange('text-select-escape');
+      }
+    };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [activeTool, resolveAnnotationAt]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, resolveAnnotationAt]);
+
+  const previousSelectionToolRef = useRef(activeTool);
+  useEffect(() => {
+    const previousTool = previousSelectionToolRef.current;
+    previousSelectionToolRef.current = activeTool;
+    if (previousTool === 'text-select' && activeTool !== 'text-select') {
+      clearAnnotationSelectionForContextChange('text-select-tool-change');
+    }
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   // UX: pan-mode hover — when the cursor is over an annotation in pan mode,
   // show the same blue hover glow the Select tool shows AND switch the
