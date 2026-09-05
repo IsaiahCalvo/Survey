@@ -823,7 +823,7 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
   const sharpTurn = pathHasSharpTurn(compacted);
   const smoothLongTurn = !sharpTurn && pathAccumulatedTurn(compacted) >= Math.PI / 2;
   const capsuleArcSteps = smoothLongTurn
-    ? Math.max(semicircleSteps, FOLDED_ARC_STEPS * 2)
+    ? Math.max(semicircleSteps, Math.ceil(FOLDED_ARC_STEPS * 1.125))
     : Math.max(semicircleSteps, FOLDED_ARC_STEPS);
   const leaves = compacted.slice(1).map((point, index) => ({
     geometry: normalizeMultiPolygon(capsulePolygon(
@@ -2669,43 +2669,6 @@ const mapEraserRecordCoordinates = (record, mapper) => ({
   )) || null,
 });
 
-const eraserRecordLeaves = (records) => (records || []).flatMap((record) => (
-  record.children?.length ? eraserRecordLeaves(record.children) : [record]
-));
-
-function cullPolygonsCoveredByEraserRecords(polygons, records) {
-  const leaves = eraserRecordLeaves(records);
-  if (!leaves.length) return polygons;
-  const eraserBounds = boundsOfCommands(polygonSetToCommands(
-    records.flatMap((record) => record.geometry),
-  ));
-  const tolerance = Math.max(
-    Number.MIN_VALUE,
-    Math.max(eraserBounds.w, eraserBounds.h) * Number.EPSILON * 128,
-  );
-
-  return normalizeMultiPolygon(polygons).filter((polygon) => {
-    const bounds = boundsOfCommands(polygonSetToCommands([polygon]));
-    if (
-      bounds.x < eraserBounds.x - tolerance
-      || bounds.y < eraserBounds.y - tolerance
-      || bounds.x + bounds.w > eraserBounds.x + eraserBounds.w + tolerance
-      || bounds.y + bounds.h > eraserBounds.y + eraserBounds.h + tolerance
-    ) return true;
-
-    let uncovered = [polygon];
-    for (const leaf of leaves) {
-      try {
-        uncovered = normalizeWeaklySimplePolygonSet(diff(uncovered, leaf.geometry));
-      } catch {
-        return true;
-      }
-      if (!uncovered.length) return false;
-    }
-    return true;
-  });
-}
-
 export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'partial') {
   const eraserSampleDistance = Math.max(
     Number.MIN_VALUE,
@@ -2890,13 +2853,6 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
         result = subtraction.result;
         changed = true;
         if (!result.length) break;
-      }
-    }
-    if (result.length) {
-      const culledResult = cullPolygonsCoveredByEraserRecords(result, workingEraserRecords);
-      if (culledResult.length !== result.length) {
-        result = culledResult;
-        changed = true;
       }
     }
     if (failedParts) {
