@@ -45,6 +45,7 @@ import {
   getWheelZoomScale,
 } from '../utils/pdfZoomMath';
 import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
+import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -74,7 +75,6 @@ const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
-const LIVE_ZOOM_EVENT = 'survey-pdfjs-live-zoom';
 
 function postNativePdfDiagnostic(event, detail = {}) {
   trackSurveyAnalyticsEvent(`survey_pdf_${String(event || 'diagnostic').replaceAll('-', '_')}`, detail);
@@ -1398,12 +1398,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const liveScale = scale * liveZoom;
     window.dispatchEvent(new CustomEvent(LIVE_ZOOM_EVENT, {
       detail: {
+        viewerId,
         scale: liveScale,
         percentage: Math.round(liveScale * 100),
         active: zoomInteractionRef.current,
       },
     }));
-  }, [liveZoom, scale]);
+  }, [liveZoom, scale, viewerId]);
 
   const commitGesture = useCallback(() => {
     const g = gestureRef.current;

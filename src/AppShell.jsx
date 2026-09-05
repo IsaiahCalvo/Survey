@@ -46,6 +46,7 @@ import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getNextSelectModeMenuOpen, getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
+import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -55,17 +56,19 @@ import { useStorage, useTemplates } from './hooks/useDatabase';
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
-function RailLiveZoomText({ fallback }) {
+function RailLiveZoomText({ fallback, viewerId }) {
   const [livePercentage, setLivePercentage] = useState(null);
 
   useEffect(() => {
+    setLivePercentage(null);
     const onLiveZoom = (event) => {
+      if (!isLiveZoomEventForViewer(event?.detail, viewerId)) return;
       const percentage = Number(event?.detail?.percentage);
       if (Number.isFinite(percentage)) setLivePercentage(percentage);
     };
-    window.addEventListener('survey-pdfjs-live-zoom', onLiveZoom);
-    return () => window.removeEventListener('survey-pdfjs-live-zoom', onLiveZoom);
-  }, []);
+    window.addEventListener(LIVE_ZOOM_EVENT, onLiveZoom);
+    return () => window.removeEventListener(LIVE_ZOOM_EVENT, onLiveZoom);
+  }, [viewerId]);
 
   return <>{livePercentage ?? fallback}%</>;
 }
@@ -3032,6 +3035,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 >
                   <RailLiveZoomText
                     fallback={api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}
+                    viewerId={getLiveZoomViewerId(activeTabId)}
                   />
                 </button>
               );
