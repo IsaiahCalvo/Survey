@@ -356,6 +356,22 @@ const pathHasSharpTurn = (points) => {
   return false;
 };
 
+const pathAccumulatedTurn = (points) => {
+  let total = 0;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const vertex = points[index];
+    const next = points[index + 1];
+    const firstAngle = Math.atan2(vertex.y - previous.y, vertex.x - previous.x);
+    const secondAngle = Math.atan2(next.y - vertex.y, next.x - vertex.x);
+    let turn = secondAngle - firstAngle;
+    while (turn > Math.PI) turn -= Math.PI * 2;
+    while (turn < -Math.PI) turn += Math.PI * 2;
+    total += Math.abs(turn);
+  }
+  return total;
+};
+
 const directSweptDiskRing = (points, radius, semicircleSteps) => {
   const segments = [];
   for (let index = 1; index < points.length; index += 1) {
@@ -377,6 +393,7 @@ const directSweptDiskRing = (points, radius, semicircleSteps) => {
   }
   if (!segments.length) return null;
   if (pathHasSharpTurn(points)) return null;
+  if (pathAccumulatedTurn(points) >= Math.PI / 2) return null;
   // A repeated first point represents a closed path. Its offset may contain
   // holes or multiple components, so leave it to the robust boolean fallback.
   if (
@@ -815,6 +832,9 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
   // Keep sharp bends as exact local cuts. A merged mask can produce a weakly
   // simple concave join that leaves a small contacted island after one diff.
   if (compacted.length <= 32 && pathHasSharpTurn(compacted)) return leaves;
+  if (!pathHasSharpTurn(compacted) && pathAccumulatedTurn(compacted) >= Math.PI / 2) {
+    return leaves;
+  }
   const mergeRange = (start, end) => {
     if (end - start === 1) return [leaves[start]];
     const middle = start + Math.floor((end - start) / 2);

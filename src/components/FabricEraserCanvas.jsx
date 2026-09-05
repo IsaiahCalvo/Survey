@@ -2127,7 +2127,11 @@ const FabricEraserCanvas = memo(({
       containerRef.current.dataset.eraserPlanTargetCount = String(targets.length);
       containerRef.current.dataset.eraserPlanKinds = targets.map((target) => target.kind).join(',');
     }
-    const auditTargets = mode === 'partial'
+    const geometryAuditEnabled = isAtomicEraseGeometryAuditEnabled(
+      window,
+      import.meta.env.DEV,
+    );
+    const auditTargets = geometryAuditEnabled && mode === 'partial'
       ? targets
         .filter((target) => String(target.before?.type || '').toLowerCase() === 'path')
         .map((target) => ({
@@ -2137,10 +2141,6 @@ const FabricEraserCanvas = memo(({
           after: target.operation === 'delete' ? [] : (target.after?.polygons || []),
         }))
       : [];
-    const geometryAuditEnabled = isAtomicEraseGeometryAuditEnabled(
-      window,
-      import.meta.env.DEV,
-    );
     updateAtomicEraseDiagnostic(window, mutationId, {
       auditStatus: auditTargets.length && geometryAuditEnabled ? 'pending-commit' : 'not-needed',
       candidateAnnotationIds: result.touchedIds,
