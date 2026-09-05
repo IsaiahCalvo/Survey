@@ -1413,41 +1413,45 @@ export default function App({ devPreviewReturnTab = null }) {
             alignItems: 'center',
             gap: '8px'
           }}>
-            <button
-              onClick={topToolbarApi.onUndo || (() => {})}
-              disabled={!topToolbarApi.canUndo}
-              className="btn btn-default btn-sm"
-              {...chromeTip('Undo', 'below')}
-              aria-label="Undo"
-              style={{
-                padding: '4px 8px',
-                opacity: topToolbarApi.canUndo ? 1 : 0.4,
-                cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              <Icon name="undo" size={14} />
-            </button>
-            <button
-              onClick={topToolbarApi.onRedo || (() => {})}
-              disabled={!topToolbarApi.canRedo}
-              className="btn btn-default btn-sm"
-              {...chromeTip('Redo', 'below')}
-              aria-label="Redo"
-              style={{
-                padding: '4px 8px',
-                opacity: topToolbarApi.canRedo ? 1 : 0.4,
-                cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
-              }}
-            >
-              <Icon name="redo" size={14} />
-            </button>
+            <span {...chromeTip('Undo', 'below')} style={{ display: 'inline-flex' }}>
+              <button
+                onClick={topToolbarApi.onUndo || (() => {})}
+                disabled={!topToolbarApi.canUndo}
+                className="btn btn-default btn-sm"
+                aria-label="Undo"
+                style={{
+                  padding: '4px 8px',
+                  opacity: topToolbarApi.canUndo ? 1 : 0.4,
+                  cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
+                  pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Icon name="undo" size={14} />
+              </button>
+            </span>
+            <span {...chromeTip('Redo', 'below')} style={{ display: 'inline-flex' }}>
+              <button
+                onClick={topToolbarApi.onRedo || (() => {})}
+                disabled={!topToolbarApi.canRedo}
+                className="btn btn-default btn-sm"
+                aria-label="Redo"
+                style={{
+                  padding: '4px 8px',
+                  opacity: topToolbarApi.canRedo ? 1 : 0.4,
+                  cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
+                  pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
+                }}
+              >
+                <Icon name="redo" size={14} />
+              </button>
+            </span>
           </div>
 
           {/* UX 2026-05-14: Tools section — Pan / Select / Draw / Shapes /
@@ -3127,15 +3131,16 @@ export default function App({ devPreviewReturnTab = null }) {
                     <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
 
                     {/* Page nav — chevron up/down because vertical layout. */}
-                    <button
-                      onClick={api.goToPreviousPage}
-                      disabled={atFirstPage}
-                      {...chromeTip('Previous page', 'left')}
-                      aria-label="Previous page"
-                      style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px' }}
-                    >
-                      <Icon name="chevronUp" size={14} />
-                    </button>
+                    <span {...chromeTip('Previous page', 'left')} style={{ display: 'inline-flex' }}>
+                      <button
+                        onClick={api.goToPreviousPage}
+                        disabled={atFirstPage}
+                        aria-label="Previous page"
+                        style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px', pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                      >
+                        <Icon name="chevronUp" size={14} />
+                      </button>
+                    </span>
                     {pageValue}
                     {/* Middle dot between current page above and total below
                         — the Walkthru slim-rail convention. */}
@@ -3143,15 +3148,16 @@ export default function App({ devPreviewReturnTab = null }) {
                     <span style={{ color: '#8d96a6', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                       {api.numPages}
                     </span>
-                    <button
-                      onClick={api.goToNextPage}
-                      disabled={atLastPage}
-                      {...chromeTip('Next page', 'left')}
-                      aria-label="Next page"
-                      style={{ ...footerBtn(atLastPage), width: '24px', height: '24px' }}
-                    >
-                      <Icon name="chevronDown" size={14} />
-                    </button>
+                    <span {...chromeTip('Next page', 'left')} style={{ display: 'inline-flex' }}>
+                      <button
+                        onClick={api.goToNextPage}
+                        disabled={atLastPage}
+                        aria-label="Next page"
+                        style={{ ...footerBtn(atLastPage), width: '24px', height: '24px', pointerEvents: atLastPage ? 'none' : 'auto' }}
+                      >
+                        <Icon name="chevronDown" size={14} />
+                      </button>
+                    </span>
 
                     <div style={{ width: '24px', height: '1px', background: '#2a3140', margin: '4px 0' }} />
 
@@ -3209,29 +3215,31 @@ export default function App({ devPreviewReturnTab = null }) {
                   <div style={{ width: '1px', height: '20px', background: '#2a3140' }} />
 
                   {/* Page nav — left/right chevrons because horizontal row. */}
-                  <button
-                    onClick={api.goToPreviousPage}
-                    disabled={atFirstPage}
-                    {...chromeTip('Previous page', 'above')}
-                    aria-label="Previous page"
-                    style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px' }}
-                  >
-                    <Icon name="chevronLeft" size={14} />
-                  </button>
+                  <span {...chromeTip('Previous page', 'above')} style={{ display: 'inline-flex' }}>
+                    <button
+                      onClick={api.goToPreviousPage}
+                      disabled={atFirstPage}
+                      aria-label="Previous page"
+                      style={{ ...footerBtn(atFirstPage), width: '24px', height: '24px', pointerEvents: atFirstPage ? 'none' : 'auto' }}
+                    >
+                      <Icon name="chevronLeft" size={14} />
+                    </button>
+                  </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
                     {pageValue}
                     <span aria-hidden="true" style={{ color: '#8d96a6' }}>·</span>
                     <span style={{ color: '#8d96a6' }}>{api.numPages}</span>
                   </span>
-                  <button
-                    onClick={api.goToNextPage}
-                    disabled={atLastPage}
-                    {...chromeTip('Next page', 'above')}
-                    aria-label="Next page"
-                    style={{ ...footerBtn(atLastPage), width: '24px', height: '24px' }}
-                  >
-                    <Icon name="chevronRight" size={14} />
-                  </button>
+                  <span {...chromeTip('Next page', 'above')} style={{ display: 'inline-flex' }}>
+                    <button
+                      onClick={api.goToNextPage}
+                      disabled={atLastPage}
+                      aria-label="Next page"
+                      style={{ ...footerBtn(atLastPage), width: '24px', height: '24px', pointerEvents: atLastPage ? 'none' : 'auto' }}
+                    >
+                      <Icon name="chevronRight" size={14} />
+                    </button>
+                  </span>
 
                   <div style={{ width: '1px', height: '20px', background: '#2a3140' }} />
 
