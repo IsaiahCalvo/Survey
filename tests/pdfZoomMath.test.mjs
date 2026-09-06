@@ -7,7 +7,7 @@ import {
   getWheelZoomScale,
 } from '../src/utils/pdfZoomMath.js';
 
-test('small trackpad ticks match Drawboard speed and reverse symmetrically', () => {
+test('small trackpad ticks use the same travel rate as full notches and reverse symmetrically', () => {
   const zoomedIn = getWheelZoomScale(0.74, {
     deltaY: -8,
     deltaMode: 0,
@@ -21,7 +21,7 @@ test('small trackpad ticks match Drawboard speed and reverse symmetrically', () 
     minimumScale: 0.01,
   });
 
-  assert.ok(zoomedIn > 0.756 && zoomedIn < 0.759, `expected Drawboard's measured small-tick speed, got ${zoomedIn}`);
+  assert.ok(Math.abs(zoomedIn - 0.74 * Math.pow(1.1, 0.08)) < 1e-12, `expected travel-proportional zoom, got ${zoomedIn}`);
   assert.ok(Math.abs(zoomedBackOut - 0.74) < 1e-9, `expected a reversible step, got ${zoomedBackOut}`);
 });
 

@@ -2,22 +2,10 @@ const ABSOLUTE_MIN_SCALE = 0.01;
 const ABSOLUTE_MAX_SCALE = 40;
 const WHEEL_LINE_HEIGHT_PX = 16;
 const WHEEL_NOTCH_PX = 100;
-const WHEEL_FINE_DELTA_PX = 8;
+// A single exponential rate makes equal wheel travel produce equal zoom,
+// regardless of how the browser splits that travel into events.
 const WHEEL_NOTCH_EXPONENT = Math.log(1.1) / WHEEL_NOTCH_PX;
-// Measured against Drawboard's live viewer with repeated 8px Ctrl-wheel ticks:
-// 74% -> 97% over 12 ticks, with the reverse path returning to 73% after
-// display rounding. This keeps real trackpad movement at the same pace while
-// retaining the existing symmetric exponential zoom and per-event safety cap.
-const WHEEL_EXPONENT = 0.0029;
-
-const getWheelZoomExponent = (delta) => {
-  const magnitude = Math.abs(delta);
-  if (magnitude <= WHEEL_FINE_DELTA_PX) return magnitude * WHEEL_EXPONENT;
-  const fineExponent = WHEEL_FINE_DELTA_PX * WHEEL_EXPONENT;
-  const notchExponent = WHEEL_NOTCH_PX * WHEEL_NOTCH_EXPONENT;
-  const progress = (magnitude - WHEEL_FINE_DELTA_PX) / (WHEEL_NOTCH_PX - WHEEL_FINE_DELTA_PX);
-  return fineExponent + (notchExponent - fineExponent) * progress;
-};
+const getWheelZoomExponent = (delta) => Math.abs(delta) * WHEEL_NOTCH_EXPONENT;
 
 export function getClampedZoomTranslation({
   zoomFactor,
@@ -93,12 +81,13 @@ export function getWheelZoomScale(currentScale, {
   viewportHeight = 800,
   minimumScale = ABSOLUTE_MIN_SCALE,
   maximumScale = ABSOLUTE_MAX_SCALE,
+  maximumDelta = WHEEL_NOTCH_PX,
 } = {}) {
   const safeCurrent = Number.isFinite(Number(currentScale)) && Number(currentScale) > 0
     ? Number(currentScale)
     : 1;
   const normalizedDelta = normalizeWheelDelta(deltaY, deltaMode, viewportHeight);
-  const cappedDelta = Math.max(-WHEEL_NOTCH_PX, Math.min(WHEEL_NOTCH_PX, normalizedDelta));
+  const cappedDelta = Math.max(-maximumDelta, Math.min(maximumDelta, normalizedDelta));
   const direction = Math.sign(cappedDelta);
   const nextScale = safeCurrent * Math.exp(-direction * getWheelZoomExponent(cappedDelta));
   return Math.max(minimumScale, Math.min(maximumScale, nextScale));
