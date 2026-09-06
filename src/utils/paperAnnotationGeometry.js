@@ -2594,6 +2594,22 @@ function subtractPolygonPart(subject, eraser, sourceWidth) {
     if (!subtractionStayedInsideSubject(baseResult, subject, sourceWidth)) {
       return { status: 'failed', stage: 'containment' };
     }
+    // Check suspect holes per subtraction, not per annotation: ordinary pen
+    // curves can have touching holes and still yield a valid exact cut.
+    if (sourceHasBoundaryTouchingHole(subject, sourceWidth)) {
+      for (const [, ...holes] of normalizeMultiPolygon(subject)) {
+        for (const hole of holes) {
+          const overlapArea = baseResult.reduce((area, polygon) => (
+            area + polygonSetArea(intersection([polygon], [[hole]]))
+          ), 0);
+          const originalOverlap = normalizeMultiPolygon(intersection(subject, [[hole]]));
+          const holeArea = Math.abs(signedRingArea(hole));
+          if (overlapArea - polygonSetArea(originalOverlap) > holeArea * Number.EPSILON * 128) {
+            return { status: 'failed', stage: 'hole-containment' };
+          }
+        }
+      }
+    }
     return { status: 'changed', result: baseResult };
   } catch (error) {
     return { status: 'failed', stage: 'containment', error };
@@ -2820,18 +2836,6 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       } else {
         next.push(annotation);
       }
-      continue;
-    }
-
-    // Validate this legacy source once per gesture, not once per fallback
-    // capsule. Repeating the same topology scan for every dense leaf caused
-    // the pointer-release pause to grow with path length.
-    if (sourceHasBoundaryTouchingHole(workingSubject, workingSourceWidth)) {
-      console.warn(
-        'Eraser polygon subtraction skipped a boundary-touching source hole:',
-        annotation.id,
-      );
-      next.push(annotation);
       continue;
     }
 
