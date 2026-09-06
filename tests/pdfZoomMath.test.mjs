@@ -40,7 +40,7 @@ test('one event cannot collapse zoom even when a device reports an enormous delt
   const enormousDelta = getWheelZoomScale(0.76, { deltaY: 10_000, minimumScale: 0.01 });
 
   assert.equal(enormousDelta, oneNotch);
-  assert.ok(enormousDelta > 0.55);
+  assert.ok(enormousDelta > 0.68);
 });
 
 test('line and page wheel deltas normalize without bypassing the per-event cap', () => {
