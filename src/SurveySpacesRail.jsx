@@ -1260,9 +1260,10 @@ const SurveySpacesRail = ({
                         requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                       }}
                       aria-label="Expand Survey panel"
+                      {...tip('Expand Survey panel', 'left')}
                       style={{ background: 'transparent', border: 'none', color: '#8d96a6', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#2a3140'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#2a3140'; tip('Expand Survey panel', 'left').onMouseEnter(e); }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; tip('Expand Survey panel', 'left').onMouseLeave(e); }}
                     >
                       <Icon name="chevronLeft" size={16} color="#8d96a6" />
                     </button>

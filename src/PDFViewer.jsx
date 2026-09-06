@@ -106,6 +106,7 @@ import {
   buildTextMarkupPaintEditTransaction,
   buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
+  filterRestoredPdfAnnotationTombstones,
   getTextMarkupRangeAnnotations,
   getTextMarkupRangeTypes,
   preserveTextMarkupRangeResizeSiblings,
@@ -3797,7 +3798,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (activeTool !== 'text-select') return undefined;
     const QUICK_CLICK_PX = 4;
     let downAt = null;
+    let clickTimer = null;
+    const cancelClick = () => { clearTimeout(clickTimer); clickTimer = null; };
     const onDown = (event) => {
+      cancelClick();
       if (event.button !== 0) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
       downAt = {
@@ -3818,26 +3822,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearAnnotationSelectionForContextChange('text-select-empty-click');
         return;
       }
-      try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
-      liveTextSelectionRef.current = null;
-      setLiveTextSelection(null);
-      if (hit.kind === 'callout' && hit.calloutId) {
-        setSelectedCalloutIds(new Set([hit.calloutId]));
-      } else if (hit.kind === 'annotation' && typeof hit.annotationIndex === 'number' && hit.pageNumber != null) {
-        setSelectedCalloutIds(new Set());
-        setPendingSvgSelection({
-          pageNumber: hit.pageNumber,
-          annotationIndex: hit.annotationIndex,
-          tick: Date.now(),
-        });
-      } else {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
+      // Let native double/triple clicks finish before selecting the mark.
+      clickTimer = setTimeout(() => {
+        if (window.getSelection?.()?.toString()) return;
+        try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+        liveTextSelectionRef.current = null;
+        setLiveTextSelection(null);
+        if (hit.kind === 'callout' && hit.calloutId) {
+          setSelectedCalloutIds(new Set([hit.calloutId]));
+        } else if (hit.kind === 'annotation' && typeof hit.annotationIndex === 'number' && hit.pageNumber != null) {
+          setSelectedCalloutIds(new Set());
+          setPendingSvgSelection({
+            pageNumber: hit.pageNumber,
+            annotationIndex: hit.annotationIndex,
+            tick: Date.now(),
+          });
+        } else {
+          return;
+        }
+      }, 300);
     };
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
+        cancelClick();
         clearAnnotationSelectionForContextChange('text-select-escape');
       }
     };
@@ -3845,6 +3852,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('keydown', onKeyDown, true);
     return () => {
+      cancelClick();
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
       window.removeEventListener('keydown', onKeyDown, true);
@@ -19243,7 +19251,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
   });
-  const deletedPdfAnnotations = useMemo(() => [
+  const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
         .filter((entry) => entry?.pdfAnnotationId)
@@ -19252,7 +19260,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           entry,
         ]),
     ).values(),
-  ], [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations]);
+  ], annotationsByPage), [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations, annotationsByPage]);
 
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
@@ -31999,6 +32007,7 @@ ${pageBlocks}
                             annotations={pageAnnotationObjects}
                             pageSize={resolvedPageSize}
                             interactionMode={activeTool === 'pan' ? 'open' : activeTool === 'select' || activeTool === 'text-select' ? 'select' : 'disabled'}
+                            nativeTextSelection={activeTool === 'text-select'}
                             onPageNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
                             onSelectLink={(region) => {
                               const annotation = pageAnnotationObjects[region.annotationIndex];

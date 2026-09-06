@@ -6,10 +6,12 @@ const activateLink = (region, onPageNavigate) => {
   else void openExternalDestination(region.url).catch(() => {});
 };
 
-export default function TextMarkupLinkLayer({ annotations, pageSize, interactionMode = 'disabled', onPageNavigate, onSelectLink }) {
+export default function TextMarkupLinkLayer({ annotations, pageSize, interactionMode = 'disabled', nativeTextSelection = false, onPageNavigate, onSelectLink }) {
   const regions = buildTextMarkupLinkRegions(annotations, pageSize);
   if (!regions.length) return null;
-  const interactive = interactionMode !== 'disabled';
+  // Native text owns pointer gestures in Text Select; the viewer resolves
+  // short annotation clicks after the browser's multi-click window.
+  const interactive = interactionMode !== 'disabled' && !nativeTextSelection;
   return (
     <div aria-label="Text links" style={{ position: 'absolute', inset: 0, zIndex: 110, pointerEvents: 'none' }}>
       {regions.map((region) => (

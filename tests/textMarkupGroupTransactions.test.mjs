@@ -12,6 +12,7 @@ import {
   buildTextMarkupRangeToggleOffTransaction,
   expandTextMarkupEraseIntent,
   getPdfAnnotationMutationState,
+  filterRestoredPdfAnnotationTombstones,
   getTextMarkupRangeTypes,
   isExactTextMarkupDuplicate,
   preserveTextMarkupRangeResizeSiblings,
@@ -485,4 +486,13 @@ test('registered-document erase intent adds every cross-page group member', () =
   assert.deepEqual(expanded.targets.map((target) => target.pageNumber), [1, 2]);
   assert.deepEqual(expanded.sideEffects, [{ type: 'keep-me' }]);
   assert.deepEqual(expanded.diagnostics.textMarkupSelectionGroupIds, ['range-1']);
+});
+
+test('restored imported objects clear export tombstones only for their exact page and id', () => {
+  const deleted = [{ pageNumber: 1, pdfAnnotationId: '11R' }, { pageNumber: 2, pdfAnnotationId: '11R' }];
+  const restored = { 1: { objects: [{ pdfAnnotationId: '11R' }] } };
+  assert.deepEqual(filterRestoredPdfAnnotationTombstones(deleted, {}), deleted);
+  assert.deepEqual(filterRestoredPdfAnnotationTombstones(deleted, restored), [deleted[1]]);
+  assert.deepEqual(filterRestoredPdfAnnotationTombstones(deleted, { 1: { objects: [] } }), deleted);
+  assert.equal(deleted.length, 2);
 });

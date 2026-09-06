@@ -27,6 +27,11 @@ test('text action bar owns a full-width scroll row with keyboard focus and narro
   assert.match(actionBarCss, /:focus-visible/);
 });
 
+test('desktop text action buttons have their own bounded 32px rule', () => {
+  const desktop = actionBarCss.split('@media')[0];
+  assert.match(desktop, /\.text-selection-action-bar__button\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/);
+});
+
 test('every selection mode can hit annotations while Text Select leaves blank page pixels to PDF text', () => {
   assert.match(annotationLayerSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);
   assert.match(annotationLayerSource, /activeTool !== 'text-select' \|\| textSelectManipulationArmed \|\| interactionState !== 'idle'/);

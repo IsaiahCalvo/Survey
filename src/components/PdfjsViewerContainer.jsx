@@ -586,6 +586,14 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     requestFrame();
   }, [requestFrame, scrollerRef, showThenFade]);
 
+  // Hover can hold a rail already shown by scroll/zoom; hidden rails never
+  // wake just because a page tool moves near the viewport edge.
+  const hoverRail = (axis) => {
+    hoveredAxisRef.current = axis;
+    setHoveredAxis(axis);
+    showThenFade();
+  };
+
   useEffect(() => {
     const rails = [verticalRailRef.current, horizontalRailRef.current].filter(Boolean);
     rails.forEach((rail) => rail.addEventListener('wheel', forwardRailWheel, { passive: false }));
@@ -599,30 +607,17 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       showThenFade();
       requestFrame();
     };
-    const onScrollbarProximityMove = (event) => {
-      if (dragRef.current) return;
-      const rect = scroller.getBoundingClientRect();
-      const nearVertical = event.clientX >= rect.right - VIEWPORT_SCROLLBAR_SIZE;
-      const nearHorizontal = event.clientY >= rect.bottom - VIEWPORT_SCROLLBAR_SIZE;
-      const axis = nearVertical ? 'vertical' : nearHorizontal ? 'horizontal' : null;
-      if (axis === hoveredAxisRef.current) return;
-      hoveredAxisRef.current = axis;
-      setHoveredAxis(axis);
-      showThenFade();
-    };
     const onScrollbarProximityLeave = () => {
-      if (dragRef.current) return;
+      if (dragRef.current || !hoveredAxisRef.current) return;
       hoveredAxisRef.current = null;
       setHoveredAxis(null);
       showThenFade();
     };
-    scroller.addEventListener('scroll', onScroll, { passive: true });
-    scroller.addEventListener('pointermove', onScrollbarProximityMove, { passive: true });
     scroller.addEventListener('pointerleave', onScrollbarProximityLeave, { passive: true });
+    scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => {
-      scroller.removeEventListener('scroll', onScroll);
-      scroller.removeEventListener('pointermove', onScrollbarProximityMove);
       scroller.removeEventListener('pointerleave', onScrollbarProximityLeave);
+      scroller.removeEventListener('scroll', onScroll);
     };
   }, [disabled, requestFrame, scrollerRef, showThenFade]);
 
@@ -751,8 +746,8 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       {vertical.maxScroll > 0 && <div
         ref={verticalRailRef}
         aria-label="Viewport vertical scroll bar"
-        onPointerEnter={() => { hoveredAxisRef.current = 'vertical'; setHoveredAxis('vertical'); showThenFade(); }}
-        onPointerMove={() => { hoveredAxisRef.current = 'vertical'; setHoveredAxis('vertical'); showThenFade(); }}
+        onPointerEnter={() => hoverRail('vertical')}
+        onPointerMove={() => hoverRail('vertical')}
         onPointerLeave={() => {
           if (dragRef.current) return;
           hoveredAxisRef.current = null;
@@ -778,8 +773,8 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       {horizontal.maxScroll > 0 && <div
         ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
-        onPointerEnter={() => { hoveredAxisRef.current = 'horizontal'; setHoveredAxis('horizontal'); showThenFade(); }}
-        onPointerMove={() => { hoveredAxisRef.current = 'horizontal'; setHoveredAxis('horizontal'); showThenFade(); }}
+        onPointerEnter={() => hoverRail('horizontal')}
+        onPointerMove={() => hoverRail('horizontal')}
         onPointerLeave={() => {
           if (dragRef.current) return;
           hoveredAxisRef.current = null;

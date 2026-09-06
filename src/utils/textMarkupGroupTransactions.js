@@ -43,6 +43,13 @@ export function getPdfAnnotationMutationState(previousByPage, nextByPage) {
   };
 }
 
+// Undo restores imported objects without replaying the delete transaction.
+// A live object must win over either a local or durable export tombstone.
+export function filterRestoredPdfAnnotationTombstones(entries, annotationsByPage) {
+  const present = new Set(getPdfAnnotationMutationState({}, annotationsByPage).presentPdfAnnotationKeys);
+  return entries.filter((entry) => !present.has(pdfAnnotationKey(entry.pageNumber, entry.pdfAnnotationId)));
+}
+
 const textMarkupRangeFingerprint = (annotation) => {
   if (!isTextMarkupAnnotation(annotation)) return null;
   const quads = Array.isArray(annotation.data.quads)
