@@ -49,7 +49,6 @@ const SVGSelectionOverlay = memo(({
   // currently unused. moveOnly takes precedence (hides everything).
   hideResizeHandles = false,
   hideRotationHandle = false,
-  selectionGlowOnly = false,
   // Text marks keep their line height and angle. These two side handles
   // rewrite only the first/last selected text quad instead of scaling it.
   horizontalResizeOnly = false,
@@ -140,20 +139,16 @@ const SVGSelectionOverlay = memo(({
           stroke="#4a90e2"
           strokeOpacity={strokeOpacity}
           strokeWidth={2}
-          strokeDasharray={selectionGlowOnly ? undefined : '4,4'}
+          strokeDasharray="4,4"
           vectorEffect="non-scaling-stroke"
-          data-select-delete-only-selection={selectionGlowOnly ? 'true' : undefined}
           style={{
             pointerEvents: 'none',
-            filter: selectionGlowOnly
-              ? `drop-shadow(0 0 ${4 * is}px rgba(74,144,226,0.75))`
-              : undefined,
           }}
         />
       )}
 
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
-      {!isGroupSelection && !moveOnly && !selectionGlowOnly && (
+      {!isGroupSelection && !moveOnly && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
           {!horizontalResizeOnly && !hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {

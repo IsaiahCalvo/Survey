@@ -13,15 +13,10 @@
  * hairlines and use SVG non-scaling-stroke only for device-pixel display.
  */
 
-// UX 2026-07-17 (import-normalization item 5a): the imported min/max stroke
-// width clamps that used to live here (IMPORTED_PATH_MIN_STROKE_WIDTH 2.5,
-// squiggly 0.6–1.1) moved to IMPORT TIME — pdfAnnotationImporter normalizes
-// the STORED width (Ink open strokes floor to 2.5 page units in
-// convertInkToFabricPath; Squiggly caps its synthesized width in
-// convertSquigglyToFabricPath). The renderer now passes the stored width
-// through for every path, native or imported — no provenance width branch.
-// Pre-normalization legacy cloud rows render at their stored (thin) width;
-// per owner direction pre-launch annotation rows are disposable.
+// Imported Ink open-stroke width is normalized at import time by
+// convertInkToFabricPath. This renderer passes the stored width through for
+// every path, native or imported, without a provenance-based width branch.
+// Pre-normalization legacy cloud rows keep their stored (thin) width.
 const FILLED_PDF_INK_MODE = 'filled-outline';
 
 /**
