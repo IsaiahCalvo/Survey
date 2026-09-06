@@ -1093,6 +1093,7 @@ export function erasePageAnnotations({
   const changedIds = [];
   const deletedIds = [];
   const touchedIds = [];
+  const failedStages = [];
 
   objects.forEach((object, index) => {
     if (!canErase(object, index)) return;
@@ -1118,6 +1119,7 @@ export function erasePageAnnotations({
     const annotations = pathGroups[operation];
     if (!annotations.length) continue;
     const result = eraseAnnotations(annotations, points, radius, operation);
+    failedStages.push(...(result.failures || []));
     if (!result.changedIds.length) continue;
     const survivorById = new Map(result.annotations.map((annotation) => [annotation.id, annotation]));
     const deletedInternalIds = new Set(result.deletedIds);
@@ -1181,6 +1183,7 @@ export function erasePageAnnotations({
       didChange: false,
       changedIds: [],
       deletedIds: [],
+      failedStages,
       touchedIds: unique(touchedIds),
       objectMutations: [],
     };
@@ -1197,6 +1200,7 @@ export function erasePageAnnotations({
     didChange: true,
     changedIds: unique(changedIds),
     deletedIds: unique(deletedIds),
+    failedStages,
     touchedIds: unique(touchedIds),
     objectMutations: [...new Set([...replacementByIndex.keys(), ...deletedIndexes])]
       .sort((a, b) => a - b)

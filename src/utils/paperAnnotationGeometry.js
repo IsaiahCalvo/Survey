@@ -822,7 +822,7 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
 
   const sharpTurn = pathHasSharpTurn(compacted);
   const smoothLongTurn = !sharpTurn && pathAccumulatedTurn(compacted) >= Math.PI / 2;
-  const capsuleArcSteps = smoothLongTurn
+  const capsuleArcSteps = options.robust ? DEFAULT_ARC_STEPS : smoothLongTurn
     ? Math.max(semicircleSteps, Math.ceil(FOLDED_ARC_STEPS * 1.125))
     : Math.max(semicircleSteps, FOLDED_ARC_STEPS);
   const leaves = compacted.slice(1).map((point, index) => ({
@@ -833,10 +833,11 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
       capsuleArcSteps,
     )),
     children: null,
+    fallback: normalizeMultiPolygon(capsulePolygon(compacted[index], point, radius, 18)),
   }));
   // Keep sharp bends as exact local cuts. A merged mask can produce a weakly
   // simple concave join that leaves a small contacted island after one diff.
-  if (compacted.length <= 32 && sharpTurn) return leaves;
+  if (!options.robust && compacted.length <= 32 && sharpTurn) return leaves;
   const mergeRange = (start, end) => {
     if (end - start === 1) return [leaves[start]];
     const middle = start + Math.floor((end - start) / 2);
@@ -1873,66 +1874,6 @@ export function createInkAnnotation(points, { id, color = '#151a18', width = 12,
   };
 }
 
-const ringSignedArea = (ring) => {
-  let area = 0;
-  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
-    area += ring[previous][0] * ring[index][1] - ring[index][0] * ring[previous][1];
-  }
-  return area / 2;
-};
-
-const ringPerimeter = (ring) => {
-  let length = 0;
-  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
-    length += Math.hypot(
-      ring[index][0] - ring[previous][0],
-      ring[index][1] - ring[previous][1],
-    );
-  }
-  return length;
-};
-
-/**
- * Sliver cull for polygon-subtraction survivors (2026-07-19 eraser audit).
- * martinez diff legitimately emits arbitrarily thin crescents/ribbons (and,
- * under near-tangent input, zero-area degenerate rings) — real persisted
- * geometry that renders as hairline streaks of ink color where the user just
- * erased. The capsule lane has minPieceLen; this is its polygon counterpart:
- * drop surviving outer rings whose area OR mean thickness (2·area/perimeter)
- * is far below what a piece of ink drawn at `width` could visibly be. A full
- * pen DOT (area ≈ 0.785·width²) always survives both floors.
- */
-export function cullInkSliverPolygons(polygons, width) {
-  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1;
-  const numericAreaFloor = safeWidth * safeWidth * 1e-12;
-  const minArea = Math.max(
-    numericAreaFloor,
-    Math.min(0.4 * safeWidth, 0.35 * safeWidth * safeWidth),
-  );
-  const minMeanWidth = 0.15 * safeWidth;
-  // 2·area/perimeter is slightly below the physical width for every finite
-  // ribbon because its end caps contribute perimeter. Preserve a component
-  // whose real cross-section is at the public floor while still dropping
-  // materially thinner debris.
-  const meanWidthCullFloor = minMeanWidth * 0.94;
-  const kept = [];
-  for (const polygon of normalizeMultiPolygon(polygons)) {
-    const [outer, ...holes] = polygon;
-    if (!Array.isArray(outer) || outer.length < 4) continue;
-    const area = Math.abs(ringSignedArea(outer));
-    const perimeter = ringPerimeter(outer);
-    if (area < minArea || perimeter <= safeWidth * 1e-12) continue;
-    if ((2 * area) / perimeter < meanWidthCullFloor) continue;
-    const keptHoles = holes.filter((hole) => (
-      Array.isArray(hole)
-      && hole.length >= 4
-      && Math.abs(ringSignedArea(hole)) > numericAreaFloor
-    ));
-    kept.push([outer, ...keptHoles]);
-  }
-  return kept;
-}
-
 /**
  * Boolean subtraction has a non-negotiable postcondition: it may remove ink,
  * but it may never create ink outside the source. Invalid legacy rings once
@@ -2427,142 +2368,6 @@ function ribbonPatch(chunk, ribbonWidth) {
   return normalizeMultiPolygon([ring]);
 }
 
-/**
- * Remove connected hairline ribbons only beside the actual eraser cut.
- *
- * A global eraser-radius increase is unsafe: one shallow bridge can otherwise
- * widen an unrelated deep part of a bent gesture, and symmetric expansion can
- * create a new thin ribbon on the opposite side. Instead, inspect the already
- * built eraser boundary. For each local edge, probe only the first contiguous
- * survivor interval immediately outside the cut. Sustained intervals thinner
- * than the source-width floor become one-sided ribbon patches; opposite sides,
- * distant gesture sections, and disconnected specks never participate.
- */
-function removeAttachedBridge({
-  result,
-  eraser,
-  sourceWidth,
-}) {
-  if (!result.length) return result;
-  const safeWidth = Number.isFinite(sourceWidth) && sourceWidth > 0 ? sourceWidth : 1;
-  const minRibbonWidth = 0.15 * safeWidth;
-  // Cleanup sampling is width-relative. Absolute 4/.08 page-unit caps
-  // subdivided a proportionally huge round stroke into ~78k pieces and made
-  // one pointer release take seconds.
-  const maximumEdgeLength = safeWidth * 0.2;
-  const minimumRunLength = minRibbonWidth * 0.1;
-  const patches = [];
-  const resultBounds = boundsOfCommands(polygonSetToCommands(result));
-  const probePadding = minRibbonWidth * 1.025;
-  const probeBounds = {
-    x: resultBounds.x - probePadding,
-    y: resultBounds.y - probePadding,
-    w: resultBounds.w + probePadding * 2,
-    h: resultBounds.h + probePadding * 2,
-  };
-  const clipToProbeBounds = (start, end) => {
-    const dx = end[0] - start[0];
-    const dy = end[1] - start[1];
-    let first = 0;
-    let last = 1;
-    for (const [p, q] of [
-      [-dx, start[0] - probeBounds.x],
-      [dx, probeBounds.x + probeBounds.w - start[0]],
-      [-dy, start[1] - probeBounds.y],
-      [dy, probeBounds.y + probeBounds.h - start[1]],
-    ]) {
-      if (p === 0) {
-        if (q < 0) return null;
-        continue;
-      }
-      const ratio = q / p;
-      if (p < 0) first = Math.max(first, ratio);
-      else last = Math.min(last, ratio);
-      if (first > last) return null;
-    }
-    return [
-      [start[0] + dx * first, start[1] + dy * first],
-      [start[0] + dx * last, start[1] + dy * last],
-    ];
-  };
-
-  for (const polygon of normalizeMultiPolygon(eraser)) {
-    for (let ringIndex = 0; ringIndex < polygon.length; ringIndex += 1) {
-      const rawRing = polygon[ringIndex];
-      const area = ringSignedArea(rawRing);
-      const ring = rawRing.slice();
-      if (
-        ring.length > 1
-        && samePoint(ring[0], ring[ring.length - 1])
-      ) {
-        ring.pop();
-      }
-      if (ring.length < 2) continue;
-      const segments = [];
-      for (let index = 0; index < ring.length; index += 1) {
-        const clipped = clipToProbeBounds(
-          ring[index],
-          ring[(index + 1) % ring.length],
-        );
-        if (!clipped) {
-          if (segments.length && segments.at(-1)?.thin !== false) {
-            segments.push({ thin: false });
-          }
-          continue;
-        }
-        const [start, end] = clipped;
-        const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
-        const pieces = Math.max(1, Math.ceil(length / maximumEdgeLength));
-        for (let piece = 0; piece < pieces; piece += 1) {
-          const t0 = piece / pieces;
-          const t1 = (piece + 1) / pieces;
-          const a = {
-            x: start[0] + (end[0] - start[0]) * t0,
-            y: start[1] + (end[1] - start[1]) * t0,
-          };
-          const b = {
-            x: start[0] + (end[0] - start[0]) * t1,
-            y: start[1] + (end[1] - start[1]) * t1,
-          };
-          const normal = outwardNormalForBoundaryEdge(a, b, area, ringIndex > 0);
-          const midpoint = {
-            x: midpointCoordinate(a.x, b.x),
-            y: midpointCoordinate(a.y, b.y),
-          };
-          const cleanupDepth = normal
-            ? thinRibbonCleanupDepth(midpoint, normal, result, minRibbonWidth)
-            : null;
-          segments.push({
-            a,
-            b,
-            normal,
-            length: Math.hypot(b.x - a.x, b.y - a.y),
-            cleanupDepth,
-            thin: Number.isFinite(cleanupDepth),
-          });
-        }
-      }
-
-      for (const run of splitWrappedRuns(segments)) {
-        const runLength = run.reduce((total, segment) => total + segment.length, 0);
-        if (runLength < minimumRunLength) continue;
-        for (const chunk of coalesceRibbonRun(run)) {
-          const patch = ribbonPatch(chunk, minRibbonWidth);
-          if (patch.length) patches.push(patch);
-        }
-      }
-    }
-  }
-  if (!patches.length) return result;
-
-  let cleaned = result;
-  for (const patch of patches) {
-    cleaned = normalizeMultiPolygon(diff(cleaned, patch));
-    if (!cleaned.length) break;
-  }
-  return cleaned;
-}
-
 function subtractPolygonPart(subject, eraser, sourceWidth) {
   let overlap;
   try {
@@ -2626,6 +2431,13 @@ function subtractPolygonRecord(subject, record, sourceWidth) {
     return { ...subtraction, failedLeaves: 0, failedStages: {} };
   }
   if (!record.children?.length) {
+    if (record.fallback) {
+      const retry = subtractPolygonPart(subject, record.fallback, sourceWidth);
+      if (retry.status !== 'failed') return {
+        ...retry, failedLeaves: 0,
+        failedStages: { [subtraction.stage || 'unknown']: 1 },
+      };
+    }
     return {
       status: 'unchanged',
       result: subject,
@@ -2680,6 +2492,7 @@ function polygonRecordTouches(subject, record) {
 
 const mapEraserRecordCoordinates = (record, mapper) => ({
   geometry: mapPolygonSetCoordinates(record.geometry, mapper),
+  fallback: record.fallback ? mapPolygonSetCoordinates(record.fallback, mapper) : null,
   children: record.children?.map((child) => (
     mapEraserRecordCoordinates(child, mapper)
   )) || null,
@@ -2711,6 +2524,7 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
   const next = [];
   const changedIds = [];
   const deletedIds = [];
+  const failures = [];
 
   for (const annotation of annotations || []) {
     if (annotation.locked) {
@@ -2860,11 +2674,36 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
       }
     }
     if (failedParts) {
-      console.warn(
-        `Eraser polygon subtraction skipped ${failedParts} invalid bounded part(s):`,
-        annotation.id,
-        failedStages,
-      );
+      // Retry the whole original subject: a failed later bite can be caused
+      // by a dense survivor from an earlier bite, not just the current leaf.
+      const robustRecords = sweptDiskPolygonRecords(eraserPoints, radius, {
+        minDistance: eraserSampleDistance, robust: true,
+      });
+      result = workingSubject;
+      changed = false;
+      failedParts = 0;
+      for (const record of robustRecords) {
+        const retry = subtractPolygonRecord(result,
+          useWorkingFrame ? mapEraserRecordCoordinates(record, toWorking) : record,
+          workingSourceWidth);
+        failedParts += retry.failedLeaves;
+        for (const [stage, count] of Object.entries(retry.failedStages)) {
+          failedStages[stage] = (failedStages[stage] || 0) + count;
+        }
+        result = retry.result;
+        changed ||= retry.status === 'changed';
+        if (!result.length) break;
+      }
+    }
+    if (Object.keys(failedStages).length) failures.push({
+      annotationId: annotation.id, failedStages, recovered: failedParts === 0,
+    });
+    if (failedParts) {
+      // Never publish a cut with missing bites. Keep this annotation intact
+      // and report the rejected plan, including the failed polygon stage.
+      console.warn('Eraser polygon subtraction rejected:', annotation.id, failedStages);
+      next.push(annotation);
+      continue;
     }
     if (!changed) {
       next.push(annotation);
@@ -2895,5 +2734,5 @@ export function eraseAnnotations(annotations, eraserPoints, radius, mode = 'part
     });
   }
 
-  return { annotations: next, changedIds, deletedIds };
+  return { annotations: next, changedIds, deletedIds, failures };
 }

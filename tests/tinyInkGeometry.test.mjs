@@ -1,8 +1,8 @@
+import { cullInkSliverPolygons } from './helpers/legacyInkSliverCull.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  cullInkSliverPolygons,
   eraseAnnotations,
   sweptDiskPolygon,
 } from '../src/utils/paperAnnotationGeometry.js';

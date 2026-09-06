@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { eraserStrokeTouchesObject } from '../src/utils/eraserHitTest.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
-import { cullInkSliverPolygons } from '../src/utils/paperAnnotationGeometry.js';
+import { cullInkSliverPolygons } from './helpers/legacyInkSliverCull.mjs';
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 
 // 2026-07-19 eraser audit regressions: the hit test must share the SVG

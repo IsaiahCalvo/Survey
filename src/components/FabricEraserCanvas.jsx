@@ -2142,6 +2142,7 @@ const FabricEraserCanvas = memo(({
     });
     updateAtomicEraseDiagnostic(window, mutationId, {
       auditStatus: auditTargets.length && geometryAuditEnabled ? 'pending-commit' : 'not-needed',
+      failedStages: result.failedStages || [],
       candidateAnnotationIds: result.touchedIds,
       rejectedAnnotations: result.rejectedAnnotations || [],
       targets: targets.map((target) => ({
@@ -2185,6 +2186,7 @@ const FabricEraserCanvas = memo(({
       eraserMode: mode,
       eraserGestureId: eraserDiagGestureRef.current || null,
       eraserPointerBounds: getEraserStrokeBounds(eraserPoints, radius),
+      failedStages: result.failedStages || [],
       candidateAnnotationIds: result.touchedIds,
       rejectedAnnotations: result.rejectedAnnotations || [],
       touchedAnnotationIds: [...new Set([...result.touchedIds, ...committedCalloutIds])],
