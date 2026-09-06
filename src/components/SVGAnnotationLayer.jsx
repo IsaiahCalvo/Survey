@@ -862,10 +862,14 @@ const SVGAnnotationLayer = memo(({
   const isPointNearCurrentSelection = useCallback((clientX, clientY) => {
     const root = svgRef.current;
     if (!root) return false;
-    const nodes = new Set(root.querySelectorAll('.svg-selection-overlay'));
+    const nodes = new Set(root.querySelectorAll('[data-text-range-handle-hit-target="true"]'));
+    for (const overlay of root.querySelectorAll('.svg-selection-overlay')) {
+      if (!overlay.querySelector('[data-text-range-handle-hit-target]')) nodes.add(overlay);
+    }
     for (const selectedIndex of selectedIds || []) {
       const annotationNode = root.querySelector(`[data-annotation-index="${selectedIndex}"]`);
-      if (annotationNode) nodes.add(annotationNode);
+      if (annotationNode && !annotationNode.querySelector('[data-shape-kind^="text-markup-"]')
+        && !root.querySelector('[data-text-range-handle-hit-target]')) nodes.add(annotationNode);
     }
     const selectedCalloutIdList = effectiveSelectedCalloutIds instanceof Set
       ? Array.from(effectiveSelectedCalloutIds)
@@ -903,6 +907,7 @@ const SVGAnnotationLayer = memo(({
       // Touch must stay with the native text layer so long-press selection and
       // the OS copy menu keep working after a mark has been selected.
       if (event.pointerType === 'touch') return;
+      if (event.type === 'pointerdown' && !textSelectManipulationArmed) return;
       lastTextSelectPointerRef.current = { x: event.clientX, y: event.clientY };
       if (interactionState !== 'idle') {
         applyTextSelectPointerOwnership(true);
@@ -932,18 +937,14 @@ const SVGAnnotationLayer = memo(({
         if (textLayer) textLayer.style.pointerEvents = '';
       }
     };
-  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection]);
+  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection, textSelectManipulationArmed]);
 
   useLayoutEffect(() => {
-    if (activeTool !== 'text-select' || interactionState !== 'idle') return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      const point = lastTextSelectPointerRef.current;
-      applyTextSelectPointerOwnership(
-        !!point && isPointNearCurrentSelection(point.x, point.y),
-      );
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeTool, applyTextSelectPointerOwnership, interactionState, isPointNearCurrentSelection, selectedIds, effectiveSelectedCalloutIds, selectedSurveyMarkerId]);
+    if (activeTool !== 'text-select' || interactionState !== 'idle') return;
+    // Showing handles must not take the next native click from a still
+    // pointer. A move toward a handle arms manipulation synchronously above.
+    applyTextSelectPointerOwnership(false);
+  }, [activeTool, applyTextSelectPointerOwnership, interactionState, selectedIds, effectiveSelectedCalloutIds, selectedSurveyMarkerId]);
 
   const textSelectOwnsPointer = activeTool === 'text-select'
     && (textSelectManipulationArmed || interactionState !== 'idle');

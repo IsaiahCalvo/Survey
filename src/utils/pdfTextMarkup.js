@@ -547,6 +547,20 @@ const resizeTextMarkupFromStoredModel = (annotation, handleId, pointer, fixedOff
     });
   }
   const mergedQuads = mergeLineQuads(quads);
+  // Text offsets identify characters; imported quad edges need not coincide
+  // with those character bounds. Keep the authored, fixed edge in page space.
+  if (annotation.isPdfImported && mergedQuads.length) {
+    const original = annotation.data.quads || [];
+    const fixedAtStart = candidate >= fixed;
+    const oldQuad = original[handleId === 'mr' ? 0 : original.length - 1];
+    const nextQuad = mergedQuads[fixedAtStart ? 0 : mergedQuads.length - 1];
+    if (oldQuad && nextQuad) {
+      const topX = handleId === 'mr' ? oldQuad.x1 : oldQuad.x2;
+      const bottomX = handleId === 'mr' ? oldQuad.x3 : oldQuad.x4;
+      if (fixedAtStart) { nextQuad.x1 = topX; nextQuad.x3 = bottomX; }
+      else { nextQuad.x2 = topX; nextQuad.x4 = bottomX; }
+    }
+  }
   const bounds = quadBounds(mergedQuads);
   if (!bounds) return null;
   return {

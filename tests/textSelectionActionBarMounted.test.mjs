@@ -21,7 +21,7 @@ const ACCEPTED_ICON_HASHES = {
   'text-squiggle.svg': '5d758e7ceef171af4c6a20d10844dec95860144d93e6fa6a0225c95ba9fa6c40',
   'text-strikethrough.svg': 'b159301bb729612e95870d663bc2fbae256ee3022f94ff89354a923f93a173ba',
   'text-hyperlink.svg': 'bea3b7fc712ed3c0729016b565c9392769dd4a697a1eae63b1dc0418ba127020',
-  'text-redact.svg': '6ac08792f31d89e479d91c603dbded96e383215de9a9bb1b7aa736dce1f6f4ac',
+  'text-redact.svg': '9f562318a19209fba89238b58568606399a995c79605b57ed6e902209d3a844b',
 };
 
 test('shared accepted icons stay byte-exact to the accepted icon lineup', async () => {

@@ -19,18 +19,13 @@ test('text action bar owns a full-width scroll row with keyboard focus and narro
   assert.match(actionBarSource, /scrollIntoView\?\./);
   assert.match(actionBarCss, /\.text-selection-action-bar\s*\{[\s\S]*?width:\s*100%/);
   assert.match(actionBarCss, /\.text-selection-action-bar__toolbar\s*\{[\s\S]*?overflow-x:\s*auto/);
-  assert.match(actionBarCss, /\.text-selection-action-bar__toolbar\s*\{[\s\S]*?height:\s*35px/);
-  assert.match(actionBarCss, /\.text-selection-action-bar__tools\s*\{[\s\S]*?height:\s*35px/);
   assert.match(actionBarCss, /min-width:\s*max-content/);
   assert.match(actionBarCss, /@media \(max-width: 700px\), \(pointer: coarse\)/);
   assert.match(actionBarCss, /\.text-selection-action-bar__button\s*\{[\s\S]*?width:\s*40px[\s\S]*?height:\s*40px/);
   assert.match(actionBarCss, /:focus-visible/);
 });
 
-test('desktop text action buttons have their own bounded 32px rule', () => {
-  const desktop = actionBarCss.split('@media')[0];
-  assert.match(desktop, /\.text-selection-action-bar__button\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/);
-});
+// Desktop height, focus containment and glyph size are measured live in round-6-audit.spec.mjs.
 
 test('every selection mode can hit annotations while Text Select leaves blank page pixels to PDF text', () => {
   assert.match(annotationLayerSource, /const isSelectTool = \(activeTool === 'select' \|\| activeTool === 'text-select'\)/);

@@ -10,7 +10,7 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
   const regions = buildTextMarkupLinkRegions(annotations, pageSize);
   if (!regions.length) return null;
   // Native text owns pointer gestures in Text Select; the viewer resolves
-  // short annotation clicks after the browser's multi-click window.
+  // short annotation clicks without blocking native text gestures.
   const interactive = interactionMode !== 'disabled' && !nativeTextSelection;
   return (
     <div aria-label="Text links" style={{ position: 'absolute', inset: 0, zIndex: 110, pointerEvents: 'none' }}>
@@ -18,6 +18,7 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
         <button
           key={region.id}
           data-text-markup-link={region.annotationId || region.id}
+          data-text-markup-link-index={region.annotationIndex}
           type="button"
           aria-label={region.mode === 'page' ? `Go to page ${region.pageNumber}` : `Open link ${region.url}`}
           title={interactionMode === 'select' ? 'Click to select. Double-click or Cmd/Ctrl+click to open.' : undefined}

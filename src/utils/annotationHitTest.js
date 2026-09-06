@@ -199,6 +199,18 @@ export function resolveAnnotationAt(e) {
     readFrom(carrier);
   };
 
+  // Imported links have no painted SVG path. Their transparent HTML region
+  // remains a hit-test target even while native text owns pointer events.
+  if (pageNumber != null && annotationIndex == null && !calloutId && !isCounter) {
+    const page = matchedPageDiv || document.querySelector(`[id$="_pageDiv_${pageNumber - 1}"]`);
+    for (const link of page?.querySelectorAll('[data-text-markup-link-index]') || []) {
+      if (rectContainsPoint(link)) {
+        annotationIndex = Number(link.getAttribute('data-text-markup-link-index'));
+        break;
+      }
+    }
+  }
+
   // Pan-mode fallback: SVG layer is pointer-events:none, so walk the DOM
   // children of every visible page SVG wrapper. Path hit targets are tested
   // by SVG stroke geometry first, which matches the same widened invisible

@@ -3798,12 +3798,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (activeTool !== 'text-select') return undefined;
     const QUICK_CLICK_PX = 4;
     let downAt = null;
-    let clickTimer = null;
-    const cancelClick = () => { clearTimeout(clickTimer); clickTimer = null; };
     const onDown = (event) => {
-      cancelClick();
       if (event.button !== 0) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
+      if (event.target?.closest?.('[data-resize-handle]')) return;
+      // A new text press cancels the optimistic mark selection before the
+      // browser extends a word/line range (PointerEvent.detail is often zero).
+      clearAnnotationSelectionForContextChange('text-select-new-press');
       downAt = {
         x: event.clientX,
         y: event.clientY,
@@ -3822,8 +3823,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         clearAnnotationSelectionForContextChange('text-select-empty-click');
         return;
       }
-      // Let native double/triple clicks finish before selecting the mark.
-      clickTimer = setTimeout(() => {
+      // A short click selects now, so the next Delete or handle drag works.
+      {
         if (window.getSelection?.()?.toString()) return;
         try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
         liveTextSelectionRef.current = null;
@@ -3840,11 +3841,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } else {
           return;
         }
-      }, 300);
+      }
     };
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
-        cancelClick();
         clearAnnotationSelectionForContextChange('text-select-escape');
       }
     };
@@ -3852,7 +3852,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('keydown', onKeyDown, true);
     return () => {
-      cancelClick();
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
       window.removeEventListener('keydown', onKeyDown, true);

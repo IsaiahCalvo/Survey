@@ -7,7 +7,7 @@
 .text-selection-action-bar__toolbar {
   width: 100%;
   min-width: 0;
-  height: 35px;
+  height: 24px;
   display: flex;
   align-items: center;
   overflow-x: auto;
@@ -23,7 +23,7 @@
 
 .text-selection-action-bar__tools {
   min-width: max-content;
-  height: 35px;
+  height: 23px;
   margin-inline: auto;
   padding: 0 8px;
   display: flex;
@@ -33,12 +33,13 @@
 }
 
 .text-selection-action-bar__mark {
-  height: 35px;
+  height: 23px;
   display: flex;
   align-items: center;
   flex: 0 0 auto;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 4px;
+  box-sizing: border-box;
 }
 
 .text-selection-action-bar__mark[data-focused='true'] {
@@ -47,7 +48,7 @@
 
 .text-selection-action-bar__button {
   width: 32px;
-  height: 32px;
+  height: 21px;
   min-width: 32px;
   display: grid;
   place-items: center;
