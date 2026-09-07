@@ -1513,6 +1513,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 <button
                   ref={isSelect ? selectModeButtonRef : undefined}
                   type="button"
+                  data-tool-group="true"
                   data-select-mode-trigger={isSelect ? 'true' : undefined}
                   aria-label={label}
                   aria-haspopup={isSelect ? 'menu' : undefined}
@@ -1625,11 +1626,12 @@ export default function App({ devPreviewReturnTab = null }) {
                         justifyContent: 'space-between',
                         gap: '12px',
                         padding: '6px 10px',
-                        // UX: tint the active mode so the desktop menu matches the phone sheet.
-                        background: selected ? '#313748' : 'transparent',
+                        // UX: gold on warm tint matches the phone checked row, distinct from hover.
+                        background: selected ? '#2a2218' : 'transparent',
                         border: 'none',
                         borderRadius: '4px',
-                        color: '#e8e2d4',
+                        color: selected ? '#d8a84e' : '#e8e2d4',
+                        fontWeight: selected ? 600 : 400,
                         textAlign: 'left',
                         cursor: 'pointer',
                         fontSize: '12px',
@@ -1653,8 +1655,8 @@ export default function App({ devPreviewReturnTab = null }) {
                               bottomToolbarApi.setTooltip?.({ visible: false });
                             });
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#313748' : 'transparent'; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = selected ? '#2a2218' : '#1f2430'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#2a2218' : 'transparent'; }}
                           style={optionStyle}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1662,7 +1664,11 @@ export default function App({ devPreviewReturnTab = null }) {
                             {/* UX: use the same mode name in the menu, trigger and phone sheet. */}
                             <span>{opt.label}</span>
                           </span>
-                          <span style={{ color: '#8d96a6' }}>{selected ? '✓ ' : ''}{opt.hint}</span>
+                          {/* UX: give selection its own gold check, separate from shortcut text. */}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ color: '#8d96a6', fontWeight: 400 }}>{opt.hint}</span>
+                            <span aria-hidden="true" data-select-mode-check style={{ width: '14px', color: '#d8a84e', fontWeight: 600 }}>{selected ? '✓' : ''}</span>
+                          </span>
                         </button>
                       );
                     })}
@@ -1690,6 +1696,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {...chromeTip('Draw', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                data-tool-group="true"
                 aria-label="Draw"
               >
                 <Icon name="drawGroup" size={18} />
@@ -1709,6 +1716,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {...chromeTip('Shapes', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                data-tool-group="true"
                 aria-label="Shapes"
               >
                 <Icon name="shapes" size={18} />
@@ -1728,6 +1736,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 {...chromeTip('Text', 'below')}
                 className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                data-tool-group="true"
                 aria-label="Text"
               >
                 {/* UX 2026-09-07: the Text GROUP button shows the same text-box

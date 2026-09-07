@@ -25,7 +25,7 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'pen', label: 'Pen', icon: 'pen' },
       { id: 'highlighter', label: 'Highlighter', icon: 'highlighter' },
-      { id: 'eraser', label: 'Eraser', icon: 'eraser' },
+      { id: 'eraser', label: 'Partial erase' /* UX: same tool name as desktop. */, icon: 'eraser' },
     ],
   },
   shape: {
@@ -1632,12 +1632,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 );
               }}
             >
-              {/* UX 2026-09-07: same merged select trigger treatment as the
-                  desktop toolbar — the glyph shifts left to make room for the
-                  disclosure caret sitting inside the same control, instead of
-                  the two colliding in the middle of the button. Desktop uses
-                  the same -3px shift. Touch target is unchanged (44x44). */}
-              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" style={{ transform: 'translateX(-3px)' }} />
+              {/* UX: centre the glyph on the phone rail axis; the desktop
+                  horizontal pair's -3px shift does not fit a vertical rail. */}
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" />
             </RailButton>
             <button
               ref={selectModeCaretRef}
@@ -1651,15 +1648,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
               }}
             >
-              {/* UX 2026-09-07: caret matched to the desktop trigger — same 7px
-                  chevron, same two-tone colour (bright when the select family
-                  is the active tool, muted otherwise). The direction still
-                  flips left/right rather than pointing down like desktop,
-                  because this menu flies out sideways from a vertical rail. */}
+              {/* UX: 8px full-contrast caret keeps the phone's only mode
+                  disclosure legible at 1x in both active and idle states. */}
               <Icon
                 name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
-                size={7}
-                color={activeTool === 'select' || activeTool === 'text-select' ? '#e8e2d4' : '#8d96a6'}
+                size={8}
+                color="#e8e2d4"
               />
             </button>
           </div>

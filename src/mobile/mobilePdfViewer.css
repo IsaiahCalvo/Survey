@@ -357,7 +357,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 0;
   display: grid;
   place-items: center;
-  color: #f2f2f2;
+  /* UX: tool glyphs share desktop cream; active gold stays distinct. */
+  color: #e8e2d4;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
