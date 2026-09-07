@@ -26,6 +26,9 @@ test('Text tool uses the supplied text-box selection icon', async () => {
   // and the tool it opens disagreed. The old assertion pinned that mismatch.
   assert.match(appShell, /aria-label="Text"[\s\S]{0,900}<Icon name="textBox" size=\{18\}/);
   assert.match(viewer, /\{ id: 'text', label: 'Text', iconName: 'textBox' \}/);
-  assert.match(mobile, /review:\s*\{[\s\S]{0,180}icon: 'text',[\s\S]{0,180}\{ id: 'text', label: 'Text', icon: 'textBox' \}/);
+  // 2026-09-07 (A7): the phone's Text GROUP button showed the serif "T" while
+  // desktop's showed the text-box glyph. Same tool must mean the same glyph on
+  // both, so the old assertion on icon: 'text' is replaced.
+  assert.match(mobile, /review:\s*\{[\s\S]{0,180}icon: 'textBox',[\s\S]{0,180}\{ id: 'text', label: 'Text', icon: 'textBox' \}/);
   assert.match(formTools, /id: 'form-textbox'[\s\S]{0,100}iconName: 'textBox'/);
 });

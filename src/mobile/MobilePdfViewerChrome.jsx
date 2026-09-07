@@ -12,10 +12,15 @@ import { getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, g
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import './mobilePdfViewer.css';
 
+// UX 2026-09-07: the phone must show the SAME glyph as the desktop toolbar for
+// the same tool. These two group icons had drifted — the phone showed the Pen
+// tool's own icon for the whole Draw group where desktop shows the calligraphic
+// draw-group pen, and a serif "T" for the Text group where desktop now shows
+// the owner's text-box icon. Every sub-tool below already matched.
 const TOOL_GROUPS = {
   draw: {
     label: 'Draw',
-    icon: 'pen',
+    icon: 'drawGroup',
     fallback: 'pen',
     tools: [
       { id: 'pen', label: 'Pen', icon: 'pen' },
@@ -37,7 +42,7 @@ const TOOL_GROUPS = {
   },
   review: {
     label: 'Text',
-    icon: 'text',
+    icon: 'textBox',
     fallback: 'text',
     tools: [
       { id: 'text', label: 'Text', icon: 'textBox' },
@@ -1627,7 +1632,17 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 );
               }}
             >
-              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" />
+              {/* UX 2026-09-07: same merged select trigger treatment as the
+                  desktop toolbar — the glyph shifts left to make room for the
+                  disclosure caret sitting inside the same control, instead of
+                  the two colliding in the middle of the button. Desktop uses
+                  the same -3px shift. Touch target is unchanged (44x44). */}
+              <Icon
+                name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)}
+                size={21}
+                color="currentColor"
+                style={{ transform: 'translateX(-3px)' }}
+              />
             </RailButton>
             <button
               ref={selectModeCaretRef}
@@ -1641,7 +1656,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                 selectModeOpen ? setSelectModeOpen(false) : openSelectModeMenu();
               }}
             >
-              <Icon name={selectModeOpen ? 'chevronLeft' : 'chevronRight'} size={8} color="currentColor" />
+              {/* UX 2026-09-07: caret matched to the desktop trigger — same 7px
+                  chevron, same two-tone colour (bright when the select family
+                  is the active tool, muted otherwise). The direction still
+                  flips left/right rather than pointing down like desktop,
+                  because this menu flies out sideways from a vertical rail. */}
+              <Icon
+                name={selectModeOpen ? 'chevronLeft' : 'chevronRight'}
+                size={7}
+                color={activeTool === 'select' || activeTool === 'text-select' ? '#e8e2d4' : '#8d96a6'}
+              />
             </button>
           </div>
           <div className="mobile-pdf-tools__divider" />
