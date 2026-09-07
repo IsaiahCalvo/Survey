@@ -182,6 +182,15 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
     };
     el.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('pointerup', onPointerUp, true);
+    // UX: Escape must cancel native drag repair too, or mouseup recreates
+    // the range after the shared select-family handler cancelled it.
+    const cancelSelectionGesture = (event) => {
+      if (!drag) return;
+      event.detail.cancelled = true;
+      clearDrag();
+      window.clearTimeout(repairTimer);
+    };
+    window.addEventListener('survey-cancel-selection-gesture', cancelSelectionGesture);
     document.addEventListener('pointercancel', clearDrag, true);
     document.addEventListener('touchstart', onTouchStart, true);
     document.addEventListener('touchend', onTouchEnd, true);
@@ -190,6 +199,7 @@ export default function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, i
       window.clearTimeout(repairTimer);
       el.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointerup', onPointerUp, true);
+      window.removeEventListener('survey-cancel-selection-gesture', cancelSelectionGesture);
       document.removeEventListener('pointercancel', clearDrag, true);
       document.removeEventListener('touchstart', onTouchStart, true);
       document.removeEventListener('touchend', onTouchEnd, true);

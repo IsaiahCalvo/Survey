@@ -911,6 +911,10 @@ const SVGAnnotationLayer = memo(({
       // Touch must stay with the native text layer so long-press selection and
       // the OS copy menu keep working after a mark has been selected.
       if (event.pointerType === 'touch') return;
+      // UX: a native text drag keeps ownership until release, even when
+      // it passes near the prior selection's handles (Phase 19 preserves them).
+      if (event.type === 'pointermove' && event.buttons !== 0
+        && !textSelectManipulationArmed && interactionState === 'idle') return;
       if (event.type === 'pointerdown' && !textSelectManipulationArmed) return;
       lastTextSelectPointerRef.current = { x: event.clientX, y: event.clientY };
       if (interactionState !== 'idle') {

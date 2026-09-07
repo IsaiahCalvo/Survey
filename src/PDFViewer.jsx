@@ -3823,7 +3823,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
   const textSelectGestureActiveRef = useRef(false);
-  const textSelectGestureCancelledRef = useRef(false);
 
   // Text Select keeps the SVG surface pointer-inert so native PDF text drags
   // work. Reuse the same page-space hit test as Pan for a short click: a click
@@ -3838,7 +3837,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.target?.closest?.('[data-resize-handle]')) return;
       // UX: keep the prior selection until this text gesture commits so
       // Escape can cancel it without discarding the selected annotation.
-      textSelectGestureCancelledRef.current = false;
       textSelectGestureActiveRef.current = true;
       downAt = {
         x: event.clientX,
@@ -3897,7 +3895,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       downAt = null;
       textSelectGestureActiveRef.current = false;
       event.detail.cancelled = true;
-      textSelectGestureCancelledRef.current = true;
       window.getSelection?.()?.removeAllRanges?.();
       liveTextSelectionRef.current = null;
       setLiveTextSelection(null);
@@ -28518,12 +28515,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const capturePdfjsTextSelection = useCallback(() => {
     if (activeToolRef.current !== 'text-select') return null;
-    // UX: native mouseup can restore a just-cancelled browser range. Keep
-    // that gesture cancelled until the next press rather than deselecting.
-    if (textSelectGestureCancelledRef.current) {
-      window.getSelection?.()?.removeAllRanges?.();
-      return null;
-    }
     const selection = window.getSelection?.();
     const pages = getSelectionPageRanges(selection, pageSizesRef.current || {});
     if (pages.length === 0) {
