@@ -1637,12 +1637,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, onOpenP
                   disclosure caret sitting inside the same control, instead of
                   the two colliding in the middle of the button. Desktop uses
                   the same -3px shift. Touch target is unchanged (44x44). */}
-              <Icon
-                name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)}
-                size={21}
-                color="currentColor"
-                style={{ transform: 'translateX(-3px)' }}
-              />
+              <Icon name={getSelectFamilyIconName(activeTool, bottomToolbarApi?.selectionMode)} size={21} color="currentColor" style={{ transform: 'translateX(-3px)' }} />
             </RailButton>
             <button
               ref={selectModeCaretRef}
