@@ -2,10 +2,12 @@ const ABSOLUTE_MIN_SCALE = 0.01;
 const ABSOLUTE_MAX_SCALE = 40;
 const WHEEL_LINE_HEIGHT_PX = 16;
 const WHEEL_NOTCH_PX = 100;
-// A single exponential rate makes equal wheel travel produce equal zoom,
-// regardless of how the browser splits that travel into events.
+// Keep equal travel chunk-independent within each input regime.
+// Drawboard measured 74% -> 97% over twelve 8px Ctrl-wheel ticks.
+const TRACKPAD_EXPONENT = 0.0029;
+const TRACKPAD_THRESHOLD_PX = 50;
 const WHEEL_NOTCH_EXPONENT = Math.log(1.1) / WHEEL_NOTCH_PX;
-const getWheelZoomExponent = (delta) => Math.abs(delta) * WHEEL_NOTCH_EXPONENT;
+
 
 export function getClampedZoomTranslation({
   zoomFactor,
@@ -88,7 +90,9 @@ export function getWheelZoomScale(currentScale, {
     : 1;
   const normalizedDelta = normalizeWheelDelta(deltaY, deltaMode, viewportHeight);
   const cappedDelta = Math.max(-maximumDelta, Math.min(maximumDelta, normalizedDelta));
-  const direction = Math.sign(cappedDelta);
-  const nextScale = safeCurrent * Math.exp(-direction * getWheelZoomExponent(cappedDelta));
+  const exponent = deltaMode === 0 && Math.abs(normalizedDelta) < TRACKPAD_THRESHOLD_PX
+    ? TRACKPAD_EXPONENT
+    : WHEEL_NOTCH_EXPONENT;
+  const nextScale = safeCurrent * Math.exp(-cappedDelta * exponent);
   return Math.max(minimumScale, Math.min(maximumScale, nextScale));
 }

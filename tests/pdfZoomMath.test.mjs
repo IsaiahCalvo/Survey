@@ -7,7 +7,7 @@ import {
   getWheelZoomScale,
 } from '../src/utils/pdfZoomMath.js';
 
-test('small trackpad ticks use the same travel rate as full notches and reverse symmetrically', () => {
+test('small trackpad ticks match Drawboard and reverse symmetrically', () => {
   const zoomedIn = getWheelZoomScale(0.74, {
     deltaY: -8,
     deltaMode: 0,
@@ -21,7 +21,7 @@ test('small trackpad ticks use the same travel rate as full notches and reverse 
     minimumScale: 0.01,
   });
 
-  assert.ok(Math.abs(zoomedIn - 0.74 * Math.pow(1.1, 0.08)) < 1e-12, `expected travel-proportional zoom, got ${zoomedIn}`);
+  assert.ok(zoomedIn > 0.756 && zoomedIn < 0.759, "expected Drawboard's measured small-tick speed");
   assert.ok(Math.abs(zoomedBackOut - 0.74) < 1e-9, `expected a reversible step, got ${zoomedBackOut}`);
 });
 
@@ -121,4 +121,48 @@ test('zoom preview centers an axis as soon as its projected content fits', () =>
 
   assert.equal(overflowingTranslation, 0);
   assert.equal(fittingTranslation, 20);
+});
+
+
+test('trackpad travel is chunk-independent within the pixel-mode regime', () => {
+  for (const chunk of [4, 8, 16, 24, 48]) {
+    let scale = 0.74;
+    for (let travel = 0; travel < 192; travel += chunk) {
+      scale = getWheelZoomScale(scale, { deltaY: -chunk });
+    }
+    assert.ok(Math.abs(scale - 0.74 * Math.exp(0.0029 * 192)) < 1e-12);
+    for (let travel = 0; travel < 192; travel += chunk) {
+      scale = getWheelZoomScale(scale, { deltaY: chunk });
+    }
+    assert.ok(Math.abs(scale - 0.74) < 1e-12);
+  }
+});
+
+test('each event selects its rate by normalized delta and mode before capping', () => {
+  for (const direction of [-1, 1]) {
+    for (const [deltaY, deltaMode, viewportHeight, exponent] of [
+      [49, 0, 800, 49 * 0.0029],
+      [50, 0, 800, 0.5 * Math.log(1.1)],
+      [0.5, 1, 800, 0.08 * Math.log(1.1)],
+      [0.01, 2, 800, 0.08 * Math.log(1.1)],
+    ]) {
+      const scale = getWheelZoomScale(1, { deltaY: direction * deltaY, deltaMode, viewportHeight });
+      assert.ok(Math.abs(scale - Math.exp(-direction * exponent)) < 1e-12);
+    }
+  }
+  const capped = getWheelZoomScale(1, { deltaY: -100, maximumDelta: 8 });
+  assert.ok(Math.abs(capped - Math.pow(1.1, 0.08)) < 1e-12);
+});
+
+test('browser mouse events keep a constant notch rate, reverse symmetry and 1000px cap', () => {
+  for (const delta of [100, 200, 1000, 10000]) {
+    const options = { maximumDelta: 1000 };
+    const scale = getWheelZoomScale(0.74, { ...options, deltaY: -delta });
+    assert.ok(Math.abs(scale - 0.74 * Math.pow(1.1, Math.min(delta, 1000) / 100)) < 1e-12);
+    const reversed = getWheelZoomScale(scale, { ...options, deltaY: delta });
+    assert.ok(Math.abs(reversed - 0.74) < 1e-12);
+  }
+  const once = getWheelZoomScale(0.74, { deltaY: -200, maximumDelta: 1000 });
+  const twice = getWheelZoomScale(getWheelZoomScale(0.74, { deltaY: -100 }), { deltaY: -100 });
+  assert.ok(Math.abs(once - twice) < 1e-12);
 });

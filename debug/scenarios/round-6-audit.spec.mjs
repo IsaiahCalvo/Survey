@@ -18,9 +18,9 @@ async function selectText(page) {
   await expect(page.locator('[data-text-selection-action-bar]')).toBeVisible();
 }
 
-test('equal wheel travel gives equal live zoom for every event chunk size', async ({ page }) => {
+test('equal trackpad travel gives equal live zoom for every trackpad event chunk size', async ({ page }) => {
   const ratios = [];
-  for (const chunk of [4, 8, 16, 30, 48, 96, 192]) {
+  for (const chunk of [4, 8, 16, 24, 48]) {
     await open(page, 'spike-120-pages.pdf');
     const surface = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
     const before = (await surface.boundingBox()).width;
@@ -34,7 +34,7 @@ test('equal wheel travel gives equal live zoom for every event chunk size', asyn
     ratios.push((await surface.boundingBox()).width / before);
   }
   expect(Math.max(...ratios) - Math.min(...ratios)).toBeLessThan(0.002);
-  for (const ratio of ratios) expect(ratio).toBeCloseTo(Math.pow(1.1, 1.92), 2);
+  for (const ratio of ratios) expect(ratio).toBeCloseTo(Math.exp(0.0029 * 192), 2);
 });
 
 test('Text Select selects imported links and immediate Delete removes the clicked mark', async ({ page }) => {
