@@ -1,4 +1,3 @@
-import { cullInkSliverPolygons } from './helpers/legacyInkSliverCull.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -44,18 +43,7 @@ test('tiny swept ink preserves an interior bend instead of joining only its endp
   assert.equal(pointInPolygonSet([0.01, 0], geometry), false);
 });
 
-test('sliver cleanup keeps a legitimate sub-0.08 page-unit pen dot', () => {
-  const width = 0.02;
-  const radius = width / 2;
-  const dot = [];
-  for (let index = 0; index < 24; index += 1) {
-    const angle = (index / 24) * Math.PI * 2;
-    dot.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
-  }
-  dot.push([...dot[0]]);
 
-  assert.equal(cullInkSliverPolygons([[dot]], width).length, 1);
-});
 
 test('tiny eraser gesture preserves its bend when selecting touched ink', () => {
   const tinyFilledMark = {

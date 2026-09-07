@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import { eraserStrokeTouchesObject } from '../src/utils/eraserHitTest.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
-import { cullInkSliverPolygons } from './helpers/legacyInkSliverCull.mjs';
 import { createProductionPaperInk } from '../src/utils/productionPaperInk.js';
 
 // 2026-07-19 eraser audit regressions: the hit test must share the SVG
@@ -761,27 +760,4 @@ test.skip('retired: a repeated erase cleans bridges from the carved polygon', ()
       'the second erase is based on the carved polygon and leaves no attached bridge',
     );
   }
-});
-
-// --- Polygon-lane sliver cull ----------------------------------------------
-
-test('sliver cull drops hairline ribbons and degenerate rings, keeps real ink', () => {
-  const healthy = [[[0, 0], [40, 0], [40, 10], [0, 10], [0, 0]]];
-  const hairline = [[[0, 20], [40, 20], [40, 20.3], [0, 20.3], [0, 20]]];
-  const degenerate = [[[5, 5], [5, 5], [5, 5], [5, 5]]];
-  const culled = cullInkSliverPolygons([healthy, hairline, degenerate], 10);
-  assert.equal(culled.length, 1);
-  assert.deepEqual(culled[0], healthy);
-});
-
-test('sliver cull keeps a full pen dot', () => {
-  // Approximate a dot of radius 5 (width 10) as a 16-gon.
-  const dot = [];
-  for (let i = 0; i < 16; i += 1) {
-    const a = (i / 16) * Math.PI * 2;
-    dot.push([50 + 5 * Math.cos(a), 50 + 5 * Math.sin(a)]);
-  }
-  dot.push(dot[0]);
-  const culled = cullInkSliverPolygons([[dot]], 10);
-  assert.equal(culled.length, 1);
 });

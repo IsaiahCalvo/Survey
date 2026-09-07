@@ -822,9 +822,13 @@ function sweptDiskPolygonRecords(points, radius, options = {}) {
 
   const sharpTurn = pathHasSharpTurn(compacted);
   const smoothLongTurn = !sharpTurn && pathAccumulatedTurn(compacted) >= Math.PI / 2;
-  const capsuleArcSteps = options.robust ? DEFAULT_ARC_STEPS : smoothLongTurn
-    ? Math.max(semicircleSteps, Math.ceil(FOLDED_ARC_STEPS * 1.125))
-    : Math.max(semicircleSteps, FOLDED_ARC_STEPS);
+  // Inscribed arcs stay within contact. Use a radius-based chord error
+  // instead of charging tiny erasers for 96 facets on every sharp bite.
+  // Smooth long turns retain their proven seam precision.
+  const capsuleArcSteps = options.robust ? DEFAULT_ARC_STEPS
+    : smoothLongTurn
+      ? Math.max(semicircleSteps, Math.ceil(FOLDED_ARC_STEPS * 1.125))
+      : Math.max(semicircleSteps, sweptDiskSemicircleSteps(radius, { curveTolerance: 0.002 }));
   const leaves = compacted.slice(1).map((point, index) => ({
     geometry: normalizeMultiPolygon(capsulePolygon(
       compacted[index],
