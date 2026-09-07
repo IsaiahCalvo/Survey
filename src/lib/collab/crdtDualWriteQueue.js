@@ -42,6 +42,8 @@ import { isCRDTEnabled } from './crdtFeatureFlag.js';
 // other collaborators on the same document - CONTEXT.md "the queue is local to the
 // user's session"). Key includes userId so multi-account-on-same-device is clean.
 const STORAGE_KEY_PREFIX = 'crdt_dual_write_queue:';
+export const STORAGE_FAILURE_EVENT = 'survey:dual-write-storage-error';
+const activeDrains = new Set();
 
 // Quarantine after this many failed attempts. CONTEXT.md "~10 retries"; Plan 30-01
 // test 4 hand-crafts attempts=9 and expects quarantine on the next attempt.
@@ -67,22 +69,44 @@ function getStorage() {
   return null;
 }
 
+function storageFailure(cause, userId) {
+  const error = new Error('The sync retry queue could not be saved on this device.', { cause });
+  error.code = 'DUAL_WRITE_STORAGE_FAILED';
+  try {
+    globalThis.window?.dispatchEvent(new CustomEvent(STORAGE_FAILURE_EVENT, {
+      detail: { userId, error, code: cause?.name === 'QuotaExceededError' ? 'quota_exceeded' : 'invalid_state' },
+    }));
+  } catch { /* no DOM in tests / SSR */ }
+  return error;
+}
+
+function readQueueStrict(userId) {
+  const storage = getStorage();
+  if (!storage) throw new Error('Local storage is unavailable');
+  const raw = storage.getItem(storageKey(userId));
+  if (!raw) return {};
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Sync retry queue is malformed');
+  }
+  return parsed;
+}
+
+export function queuedDocumentId(payload) {
+  return payload?.documentId ?? payload?.opts?.documentId ?? null;
+}
+
 /**
  * Read the queue for a given user.
  * Returns an empty object on missing key, malformed JSON, or missing localStorage.
  */
 export function readQueue(userId) {
   if (!userId) return {};
-  const storage = getStorage();
-  if (!storage) return {};
   try {
-    const raw = storage.getItem(storageKey(userId));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return (parsed && typeof parsed === 'object') ? parsed : {};
+    return readQueueStrict(userId);
   } catch (_err) {
-    // Defensive: corrupted JSON in localStorage -> start fresh. Do NOT throw inside
-    // a queue read - caller may be in a tight render loop (useDualWriteQueue hook).
+    // UI reads stay safe. Mutating paths use readQueueStrict and never overwrite
+    // malformed data; their failure event exposes the problem to the user.
     return {};
   }
 }
@@ -90,14 +114,8 @@ export function readQueue(userId) {
 function writeQueue(userId, queue) {
   if (!userId) return;
   const storage = getStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(storageKey(userId), JSON.stringify(queue));
-  } catch (_err) {
-    // localStorage full / blocked -> swallow. Queue lives in memory until next app
-    // restart; that's acceptable degradation since the actual annotation data is
-    // already in the Y.Doc / IndexedDB persistence layer.
-  }
+  if (!storage) throw new Error('Local storage is unavailable');
+  storage.setItem(storageKey(userId), JSON.stringify(queue));
 }
 
 /**
@@ -113,18 +131,27 @@ function writeQueue(userId, queue) {
  */
 export function enqueue({ userId, annoId, side, payload }) {
   if (!userId || !annoId || !side) return;
-  const queue = readQueue(userId);
-  const existing = queue[annoId];
-  queue[annoId] = {
-    annoId,
-    side,
-    payload,
-    attempts: existing?.attempts ?? 0,
-    queuedAt: existing?.queuedAt ?? Date.now(),
-    lastAttemptAt: existing?.lastAttemptAt ?? null,
-    quarantined: existing?.quarantined ?? false,
-  };
-  writeQueue(userId, queue);
+  try {
+    const queue = readQueueStrict(userId);
+    const existing = queue[annoId];
+    // Only data belongs on disk. Live Y.Doc / Y.Map handles are cyclic and must
+    // be supplied by the mounted document when retrying, not serialized here.
+    const { ydoc: _ydoc, yMapAnnotations: _map, ...savedOpts } = payload?.opts ?? {};
+    const retryPayload = payload?.opts ? { ...payload, opts: savedOpts } : payload;
+    queue[annoId] = {
+      annoId,
+      side,
+      payload: retryPayload,
+      revision: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${Math.random()}`,
+      attempts: existing?.attempts ?? 0,
+      queuedAt: existing?.queuedAt ?? Date.now(),
+      lastAttemptAt: existing?.lastAttemptAt ?? null,
+      quarantined: existing?.quarantined ?? false,
+    };
+    writeQueue(userId, queue);
+  } catch (cause) {
+    throw storageFailure(cause, userId);
+  }
 }
 
 /**
@@ -142,7 +169,8 @@ export function enqueue({ userId, annoId, side, payload }) {
  * @param {function} [args.onQuarantine] - called with { annoId } when an entry crosses QUARANTINE_THRESHOLD
  * @returns {Promise<{drained: number, quarantined: number, stuckCount: number, skippedKillSwitch: boolean}>}
  */
-export async function drainQueue({ userId, retryLegacyWrite, retryCrdtWrite, onStuck, onQuarantine }) {
+export async function drainQueue(args) {
+  const { userId } = args;
   // Pitfall 30-6 fix: short-circuit when kill switch is OFF. Queue persists in
   // localStorage; resumes when flag flips back.
   if (!isCRDTEnabled()) {
@@ -152,14 +180,48 @@ export async function drainQueue({ userId, retryLegacyWrite, retryCrdtWrite, onS
     return { drained: 0, quarantined: 0, stuckCount: 0, skippedKillSwitch: false };
   }
 
-  const queue = readQueue(userId);
+  // Every mounted PDF used to retry the same per-user queue once a second.
+  // One pass per user at a time avoids duplicate writes during slow requests.
+  if (activeDrains.has(userId)) {
+    return { drained: 0, quarantined: 0, stuckCount: 0, skippedKillSwitch: false, skippedBusy: true };
+  }
+  activeDrains.add(userId);
+  try {
+    const locks = globalThis.navigator?.locks;
+    if (locks?.request) {
+      // Coordinate drainers in other browser tabs too. Skip rather than build
+      // an unbounded wait queue from the one-second interval.
+      return await locks.request(`crdt-dual-write:${userId}`, { ifAvailable: true }, (lock) => (
+        lock ? drainQueuePass(args) : { drained: 0, quarantined: 0, stuckCount: 0, skippedKillSwitch: false, skippedBusy: true }
+      ));
+    }
+    return await drainQueuePass(args);
+  } catch (cause) {
+    throw storageFailure(cause, userId);
+  } finally {
+    activeDrains.delete(userId);
+  }
+}
+
+async function drainQueuePass({ userId, documentId, retryLegacyWrite, retryCrdtWrite, onStuck, onQuarantine, shouldContinue }) {
+  if (!isCRDTEnabled()) return { drained: 0, quarantined: 0, stuckCount: 0, skippedKillSwitch: true };
+
+  const queue = readQueueStrict(userId);
   const now = Date.now();
   let drained = 0;
   let newlyQuarantined = 0;
   let stuckCount = 0;
 
   for (const annoId of Object.keys(queue)) {
-    const entry = queue[annoId];
+    if (shouldContinue && !shouldContinue()) break;
+    // An earlier request may have taken seconds. Use the current version before
+    // sending this item too, not only when acknowledging it afterwards.
+    const entry = readQueueStrict(userId)[annoId];
+    if (!entry || typeof entry !== 'object') continue;
+    // Missing document identity is not safe to infer from whichever PDF is
+    // open. Preserve old unscoped entries for recovery instead of replaying.
+    if (documentId && queuedDocumentId(entry.payload) !== documentId) continue;
+    const fingerprint = JSON.stringify(entry);
 
     // Stuck threshold: count any non-quarantined entry pending > 30s.
     if (!entry.quarantined && (now - entry.queuedAt) > STUCK_THRESHOLD_MS) {
@@ -178,33 +240,35 @@ export async function drainQueue({ userId, retryLegacyWrite, retryCrdtWrite, onS
     // Try the missing-side write. The retry handlers are injected by the caller
     // (Plan 30-06 YDocProvider) - keeps this module pure (no Supabase / Yjs imports
     // at module top level beyond crdtFeatureFlag, which is itself pure).
-    try {
-      if (entry.side === 'legacy' && retryLegacyWrite) {
-        await retryLegacyWrite(entry.payload);
-        delete queue[annoId];
-        drained++;
-      } else if (entry.side === 'crdt' && retryCrdtWrite) {
-        await retryCrdtWrite(entry.payload);
-        delete queue[annoId];
-        drained++;
-      } else {
-        // No handler injected for this side - leave the entry alone, don't
-        // increment attempts. Caller hooks up handlers in Plan 30-06.
-      }
-    } catch (_err) {
+    const retry = entry.side === 'legacy' ? retryLegacyWrite : entry.side === 'crdt' ? retryCrdtWrite : null;
+    if (!retry) continue;
+    let failure = null;
+    try { await retry(entry.payload); } catch (error) { failure = error; }
+
+    // Re-read after every awaited request. Only settle the exact version sent;
+    // a newer edit or a different queued annotation must never be overwritten.
+    const latest = readQueueStrict(userId);
+    if (JSON.stringify(latest[annoId]) !== fingerprint) continue;
+    if (!failure) {
+      delete latest[annoId];
+      writeQueue(userId, latest);
+      drained++;
+    } else {
       entry.attempts++;
       entry.lastAttemptAt = now;
+      latest[annoId] = entry;
       if (entry.attempts >= QUARANTINE_THRESHOLD) {
         entry.quarantined = true;
         newlyQuarantined++;
+      }
+      writeQueue(userId, latest);
+      if (entry.quarantined) {
         if (typeof onQuarantine === 'function') {
           try { onQuarantine({ annoId }); } catch (_e) { /* swallow listener errors */ }
         }
       }
     }
   }
-
-  writeQueue(userId, queue);
 
   if (stuckCount > 0 && typeof onStuck === 'function') {
     try { onStuck({ stuckCount }); } catch (_e) { /* swallow */ }

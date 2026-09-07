@@ -1599,29 +1599,17 @@ export const saveSurveyMarkers = (pdfId, surveyMarkers) => {
 };
 
 export const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
-  if (!pdfId) return;
-  const key = `annotationsByPage_${pdfId}`;
-  const data = JSON.stringify(annotationsByPage);
+  if (!pdfId) return false;
   try {
-    localStorage.setItem(key, data);
-  } catch (e) {
-    // Handle QuotaExceededError by clearing stale entries and retrying once
-    if (e?.name === 'QuotaExceededError' || e?.code === 22) {
-      try {
-        // Remove other annotationsByPage entries (not the current one) to free space
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('annotationsByPage_') && k !== key) {
-            keysToRemove.push(k);
-          }
-        }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-        localStorage.setItem(key, data);
-      } catch {
-        // Silently degrade — data is still saved to Supabase when cloud sync is enabled
-      }
-    }
+    const data = JSON.stringify(annotationsByPage);
+    if (typeof data !== 'string') return false;
+    localStorage.setItem(`annotationsByPage_${pdfId}`, data);
+    return true;
+  } catch {
+    // These entries may be the only copy of local/offline edits, not a cache.
+    // Never evict another document to make room or claim this backup succeeded.
+    // setItem is atomic on failure, so the prior saved snapshot remains intact.
+    return false;
   }
 };
 

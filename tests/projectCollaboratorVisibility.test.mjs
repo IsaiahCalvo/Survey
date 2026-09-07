@@ -9,7 +9,8 @@ test('projects hook loads owned and active collaborator projects in parallel', (
   assert.match(projectsHook, /Promise\.all\(\[/);
   assert.match(projectsHook, /from\('projects'\)[\s\S]*?eq\('user_id', user\.id\)/);
   assert.match(projectsHook, /from\('project_collaborators'\)[\s\S]*?eq\('status', 'active'\)/);
-  assert.match(projectsHook, /\.in\('id', missingIds\)/);
+  assert.match(projectsHook, /readLibraryIdChunks\(missingIds/);
+  assert.match(projectsHook, /\.in\('id', ids\)/);
 });
 
 test('projects hook preserves owner precedence, deduplicates, and globally orders the merged result', () => {

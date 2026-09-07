@@ -134,3 +134,106 @@ test('invalidate-after-seal drops a cached pre-seal null so the sealed value is 
   const after = await resolveDocumentMetadata('doc1', { supabase: sealed.client });
   assert.equal(after.cutoverCompletedAt, '2026-06-03T12:00:00.000Z');
 });
+
+function deferredClient() {
+  const pending = [];
+  let onAuth;
+  const client = {
+    auth: { onAuthStateChange(callback) { onAuth = callback; } },
+    from() {
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        maybeSingle() { return new Promise((resolve) => pending.push(resolve)); },
+      };
+      return query;
+    },
+  };
+  return { client, pending, auth: (event, id) => onAuth(event, id ? { user: { id } } : null) };
+}
+
+test('different clients never share cached or pending document metadata', async () => {
+  __resetDocumentMetadataCacheForTests();
+  const a = deferredClient();
+  const b = deferredClient();
+  const first = resolveDocumentMetadata('shared-id', { supabase: a.client });
+  const second = resolveDocumentMetadata('shared-id', { supabase: b.client });
+  assert.equal(a.pending.length, 1);
+  assert.equal(b.pending.length, 1);
+  a.pending[0]({ data: { ...ROW, user_id: 'a' }, error: null });
+  b.pending[0]({ data: { ...ROW, user_id: 'b' }, error: null });
+  assert.equal((await first).userId, 'a');
+  assert.equal((await second).userId, 'b');
+  assert.equal((await resolveDocumentMetadata('shared-id', { supabase: b.client })).userId, 'b');
+});
+
+test('an invalidated old read cannot fill cache or remove its newer pending read', async () => {
+  __resetDocumentMetadataCacheForTests();
+  const h = deferredClient();
+  const old = resolveDocumentMetadata('doc1', { supabase: h.client });
+  invalidateDocumentMetadata('doc1');
+  const fresh = resolveDocumentMetadata('doc1', { supabase: h.client });
+  h.pending[0]({ data: { ...ROW, locked_label: 'old' }, error: null });
+  await old;
+  const joined = resolveDocumentMetadata('doc1', { supabase: h.client });
+  assert.equal(h.pending.length, 2, 'must join fresh pending read, not fetch or use old cache');
+  h.pending[1]({ data: { ...ROW, locked_label: 'fresh' }, error: null });
+  assert.equal((await fresh).lockedLabel, 'fresh');
+  assert.equal((await joined).lockedLabel, 'fresh');
+  assert.equal((await resolveDocumentMetadata('doc1', { supabase: h.client })).lockedLabel, 'fresh');
+});
+
+test('late old response cannot overwrite an already completed replacement', async () => {
+  __resetDocumentMetadataCacheForTests();
+  const h = deferredClient();
+  const old = resolveDocumentMetadata('doc1', { supabase: h.client });
+  invalidateDocumentMetadata('doc1');
+  const fresh = resolveDocumentMetadata('doc1', { supabase: h.client });
+  h.pending[1]({ data: { ...ROW, locked_label: 'fresh' }, error: null });
+  await fresh;
+  h.pending[0]({ data: { ...ROW, locked_label: 'old' }, error: null });
+  await old;
+  assert.equal((await resolveDocumentMetadata('doc1', { supabase: h.client })).lockedLabel, 'fresh');
+});
+
+test('auth boundaries clear cache and reject old-session responses without auth API calls', async () => {
+  __resetDocumentMetadataCacheForTests();
+  const h = deferredClient();
+  const old = resolveDocumentMetadata('doc1', { supabase: h.client });
+  h.auth('SIGNED_OUT');
+  h.auth('SIGNED_IN', 'new-user');
+  const fresh = resolveDocumentMetadata('doc1', { supabase: h.client });
+  h.pending[0]({ data: ROW, error: null });
+  assert.equal((await old).userId, null);
+  h.pending[1]({ data: { ...ROW, user_id: 'new-user' }, error: null });
+  await fresh;
+  h.auth('TOKEN_REFRESHED', 'new-user');
+  assert.equal((await resolveDocumentMetadata('doc1', { supabase: h.client })).userId, 'new-user');
+  assert.equal(h.pending.length, 2, 'same-account token refresh retains useful cache');
+  h.auth('SIGNED_OUT');
+  const missing = resolveDocumentMetadata('doc1', { supabase: h.client });
+  assert.equal(h.pending.length, 3);
+  h.pending[2]({ data: null, error: null });
+  assert.equal((await missing).userId, null);
+});
+
+test('short TTL cache has a fixed entry bound', async () => {
+  __resetDocumentMetadataCacheForTests();
+  const h = makeClient();
+  for (let i = 0; i < 129; i++) await resolveDocumentMetadata(`doc-${i}`, { supabase: h.client });
+  await resolveDocumentMetadata('doc-128', { supabase: h.client });
+  assert.equal(h.selects(), 129, 'newest entry remains cached');
+  await resolveDocumentMetadata('doc-0', { supabase: h.client });
+  assert.equal(h.selects(), 130, 'oldest entry was evicted at the bound');
+});
+
+test('initial session notification does not discard the first open-time read', async () => {
+  __resetDocumentMetadataCacheForTests();
+  const h = deferredClient();
+  const pending = resolveDocumentMetadata('doc1', { supabase: h.client });
+  h.auth('INITIAL_SESSION', 'owner-1');
+  h.pending[0]({ data: ROW, error: null });
+  assert.equal((await pending).userId, 'owner-1');
+  await resolveDocumentMetadata('doc1', { supabase: h.client });
+  assert.equal(h.pending.length, 1);
+});

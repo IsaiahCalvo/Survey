@@ -21503,9 +21503,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
-  const handleSaveDocument = useCallback(async (silent = false) => {
+  const handleSaveDocument = useCallback(async (silent = false, onLocalBackupResult = null) => {
     // Feature Gate: Cloud Sync - still save locally regardless of plan
-    if (!pdfId || !pdfFile) return;
+    if (!pdfId || !pdfFile) return false;
 
     // KAL-75 (G5): LOCKED documents — save is a no-op. Edits are blocked
     // while locked so there is nothing to persist, but the cloud flush below
@@ -21516,7 +21516,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // data-readonly: Phase-28 access-revoked mode also sets data-readonly
     // but explicitly PRESERVES Cmd+S (ReadOnlyGate pass-through, commit
     // 477fe90e) so kicked-out users can save offline/sync state.
-    if (document.body.getAttribute('data-kal49-locked') === 'true') return;
+    if (document.body.getAttribute('data-kal49-locked') === 'true') return true;
 
     try {
       // UX 2026-04-27 (Phase 27 follow-up): split the cloud-side save (always
@@ -21540,12 +21540,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
         silent
       }));
-      saveAnnotationsByPage(pdfId, annotationsByPage);
-      savedAnnotationsByPageRef.current = { ...annotationsByPage };
-      setHasUnsavedAnnotations(false);
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(false, tabId);
+      const localBackupSaved = saveAnnotationsByPage(pdfId, annotationsByPage);
+      if (localBackupSaved) {
+        savedAnnotationsByPageRef.current = { ...annotationsByPage };
+        setHasUnsavedAnnotations(false);
+        if (onUnsavedAnnotationsChange) {
+          onUnsavedAnnotationsChange(false, tabId);
+        }
+      } else {
+        // Keep the dirty state and retry path even if a cloud flush can run.
+        // Auto-save failures must be visible too: no local backup was written.
+        setHasUnsavedAnnotations(true);
+        onUnsavedAnnotationsChange?.(true, tabId);
+        showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
       }
+      // Report a failed local write before any network wait can outlast the
+      // desktop quit grace period. Other save callers need no callback.
+      onLocalBackupResult?.(localBackupSaved);
       if (features?.cloudSync) {
         await saveSurveyDataToSupabase(surveyMarkers, spaces, selectedTemplate);
         if (pdfFile?.id && user?.id && typeof cloudSyncForceFlush === 'function') {
@@ -21574,7 +21585,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotationCountsByType: annotationCounts.byType,
         annotationCountSummary: annotationCounts,
         embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
-        localBackupSaved: true,
+        localBackupSaved,
         surveyDataStorageSaveRequested: !!features?.cloudSync,
         silent
       }));
@@ -21607,11 +21618,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           setShowExcelSyncConfirmModal(true);
         }
       }
+      return localBackupSaved;
     } catch (error) {
       console.error('Error saving document:', error);
       if (!silent) {
         showToast('Error saving annotations: ' + error.message, 'error');
       }
+      return false;
     }
   }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush]);
 
@@ -21635,23 +21648,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    const handleBeforeQuit = async () => {
-      if (pdfFilePath && hasUnsavedAnnotations) {
+    const handleBeforeQuit = async ({ quitAttemptId } = {}) => {
+      let saved = true;
+      if (hasUnsavedAnnotations) {
         try {
-          await handleSaveDocument(true); // silent=true
+          saved = await handleSaveDocument(true, (localBackupSaved) => {
+            if (!localBackupSaved) {
+              window.electronAPI?.notifySaveComplete?.({ saved: false, quitAttemptId });
+            }
+          });
         } catch (error) {
+          saved = false;
           console.error('Error saving before quit:', error);
         }
       }
-      // Notify main process that save is complete
+      // A failure vetoes this quit; a later successful tab must not erase it.
       if (window.electronAPI?.notifySaveComplete) {
-        window.electronAPI.notifySaveComplete();
+        window.electronAPI.notifySaveComplete({ saved: saved === true, quitAttemptId });
       }
     };
 
     const removeListener = window.electronAPI.onBeforeQuit(handleBeforeQuit);
     return removeListener;
-  }, [pdfFilePath, hasUnsavedAnnotations, handleSaveDocument]);
+  }, [hasUnsavedAnnotations, handleSaveDocument]);
 
   // Load note content when note dialog opens
   useEffect(() => {

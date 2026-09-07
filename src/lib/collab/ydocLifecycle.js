@@ -80,6 +80,9 @@ export function attachLifecycle(ydoc, documentId, options) {
   let role = 'unknown';
   let storageDetectorHandle = null;
   let detached = false;
+  const electionAbort = new AbortController();
+  let releaseLock;
+  const lockLifetime = new Promise((resolve) => { releaseLock = resolve; });
 
   // ----------------------------------------------------------------------
   // Loser-tab path: receive updates from leader via BroadcastChannel.
@@ -109,14 +112,15 @@ export function attachLifecycle(ydoc, documentId, options) {
   ydoc.on('update', onLocalUpdate);
 
   // ----------------------------------------------------------------------
-  // Web Locks election. The callback's promise never resolves on the winning
-  // tab - that is how we hold the lock for the tab's lifetime. The browser
+  // Web Locks election. Hold the lock only while this mount owns persistence.
+  // Resolving lockLifetime on detach allows the next mount to save offline.
+  // The browser
   // auto-releases on tab process exit; another tab's queued request then
   // promotes itself by re-running navigator.locks.request inside its own attach.
   // UX: opening a second tab is silent leader handoff — second tab queues until
   // first closes, then becomes leader transparently. No user-visible flicker.
   // ----------------------------------------------------------------------
-  navigator.locks.request(lockName, { mode: 'exclusive' }, async () => {
+  const election = navigator.locks.request(lockName, { mode: 'exclusive', signal: electionAbort.signal }, async () => {
     if (detached) return;
     role = 'leader';
 
@@ -136,31 +140,28 @@ export function attachLifecycle(ydoc, documentId, options) {
         },
       });
 
-      // Hold the lock for the tab's lifetime. This promise intentionally never resolves.
-      // When the tab process dies, the browser auto-releases the lock.
-      await new Promise(() => {});
+      await lockLifetime;
     } finally {
-      // Only runs on detach() or unhandled exception inside the lock body.
-      try { persistence?.destroy(); } catch { /* swallow - persistence may already be torn down */ }
+      // Close the old writer before another mount acquires this lock.
+      try { await persistence?.destroy(); } catch { /* already torn down */ }
       try { storageDetectorHandle?.detach(); } catch { /* swallow */ }
     }
-  }).catch(() => {
-    // navigator.locks.request rejects only if the request itself fails (rare).
-    // The pending-queue case (loser tab) does NOT reject - it simply waits for the lock.
-    // If reject happens, treat as loser and continue.
+  }).catch((error) => {
+    if (!detached) onStorageState({ code: 'invalid_state', role, error });
   });
 
   return {
     detach() {
+      if (detached) return election;
       detached = true;
       try { ydoc.off('update', onLocalUpdate); } catch { /* swallow */ }
       try { bc.close(); } catch { /* swallow */ }
       try { storageDetectorHandle?.detach(); } catch { /* swallow */ }
-      try { persistence?.destroy(); } catch { /* swallow */ }
-      // Note: lock is held by an outstanding navigator.locks.request callback.
-      // We can't synchronously release it from here. Browser releases when tab closes.
-      // For test-driven detach (rare in production), the next attachLifecycle on
-      // the same documentId will queue behind this one until tab close.
+      // Abort a queued election or release an acquired lock. The callback owns
+      // persistence destruction so a replacement writer cannot overlap it.
+      electionAbort.abort();
+      releaseLock();
+      return election;
     },
     role: () => role,
   };

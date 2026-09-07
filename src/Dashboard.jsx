@@ -18,6 +18,7 @@ import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
+import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { useAuth } from './contexts/AuthContext';
@@ -107,8 +108,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // picker fires `handleFileUpload` separately, so the project id chosen in
   // the Projects tab is stashed here for that handler to read.
   const uploadTargetProjectRef = useRef(null);
-  // Track documents being cleaned up to prevent duplicate cleanup attempts
-  const cleaningUpDocumentsRef = useRef(new Set());
   // KAL-23: dashboard-level error toast for upload/create/save flows. Replaces
   // the noisy browser alerts that used to interrupt the user when an upload or
   // project save failed asynchronously. Click the close × on the toast to
@@ -700,28 +699,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           try {
             perfUpload.mark(file.name, 'Starting cloud upload');
             const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
-            const pageCountPromise = (async () => {
-              const arrayBuffer = await readBlobAsArrayBuffer(file);
-              perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
-              const pdfjsLib = await loadPdfjs();
-              let pdfDoc;
-              try {
-                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
-                  data: arrayBuffer.slice(0),
-                  verbosity: pdfjsLib.VerbosityLevel.ERRORS
-                }).promise;
-              } catch (firstError) {
-                console.warn('Standard PDF load failed during upload, trying recovery mode:', firstError.message);
-                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
-                  data: arrayBuffer.slice(0),
-                  verbosity: pdfjsLib.VerbosityLevel.ERRORS,
-                  stopAtErrors: false,
-                  disableAutoFetch: true,
-                  disableStream: true
-                }).promise;
-              }
-              return pdfDoc.numPages;
-            })();
+            const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs });
 
             // A page-count parse failure must not reject the join — the archive
             // below depends only on the UPLOAD being durable.
@@ -895,32 +873,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         setActiveUploads((count) => count + 1);
         try {
           const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
-          const pageCountPromise = (async () => {
-            try {
-              const arrayBuffer = await readBlobAsArrayBuffer(file);
-              const pdfjsLib = await loadPdfjs();
-              let pdfDoc;
-              try {
-                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
-                  data: arrayBuffer.slice(0),
-                  verbosity: pdfjsLib.VerbosityLevel.ERRORS
-                }).promise;
-              } catch (firstError) {
-                console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
-                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
-                  data: arrayBuffer.slice(0),
-                  verbosity: pdfjsLib.VerbosityLevel.ERRORS,
-                  stopAtErrors: false,
-                  disableAutoFetch: true,
-                  disableStream: true
-                }).promise;
-              }
-              return pdfDoc.numPages;
-            } catch (err) {
+          const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
+            .catch((err) => {
               console.error('Error getting page count:', err);
               return null;
-            }
-          })();
+            });
 
           await uploadPromise;
 
@@ -1038,7 +995,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     const uploadErrors = [];
     let successCount = 0;
 
-    // Process files in parallel for better performance.
+    // Bound file jobs so large batches do not start every upload/parser at once.
     // Decision 6, bulk flavor: the project is brand-new so there's nothing to
     // collide WITH, but two picked files can share a NAME between themselves —
     // number the later ones like a desktop OS instead of silently creating
@@ -1049,7 +1006,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       usedNames.add(name);
       return { file, name };
     });
-    const filePromises = batchEntries.map(async ({ file, name }) => {
+    const settledFiles = await mapUploadsBounded(batchEntries, async ({ file, name }) => {
+      let pageCountPromise;
       try {
         // Content-address these uploads too (decision 6): hash first so the
         // stored object lands at {user}/{sha}.pdf, never a new time-named file.
@@ -1057,34 +1015,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
         // Start upload and page count in parallel
         const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha);
-        const pageCountPromise = (async () => {
-          try {
-            const arrayBuffer = await readBlobAsArrayBuffer(file);
-            const pdfjsLib = await loadPdfjs();
-            let pdfDoc;
-            try {
-              // Clone buffer since PDF.js may detach it when transferring to worker
-              pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
-                data: arrayBuffer.slice(0),
-                verbosity: pdfjsLib.VerbosityLevel.ERRORS
-              }).promise;
-            } catch (firstError) {
-              console.warn(`Standard PDF load failed for ${file.name}, trying recovery mode:`, firstError.message);
-              // Try recovery mode with fresh buffer clone
-              pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
-                data: arrayBuffer.slice(0),
-                verbosity: pdfjsLib.VerbosityLevel.ERRORS,
-                stopAtErrors: false,
-                disableAutoFetch: true,
-                disableStream: true
-              }).promise;
-            }
-            return pdfDoc.numPages;
-          } catch (err) {
+        pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
+          .catch((err) => {
             console.error(`Error getting page count for ${file.name}:`, err);
             return null;
-          }
-        })();
+          });
 
         // Wait for upload to complete first
         const filePath = await uploadPromise;
@@ -1110,18 +1045,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           } catch (aliasErr) { console.warn(`Could not record alias "${name}":`, aliasErr?.message); }
         }
 
-        // Update page count in background (non-blocking)
-        pageCountPromise.then(async (pageCount) => {
-          if (pageCount !== null) {
-            try {
-              await updateSupabaseDocument(doc.id, { page_count: pageCount });
-            } catch (err) {
-              console.error(`Error updating page count for ${file.name}:`, err);
-            }
+        // Keep this slot until the parser releases its worker and buffers.
+        const pageCount = await pageCountPromise;
+        if (pageCount !== null) {
+          try {
+            await updateSupabaseDocument(doc.id, { page_count: pageCount });
+          } catch (err) {
+            console.error(`Error updating page count for ${file.name}:`, err);
           }
-        }).catch(err => {
-          console.error(`Error getting page count for ${file.name}:`, err);
-        });
+        }
 
         return { success: true, file: file.name };
       } catch (err) {
@@ -1131,11 +1063,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           file: file.name,
           error: err.message || err.toString()
         };
+      } finally {
+        await pageCountPromise;
       }
     });
 
-    // Wait for all files to process
-    const results = await Promise.all(filePromises);
+    const results = settledFiles.map((result, index) => result.status === 'fulfilled'
+      ? result.value
+      : { success: false, file: batchEntries[index].file.name, error: result.reason?.message || String(result.reason) });
 
     // Count successes and collect errors
     results.forEach(result => {
@@ -1478,32 +1413,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       ? projects.length > 0
       : templates.length > 0;
 
-  // Handler for when a file is not found in storage.
-  const handleFileNotFound = useCallback(async (docId) => {
-    if (!docId) return;
-
-    // Prevent duplicate cleanup attempts
-    if (cleaningUpDocumentsRef.current.has(docId)) return;
-    cleaningUpDocumentsRef.current.add(docId);
-
-    // Remove from UI immediately
-    setDocuments(prev => prev.filter(d => d.id !== docId));
-
-    // Hard-delete the stale row so its annotation log, snapshot, and cascade
-    // children go with it — a missing PDF means the document is unusable, and a
-    // soft-archive would orphan all that data forever. Treat already-missing
-    // rows as success.
-    try {
-      await deleteDocumentEverywhere({ docId, source: 'file-not-found-cleanup' });
-    } catch (error) {
-      if (!isSupabaseRowNotFoundError(error)) {
-        console.error('[DocumentCleanup] Failed to delete stale document row:', error);
-      }
-    } finally {
-      cleaningUpDocumentsRef.current.delete(docId);
-    }
-  }, [deleteDocumentEverywhere]);
-
   const handleDocumentClick = async (doc) => {
     try {
       // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
@@ -1571,8 +1480,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
       // Check if file no longer exists in storage
       if (isStorageFileNotFoundError(error)) {
-        // Silently clean up the stale document - no error shown to user
-        await handleFileNotFound(doc.id);
+        // A failed read is not permission to erase the document or its marks.
+        // The upload may still be pending, or the object may need recovery.
+        showToast('The PDF file is unavailable. Your document and annotations were kept. Try again, or re-upload the original PDF to the same project.', 'error');
       } else {
         // Network or other temporary error - show message
         showToast('Unable to open document. Please check your connection and try again.', 'error');

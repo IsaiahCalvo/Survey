@@ -111,6 +111,17 @@ function assertStateWritable(state) {
   if (state.deleted) throw deletedDocumentError(state.documentId);
 }
 
+// Public callers must not mutate through a retired handle. Internal queued
+// appends use assertStateWritable so pre-close work can still finish safely.
+function assertHandleWritable(state) {
+  assertStateWritable(state);
+  if (state.closePromise || state.destroyed) {
+    const error = new Error(`annotation handle for ${state.documentId} is closed`);
+    error.code = 'ANNOTATION_HANDLE_CLOSED';
+    throw error;
+  }
+}
+
 function registerActiveState(state) {
   let states = ACTIVE_STATES.get(state.documentId);
   if (!states) {
@@ -335,6 +346,7 @@ export async function openAnnotationDoc({
                            // snapshot that completes after a newer edit can't wrongly
                            // mark that newer edit as saved.
     destroyed: false,
+    closePromise: null,
     deleted: false,
     idbProvider: null,
     realtimeChannel: null,
@@ -388,6 +400,7 @@ export async function openAnnotationDoc({
       Number(eraseOutboxRetryMaxMs) || 30_000,
     ),
     eraseOutboxClosing: false,
+    eraseOutboxOrigin: Object.freeze({ source: 'erase-outbox', writerId: activeWriterId }),
     persistenceGeneration: readPersistenceGeneration(documentId, actorUserId),
     legacyPersistenceDoc: null,
     legacyClearDocument: null,
@@ -551,6 +564,10 @@ export async function openAnnotationDoc({
     // --- observe local mutations → append to the durable log ---
     state.onDocUpdate = (update, origin, _doc, transaction) => {
       if (state.destroyed || state.deleted) return;
+      // A closing handle owns only receipts from its already-running effects,
+      // not new edits in the registry doc borrowed by the next viewer.
+      if (state.closePromise && origin !== state.eraseOutboxOrigin) return;
+      if (origin?.source === 'erase-outbox' && origin !== state.eraseOutboxOrigin) return;
       // Ignore writes we didn't originate as user edits: remote ops, the initial
       // hydrate, and the local IndexedDB replay (re-appending those would loop).
       if (origin === REMOTE_ORIGIN) {
@@ -3041,7 +3058,7 @@ function queueEraseOutboxDrain(state, options = {}) {
         return acceptedEntry !== undefined && mapValueEqual(acceptedEntry, entry);
       },
       actorUserId: state.actorUserId,
-      origin: 'erase-outbox',
+      origin: state.eraseOutboxOrigin,
     }))
     .then((result) => {
       if (result.pending === 0) {
@@ -3248,7 +3265,7 @@ function makeHandle(state) {
 
     /** Push the viewer's render-shape state into the doc (minimal diff → ops). */
     applyByPage(byPage, opts = {}) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       const currentMaterialized = docToByPage(state.doc);
       const identityNormalization = normalizeByPageAnnotationIdentities(byPage);
       byPage = identityNormalization.byPage;
@@ -3354,7 +3371,7 @@ function makeHandle(state) {
      * replace the local page before its writer-scoped survivor lane existed.
      */
     applyEraserMutation(pageNumber, pageAnnotations, eraserMutation) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       if (!eraserMutation?.id) return null;
       const current = state.lastByPage || docToByPage(state.doc);
       const prepared = {
@@ -3379,7 +3396,7 @@ function makeHandle(state) {
 
     /** Write a document-level meta value (idempotent; coarse whole-value). */
     setMeta(key, value) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       return setMetaValue(state.doc, key, value, 'local');
     },
 
@@ -3388,7 +3405,7 @@ function makeHandle(state) {
 
     /** Push the survey-marker dict into the doc (minimal per-marker diff → ops). */
     applySurveyMarkers(markers, opts = {}) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local', ...opts });
     },
 
@@ -3397,7 +3414,7 @@ function makeHandle(state) {
      * transaction, then recover non-core effects from the durable outbox.
      */
     async commitEraseIntent(intent, opts = {}) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       const quarantineGeneration = state.historyQuarantineGeneration;
       const materializedByStorageKey = annotationsByStorageKey(docToByPage(state.doc));
       const result = await commitEraseIntentOnDoc({
@@ -3446,7 +3463,7 @@ function makeHandle(state) {
 
     /** Undo/Redo only one eraser gesture's writer lanes/counter fields. */
     applyEraseHistoryTransition(transition, direction) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       const quarantineGeneration = state.historyQuarantineGeneration;
       const result = applyEraseHistoryTransitionOnDoc({
         doc: state.doc,
@@ -3478,7 +3495,7 @@ function makeHandle(state) {
 
     /** Restore only the exact full-delete eraser lanes captured by Revisions. */
     restoreEraseDeletion(restoreActions, options = {}) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       const result = restoreEraseDeletionOnDoc({
         doc: state.doc,
         restoreActions,
@@ -3497,6 +3514,7 @@ function makeHandle(state) {
 
     /** Replace the app-owned effect executor and recover pending work now. */
     setEraseEffectConsumer(consumer) {
+      assertHandleWritable(state);
       state.eraseEffectConsumer = typeof consumer === 'function' ? consumer : null;
       if (!state.eraseEffectConsumer) {
         state.eraseOutboxRetryAttempt = 0;
@@ -3517,7 +3535,7 @@ function makeHandle(state) {
      * materialization when anything was removed.
      */
     repairStackedInkDuplicates({ notify = true, ...opts } = {}) {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       const result = repairStackedInkDuplicates(state.doc, opts);
       if (result.removed > 0) {
         state.lastByPage = null;
@@ -3560,7 +3578,7 @@ function makeHandle(state) {
 
     /** Force a compacted snapshot now (e.g. on explicit save). */
     async flushSnapshot() {
-      assertStateWritable(state);
+      assertHandleWritable(state);
       await catchUpTail(state);
       await drainStateQueues(state);
       const result = await writeSnapshot(state, captureSnapshotOptions(state));
@@ -3576,7 +3594,12 @@ function makeHandle(state) {
       assertStateWritable(state);
     },
 
-    async destroy() {
+    destroy() {
+      if (state.closePromise) return state.closePromise;
+      state.closePromise = (async () => {
+      // closePromise gates the observer before any awaited work completes.
+      // Already-queued edits and this writer's pending effect receipts drain;
+      // new edits belong only to the next viewer of the shared registry doc.
       unregisterActiveState(state);
       state.eraseOutboxClosing = true;
       clearEraseOutboxRetry(state);
@@ -3599,6 +3622,9 @@ function makeHandle(state) {
       await state.catchupChain.catch(() => {}); // let an in-flight catch-up page finish cleanly
       await state.authoritativeChain.catch(() => {});
       await state.eraseOutboxDrain.catch(() => {});
+      // An effect that was already running can acknowledge after the first
+      // drain. Include that exact receipt before taking the final checkpoint.
+      await drainStateQueues(state);
       if (state.supabase) {
         try {
           const result = await writeSnapshot(state, captureSnapshotOptions(state));
@@ -3629,6 +3655,8 @@ function makeHandle(state) {
       // across reopen). Only destroy a doc we were explicitly handed (tests).
       if (state.ownsRegistryDoc) releaseYDoc(state.registryKey);
       else { try { state.doc.destroy(); } catch { /* */ } }
+      })();
+      return state.closePromise;
     },
   };
 }

@@ -42,6 +42,7 @@ import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
+import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getNextSelectModeMenuOpen, getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
@@ -808,8 +809,7 @@ export default function App({ devPreviewReturnTab = null }) {
       return;
     }
 
-    // Create a unique key for this PDF (name + size + path)
-    const pdfKey = `${file.name}-${file.size}-${filePath || ''}`;
+    const pdfKey = getDocumentOpenKey(file, filePath);
 
     // Check if this PDF is already being opened (prevents duplicate opens when app is slow)
     if (openingPdfsRef.current.has(pdfKey)) {
@@ -817,17 +817,7 @@ export default function App({ devPreviewReturnTab = null }) {
     }
 
     // Check if this file is already open in a tab (excluding home tab)
-    const existingTab = tabs.find(tab => {
-      // Compare by name and size for uniqueness, and make sure it's not the home tab
-      // Also check path if available for more robust matching
-      if (tab.isHome || !tab.file) return false;
-
-      const sameName = tab.file.name === file.name;
-      const sameSize = tab.file.size === file.size;
-      const samePath = tab.filePath && filePath ? tab.filePath === filePath : true;
-
-      return sameName && sameSize && samePath;
-    });
+    const existingTab = tabs.find(tab => isSameDocumentTab(tab, file, filePath));
 
     if (existingTab) {
       // Clear the opening flag in case it was set (shouldn't happen, but just in case)
