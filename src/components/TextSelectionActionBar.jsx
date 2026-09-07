@@ -1,4 +1,5 @@
 import Icon from '../Icons';
+import { useTooltip } from './Tooltip';
 import './TextSelectionActionBar.css';
 
 const GOLD = '#e5ad18';
@@ -29,12 +30,13 @@ function activateFromTouch(event, activate) {
 }
 
 function MarkControl({ mark, active, focused, paint, onToggle, onFocusPaint }) {
+  const chromeTip = useTooltip();
   return (
     <div className="text-selection-action-bar__mark" data-text-mark-control={mark.id} data-focused={focused ? 'true' : 'false'}>
-      <button className="text-selection-action-bar__button" type="button" aria-label={`${active ? 'Remove' : 'Apply'} ${mark.label}`} aria-pressed={active} onClick={() => onToggle(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onToggle(mark.id))} style={buttonBase}>
+      <button className="text-selection-action-bar__button" type="button" aria-label={`${active ? 'Remove' : 'Apply'} ${mark.label}`} {...chromeTip(`${active ? 'Remove' : 'Apply'} ${mark.label}`, 'below')} aria-pressed={active} onClick={() => onToggle(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onToggle(mark.id))} style={buttonBase}>
         <ToolIcon name={mark.icon} emphasized={active} />
       </button>
-      <button className="text-selection-action-bar__button" type="button" aria-label={`Set ${mark.label} color`} onClick={() => onFocusPaint(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onFocusPaint(mark.id))} style={{ ...buttonBase, padding: 4 }}>
+      <button className="text-selection-action-bar__button" type="button" aria-label={`Set ${mark.label} color`} {...chromeTip(`Set ${mark.label} color`, 'below')} onClick={() => onFocusPaint(mark.id)} onTouchEnd={(event) => activateFromTouch(event, () => onFocusPaint(mark.id))} style={{ ...buttonBase, padding: 4 }}>
         <span aria-hidden="true" style={{ width: 14, height: 14, display: 'block', border: '1px solid #eef0f3', borderRadius: '50%', background: paint?.color || '#f5c229', opacity: 1, boxShadow: '0 0 0 1px #090b0e' }} />
       </button>
     </div>
@@ -59,6 +61,8 @@ export default function TextSelectionActionBar({
   onLinkRemove,
   onLinkCancel,
 }) {
+  // UX: use the same below-row hints as the other chrome, including colour swatches.
+  const chromeTip = useTooltip();
   const hasSelection = Boolean(selection?.pages?.length);
   if (!hasSelection) return null;
   const linkActive = activeMarkupTypes.includes('link');
@@ -89,8 +93,8 @@ export default function TextSelectionActionBar({
       >
         <div className="text-selection-action-bar__tools">
           {MARKS.map((mark) => <MarkControl key={mark.id} mark={mark} active={activeMarkupTypes.includes(mark.id)} focused={focusedPaintMark === mark.id} paint={paintByMark[mark.id]} onToggle={onAction} onFocusPaint={onFocusPaint} />)}
-          <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} aria-pressed={linkActive} onClick={() => onAction('link')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('link'))} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
-          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} /></button>
+          <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} {...chromeTip(linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink', 'below')} aria-pressed={linkActive} onClick={() => onAction('link')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('link'))} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
+          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} {...chromeTip(`${redactActive ? 'Remove' : 'Apply'} Redact`, 'below')} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} /></button>
         </div>
       </div>
       {hasSelection && linkEditorOpen && (

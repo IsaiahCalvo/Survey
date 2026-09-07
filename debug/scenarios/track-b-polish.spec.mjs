@@ -301,3 +301,65 @@ test('R2 scrollbar: scroll and zoom reveal instantly, only hiding fades',async({
  await expect.poll(()=>rail.evaluate(n=>getComputedStyle(n).transitionDuration)).not.toBe('0s');
  await expect(rail).toHaveCSS('opacity','0');
 });
+
+// UX: inspect painted pixels, since matching SVG source alone missed the phone flip.
+for (const density of [1, 2]) {
+ test(`R3 history ${density}x: phone ink centres align and both surfaces mirror`, async ({browser}) => {
+  const { PNG } = await import('pngjs');
+  for (const mobile of [true, false]) {
+   const context = await browser.newContext({viewport: mobile ? {width:390,height:844} : {width:1400,height:900}, isMobile:mobile, hasTouch:mobile, deviceScaleFactor:density});
+   const page = await context.newPage(); await open(page);
+   const centres=[];
+   for (const name of ['Undo','Redo']) {
+    const button=page.getByRole('button',{name,exact:true});
+    const icon=button.locator('svg');
+    await expect(icon).toHaveCSS('transform','matrix(1, 0, 0, -1, 0, 0)');
+    if(!mobile && name==='Redo') await expect(button).toHaveCSS('transform','matrix(1, 0, 0, 1, 0, -0.591158)');
+    const png=PNG.sync.read(await icon.screenshot());
+    const luminances=[], hist=new Map();
+    for(let i=0;i<png.data.length;i+=4){const l=.2126*png.data[i]+.7152*png.data[i+1]+.0722*png.data[i+2];luminances.push(l);const k=Math.round(l);hist.set(k,(hist.get(k)||0)+1);}
+    const bg=[...hist].sort((a,b)=>b[1]-a[1])[0][0];
+    const ys=luminances.flatMap((l,i)=>Math.abs(l-bg)>26?[Math.floor(i/png.width)]:[]);
+    expect(ys.length).toBeGreaterThan(20);
+    centres.push((Math.min(...ys)+Math.max(...ys))/2);
+   }
+   if(mobile) expect(Math.abs(centres[0]-centres[1])).toBeLessThanOrEqual(.5);
+   // The shared paths are reflections in the 24-unit viewBox before their common flip.
+   const paths=await page.getByRole('button',{name:'Undo',exact:true}).locator('svg path').evaluateAll(ns=>ns.map(n=>n.getBBox()).map(b=>({x:b.x,y:b.y,w:b.width,h:b.height})));
+   const redo=await page.getByRole('button',{name:'Redo',exact:true}).locator('svg path').evaluateAll(ns=>ns.map(n=>n.getBBox()).map(b=>({x:b.x,y:b.y,w:b.width,h:b.height})));
+   for(let i=0;i<paths.length;i++){expect(redo[i].x).toBeCloseTo(24-paths[i].x-paths[i].w,4);expect(redo[i].y).toBeCloseTo(paths[i].y,4);expect(redo[i].h).toBeCloseTo(paths[i].h,4);}
+   await context.close();
+  }
+ });
+ test(`R3 resize ${density}x: no painted frame on a non-scrollable axis`,async({browser})=>{
+  const context=await browser.newContext({viewport:{width:1400,height:900},deviceScaleFactor:density});
+  const page=await context.newPage();await open(page);await page.waitForTimeout(1200);
+  await page.evaluate(()=>{window.phantomFrames=[];window.resizeFrames=0;const sample=()=>{const s=document.querySelector('.survey-pdfjs-viewer');window.resizeFrames++;for(const axis of ['vertical','horizontal']){const r=document.querySelector(`[aria-label="Viewport ${axis} scroll bar"]`);const overflow=axis==='vertical'?s.scrollHeight-s.clientHeight:s.scrollWidth-s.clientWidth;if(r&&overflow<=0&&Number(getComputedStyle(r).opacity)>0)window.phantomFrames.push({axis,overflow});}window.resizeSample=requestAnimationFrame(sample);};sample();});
+  for(const [width,height] of [[1300,900],[1360,880],[1280,860],[1400,900]]){await page.setViewportSize({width,height});await page.waitForTimeout(400);}
+  expect(await page.evaluate(()=>window.resizeFrames)).toBeGreaterThan(20);
+  expect(await page.evaluate(()=>window.phantomFrames)).toEqual([]);
+  await context.close();
+ });
+}
+test('R3 menus: checked and unchecked rows share phone type weight',async({browser,page})=>{
+ await open(page);await page.keyboard.press('v');await trigger(page).click();
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ const phone=await context.newPage();await open(phone);await phone.getByRole('button',{name:'Selection mode',exact:true}).click();
+ for(const p of [page,phone]){const rows=p.getByRole('menuitemradio');await expect(rows).toHaveCount(3);for(const row of await rows.all())await expect(row).toHaveCSS('font-weight','600');}
+ await context.close();
+});
+test('R3 text action bar: every mark and colour button shares hints and dismisses',async({page})=>{
+ await open(page);await page.keyboard.press('Shift+v');
+ const line=page.locator('.pdfjsTextLayer span').filter({hasText:'This sentence is underlined in blue beneath five consecutive words.'}).first();
+ const b=await line.boundingBox();await page.mouse.move(b.x+2,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width-2,b.y+b.height/2,{steps:8});await page.mouse.up();
+ const buttons=page.locator('.text-selection-action-bar__button');await expect(buttons).toHaveCount(10);
+ const hints=page.locator('body > div[aria-hidden="true"]:not([data-browser-print-document])');
+ for(const button of await buttons.all()){
+  const label=await button.getAttribute('aria-label');await button.hover();const hint=hints.filter({hasText:new RegExp(`^${label}$`)});
+  await expect(hint).toBeVisible();await expect(hint).toHaveCSS('background-color','rgb(24, 28, 36)');await expect(hint).toHaveCSS('font-size','11.5px');await expect(hint).toHaveCSS('border-radius','6px');
+  await page.mouse.move(1200,700);await expect(hint).toHaveCount(0);
+ }
+ const color=buttons.filter({has:page.locator('span')}).nth(1);
+ await color.hover();await color.click();await expect(hints).toHaveCount(0);
+ await page.mouse.move(1200,700);await buttons.first().hover();await page.keyboard.press('p');await expect(hints).toHaveCount(0);
+});

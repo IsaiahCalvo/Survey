@@ -56,8 +56,16 @@ async function loadActionBar() {
   );
   source = source.replace("import './TextSelectionActionBar.css';", '');
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
-  const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
+  let executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-action-bar-test-'));
+  // Load the real shared tooltip dependency from the temporary JSX harness.
+  const tooltipPath = path.join(repoRoot, 'src/components/Tooltip.jsx');
+  let tooltipSource = await readFile(tooltipPath, 'utf8');
+  for (const specifier of ['react', 'react-dom']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(require.resolve(specifier)).href}'`);
+  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
+  const tooltipCode = (await transformWithOxc(tooltipSource, tooltipPath, { lang: 'jsx' })).code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
+  await writeFile(path.join(tempDir, 'Tooltip.mjs'), tooltipCode);
+  executable = executable.replace('"./Tooltip"', '"./Tooltip.mjs"');
   const modulePath = path.join(tempDir, 'TextSelectionActionBar.mjs');
   await writeFile(modulePath, executable);
   return { ActionBar: (await import(pathToFileURL(modulePath).href)).default, cleanup: () => rm(tempDir, { recursive: true, force: true }) };
