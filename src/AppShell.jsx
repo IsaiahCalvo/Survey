@@ -428,6 +428,16 @@ export default function App({ devPreviewReturnTab = null }) {
   const [selectModeMenuAnchor, setSelectModeMenuAnchor] = useState({ top: 0, left: 0 });
   const selectModeButtonRef = useRef(null);
   const selectModeMenuRef = useRef(null);
+  const selectModeTriggerToolRef = useRef(null);
+  // UX: tool shortcuts close the old menu so it cannot cover the new toolbar.
+  useEffect(() => {
+    if (selectModeTriggerToolRef.current === bottomToolbarApi?.activeTool) {
+      selectModeTriggerToolRef.current = null;
+      return;
+    }
+    selectModeTriggerToolRef.current = null;
+    setSelectModeMenuOpen(false);
+  }, [bottomToolbarApi?.activeTool, bottomToolbarApi?.selectionMode]);
   useEffect(() => {
     if (!selectModeMenuOpen) return undefined;
     const el = selectModeButtonRef.current;
@@ -1510,6 +1520,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   aria-controls={isSelect ? 'desktop-select-mode-menu' : undefined}
                   onClick={() => {
                     if (isSelect) {
+                      selectModeTriggerToolRef.current = !isActive
+                        ? (isTextSelect || bottomToolbarApi.selectionMode === 'text' ? 'text-select' : 'select') : null;
                       bottomToolbarApi.setActiveTool(
                         isTextSelect || bottomToolbarApi.selectionMode === 'text'
                           ? 'text-select'
@@ -1613,7 +1625,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         justifyContent: 'space-between',
                         gap: '12px',
                         padding: '6px 10px',
-                        background: 'transparent',
+                        // UX: tint the active mode so the desktop menu matches the phone sheet.
+                        background: selected ? '#313748' : 'transparent',
                         border: 'none',
                         borderRadius: '4px',
                         color: '#e8e2d4',
@@ -1641,14 +1654,15 @@ export default function App({ devPreviewReturnTab = null }) {
                             });
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#1f2430'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = selected ? '#313748' : 'transparent'; }}
                           style={optionStyle}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Icon name={getSelectModeIconName(opt.mode)} size={20} color="currentColor" />
-                            <span>{opt.mode === 'rectangle' ? 'Select' : opt.label}</span>
+                            {/* UX: use the same mode name in the menu, trigger and phone sheet. */}
+                            <span>{opt.label}</span>
                           </span>
-                          <span style={{ color: '#8d96a6' }}>{opt.hint}</span>
+                          <span style={{ color: '#8d96a6' }}>{selected ? '✓ ' : ''}{opt.hint}</span>
                         </button>
                       );
                     })}

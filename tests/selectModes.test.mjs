@@ -122,7 +122,9 @@ test('desktop Select uses one integrated Drawboard-style mode trigger', () => {
   assert.match(selectToolbar, /getNextSelectModeMenuOpen\(open, isActive\)/);
   assert.match(selectToolbar, /backgroundColor: '#1E1E1E'/);
   assert.doesNotMatch(selectToolbar, /background: selected \? '#1f2430'/);
-  assert.match(selectToolbar, /opt\.mode === 'rectangle' \? 'Select' : opt\.label/);
+  // B1: desktop uses the canonical label, just like the trigger and mobile sheet.
+  assert.match(selectToolbar, /<span>\{opt\.label\}<\/span>/);
+  assert.equal(SELECT_MODE_OPTIONS.find(option => option.mode === 'rectangle').label, 'Rectangle Select');
   assert.match(selectToolbar, /size=\{isSelect \? 22 : 20\}/);
   assert.match(selectToolbar, /getSelectModeIconName\(opt\.mode\)\} size=\{20\}/);
 });

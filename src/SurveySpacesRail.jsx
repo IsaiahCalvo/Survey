@@ -1307,11 +1307,12 @@ const SurveySpacesRail = ({
                           width: '100%'
                         }}
                         onMouseEnter={(e) => {
-                          setRailIconHover('survey');
+                          // UX: use the shared rail hint, including press dismissal.
+                          tip('Survey', 'left').onMouseEnter(e);
                           e.currentTarget.style.background = '#181c24';
                         }}
                         onMouseLeave={(e) => {
-                          setRailIconHover(null);
+                          tip('Survey', 'left').onMouseLeave(e);
                           e.currentTarget.style.background = 'transparent';
                         }}
                       >
@@ -1322,11 +1323,6 @@ const SurveySpacesRail = ({
                           style={{ width: '20px', height: '20px', flexShrink: 0 }}
                         />
                       </button>
-                      {railIconHover === 'survey' && (
-                        <div style={{ position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)', marginRight: '8px', background: '#181c24', color: '#e8e2d4', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #2a3140', whiteSpace: 'nowrap', fontFamily: FONT_FAMILY, pointerEvents: 'none', zIndex: 10000, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)' }}>
-                          Survey
-                        </div>
-                      )}
                     </div>
                   </div>
                 </>

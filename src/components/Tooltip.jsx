@@ -168,6 +168,8 @@ export function makeTooltipBinding(setTooltip) {
   // onMouseDown hides the tooltip and onFocus paints it again at once. Keep the
   // pressed control quiet until the pointer leaves it, then allow a fresh hover.
   const pressedControls = new WeakSet();
+  let anchorObserver = null;
+  const stopWatchingAnchor = () => { anchorObserver?.disconnect(); anchorObserver = null; };
   return (text, placement = 'below') => {
     if (!text) return {};
     const show = (e) => {
@@ -176,9 +178,22 @@ export function makeTooltipBinding(setTooltip) {
       if (pressedControls.has(el)) return;
       if (e?.type === 'focus' && !el.matches?.(':focus-visible')) return;
       const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
+      stopWatchingAnchor();
       setTooltip?.({ visible: true, text, x, y, placement });
+      // UX: a shortcut may unmount the hovered control without mouseleave.
+      // Watch that anchor without replacing the control's own React ref.
+      const doc = el.ownerDocument;
+      const Observer = doc?.defaultView?.MutationObserver;
+      if (Observer && doc.body) {
+        anchorObserver = new Observer(() => {
+          if (el.isConnected) return;
+          stopWatchingAnchor();
+          setTooltip?.((current) => current?.text === text ? { ...TOOLTIP_HIDDEN } : current);
+        });
+        anchorObserver.observe(doc.body, { childList: true, subtree: true });
+      }
     };
-    const hide = () => setTooltip?.({ ...TOOLTIP_HIDDEN });
+    const hide = () => { stopWatchingAnchor(); setTooltip?.({ ...TOOLTIP_HIDDEN }); };
     const hideOnPress = (e) => {
       const el = e?.currentTarget;
       if (el && (typeof el === 'object' || typeof el === 'function')) {
