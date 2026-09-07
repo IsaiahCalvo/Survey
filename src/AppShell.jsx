@@ -1662,13 +1662,18 @@ export default function App({ devPreviewReturnTab = null }) {
                           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Icon name={getSelectModeIconName(opt.mode)} size={20} color="currentColor" />
                             {/* UX: use the same mode name in the menu, trigger and phone sheet. */}
-                            <span>{opt.label}</span>
+                            {/* UX: reserve bold label width so changing the checked row never shifts menu edges. */}
+                            <span className="select-mode-label">
+                              <span aria-hidden="true" style={{ fontWeight: 600, visibility: 'hidden' }}>{opt.label}</span>
+                              <span>{opt.label}</span>
+                            </span>
                           </span>
                           {/* UX: give selection its own gold check, separate from shortcut text. */}
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <span style={{ color: '#8d96a6', fontWeight: 400 }}>{opt.hint}</span>
-                            <span aria-hidden="true" data-select-mode-check style={{ width: '14px', color: '#d8a84e', fontWeight: 600 }}>{selected ? '✓' : ''}</span>
-                          </span>
+                            {/* UX: use the phone sheet's stroked tick; keep its slot on unchecked rows. */}
+                            <span aria-hidden="true" data-select-mode-check style={{ width: '14px', height: '14px', display: 'flex', color: '#d8a84e' }}>{selected ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
+                          </div>
                         </button>
                       );
                     })}

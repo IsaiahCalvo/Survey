@@ -9,8 +9,8 @@
   inside itself — 2.0-unit rings on the circle and square against ~1.6 on the
   triangle's diagonals.
 
-  Now: one stroke weight, 1.5 units, exactly the Pan hand and Select cursor
-  weight it sits next to. Artwork inset to a ~1.7-unit optical margin (ink
+  Now: one stroke weight, 1.7 units; at 18px this paints 1.28px, close to
+  Pan’s 1.5 units at 20px (1.25px). Artwork inset to a ~1.7-unit optical margin (ink
   envelope 20.6/24 = 86%): a composite of three small forms carries more
   internal white space than a single glyph, so it may run slightly larger than
   the 83% single-form reference (the owner's text-box icon) without reading

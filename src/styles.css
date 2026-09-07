@@ -1708,9 +1708,15 @@ input[type="text"].space-add-pages-input:focus-visible {
 
 /* UX: top tool groups use the sub-toolbar's neutral hover; gold remains
    the active/focus cue rather than making an idle hover look selected. */
-.btn-default[data-tool-group]:hover:not(:disabled) {
+/* UX: include Pan/Select icon buttons and active tools; every hover keeps
+   the same neutral chip and fixed baseline as the sub-toolbar. */
+.btn[data-tool-group]:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   transform: none;
 }
+
+/* UX: both label copies share a cell; the hidden bold copy reserves menu width. */
+.select-mode-label { display: inline-grid; }
+.select-mode-label > span { grid-area: 1 / 1; }

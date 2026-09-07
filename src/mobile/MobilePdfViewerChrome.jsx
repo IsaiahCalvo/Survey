@@ -586,7 +586,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={!topToolbarApi?.canUndo}
           onClick={topToolbarApi?.onUndo || undefined}
         >
-          <Icon name="undo2" size={17} color="currentColor" />
+          {/* UX: share the desktop undo arrow without changing the phone touch target. */}
+          <Icon name="undo" size={17} color="currentColor" />
         </button>
         <button
           type="button"
@@ -595,7 +596,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={!topToolbarApi?.canRedo}
           onClick={topToolbarApi?.onRedo || undefined}
         >
-          <Icon name="redo2" size={17} color="currentColor" />
+          {/* UX: share the desktop redo arrow without changing the phone touch target. */}
+          <Icon name="redo" size={17} color="currentColor" />
         </button>
       </div>
     </header>
