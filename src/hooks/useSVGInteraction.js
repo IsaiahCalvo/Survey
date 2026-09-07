@@ -332,6 +332,19 @@ export function useSVGInteraction({
   const persistedGroupTransformRef = useRef(null);
   useEffect(() => { persistedGroupTransformRef.current = persistedGroupTransform; }, [persistedGroupTransform]);
 
+  // UX: Phase 19 applies before shared deselection, regardless of listener
+  // mount order. Answer synchronously from live refs and cancel only the band.
+  useEffect(() => {
+    const cancelGesture = (event) => {
+      if (!marqueeStateRef.current && !lassoStateRef.current) return;
+      event.detail.cancelled = true;
+      applyMarqueeState(null);
+      cancelLasso();
+    };
+    window.addEventListener('survey-cancel-selection-gesture', cancelGesture);
+    return () => window.removeEventListener('survey-cancel-selection-gesture', cancelGesture);
+  }, [applyMarqueeState, cancelLasso]);
+
   // UX: Phase 19 — Escape cancels an in-progress marquee without
   // changing the existing selection. Mirrors AutoCAD's behavior where
   // Esc mid-drag drops the rubber-band box silently. Listener is only

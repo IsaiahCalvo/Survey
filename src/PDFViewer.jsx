@@ -3801,6 +3801,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.type === 'pointerdown' && (event.button !== 0
         || !event.target?.closest?.('[data-mobile-pdf-surface]')
         || event.target?.closest?.('.survey-pdfjs-page-div'))) return;
+      // UX: Phase 19 — first Escape cancels a live selection drag only;
+      // a second Escape (or one at rest) clears the prior selection.
+      if (event.key === 'Escape') {
+        const detail = { cancelled: false };
+        window.dispatchEvent(new CustomEvent('survey-cancel-selection-gesture', { detail }));
+        if (detail.cancelled) { event.preventDefault(); return; }
+      }
       if (event.key === 'Escape' && activeTool === 'text-select') {
         clearAnnotationSelectionForContextChange('text-select-escape');
       } else {
@@ -3815,6 +3822,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, clearAnnotationSelectionForContextChange]);
 
+  const textSelectGestureActiveRef = useRef(false);
+  const textSelectGestureCancelledRef = useRef(false);
+
   // Text Select keeps the SVG surface pointer-inert so native PDF text drags
   // work. Reuse the same page-space hit test as Pan for a short click: a click
   // selects any annotation, while a real drag remains a native text range.
@@ -3826,9 +3836,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.button !== 0) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
       if (event.target?.closest?.('[data-resize-handle]')) return;
-      // A new text press cancels the optimistic mark selection before the
-      // browser extends a word/line range (PointerEvent.detail is often zero).
-      if (!event.shiftKey && !event.altKey) clearAnnotationSelectionForContextChange('text-select-new-press');
+      // UX: keep the prior selection until this text gesture commits so
+      // Escape can cancel it without discarding the selected annotation.
+      textSelectGestureCancelledRef.current = false;
+      textSelectGestureActiveRef.current = true;
       downAt = {
         x: event.clientX,
         y: event.clientY,
@@ -3839,7 +3850,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const onUp = (event) => {
       const start = downAt;
       downAt = null;
-      if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > QUICK_CLICK_PX) return;
+      textSelectGestureActiveRef.current = false;
+      if (!start) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > QUICK_CLICK_PX) {
+        clearAnnotationSelectionForContextChange('text-select-drag-commit');
+        return;
+      }
       if (event.detail > 1) return;
       if (event.pointerType === 'touch' && event.timeStamp - start.timeStamp > 350) return;
       const hit = resolveAnnotationAt(event);
@@ -3875,9 +3891,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     };
+    // UX: Text Select follows the same two-step Escape rule as both bands.
+    const cancelGesture = (event) => {
+      if (!downAt) return;
+      downAt = null;
+      textSelectGestureActiveRef.current = false;
+      event.detail.cancelled = true;
+      textSelectGestureCancelledRef.current = true;
+      window.getSelection?.()?.removeAllRanges?.();
+      liveTextSelectionRef.current = null;
+      setLiveTextSelection(null);
+    };
+    window.addEventListener('survey-cancel-selection-gesture', cancelGesture);
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
     return () => {
+      textSelectGestureActiveRef.current = false;
+      window.removeEventListener('survey-cancel-selection-gesture', cancelGesture);
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
@@ -28488,6 +28518,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const capturePdfjsTextSelection = useCallback(() => {
     if (activeToolRef.current !== 'text-select') return null;
+    // UX: native mouseup can restore a just-cancelled browser range. Keep
+    // that gesture cancelled until the next press rather than deselecting.
+    if (textSelectGestureCancelledRef.current) {
+      window.getSelection?.()?.removeAllRanges?.();
+      return null;
+    }
     const selection = window.getSelection?.();
     const pages = getSelectionPageRanges(selection, pageSizesRef.current || {});
     if (pages.length === 0) {
@@ -28514,7 +28550,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // A fresh native text range becomes the one active selection. Clear any
     // annotation that Text Select had picked before this drag so the toolbar
     // and selection chrome cannot stay bound to stale annotation state.
-    if (selectedToolbarAnnotationRef.current) {
+    // UX: defer replacing the prior annotation until pointerup; Escape
+    // during a native text drag must still be able to retain it (Phase 19).
+    if (selectedToolbarAnnotationRef.current && !textSelectGestureActiveRef.current) {
       selectedToolbarAnnotationRef.current = null;
       setSelectedToolbarAnnotation(null);
       setAnnotationSelectionClearToken((token) => token + 1);
