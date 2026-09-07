@@ -33,7 +33,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
@@ -538,6 +538,19 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   const horizontalThumbRef = useRef(null);
   const verticalThumbRef = useRef(null);
 
+  // UX: page-fit layout can change content without resizing the scroller itself.
+  // Reconcile after each layout commit, before paint, so fitting axes unmount at once.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || disabled) return;
+    const metrics = {
+      viewportWidth: scroller.clientWidth, viewportHeight: scroller.clientHeight,
+      contentWidth: scroller.scrollWidth, contentHeight: scroller.scrollHeight,
+      scrollLeft: scroller.scrollLeft, scrollTop: scroller.scrollTop,
+    };
+    setMeasuredMetrics(previous => Object.keys(metrics).every(key => previous[key] === metrics[key]) ? previous : metrics);
+  });
+
   const requestFrame = useCallback(() => {
     if (frameRef.current) return;
     frameRef.current = requestAnimationFrame(() => {
@@ -552,6 +565,9 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   }, [scrollerRef]);
 
   const showThenFade = useCallback(() => {
+    // UX: layout can emit scroll events while a fitting page settles; never reveal stale rails.
+    const scroller = scrollerRef.current;
+    if (!scroller || Math.max(scroller.scrollWidth - scroller.clientWidth, scroller.scrollHeight - scroller.clientHeight) <= 0) return;
     visibleRef.current = true;
     setVisible(true);
     setPainted(true);
@@ -576,7 +592,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
         setVisible(false);
       }
     }, VIEWPORT_SCROLLBAR_HOLD_MS);
-  }, []);
+  }, [scrollerRef]);
 
   const forwardRailWheel = useCallback((event) => {
     const scrollerNode = scrollerRef.current;
@@ -640,7 +656,19 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     let lastBox = null;
     const observer = new ResizeObserver(([entry]) => {
       const box = entry.contentRect;
-      if (lastBox && (box.width !== lastBox.width || box.height !== lastBox.height)) showThenFade();
+      const resized = lastBox && (box.width !== lastBox.width || box.height !== lastBox.height);
+      // UX: measure before reveal so stale thumbs cannot flash on a page that fits.
+      const metrics = {
+        viewportWidth: scroller.clientWidth, viewportHeight: scroller.clientHeight,
+        contentWidth: scroller.scrollWidth, contentHeight: scroller.scrollHeight,
+        scrollLeft: scroller.scrollLeft, scrollTop: scroller.scrollTop,
+      };
+      const maxScroll = Math.max(metrics.contentWidth - metrics.viewportWidth, metrics.contentHeight - metrics.viewportHeight);
+      // ResizeObserver runs before paint; commit the measured axes in this frame.
+      flushSync(() => {
+        setMeasuredMetrics(metrics);
+        if (resized && maxScroll > 0) showThenFade();
+      });
       lastBox = { width: box.width, height: box.height };
       requestFrame();
     });
