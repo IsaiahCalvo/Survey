@@ -485,6 +485,18 @@ const subtractPolygonGeometries = (subjectValue, clipValue) => {
     ]))
   ));
   try {
+    // Match eraseAnnotations: keep ordinary page coordinates unchanged.
+    // Reframing coincident source/survivor edges can round them differently
+    // and wedge Martinez while rebuilding a direct round outline's cut clip.
+    const magnitude = Math.max(
+      Math.abs(minX), Math.abs(minY), Math.abs(maxX), Math.abs(maxY),
+    );
+    if (
+      scale >= 1e-6 && scale <= 1e6
+      && magnitude <= 1e12 && magnitude / scale <= 1e8
+    ) {
+      return normalizeMultiPolygon(polygonDifference(subject, clip));
+    }
     return fromWorking(polygonDifference(
       toWorking(subject),
       toWorking(clip),

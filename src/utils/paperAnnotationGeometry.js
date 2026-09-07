@@ -378,7 +378,7 @@ const pathAccumulatedTurn = (points) => {
   return total;
 };
 
-const directSweptDiskRing = (points, radius, semicircleSteps) => {
+const directSweptDiskRing = (points, radius, semicircleSteps, inkOutline = false) => {
   const segments = [];
   for (let index = 1; index < points.length; index += 1) {
     const a = points[index - 1];
@@ -398,8 +398,12 @@ const directSweptDiskRing = (points, radius, semicircleSteps) => {
     });
   }
   if (!segments.length) return null;
-  if (pathHasSharpTurn(points)) return null;
-  if (pathAccumulatedTurn(points) >= Math.PI / 2) return null;
+  // Eraser masks need local capsule cuts on long or sharp turns. Ink uses
+  // the offset checks below: a turn alone does not make its outline unsafe.
+  if (!inkOutline) {
+    if (pathHasSharpTurn(points)) return null;
+    if (pathAccumulatedTurn(points) >= Math.PI / 2) return null;
+  }
   // A repeated first point represents a closed path. Its offset may contain
   // holes or multiple components, so leave it to the robust boolean fallback.
   if (
@@ -527,7 +531,7 @@ const directSweptDiskRing = (points, radius, semicircleSteps) => {
     Math.atan2(last.ny, last.nx),
     Math.atan2(-last.ny, -last.nx),
     -1,
-    Math.max(semicircleSteps, FOLDED_ARC_STEPS),
+    inkOutline ? semicircleSteps : Math.max(semicircleSteps, FOLDED_ARC_STEPS),
   );
   ring[ring.length - 1] = [...right.at(-1)];
   for (let index = right.length - 2; index >= 0; index -= 1) {
@@ -596,7 +600,9 @@ export function sweptDiskPolygon(points, radius, options = {}) {
     return [[ring]];
   }
 
-  const directRing = directSweptDiskRing(compacted, radius, semicircleSteps);
+  const directRing = directSweptDiskRing(
+    compacted, radius, semicircleSteps, options.inkOutline,
+  );
   if (directRing) return [[directRing]];
   return sweptDiskPolygonByCapsules(
     compacted,
@@ -1339,7 +1345,7 @@ export function commandsToPolygonSet(commands, {
     const outlined = sweptDiskPolygon(
       points,
       strokeWidth / 2,
-      { curveTolerance: outlineCurveTolerance },
+      { curveTolerance: outlineCurveTolerance, inkOutline: true },
     );
     if (!outlined.length) continue;
     geometry = geometry ? union(geometry, outlined) : outlined;
@@ -1869,7 +1875,9 @@ export function createInkAnnotation(points, { id, color = '#151a18', width = 12,
   const minDistance = 0.35 + width * 0.12 * normalizedSloppiness;
   const compacted = compactPoints(points, minDistance);
   const simplified = simplifyPoints(compacted, width * 0.06 * normalizedSloppiness);
-  const polygons = sweptDiskPolygon(simplified, Math.max(0.5, width / 2), { minDistance: 0.01 });
+  const polygons = sweptDiskPolygon(simplified, Math.max(0.5, width / 2), {
+    minDistance: 0.01, inkOutline: true,
+  });
   const cmds = polygonSetToCommands(polygons);
   return {
     id,
