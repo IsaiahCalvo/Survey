@@ -635,7 +635,15 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       showThenFade();
     };
     // UX: resizing can add an overflow axis before any scroll or zoom event.
-    const observer = new ResizeObserver(onScroll);
+    // UX: observe-time delivery only measures; a real box resize may reveal
+    // a rail. Document layout settling must not flash a phantom scrollbar.
+    let lastBox = null;
+    const observer = new ResizeObserver(([entry]) => {
+      const box = entry.contentRect;
+      if (lastBox && (box.width !== lastBox.width || box.height !== lastBox.height)) showThenFade();
+      lastBox = { width: box.width, height: box.height };
+      requestFrame();
+    });
     observer.observe(scroller);
     scroller.addEventListener('pointerleave', onScrollbarProximityLeave, { passive: true });
     scroller.addEventListener('scroll', onScroll, { passive: true });
