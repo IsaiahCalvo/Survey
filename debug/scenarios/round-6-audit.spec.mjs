@@ -20,11 +20,15 @@ async function selectText(page) {
 
 test('equal trackpad travel gives equal live zoom for every trackpad event chunk size', async ({ page }) => {
   const ratios = [];
-  for (const chunk of [4, 8, 16, 24, 48]) {
+  for (const chunk of [4, 8, 16, 24, 48, 96, 192]) {
     await open(page, 'spike-120-pages.pdf');
     const surface = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
     const before = (await surface.boundingBox()).width;
     await page.locator(scroller).evaluate((node, chunk) => {
+      // Open as trackpad, then undo the opener within this same gesture.
+      for (const deltaY of [-4, 4]) node.dispatchEvent(new WheelEvent('wheel', {
+        deltaY, ctrlKey: true, clientX: 700, clientY: 400, bubbles: true, cancelable: true,
+      }));
       for (let total = 0; total < 192; total += chunk) node.dispatchEvent(new WheelEvent('wheel', {
         deltaY: -Math.min(chunk, 192 - total), ctrlKey: true,
         clientX: 700, clientY: 400, bubbles: true, cancelable: true,
@@ -33,7 +37,8 @@ test('equal trackpad travel gives equal live zoom for every trackpad event chunk
     await page.waitForTimeout(900);
     ratios.push((await surface.boundingBox()).width / before);
   }
-  expect(Math.max(...ratios) - Math.min(...ratios)).toBeLessThan(0.002);
+  console.log(JSON.stringify({ chunks: [4, 8, 16, 24, 48, 96, 192], ratios }));
+  expect(new Set(ratios).size).toBe(1);
   for (const ratio of ratios) expect(ratio).toBeCloseTo(Math.exp(0.0029 * 192), 2);
 });
 

@@ -1525,7 +1525,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
       if (!gestureRef.current) {
+        const normalizedDelta = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
         gestureRef.current = {
+          regime: e.deltaMode === 0 && Math.abs(normalizedDelta) < 50 ? 'trackpad' : 'notch',
           originScale: scaleRef.current,
           originCursorX: cursorX,
           originCursorY: cursorY,
@@ -1550,6 +1552,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       );
       const previewScale = getWheelZoomScale(committed * liveZoomRef.current, {
         deltaY: e.deltaY,
+        regime: gestureRef.current.regime,
         maximumDelta: 1000,
         deltaMode: e.deltaMode,
         viewportHeight: el.clientHeight,

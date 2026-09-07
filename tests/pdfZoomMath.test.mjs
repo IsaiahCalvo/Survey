@@ -125,14 +125,14 @@ test('zoom preview centers an axis as soon as its projected content fits', () =>
 
 
 test('trackpad travel is chunk-independent within the pixel-mode regime', () => {
-  for (const chunk of [4, 8, 16, 24, 48]) {
+  for (const chunk of [4, 8, 16, 24, 48, 96, 192]) {
     let scale = 0.74;
     for (let travel = 0; travel < 192; travel += chunk) {
-      scale = getWheelZoomScale(scale, { deltaY: -chunk });
+      scale = getWheelZoomScale(scale, { deltaY: -chunk, regime: 'trackpad', maximumDelta: 1000 });
     }
     assert.ok(Math.abs(scale - 0.74 * Math.exp(0.0029 * 192)) < 1e-12);
     for (let travel = 0; travel < 192; travel += chunk) {
-      scale = getWheelZoomScale(scale, { deltaY: chunk });
+      scale = getWheelZoomScale(scale, { deltaY: chunk, regime: 'trackpad', maximumDelta: 1000 });
     }
     assert.ok(Math.abs(scale - 0.74) < 1e-12);
   }
@@ -165,4 +165,42 @@ test('browser mouse events keep a constant notch rate, reverse symmetry and 1000
   const once = getWheelZoomScale(0.74, { deltaY: -200, maximumDelta: 1000 });
   const twice = getWheelZoomScale(getWheelZoomScale(0.74, { deltaY: -100 }), { deltaY: -100 });
   assert.ok(Math.abs(once - twice) < 1e-12);
+});
+
+
+test('explicit gesture regime overrides event size and mode in both directions', () => {
+  for (const regime of ['trackpad', 'notch']) {
+    const rate = regime === 'trackpad' ? 0.0029 : Math.log(1.1) / 100;
+    for (const delta of [8, 48, 49, 50, 51, 100, 192, 200]) {
+      for (const direction of [-1, 1]) {
+        for (const deltaMode of [0, 1, 2]) {
+          const deltaY = direction * delta / (deltaMode === 1 ? 16 : deltaMode === 2 ? 800 : 1);
+          const scale = getWheelZoomScale(0.74, { deltaY, deltaMode, regime, maximumDelta: 1000 });
+          assert.ok(Math.abs(scale - 0.74 * Math.exp(-direction * delta * rate)) < 1e-12);
+        }
+      }
+    }
+  }
+});
+
+test('slow trackpad in and fast out returns to the starting scale', () => {
+  let scale = 0.74;
+  for (let i = 0; i < 48; i++) scale = getWheelZoomScale(scale, { deltaY: -4, regime: 'trackpad', maximumDelta: 1000 });
+  scale = getWheelZoomScale(scale, { deltaY: 192, regime: 'trackpad', maximumDelta: 1000 });
+  assert.ok(Math.abs(scale - 0.74) < 1e-12);
+});
+
+test('both gesture rates keep an unclamped cursor fixed through a round trip', () => {
+  for (const regime of ['trackpad', 'notch']) {
+    const factor = getWheelZoomScale(1, { deltaY: -192, regime, maximumDelta: 1000 });
+    const anchor = 800;
+    const translate = getClampedZoomTranslation({ zoomFactor: factor, anchor,
+      contentStart: -150, contentEnd: 2000, viewportStart: 0, viewportSize: 1200 });
+    assert.ok(Math.abs(anchor * factor + translate - anchor) < 1e-12);
+    const reverseFactor = getWheelZoomScale(1, { deltaY: 192, regime, maximumDelta: 1000 });
+    const reverseTranslate = getClampedZoomTranslation({ zoomFactor: reverseFactor, anchor,
+      contentStart: -150 * factor + translate, contentEnd: 2000 * factor + translate,
+      viewportStart: 0, viewportSize: 1200 });
+    assert.ok(Math.abs(translate * reverseFactor + reverseTranslate) < 1e-12);
+  }
 });

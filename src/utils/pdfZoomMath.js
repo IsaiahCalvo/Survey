@@ -84,15 +84,17 @@ export function getWheelZoomScale(currentScale, {
   minimumScale = ABSOLUTE_MIN_SCALE,
   maximumScale = ABSOLUTE_MAX_SCALE,
   maximumDelta = WHEEL_NOTCH_PX,
+  regime,
 } = {}) {
   const safeCurrent = Number.isFinite(Number(currentScale)) && Number(currentScale) > 0
     ? Number(currentScale)
     : 1;
   const normalizedDelta = normalizeWheelDelta(deltaY, deltaMode, viewportHeight);
   const cappedDelta = Math.max(-maximumDelta, Math.min(maximumDelta, normalizedDelta));
-  const exponent = deltaMode === 0 && Math.abs(normalizedDelta) < TRACKPAD_THRESHOLD_PX
-    ? TRACKPAD_EXPONENT
-    : WHEEL_NOTCH_EXPONENT;
+  const resolvedRegime = regime ?? (deltaMode === 0 && Math.abs(normalizedDelta) < TRACKPAD_THRESHOLD_PX
+    ? 'trackpad'
+    : 'notch');
+  const exponent = resolvedRegime === 'trackpad' ? TRACKPAD_EXPONENT : WHEEL_NOTCH_EXPONENT;
   const nextScale = safeCurrent * Math.exp(-cappedDelta * exponent);
   return Math.max(minimumScale, Math.min(maximumScale, nextScale));
 }
