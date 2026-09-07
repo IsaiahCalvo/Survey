@@ -3798,7 +3798,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const clear = (event) => {
       if (event.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
       if (event.type === 'keydown' && event.key !== 'Escape') return;
-      if (event.type === 'pointerdown' && (event.button !== 0
+      // UX: modifier-held empty-space clicks preserve the selection in every mode; only plain clicks clear.
+      if (event.type === 'pointerdown' && (event.button !== 0 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
         || !event.target?.closest?.('[data-mobile-pdf-surface]')
         || event.target?.closest?.('.survey-pdfjs-page-div'))) return;
       // UX: Phase 19 — first Escape cancels a live selection drag only;
@@ -3833,6 +3834,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let downAt = null;
     const onDown = (event) => {
       if (event.button !== 0) return;
+      // UX: the shared margin rule also applies on release; do not start a
+      // native text gesture for a modifier-held click outside the paper.
+      if ((event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
+        && !event.target?.closest?.('.survey-pdfjs-page-div')) return;
       if (event.target?.closest?.('[data-toolbar], button, input, textarea, select, a[href]')) return;
       if (event.target?.closest?.('[data-resize-handle]')) return;
       // UX: keep the prior selection until this text gesture commits so

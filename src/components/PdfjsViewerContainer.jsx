@@ -768,7 +768,8 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     position: 'absolute',
     zIndex: 80,
     opacity: visible ? 1 : 0,
-    transition: `opacity ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out, background-color ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out`,
+    // UX: scroll/zoom reveals the rail at once; only its disappearance fades.
+    transition: visible ? 'none' : `opacity ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out, background-color ${VIEWPORT_SCROLLBAR_FADE_MS}ms ease-in-out`,
     background: 'transparent',
     pointerEvents: 'none',
   };
