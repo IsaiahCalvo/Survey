@@ -153,3 +153,89 @@ for(const [mode,key] of [['Rectangle','v'],['Lasso','Alt+v'],['Text','Shift+v']]
   await expect(page.locator(`[data-annotation-id="${ids[1]}"]`)).toHaveCount(0);
  });
 }
+
+for (const [mode,key,preview] of [['Rectangle','v','[data-marquee-selection-preview]'],['Lasso','Alt+v','[data-lasso-selection-trail]'],['Text','Shift+v',null]]) {
+ test(`R1 Escape ${mode}: cancel drag preserves selection; second Escape clears`,async({page})=>{
+  await open(page); await page.keyboard.press(key); await clickMark(page);
+  const count=await handles(page).count(); expect(count).toBeGreaterThan(0);
+  const b=await page.locator('.survey-pdfjs-page-div').first().boundingBox();
+  await page.mouse.move(b.x+30,b.y+30); await page.mouse.down();
+  await page.mouse.move(b.x+150,b.y+90,{steps:6});
+  if(preview) await expect(page.locator(preview)).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  if(preview) await expect(page.locator(preview)).toHaveCount(0);
+  await expect(handles(page)).toHaveCount(count);
+  await page.mouse.up(); await expect(handles(page)).toHaveCount(count);
+  await page.keyboard.press('Escape'); await expect(handles(page)).toHaveCount(0);
+ });
+}
+for (const density of [1,2]) {
+ test(`R1 chrome ${density}x: checked state differs from hover and shortcut`,async({browser})=>{
+  const context=await browser.newContext({viewport:{width:1400,height:900},deviceScaleFactor:density});
+  const page=await context.newPage(); await open(page); await page.keyboard.press('v'); await trigger(page).click();
+  const selected=page.getByRole('menuitemradio',{name:/Rectangle Select/});
+  const other=page.getByRole('menuitemradio',{name:/Lasso Select/}); await other.hover();
+  await expect(selected).toHaveCSS('background-color','rgb(42, 34, 24)');
+  await expect(selected).toHaveCSS('color','rgb(216, 168, 78)');
+  await expect(selected).toHaveCSS('font-weight','600');
+  await expect(other).toHaveCSS('background-color','rgb(31, 36, 48)');
+  await expect(selected.locator('[data-select-mode-check]')).toHaveText('✓');
+  await expect(selected.locator('span').filter({hasText:/^V$/})).toHaveCount(1);
+  await page.screenshot({path:`debug/audit-scratch/round-1-codex/menu-${density}x.png`});
+  await selected.hover(); await expect(selected).toHaveCSS('background-color','rgb(42, 34, 24)');
+  await page.keyboard.press('p');
+  await page.getByRole('button',{name:'Shapes',exact:true}).hover();
+  const top=page.getByRole('button',{name:'Shapes',exact:true});
+  await expect(top).toHaveCSS('background-color','rgba(255, 255, 255, 0.05)');
+  const style=await top.evaluate(n=>{const s=getComputedStyle(n);return [s.backgroundColor,s.borderColor,s.boxShadow]});
+  const sub=page.getByRole('button',{name:'Highlighter',exact:true}); await sub.hover();
+  await expect.poll(()=>sub.evaluate(n=>{const s=getComputedStyle(n);return [s.backgroundColor,s.borderColor,s.boxShadow]})).toEqual(style);
+  await context.close();
+ });
+ test(`R1 mobile ${density}x: centred cream glyph, bright caret and eraser name`,async({browser})=>{
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:density});
+  const page=await context.newPage(); await open(page);
+  const select=page.locator('.mobile-pdf-tools__select-family .mobile-pdf-tools__button');
+  await expect(select).toHaveCSS('color','rgb(232, 226, 212)');
+  await expect(select.locator('span[aria-hidden]')).toHaveCSS('transform','none');
+  const caret=page.locator('.mobile-pdf-tools__select-caret svg');
+  await expect(caret).toHaveAttribute('width','8');
+  await expect(caret.locator('path')).toHaveAttribute('stroke','#e8e2d4');
+  await page.screenshot({path:`debug/audit-scratch/round-1-codex/mobile-${density}x.png`});
+  await select.click(); await expect(caret.locator('path')).toHaveAttribute('stroke','#e8e2d4');
+  await page.getByRole('button',{name:'Draw',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Partial erase',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Eraser',exact:true})).toHaveCount(0);
+  await context.close();
+ });
+ test(`R1 resize ${density}x: document open never flashes a scrollbar`,async({browser})=>{
+  const context=await browser.newContext({viewport:{width:1400,height:900},deviceScaleFactor:density});
+  const page=await context.newPage();
+  await page.addInitScript(()=>{
+   window.railSamples=[];
+   const sample=()=>{
+    for(const n of document.querySelectorAll('[aria-label="Viewport vertical scroll bar"]')) window.railSamples.push(Number(getComputedStyle(n).opacity));
+    requestAnimationFrame(sample);
+   }; requestAnimationFrame(sample);
+  });
+  await open(page); await page.waitForTimeout(1200);
+  expect(await page.evaluate(()=>Math.max(0,...window.railSamples))).toBe(0);
+  await page.setViewportSize({width:1400,height:500});
+  await expect(page.getByLabel('Viewport vertical scroll bar')).toBeVisible();
+  await expect.poll(()=>page.getByLabel('Viewport vertical scroll bar').evaluate(n=>Number(getComputedStyle(n).opacity))).toBeGreaterThan(0);
+  await context.close();
+ });
+}
+
+test('R1 Text Select: a new native text drag still commits after cancellation',async({page})=>{
+ await open(page); await page.keyboard.press('Shift+v'); await clickMark(page);
+ const line=page.locator('.pdfjsTextLayer span').filter({hasText:'This sentence is underlined in blue beneath five consecutive words.'}).first();
+ const b=await line.boundingBox(); expect(b).not.toBeNull();
+ const drag=async()=>{await page.mouse.move(b.x+2,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width-2,b.y+b.height/2,{steps:8});};
+ await drag(); await page.keyboard.press('Escape'); await page.mouse.up();
+ await expect(handles(page)).not.toHaveCount(0);
+ await expect.poll(()=>page.evaluate(()=>String(window.getSelection()))).toBe('');
+ await drag(); await page.mouse.up();
+ await expect.poll(()=>page.evaluate(()=>String(window.getSelection()))).toContain('underlined');
+ await expect(handles(page)).toHaveCount(0);
+});
