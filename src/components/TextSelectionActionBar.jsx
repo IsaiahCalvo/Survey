@@ -13,6 +13,11 @@ const buttonBase = {
   border: 0, background: 'transparent', color: '#e8e2d4', cursor: 'pointer', padding: 3,
 };
 
+// UX 2026-09-07: every glyph in this row renders at ONE size, 18. Redact used
+// to override to 21, which made it the widest thing in the row and — together
+// with its old solid redaction slab — the reason it read about half again as
+// heavy as its neighbours. Reference behaviour: highlight / underline /
+// squiggle / strike / hyperlink, all 18. Do not reintroduce a per-icon size.
 function ToolIcon({ name, emphasized = false, size = 18 }) {
   return <Icon name={name} size={size} color={emphasized ? GOLD : '#e8e2d4'} style={{ display: 'block', opacity: 1 }} />;
 }
@@ -85,7 +90,7 @@ export default function TextSelectionActionBar({
         <div className="text-selection-action-bar__tools">
           {MARKS.map((mark) => <MarkControl key={mark.id} mark={mark} active={activeMarkupTypes.includes(mark.id)} focused={focusedPaintMark === mark.id} paint={paintByMark[mark.id]} onToggle={onAction} onFocusPaint={onFocusPaint} />)}
           <button className="text-selection-action-bar__button" type="button" aria-label={linkEditorOpen ? 'Close Hyperlink editor' : linkActive ? 'Edit Hyperlink' : 'Add Hyperlink'} aria-pressed={linkActive} onClick={() => onAction('link')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('link'))} style={buttonBase}><ToolIcon name="formatHyperlink" emphasized={linkActive} /></button>
-          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} size={21} /></button>
+          <button className="text-selection-action-bar__button" type="button" aria-label={`${redactActive ? 'Remove' : 'Apply'} Redact`} aria-pressed={redactActive} onClick={() => onAction('redact')} onTouchEnd={(event) => activateFromTouch(event, () => onAction('redact'))} style={buttonBase}><ToolIcon name="formatRedact" emphasized={redactActive} /></button>
         </div>
       </div>
       {hasSelection && linkEditorOpen && (

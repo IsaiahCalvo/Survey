@@ -4,7 +4,35 @@ import test from 'node:test';
 
 const source = await readFile(new URL('../src/Icons.jsx', import.meta.url), 'utf8');
 
-test('top toolbar Draw and Text marks use the shared optical alignment offsets', () => {
-  assert.match(source, /drawGroupIconUrl,[\s\S]{0,180}translateY\(-2px\)/);
-  assert.match(source, /text: \(size, color, style, className\)[\s\S]{0,220}translateY\(2px\)[\s\S]{0,180}translate\(12 12\) scale\(1\.2\) translate\(-12 -12\)/);
+// 2026-09-07 polish pass: the top toolbar row (Pan / Select / Draw / Shapes /
+// Text) must sit on ONE baseline. It did not: drawGroup carried
+// translateY(-2px) and text carried translateY(2px), which put a 4.0px spread
+// between the glyph bbox centres (measured 1x and 2x) where plain main had
+// 0.25px. Both assets are already centred on their own painted ink, so the
+// correct fix is no nudge at all — these assertions replace the old ones that
+// REQUIRED the nudges.
+const renderer = (name) => {
+  const i = source.indexOf(`${name}: (size, color, style, className)`);
+  assert.notEqual(i, -1, `renderer ${name} not found`);
+  const j = source.indexOf('\n    ),', i);
+  const k = source.indexOf('\n', i + 1);
+  return source.slice(i, j === -1 ? k + 400 : j);
+};
+
+test('top toolbar group glyphs carry no translateY optical nudge', () => {
+  for (const name of ['drawGroup', 'text', 'textBox', 'shapes']) {
+    assert.doesNotMatch(
+      renderer(name),
+      /translateY\(/,
+      `${name} must stay centred on its ink bbox, not nudged`,
+    );
+  }
+});
+
+test('the deliberate text-select drop is the only kept vertical nudge', () => {
+  // Owner rule: the text-select glyph is top-heavy and is asked to sit ~2px
+  // lower than the rest of the selection trio. That one nudge stays.
+  assert.match(source, /textSelect: \(size, color, style, className\)[\s\S]{0,260}translateY\(2px\)/);
+  const code = source.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+  assert.equal((code.match(/translateY\(/g) || []).length, 1);
 });

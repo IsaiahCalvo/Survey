@@ -1,5 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 28" fill="none">
-  <path d="M3 19 8 3h2l5 16M5 13h8" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
-  <path d="M2 12h13v3H2z" fill="black"/>
-  <path d="M18 3h4m-2 0v18m-2 0h4" stroke="black" stroke-width="1.5" stroke-linecap="round"/>
+<!--
+  Redact glyph for the text-markup sub-toolbar. 2026-09-07 polish pass.
+
+  Why: it was the odd one out in a row of six. It rendered at size 21 while
+  every other glyph in the row renders at 18, so it was the widest thing there,
+  and its redaction bar was a 3-of-28-unit slab — 2.25px against ~1.5px
+  strokes — which is what made it read about half again as heavy as its
+  neighbours.
+
+  Now: the house 24-unit grid, one 1.75-unit stroke weight (1.31px at 18; the
+  row runs strike 1.42, underline 1.61, squiggle 1.72, hyperlink 1.78), ink
+  envelope 18.6 x 19.95 of 24 centred on its own ink, and the size override in
+  TextSelectionActionBar.jsx removed so it renders at 18 with the rest. It
+  lands at 14x15px in an 18px box, inside the row's 12-17px band.
+
+  Two judgement calls worth knowing about, both reversible in one line:
+
+  1. The redaction bar stays SOLID and stays heavier than the strokes (3.6
+     units, 2.7px). A pass that slimmed it to the row's stroke weight killed
+     the meaning outright — it just read as the letter A. A blacked-out bar is
+     the identity of this mark, so the weight came out of the strokes and the
+     overall size instead.
+
+  2. The old artwork was TWO glyphs, an "A" plus a serif I-beam, and that is
+     why it was the widest thing in the row and why it read as the word "AI"
+     once the bar was slimmed. Every other mark in this row is one letter
+     carrying one mark — U with a rule, U with a squiggle, S with a rule, T in
+     a marker. Redact is now the same shape of idea: one letter under one bar.
+     If the I-beam is wanted back, it belongs at a smaller size to the right,
+     but the glyph will go wide again.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3.6 21.1 12 2.9 20.4 21.1"/>
+  <rect x="2.75" y="13.4" width="18.5" height="3.6" fill="#000" stroke="none"/>
 </svg>

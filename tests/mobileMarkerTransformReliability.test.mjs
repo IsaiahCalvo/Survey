@@ -96,7 +96,11 @@ test('text action bar uses the locked SVG assets for every text markup action', 
   assert.doesNotMatch(textActionBarSource, /WebkitMask|mask: `url/);
   assert.match(textActionBarSource, /function ToolIcon/);
   assert.match(textActionBarSource, /size = 18/);
-  assert.match(textActionBarSource, /name="formatRedact"[\s\S]{0,80}size=\{21\}/);
+  // 2026-09-07 polish pass (A5): Redact used to override to size 21 in a row of
+  // 18s, which made it the widest glyph in the text-markup toolbar. The row now
+  // renders at one size, so this asserts the override is gone rather than
+  // requiring it. See tests/redactIconSource.test.mjs.
+  assert.doesNotMatch(textActionBarSource, /<ToolIcon[^>]*\bsize=\{/);
 });
 
 test('mobile delete long-press targets exposed annotation body instead of transform handles', () => {
