@@ -1717,6 +1717,15 @@ input[type="text"].space-add-pages-input:focus-visible {
   transform: none;
 }
 
+/* UX (polish round 4): the ACTIVE tool inside a sub-toolbar (Pen, Rectangle,
+   Text…) hovers with the same neutral plate as its idle siblings and as the
+   top row, so every button in a row answers the pointer the same way. Gold
+   stays the active cue; the border stays 1px so the box never jiggles. */
+#chrome-sub-toolbar-host .btn-active:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
 /* UX: both label copies share a cell; the hidden bold copy reserves menu width. */
 .select-mode-label { display: inline-grid; }
 .select-mode-label > span { grid-area: 1 / 1; }
