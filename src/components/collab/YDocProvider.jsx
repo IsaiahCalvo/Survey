@@ -90,15 +90,16 @@ import { useRemoteEditors } from '../../hooks/useRemoteEditors.js';
 // Phase 27/28/29 code is byte-identical.
 import { runBackfill } from '../../lib/collab/crdtBackfill.js';
 import { dedupePdfImports } from '../../lib/collab/crdtDedupePdfImports.js';
-import { drainQueue } from '../../lib/collab/crdtDualWriteQueue.js';
+import { drainQueue, STORAGE_FAILURE_EVENT } from '../../lib/collab/crdtDualWriteQueue.js';
+import { createQueueRetryHandlers } from '../../lib/collab/crdtQueueRetryHandlers.js';
 import { useDualWriteQueue } from '../../hooks/useDualWriteQueue.js';
 import { QuarantineMarkerOverlay } from './QuarantineMarkerOverlay.jsx';
 import {
   upsertFabricAnnotation,
   loadAllNonSurveyMarkerAnnotations,
   deleteAnnotations,
+  deleteAnnotation,
 } from '../../services/annotationCloudSync.js';
-import { applyFabricCommit } from '../../lib/collab/crdtAnnotationBridge.js';
 
 // Phase 35 Plan 05 — cleanup banner audit + Review surface.
 // auditResidue runs on document open and detects annotations the 2026-04-27
@@ -230,6 +231,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   const lifecycleRef = useRef(null);
   const providerRef = useRef(null);
   const bridgeRef = useRef(null);
+  const retryDualWriteQueueRef = useRef(null);
   const [storageState, setStorageState] = useState(null);
   const [role, setRole] = useState('unknown');
   const [isHydrating, setIsHydrating] = useState(true);
@@ -1056,56 +1058,42 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   useEffect(() => {
     const userId = undoState?.undoCtx?.userId;
     if (!ydoc || !userId) return undefined;
-    const yMapAnnotations = ydoc.getMap('annotations');
-
-    const retryLegacyWrite = async (payload) => {
-      // Test seam — e2e phase30-stuck-queue-banner.spec.mjs sets this true.
-      if (typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
-        throw new Error('test-seam: __crdtForceLegacyFail');
-      }
-      // Test seam — e2e phase30-quarantine-marker.spec.mjs uses this to fail
-      // a single annoId across many retries.
-      const annoId = payload?.fabricObj?.data?.id;
-      if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
-        throw new Error('test-seam: __crdtForceFailAnnoId');
-      }
-      const result = await upsertFabricAnnotation(payload.fabricObj, payload.opts);
-      if (result && result.error) throw result.error;
-      return result;
+    let cancelled = false;
+    const handlers = createQueueRetryHandlers({
+      documentId: docId, userId, ydoc,
+      upsertAnnotation: upsertFabricAnnotation,
+      deleteAnnotation,
+      beforeRetry: (_payload, side, annoId) => {
+        if (cancelled) throw new Error('Sync queue document was closed');
+        if (side === 'legacy' && typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
+          throw new Error('test-seam: __crdtForceLegacyFail');
+        }
+        if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
+          throw new Error('test-seam: __crdtForceFailAnnoId');
+        }
+      },
+    });
+    const onStorageFailure = (event) => {
+      if (cancelled || event.detail?.userId !== userId) return;
+      const state = { code: event.detail.code, error: event.detail.error };
+      storageStateRef.current = state;
+      setStorageState(state);
+      setBannerDismissed(false);
     };
+    window.addEventListener(STORAGE_FAILURE_EVENT, onStorageFailure);
+    const retry = () => drainQueue({
+      userId, documentId: docId, ...handlers, shouldContinue: () => !cancelled,
+    }).catch(() => { /* storage failure event shows the banner; pending work stays queued */ });
+    retryDualWriteQueueRef.current = retry;
+    const handle = setInterval(retry, 1_000);
 
-    const retryCrdtWrite = async (payload) => {
-      // Test seam — same per-anno failure injection on the CRDT side.
-      const annoId = payload?.fabricObj?.data?.id;
-      if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
-        throw new Error('test-seam: __crdtForceFailAnnoId');
-      }
-      // Synchronous bridge call — wrap throw inside async function for the
-      // queue contract. applyFabricCommit signature:
-      //   (ydoc, yMapAnnotations, fabricObject, originPayload, ctx)
-      applyFabricCommit(
-        ydoc,
-        yMapAnnotations,
-        payload.fabricObj,
-        payload.opts?.originPayload,
-        payload.opts?.ctx,
-      );
-      return { ok: true };
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+      window.removeEventListener(STORAGE_FAILURE_EVENT, onStorageFailure);
+      if (retryDualWriteQueueRef.current === retry) retryDualWriteQueueRef.current = null;
     };
-
-    const handle = setInterval(() => {
-      drainQueue({
-        userId,
-        retryLegacyWrite,
-        retryCrdtWrite,
-      }).catch(() => {
-        // drainQueue swallows per-entry errors internally; only a handler
-        // construction failure would reach here. Silent — next tick retries.
-      });
-    }, 1_000);
-
-    return () => clearInterval(handle);
-  }, [ydoc, undoState?.undoCtx?.userId]);
+  }, [ydoc, docId, undoState?.undoCtx?.userId]);
 
   // Phase 30 — UI hook for banner gate + overlay.
   // Polls localStorage queue state on a 1s tick (Plan 30-05 hook).
@@ -1659,27 +1647,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             // 1Hz interval, then let the regular tick continue. If the flush
             // succeeds (queue drains), the gate above stops rendering the
             // banner naturally (stuckCount reads zero on next poll).
-            const userId = undoState?.undoCtx?.userId;
-            if (!userId || !ydoc) return;
-            const yMapAnnotations = ydoc.getMap('annotations');
-            // Inline retry handlers — same shape as the interval handlers.
-            // Don't try to factor these out; the test-seam guards live there
-            // and inline keeps this banner-action self-contained.
-            const retryLegacyWrite = async (payload) => {
-              const result = await upsertFabricAnnotation(payload.fabricObj, payload.opts);
-              if (result && result.error) throw result.error;
-              return result;
-            };
-            const retryCrdtWrite = async (payload) => {
-              applyFabricCommit(
-                ydoc, yMapAnnotations,
-                payload.fabricObj,
-                payload.opts?.originPayload,
-                payload.opts?.ctx,
-              );
-              return { ok: true };
-            };
-            drainQueue({ userId, retryLegacyWrite, retryCrdtWrite }).catch(() => { /* silent */ });
+            retryDualWriteQueueRef.current?.();
           }}
         />
       )}

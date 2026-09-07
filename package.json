@@ -105,6 +105,7 @@
       "dist/**/*",
       "src/electron-main.js",
       "src/electronAnalyticsBridge.js",
+      "src/electron/atomicFileWriter.cjs",
       "src/electron/msalAuthMain.js",
       "src/electron/msalCacheStore.cjs",
       "src/electron/oauthWindowPolicy.cjs",

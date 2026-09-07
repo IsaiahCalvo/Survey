@@ -76,11 +76,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // App lifecycle APIs
   onBeforeQuit: (callback) => {
-    const subscription = () => callback();
+    const subscription = (_event, request) => callback(request);
     ipcRenderer.on('app:beforeQuit', subscription);
     return () => ipcRenderer.removeListener('app:beforeQuit', subscription);
   },
-  notifySaveComplete: () => ipcRenderer.send('app:saveComplete'),
+  notifySaveComplete: (result) => ipcRenderer.send('app:saveComplete', result),
 
   // Menu actions
   onReimportPdfBookmarks: (callback) => {

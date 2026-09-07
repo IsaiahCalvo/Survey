@@ -6,6 +6,7 @@ const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
+const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
@@ -914,7 +915,7 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
 
   try {
     // data is expected to be a Buffer or Uint8Array sent from renderer
-    fs.writeFileSync(filePath, Buffer.from(data));
+    await writeFileAtomic(filePath, data);
     return { canceled: false, filePath };
   } catch (error) {
     console.error('Failed to save file:', error);
@@ -1084,58 +1085,11 @@ ipcMain.handle('fs:listDir', async (event, dirPath) => {
   }
 });
 
-// Atomic file write - ensures crash-safe saves by writing to temp file first
+// Atomic replacement keeps the previous file intact until new bytes are flushed.
 ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
-  // Guard before any sibling paths (.tmp / .bak) are derived from filePath.
+  // Guard before the writer derives its unique sibling temporary path.
   assertAllowedPath(filePath, { forWrite: true });
-  const tempPath = filePath + '.tmp';
-  const backupPath = filePath + '.bak';
-
-  try {
-    // 1. Write to temp file first
-    fs.writeFileSync(tempPath, Buffer.from(data));
-
-    // 2. Create backup of original (if exists)
-    if (fs.existsSync(filePath)) {
-      // Remove old backup if exists
-      if (fs.existsSync(backupPath)) {
-        fs.unlinkSync(backupPath);
-      }
-      fs.renameSync(filePath, backupPath);
-    }
-
-    // 3. Rename temp to final (atomic on most filesystems)
-    fs.renameSync(tempPath, filePath);
-
-    // 4. Remove backup on success
-    if (fs.existsSync(backupPath)) {
-      fs.unlinkSync(backupPath);
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error('Atomic write failed:', error);
-
-    // Attempt recovery: if backup exists but final doesn't, restore backup
-    if (fs.existsSync(backupPath) && !fs.existsSync(filePath)) {
-      try {
-        fs.renameSync(backupPath, filePath);
-      } catch (recoveryError) {
-        console.error('Recovery from backup also failed:', recoveryError);
-      }
-    }
-
-    // Clean up temp file if it exists
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (cleanupError) {
-        // Ignore cleanup errors
-      }
-    }
-
-    throw error;
-  }
+  return writeFileAtomic(filePath, data);
 });
 
 // File watcher handlers
@@ -1720,6 +1674,7 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
 
 // Track if we're in the process of quitting
 let isQuitting = false;
+let quitAttempt = 0;
 
 app.whenReady().then(() => {
   createWindow();
@@ -1730,6 +1685,7 @@ app.on('before-quit', (event) => {
   if (!isQuitting) {
     event.preventDefault();
     isQuitting = true;
+    const attempt = ++quitAttempt;
 
     // Notify all windows to save their work
     const windows = BrowserWindow.getAllWindows();
@@ -1742,10 +1698,12 @@ app.on('before-quit', (event) => {
     // Send save request to all windows
     let windowsResponded = 0;
     const checkAndQuit = () => {
+      if (!isQuitting || attempt !== quitAttempt) return;
       windowsResponded++;
       if (windowsResponded >= windows.length) {
         // All windows have responded, now quit
         setTimeout(() => {
+          if (!isQuitting || attempt !== quitAttempt) return;
           // Clean up file watchers
           fileWatchers.forEach((watcher) => {
             watcher.close();
@@ -1764,7 +1722,7 @@ app.on('before-quit', (event) => {
       }
 
       // Send message to renderer to save
-      win.webContents.send('app:beforeQuit');
+      win.webContents.send('app:beforeQuit', { quitAttemptId: attempt });
 
       // Give each window 5 seconds to save, then continue
       setTimeout(checkAndQuit, 5000);
@@ -1773,8 +1731,15 @@ app.on('before-quit', (event) => {
 });
 
 // Handle save completion from renderer
-ipcMain.on('app:saveComplete', () => {
-  // This is just for logging, actual quit happens via timeout
+ipcMain.on('app:saveComplete', (event, result) => {
+  if (isQuitting && result?.saved === false && result.quitAttemptId === quitAttempt) {
+    // A failed local save in ANY tab cancels this quit. Other tabs reporting
+    // success cannot undo it, and old timeout callbacks cannot quit a retry.
+    isQuitting = false;
+    quitAttempt++;
+    console.warn('Quit canceled: local document changes could not be saved.');
+  }
+  // Successful saves retain the existing timeout-based quit behavior.
 });
 
 app.on('window-all-closed', () => {

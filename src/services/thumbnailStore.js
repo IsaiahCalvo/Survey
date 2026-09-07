@@ -27,8 +27,11 @@
  */
 
 const DB_NAME = 'survey-thumbnail-cache-v1';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const THUMB_STORE = 'thumbs';
+const META_STORE = 'metadata';
+const STATE_STORE = 'state';
+const ALL_STORES = [THUMB_STORE, META_STORE, STATE_STORE];
 const SAVED_AT_INDEX = 'savedAt';
 const REQUEST_TIMEOUT_MS = 5_000;
 
@@ -84,6 +87,22 @@ function requestResult(request, transaction, timeoutMs = REQUEST_TIMEOUT_MS) {
   });
 }
 
+// A successful request is not a committed write: quota/abort can follow it.
+function transactionResult(transaction, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try { transaction.abort(); } catch { /* already closed */ }
+      reject(new Error('IndexedDB transaction timed out'));
+    }, timeoutMs);
+    transaction.oncomplete = () => { clearTimeout(timer); resolve(); };
+    transaction.onabort = () => {
+      clearTimeout(timer);
+      reject(transaction.error || new Error('IndexedDB transaction aborted'));
+    };
+    transaction.onerror = () => { /* onabort reports the final outcome */ };
+  });
+}
+
 async function openDatabase(indexedDb, timeoutMs) {
   const request = indexedDb.open(DB_NAME, DB_VERSION);
   const db = await new Promise((resolve, reject) => {
@@ -113,6 +132,23 @@ async function openDatabase(indexedDb, timeoutMs) {
       if (!opened.objectStoreNames.contains(THUMB_STORE)) {
         const store = opened.createObjectStore(THUMB_STORE, { keyPath: 'key' });
         store.createIndex(SAVED_AT_INDEX, SAVED_AT_INDEX, { unique: false });
+      }
+      if (!opened.objectStoreNames.contains(META_STORE)) {
+        const metadata = opened.createObjectStore(META_STORE, { keyPath: 'key' });
+        metadata.createIndex(SAVED_AT_INDEX, SAVED_AT_INDEX, { unique: false });
+        const state = opened.createObjectStore(STATE_STORE);
+        // One streaming upgrade of v1. Normal writes never deserialize all
+        // cached JPEGs just to total their sizes (up to 40MB per row before).
+        let bytes = 0;
+        const cursor = request.transaction.objectStore(THUMB_STORE).openCursor();
+        cursor.onsuccess = () => {
+          const row = cursor.result;
+          if (!row) { state.put(bytes, 'bytes'); return; }
+          const size = typeof row.value.url === 'string' ? row.value.url.length : 0;
+          metadata.put({ key: row.primaryKey, bytes: size, savedAt: row.value.savedAt || 0 });
+          bytes += size;
+          row.continue();
+        };
       }
     };
     request.onsuccess = () => {
@@ -167,37 +203,45 @@ export function createThumbnailStore({
     return { url: record.url, aspect: record.aspect };
   };
 
-  /* Oldest-first prune down to the byte budget. Runs after a write, and a
-     failure here is silent: a slightly oversized cache is not worth surfacing. */
-  const prune = async (database) => {
-    const tx = database.transaction(THUMB_STORE, 'readwrite');
-    const store = tx.objectStore(THUMB_STORE);
-    const all = await requestResult(store.getAll(), tx, timeoutMs);
-    let total = 0;
-    for (const row of all) total += row.bytes || 0;
-    if (total <= budgetBytes) return;
-    const oldestFirst = [...all].sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
-    for (const row of oldestFirst) {
-      if (total <= budgetBytes) break;
-      store.delete(row.key);
-      total -= row.bytes || 0;
-    }
-  };
-
   const write = async (key, value) => {
     if (!key || !value || typeof value.url !== 'string') return false;
+    if (value.url.length > budgetBytes) return false;
     const database = await db();
     if (!database) return false;
     try {
-      const tx = database.transaction(THUMB_STORE, 'readwrite');
-      await requestResult(tx.objectStore(THUMB_STORE).put({
-        key,
-        url: value.url,
-        aspect: value.aspect,
-        bytes: value.url.length,
-        savedAt: Date.now(),
-      }), tx, timeoutMs);
-      await prune(database);
+      const tx = database.transaction(ALL_STORES, 'readwrite');
+      const committed = transactionResult(tx, timeoutMs);
+      const store = tx.objectStore(THUMB_STORE);
+      const metadata = tx.objectStore(META_STORE);
+      const state = tx.objectStore(STATE_STORE);
+      // IDB serializes overlapping readwrite transactions, including other
+      // tabs: replacing, pruning and updating the byte count commit together.
+      const previous = metadata.get(key);
+      previous.onsuccess = () => {
+        const usage = state.get('bytes');
+        usage.onsuccess = () => {
+          let total = (usage.result || 0) - (previous.result?.bytes || 0);
+          const save = () => {
+            const info = { key, bytes: value.url.length, savedAt: Date.now() };
+            store.put({ ...info, url: value.url, aspect: value.aspect });
+            metadata.put(info);
+            state.put(total + info.bytes, 'bytes');
+          };
+          if (total + value.url.length <= budgetBytes) { save(); return; }
+          const cursor = metadata.index(SAVED_AT_INDEX).openCursor();
+          cursor.onsuccess = () => {
+            const row = cursor.result;
+            if (!row || total + value.url.length <= budgetBytes) { save(); return; }
+            if (row.primaryKey !== key) {
+              total -= row.value.bytes || 0;
+              store.delete(row.primaryKey);
+              row.delete();
+            }
+            row.continue();
+          };
+        };
+      };
+      await committed;
       return true;
     } catch (error) {
       // QuotaExceededError is the expected one here. Losing the cache entry is
@@ -218,8 +262,10 @@ export function createThumbnailStore({
     clear: async () => {
       const database = await db();
       if (!database) return;
-      const tx = database.transaction(THUMB_STORE, 'readwrite');
-      await requestResult(tx.objectStore(THUMB_STORE).clear(), tx, timeoutMs);
+      const tx = database.transaction(ALL_STORES, 'readwrite');
+      const committed = transactionResult(tx, timeoutMs);
+      for (const name of ALL_STORES) tx.objectStore(name).clear();
+      await committed;
     },
     close: async () => {
       const database = await db();

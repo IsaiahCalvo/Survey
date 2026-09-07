@@ -12,9 +12,11 @@ import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvaila
 import { useAuth } from '../contexts/AuthContext';
 import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
-import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
+import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange } from './libraryChangeBus.js';
+import { storageDownloads } from '../services/storageDownloads.js';
+import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -88,19 +90,18 @@ export const useProjects = () => {
       // kept rather than guessing which ones are unused.
       const projectColumns = 'id, user_id, name, description, color, archived, created_at, updated_at';
       const [ownedResult, collaboratorResult] = await Promise.all([
-        supabase
+        readLibraryRows(() => supabase
           .from('projects')
           .select(projectColumns)
           .eq('user_id', user.id)
           // KAL-280 — user-archived projects live in Archive, not the library.
           // Separate column from `archived` (the Free-tier downgrade flag).
-          .is('user_archived_at', null)
-          .order('created_at', { ascending: false }),
-        supabase
+          .is('user_archived_at', null)),
+        readLibraryRows(() => supabase
           .from('project_collaborators')
           .select('project_id')
           .eq('user_id', user.id)
-          .eq('status', 'active'),
+          .eq('status', 'active'), { cursorColumn: 'project_id' }),
       ]);
 
       if (ownedResult.error) throw ownedResult.error;
@@ -115,12 +116,11 @@ export const useProjects = () => {
           .filter(Boolean))]
           .filter((id) => !ownedIds.has(id));
         if (missingIds.length > 0) {
-          const sharedResult = await supabase
+          const sharedResult = await readLibraryIdChunks(missingIds, (ids) => supabase
             .from('projects')
             .select(projectColumns)
-            .in('id', missingIds)
-            .is('user_archived_at', null)
-            .order('created_at', { ascending: false });
+            .in('id', ids)
+            .is('user_archived_at', null));
           if (sharedResult.error) throw sharedResult.error;
           collaboratorProjects = sharedResult.data || [];
         }
@@ -155,7 +155,7 @@ export const useProjects = () => {
         .single();
 
       if (error) throw error;
-      setProjects([data, ...projects]);
+      setProjects((current) => [data, ...current]);
       return data;
     } catch (err) {
       setError(err.message);
@@ -173,7 +173,7 @@ export const useProjects = () => {
         .single();
 
       if (error) throw error;
-      setProjects(projects.map((p) => (p.id === id ? data : p)));
+      setProjects((current) => current.map((p) => (p.id === id ? data : p)));
       return data;
     } catch (err) {
       setError(err.message);
@@ -186,7 +186,7 @@ export const useProjects = () => {
       const { error } = await supabase.from('projects').delete().eq('id', id);
 
       if (error) throw error;
-      setProjects(projects.filter((p) => p.id !== id));
+      setProjects((current) => current.filter((p) => p.id !== id));
     } catch (err) {
       setError(err.message);
       throw err;
@@ -258,32 +258,32 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
   const runDocumentsQuery = async () => {
-    let query = supabase
-      .from('documents')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('archived', false)
-      // KAL-280 — user-archived documents live in Archive, not the library.
-      // This is a SEPARATE column from `archived` above: that one is the
-      // Free-tier downgrade flag, this one is the 30-day recoverable Archive.
-      .is('user_archived_at', null)
-      .order('updated_at', { ascending: false });
+    const ownedQuery = () => {
+      let query = supabase
+        .from('documents')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('archived', false)
+        // KAL-280 — user-archived documents live in Archive, not the library.
+        // This is a SEPARATE column from `archived` above: that one is the
+        // Free-tier downgrade flag, this one is the 30-day recoverable Archive.
+        .is('user_archived_at', null);
 
-    if (projectId) {
-      query = query.eq('project_id', projectId);
-    }
+      if (projectId) query = query.eq('project_id', projectId);
+      return query;
+    };
 
     // The owned-documents read and the collaborator probe are independent —
     // run them concurrently instead of as a 2-step waterfall. Supabase resolves
     // (never rejects) with {data,error}, so the throw-on-owned-error semantics
     // below are preserved (the dependent missingIds query stays sequential).
     const [ownedRes, collaboratorRows] = await Promise.all([
-      query,
-      supabase
+      readLibraryRows(ownedQuery),
+      readLibraryRows(() => supabase
         .from('document_collaborators')
         .select('document_id')
         .eq('user_id', user.id)
-        .eq('status', 'active'),
+        .eq('status', 'active'), { cursorColumn: 'document_id' }),
     ]);
     const { data, error } = ownedRes;
     if (error) throw error;
@@ -297,21 +297,20 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
       const ownIds = new Set((data || []).map((doc) => doc.id));
       const missingIds = collaboratorIds.filter((id) => !ownIds.has(id));
       if (missingIds.length > 0) {
-        let collaboratorQuery = supabase
-          .from('documents')
-          .select('*')
-          .in('id', missingIds)
-          .eq('archived', false)
-          // KAL-280 — an archived document disappears for collaborators too.
-          // The database enforces this as well (user_can_access_document
-          // resolves only for the permanent owner while archived); filtering
-          // here keeps the shared document out of the list in the first place.
-          .is('user_archived_at', null)
-          .order('updated_at', { ascending: false });
-        if (projectId) {
-          collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
-        }
-        const collaboratorResult = await collaboratorQuery;
+        const collaboratorResult = await readLibraryIdChunks(missingIds, (ids) => {
+          let collaboratorQuery = supabase
+            .from('documents')
+            .select('*')
+            .in('id', ids)
+            .eq('archived', false)
+            // KAL-280 — an archived document disappears for collaborators too.
+            // The database enforces this as well (user_can_access_document
+            // resolves only for the permanent owner while archived); filtering
+            // here keeps the shared document out of the list in the first place.
+            .is('user_archived_at', null);
+          if (projectId) collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
+          return collaboratorQuery;
+        });
         if (collaboratorResult.error) throw collaboratorResult.error;
         collaboratorDocuments = collaboratorResult.data || [];
       }
@@ -320,7 +319,10 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     }
 
     const byId = new Map();
-    for (const doc of [...(data || []), ...collaboratorDocuments]) {
+    for (const doc of [
+      ...sortLibraryRows(data || [], 'updated_at'),
+      ...sortLibraryRows(collaboratorDocuments, 'updated_at'),
+    ]) {
       byId.set(doc.id, doc);
     }
     return [...byId.values()];
@@ -542,20 +544,19 @@ export const useTemplates = () => {
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) return undefined;
     return subscribeLibraryChange(() => {
-      loadTemplates({ initialScopeKey: templateScopeKeyRef.current });
+      void loadTemplates({ initialScopeKey: templateScopeKeyRef.current }).catch(() => undefined);
     });
   }, [user]);
 
   const runTemplatesQuery = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await readLibraryRows(() => supabase
       .from('templates')
       .select('*')
       .eq('user_id', user.id)
       // KAL-280 — user-archived templates live in Archive, not the library.
-      .is('user_archived_at', null)
-      .order('created_at', { ascending: false });
+      .is('user_archived_at', null));
     if (error) throw error;
-    return data || [];
+    return sortLibraryRows(data || [], 'created_at');
   };
 
   const loadTemplates = async ({ coalesce = false, initialScopeKey = null } = {}) => {
@@ -601,7 +602,7 @@ export const useTemplates = () => {
         .single();
 
       if (error) throw error;
-      setTemplates([data, ...templates]);
+      setTemplates((current) => [data, ...current]);
       return data;
     } catch (err) {
       setError(err.message);
@@ -619,7 +620,7 @@ export const useTemplates = () => {
         .single();
 
       if (error) throw error;
-      setTemplates(templates.map((t) => (t.id === id ? data : t)));
+      setTemplates((current) => current.map((t) => (t.id === id ? data : t)));
       return data;
     } catch (err) {
       setError(err.message);
@@ -632,7 +633,7 @@ export const useTemplates = () => {
       const { error } = await supabase.from('templates').delete().eq('id', id);
 
       if (error) throw error;
-      setTemplates(templates.filter((t) => t.id !== id));
+      setTemplates((current) => current.filter((t) => t.id !== id));
     } catch (err) {
       setError(err.message);
       throw err;
@@ -763,6 +764,7 @@ export const useStorage = () => {
       });
 
     if (error) throw error;
+    storageDownloads(supabase).invalidate(filePath);
     return filePath;
   }, [user]);
 
@@ -780,6 +782,7 @@ export const useStorage = () => {
       });
 
     if (error) throw error;
+    storageDownloads(supabase).invalidate(filePath);
     return filePath;
   }, [user]);
 
@@ -796,6 +799,7 @@ export const useStorage = () => {
         onUploadProgress: onProgress,
       });
     if (error) throw error;
+    storageDownloads(supabase).invalidate(filePath);
     return filePath;
   }, [user]);
 
@@ -804,13 +808,14 @@ export const useStorage = () => {
       throw new Error('Supabase not available');
     }
 
-    const { data, error } = await supabase.storage
-      .from('documents')
-      .download(filePath);
-
-    if (error) throw error;
-    return data;
-  }, []);
+    return storageDownloads(supabase).read(user?.id, filePath, async () => {
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .download(filePath);
+      if (error) throw error;
+      return data;
+    });
+  }, [user?.id]);
 
   const deleteDocumentFile = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
@@ -822,6 +827,7 @@ export const useStorage = () => {
       .remove([filePath]);
 
     if (error) throw error;
+    storageDownloads(supabase).invalidate(filePath);
   }, []);
 
   return {
@@ -846,18 +852,33 @@ export const useConnectedServices = () => {
   const [services, setServices] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const serviceScopeKey = user?.id ?? null;
+  const serviceScopeRef = useRef(serviceScopeKey);
+  const serviceRequestRef = useRef(0);
+  serviceScopeRef.current = serviceScopeKey;
 
   useEffect(() => {
+    serviceRequestRef.current += 1;
+    setServices({});
+    setError(null);
     if (!user || !isSupabaseAvailable()) {
       setLoading(false);
       return;
     }
 
     fetchServices();
-  }, [user]);
+    return () => { serviceRequestRef.current += 1; };
+  }, [serviceScopeKey]);
 
   const fetchServices = async () => {
     if (!user || !isSupabaseAvailable()) return;
+    const requestId = ++serviceRequestRef.current;
+    const isCurrentRequest = () => isScopedRequestCurrent({
+      requestId,
+      latestRequestId: serviceRequestRef.current,
+      requestScopeKey: serviceScopeKey,
+      currentScopeKey: serviceScopeRef.current,
+    });
 
     // Skip if we already know the table isn't available
     if (isConnectedServicesAvailable() === false) {
@@ -871,6 +892,7 @@ export const useConnectedServices = () => {
         .from('connected_services')
         .select('*')
         .eq('user_id', user.id);
+      if (!isCurrentRequest()) return;
 
       // Silently handle 406 errors (schema cache not ready)
       if (error) {
@@ -895,10 +917,11 @@ export const useConnectedServices = () => {
       });
       setServices(servicesMap);
     } catch (err) {
+      if (!isCurrentRequest()) return;
       console.error('[useConnectedServices] Error fetching connected services:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) setLoading(false);
     }
   };
 
@@ -926,6 +949,7 @@ export const useConnectedServices = () => {
 
       if (error) throw error;
 
+      if (serviceScopeRef.current !== serviceScopeKey) return data;
       setServices(prev => ({
         ...prev,
         [serviceName]: data
@@ -934,7 +958,7 @@ export const useConnectedServices = () => {
       return data;
     } catch (err) {
       console.error('Error connecting service:', err);
-      setError(err.message);
+      if (serviceScopeRef.current === serviceScopeKey) setError(err.message);
       throw err;
     }
   };
@@ -951,6 +975,7 @@ export const useConnectedServices = () => {
 
       if (error) throw error;
 
+      if (serviceScopeRef.current !== serviceScopeKey) return;
       setServices(prev => {
         const updated = { ...prev };
         delete updated[serviceName];
@@ -958,7 +983,7 @@ export const useConnectedServices = () => {
       });
     } catch (err) {
       console.error('Error disconnecting service:', err);
-      setError(err.message);
+      if (serviceScopeRef.current === serviceScopeKey) setError(err.message);
       throw err;
     }
   };
@@ -1032,6 +1057,10 @@ const DEFAULT_TOOL_PREFERENCES = {
  */
 export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => {
   const { user } = useAuth();
+  const preferenceScope = JSON.stringify([user?.id ?? null, documentId, supabaseDocId]);
+  const preferenceScopeRef = useRef(preferenceScope);
+  const preferenceRequestRef = useRef(0);
+  preferenceScopeRef.current = preferenceScope;
   const [toolPreferences, setToolPreferences] = useState(() => {
     // Initialize from localStorage if available
     if (documentId) {
@@ -1050,6 +1079,8 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
 
   // Load preferences when documentId changes
   useEffect(() => {
+    preferenceRequestRef.current += 1;
+    setLoading(false);
     if (!documentId) {
       setToolPreferences({ ...DEFAULT_TOOL_PREFERENCES });
       return;
@@ -1072,14 +1103,23 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
     if (supabaseDocId && user && isSupabaseAvailable()) {
       fetchFromSupabase();
     }
-  }, [documentId, supabaseDocId, user]);
+    return () => { preferenceRequestRef.current += 1; };
+  }, [preferenceScope]);
 
   const fetchFromSupabase = async () => {
     if (!supabaseDocId || !user || !isSupabaseAvailable()) return;
+    const requestId = ++preferenceRequestRef.current;
+    const isCurrentRequest = () => isScopedRequestCurrent({
+      requestId,
+      latestRequestId: preferenceRequestRef.current,
+      requestScopeKey: preferenceScope,
+      currentScopeKey: preferenceScopeRef.current,
+    });
 
     try {
       setLoading(true);
       const meta = await resolveDocumentMetadata(supabaseDocId);
+      if (!isCurrentRequest()) return;
 
       if (meta.toolPreferences) {
         // Merge with defaults to ensure all tools have preferences
@@ -1093,12 +1133,15 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
     } catch (err) {
       console.error('Error fetching tool preferences:', err);
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) setLoading(false);
     }
   };
 
   // Update preferences for a specific tool
   const updateToolPreference = useCallback((toolId, updates) => {
+    // A read begun before this local edit must not overwrite it when it lands.
+    preferenceRequestRef.current += 1;
+    setLoading(false);
     setToolPreferences(prev => {
       const currentToolPrefs = prev[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
       const newPrefs = {
@@ -1121,10 +1164,12 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
         clearTimeout(updateToolPreference._saveTimeout);
         updateToolPreference._saveTimeout = setTimeout(async () => {
           try {
-            await supabase
+            const { error } = await supabase
               .from('documents')
               .update({ tool_preferences: newPrefs })
               .eq('id', supabaseDocId);
+            if (error) throw error;
+            invalidateDocumentMetadata(supabaseDocId);
           } catch (err) {
             console.error('Error saving tool preferences to Supabase:', err);
           }

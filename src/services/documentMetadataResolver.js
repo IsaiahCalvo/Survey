@@ -29,8 +29,43 @@ const TTL_MS = 5000;
 const META_COLUMNS =
   'user_id, locked_at, locked_by, locked_label, tool_preferences, cutover_completed_at, annotations_changed_at';
 
-const cache = new Map(); // documentId -> { value, expiresAt }
-const inFlight = new Map(); // documentId -> Promise<value>
+const MAX_CACHE_ENTRIES = 128;
+const cache = new Map(); // client/document key -> { clientId, documentId, value, expiresAt }
+const inFlight = new Map(); // client/document key -> request record
+const clientScopes = new WeakMap();
+let nextClientId = 0;
+
+function dropClientEntries(clientId) {
+  for (const [key, entry] of cache) if (entry.clientId === clientId) cache.delete(key);
+  for (const [key, entry] of inFlight) if (entry.clientId === clientId) inFlight.delete(key);
+}
+
+function scopeForClient(client) {
+  let scope = clientScopes.get(client);
+  if (scope) return scope;
+  scope = { id: ++nextClientId, generation: 0, userId: undefined };
+  clientScopes.set(client, scope);
+  // One synchronous listener per client. Do not call auth APIs from inside an
+  // auth callback: Supabase holds its session lock while invoking listeners.
+  client.auth?.onAuthStateChange?.((event, session) => {
+    const userId = session?.user?.id ?? null;
+    // INITIAL_SESSION announces the identity already used by a first read;
+    // it is not an account change. Its async delivery must not discard that
+    // first open. A later sign-in/out always invalidates, even for the same ID.
+    const firstSession = event === 'INITIAL_SESSION' && scope.userId === undefined;
+    if (!firstSession && (event !== 'TOKEN_REFRESHED' || scope.userId !== userId)) {
+      scope.generation += 1;
+      dropClientEntries(scope.id);
+    }
+    scope.userId = userId;
+  });
+  return scope;
+}
+
+function pruneCache(now) {
+  for (const [key, entry] of cache) if (entry.expiresAt <= now) cache.delete(key);
+  while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+}
 
 function nullMetadata() {
   return {
@@ -56,19 +91,25 @@ function nullMetadata() {
 export async function resolveDocumentMetadata(documentId, { supabase: client = defaultClient } = {}) {
   if (!documentId || !client) return nullMetadata();
 
-  const cached = cache.get(documentId);
+  const scope = scopeForClient(client);
+  const key = JSON.stringify([scope.id, documentId]);
+  pruneCache(Date.now());
+  const cached = cache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.value;
 
-  const existing = inFlight.get(documentId);
-  if (existing) return existing;
+  const existing = inFlight.get(key);
+  if (existing) return existing.promise;
 
-  const promise = (async () => {
+  const generation = scope.generation;
+  const request = { clientId: scope.id, documentId, promise: null };
+  inFlight.set(key, request);
+  request.promise = (async () => {
     const { data, error } = await client
       .from('documents')
       .select(META_COLUMNS)
       .eq('id', documentId)
       .maybeSingle();
-    if (error || !data) {
+    if (error || !data || scope.generation !== generation) {
       // Do NOT cache transient failures / missing rows — let the next caller retry.
       return nullMetadata();
     }
@@ -81,20 +122,26 @@ export async function resolveDocumentMetadata(documentId, { supabase: client = d
       cutoverCompletedAt: data.cutover_completed_at ?? null,
       annotationsChangedAt: data.annotations_changed_at ?? null,
     };
-    cache.set(documentId, { value, expiresAt: Date.now() + TTL_MS });
+    // An invalidated request may finish after a newer read. Only the still-
+    // registered request can fill the cache or remove its in-flight entry.
+    if (inFlight.get(key) === request) {
+      cache.set(key, { clientId: scope.id, documentId, value, expiresAt: Date.now() + TTL_MS });
+      pruneCache(Date.now());
+    }
     return value;
-  })().finally(() => { inFlight.delete(documentId); });
+  })().finally(() => {
+    if (inFlight.get(key) === request) inFlight.delete(key);
+  });
 
-  inFlight.set(documentId, promise);
-  return promise;
+  return request.promise;
 }
 
 /** Drop the cached metadata so the next resolve refetches. Call after a write to
  *  any of the cached columns (e.g. the cutover seal) that must be visible to a
  *  same-open read. */
 export function invalidateDocumentMetadata(documentId) {
-  cache.delete(documentId);
-  inFlight.delete(documentId);
+  for (const [key, entry] of cache) if (entry.documentId === documentId) cache.delete(key);
+  for (const [key, entry] of inFlight) if (entry.documentId === documentId) inFlight.delete(key);
 }
 
 /** Test hook — clear all cached/in-flight state between cases. */

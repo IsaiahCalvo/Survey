@@ -42,7 +42,7 @@ async function mount(t, { enabled, deferredRead = false } = {}) {
       const builder = {
         select: () => builder,
         eq: (column, value) => { if (column === 'id') id = value; return builder; },
-        is: () => builder, order: () => builder, in: () => builder,
+        is: () => builder, order: () => builder, in: () => builder, limit: () => builder, gt: () => builder,
         update: (value) => { updates = value; return builder; },
         single: settle,
         then: (resolve, reject) => settle().then(resolve, reject),
@@ -56,6 +56,7 @@ async function mount(t, { enabled, deferredRead = false } = {}) {
     import { useState, useEffect, useCallback, useRef } from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
     import { coalesceRead } from ${JSON.stringify(new URL('../src/hooks/requestCoalescer.js', import.meta.url).href)};
     import { isScopedRequestCurrent } from ${JSON.stringify(new URL('../src/hooks/scopedRequestGuard.js', import.meta.url).href)};
+    import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from ${JSON.stringify(new URL('../src/hooks/libraryPagination.js', import.meta.url).href)};
     const state = globalThis[${JSON.stringify(key)}];
     const supabase = state.supabase;
     const useAuth = () => ({ user: state.user, tier: 'pro' });
