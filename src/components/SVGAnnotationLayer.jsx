@@ -602,7 +602,11 @@ const SVGAnnotationLayer = memo(({
     setSelectedSurveyMarkerId(null);
     setSurveyMarkerPreviewBounds(null);
     surveyMarkerDragRef.current = null;
-    selectAnnotation(pendingSelection.annotationIndex, false);
+    if (pendingSelection.subtractFromSelection) {
+      selectAnnotations([...selectedIds].filter((index) => index !== pendingSelection.annotationIndex));
+    } else {
+      selectAnnotation(pendingSelection.annotationIndex, pendingSelection.addToSelection === true);
+    }
   }, [pendingSelection, pageNumber, selectAnnotation, selectAnnotations, deselectAll]);
 
   useLayoutEffect(() => {
@@ -5757,6 +5761,7 @@ const SVGAnnotationLayer = memo(({
               {worldPoints.map((wp, i) => (
                 <circle
                   key={`vertex-${i}`}
+                  data-resize-handle={`vertex-${i}`}
                   cx={wp.x}
                   cy={wp.y}
                   r={vHandleR}

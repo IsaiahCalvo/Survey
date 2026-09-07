@@ -6,6 +6,7 @@
  * immutable geometry engine used by the PDF.js feature demo to the latest JSON.
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { trackPendingEraseCommit } from '../utils/pendingEraseCommits.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { isPointOnObject } from '../utils/geometryHitTest.js';
 import { canModify } from '../lib/collab/permissionScope.js';
@@ -321,6 +322,7 @@ const FabricEraserCanvas = memo(({
   surveyMarkers = [],
   onEraseIntent,
   onEraseCommit,
+  onEraseFlush = (commit) => commit(),
   onEraseSurveyMarker,
   renderer = 'svg',
   canEraseSurveyMarker,
@@ -403,6 +405,8 @@ const FabricEraserCanvas = memo(({
   const surveyMarkersRef = useRef(surveyMarkers);
   const onEraseIntentRef = useRef(onEraseIntent);
   const onEraseCommitRef = useRef(onEraseCommit);
+  const onEraseFlushRef = useRef(onEraseFlush);
+  onEraseFlushRef.current = onEraseFlush;
   const onEraseSurveyMarkerRef = useRef(onEraseSurveyMarker);
   const canEraseSurveyMarkerRef = useRef(canEraseSurveyMarker);
   const onEraseTextMarkupRef = useRef(onEraseTextMarkup);
@@ -509,6 +513,24 @@ const FabricEraserCanvas = memo(({
       if (data.error) pending.reject(new Error(data.error));
       else pending.resolve(data.result);
     };
+    // beforeunload cannot await a worker. Finish its captured plan locally;
+    // commit starts in this event, before navigation can discard React work.
+    const flushPendingPlans = () => {
+      for (const [id, pending] of erasePlannerRequestsRef.current) {
+        erasePlannerRequestsRef.current.delete(id);
+        try {
+          const result = planPageEraseLocally(pending.args, pending.blockedByIndex);
+          let flushedOutcome;
+          onEraseFlushRef.current(() => { flushedOutcome = pending.flush(result); });
+          pending.resolve({ flushedOutcome });
+        } catch (error) { pending.reject(error); }
+      }
+    };
+    window.addEventListener('beforeunload', flushPendingPlans);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushPendingPlans();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     worker.onerror = (event) => {
       const error = new Error(event?.message || 'Eraser planner worker failed');
       for (const pending of erasePlannerRequestsRef.current.values()) {
@@ -521,6 +543,8 @@ const FabricEraserCanvas = memo(({
       erasePlannerRequestsRef.current.clear();
     };
     return () => {
+      window.removeEventListener('beforeunload', flushPendingPlans);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       erasePlannerWorkerRef.current = null;
       worker.terminate();
       for (const pending of erasePlannerRequestsRef.current.values()) {
@@ -563,7 +587,7 @@ const FabricEraserCanvas = memo(({
     () => eraserDiameterToPageRadius(eraserSizeRef.current),
     [],
   );
-  const planPageErase = useCallback((args, blockedByIndex) => {
+  const planPageErase = useCallback((args, blockedByIndex, flush) => {
     const worker = erasePlannerWorkerRef.current;
     if (!worker) {
       return Promise.resolve(planPageEraseLocally(args, blockedByIndex));
@@ -576,6 +600,7 @@ const FabricEraserCanvas = memo(({
         reject,
         args,
         blockedByIndex,
+        flush,
       });
       worker.postMessage({ requestId, args, blockedByIndex });
     });
@@ -2066,12 +2091,7 @@ const FabricEraserCanvas = memo(({
       const id = object?.id || object?.annotationId || object?.pdfAnnotationId || `index:${index}`;
       return { id, reason };
     });
-    const result = await planPageErase({
-      pageAnnotations: latestPage,
-      eraserPoints,
-      eraserRadius: radius,
-      mode,
-    }, blockedByIndex);
+    const commitPlan = async (result) => {
 
     // Commit recomputes the same permitted hit lists used by the live preview.
     // Raw geometry-only hits here previously let callout commit bypass preview's
@@ -2152,6 +2172,9 @@ const FabricEraserCanvas = memo(({
         operation: target.operation,
       })),
     });
+    if (containerRef.current && !auditTargets.length) {
+      containerRef.current.dataset.eraserAuditStatus = 'not-needed';
+    }
     if (targets.length === 0) {
       const didEraseTextMarkup = commitLocalTextMarkupErase();
       for (const annotationId of surveyMarkerHitIds) {
@@ -2316,6 +2339,15 @@ const FabricEraserCanvas = memo(({
       recordCommitTiming();
       if (!geometryAuditEnabled) eraseCommitTimingRef.current.delete(String(mutationId));
     }
+    };
+    const result = await planPageErase({
+      pageAnnotations: latestPage,
+      eraserPoints,
+      eraserRadius: radius,
+      mode,
+    }, blockedByIndex, commitPlan);
+    return 'flushedOutcome' in result ? result.flushedOutcome : commitPlan(result);
+
   }, [
     getEraseBlockReason,
     getPageRadius,
@@ -2331,6 +2363,7 @@ const FabricEraserCanvas = memo(({
     const sessionId = pointer?.sessionId;
     const run = () => applyEraserAndCommit(pointer?.points, pointer?.gestureConfig);
     const queued = eraseCommitTailRef.current.then(run, run);
+    trackPendingEraseCommit(queued);
     // A failed task must not poison later gestures. `applyEraserAndCommit`
     // normally resolves fail-closed, but keep the queue live even if an
     // unexpected exception escapes it.

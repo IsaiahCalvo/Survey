@@ -142,6 +142,7 @@ import { drainRowIdWritebackQueueLocal } from './services/rowIdLocalWriteback';
 import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebugSnapshot, setDebugData, setDebugEnabled as setPdfDebugEnabled, setLastDebugError, setPresenceDebugStatus } from './utils/pdfDebug';
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
+import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
@@ -3804,7 +3805,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (event.target?.closest?.('[data-resize-handle]')) return;
       // A new text press cancels the optimistic mark selection before the
       // browser extends a word/line range (PointerEvent.detail is often zero).
-      clearAnnotationSelectionForContextChange('text-select-new-press');
+      if (!event.shiftKey && !event.altKey) clearAnnotationSelectionForContextChange('text-select-new-press');
       downAt = {
         x: event.clientX,
         y: event.clientY,
@@ -3836,6 +3837,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           setPendingSvgSelection({
             pageNumber: hit.pageNumber,
             annotationIndex: hit.annotationIndex,
+            addToSelection: event.shiftKey,
+            subtractFromSelection: event.altKey,
             tick: Date.now(),
           });
         } else {
@@ -4451,6 +4454,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Types imported as visible proxies (sticky notes, underline/strikeout/
   // squiggly) never land here and never trigger the notice.
   const [unsupportedAnnotationCounts, setUnsupportedAnnotationCounts] = useState(null);
+  const liveUnsupportedAnnotationCounts = useMemo(() => {
+    if (!unsupportedAnnotationCounts) return null;
+    // Converted marks are owned by the document. Keep only the native marks
+    // that the import manifest did not convert, then count live app marks.
+    const converted = Object.values(pdfNativeAnnotationLayerPolicyByPage || {})
+      .reduce((count, policy) => count + (policy?.importedTextMarkupIdsByType?.Redact?.length || 0), 0);
+    const live = Object.values(annotationsByPage || {}).reduce((count, page) => count
+      + (page?.objects || []).filter((obj) => obj?.data?.type === 'text-markup'
+        && obj.data.markupType === 'redact' && obj.data.applied !== true).length, 0);
+    return { ...unsupportedAnnotationCounts,
+      Redact: Math.max(0, (unsupportedAnnotationCounts.Redact || 0) - converted) + live };
+  }, [unsupportedAnnotationCounts, pdfNativeAnnotationLayerPolicyByPage, annotationsByPage]);
   const [showUnsupportedNotice, setShowUnsupportedNotice] = useState(false); // Show notification about unsupported annotations
   const [annotationLayerVisibility, setAnnotationLayerVisibility] = useState({
     'native': true,
@@ -11850,6 +11865,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // session. During that brief window (and when CRDT is off) Cmd+Z is a no-op,
   // matching the empty-stack-silent contract.
   const handleUndo = useCallback(() => {
+    if (deferUntilEraseCommitsFinish(handleUndo)) return;
     recordAnnotationUndoRedo('undo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
       localRedoDepth: localAnnotationRedoRef.current.length,
@@ -12117,6 +12133,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   //
   // Null-shape guard mirrors handleUndo above.
   const handleRedo = useCallback(() => {
+    if (deferUntilEraseCommitsFinish(handleRedo)) return;
     recordAnnotationUndoRedo('redo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
       localRedoDepth: localAnnotationRedoRef.current.length,
@@ -26270,6 +26287,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
     const next = deepClone(page);
     if (!Array.isArray(next.objects)) next.objects = [];
+    // Text ranges cannot move apart after paste. Reject only exact duplicates;
+    // a cut mark can still be pasted back when its source no longer exists.
+    const textMarkKey = (obj) => obj?.data?.type === 'text-markup'
+      ? JSON.stringify([obj.data.markupType, obj.fill, obj.opacity, obj.data.quads]) : null;
+    const existingTextMarks = new Set(next.objects.map(textMarkKey).filter(Boolean));
+    const acceptPastedObject = (obj) => {
+      const key = textMarkKey(obj);
+      if (!key) return true;
+      if (existingTextMarks.has(key)) return false;
+      existingTextMarks.add(key);
+      return true;
+    };
     // UX: repeat-paste offset — see lastPasteAnchorRef. First paste at a
     // given cursor point is cursor-exact; repeats without moving the cursor
     // step down-right so clones stay visible.
@@ -26280,7 +26309,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // commit one atomic save. Single-object path falls through to the
     // existing cursor-centered paste logic below.
     if (Array.isArray(clipboardAnnotation.objects) && clipboardAnnotation.objects.length > 0) {
-      const clones = clipboardAnnotation.objects.map((obj) => deepClone(obj));
+      const clones = clipboardAnnotation.objects
+        .filter(acceptPastedObject)
+        .map((obj) => deepClone(obj));
+      if (!clones.length) return false;
       // Compute the group's top-left from the stored source bbox (falls
       // back to scanning clones if missing).
       const srcBBox = clipboardAnnotation.bbox || (() => {
@@ -26340,6 +26372,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return true;
     }
 
+    if (!acceptPastedObject(clipboardAnnotation.object)) return false;
     const pasted = deepClone(clipboardAnnotation.object);
     // UX: the clone gets a brand-new NATIVE identity (fresh data.id via
     // crypto.randomUUID, matching creation) and loses ALL import provenance
@@ -31328,7 +31361,7 @@ ${pageBlocks}
           dismissible, non-blocking). */}
       {showUnsupportedNotice && unsupportedAnnotationCounts && (
         <UnsupportedAnnotationsNotice
-          unsupportedCounts={unsupportedAnnotationCounts}
+          unsupportedCounts={liveUnsupportedAnnotationCounts}
           onDismiss={() => setShowUnsupportedNotice(false)}
         />
       )}
@@ -32140,6 +32173,7 @@ ${pageBlocks}
                                 annotations={pageAnnotations}
                                 callouts={callouts}
                                 surveyMarkers={newSurveyMarkersByPage[pageNumber]}
+                                onEraseFlush={flushSync}
                                 onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
                                 onEraseCommit={!pdfFile?.id
                                   ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotationsWithTextMarkupAtomicity(
@@ -32695,7 +32729,8 @@ ${pageBlocks}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
                                   surveyMarkers={newSurveyMarkersByPage[pageNumber]}
-                                  onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
+                                  onEraseFlush={flushSync}
+                                onEraseIntent={pdfFile?.id ? handleEraseIntent : undefined}
                                   onEraseCommit={!pdfFile?.id
                                     ? (updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotationsWithTextMarkupAtomicity(
                                       pageNumber,
