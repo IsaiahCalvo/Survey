@@ -24,7 +24,7 @@ test('B1 B2 B3: mode names, checked row and shortcut dismissal', async({page})=>
   const row=page.getByRole('menuitemradio',{name:/Rectangle Select/});
   await expect(row).toHaveAttribute('aria-checked','true');
   await expect(row).toContainText('✓');
-  await expect(row).toHaveCSS('background-color','rgb(49, 55, 72)');
+  await expect(row).toHaveCSS('background-color','rgb(42, 34, 24)');
   await page.keyboard.press('p');
   await expect(page.getByRole('menu')).toHaveCount(0);
   await trigger(page).click();
