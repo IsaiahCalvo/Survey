@@ -21,8 +21,11 @@ const ACCEPTED_ICON_HASHES = {
   'text-squiggle.svg': '5d758e7ceef171af4c6a20d10844dec95860144d93e6fa6a0225c95ba9fa6c40',
   'text-strikethrough.svg': 'b159301bb729612e95870d663bc2fbae256ee3022f94ff89354a923f93a173ba',
   'text-hyperlink.svg': 'bea3b7fc712ed3c0729016b565c9392769dd4a697a1eae63b1dc0418ba127020',
-  // Round 7 requires the redrawn, optically balanced Redact glyph.
-  'text-redact.svg': '0993d4b231153a1fe50e2c219a726888d91da06c403e0ac1e17a70ecd8229e1e',
+  // Round 7 required a redrawn, optically balanced Redact glyph; the 2026-09-07
+  // polish pass (A5) redrew it again onto the house 24-unit grid at the row's
+  // stroke weight, so this fixture moves with it. See
+  // tests/redactIconSource.test.mjs for the properties that must hold.
+  'text-redact.svg': '807cd4bd4490a80a07b7bce7667998892d05f6a7a6f364f3bbdb2db28c246704',
 };
 
 test('shared accepted icons stay byte-exact to the accepted icon lineup', async () => {
@@ -131,10 +134,12 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
     assert.equal(document.querySelector('button[aria-label="Apply Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e8e2d4');
     await act(async () => document.querySelector('button[aria-label="Apply Highlight"]').click());
     assert.equal(document.querySelector('button[aria-label="Remove Highlight"] [data-icon-color]')?.getAttribute('data-icon-color'), '#e5ad18');
-    for (const icon of document.querySelectorAll('[data-icon-name]:not([data-icon-name="formatRedact"])')) {
+    // 2026-09-07 polish pass (A5): Redact used to render at 21 in a row of 18s,
+    // which made it the widest glyph there and, with its old solid slab, read
+    // about half again as heavy as its neighbours. The row now has ONE size.
+    for (const icon of document.querySelectorAll('[data-icon-name]')) {
       assert.equal(icon.getAttribute('data-icon-size'), '18');
     }
-    assert.equal(document.querySelector('[data-icon-name="formatRedact"]').getAttribute('data-icon-size'), '21');
     assert.equal(document.querySelector('button[aria-label*="redaction"][aria-label*="permanently"]'), null);
     const underline = document.querySelector('button[aria-label="Apply Underline"]');
     await act(async () => underline.click());
