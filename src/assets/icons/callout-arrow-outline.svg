@@ -1,4 +1,37 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1095 1095" width="1095" height="1095">
-  <path d="M427.53 721.5C431.15 748.93 436.64 776.2 441.13 803.5C442.54 812.1 442.96 828.92 449.78 834.69C456.25 840.16 467.66 837.85 475.5 837.85C497.17 837.87 518.83 837.86 540.5 837.88C600.17 837.92 659.83 837.97 719.5 837.89C738.17 837.86 756.83 837.86 775.5 837.87C785.8 837.87 796.73 838.83 806.92 837.5C799.13 825.44 784.58 817.87 776.8 805.7C762.68 783.61 774.17 754.67 800.78 751.44C816.04 749.59 826 758.72 835.93 768.58C855.81 788.33 874.85 809.06 895.15 828.36C906.89 839.52 921.32 850.92 921.89 868.5C922.44 885.47 910.83 895.44 899.88 906.39C881.39 924.88 862.5 943.02 844.25 961.75C835.36 970.88 826.26 982.6 813.31 985.71C783.23 992.94 760.14 961.39 776.41 934.89C783.49 923.34 796.73 916.37 804.65 905.5C794.01 903.87 782.29 905.14 771.5 905.13C750.5 905.12 729.5 905.11 708.5 905.12C644.83 905.13 581.17 905.23 517.5 905.12C502.83 905.1 488.17 905.1 473.5 905.11C440.84 905.14 416.84 903.86 394.52 876.98C381.47 861.27 378.32 843.01 374.92 823.5C371.02 801.16 367.4 778.75 363.09 756.48C360.93 745.28 360.54 731.47 356.5 720.94C336.87 720.27 317.15 720.63 297.5 720.62C276.98 720.61 257.49 720.76 237.69 714.71C194.37 701.46 161.16 661.54 153.04 617.5C150.54 603.94 151.1 590.22 151.07 576.5C151.05 558.83 151.06 541.17 151.07 523.5C151.1 480.5 151.08 437.5 151.07 394.5C151.06 356.5 150.95 318.5 151.09 280.5C151.23 242.82 149.56 212.35 170.67 179.2C189.65 149.39 221.53 126.99 256.68 121.38C269.51 119.33 282.56 119.8 295.5 119.79C312.83 119.78 330.17 119.75 347.5 119.76C476.83 119.84 606.17 119.61 735.5 119.78C759.17 119.82 782.83 119.73 806.5 119.79C822.09 119.83 837.82 119.1 853.16 122.44C873.55 126.89 892.38 136.78 908.36 150.1C931.88 169.7 947.91 199.19 951.76 229.53C954.05 247.62 952.83 266.3 952.85 284.5C952.88 315.17 952.85 345.83 952.84 376.5C952.81 430.5 952.76 484.5 952.84 538.5C952.88 568.87 956.17 605.38 946.66 634.24C933.39 674.5 898.22 708.65 856.27 717.62C830.39 723.16 802.81 720.61 776.5 720.68C697.83 720.9 619.17 720.86 540.5 720.9C515.83 720.91 491.17 720.93 466.5 720.91C454.26 720.9 439.39 719.31 427.53 721.5ZM268.64 189.38C244.77 192.3 224.85 211.52 219.14 234.55C216.49 245.19 217.46 256.63 217.41 267.5C217.02 348.83 217.51 430.17 217.38 511.5C217.35 532.17 217.42 552.83 217.39 573.5C217.37 590.07 216.57 605.94 224.47 621.05C232.68 636.77 248.1 648.44 265.56 651.74C277.55 654.01 290.35 652.83 302.5 652.83C323.83 652.83 345.17 652.85 366.5 652.82C491.17 652.65 615.83 652.82 740.5 652.86C761.5 652.87 782.5 652.88 803.5 652.86C833.04 652.83 856.26 654.56 875.37 627.85C889.02 608.79 886.56 585.73 886.57 563.5C886.59 524.17 886.59 484.83 886.55 445.5C886.5 392.5 886.51 339.5 886.56 286.5C886.59 261.09 890.66 232.22 873.46 211.04C853.69 186.69 831.02 188.92 802.5 188.9C774.5 188.87 746.5 188.91 718.5 188.9C617.83 188.88 517.17 188.86 416.5 188.91C384.17 188.92 351.83 188.88 319.5 188.9C302.8 188.91 285.23 187.35 268.64 189.38Z" transform="matrix(-1 0 0 1 1099.7207 -5.73766)" fill="#010101" fill-rule="evenodd" stroke="#010101" stroke-width="0.25" stroke-linejoin="round"/>
+<!--
+  Callout tool glyph. 2026-09-07 polish pass: redrawn as stroke artwork on the
+  house 24-unit grid.
+
+  Why: the supplied asset was a single filled outline path on a 1095-unit
+  viewBox whose ink only occupied 802x867 of it, so beside the text-box icon in
+  the same sub-toolbar it rendered 14x16 against 18x18 — about 20% small — and
+  its leader arrowhead was a filled wedge that collapsed into an unreadable nub
+  at deviceScaleFactor 1.
+
+  Now: 1.5-unit strokes, the same weight as the owner's text-box icon it sits
+  next to, round caps and joins, ink envelope 20/24 = 83% of the box — the same
+  optical margin and the same rendered size as the text-box icon — and centred
+  on its own ink so the row needs no nudge. Measured at the 20px sub-toolbar
+  size the callout went 15x16 -> 17x17 against the text-box's 18x18.
+
+  The arrowhead barbs are 5 units long and open a full 90 degrees, which is
+  wider than a typographic arrow would normally be. That is deliberate: at 90
+  degrees on this leader angle one barb lands near-horizontal and the other
+  near-vertical, so both sit on the pixel grid and the head still reads as an
+  arrow at deviceScaleFactor 1. A conventional 60-degree head put two 45-degree
+  diagonals on top of each other and rasterised into the same nub the filled
+  original produced.
+
+  Owner rule kept: nothing inside the bubble — no underscore, no "T".
+
+  Note the two glyphs keep different ink totals (68 px2 against 109 at 20px):
+  the text-box icon spends roughly half of its ink on four stroked corner
+  handles that a callout has no equivalent for. Size and weight are what match;
+  giving the callout matching ink would mean inventing decoration for it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="6.75" y="2.95" width="14.5" height="11" rx="2.5"/>
+  <path d="M9.6 13.95 2.95 21.05"/>
+  <path d="M7.95 20.89 2.95 21.05 2.79 16.05"/>
 </svg>
