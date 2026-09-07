@@ -1456,7 +1456,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
-                  transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
+                  // UX: retain the measured desktop ink-centre nudge; the shared Redo owns its flip.
+                  transform: 'translateY(-0.591158px)'
                 }}
               >
                 <Icon name="redo" size={14} />
@@ -1631,7 +1632,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         border: 'none',
                         borderRadius: '4px',
                         color: selected ? '#d8a84e' : '#e8e2d4',
-                        fontWeight: selected ? 600 : 400,
+                        // UX: match the phone sheet; colour and check carry selection, not a weight jump.
+                        fontWeight: 600,
                         textAlign: 'left',
                         cursor: 'pointer',
                         fontSize: '12px',
