@@ -117,6 +117,9 @@ function buildTextMarkupDict({
   return {
     Type: 'Annot',
     Subtype: subtype,
+    // UX: round-trip authored stroke weight instead of returning a default hairline.
+    ...(['Underline', 'StrikeOut', 'Squiggly'].includes(subtype) && Number.isFinite(fabricObj?.data?.lineWidth)
+      ? { BS: { W: Math.max(0, fabricObj.data.lineWidth), S: PDFName.of('S') } } : {}),
     Rect: [minX, minY, maxX, maxY],
     QuadPoints: quadPoints,
     C: color,

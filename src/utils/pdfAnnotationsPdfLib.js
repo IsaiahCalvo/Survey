@@ -3907,6 +3907,8 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
       || parsePdfDrawColor('#f4d35e');
     const opacity = Math.max(0.05, Math.min(1, Number(obj.opacity ?? 1)));
     const markupType = String(obj.data.markupType || obj.exportType || 'highlight').toLowerCase();
+    // UX: print uses the authored imported stroke weight, just like the page.
+    const authoredLineWidth = obj.data.lineWidthSource === 'pdf-border' && Number.isFinite(obj.data.lineWidth) ? Math.max(0, obj.data.lineWidth) : null;
     // Imported links have no app-side paint. Count the no-op as handled so the
     // native border can be removed without sending it through the underline path.
     if (markupType === 'link' && obj.isPdfImported) return 1;
@@ -3949,7 +3951,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
           page.drawLine({
             start,
             end,
-            thickness: Math.max(0.6, (bottom - top) * 0.06),
+            thickness: authoredLineWidth ?? Math.max(0.6, (bottom - top) * 0.06),
             color: color.color,
             opacity,
           });
@@ -3959,7 +3961,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
         page.drawLine({
           start: { x: left, y: getPdfY(pageHeight, y) },
           end: { x: right, y: getPdfY(pageHeight, y) },
-          thickness: Math.max(0.6, (bottom - top) * 0.06),
+          thickness: authoredLineWidth ?? Math.max(0.6, (bottom - top) * 0.06),
           color: color.color,
           opacity,
         });

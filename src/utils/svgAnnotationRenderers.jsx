@@ -526,7 +526,8 @@ export const renderTextMarkup = (obj, index) => {
   const opacity = Math.max(0, Math.min(1, Number(obj.opacity ?? 0.3)));
   const key = `text-markup-${obj.id || data.id || index}`;
   const shapeId = obj.id || data.id || key;
-  const lineWidth = Math.max(0.8, Number(data.lineWidth) || 1.2);
+  // UX: authored weights must survive import, including strokes below our default.
+  const lineWidth = Number.isFinite(data.lineWidth) ? Math.max(0, data.lineWidth) : 1.2;
 
   const isUnappliedImportedRedaction = type === 'redact'
     && obj?.isPdfImported

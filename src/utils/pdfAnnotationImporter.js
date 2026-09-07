@@ -2383,6 +2383,12 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           borderStyleType = normalizePdfNameToken(readPdfLibText(borderStyle.get(PDFName.of('S'))));
           borderDashArray = readPdfLibDashArray(borderStyle.get(PDFName.of('D')));
         }
+        // UX: retain authored text-mark weight; legacy PDFs use Border[2].
+        if (!Number.isFinite(borderWidth)) {
+          const borderRef = dict.get(PDFName.of('Border'));
+          const border = borderRef ? rawPdfDoc.context.lookup(borderRef) : null;
+          if (border?.get) borderWidth = readPdfLibNumber(border.get(2));
+        }
         // UX 2026-04-21: /BE (Border Effect) carries the "cloudy border" flag
         // used by Drawboard, Bluebeam, Acrobat, and others for revision-cloud
         // rectangles/polygons. /BE/S = /C means cloudy edges; /BE/I is the
@@ -4286,6 +4292,11 @@ function convertPdfTextMarkupToNative(annotation, viewport, scale = 1, context =
   if (!native) return null;
   return {
     ...native,
+    // UX: retain authored line weight in page units for screen, print and export.
+    ...(['underline', 'strikeout', 'squiggly'].includes(markupType)
+      && Number.isFinite(annotation.borderWidth ?? annotation.borderStyle?.width)
+      && (annotation.borderWidth ?? annotation.borderStyle?.width) > 0
+      ? { data: { ...native.data, lineWidth: Math.max(0, annotation.borderWidth ?? annotation.borderStyle?.width), lineWidthSource: 'pdf-border' } } : {}),
     ...(markupType === 'redact' ? { fill: 'transparent', stroke: color } : {}),
     isPdfImported: true,
     pdfAnnotationId: annotation.id || annotation.name || id,
