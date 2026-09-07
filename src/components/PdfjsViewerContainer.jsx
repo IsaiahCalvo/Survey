@@ -524,6 +524,9 @@ const VIEWPORT_SCROLLBAR_HOLD_MS = 700;
 
 function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   const [visible, setVisible] = useState(false);
+  const [painted, setPainted] = useState(false);
+  const visibleRef = useRef(false);
+  const paintedTimerRef = useRef(null);
   const [hoveredAxis, setHoveredAxis] = useState(null);
   const [measuredMetrics, setMeasuredMetrics] = useState({});
   const fadeTimerRef = useRef(null);
@@ -549,11 +552,29 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   }, [scrollerRef]);
 
   const showThenFade = useCallback(() => {
+    visibleRef.current = true;
     setVisible(true);
+    setPainted(true);
+    if (paintedTimerRef.current) clearTimeout(paintedTimerRef.current);
+    const finishPaint = () => {
+      paintedTimerRef.current = null;
+      if (visibleRef.current) return;
+      // A delayed render can finish the CSS fade after the timer deadline.
+      const rails = [verticalRailRef.current, horizontalRailRef.current].filter(Boolean);
+      if (rails.some(rail => Number(getComputedStyle(rail).opacity) > 0)) {
+        paintedTimerRef.current = setTimeout(finishPaint, 16);
+        return;
+      }
+      setPainted(false);
+    };
+    paintedTimerRef.current = setTimeout(finishPaint, VIEWPORT_SCROLLBAR_HOLD_MS + VIEWPORT_SCROLLBAR_FADE_MS);
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     fadeTimerRef.current = setTimeout(() => {
       fadeTimerRef.current = null;
-      if (!dragRef.current && !hoveredAxisRef.current) setVisible(false);
+      if (!dragRef.current && !hoveredAxisRef.current) {
+        visibleRef.current = false;
+        setVisible(false);
+      }
     }, VIEWPORT_SCROLLBAR_HOLD_MS);
   }, []);
 
@@ -668,6 +689,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       window.removeEventListener('pointerup', finishDrag, true);
       window.removeEventListener('pointercancel', finishDrag, true);
       if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      if (paintedTimerRef.current) clearTimeout(paintedTimerRef.current);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       document.documentElement.style.removeProperty('cursor');
       document.documentElement.style.removeProperty('user-select');
@@ -718,8 +740,15 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     setHoveredAxis(axis);
     document.documentElement.style.cursor = 'grabbing';
     document.documentElement.style.userSelect = 'none';
-    setVisible(true);
+    showThenFade();
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+  };
+
+  const finishFade = (event) => {
+    if (event.target !== event.currentTarget || event.propertyName !== 'opacity' || visibleRef.current) return;
+    if (paintedTimerRef.current) clearTimeout(paintedTimerRef.current);
+    paintedTimerRef.current = null;
+    setPainted(false);
   };
 
   const railStyle = {
@@ -736,7 +765,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
     borderRadius: 999,
     cursor: dragRef.current ? 'grabbing' : 'grab',
     touchAction: 'none',
-    pointerEvents: visible ? 'auto' : 'none',
+    pointerEvents: painted ? 'auto' : 'none',
     transition: 'width 120ms ease-out, height 120ms ease-out',
   };
 
@@ -745,6 +774,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       {vertical.maxScroll > 0 && <div
         ref={verticalRailRef}
         aria-label="Viewport vertical scroll bar"
+        onTransitionEnd={finishFade}
         onPointerEnter={() => hoverRail('vertical')}
         onPointerMove={() => hoverRail('vertical')}
         onPointerLeave={() => {
@@ -772,6 +802,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       {horizontal.maxScroll > 0 && <div
         ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
+        onTransitionEnd={finishFade}
         onPointerEnter={() => hoverRail('horizontal')}
         onPointerMove={() => hoverRail('horizontal')}
         onPointerLeave={() => {

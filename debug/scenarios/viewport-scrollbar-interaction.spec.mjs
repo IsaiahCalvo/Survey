@@ -107,3 +107,42 @@ test('thumb hover, motionless release and regrab stay active; rail wheel listene
   await page.mouse.move(700, 450);
   await expect(rail).toHaveCSS('opacity', '0');
 });
+
+for (const delay of [701, 760, 820, 950]) {
+  test(`pen press on thumb ${delay}ms after scroll respects its painted lifetime`, async ({ page }) => {
+    await page.goto('/?testPdf=e2e/prog-01-drawing-markup.pdf');
+    await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor();
+    await page.locator('[data-shape-kind]').first().waitFor();
+    for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.keyboard.press('p');
+    await page.mouse.move(700, 400);
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(100);
+    const thumb = await thumbState(page, 'vertical');
+    const before = await scrollState(page);
+    const marks = page.locator('[data-annotation-index]');
+    const count = await marks.count();
+    // Start the hold in the page, so setup and locator reads do not consume it.
+    await page.locator(SCROLLER).evaluate(async (node, delay) => {
+      node.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }, delay);
+    const opacity = await railFor(page, 'vertical').evaluate(node => Number(getComputedStyle(node).opacity));
+    if (delay < 900) expect(opacity).toBeGreaterThan(0);
+    else expect(opacity).toBe(0);
+    await page.mouse.move(thumb.x, thumb.y);
+    await page.mouse.down();
+    await page.mouse.move(thumb.x, thumb.y + 40, { steps: 6 });
+    await page.mouse.up();
+    if (delay < 900) {
+      await expect.poll(() => scrollState(page)).not.toEqual(before);
+      await expect(railFor(page, 'vertical')).toHaveCSS('opacity', '1');
+      await page.waitForTimeout(350);
+      expect(await marks.count()).toBe(count);
+    } else {
+      await expect.poll(() => marks.count()).toBeGreaterThan(count);
+      expect(await scrollState(page)).toEqual(before);
+    }
+  });
+}
