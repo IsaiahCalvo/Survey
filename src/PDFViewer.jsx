@@ -945,7 +945,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
   const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
-  const { updateDocument: updateSupabaseDocument } = useDocuments(null);
+  const { updateDocument: updateSupabaseDocument } = useDocuments(null, { enabled: false });
   const { features } = useAuth();
 
 

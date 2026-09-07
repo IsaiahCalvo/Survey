@@ -2,7 +2,7 @@
 
    Renders the actual first page of a PDF to an <img>. Byte resolution mirrors
    the app's own PDFThumbnail (App.jsx): a local File, an inline data URL, or a
-   Supabase storage path (download, with a public-URL fetch as a fallback).
+   Supabase storage path (authenticated download for selected previews only).
 
    One HIGH-resolution render is done per document and cached by id, then
    reused everywhere — the big preview pane and the small file-row thumbnails
@@ -21,6 +21,7 @@ import { useState, useEffect, useRef } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
+import { canResolveThumbnailBytes, createThumbnailRequestPool } from './thumbnailRequestPolicy';
 
 /* Two tiers of cache.
 
@@ -36,7 +37,7 @@ import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
    network work happens. Value: { url, aspect } or the in-memory 'FAILED'
    sentinel. */
 const thumbCache = new Map();
-const thumbInflight = new Map();
+const thumbnailRequests = createThumbnailRequestPool();
 const MAX_CACHE_ENTRIES = 24;
 const readCachedThumb = (docId) => {
   if (!docId || !thumbCache.has(docId)) return null;
@@ -171,8 +172,8 @@ const renderFirstPage = async (arrayBuffer) => {
   }
 };
 
-const loadThumb = (docId, doc, downloadDocument, priority = false) => {
-  if (docId && thumbInflight.has(docId)) return thumbInflight.get(docId);
+const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled = () => false) =>
+  thumbnailRequests.run(docId && `${docId}:${priority ? 'preview' : 'local'}`, isCancelled, (hasActiveConsumer) => {
   const promise = (async () => {
     const persistKey = thumbCacheKey(doc);
     if (persistKey) {
@@ -180,10 +181,17 @@ const loadThumb = (docId, doc, downloadDocument, priority = false) => {
       if (stored) return stored;
     }
 
-    const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
-    if (!arrayBuffer) return 'FAILED';
+    // A missing cached row image is not a corrupt PDF. Leave a placeholder
+    // without poisoning the cache: a selected preview can still render it.
+    if (!hasActiveConsumer() || !canResolveThumbnailBytes(doc, priority)) return 'DEFERRED';
     await acquireSlot(priority);
     try {
+      // Limit downloads as well as renders. Do not start a queued transfer
+      // after every consumer has left this screen.
+      if (!hasActiveConsumer()) return 'DEFERRED';
+      const arrayBuffer = await resolvePdfBytes(doc, downloadDocument);
+      if (!hasActiveConsumer()) return 'DEFERRED';
+      if (!arrayBuffer) return 'FAILED';
       const result = await renderFirstPage(arrayBuffer);
       if (persistKey) void thumbnailStore().put(persistKey, result);
       return result;
@@ -191,15 +199,8 @@ const loadThumb = (docId, doc, downloadDocument, priority = false) => {
       releaseSlot();
     }
   })();
-  if (docId) {
-    thumbInflight.set(docId, promise);
-    void promise.then(
-      () => thumbInflight.delete(docId),
-      () => thumbInflight.delete(docId),
-    );
-  }
   return promise;
-};
+});
 
 /* US Letter portrait — the loading-state default aspect before the real
    page aspect is known (most documents are portrait letter). */
@@ -212,8 +213,8 @@ export default function PdfPageThumb({
   height = variant === 'row' ? 30 : 460,
   fill = false,
   fallback = null,
-  // UX: set on the big preview pane so it jumps the shared render queue. The
-  // preview is the image the user is waiting on; row thumbnails are scenery.
+  // Set only on a selected preview: permits a cloud download on cache miss
+  // and moves the request to the front of the shared queue.
   priority = false,
 }) {
   const docId = doc?.id;
@@ -255,8 +256,9 @@ export default function PdfPageThumb({
       try {
         /* loadThumb checks IndexedDB before downloading or entering the
            shared render queue, then persists newly rendered thumbnails. */
-        const result = await loadThumb(docId, doc, downloadDocument, priority);
+        const result = await loadThumb(docId, doc, downloadDocument, priority, () => cancelled);
         if (cancelled) return;
+        if (result === 'DEFERRED') { setFailed(true); return; }
         cacheThumb(docId, result);
         if (result === 'FAILED') { setFailed(true); return; }
         setData(result);
@@ -264,18 +266,15 @@ export default function PdfPageThumb({
         // Corrupt PDF, missing storage file, etc. — show the placeholder and
         // do not retry this document.
         console.warn('[PdfPageThumb] thumbnail render failed:', error?.message || error);
-        cacheThumb(docId, 'FAILED');
-        if (!cancelled) setFailed(true);
+        if (!cancelled) {
+          cacheThumb(docId, 'FAILED');
+          setFailed(true);
+        }
       }
     })();
 
     return () => { cancelled = true; };
-    // `priority` only steers queue position at the moment a slot is requested,
-    // so it deliberately stays out of the deps — changing it must not restart a
-    // render that is already under way.
-  }, [nearViewport, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument]);
-
-  if (failed) return fallback;
+  }, [nearViewport, docId, doc?.file, doc?.file_path, doc?.filePath, doc?.dataUrl, downloadDocument, priority]);
 
   const isRow = variant === 'row';
   const aspect = data?.aspect || DEFAULT_ASPECT;
@@ -285,6 +284,16 @@ export default function PdfPageThumb({
   const box = isRow
     ? { width: Math.round(height * aspect), height, borderRadius: 2, flex: 'none' }
     : { width: '100%', height: fill ? '100%' : height, borderRadius: 6 };
+
+  if (failed) {
+    // Keep the observed element mounted in every state. Replacing it with
+    // the fallback would report "offscreen" and strand later preview loads.
+    return (
+      <div ref={hostRef} style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {fallback}
+      </div>
+    );
+  }
 
   if (!data) {
     // Loading — same box dimensions as the final state, so no reflow.

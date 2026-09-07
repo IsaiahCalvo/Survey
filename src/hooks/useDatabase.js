@@ -209,13 +209,15 @@ export const useProjects = () => {
 // DOCUMENTS HOOKS
 // ============================================
 
-export const useDocuments = (projectId = null) => {
+// Mutation-only consumers can opt out of library reads and invalidation events.
+// Existing callers retain the full query behavior by default.
+export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   const { user, tier } = useAuth();
   const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const documentScopeKey = `${user?.id || 'anonymous'}:${projectId ?? 'all'}`;
+  const [loading, setLoading] = useState(enabled);
+  const documentScopeKey = `${user?.id || 'anonymous'}:${projectId ?? 'all'}:${enabled ? 'enabled' : 'disabled'}`;
   const [loadedDocumentScopeKey, setLoadedDocumentScopeKey] = useState(null);
-  const initialLoading = loadedDocumentScopeKey !== documentScopeKey;
+  const initialLoading = enabled && loadedDocumentScopeKey !== documentScopeKey;
   const documentScopeKeyRef = useRef(documentScopeKey);
   const documentRequestRef = useRef(0);
   documentScopeKeyRef.current = documentScopeKey;
@@ -223,7 +225,7 @@ export const useDocuments = (projectId = null) => {
 
 
   useEffect(() => {
-    if (!user || !isSupabaseAvailable()) {
+    if (!enabled || !user || !isSupabaseAvailable()) {
       documentRequestRef.current += 1;
       setDocuments([]);
       setError(null);
@@ -233,24 +235,24 @@ export const useDocuments = (projectId = null) => {
     }
 
     // Boot/dep-change load goes through the coalescer so the simultaneous burst
-    // from the multiple live useDocuments instances (Dashboard x2 + one per open
-    // PDFViewer tab) collapses to ONE round-trip. See KAL-251.
+    // from the live library consumers collapses to ONE round-trip. See KAL-251.
+    // PDFViewer uses mutation-only mode and never starts this read.
     // The loader records the failure in hook state, then rejects so explicit
     // refetch callers can react to it. This boot-only caller has no awaiter,
     // so consume that rejection after state is updated instead of leaking an
     // unhandled promise rejection into Expo/WebView.
     void loadDocuments({ coalesce: true, initialScopeKey: documentScopeKey }).catch(() => undefined);
-  }, [user, projectId]);
+  }, [user, projectId, enabled]);
 
   // KAL-280 — same as projects: a document restored from Archive reappears
   // here without waiting for a remount. Not coalesced, because the archive
   // mutation has already landed and this read must see it.
   useEffect(() => {
-    if (!user || !isSupabaseAvailable()) return undefined;
+    if (!enabled || !user || !isSupabaseAvailable()) return undefined;
     return subscribeLibraryChange(() => {
-      loadDocuments({ initialScopeKey: documentScopeKeyRef.current });
+      void loadDocuments({ initialScopeKey: documentScopeKeyRef.current }).catch(() => undefined);
     });
-  }, [user, projectId]);
+  }, [user, projectId, enabled]);
 
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
@@ -329,7 +331,7 @@ export const useDocuments = (projectId = null) => {
   // with `coalesce:false` so a deliberate post-mutation refetch ALWAYS hits the
   // network and is never served a coalesced promise that predates the mutation.
   const loadDocuments = async ({ coalesce = false, initialScopeKey = null } = {}) => {
-    if (!user || !isSupabaseAvailable()) return [];
+    if (!enabled || !user || !isSupabaseAvailable()) return [];
     const requestScopeKey = initialScopeKey || documentScopeKey;
     const requestId = ++documentRequestRef.current;
     const isCurrentRequest = () => isScopedRequestCurrent({
@@ -397,10 +399,10 @@ export const useDocuments = (projectId = null) => {
               .select()
               .single();
             if (reviveErr) throw reviveErr;
-            setDocuments([revived, ...documents.filter((d) => d.id !== revived.id)]);
+            setDocuments((current) => [revived, ...current.filter((d) => d.id !== revived.id)]);
             return revived;
           }
-          setDocuments([existing, ...documents.filter((d) => d.id !== existing.id)]);
+          setDocuments((current) => [existing, ...current.filter((d) => d.id !== existing.id)]);
           return existing;
         }
       }
@@ -431,13 +433,13 @@ export const useDocuments = (projectId = null) => {
           : retry.eq('project_id', documentData.project_id);
         const { data: winner, error: retryErr } = await retry.maybeSingle();
         if (!retryErr && winner) {
-          setDocuments([winner, ...documents.filter((d) => d.id !== winner.id)]);
+          setDocuments((current) => [winner, ...current.filter((d) => d.id !== winner.id)]);
           return winner;
         }
       }
 
       if (error) throw error;
-      setDocuments([data, ...documents]);
+      setDocuments((current) => [data, ...current]);
       return data;
     } catch (err) {
       setError(err.message);
@@ -455,7 +457,7 @@ export const useDocuments = (projectId = null) => {
         .single();
 
       if (error) throw error;
-      setDocuments(documents.map((d) => (d.id === id ? data : d)));
+      setDocuments((current) => current.map((d) => (d.id === id ? data : d)));
       return data;
     } catch (err) {
       setError(err.message);
@@ -471,7 +473,7 @@ export const useDocuments = (projectId = null) => {
         .eq('id', id);
 
       if (error && !isSupabaseNotFoundError(error)) throw error;
-      setDocuments(documents.filter((d) => d.id !== id));
+      setDocuments((current) => current.filter((d) => d.id !== id));
     } catch (err) {
       setError(err.message);
       throw err;
