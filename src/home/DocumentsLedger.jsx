@@ -644,6 +644,7 @@ export default function DocumentsLedger({
                   downloadDocument={downloadDocument}
                   variant="preview"
                   fill
+                  priority
                   fallback={<PdfThumb height="100%" color={mobileDetailDoc.color} stamp={(mobileDetailDoc.rev || '').replace(' ', '')} />}
                 />
               </div>

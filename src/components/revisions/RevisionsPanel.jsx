@@ -166,6 +166,9 @@ export default function RevisionsPanel({
   const refreshTimeoutRef = useRef(null);
   const spotlightFrameRef = useRef(null);
   const activeSpotlightRef = useRef(null);
+  // Embedded panels stay mounted while hidden. Only the visible History
+  // panel needs list reads, event refreshes, or the polling fallback.
+  const shouldLoadHistory = isActive && (embedded || open);
 
   // Resolve ownership once per (documentId, user) — matches the open-coded
   // owner check in _kal48_can_access: project owner OR document creator.
@@ -193,6 +196,7 @@ export default function RevisionsPanel({
 
   // Load list when drawer opens, when embedded in the left rail, or after a mutation.
   const refresh = useCallback(async (options = {}) => {
+    if (!shouldLoadHistory) return;
     const silent = options?.silent === true || hasLoadedRef.current;
     if (!documentId) {
       setRevisions([]);
@@ -215,14 +219,14 @@ export default function RevisionsPanel({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [documentId]);
+  }, [documentId, shouldLoadHistory]);
 
   useEffect(() => {
-    if (embedded || open) refresh({ silent: hasLoadedRef.current });
-  }, [embedded, open, refresh]);
+    if (shouldLoadHistory) refresh({ silent: hasLoadedRef.current });
+  }, [shouldLoadHistory, refresh]);
 
   useEffect(() => {
-    if (!documentId || (!embedded && !open)) return undefined;
+    if (!documentId || !shouldLoadHistory) return undefined;
     const handleRecorded = (event) => {
       if (event?.detail?.documentId && event.detail.documentId !== documentId) return;
       const row = event?.detail?.row;
@@ -250,7 +254,7 @@ export default function RevisionsPanel({
         refreshTimeoutRef.current = null;
       }
     };
-  }, [documentId, embedded, open, refresh]);
+  }, [documentId, shouldLoadHistory, refresh]);
 
   // body[data-readonly] mirroring — set when viewing a prior revision.
   // Ownership-aware (history-audit P1): if the attribute was ALREADY set when
