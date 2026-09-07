@@ -23,7 +23,7 @@ test('B1 B2 B3: mode names, checked row and shortcut dismissal', async({page})=>
   await trigger(page).click();
   const row=page.getByRole('menuitemradio',{name:/Rectangle Select/});
   await expect(row).toHaveAttribute('aria-checked','true');
-  await expect(row).toContainText('✓');
+  await expect(row.locator('[data-select-mode-check] svg')).toHaveCount(1); // r2: stroked check icon, same as the phone sheet
   await expect(row).toHaveCSS('background-color','rgb(42, 34, 24)');
   await page.keyboard.press('p');
   await expect(page.getByRole('menu')).toHaveCount(0);
@@ -179,7 +179,7 @@ for (const density of [1,2]) {
   await expect(selected).toHaveCSS('color','rgb(216, 168, 78)');
   await expect(selected).toHaveCSS('font-weight','600');
   await expect(other).toHaveCSS('background-color','rgb(31, 36, 48)');
-  await expect(selected.locator('[data-select-mode-check]')).toHaveText('✓');
+  await expect(selected.locator('[data-select-mode-check] svg')).toHaveCount(1); // r2: stroked check icon, same as the phone sheet
   await expect(selected.locator('span').filter({hasText:/^V$/})).toHaveCount(1);
   await page.screenshot({path:`debug/audit-scratch/round-1-codex/menu-${density}x.png`});
   await selected.hover(); await expect(selected).toHaveCSS('background-color','rgb(42, 34, 24)');
