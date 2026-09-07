@@ -351,7 +351,13 @@ const pathHasSharpTurn = (points) => {
       ((vertex.x - previous.x) / firstLength) * ((next.y - vertex.y) / secondLength)
       - ((vertex.y - previous.y) / firstLength) * ((next.x - vertex.x) / secondLength)
     );
-    if (Math.abs(cross) >= 0.25) return true;
+    const dot = (
+      ((vertex.x - previous.x) / firstLength) * ((next.x - vertex.x) / secondLength)
+      + ((vertex.y - previous.y) / firstLength) * ((next.y - vertex.y) / secondLength)
+    );
+    // A reversal has almost zero cross product, just like a straight line,
+    // but is a sharp turn. Do not expand it into smooth-C precision chunks.
+    if (dot <= 0 || Math.abs(cross) >= 0.25) return true;
   }
   return false;
 };
