@@ -3792,6 +3792,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [activeTool, activateSelectFamilyMode]);
 
+  // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
+  useEffect(() => {
+    if (!['select', 'text-select'].includes(activeTool)) return undefined;
+    const clear = (event) => {
+      if (event.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (event.type === 'keydown' && event.key !== 'Escape') return;
+      if (event.type === 'pointerdown' && (event.button !== 0
+        || !event.target?.closest?.('[data-mobile-pdf-surface]')
+        || event.target?.closest?.('.survey-pdfjs-page-div'))) return;
+      if (event.key === 'Escape' && activeTool === 'text-select') {
+        clearAnnotationSelectionForContextChange('text-select-escape');
+      } else {
+        clearAnnotationSelectionForContextChange('select-family-dismiss');
+      }
+    };
+    window.addEventListener('keydown', clear, true);
+    window.addEventListener('pointerdown', clear, true);
+    return () => {
+      window.removeEventListener('keydown', clear, true);
+      window.removeEventListener('pointerdown', clear, true);
+    };
+  }, [activeTool, clearAnnotationSelectionForContextChange]);
+
   // Text Select keeps the SVG surface pointer-inert so native PDF text drags
   // work. Reuse the same page-space hit test as Pan for a short click: a click
   // selects any annotation, while a real drag remains a native text range.
@@ -3831,9 +3854,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         liveTextSelectionRef.current = null;
         setLiveTextSelection(null);
         if (hit.kind === 'callout' && hit.calloutId) {
-          setSelectedCalloutIds(new Set([hit.calloutId]));
+          // UX: all select modes use Shift to add and Alt to subtract callouts.
+          setSelectedCalloutIds((previous) => {
+            const next = new Set(event.shiftKey || event.altKey ? previous : []);
+            if (event.altKey) next.delete(hit.calloutId);
+            else next.add(hit.calloutId);
+            return next;
+          });
         } else if (hit.kind === 'annotation' && typeof hit.annotationIndex === 'number' && hit.pageNumber != null) {
-          setSelectedCalloutIds(new Set());
+          if (!event.shiftKey && !event.altKey) setSelectedCalloutIds(new Set());
           setPendingSvgSelection({
             pageNumber: hit.pageNumber,
             annotationIndex: hit.annotationIndex,
@@ -3846,18 +3875,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     };
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        clearAnnotationSelectionForContextChange('text-select-escape');
-      }
-    };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
-    window.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
-      window.removeEventListener('keydown', onKeyDown, true);
     };
   }, [activeTool, clearAnnotationSelectionForContextChange, resolveAnnotationAt]);
 
@@ -26312,7 +26334,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const clones = clipboardAnnotation.objects
         .filter(acceptPastedObject)
         .map((obj) => deepClone(obj));
-      if (!clones.length) return false;
+      // UX: explain a fully rejected paste with the app's normal toast.
+      if (!clones.length) { showToast('That mark is already here', 'info'); return false; }
       // Compute the group's top-left from the stored source bbox (falls
       // back to scanning clones if missing).
       const srcBBox = clipboardAnnotation.bbox || (() => {
@@ -26372,7 +26395,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return true;
     }
 
-    if (!acceptPastedObject(clipboardAnnotation.object)) return false;
+    // UX: duplicate text ranges cannot move, so explain why paste did nothing.
+    if (!acceptPastedObject(clipboardAnnotation.object)) { showToast('That mark is already here', 'info'); return false; }
     const pasted = deepClone(clipboardAnnotation.object);
     // UX: the clone gets a brand-new NATIVE identity (fresh data.id via
     // crypto.randomUUID, matching creation) and loses ALL import provenance
@@ -26433,7 +26457,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardAnnotation(null);
     }
     return true;
-  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount]);
+  }, [clipboardAnnotation, handleSaveAnnotations, resolvePasteRepeatCount, showToast]);
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
@@ -28976,10 +29000,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!hit || typeof hit.annotationIndex !== 'number' || !hit.pageNumber) return false;
     pdfjsViewerRef.current?.clearTextSelection?.();
     selectedNativeTextMarkupRef.current = null;
-    setSelectedCalloutIds(new Set());
+    if (!event?.shiftKey && !event?.altKey) setSelectedCalloutIds(new Set());
     setPendingSvgSelection({
       pageNumber: hit.pageNumber,
       annotationIndex: hit.annotationIndex,
+      // UX: text marks share the same add/subtract click rules as shapes.
+      addToSelection: !!event?.shiftKey && !event?.altKey,
+      subtractFromSelection: !!event?.altKey,
       tick: Date.now(),
     });
     event?.preventDefault?.();

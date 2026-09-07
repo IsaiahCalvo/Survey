@@ -48,7 +48,6 @@ import {
   getLassoModeFromTrail,
   getLassoPointerSamples,
   getLassoGestureIntent,
-  cycleLassoMode,
   LASSO_SIMPLIFY_PX,
   resolveLassoHits,
   shouldSampleLassoPoint,
@@ -348,7 +347,8 @@ export function useSVGInteraction({
         e.preventDefault();
         const current = lassoStateRef.current;
         const activeMode = current.modeOverride || current.mode || getLassoModeFromTrail(current.points) || 'window';
-        const nextMode = cycleLassoMode(activeMode);
+        // UX: Space matches rectangle selection: window/crossing only.
+        const nextMode = activeMode === 'window' ? 'crossing' : 'window';
         applyLassoState({ ...current, modeOverride: nextMode });
       } else if ((e.code === 'Space' || e.key === ' ') && marqueeStateRef.current) {
         e.preventDefault();
@@ -376,7 +376,13 @@ export function useSVGInteraction({
   // from arming a second tool while the lasso still owns pointer capture.
   useEffect(() => {
     if (activeTool !== 'select' || selectionMode !== 'lasso') cancelLasso();
-  }, [activeTool, selectionMode, cancelLasso]);
+    // UX: rectangle drags must disappear on a tool switch just like lasso drags.
+    if (activeTool !== 'select' || selectionMode !== 'rectangle') {
+      const current = marqueeStateRef.current;
+      try { svgRef.current?.releasePointerCapture?.(current?.pointerId); } catch (_) { /* optional */ }
+      applyMarqueeState(null);
+    }
+  }, [activeTool, selectionMode, cancelLasso, applyMarqueeState, svgRef]);
 
   // ---------------------------------------------------------------------------
   // Inverse scale via ResizeObserver (container-aware, NOT zoom percentage)
@@ -566,6 +572,16 @@ export function useSVGInteraction({
       return;
     }
 
+    // UX: Option/Alt always subtracts, without starting a move or replacing other marks.
+    if (e.altKey) {
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+        next.delete(index);
+        return next;
+      });
+      return;
+    }
+
     // UX 2026-04-20: Shift + pointerdown on a single-selected committed
     // counter enters orbit mode BEFORE the multi-select Shift-click toggle
     // branch below. Without this, Shift-click always took the toggle path
@@ -628,11 +644,8 @@ export function useSVGInteraction({
       // Toggle in selection set (multi-select, Plan 03)
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        if (next.has(index)) {
-          next.delete(index);
-        } else {
-          next.add(index);
-        }
+        // UX: Shift adds; only Alt removes, matching Text Select.
+        next.add(index);
         return next;
       });
       return; // Don't initiate drag on shift-click toggle
@@ -998,6 +1011,13 @@ export function useSVGInteraction({
       // multi-selection's other members and the outer dashed bbox vanishes
       // mid-drag (visible symptom: shapes appear to move but the callout
       // stays put because the chrome thinks it's a solo callout drag now).
+      // UX: Alt subtracts callouts without moving the rest of the selection.
+      if (e.altKey) {
+        const next = new Set(selectedCalloutIds || []);
+        next.delete(calloutId);
+        onSelectedCalloutIdsChange?.(next);
+        return;
+      }
       const _calCount = (selectedCalloutIds instanceof Set)
         ? selectedCalloutIds.size
         : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0);
@@ -1077,8 +1097,8 @@ export function useSVGInteraction({
       if (e.shiftKey) {
         if (onSelectedCalloutIdsChange) {
           const nextCallouts = new Set(selectedCalloutIds || []);
-          if (nextCallouts.has(calloutId)) nextCallouts.delete(calloutId);
-          else nextCallouts.add(calloutId);
+          // UX: Shift only adds, matching annotation and Text Select clicks.
+          nextCallouts.add(calloutId);
           onSelectedCalloutIdsChange(nextCallouts);
         }
       } else {
