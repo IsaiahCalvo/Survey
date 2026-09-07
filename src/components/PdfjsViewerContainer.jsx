@@ -634,9 +634,13 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
       setHoveredAxis(null);
       showThenFade();
     };
+    // UX: resizing can add an overflow axis before any scroll or zoom event.
+    const observer = new ResizeObserver(onScroll);
+    observer.observe(scroller);
     scroller.addEventListener('pointerleave', onScrollbarProximityLeave, { passive: true });
     scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => {
+      observer.disconnect();
       scroller.removeEventListener('pointerleave', onScrollbarProximityLeave);
       scroller.removeEventListener('scroll', onScroll);
     };
@@ -703,8 +707,9 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
   const contentHeight = previewMetrics?.contentHeight ?? scroller?.contentHeight ?? viewportHeight;
   const scrollLeft = previewMetrics?.scrollLeft ?? scroller?.scrollLeft ?? 0;
   const scrollTop = previewMetrics?.scrollTop ?? scroller?.scrollTop ?? 0;
-  const horizontalTrackSize = Math.max(0, viewportWidth - VIEWPORT_SCROLLBAR_SIZE);
-  const verticalTrackSize = Math.max(0, viewportHeight - VIEWPORT_SCROLLBAR_SIZE);
+  // UX: equal rail ends unless the other axis needs a shared corner.
+  const horizontalTrackSize = Math.max(0, viewportWidth - (contentHeight > viewportHeight ? VIEWPORT_SCROLLBAR_SIZE : 0));
+  const verticalTrackSize = Math.max(0, viewportHeight - (contentWidth > viewportWidth ? VIEWPORT_SCROLLBAR_SIZE : 0));
   const horizontal = getViewportScrollbarAxis({
     viewportSize: viewportWidth,
     contentSize: contentWidth,
@@ -783,7 +788,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
           setHoveredAxis(null);
           showThenFade();
         }}
-        style={{ ...railStyle, top: 0, right: 0, bottom: VIEWPORT_SCROLLBAR_SIZE, width: VIEWPORT_SCROLLBAR_SIZE }}
+        style={{ ...railStyle, top: 0, right: 0, bottom: horizontal.maxScroll > 0 ? VIEWPORT_SCROLLBAR_SIZE : 0, width: VIEWPORT_SCROLLBAR_SIZE }}
       >
         <div
           ref={verticalThumbRef}
@@ -811,7 +816,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false }) {
           setHoveredAxis(null);
           showThenFade();
         }}
-        style={{ ...railStyle, left: 0, right: VIEWPORT_SCROLLBAR_SIZE, bottom: 0, height: VIEWPORT_SCROLLBAR_SIZE }}
+        style={{ ...railStyle, left: 0, right: vertical.maxScroll > 0 ? VIEWPORT_SCROLLBAR_SIZE : 0, bottom: 0, height: VIEWPORT_SCROLLBAR_SIZE }}
       >
         <div
           ref={horizontalThumbRef}
