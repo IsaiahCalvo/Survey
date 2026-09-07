@@ -219,7 +219,12 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    drawGroup: (size, color, style, className) => renderMaskIcon(drawGroupIconUrl, size, color, { ...style, transform: `${style?.transform || ''} translateY(-2px)`.trim() }, className),
+    // UX 2026-09-07: no optical nudge. The draw-group asset's painted ink is
+    // centred in its own viewBox (measured centre offset 0.2% x / 0.4% y), so a
+    // translateY only pushed the pen off the top-toolbar baseline — it rode 2px
+    // high next to Pan / Select / Shapes. Reference behaviour: every top-toolbar
+    // glyph is centred on its ink bounding box, no per-icon nudges.
+    drawGroup: (size, color, style, className) => renderMaskIcon(drawGroupIconUrl, size, color, style, className),
 
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
@@ -230,8 +235,12 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // UX 2026-09-07: no optical nudge. The serif-T artwork is already symmetric
+    // about the viewBox centre (ink spans y 3.25..20.75 of 24), so the old
+    // translateY(2px) simply hung the T below the top-toolbar baseline. Removed
+    // so this glyph shares the row's common centre line wherever it is reused.
     text: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: `${style?.transform || ''} translateY(2px)`.trim() }} className={className}>
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <g transform="translate(12 12) scale(1.2) translate(-12 -12)">
           <polyline points="4 7 4 4 20 4 20 7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           <line x1="9" y1="20" x2="15" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
