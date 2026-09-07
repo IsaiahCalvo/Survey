@@ -239,3 +239,65 @@ test('R1 Text Select: a new native text drag still commits after cancellation',a
  await expect.poll(()=>page.evaluate(()=>String(window.getSelection()))).toContain('underlined');
  await expect(handles(page)).toHaveCount(0);
 });
+
+// UX: round-2 checks cover both button shapes and active hover, with no lift.
+for(const density of [1,2]) test(`R2 ${density}x: all top hovers stay neutral and menu width stays fixed`,async({browser})=>{
+ const context=await browser.newContext({viewport:{width:1400,height:900},deviceScaleFactor:density});
+ const page=await context.newPage();await open(page);
+ for(const name of ['Pan','Rectangle Select','Draw','Shapes','Text']) {
+  const button=page.locator('[data-tool-group]').and(page.getByRole('button',{name,exact:true}));
+  for(const active of [false,true]) {
+   await page.keyboard.press(name==='Pan'?'p':'h');
+   if(active){await button.click();if(name==='Rectangle Select')await page.mouse.click(1200,700);}
+   await button.hover();
+   await expect(button).toHaveCSS('background-color','rgba(255, 255, 255, 0.05)');
+   await expect(button).toHaveCSS('border-color','rgba(255, 255, 255, 0.1)');
+   await expect(button).toHaveCSS('transform','none');
+  }
+ }
+ const widths=[];
+ for(const key of ['v','Alt+v','Shift+v']){
+  await page.mouse.click(1200,700);await page.keyboard.press(key);await trigger(page).click();
+  const menu=page.locator('[data-select-mode-menu]');
+  widths.push((await menu.boundingBox()).width);
+  const tick=menu.locator('[aria-checked="true"] [data-select-mode-check] svg');
+  await expect(tick).toHaveCount(1);await expect(tick).toHaveAttribute('width','14');
+ }
+ expect(Math.max(...widths)-Math.min(...widths)).toBeLessThan(0.1);
+ await context.close();
+});
+for(const [mode,key] of [['Rectangle','v'],['Lasso','Alt+v'],['Text','Shift+v']]) test(`R2 ${mode}: only plain margin clicks clear`,async({page})=>{
+ await open(page);await page.keyboard.press(key);await clickMark(page);await clickMark(page,'11R',['Shift']);
+ const group=page.locator('[data-group-selection-indices]');
+ await expect(group).toHaveAttribute('data-group-selection-indices','1,2');
+ const b=await page.locator('.survey-pdfjs-page-div').first().boundingBox();
+ for(const modifier of ['Shift','Alt','Control','Meta']){
+  await page.keyboard.down(modifier);await page.mouse.click(b.x-15,b.y+100);await page.keyboard.up(modifier);
+  await expect(group).toHaveAttribute('data-group-selection-indices','1,2');
+ }
+ await page.mouse.click(b.x-15,b.y+100);await expect(group).toHaveCount(0);
+});
+test('R2 phone: Undo Redo and checked tick share desktop glyphs',async({browser,page})=>{
+ await open(page);
+ const glyph=locator=>locator.evaluate(n=>n.innerHTML);
+ const desktop={};for(const name of ['Undo','Redo'])desktop[name]=await glyph(page.getByRole('button',{name,exact:true}).locator('svg'));
+ await page.keyboard.press('v');await trigger(page).click();
+ const check=await glyph(page.locator('[aria-checked="true"] [data-select-mode-check] svg'));
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ const phone=await context.newPage();await open(phone);
+ for(const name of ['Undo','Redo'])expect(await glyph(phone.getByRole('button',{name,exact:true}).locator('svg'))).toBe(desktop[name]);
+ await phone.getByRole('button',{name:'Selection mode',exact:true}).click();
+ expect(await glyph(phone.locator('[aria-checked="true"] svg').last())).toBe(check);
+ await context.close();
+});
+test('R2 scrollbar: scroll and zoom reveal instantly, only hiding fades',async({page})=>{
+ await open(page);
+ await page.getByLabel('Edit zoom percentage').click();await page.getByRole('textbox',{name:'Zoom percentage'}).fill('200');await page.getByRole('textbox',{name:'Zoom percentage'}).press('Enter');
+ const rail=page.getByLabel('Viewport vertical scroll bar');
+ await expect(rail).toHaveCSS('opacity','1');await expect(rail).toHaveCSS('transition-duration','0s');
+ await expect(rail).toHaveCSS('opacity','0');
+ await page.mouse.move(800,500);await page.mouse.wheel(0,200);
+ await expect(rail).toHaveCSS('opacity','1');await expect(rail).toHaveCSS('transition-duration','0s');
+ await expect.poll(()=>rail.evaluate(n=>getComputedStyle(n).transitionDuration)).not.toBe('0s');
+ await expect(rail).toHaveCSS('opacity','0');
+});
