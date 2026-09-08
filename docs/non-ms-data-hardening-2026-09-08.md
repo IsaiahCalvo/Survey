@@ -1085,6 +1085,106 @@ the final full suite passed after those changes. Browser-tested usage source
 hashes and recovery/offline build hashes match the frozen files. No push,
 deployment, live schema change or production cost reduction is claimed.
 
+## Follow-up: durable project upload recovery
+
+Project creation now writes an actor-scoped IndexedDB journal with stable
+attempt, project, file and document IDs. All selected PDF bytes must be staged
+before the first cloud request. Empty projects use the same stable-ID flow.
+There is no in-memory storage fallback, automatic replay, cloud compensation
+delete, account creation, or change to paid-plan limits.
+
+One Web Lock covers each staging, resume, retry or explicit discard action.
+Only two file jobs run at once. Metadata lists never read PDF bytes, and hidden
+home screens do not scan them. Account changes retire callbacks and hide prior
+rows before effects run. Failed or uncertain network replies retain the journal
+and bytes. Pre-journal failures retain the selected files in the create modal.
+The recovery panel offers Retry, original-file reselect for partial staging,
+and confirmed discard of only that attempt's local retry copies. It warns that
+clearing browser/app data can erase those copies.
+
+Cloud writes use captured actor JWTs and verify exact returned owner, project,
+document, size and path. Row requests have abortable deadlines; the installed
+Storage SDK does not forward upload abort signals, so upload timeout is logical
+only and late promises stay observed. Crucially, uploads now use create-only,
+never overwrite. A conflict downloads the existing object with a fresh cache
+key and checks size and SHA before acknowledging it. This extra download occurs
+only for a conflicting/retried upload, not normal opens or metadata scans.
+
+Independent review found that the app's old `actor/SHA.pdf` paths are mutable:
+structural PDF edits can replace the bytes without updating the row's hash.
+Create-only alone still left a cross-project verify-then-insert race. New
+project imports therefore use `actor/project/SHA.pdf`. Same-project identical
+files share one object and row, with the selected names retained as aliases;
+different projects keep distinct objects so an older project's edit cannot
+change an unpublished upload. This trades cross-project byte reuse for correct
+file isolation. Existing objects and rows are not migrated or rewritten.
+
+Retries that find an already-published matching row do not upload or parse its
+original staged bytes. Page count is parsed before the first document INSERT,
+never written later from a stale PDF. Alias updates require the exact prior
+adapter-issued row and compare the old aliases plus the document binding in
+the UPDATE predicate. A concurrent change leaves the attempt pending for a
+fresh read and merge instead of losing another window's alias.
+
+The five-step real-Dashboard browser proof uses the actual SDK, journal, engine,
+PDF parser and home UI with controlled storage/database responses. It drops a
+successful storage reply, verifies retained bytes, closes the entire browser,
+reopens the profile, and explicitly retries. Assertions confirm the same IDs,
+no replay on startup, one object/document for two identical selected PDFs,
+both names, page count, and exact local cleanup after confirmation. Desktop
+1365x900 and mobile 390x844 checks pass with no page exceptions; the short Retry
+label avoids horizontal clipping. Completion stays busy through refresh and
+then shows a visible receipt without a stale retry row. Source hashes are
+recorded with the browser evidence. Separate production-build local recovery
+and cold-offline/cache repair checks also pass.
+
+Live verification is **not** claimed. The reserved existing free test account
+hit PostgreSQL `42P17: infinite recursion detected in policy for relation
+"projects"` on both the prior `.insert({user_id,name}).select().single()` path
+and the new adapter. Exact checks confirmed neither request created a project,
+document or storage object. Test browser profiles were removed, the exact
+account's free/active baseline was verified, cleanup was attested, and the
+lease was released. Controlled browser transport is not a substitute for the
+blocked live INSERT/RLS test.
+
+Read-only live catalog checks show that the INSERT policy still counts
+`public.projects` directly with `archived=false`. Project SELECT and collaborator
+policies call `user_can_access_project`; that helper, `get_project_limit`,
+`get_user_tier` and `is_project_accessible` are postgres-owned SECURITY DEFINER
+functions. There is no live `can_create_project` function. A disposable local
+PostgreSQL 16.14 reproduction confirmed `42P17` for both plain INSERT and
+INSERT RETURNING with the inline self-table quota count, even when the access
+helper is a postgres-owned definer. Replacing only that INSERT quota expression
+with a no-argument, self-scoped definer helper fixed both local cases. Local
+checks retained owner-spoof denial, missing-auth denial, second-free-project
+denial, archived/other-actor quota exclusions, and shared SELECT access. The
+disposable server was stopped. A count helper alone does not serialize competing
+inserts; concurrent quota enforcement still needs separate proof. A further
+causal control isolated the interaction with the September 7 SELECT-policy
+`(SELECT auth.uid())` optimization: restoring bare `auth.uid()` in both policies
+made both INSERT forms pass; restoring the wrapped SELECT reproduced `42P17`.
+The hardened quota helper works with the wrapped SELECT retained. Thus the
+comparison of old/new app requests above uses the same current live database;
+it does not show that project creation failed before the policy optimization.
+No production policy, migration, grant or deployment was changed here.
+
+Frozen verification for this batch: 5,002 tests total, 4,948 passed, 54 skipped,
+no failures or cancellations, exit 0 (prior baseline: 4,911 total). The production
+build passed. All five upload browser checks, seven production local recovery
+checks, and eleven production cold-offline/cache repair checks passed. Browser
+source hashes match the frozen files, and both production regression reports
+match the current `dist/index.html` hash. Legacy source-string tests were adapted
+without dropping their guest-auth, modal, parser cleanup or local/cloud routing
+assertions. The completion timing also has a mounted test with held library and
+metadata reads. No push, deployment or measured production egress reduction is
+claimed.
+
+Remaining work includes the live project-policy error, durable recovery for
+the separate single-file background upload, safe copy-on-write for older
+shared PDF paths, and explicit local-to-cloud publication of all saved state.
+Microsoft account/trial/live workbook testing remains deferred. Do not call
+the overall data architecture complete based on this upload slice.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

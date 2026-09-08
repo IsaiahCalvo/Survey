@@ -90,6 +90,7 @@ async function mount(t, { listOverride = null, isActive = true, initialTab = nul
     useDatabase: { useDocuments: () => ({ documents: empty, initialLoading: false, refetch: noop, createDocument: forbidden }),
       useProjects: () => hooks, useTemplates: () => hooks, useStorage: () => ({ uploadDocument: forbidden, downloadDocument: forbidden }) },
     useSubscriptionLimits: { useSubscriptionLimits: () => ({}) },
+    useProjectUploadRecovery: { useProjectUploadRecovery: () => ({ busy: false, rows: [] }) },
     dialogPrompts: { useConfirmDialog: () => [async options => { state.confirmations.push(options); return state.confirmAnswer; }, null], usePromptDialog: () => [noop, null] },
     hubInitialLoadingState: { resolveHubInitialLoading: () => ({}) }, supabaseClient: { supabase: { from: forbidden } },
   });

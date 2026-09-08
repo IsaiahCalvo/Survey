@@ -28,7 +28,7 @@ test('signed-out hub chrome renders Sign in instead of a fake profile menu', () 
 test('the shared Dashboard-to-Hub path opens authentication for guests', () => {
   assert.match(DASHBOARD, /onSignIn=\{onShowAuthModal\}/);
   assert.match(SURVEY_HUB, /onSignIn,/);
-  assert.match(SURVEY_HUB, /HubChromeContext\.Provider value=\{\{ user, onSettings: openSettings, onSignOut, onSignIn \}\}/);
+  assert.match(SURVEY_HUB, /HubChromeContext\.Provider value=\{\{ user, onSettings: openSettings, onSignOut, onSignIn, projectUploadRecovery \}\}/);
 });
 
 test('settings and subscription UI cannot mount without an authenticated user', () => {

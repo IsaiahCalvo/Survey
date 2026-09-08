@@ -9,16 +9,18 @@
 // singleton in the Vite module graph, so no re-init is needed here.
 
 import { loadPdfjs } from './utils/pdfWorkerConfig';
-import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
+import { resolveIncomingUpload, shouldOfferAlias } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
 import Icon from './Icons';
 import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
+import { useProjectUploadRecovery } from './home/useProjectUploadRecovery.js';
+import ProjectUploadRecoveryPanel from './home/ProjectUploadRecoveryPanel.jsx';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
-import { preparePdfUpload, readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
+import { preparePdfUpload, readPdfPageCount } from './home/pdfUploadWork.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { useAuth } from './contexts/AuthContext';
@@ -498,11 +500,29 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     hasFeatureAccess,
     usage,
     limits,
-    refetch: refetchUsage
+    refetch: refetchUsage,
+    tier: subscriptionTier
   } = useSubscriptionLimits();
 
   const [projectName, setProjectName] = useState('');
   const [projectFiles, setProjectFiles] = useState([]);
+  const projectCreateScopeRef = useRef(null);
+  if (projectCreateScopeRef.current?.actorId !== (user?.id || null)) {
+    projectCreateScopeRef.current = { actorId: user?.id || null, active: true };
+  }
+  const projectCreateScope = projectCreateScopeRef.current;
+  const projectCreateBusyRef = useRef(null);
+  const projectModalScopeRef = useRef(null);
+  useEffect(() => {
+    projectCreateScope.active = true;
+    projectCreateBusyRef.current = null;
+    projectModalScopeRef.current = null;
+    setIsProjectModalOpen(false);
+    setProjectName('');
+    setProjectFiles([]);
+    setUploadInFlight(false);
+    return () => { projectCreateScope.active = false; };
+  }, [projectCreateScope]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'uploadedAt', direction: 'desc' });
   const [searchQuery, setSearchQuery] = useState('');
@@ -616,6 +636,30 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     documents: allDocuments,
     refetch: refetchAllDocuments
   } = useDocuments(null);
+
+  const isProjectCreateCurrent = () => projectCreateScope.active && projectCreateScopeRef.current === projectCreateScope;
+  const projectUploadRecovery = useProjectUploadRecovery({
+    actorId: user?.id || null, tier: subscriptionTier, client: supabase, active: isActive,
+    onSaved: async () => {
+      // Each await can outlive this account, including A -> B -> A changes.
+      for (const refresh of [refetchProjects, refetchDocuments, refetchAllDocuments, refetchUsage]) {
+        if (!isProjectCreateCurrent()) return;
+        await refresh();
+      }
+    },
+  });
+  const discardProjectUpload = async (attempt) => {
+    if (!isProjectCreateCurrent() || attempt.actorId !== projectCreateScope.actorId) return;
+    const confirmed = await askConfirm({
+      title: 'Discard these upload retry copies?',
+      message: `Remove only the local retry copies for "${attempt.name}"? Cloud projects and files will not change. This may erase the only copy of PDFs that have not finished uploading.`,
+      confirmLabel: 'Discard retry copies',
+      danger: true,
+    });
+    if (!confirmed || !isProjectCreateCurrent()) return;
+    try { await projectUploadRecovery.discard(attempt.id); }
+    catch { /* The recovery panel reports the safe, scoped error. */ }
+  };
 
   // Duplicate-upload ASK flows (decision 6). One modal, promise-shaped so the
   // upload paths can simply `await` the user's answer mid-flow. If a second
@@ -1171,6 +1215,8 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
 
   // Create Project flow
   const handleCreateProjectClick = () => {
+    if (!isProjectCreateCurrent() || projectCreateBusyRef.current?.scope === projectCreateScope || projectUploadRecovery.busy) return;
+    projectModalScopeRef.current = projectCreateScope;
     setProjectName('');
     setProjectFiles([]);
     setIsDragOver(false);
@@ -1206,254 +1252,68 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
   };
 
   const persistProject = async (name, files) => {
-    if (!user) {
-      const error = new Error('User not authenticated');
-      error.code = 'NOT_AUTHENTICATED';
-      throw error;
-    }
-
+    if (!isProjectCreateCurrent()) return;
+    if (!user) throw Object.assign(new Error('User not authenticated'), { code: 'NOT_AUTHENTICATED' });
     const trimmedName = name.trim();
-
-    // Check subscription limits BEFORE attempting to create project
     const projectCheck = canCreateProject();
-    if (!projectCheck.allowed) {
-      const error = new Error(projectCheck.reason);
-      error.code = 'PROJECT_LIMIT_REACHED';
-      throw error;
+    if (!projectCheck.allowed) throw Object.assign(new Error(projectCheck.reason), { code: 'PROJECT_LIMIT_REACHED' });
+    if (files.length) {
+      const documentCheck = canUploadDocument(files.reduce((sum, file) => sum + file.size, 0));
+      if (!documentCheck.allowed) throw Object.assign(new Error(documentCheck.reason), { code: 'UPLOAD_LIMIT_REACHED' });
     }
-
-    // Check file upload limits for each file
-    const totalFileSize = files.reduce((sum, file) => sum + file.size, 0);
-    const documentCheck = canUploadDocument(totalFileSize);
-    if (!documentCheck.allowed) {
-      const error = new Error(documentCheck.reason);
-      error.code = 'UPLOAD_LIMIT_REACHED';
-      throw error;
-    }
-
-    // Refetch projects to ensure we have the latest data
+    // One fresh name check before the durable attempt is created.
     const latestProjects = await refetchProjects() || supabaseProjects || [];
-
-    if (hasNameConflict(latestProjects, trimmedName, { getName: (project) => project?.name })) {
-      const duplicateError = new Error('A project with this name already exists. Please choose a different name.');
-      duplicateError.code = 'DUPLICATE_PROJECT_NAME';
-      throw duplicateError;
+    if (!isProjectCreateCurrent()) return;
+    if (hasNameConflict(latestProjects, trimmedName, { getName: project => project?.name })) {
+      throw Object.assign(new Error('A project with this name already exists. Please choose a different name.'),
+        { code: 'DUPLICATE_PROJECT_NAME' });
     }
-
-    let newProject = null;
-    try {
-      // Create project in Supabase first
-      newProject = await createSupabaseProject({
-        name: trimmedName
-      });
-    } catch (err) {
-      console.error('Error creating project in database:', err);
-      const error = new Error(`Failed to create project: ${err.message || 'Unknown error'}`);
-      error.code = 'PROJECT_CREATE_FAILED';
-      error.originalError = err;
-      throw error;
-    }
-
-    // Upload files to Supabase Storage and create document records
-    const uploadErrors = [];
-    let successCount = 0;
-
-    // Bound file jobs so large batches do not start every upload/parser at once.
-    // Decision 6, bulk flavor: the project is brand-new so there's nothing to
-    // collide WITH, but two picked files can share a NAME between themselves —
-    // number the later ones like a desktop OS instead of silently creating
-    // twin same-name rows. (Identical BYTES in the batch still dedup server-side.)
-    const usedNames = new Set();
-    const batchEntries = files.map((file) => {
-      const name = nextAvailableName(file.name, usedNames);
-      usedNames.add(name);
-      return { file, name };
-    });
-    const settledFiles = await mapUploadsBounded(batchEntries, async ({ file, name }) => {
-      let pageCountPromise;
-      try {
-        // Content-address these uploads too (decision 6): hash first so the
-        // stored object lands at {user}/{sha}.pdf, never a new time-named file.
-        let contentSha;
-        ({ file, contentSha } = await preparePdfUpload(file, { readBlobAsArrayBuffer, computeContentSha256 }));
-
-        // Start upload and page count in parallel
-        const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha);
-        pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
-          .catch((err) => {
-            console.error(`Error getting page count for ${file.name}:`, err);
-            return null;
-          });
-
-        // Wait for upload to complete first
-        const filePath = await uploadPromise;
-
-        // Create document record immediately after upload
-        // Use null for page_count initially, will update in background
-        const doc = await createSupabaseDocument({
-          name,
-          file_path: filePath,
-          file_size: file.size,
-          page_count: null,
-          project_id: newProject.id,
-          content_sha256: contentSha,
-        });
-
-        // Two picked files with identical bytes dedup to ONE row — keep the
-        // second file's name as an alias automatically (decision 6; bulk flow
-        // has no room for the ask-modal, and adding a name is non-destructive).
-        if (doc && doc.content_sha256 === contentSha && doc.name !== name
-            && 'name_aliases' in doc && !(doc.name_aliases || []).includes(name)) {
-          try {
-            await updateSupabaseDocument(doc.id, { name_aliases: [...(doc.name_aliases || []), name] });
-          } catch (aliasErr) { console.warn(`Could not record alias "${name}":`, aliasErr?.message); }
-        }
-
-        // Keep this slot until the parser releases its worker and buffers.
-        const pageCount = await pageCountPromise;
-        if (pageCount !== null) {
-          try {
-            await updateSupabaseDocument(doc.id, { page_count: pageCount });
-          } catch (err) {
-            console.error(`Error updating page count for ${file.name}:`, err);
-          }
-        }
-
-        return { success: true, file: file.name };
-      } catch (err) {
-        console.error(`Error uploading file ${file.name}:`, err);
-        return {
-          success: false,
-          file: file.name,
-          error: err.message || err.toString()
-        };
-      } finally {
-        await pageCountPromise;
-      }
-    });
-
-    const results = settledFiles.map((result, index) => result.status === 'fulfilled'
-      ? result.value
-      : { success: false, file: batchEntries[index].file.name, error: result.reason?.message || String(result.reason) });
-
-    // Count successes and collect errors
-    results.forEach(result => {
-      if (result.success) {
-        successCount++;
-      } else {
-        uploadErrors.push({ fileName: result.file, error: result.error });
-      }
-    });
-
-    // If no files were successfully uploaded, throw an error
-    if (files.length > 0 && successCount === 0) {
-      const errorMessages = uploadErrors.map(e => `${e.fileName}: ${e.error}`).join('; ');
-      const error = new Error(`Failed to upload any files. Errors: ${errorMessages}`);
-      error.code = 'NO_FILES_UPLOADED';
-      error.uploadErrors = uploadErrors;
-
-      // Try to clean up the project if no files were uploaded
-      try {
-        await deleteSupabaseProject(newProject.id);
-      } catch (cleanupErr) {
-        console.error('Error cleaning up project:', cleanupErr);
-      }
-
-      throw error;
-    }
-
-    // Refresh global document list to update counts
-    refetchAllDocuments();
-
-    // Warn if some files failed but others succeeded
-    if (uploadErrors.length > 0) {
-      console.warn('Some files failed to upload:', uploadErrors);
-    }
-
-    try {
-      // Refetch projects and documents
-      await refetchProjects();
-      await refetchDocuments();
-      // Refetch usage to update subscription limits
-      await refetchUsage();
-    } catch (err) {
-      console.error('Error refetching data:', err);
-      // Don't throw here - the project was created successfully, just refresh failed
-    }
+    return projectUploadRecovery.start(trimmedName, files);
   };
 
   const handleConfirmCreateProject = async () => {
+    if (!isProjectCreateCurrent() || projectCreateBusyRef.current?.scope === projectCreateScope || projectUploadRecovery.busy) return;
     if (!projectName.trim()) {
       setDashboardError('Please enter a project name.');
       return;
     }
-    const trimmedProjectName = projectName.trim();
-
-    // Refetch projects to ensure we have the latest data before checking for conflicts
-    let latestProjects = supabaseProjects || [];
-    try {
-      const refetched = await refetchProjects();
-      latestProjects = refetched || latestProjects;
-    } catch (err) {
-      console.error('Error refetching projects:', err);
-    }
-
-    if (hasNameConflict(latestProjects, trimmedProjectName, { getName: (project) => project?.name })) {
-      setDashboardError('A project with this name already exists. Please choose a different name.');
-      return;
-    }
+    // Set before the first await: Enter plus a click must not create two attempts.
+    const token = { scope: projectCreateScope };
+    projectCreateBusyRef.current = token;
     setUploadInFlight(true);
     try {
-      await persistProject(trimmedProjectName, projectFiles);
+      await persistProject(projectName.trim(), projectFiles);
+      if (!isProjectCreateCurrent()) return;
       setIsProjectModalOpen(false);
       setProjectName('');
       setProjectFiles([]);
       setDashboardError('');
     } catch (err) {
-      console.error('Error creating project:', err);
-
-      if (err?.code === 'DUPLICATE_PROJECT_NAME') {
-        setDashboardError(err.message);
-        return;
-      }
-
-      if (err?.code === 'NOT_AUTHENTICATED') {
+      if (!isProjectCreateCurrent()) return;
+      if (err?.attemptId && err.recoveryCreated !== false) {
+        // Continue the saved attempt, never resubmit it as a fresh project.
+        setIsProjectModalOpen(false);
+        setProjectName('');
+        setProjectFiles([]);
+        setDashboardError('This upload needs attention. Use Project upload recovery to retry the saved attempt. Cloud work may already be saved.');
+      } else if (err?.code === 'NOT_AUTHENTICATED') {
         setDashboardError('Please sign in to create projects.');
-        onShowAuthModal();
-        return;
-      }
-
-      if (err?.code === 'PROJECT_LIMIT_REACHED') {
+        onShowAuthModal?.();
+      } else if (['DUPLICATE_PROJECT_NAME', 'PROJECT_LIMIT_REACHED', 'UPLOAD_LIMIT_REACHED'].includes(err?.code)) {
         setDashboardError(err.message);
-        return;
+      } else {
+        setDashboardError('Could not start this project. Check device storage and your connection, then try again.');
       }
-
-      if (err?.code === 'UPLOAD_LIMIT_REACHED') {
-        setDashboardError(err.message);
-        return;
-      }
-
-      if (err?.code === 'NO_FILES_UPLOADED') {
-        const errorDetails = err.uploadErrors?.map(e => `\n• ${e.fileName}: ${e.error}`).join('') || '';
-        setDashboardError(`Couldn’t upload your files:${errorDetails}\n\nCheck file sizes and try again.`);
-        return;
-      }
-
-      if (err?.code === 'PROJECT_CREATE_FAILED' || err?.code === 'PROJECT_UPDATE_FAILED') {
-        const errorMsg = err.originalError?.message || err.message || 'Unknown error';
-        setDashboardError(`Couldn’t save the project: ${errorMsg}. Check your connection and try again.`);
-        return;
-      }
-
-      // Generic error message with more details if available
-      const errorMsg = err.message || err.toString() || 'Unknown error';
-      setDashboardError(`Couldn’t create the project: ${errorMsg}. Try again or check the console for details.`);
     } finally {
-      setUploadInFlight(false);
+      if (isProjectCreateCurrent() && projectCreateBusyRef.current === token) {
+        projectCreateBusyRef.current = null;
+        setUploadInFlight(false);
+      }
     }
   };
 
   const handleCancelCreateProject = () => {
+    if (!isProjectCreateCurrent() || projectCreateBusyRef.current?.scope === projectCreateScope) return;
     setIsProjectModalOpen(false);
   };
 
@@ -2537,6 +2397,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         style={{ display: 'none' }}
       />
       <SurveyHub
+        projectUploadRecovery={<ProjectUploadRecoveryPanel recovery={projectUploadRecovery} onDiscard={discardProjectUpload} />}
         localDocuments={localDocuments}
         localDocumentsLoading={localDocumentsLoading}
         localDocumentsError={localDocumentsError || localListError}
@@ -2573,7 +2434,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
-        uploadBusy={activeUploads > 0 || uploadInFlight}
+        uploadBusy={activeUploads > 0 || (uploadInFlight && projectCreateBusyRef.current?.scope === projectCreateScope) || projectUploadRecovery.busy}
         onCreateProject={handleCreateProjectClick}
         onRenameProject={hubRenameProject}
         onCreateTemplate={openTemplateModal}
@@ -2594,7 +2455,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         onSignIn={onShowAuthModal}
       />
       <CreateProjectModal
-        open={isProjectModalOpen}
+        open={isProjectModalOpen && projectModalScopeRef.current === projectCreateScope}
         name={projectName}
         files={projectFiles}
         busy={uploadInFlight}

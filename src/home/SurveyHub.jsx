@@ -30,6 +30,7 @@ import './hub.css';
 const TAB_KEY = 'survey-hub-tab';
 
 export default function SurveyHub({
+  projectUploadRecovery = null,
   localDocuments = [],
   localDocumentsLoading = false,
   localDocumentsError = '',
@@ -181,7 +182,7 @@ export default function SurveyHub({
   );
 
   return (
-    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
+    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn, projectUploadRecovery }}>
       {tab === 'documents' && (
         onImportLocalDocument && documentStorage === 'local' ? (
           <HubShell {...common} tab="documents" title="Documents" subtitle="On this device"

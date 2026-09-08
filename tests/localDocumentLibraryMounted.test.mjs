@@ -84,6 +84,7 @@ async function mount(t, { user = null, rows = [], listOverride = null, isActive 
       useStorage: () => ({ uploadDocument: cloudWrite, downloadDocument: cloudWrite }),
     },
     useSubscriptionLimits: { useSubscriptionLimits: () => ({}) },
+    useProjectUploadRecovery: { useProjectUploadRecovery: () => ({ busy: false, rows: [] }) },
     dialogPrompts: { useConfirmDialog: () => [noop, null], usePromptDialog: () => [noop, null] },
     hubInitialLoadingState: { resolveHubInitialLoading: () => ({}) },
     supabaseClient: { supabase: { from: cloudWrite } },

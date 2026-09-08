@@ -360,6 +360,7 @@ const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
 /* Sidebar + header frame. SurveyHub swaps complete tab shells atomically, so
    this component owns the shared viewport and chrome contract for each tab. */
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined }) => {
+  const { projectUploadRecovery } = useContext(HubChromeContext);
   const expoNativeShell = isExpoNativeShell();
 
   // These classes define the mobile viewport itself. A passive effect can run
@@ -441,6 +442,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             </div>
             <div className="actions">{actions}</div>
           </div>
+          {projectUploadRecovery}
           {children}
         </main>
         <nav className="mobile-home-tabs" aria-label="Home sections">

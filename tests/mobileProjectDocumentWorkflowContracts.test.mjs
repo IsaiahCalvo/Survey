@@ -12,10 +12,11 @@ const projects = read('src/home/ProjectsFolderTree.jsx');
 const harness = read('agent-cli/mobile-workflows/project-document-e2e.mjs');
 
 test('production create-project action renders an accessible dialog with optional PDFs', () => {
-  assert.match(dashboard, /<CreateProjectModal[\s\S]*open=\{isProjectModalOpen\}/);
+  assert.match(dashboard, /<CreateProjectModal[\s\S]*open=\{isProjectModalOpen && projectModalScopeRef\.current === projectCreateScope\}/);
   assert.match(dashboard, /onConfirm=\{handleConfirmCreateProject\}/);
   assert.doesNotMatch(dashboard, /if \(projectFiles\.length === 0\)[\s\S]{0,160}Add at least one PDF/);
-  assert.match(dashboard, /if \(files\.length > 0 && successCount === 0\)/);
+  assert.match(dashboard, /return projectUploadRecovery\.start\(trimmedName, files\)/);
+  assert.doesNotMatch(dashboard, /deleteSupabaseProject\(newProject\.id\)/);
   assert.match(modal, /role="dialog"/);
   assert.match(modal, /aria-label="Create project"/);
   assert.match(modal, /aria-label="Project name"/);

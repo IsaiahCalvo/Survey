@@ -226,64 +226,71 @@ for (const [mode, marker] of [
   }
 }
 
-test('all dashboard page-count paths use resource cleanup and batch awaits outstanding parsers', async () => {
+test('single-file parser paths keep resource cleanup while project batches use durable recovery', async () => {
   const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
-  assert.equal((source.match(/readPdfPageCount\(file,/g) || []).length, 3);
+  assert.equal((source.match(/readPdfPageCount\(file,/g) || []).length, 2);
   assert.equal(source.includes('pdfjsLib.getDocument('), false);
-  assert.match(source, /await mapUploadsBounded\(batchEntries/);
-  assert.match(source, /finally\s*\{\s*await pageCountPromise;/);
+  assert.match(source, /return projectUploadRecovery\.start\(trimmedName, files\)/);
+  assert.doesNotMatch(source, /deleteSupabaseProject\(newProject\.id\)/);
 });
 
-test('real dashboard batch keeps failed uploads in their slot until parser cleanup and preserves error rows', async () => {
+test('real project handlers submit once, retire stale accounts, and retain failed durable attempts', async t => {
   const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
-  const start = source.indexOf('const settledFiles = await mapUploadsBounded');
-  const end = source.indexOf('// Count successes and collect errors', start);
+  const start = source.indexOf('  const persistProject = async');
+  const end = source.indexOf('  // Legacy hub selection mode', start);
   assert.ok(start >= 0 && end > start);
-  let activeParsers = 0;
-  let peakParsers = 0;
-  let destroys = 0;
-  const uploaded = [];
-  const entries = Array.from({ length: 8 }, (_, index) => ({
-    file: new File([String(index)], `${index}.pdf`), name: `${index}.pdf`,
-  }));
-  const dependencies = {
-    batchEntries: entries, preparePdfUpload, readPdfPageCount, mapUploadsBounded,
-    computeContentSha256: async bytes => `hash-${bytes[0]}`,
-    readBlobAsArrayBuffer: file => file.arrayBuffer(),
-    loadPdfjs: async () => ({
-      VerbosityLevel: { ERRORS: 0 },
-      getDocument() {
-        activeParsers++;
-        peakParsers = Math.max(peakParsers, activeParsers);
-        return {
-          promise: new Promise(resolve => setTimeout(() => resolve({ numPages: 2 }), 4)),
-          destroy: async () => { activeParsers--; destroys++; },
-        };
-      },
-    }),
-    uploadToStorage: async file => {
-      uploaded.push(file);
-      if (file.name === '1.pdf') throw new Error('connection lost');
-      return `owner/${file.name}`;
-    },
-    newProject: { id: 'project-1' },
-    createSupabaseDocument: async data => ({ id: data.name, ...data }),
-    updateSupabaseDocument: async () => {},
-    console: { error() {}, warn() {} },
-  };
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const execute = AsyncFunction(...Object.keys(dependencies), `${source.slice(start, end)}\nreturn results;`);
-  const results = await execute(...Object.values(dependencies));
-  assert.equal(peakParsers, 3);
-  assert.equal(activeParsers, 0);
-  assert.equal(destroys, entries.length);
-  assert.deepEqual(results.map(result => result.file), entries.map(entry => entry.file.name));
-  assert.deepEqual(results[1], { success: false, file: '1.pdf', error: 'connection lost' });
-  assert.equal(results.filter(result => result.success).length, 7);
-  assert.equal(uploaded.length, entries.length);
-  for (const file of uploaded) {
-    const sourceFile = entries.find(entry => entry.file.name === file.name).file;
-    assert.notEqual(file, sourceFile, 'batch upload uses the owned File, not the selected disk File');
-    assert.equal(await file.text(), await sourceFile.text());
+  function harness({ failure = null, holdName = false } = {}) {
+    const calls = [];
+    let resolveName;
+    const nameResult = holdName ? new Promise(resolve => { resolveName = resolve; }) : Promise.resolve([]);
+    const current = { value: true };
+    const scope = {};
+    const dependencies = {
+      isProjectCreateCurrent: () => current.value,
+      user: { id: 'actor' }, canCreateProject: () => ({ allowed: true }),
+      canUploadDocument: () => ({ allowed: true }),
+      refetchProjects: () => { calls.push(['name-read']); return nameResult; },
+      supabaseProjects: [], hasNameConflict: () => false,
+      projectUploadRecovery: { busy: false, start: async (...args) => { calls.push(['start', ...args]); if (failure) throw failure; } },
+      projectName: '  Project  ', projectFiles: [], projectCreateBusyRef: { current: null }, projectCreateScope: scope,
+      setDashboardError: value => calls.push(['error', value]),
+      setUploadInFlight: value => calls.push(['busy', value]),
+      setIsProjectModalOpen: value => calls.push(['modal', value]),
+      setProjectName: value => calls.push(['name', value]), setProjectFiles: value => calls.push(['files', value]),
+      onShowAuthModal: () => calls.push(['auth']),
+    };
+    const handlers = Function(...Object.keys(dependencies), source.slice(start, end) + '\nreturn { persistProject, handleConfirmCreateProject };')(...Object.values(dependencies));
+    return { ...handlers, calls, current, resolveName };
   }
+  await t.test('two same-turn submits share one name check and one durable start, including zero files', async () => {
+    const h = harness({ holdName: true });
+    const first = h.handleConfirmCreateProject();
+    await h.handleConfirmCreateProject();
+    assert.equal(h.calls.filter(([event]) => event === 'name-read').length, 1);
+    h.resolveName([]); await first;
+    assert.deepEqual(h.calls.filter(([event]) => event === 'start'), [['start', 'Project', []]]);
+    assert.deepEqual(h.calls.at(-1), ['busy', false]);
+  });
+  await t.test('an account change during name lookup cannot create a durable attempt or publish stale UI', async () => {
+    const h = harness({ holdName: true });
+    const pending = h.handleConfirmCreateProject();
+    h.current.value = false;
+    const before = h.calls.length;
+    h.resolveName([]); await pending;
+    assert.equal(h.calls.length, before);
+    await h.handleConfirmCreateProject();
+    assert.equal(h.calls.length, before);
+  });
+  for (const saved of [false, true]) await t.test(saved ? 'saved attempt closes modal and directs retry without raw cloud error' : 'pre-attempt failure keeps modal for retry without raw error', async () => {
+    const failure = Object.assign(new Error('RAW_SECRET_SERVICE_ERROR'), saved ? { attemptId: 'attempt' } : {});
+    const h = harness({ failure }); await h.handleConfirmCreateProject();
+    assert.equal(h.calls.some(([event]) => event === 'modal'), saved);
+    assert.equal(JSON.stringify(h.calls).includes('RAW_SECRET_SERVICE_ERROR'), false);
+    if (saved) assert.match(h.calls.find(([event]) => event === 'error')[1], /recovery.*saved attempt/);
+  });
+  await t.test('known failed local staging keeps selected PDFs even if an ID was allocated', async () => {
+    const failure = Object.assign(new Error('Local storage full'), { attemptId: 'allocated', recoveryCreated: false });
+    const h = harness({ failure }); await h.handleConfirmCreateProject();
+    assert.equal(h.calls.some(([event]) => event === 'modal' || event === 'files'), false);
+  });
 });
