@@ -958,6 +958,65 @@ no page-width overflow. The built app also passed all seven recovery checks and
 all eleven cold-offline/cache-repair checks. No live accounts, production data,
 schema changes, Microsoft service calls, push or deployment were used.
 
+## Follow-up: account-safe hydration and live collaboration permissions
+
+The first three audit items above are now addressed in code. Legacy annotation
+reads share one pending keyset sweep only for the same Supabase client, actor,
+document and auth generation. Each page uses the captured session token; logout,
+account change and a new login retire old reads. A token refresh or repeated
+same-session sign-in does not discard healthy work. Each caller can cancel and
+settle promptly, even while auth or another caller's shared request is stalled.
+No completed rows are cached, partial results cannot become a backfill, and
+existing row filters, writes and server access rules are unchanged.
+
+Open collaboration views now refresh their role on access changes, focus,
+reconnect and visible non-owner fallback polls. A confirmed denial activates
+the existing revoked-access gate; a later successful role read cannot silently
+unlock that runtime. A transient error retains the last known viewer role.
+Confirmed private owners still avoid an extra role RPC on the ordinary poll,
+and hidden tabs do not add fallback polling reads. Initial unknown-role behavior
+remains unchanged; this UI state is not a replacement for server authorization.
+
+Presence subscriptions now have separate channel lifetimes. Closing an old
+subscription cannot remove a newly mounted same-document subscription, and late
+events cannot call a disposed listener. The Postgres row filter and reconnect
+seed behavior are unchanged; this adds no polling or database query.
+
+Verification includes the installed Supabase and Realtime clients, held auth
+and request races, mounted provider tests, and an independent review. The live
+two-user browser run used two existing, exclusively leased accounts and a small
+disposable PDF. Real storage download, mutual edit visibility, ownership limits,
+exactly-once reload, offline local persistence, reconnect convergence and reopen
+passed. Role downgrade, upgrade, revocation and sticky denial passed; after
+membership restoration and a fresh reopen, the real Ellipse tool created a
+mark that reached the other user and could be deleted by its author.
+
+The first extended role test failed because its reload step did not reopen the
+document from the library. The test was corrected and the complete live run
+passed. Offline network errors are expected in the intentional disconnect phase;
+no browser page exceptions were recorded. The legacy empty backfill warning
+remains a follow-up. Offline *cloud opening* is still not claimed: the permission
+gate stays in use. This is local-code/live-service QA, not a deployed revision.
+
+Both disposable PDFs and their exact cloud records were removed. Account
+identities and free/active subscription baselines were checked before and after
+testing. No account provisioning, tier change, schema change or Microsoft call
+was used. Local recovery and cold-offline/cache-repair regression runs passed
+against the fresh production build using disposable browser profiles.
+
+Frozen full suite: 4,880 tests, 4,826 passed, 54 skipped, no failures or
+cancellations (prior batch: 4,843 total). Build and AST-only graph update passed.
+Recovery passed seven checks; cold-offline/cache repair passed eleven. No push,
+merge, deployment or measured production cost reduction is claimed.
+
+The next read-only audit reproduced a separate usage-meter race: an old account
+response can replace the next account's usage, and sign-out can retain that old
+usage. Scope and request-generation guards are still required. Document/project
+counts also need the insertion rule's exact `archived=false` filter; stored bytes
+must continue to count archived objects. Mutation-only template reads remain a
+separate bounded reduction. The broader publication, upload recovery, large
+library and offline-access-policy work above is not declared complete.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

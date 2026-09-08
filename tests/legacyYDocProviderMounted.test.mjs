@@ -28,7 +28,7 @@ function deferred() {
 async function mount(t, options = {}) {
   const archiveDB = new IDBFactory();
   const calls = { acquired: [], released: [], runtimes: [], undo: [], undoDisposed: [], metadata: [], backfill: [],
-    hydrate: [], audits: [], deletes: [], retries: [], retryHandlers: [], sql: [], roles: [], intervals: [], recovery: [] };
+    hydrate: [], hydrateScopes: [], audits: [], deletes: [], retries: [], retryHandlers: [], sql: [], roles: [], intervals: [], recovery: [] };
   const documentId = `mounted-legacy-${crypto.randomUUID()}`;
   const docs = new Set();
   const keys = new Set();
@@ -42,7 +42,7 @@ async function mount(t, options = {}) {
   const supabase = {
     auth: { session: () => ({ data: { session: { user: { id: actor } } } }), user: () => ({ id: actor }) },
     realtime: { connect() {} },
-    rpc: async (_name, args) => { calls.roles.push(args.doc_id); return { data: 'owner', error: null }; },
+    rpc: async (_name, args) => { calls.roles.push(args.doc_id); return options.roleResult ? options.roleResult() : { data: 'owner', error: null }; },
     from(table) {
       const query = { table, filters: [] }; calls.sql.push(query);
       const builder = { select() { return builder; }, eq(...args) { query.filters.push(args); return builder; },
@@ -106,7 +106,7 @@ async function mount(t, options = {}) {
     'QuarantineMarkerOverlay.jsx': { QuarantineMarkerOverlay: noopUI },
     'annotationCloudSync.js': {
       upsertFabricAnnotation: async (...args) => { calls.deletes.push(['unexpected-upsert', ...args]); return { error: null }; },
-      loadAllNonSurveyMarkerAnnotations: async id => { calls.hydrate.push(id); return options.hydrate ? options.hydrate(id) : { error: null, rawRows: [] }; },
+      loadAllNonSurveyMarkerAnnotations: async (id, scope) => { calls.hydrate.push(id); calls.hydrateScopes.push(scope); return options.hydrate ? options.hydrate(id, scope) : { error: null, rawRows: [] }; },
       deleteAnnotations: async (...args) => { calls.deletes.push(args); return { success: true }; },
       deleteAnnotation: async (...args) => { calls.deletes.push(args); return { success: true }; },
     },
@@ -191,12 +191,35 @@ test('mounted inactive provider keeps role and save retries while only shared-st
   assert.ok(h.calls.intervals.some(item => item.delay === 1_000 && !item.canceled), 'save retry stays mounted');
   await h.render({ isActive: true });
   assert.equal(statusReads(), 2);
-  assert.equal(h.calls.roles.length, 1);
+  assert.equal(h.calls.roles.length, 2, 'wake refreshes role authority once');
   assert.ok(h.calls.intervals.some(item => item.delay === 30_000 && !item.canceled));
+  await act(async () => h.calls.intervals.find(item => item.delay === 30_000 && !item.canceled).callback());
+  assert.equal(h.calls.roles.length, 2, 'ordinary private-document polling does not repeat the role read');
   await h.render({ isActive: false });
   assert.equal(h.calls.intervals.some(item => item.delay === 30_000 && !item.canceled), false);
   assert.ok(h.calls.intervals.some(item => item.delay === 1_000 && !item.canceled));
   assert.equal(h.calls.runtimes.length, 1, 'activation does not recreate sync transport');
+});
+
+test('mounted access refresh updates role and confirmed denial keeps revoked access sticky', async t => {
+  let result = { data: 'viewer', error: null };
+  const h = await mount(t, { roleResult: () => result });
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+  const focus = async () => { await act(async () => window.dispatchEvent(new window.Event('focus'))); };
+  assert.equal(h.value.docRole, 'viewer');
+  assert.equal(h.value.accessRevoked, false);
+  result = { data: null, error: { message: 'offline' } }; await focus();
+  assert.equal(h.value.docRole, 'viewer', 'transient error does not remove the viewer gate');
+  assert.equal(h.value.accessRevoked, false, 'an error is not an authoritative denial');
+  result = { data: 'editor', error: null }; await focus();
+  assert.equal(h.value.docRole, 'editor');
+  result = { data: null, error: null }; await focus();
+  assert.equal(h.value.accessRevoked, true);
+  assert.equal(h.value.docRole, null, 'denied is not mislabeled as viewer');
+  result = { data: 'owner', error: null }; await focus();
+  assert.equal(h.value.docRole, 'owner');
+  assert.equal(h.value.accessRevoked, true, 'role success cannot clear a revoked runtime');
+  assert.equal(h.calls.runtimes.length, 1, 'role reads do not restart transport or claim saved work');
 });
 
 test('same raw document uses distinct actor-scoped registry objects and retains the untouched raw source', async t => {
@@ -277,6 +300,33 @@ test('backfill already waiting in its adapter receives a false scope guard after
   await act(async () => backfill.resolve({ ranAs: 'cancelled', cancelled: true }));
   assert.equal(h.value.undoManager, null);
   assert.equal(h.value.getOriginContext().userId, null);
+});
+
+test('both mounted hydrate callers pass actor-bound guards that stay retired on same-actor return', async t => {
+  const hydrate = deferred();
+  const h = await mount(t, { hydrate: () => hydrate.promise });
+  assert.equal(h.calls.hydrateScopes.length, 2, 'backfill prefetch and owner cleanup each request the shared read');
+  const oldScopes = [...h.calls.hydrateScopes];
+  const runtime = h.calls.runtimes[0];
+  for (const scope of oldScopes) {
+    assert.equal(scope.actorUserId, 'actor-a');
+    assert.equal(scope.isCurrent(), true);
+    assert.strictEqual(scope.signal, runtime.signal);
+  }
+  await h.render({ currentActorUserId: 'actor-b' });
+  await h.render({ currentActorUserId: 'actor-a' });
+  for (const scope of oldScopes) {
+    assert.equal(scope.isCurrent(), false);
+    assert.equal(scope.signal.aborted, true);
+  }
+  const newScopes = h.calls.hydrateScopes.slice(2);
+  assert.equal(newScopes.length, 2);
+  for (const scope of newScopes) {
+    assert.equal(scope.isCurrent(), true);
+    assert.strictEqual(scope.signal, h.calls.runtimes[1].signal);
+  }
+  await act(async () => hydrate.resolve({ error: null, rawRows: [] }));
+  assert.equal(h.calls.backfill.length, 1, 'only the fresh caller may pass hydrate rows to backfill');
 });
 
 test('returning to the bound actor starts a fresh session and retries backfill canceled before its write', async t => {

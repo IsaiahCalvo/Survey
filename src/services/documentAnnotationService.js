@@ -599,8 +599,13 @@ export async function removeDocumentPresence(documentId, userId, clientType = 'a
  * onSubscribed callback, which also fires on every reconnect.
  */
 export function subscribeToDocumentPresence(documentId, onPresenceEvent, { onSubscribed } = {}) {
+  let disposed = false;
+  // The SDK reuses a same-topic channel even while it is leaving. Each hook
+  // owns this subscription, so an old async unsubscribe must not close a new
+  // subscriber. Postgres filtering is independent of the channel topic.
+  const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
   const channel = supabase
-    .channel(`document-presence:${documentId}`)
+    .channel(`document-presence:${documentId}:${suffix}`)
     .on(
       'postgres_changes',
       {
@@ -610,17 +615,21 @@ export function subscribeToDocumentPresence(documentId, onPresenceEvent, { onSub
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
+        if (disposed) return;
         const newRow = payload?.new && Object.keys(payload.new).length ? payload.new : null;
         const oldRow = payload?.old && Object.keys(payload.old).length ? payload.old : null;
         onPresenceEvent?.({ type: payload?.eventType, row: newRow, prevRow: oldRow });
       }
     )
     .subscribe((status) => {
-      if (status === 'SUBSCRIBED') onSubscribed?.();
+      if (!disposed && status === 'SUBSCRIBED') onSubscribed?.();
     });
 
   return () => {
-    supabase.removeChannel(channel);
+    if (disposed) return;
+    disposed = true;
+    try { Promise.resolve(supabase.removeChannel(channel)).catch(() => {}); }
+    catch { /* Cleanup must not prevent the other document hooks from closing. */ }
   };
 }
 

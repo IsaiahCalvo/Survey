@@ -25,6 +25,7 @@ const LOGS_ROOT = path.join(REPO_ROOT, 'Logs');
 const BASE_URL = process.env.FIX20_BASE_URL || 'http://localhost:5173/';
 const CHROME_EXECUTABLE = process.env.FIX20_CHROME_EXECUTABLE || null;
 const OFFLINE_PROOF = process.env.FIX20_OFFLINE_PROOF === '1';
+const ROLE_PROOF = process.env.FIX20_ROLE_PROOF === '1';
 
 function loadEnv(file) {
   const p = path.join(REPO_ROOT, file);
@@ -791,6 +792,61 @@ try {
   ];
   if (!mustPass.every(Boolean)) {
     throw new Error('Fix20 multi-user collaboration contract proof failed one or more assertions');
+  }
+
+  if (ROLE_PROOF) {
+    // Only the disposable document and the exact leased collaborator are in
+    // scope. A later failure still reaches the normal exact-document cleanup.
+    const roleChecks = [];
+    const waitReadOnly = async expected => {
+      await clientB.page.waitForFunction(value =>
+        (window.document.body.dataset.readonly === 'true') === value, expected,
+      { timeout: 35_000 });
+      await assertOpenDocumentSurface(clientB, document, userB.userId);
+    };
+    const setRole = async role => {
+      const result = await ownerClient.from('document_collaborators')
+        .update({ role }).eq('document_id', document.id).eq('user_id', userB.userId)
+        .select('user_id, role');
+      if (result.error || result.data?.length !== 1 || result.data[0].role !== role) {
+        throw new Error(`Could not set the exact disposable collaborator role to ${role}`);
+      }
+    };
+    await waitReadOnly(false);
+    await setRole('viewer');
+    await waitReadOnly(true);
+    roleChecks.push('Open editor becomes read-only after viewer downgrade');
+    await clientB.page.screenshot({ path: path.join(logDir, 'role-viewer.png') });
+    await setRole('editor');
+    await waitReadOnly(false);
+    roleChecks.push('Viewer becomes writable again after editor upgrade');
+    const removal = await ownerClient.from('document_collaborators').delete()
+      .eq('document_id', document.id).eq('user_id', userB.userId).select('user_id');
+    if (removal.error || removal.data?.length !== 1) throw new Error('Exact disposable collaborator removal failed');
+    await waitReadOnly(true);
+    roleChecks.push('Revocation makes the already-open document read-only');
+    await clientB.page.screenshot({ path: path.join(logDir, 'role-revoked.png') });
+    await ensureCollaborator(ownerClient, document.id, userB.userId, userB.email);
+    await clientB.page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    // An independent current RPC result does not clear a revoked runtime.
+    await clientB.page.waitForTimeout(1500);
+    await waitReadOnly(true);
+    roleChecks.push('Restored membership does not silently unlock a revoked runtime');
+    await clientB.page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await clientB.page.waitForFunction(() => typeof window.__fix20OpenDocumentById === 'function', null, { timeout: 45_000 });
+    await assertBrowserUsesLeasedAccount(clientB.page, { account: userB, timeoutMs: 45_000 });
+    await clientB.page.evaluate(documentId => window.__fix20OpenDocumentById(documentId), document.id);
+    await waitForHarness(clientB.page);
+    await waitReadOnly(false);
+    // Prove the reopened document can write, not merely that its initial role
+    // has not arrived yet. Use the real drawing UI and observe the other user.
+    const reopenedCircle = await createCircleThroughProductionUi(clientB);
+    await waitForEntity(clientA, reopenedCircle.id);
+    const reopenedDelete = await clientB.page.evaluate(id => window.__fix20CollabHarness.tryDelete(id), reopenedCircle.id);
+    if (!reopenedDelete.allowed) throw new Error('Restored collaborator could not delete its own reopen proof');
+    await waitForEntity(clientA, reopenedCircle.id, 'annotation', false);
+    roleChecks.push('Authorized fresh reopen restores editable access');
+    evidence.roleLifecycleProof = { pass: true, checks: roleChecks };
   }
 
   evidence.result = 'pass';

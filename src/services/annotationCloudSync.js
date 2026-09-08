@@ -92,11 +92,12 @@ function isAllTypesOwnedRow(row) {
 // loop is sequential because each page depends on the previous page's last id;
 // the primary key is unique + non-null, so the cursor can never skip or duplicate
 // a row.
-async function loadPagedAnnotationRows(documentId, applyFilters) {
+async function loadPagedAnnotationRows(documentId, applyFilters, readScope) {
   return collectKeysetRows({
     pageSize: SUPABASE_PAGE_SIZE,
     fetchPage: async (cursorId) => {
-      let query = supabase
+      readScope.assertCurrent();
+      let query = readScope.client
         .from('document_annotations')
         .select(ANNOTATION_READ_COLUMNS)
         .eq('document_id', documentId)
@@ -104,7 +105,13 @@ async function loadPagedAnnotationRows(documentId, applyFilters) {
         .limit(SUPABASE_PAGE_SIZE);
       if (cursorId !== null) query = query.gt('id', cursorId);
       query = applyFilters ? applyFilters(query) : query;
+      // Pin the request, not the shared client's headers. A later auth switch
+      // must not let the SDK dispatch this page with another user's token.
+      query = query.setHeader('Authorization', `Bearer ${readScope.accessToken}`)
+        .abortSignal(readScope.signal);
+      readScope.assertCurrent();
       const { data, error } = await query;
+      readScope.assertCurrent();
       return { data, error };
     },
   });
@@ -123,10 +130,11 @@ const ALL_TYPES_OWNED_OR_FILTER = [
   `and(annotation_type.in.(${SURVEY_MARKER_TYPE_VALUES.join(',')}),annotation_data->fabricObject.not.is.null)`,
 ].join(',');
 
-async function loadAllTypesOwnedRowsForDocument(documentId) {
+async function loadAllTypesOwnedRowsForDocument(documentId, readScope) {
   const owned = await loadPagedAnnotationRows(
     documentId,
-    (query) => query.or(ALL_TYPES_OWNED_OR_FILTER)
+    (query) => query.or(ALL_TYPES_OWNED_OR_FILTER),
+    readScope,
   );
   if (owned.error) return owned;
 
@@ -307,27 +315,146 @@ export async function deleteAnnotations(documentId, annotationIds) {
 // reads for the same document onto a single in-flight promise. Only concurrent
 // reads are deduped; a read started after the prior one resolves still runs
 // fresh, so post-change refetches stay correct.
-const inFlightHydrateReads = new Map();
+const hydrateClientScopes = new WeakMap();
 
-export function loadAllNonSurveyMarkerAnnotations(documentId) {
-  if (!supabase) {
-    return Promise.resolve({ annotationsByPage: {}, callouts: [], error: new Error('Supabase unavailable') });
-  }
-  if (!documentId) {
-    return Promise.resolve({ annotationsByPage: {}, callouts: [], error: null });
-  }
-  const inFlight = inFlightHydrateReads.get(documentId);
-  if (inFlight) return inFlight;
-  const promise = loadAllNonSurveyMarkerAnnotationsUncached(documentId)
-    .finally(() => { inFlightHydrateReads.delete(documentId); });
-  inFlightHydrateReads.set(documentId, promise);
-  return promise;
+function retiredHydrateError() {
+  const error = new Error('Annotation read no longer belongs to the current signed-in session');
+  error.code = 'ANNOTATION_READ_RETIRED';
+  return error;
 }
 
-async function loadAllNonSurveyMarkerAnnotationsUncached(documentId) {
+function waitForHydrateConsumer(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => { cleanup(); reject(retiredHydrateError()); };
+    signal.addEventListener('abort', onAbort, { once: true });
+    // Observe both outcomes even after cancellation. Auth may not be abortable,
+    // and another consumer can still own the shared query we stopped awaiting.
+    Promise.resolve(promise).then(
+      value => { cleanup(); resolve(value); },
+      error => { cleanup(); reject(error); },
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
+function hydrateScopeForClient(client) {
+  let scope = hydrateClientScopes.get(client);
+  if (scope) return scope;
+  if (!client.auth?.onAuthStateChange || !client.auth?.getSession) throw retiredHydrateError();
+  scope = { generation: 0, actor: undefined, token: undefined, initialSeen: false, reads: new Map() };
+  hydrateClientScopes.set(client, scope);
+  // One listener for the lifetime of this client, not one per document/read.
+  // Auth callbacks must stay synchronous: never acquire the auth session lock.
+  try {
+    client.auth.onAuthStateChange((event, session) => {
+      const actor = session?.user?.id ?? null;
+      const matchingInitial = event === 'INITIAL_SESSION' && !scope.initialSeen
+        && (scope.actor === undefined || scope.actor === actor);
+      // auth-js recovery/focus may announce the same session as SIGNED_IN.
+      // Token equality is in-memory only; a genuine new login still retires,
+      // and SIGNED_OUT always advances the generation even if the actor returns.
+      const repeatedSignIn = event === 'SIGNED_IN' && actor && scope.actor === actor
+        && session?.access_token && scope.token === session.access_token;
+      if (event === 'INITIAL_SESSION') scope.initialSeen = true;
+      if (!matchingInitial && !repeatedSignIn && !(event === 'TOKEN_REFRESHED' && scope.actor === actor)) {
+        scope.generation += 1;
+        for (const read of scope.reads.values()) read.controller.abort();
+        scope.reads.clear();
+      }
+      scope.actor = actor;
+      scope.token = session?.access_token;
+    });
+  } catch (error) {
+    hydrateClientScopes.delete(client);
+    throw error;
+  }
+  return scope;
+}
+
+/** Concurrent reads share rows only within one client/actor/auth generation.
+ * Callers may retire independently; one caller cannot cancel another's read.
+ * Failures (including retirement) keep the existing error-result contract and
+ * never expose partially collected rawRows as a successful backfill snapshot.
+ */
+export async function loadAllNonSurveyMarkerAnnotations(documentId, {
+  supabase: client = supabase, actorUserId, isCurrent = () => true, signal,
+} = {}) {
+  const consumer = { current: () => !signal?.aborted && isCurrent() === true };
+  let record;
+  let onAbort;
+  try {
+    if (!client) throw new Error('Supabase unavailable');
+    if (!documentId) return { annotationsByPage: {}, callouts: [], error: null };
+    if (!consumer.current()) throw retiredHydrateError();
+    const scope = hydrateScopeForClient(client);
+    const generation = scope.generation;
+    const { data, error } = await waitForHydrateConsumer(client.auth.getSession(), signal);
+    const session = data?.session;
+    const actor = session?.user?.id;
+    if (error || !actor || !session.access_token || !consumer.current()
+      || scope.generation !== generation || (scope.actor !== undefined && scope.actor !== actor)
+      || (actorUserId !== undefined && actorUserId !== actor)) throw retiredHydrateError();
+    scope.actor = actor;
+    // An older getSession result must not undo a TOKEN_REFRESHED observation.
+    if (scope.token === undefined) scope.token = session.access_token;
+    const key = JSON.stringify([generation, actor, documentId]);
+    record = scope.reads.get(key);
+    // A caller with a guard but no AbortSignal can have retired since the last
+    // page. Do not join its already obsolete flight.
+    if (record && ![...record.consumers].some(item => item.current())) {
+      record.controller.abort();
+      scope.reads.delete(key);
+      record = null;
+    }
+    if (!record) {
+      const controller = new AbortController();
+      const created = { controller, consumers: new Set(), promise: null };
+      const assertCurrent = () => {
+        if (controller.signal.aborted || scope.generation !== generation || scope.actor !== actor
+          || ![...created.consumers].some(item => item.current())) {
+          controller.abort();
+          throw retiredHydrateError();
+        }
+      };
+      created.promise = Promise.resolve().then(() => {
+        assertCurrent();
+        return loadAllNonSurveyMarkerAnnotationsUncached(documentId, {
+          client, accessToken: session.access_token, signal: controller.signal, assertCurrent,
+        });
+      }).finally(() => {
+        if (scope.reads.get(key) === created) scope.reads.delete(key);
+      });
+      scope.reads.set(key, created);
+      record = created;
+    }
+    record.consumers.add(consumer);
+    const joined = record;
+    onAbort = () => {
+      joined.consumers.delete(consumer);
+      if (![...joined.consumers].some(item => item.current())) {
+        joined.controller.abort();
+        if (scope.reads.get(key) === joined) scope.reads.delete(key);
+      }
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const result = await waitForHydrateConsumer(record.promise, signal);
+    if (!consumer.current() || scope.generation !== generation || scope.actor !== actor) throw retiredHydrateError();
+    return result;
+  } catch (error) {
+    return { annotationsByPage: {}, callouts: [], error };
+  } finally {
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+    record?.consumers.delete(consumer);
+  }
+}
+
+async function loadAllNonSurveyMarkerAnnotationsUncached(documentId, readScope) {
   const t0 = Date.now();
   cloudSyncDebug('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start ' + JSON.stringify({ documentId }));
-  const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId);
+  const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId, readScope);
+  readScope.assertCurrent();
   const elapsedMs = Date.now() - t0;
   if (error) {
     console.error('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed ' + JSON.stringify({

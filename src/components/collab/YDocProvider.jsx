@@ -281,15 +281,15 @@ function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, c
   const [loginExpired, setLoginExpired] = useState(false);
   const [reSignInModalOpen, setReSignInModalOpen] = useState(false);
 
-  // 2026-07-01 — effective document role for THIS user, resolved once per
-  // document open via the get_my_document_role RPC (creator > direct
+  // Effective document role for THIS user, resolved on open and refreshed
+  // on access changes and wake/reconnect via get_my_document_role (creator > direct
   // document_collaborators > project_collaborators > project creator).
-  // null = unknown / no answer — fail open to the read-write presentation
+  // Initial null = unknown / no answer — keep the prior read-write presentation
   // (the server still rejects viewer writes; this gate is honest UI, not the
   // security boundary). 'viewer' drives ReadOnlyGate's view-only presentation
-  // plus the viewer_access banner below. A viewer promoted mid-session picks
-  // up edit access on reload (deliberate — the Phase 28 accessRevoked path
-  // stays the only live mid-session flip and takes precedence).
+  // plus the viewer_access banner below. Transient refresh errors retain the
+  // last confirmed role. Confirmed denial activates the existing revoked
+  // gate, which takes precedence and is never cleared by a later role read.
   const [docRole, setDocRole] = useState(null);
   const [viewerBannerDismissed, setViewerBannerDismissed] = useState(false);
 
@@ -965,8 +965,8 @@ function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, c
       if (!current()) return;
       try {
         // DB-sync audit #6 — reuse the hydrate keyset rows for backfill.
-        // The hydrate read is single-flighted per documentId (inFlightHydrateReads
-        // in annotationCloudSync.js), so this shares the SAME in-flight keyset
+        // The hydrate read is single-flighted per document/actor/auth generation
+        // in annotationCloudSync.js, so this shares the SAME in-flight keyset
         // sweep the Phase 35 cleanup audit / state hydrate already fires on a
         // cold open instead of issuing a second independent full SELECT inside
         // runBackfill. We pass the resolved rawRows straight through; runBackfill
@@ -994,7 +994,9 @@ function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, c
         if (!current()) return;
         if (!sealedSkip) {
           try {
-            const hydrate = await loadAllNonSurveyMarkerAnnotations(docId);
+            const hydrate = await loadAllNonSurveyMarkerAnnotations(docId, {
+              actorUserId: userId, isCurrent: current, signal: runtime.signal,
+            });
             if (current() && hydrate && !hydrate.error && Array.isArray(hydrate.rawRows)) {
               existingHydrateRows = hydrate.rawRows;
             }
@@ -1261,7 +1263,9 @@ function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, c
       // chain which expects authorId at meta./top-level/data., NOT user_id.
       let result;
       try {
-        result = await loadAllNonSurveyMarkerAnnotations(docId);
+        result = await loadAllNonSurveyMarkerAnnotations(docId, {
+          actorUserId: viewerId, isCurrent: current, signal: runtime.signal,
+        });
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[Phase35][cleanup] loadAllNonSurveyMarkerAnnotations threw', err?.message);
@@ -1495,6 +1499,7 @@ function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, c
       signal: runtime?.signal,
       getSession: () => getSupabaseSession('YDocProvider.isDocShared'),
       onSharedState: setIsDocShared, onRole: setDocRole,
+      onAccessDenied: () => setAccessRevoked(true),
     });
     collaborationStatusRef.current = status;
     return () => {
