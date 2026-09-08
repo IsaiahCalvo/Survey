@@ -3037,6 +3037,68 @@ real-auth multi-user proof is claimed. Atomic cloud PDF/checkpoint publication
 and generation-aware reader/writer adoption remain open; this pass deliberately
 does not remap cloud tombstones into the old document-scoped durable stream.
 
+## SQL prerequisites for atomic cloud file publication
+
+These changes prepare a checked switch of PDF bytes and shared state. They do
+not activate generations, change the current cloud upload path, or create a
+public capture/reservation API.
+
+- `20260909070000_document_generation_storage_references.sql` adds a private
+  ledger for staged and retained file paths. Its generated hash and exact path
+  lookup join the current document reference checks in retirement, object
+  deletion, cleanup list/ack and account cleanup scans. Reservations check the
+  permanent document owner, open account and common path guard. Rows cannot be
+  edited; release and document cascades queue cleanup. Referenced paths stay
+  protected even when they are not the active `documents.file_path`. Uploaded
+  copies still count against quota. This does not prove provider-byte immutability.
+- `20260909071000_annotation_destructive_write_fence.sql` brings privileged
+  modern annotation row deletion under the existing document TRY lock and
+  READ COMMITTED rule. Parent cascades still work. TRUNCATE is denied, and
+  append-only WAL rows cannot be rewritten through a privileged UPDATE.
+  This preserves source-state consistency, not a new lifecycle/incarnation
+  counter: an exact same-state delete/reinsert is still equal state.
+- `20260909072000_document_publication_source_capture.sql` captures the full
+  document row, modern snapshot and ordered uncovered WAL, legacy annotation
+  rows/state/updates, and all attached survey sessions/items. The private
+  function holds the shared source lock, checks editor access and lock state,
+  and preserves the direct-role override and project access rules. It refuses
+  a capture containing another user's owner-only survey session, including
+  inactive sessions; it neither leaks nor silently skips that state.
+
+Capture keeps binary fields as base64 and known bigint fields as decimal
+strings. Its digest includes full row metadata, source presence, bytes and
+revision counters. Function-local UTC keeps timestamp output and the digest
+stable across caller time zones without changing the caller's settings.
+Results fail as a whole above 10,000 combined source rows or
+16 MiB, with no partial result. This is a result-size bound, not a RAM quota or
+a bound on every row the planner may scan. New composite indexes cover the
+session/document and item/session capture paths. The future commit path must
+reauthorize and recapture inside the commit transaction; this private SQL token
+alone proves neither PDF bytes nor a Storage JSON sidecar.
+
+Open work remains the checked staged upload, exact path-change authority,
+atomic state/file activation, and generation-aware readers, writers and
+recovery. Existing same-path cloud replacement has not been declared safe by
+these migrations. No live migration, provider write, account test or Microsoft
+test was performed for this SQL slice.
+
+Focused verification: 48 grouped checks against disposable local PostgreSQL
+(19 reference/cleanup, 15 destructive-write, 14 capture checks); the combined
+opt-in wrappers pass 9/9 with no skips. These cover both lock orders, actual
+append/store RPCs, cascade rollback, private permissions, owner-only session
+privacy, whole-result limits, exact full-row metadata and time-zone stability.
+The fixture seeds historical large/gapped WAL sequences before the final
+immutable-write fence; all capture checks run with the final guards installed.
+The full `npm test` run exits 0 across 605 files: 5,831 tests, 5,754 pass,
+77 skip, zero failures/cancellations. The prior committed baseline was 602
+files, 5,822 tests, 5,748 pass and 74 skip. Each of the three added opt-in
+PostgreSQL checks passes separately. The build, graph update and diff check
+pass; the existing large-bundle warning remains. No browser flow changed in
+this SQL-only pass. Logs: `/tmp/survey-publication-foundations-tests.log`,
+`/tmp/survey-publication-foundations-postgres.log`,
+`/tmp/survey-publication-foundations-build.log`, and
+`/tmp/survey-publication-foundations-graph.log`.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
