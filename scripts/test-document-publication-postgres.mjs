@@ -46,6 +46,7 @@ try{
     CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.role',true),'') $$;
     GRANT USAGE ON SCHEMA public,auth,storage TO authenticated,anon,service_role;
     CREATE TABLE projects(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,name text,archived boolean DEFAULT false,user_archived_at timestamptz,updated_at timestamptz DEFAULT now());
+    CREATE TABLE templates(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,name text);
     CREATE TABLE documents(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,project_id uuid REFERENCES projects(id) ON DELETE CASCADE,name text,file_path text,file_size bigint,content_sha256 text,archived boolean DEFAULT false,user_archived_at timestamptz,updated_at timestamptz DEFAULT now(),annotations jsonb DEFAULT '{}');
     CREATE TABLE project_collaborators(project_id uuid REFERENCES projects(id) ON DELETE CASCADE,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,role text,status text,PRIMARY KEY(project_id,user_id));
     CREATE TABLE document_collaborators(document_id uuid REFERENCES documents(id) ON DELETE CASCADE,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,role text,status text,PRIMARY KEY(document_id,user_id));
@@ -95,13 +96,13 @@ try{
     asRole(viewer,insert(uuid(201),viewer));asRole(other,insert(uuid(202),other,null,`${owner}/private.pdf`));
     assert.equal(asRole(other,`SELECT encode(bytes,'hex') FROM storage.objects WHERE name='${owner}/private.pdf'`).stdout,'25504446');sql(`DELETE FROM documents WHERE id IN ('${uuid(201)}','${uuid(202)}')`);
   });
-  const identityMigration='20260908200000_document_identity_tombstones.sql',authorizationMigration='20260908201000_document_publication_authorization.sql',storageMigration='20260908220000_document_storage_retirement.sql';
+  const identityMigration='20260908200000_document_identity_tombstones.sql',authorizationMigration='20260908201000_document_publication_authorization.sql',storageMigration='20260908220000_document_storage_retirement.sql',accountMigration='20260908230000_account_storage_closing.sql';
   // Synthetic permissive baseline: prove the migration removes table grants
   // that would bypass row DELETE triggers, including inherited PUBLIC access.
   sql('GRANT TRUNCATE ON public.documents TO PUBLIC,anon,authenticated,service_role');
   assert.equal(scalar("SELECT bool_and(has_table_privilege(role_name,'public.documents','TRUNCATE')) FROM unnest(ARRAY['anon','authenticated','service_role','publication_member']) role_name"),'t');
   const policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');
-  const before=snapshot();apply(identityMigration);apply(authorizationMigration);apply(storageMigration);assert.deepEqual(snapshot(),before);
+  const before=snapshot();apply(identityMigration);apply(authorizationMigration);apply(storageMigration);apply(accountMigration);assert.deepEqual(snapshot(),before);
   const identities='survey_private.document_identity_guards';
   await check('application roles cannot TRUNCATE documents and bypass row tombstones',()=>{
     const before=snapshot(['documents',identities]);
@@ -123,7 +124,11 @@ try{
   await check('viewer, revoked member, outsider, missing project and archived projects cannot publish',()=>{
     for(const actor of [viewer,other])errorState(asRole(actor,insert(uuid(220),actor),'authenticated',false),'42501');
     sql(`UPDATE project_collaborators SET status='revoked' WHERE project_id='${project}' AND user_id='${editor}'`);errorState(asRole(editor,insert(uuid(221)),'authenticated',false),'42501');sql(`UPDATE project_collaborators SET status='active' WHERE project_id='${project}' AND user_id='${editor}'`);
-    errorState(asRole(owner,insert(uuid(222),owner,uuid(999)),'authenticated',false),'42501');
+    // The earlier account admission trigger now reports the missing destination
+    // as a reference error; role/archive refusals below retain their 42501 gate.
+    const beforeMissing=snapshot(['documents',identities,'survey_private.account_write_guards']);
+    errorState(asRole(owner,insert(uuid(222),owner,uuid(999)),'authenticated',false),'23503');
+    assert.deepEqual(snapshot(['documents',identities,'survey_private.account_write_guards']),beforeMissing);
     for(const field of ['archived','user_archived_at']){
       sql(`UPDATE projects SET ${field}=${field==='archived'?'true':"'2026-01-01'"} WHERE id='${project}'`);errorState(asRole(owner,insert(uuid(223),owner),'authenticated',false),'42501');sql(`UPDATE projects SET ${field}=${field==='archived'?'false':'NULL'} WHERE id='${project}'`);
     }
@@ -284,8 +289,8 @@ try{
     sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
   });
   await check('migration replay keeps documents, identities, policies and shared data unchanged',()=>{
-    const tables=['documents',identities,'projects','project_collaborators','storage.objects','survey_private.document_storage_path_guards','survey_private.document_storage_cleanup'];
-    const before=snapshot(tables);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);apply(storageMigration);assert.deepEqual(snapshot(tables),before);
+    const tables=['documents',identities,'projects','project_collaborators','storage.objects','survey_private.document_storage_path_guards','survey_private.document_storage_cleanup','survey_private.account_write_guards'];
+    const before=snapshot(tables);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);apply(storageMigration);apply(accountMigration);assert.deepEqual(snapshot(tables),before);
     assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
   });
   console.log(`Document publication PostgreSQL checks passed: ${checks}`);

@@ -25,9 +25,18 @@ async function listOwnedStorage(
   for (let offset = 0; ; offset += 100) {
     const { data, error } = await admin.storage.from('documents').list(prefix, { limit: 100, offset });
     if (error) throw new Error(`Could not inspect stored documents: ${error.message}`);
-    const entries = data || [];
+    // A missing/malformed page is not proof that the account has no files.
+    // Fail before final auth deletion; a later request can safely retry.
+    if (!Array.isArray(data) || data.length > 100) {
+      throw new Error('Could not verify stored document inventory');
+    }
+    const entries = data;
     for (const entry of entries) {
-      if (!entry?.name) continue;
+      if (!entry || typeof entry.name !== 'string' || !entry.name
+        || entry.name === '.' || entry.name === '..' || /[\/\u0000-\u001f\u007f]/.test(entry.name)
+        || !(entry.id === null || (typeof entry.id === 'string' && entry.id.length > 0))) {
+        throw new Error('Could not verify a stored document entry');
+      }
       const path = `${prefix}/${entry.name}`;
       if (entry.id) paths.push(path);
       else paths.push(...await listOwnedStorage(admin, path));
@@ -50,7 +59,9 @@ async function removeOwnedStorage(admin: AdminClient, userId: string) {
 }
 
 async function deleteOwnedRows(admin: AdminClient, userId: string) {
-  // One RPC means all owned database rows commit or roll back together.
+  // One RPC commits the closing fence and owned-row removal together, while
+  // detaching collaborator-owned children. A lost reply stops this request;
+  // repeating the RPC is safe and does not reopen publication.
   const { error } = await admin.rpc('delete_account_owned_rows', { target_user_id: userId });
   if (error) throw new Error(`Could not remove account data: ${error.message}`);
 }

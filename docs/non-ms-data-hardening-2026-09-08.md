@@ -2059,15 +2059,118 @@ Verification for this batch:
   unavailable, so a separate Chrome tab was used. This is not full Archive-screen
   or live-auth/provider QA. Production build and AST graph update passed.
 
-Remaining work is explicit: account-closing protection against previously unseen
-paths, safe backfill of known pre-migration failed cleanup jobs, and live provider
-compatibility/physical cleanup tests. Do not treat every unreferenced object as
+This batch left account-closing protection, historical cleanup review, and live
+provider compatibility/physical cleanup tests open. The next section records the
+account-closing implementation and the historical evidence limit. Do not treat every unreferenced object as
 garbage: it may be a legitimate upload awaiting publication. The current app's
 new-upload paths include fresh document/project/operation IDs; retry after
 retirement must use a new operation path. Other upload protocols, including TUS
 and S3-compatible clients, still need proof that every physical replacement
 changes the metadata version. Immutable PDF generations are separate future work.
 Microsoft, production data, billing accounts and external services were untouched.
+
+## Account closure fences late publication and preserves foreign documents
+
+Migration `20260908230000` keeps the existing `delete_account_owned_rows(uuid)`
+API, but closes publication and removes owned roots in one transaction. The old
+RPC left the account writable during Storage cleanup, so an upload to a previously
+unseen name could arrive after inventory. It also deleted owned projects without
+detaching collaborator-owned children, allowing the project FK cascade to delete
+another user's documents.
+
+The new private `account_write_guards` table retains only a UUID and closing flag,
+with no auth FK. Normal publication uses a shared row lock, not a per-write update
+of that row, so healthy writers can proceed together. Closure updates the flag and
+waits for admitted writers, then locks owned projects, documents, templates and
+foreign children with NOWAIT before any deletion. Conflicts roll back the flag,
+row changes and pending cleanup jobs. Foreign children are detached with their
+archive state, annotations and document shares intact. This includes archived
+foreign documents, not only active ones. An unchanged pure detach remains allowed
+while the other owner is closing; detach combined with identity/owner/path changes
+does not get that exception.
+
+All SQL roles must pass the new publication checks. They cover old/new root owner,
+destination project owner, and a new/changed document path's account prefix.
+Storage final INSERT/UPDATE checks the destination account prefix even when the
+version stays unchanged. Valid UUID aliases normalize to the same permanent
+closing marker. Retirement, provider API removal and cleanup acknowledgment remain
+allowed after closure; already-shared files are preserved rather than force-deleted.
+The service RPC checks actual SQL role privileges, not a JWT role string. NULL
+targets fail; a trusted call for a missing UUID can retain a permanent closing
+marker and retries remain idempotent.
+
+Closure explicitly requires READ COMMITTED. Shared healthy writes do not change
+the guard row, so an older closure snapshot could otherwise miss rows those writers
+committed. Ordinary stale writers fail closed under READ COMMITTED, REPEATABLE
+READ and SERIALIZABLE, including when the guard did not exist in their snapshot.
+This matches [PostgREST's documented default isolation](https://postgrest.org/en/stable/references/transactions.html)
+and follows [PostgreSQL's row-lock and snapshot rules](https://www.postgresql.org/docs/current/explicit-locking.html).
+Live project isolation settings still need verification. The Postgres guidance
+influenced the shared-lock design and short lock waits; no network request runs
+inside the database transaction.
+
+The Edge account handler now rejects null, oversized or malformed Storage pages
+and invalid entries before final auth deletion. A null page previously reached
+the auth-delete call as though no files remained; the actual handler regression
+failed before the fix. Valid null-ID folders and exact raw file names still work.
+Billing remains first, then the atomic closing/purge RPC, Storage cleanup and auth
+deletion. This batch did not change billing or call any live deletion endpoint.
+
+Verification:
+
+- Full suite: 5,389 tests, 5,321 passed, 68 skipped, zero failures/cancellations,
+  exit 0. Previous baseline was 5,385 / 5,318 / 67. The new opt-in PG skip was run.
+- Actual disposable PostgreSQL: 38 new account checks, all 33 prior publication,
+  quota and archive-purge checks with 230000 installed, plus the separate 28-case
+  storage suite; combined wrapper 13/13. Fixtures use tracked guards, with synthetic
+  base tables/entitlements, not a full live-schema restore. One denial code changes:
+  a missing destination project now returns 23503 before the older 42501 check;
+  the test verifies no row or guard side effects.
+- The new cases exercise both close/write orders for all four write kinds, shared
+  healthy writes without guard rewrites, existing/absent stale snapshots, atomic
+  lock-conflict rollback, cross-owner paths, old/new ownership changes, pure detach,
+  incoming Storage moves, metadata-only writes, UUID aliases and retained cleanup.
+  The both-closing detach branch uses an explicitly staged private flag, not a
+  claim that foreign roots survive their own completed closure RPC.
+- Actual Edge handlers and pinned SDK: 22 checks, wrapper 2/2, with synthetic network
+  replies. Includes failed core RPC/listing, invalid inventory, nested folders and
+  201 files across three pages/batches. Deno type check, production build and AST
+  graph update passed. No UI source changed; no live-auth, provider-byte or
+  full account-screen proof is claimed.
+
+Bounds still matter: this guard covers the three owned root tables and UUID
+namespaces in the documents bucket, not every historical non-UUID sidecar name or
+other bucket. Alias admission is fenced, but the existing canonical-prefix scanner
+does not discover old alias paths. Raw privileged auth deletion must use this
+workflow; it is not intercepted by an auth-schema trigger. A surviving document
+that references the closing owner's file correctly stops storage/auth deletion;
+copy/transfer policy needs an explicit decision, not forced removal. The recursive
+account inventory still gathers all paths before deletion and needs a separate
+bounded large-account cleanup design. No Microsoft work, push or deployment.
+Read-only Supabase project discovery and direct lookup of the repo's configured
+project both failed with connector HTTP 522 in this turn. No schema, grants,
+isolation settings or deployed Storage version were verified live.
+
+## Historical cleanup backfill: evidence is insufficient for automatic deletion
+
+`archive_purge_runs` retains exact candidate paths with completed sweep transactions
+and best-effort failed-path/writeback fields. It retains no Storage object ID,
+version or content hash. Before retirement was introduced, the same key could be
+reused for a new upload. A historical failed path therefore cannot authorize
+deletion of today's same-key object. `storage_unlinked_at` records writeback, not
+proof that every physical object vanished; newer writeback can describe queue
+work originating in earlier runs.
+
+Old manual deletes have no durable exact-path failure ledger: their errors went
+to the console and a missing-row retry returns no paths. Usage metrics and document
+identity guards cannot reconstruct those paths. Do not insert historical paths
+straight into the active cleanup queue or scan every unreferenced object as garbage.
+
+A future read-only review can page completed non-dry runs by run ID and path ordinal,
+slicing at most 100 array items and keeping provenance. The run's 200-detail cap
+does not bound its path arrays. Cleanup then needs file-version evidence or explicit
+approval before the normal guarded protocol. No historical queue backfill or live
+inventory mutation was performed in this turn.
 
 ## Sources
 
@@ -2095,3 +2198,7 @@ Deploy the migration before new callers; an old server makes the helper defer
 cleanup, not delete unsafely. Rolling callers back can make old direct-delete
 requests fail against the guards. Do not remove guards or reopen retired paths to
 make those requests succeed. Roll back only with a reviewed, guarded cleanup path.
+Preserve account closing markers once enabled. Removing them or reverting the RPC
+to its old unfenced version would reopen the late-upload race and project cascade
+data loss. A partial closure must resume guarded cleanup, not silently reactivate
+the account; a shared-file transfer needs its own reviewed operation.

@@ -34,8 +34,8 @@ test('publication fixture uses installed isolated PostgreSQL and actual tracked 
   for(const name of ['20260908200000_document_identity_tombstones.sql','20260908201000_document_publication_authorization.sql',
     '20260802000000_kal426_user_archive_foundation.sql','20260701120000_project_template_sharing.sql',
     '20260908160000_document_quota_guard.sql','20260513003000_allow_collaborators_to_read_document_storage.sql',
-    '20260908210000_project_purge_deleted_document_receipt.sql','20260908220000_document_storage_retirement.sql'])assert.ok(source.includes(name),name);
-  assert.match(source,/apply\(identityMigration\);apply\(authorizationMigration\);apply\(storageMigration\)/);
+    '20260908210000_project_purge_deleted_document_receipt.sql','20260908220000_document_storage_retirement.sql','20260908230000_account_storage_closing.sql'])assert.ok(source.includes(name),name);
+  assert.match(source,/apply\(identityMigration\);apply\(authorizationMigration\);apply\(storageMigration\);apply\(accountMigration\)/);
   assert.match(source,/process\.getuid\?\.\(\)===0/);assert.match(source,/filter\(\(\[key\]\)=>!\/\^PG\/i\.test\(key\)\)/);
   assert.match(source,/listen_addresses=''/);assert.match(source,/\['-X','-h',socket,'-p',port,'-U','postgres','-d','postgres'/);
   assert.match(source,/owned local server stopped before cleanup/);assert.match(source,/rmSync\(temp,\{recursive:true,force:true\}\)/);

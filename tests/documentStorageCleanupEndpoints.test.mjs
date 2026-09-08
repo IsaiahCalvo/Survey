@@ -21,5 +21,5 @@ test('actual cleanup Edge handlers and pinned SDK pass offline endpoint checks',
   env:{PATH:process.env.PATH,DENO_DIR:process.env.DENO_DIR||(process.platform==='darwin'?resolve(homedir(),'Library/Caches/deno'):resolve(homedir(),'.cache/deno'))},
  });
  assert.equal(result.error,undefined);assert.equal(result.status,0,result.stderr+result.stdout);
- assert.match(result.stdout,/PASS 14 actual Storage cleanup Edge endpoint checks/);
+ assert.match(result.stdout,/PASS 22 actual Storage cleanup Edge endpoint checks/);
 });
