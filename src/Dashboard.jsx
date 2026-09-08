@@ -18,7 +18,7 @@ import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
-import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
+import { preparePdfUpload, readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { useAuth } from './contexts/AuthContext';
@@ -915,10 +915,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
           // open can't hit file-not-found and cascade into deleting the very
           // row we're reusing. Idempotent upsert: same bytes, same key.
           try {
-            const { error: healErr } = await supabase.storage
-              .from('documents')
-              .upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' });
-            if (healErr) throw healErr;
+            await replaceStorageDocument(file, resolvedDoc.file_path);
           } catch (upErr) {
             console.error('Could not store the file bytes:', upErr);
             setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
@@ -1013,7 +1010,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
   };
 
   const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0];
+    let file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
 
       if (!user) {
@@ -1045,8 +1042,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
       // fresh upload) and identical bytes dedup to one document.
       let contentSha;
       try {
-        const bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
-        contentSha = await computeContentSha256(bytes);
+        ({ file, contentSha } = await preparePdfUpload(file, { readBlobAsArrayBuffer, computeContentSha256 }));
       } catch (hashErr) {
         console.error('Content hashing failed:', hashErr);
         setDashboardError('Couldn’t read that file for upload. Please try again.');
@@ -1095,10 +1091,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         // open can't hit file-not-found and cascade into deleting the very
         // row we're reusing. Idempotent upsert: same bytes, same key.
         try {
-          const { error: healErr } = await supabase.storage
-            .from('documents')
-            .upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' });
-          if (healErr) throw healErr;
+          await replaceStorageDocument(file, resolvedDoc.file_path);
         } catch (upErr) {
           console.error('Could not store the file bytes:', upErr);
           setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
@@ -1281,7 +1274,8 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
       try {
         // Content-address these uploads too (decision 6): hash first so the
         // stored object lands at {user}/{sha}.pdf, never a new time-named file.
-        const contentSha = await computeContentSha256(new Uint8Array(await file.arrayBuffer()));
+        let contentSha;
+        ({ file, contentSha } = await preparePdfUpload(file, { readBlobAsArrayBuffer, computeContentSha256 }));
 
         // Start upload and page count in parallel
         const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha);
@@ -1909,17 +1903,13 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
      every document, so the templates editor can decide to archive vs hard-
      delete. Hub has no in-memory marker map (no document is open), so this
      hits Supabase. Guests get 0 (no cloud data) which preserves the
-     pre-KAL-44 hard-delete path for unsigned-in users. The TemplatesEditor
+     pre-KAL-44 local-template behavior for unsigned-in users; this does not
+     claim to scan local PDFs or unsaved drafts. The TemplatesEditor
      awaits this promise inside its async delete handler. */
   const hubGetChecklistItemUsageCount = useCallback(async (itemId) => {
-    if (!itemId || typeof itemId !== 'string') return 0;
+    if (!itemId || typeof itemId !== 'string') throw new TypeError('Checklist item id is required');
     if (!user) return 0;
-    try {
-      return await countSurveyMarkersReferencingChecklistItem(itemId);
-    } catch (err) {
-      console.warn('[ChecklistArchive] hub count failed:', err);
-      return 0;
-    }
+    return await countSurveyMarkersReferencingChecklistItem(itemId);
   }, [user]);
 
   // Persist edits made in the Survey Hub's Templates editor. Logged-in / guest

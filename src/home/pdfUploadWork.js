@@ -1,5 +1,20 @@
 import { getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig.js';
 
+// Hashing already requires one full read. Own those bytes before awaiting the
+// hash so uploads, page counts and the viewer cannot reread a changed disk File.
+export async function preparePdfUpload(file, { readBlobAsArrayBuffer, computeContentSha256 }) {
+  const name = file.name; const type = file.type; const lastModified = file.lastModified; const userId = file.user_id;
+  // Keep the existing FileReader/Response compatibility path, but give it a
+  // native Blob without caller-supplied File read/slice overrides.
+  const source = Blob.prototype.slice.call(file, 0, undefined, type);
+  const bytes = await readBlobAsArrayBuffer(source);
+  if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== source.size) throw new Error('File reader returned mismatched PDF bytes');
+  const ownedFile = new File([bytes], name, { type, lastModified });
+  if (userId !== undefined) ownedFile.user_id = userId;
+  const contentSha = await computeContentSha256(new Uint8Array(bytes));
+  return { file: ownedFile, contentSha };
+}
+
 // Page-count probes own short-lived PDF.js tasks, never viewer documents.
 export async function readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs }) {
   const arrayBuffer = await readBlobAsArrayBuffer(file);

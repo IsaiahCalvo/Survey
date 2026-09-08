@@ -682,9 +682,8 @@ export default function TemplatesEditor({
   /* KAL-44 — host-provided usage count for a checklist item. Returns the
      number of survey markers that have a response keyed under itemId. When
      > 0, deleting that item shows the archive confirmation modal instead of
-     hard-deleting. Optional — when omitted, falls back to zero (hard-delete
-     path), preserving pre-KAL-44 behavior for any caller that hasn't wired
-     it up yet. */
+     hard-deleting. A missing or failed check blocks deletion; unknown usage
+     must not be treated as proof that the item has no responses. */
   getChecklistItemUsageCount = null,
 }) {
   /* ---- mutable working data ----
@@ -1421,6 +1420,16 @@ export default function TemplatesEditor({
      historical responses survive. The modal carries `categoryIndex`,
      `itemId`, label snapshot, and the marker count for the copy. */
   const [archiveConfirm, setArchiveConfirm] = useState(null);
+  const checklistDeleteScopeRef = useRef(null);
+  checklistDeleteScopeRef.current = { templateId: tpl?.id, userId: user?.id, modules: orderedMods };
+  const isChecklistDeleteTargetCurrent = (target) => {
+    const current = checklistDeleteScopeRef.current;
+    const module = current.modules[target.moduleIndex];
+    const category = module?.categories?.[target.categoryIndex];
+    return current.templateId === target.templateId && current.userId === target.userId
+      && module?.id === target.moduleId && category?.id === target.categoryId
+      && category.items.some(item => item.id === target.itemId);
+  };
 
   /* Hard-delete an item from the rich tree. Used when the item has zero
      marker references, or as the resolved action from the archive modal's
@@ -1443,25 +1452,31 @@ export default function TemplatesEditor({
     const cat = (orderedMods[moduleIndex]?.categories || [])[ci];
     const item = cat?.items?.find((x) => x.id === itemId);
     if (!item) return;
+    const target = {
+      templateId: tpl?.id, userId: user?.id, moduleId: orderedMods[moduleIndex]?.id,
+      moduleIndex, categoryId: cat.id, categoryIndex: ci, itemId,
+    };
     /* If the item is already archived, "×" just removes it permanently —
        responses keyed under it become true orphans, but the user explicitly
        asked. We still respect the host's reported usage count to be safe. */
-    let usage = 0;
-    if (typeof getChecklistItemUsageCount === 'function') {
-      try {
-        const result = getChecklistItemUsageCount(itemId);
-        const resolved = (result && typeof result.then === 'function') ? await result : result;
-        usage = Number(resolved) || 0;
-      } catch (err) {
-        console.warn('[ChecklistArchive] usage probe failed:', err);
-        usage = 0;
-      }
+    let usage;
+    try {
+      if (typeof getChecklistItemUsageCount !== 'function') throw new Error('Usage check is unavailable');
+      usage = await getChecklistItemUsageCount(itemId);
+      if (!Number.isSafeInteger(usage) || usage < 0) throw new Error('Usage count is unavailable');
+    } catch (err) {
+      console.warn('[ChecklistArchive] usage probe failed:', err);
+      setPersistenceError('Could not check this item\'s saved responses. Nothing was deleted. Try Delete again.');
+      return;
     }
+    if (!isChecklistDeleteTargetCurrent(target)) {
+      setPersistenceError('The template changed while checking this item. Nothing was deleted. Try Delete again.');
+      return;
+    }
+    setPersistenceError('');
     if (usage > 0 && !item.archived) {
       setArchiveConfirm({
-        moduleIndex,
-        categoryIndex: ci,
-        itemId,
+        ...target,
         label: item.text || item.lastKnownLabel || 'this item',
         usage,
       });
@@ -3033,6 +3048,11 @@ export default function TemplatesEditor({
               type="button"
               data-testid="archive-confirm-archive"
               onClick={() => {
+                if (!isChecklistDeleteTargetCurrent(archiveConfirm)) {
+                  setPersistenceError('The template changed while checking this item. Nothing was deleted. Try Delete again.');
+                  setArchiveConfirm(null);
+                  return;
+                }
                 const { moduleIndex = openMod, categoryIndex, itemId } = archiveConfirm;
                 archiveItemInModule(moduleIndex, categoryIndex, itemId);
                 setArchiveConfirm(null);

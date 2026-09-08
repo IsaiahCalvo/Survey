@@ -893,6 +893,71 @@ recovery verifies the paired rows before creating a copy. Browser profile
 deletion, disk corruption, uncommitted canvas gestures and form input before
 the existing input debounce remain outside this recovery guarantee.
 
+## Follow-up audit: cloud upload identity and deletion checks
+
+At `725d4d31`, the full offline suite had 4,823 tests: 4,769 passed,
+54 skipped, zero failed or canceled. That baseline also passed browser recovery,
+cold-offline restart and native save/quit checks. It is not a live-cloud or
+deployed-revision claim.
+
+The next upload change retains an owned File from the buffer already read for
+hashing. Browser single-file and bounded batch uploads use that copy for the
+content ID, upload, page count and viewer. Native picker bytes were already
+owned. Duplicate-name repairs use the same path-aware replacement helper as
+normal retries, including pending-download invalidation. No extra normal-path
+disk read, PDF-header restriction or new size cap was added. Full-file hashing
+and retention of the owned file still require memory; concurrent changes during
+the first disk read remain subject to browser file checks.
+
+A physical-file browser reproduction paused the actual upload handler after
+hashing, then changed, replaced or removed the selected file. Old code uploaded
+changed bytes under the old content ID, or failed after removal. Both normal and
+alias-repair paths now retain matching original hashes through upload, viewing
+and page-count input. These checks use a local transport substitute, not live
+Supabase writes.
+
+The checklist safety fix now rejects failed, missing or invalid cloud counts
+through the service, Dashboard and editor. The editor keeps the item, shows a
+retry message and does not save a deletion. Confirmed usage retains the archive
+flow; confirmed zero retains the existing delete flow. Delayed replies and
+archive confirmation recheck template, actor, module, category and item identity.
+The capped full-JSON fallback is removed. A head-only exact count checks JSON key
+presence, including null and scalar values. Unsupported path IDs, including
+integer-only IDs that PostgREST could parse as array indexes, fail closed.
+Disposable PostgreSQL 16.14 and real rendered editor tests verify these cases.
+
+This count still covers only RLS-visible cloud rows. Guest behavior is unchanged,
+and managed-local PDFs and recovery drafts are not scanned for references. It is
+not a global reference guarantee or a transaction that excludes concurrent new
+responses while a template deletion is being saved.
+
+The fresh read-only audit also identified these open items:
+
+- Legacy annotation hydration shares in-flight work by document alone; audit
+  and bind requests to the actor/session before allowing result reuse.
+- Collaboration role changes need a fresh role check, not just a membership
+  list refresh. Server authorization and a correct visible edit state are
+  separate requirements.
+- A fast presence remount can reuse a channel still closing in the installed
+  client. Each subscription needs clear lifetime ownership.
+- Subscription usage needs stale-request/account guards and the same archived
+  row rules as database insertion checks.
+- Mutation-only template consumers still trigger full template reads.
+
+Durable cloud-upload recovery, explicit local-to-cloud publication, staged
+large-library rendering and an offline cloud-access policy remain separate
+work. Microsoft 365 testing stays deferred. Do not weaken access checks, remove
+unmatched recovery data or enable hard local-file deletion to close these items.
+
+Frozen verification: 4,843 tests, 4,789 passed, 54 skipped, zero failed or
+canceled; production build and graph update passed. Independent upload and
+checklist reviews found no blocker in the changed code. The physical-file test
+ran 16 baseline/current cases. The rendered editor passed unknown/retry/archive/
+zero-delete flows at desktop size and displayed its failure state at 390px with
+no page-width overflow. The built app also passed all seven recovery checks and
+all eleven cold-offline/cache-repair checks. No live accounts, production data,
+schema changes, Microsoft service calls, push or deployment were used.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

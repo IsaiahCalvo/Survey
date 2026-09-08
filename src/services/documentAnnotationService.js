@@ -249,8 +249,8 @@ export async function upsertAnnotations(annotations) {
  * whether deleting a checklist item should hard-delete (count === 0) or
  * trigger the archive confirmation flow (count > 0).
  *
- * Uses the Postgres jsonb `?` (key-exists) operator on the
- * `annotation_data->'checklistResponses'` path. We only count rows where
+ * Checks a JSON key under `annotation_data->'checklistResponses'`.
+ * We only count rows where
  * the key is actually present — markers that never recorded a response
  * for that item won't show up.
  *
@@ -264,58 +264,30 @@ export async function upsertAnnotations(annotations) {
  * under-count and let the editor permanently delete an item that Survey
  * Markers in other documents still point at. Cross-user leakage is not a
  * concern — RLS already restricts these rows to documents the caller can
- * access.
+ * access. This is a count of visible cloud rows, not a proof about managed-
+ * local files, unsaved drafts, or documents outside the caller's access.
  *
- * Returns 0 on error (fail-open to hard-delete confirm path keeps the UI
- * usable when Supabase is unreachable). Non-fatal — callers should treat
- * a 0 count as "safe to hard-delete without confirm".
+ * Rejects on failure: an unknown count must never authorize hard deletion.
  *
  * @param {string} itemId
  * @returns {Promise<number>}
  */
 export async function countSurveyMarkersReferencingChecklistItem(itemId) {
-  if (!itemId || typeof itemId !== 'string') return 0;
-  try {
-    const { count, error } = await supabase
-      .from('document_annotations')
-      .select('annotation_id', { count: 'exact', head: true })
-      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-      .not('annotation_data->checklistResponses', 'is', null)
-      .filter('annotation_data->checklistResponses', 'cs', JSON.stringify({ [itemId]: {} }));
-    if (error) {
-      // The `cs` (contains) operator with an empty-object stub may be over-strict
-      // against rows where the response has extra fields — fall back to a fetch +
-      // count-in-memory pass that's accurate but more bytes over the wire.
-      console.warn('[ChecklistArchive] count via cs filter failed, falling back:', error);
-      return await countSurveyMarkersReferencingChecklistItemFallback(itemId);
-    }
-    return typeof count === 'number' ? count : 0;
-  } catch (err) {
-    console.warn('[ChecklistArchive] count threw, falling back:', err);
-    return await countSurveyMarkersReferencingChecklistItemFallback(itemId);
+  // IDs become a PostgREST JSON path, not a value parameter. Reject unknown
+  // legacy formats instead of letting punctuation change that path.
+  if (typeof itemId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(itemId) || /^-?\d+$/.test(itemId)) {
+    throw new TypeError('Checklist item id cannot be checked safely');
   }
-}
-
-async function countSurveyMarkersReferencingChecklistItemFallback(itemId) {
-  try {
-    const { data, error } = await supabase
-      .from('document_annotations')
-      .select('annotation_data')
-      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-      .not('annotation_data', 'is', null)
-      .limit(5000);
-    if (error || !Array.isArray(data)) return 0;
-    let n = 0;
-    for (const row of data) {
-      const resp = row?.annotation_data?.checklistResponses;
-      if (resp && typeof resp === 'object' && Object.prototype.hasOwnProperty.call(resp, itemId)) {
-        n += 1;
-      }
-    }
-    return n;
-  } catch {
-    return 0;
-  }
+  const { count, error } = await supabase
+    .from('document_annotations')
+    .select('annotation_id', { count: 'exact', head: true })
+    .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
+    // JSON -> preserves explicit JSON null (unlike ->>), so null, scalar,
+    // and object responses all count; only a missing key is SQL NULL.
+    .not(`annotation_data->checklistResponses->${itemId}`, 'is', null);
+  if (error) throw error;
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error('Checklist usage count is unavailable');
+  return count;
 }
 
 
