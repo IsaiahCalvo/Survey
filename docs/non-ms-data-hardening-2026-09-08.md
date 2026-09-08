@@ -1410,6 +1410,105 @@ execution is not the same fix as for system-only archive helpers. Its caller
 scope and monthly-swap concurrency need their own behavior tests and narrow fix.
 No real account was used to exercise these gaps. Microsoft work stays deferred.
 
+## Legacy project-status API hardening: local follow-up
+
+The live `swap_active_project` and `get_active_projects` functions accepted any
+supplied account ID, despite being callable by authenticated users. The former
+could change another account's status rows; the latter could return its project
+names. The swap cooldown also trusted only the supplied old project's timestamp,
+and direct owner UPDATE access to `project_status` let a client clear that date
+or activate additional rows. Read-only catalog checks confirmed these grants and
+policies. No real account was used to exercise the gaps.
+
+`20260908180000_project_status_api_guard.sql` binds these APIs to the signed-in
+actor, while preserving trusted SQL service/admin cross-account use. It does
+not trust a caller-supplied JWT role field. The `is_project_accessible` helper
+still permits anon execution because project UPDATE RLS calls it; unauthorized,
+null, and missing-project requests return false instead of breaking other policy
+branches. The project-sharing policies themselves do not change.
+
+Swaps write a private per-account revision row before reading current state.
+They then lock the two owned project rows and two status rows in fixed ID order,
+and validate ownership and row existence again under those locks. Free users
+must swap from an active row to an inactive row. Their 30-day limit uses the
+latest existing timestamp across their projects and a durable account timestamp,
+so changing the supplied old ID or deleting an old project cannot reset it.
+Paid users retain unlimited swaps, including to an already-active project.
+Null IDs, identical IDs, and missing status rows no longer report false success.
+All changes and the account timestamp roll back together on failure.
+
+Review caught and corrected a timestamp bug in the candidate: `now()` uses the
+transaction's start time, which can predate a long lock wait. The function now
+captures one `clock_timestamp()` after locking, uses it for the operation, and
+never moves the durable account timestamp backwards. The private row write also
+makes stale REPEATABLE READ/SERIALIZABLE transactions fail for retry instead of
+letting an old snapshot accept a second swap.
+
+Clients retain status SELECT and owner-scoped metadata UPDATE. Status fields,
+timestamps, row IDs, and table-level write privileges (including TRUNCATE) are
+no longer client-writable. Explicit column grants are also removed before the
+metadata grant is restored. Existing service permissions, status-creation and
+timestamp triggers, and status policies are kept. No bytes, membership rows,
+user archives, `projects.archived`, or document flags are rewritten. Live read-only
+counts showed zero projects missing status, zero null active flags, and zero
+future swap timestamps; existing null active flags remain treated as active
+by the function to preserve its legacy read behavior.
+
+This is a local status-API patch, not a merger of archive models or an atomic
+billing workflow. The current app uses quota `archived` flags; it has no direct
+status RPC/table callers. The known policy helper caller passes `auth.uid()`.
+Direct privileged service maintenance and the older UUID project-archive helper
+do not yet join the swap lock protocol. Their races with swaps, plan changes,
+and live rollout verification remain separate open work. Microsoft stays deferred.
+
+Frozen local PostgreSQL verification passed 38 checks. The fixture loads tracked
+function bodies and current shared-project SELECT/UPDATE policies, pins the
+live dependency search paths, and labels its membership resolver as synthetic.
+It reproduces the prior read/swap/direct-write gaps before applying the actual
+migration, then checks self/cross/anonymous/service roles, direct-login inherited
+roles, forged role claims, explicit column-grant cleanup, metadata edits, paid
+swaps, rollback/replay, user archives and bytes, shared editor/viewer behavior,
+delayed operation timestamps, ownership transfer/delete waits, and cooldown
+survival after deleting swapped projects. Concurrent disjoint swaps pass under
+READ COMMITTED, REPEATABLE READ, and SERIALIZABLE with both new and existing
+guard rows. Stale transactions fail with 40001, not false success.
+
+The root final opt-in test run passed 3/3 with deliberately invalid inherited PG
+connection settings. The fixture used only its private local Unix socket, stopped
+its server, and removed its exact temporary cluster. Independent source review
+found the timestamp defect above before release and no further concrete defect
+after its correction. These checks do not claim a live database rollout or full
+cross-service billing race coverage.
+
+Frozen full regression suite: 5,020 tests total, 4,960 passed, 60 skipped, zero
+failures/cancellations, exit 0 (prior baseline: 5,017 total, 4,958 passed, 59
+skipped). The three new tests add two offline passes and one explicit PostgreSQL
+opt-in skip; the database test also ran separately and passed. Production build
+and graph update passed. No app-source/UI changes or live database writes were
+made in this batch. Supabase least-privilege and fixed lock-order guidance shaped
+the patch; no production performance gain or broad no-regression claim is made.
+
+### Next durability target: existing-project and standalone single-file uploads
+
+Fresh read-only source review found that `Dashboard.handleUploadClick` and
+`handleFileUpload` still resolve/create the cloud row before an unawaited Storage
+replacement. Their bytes, replacement/archive choice, parse result, and receipt
+live in File objects and React closures, not the durable project-upload journal.
+`useStorage.replaceDocument` uses upsert, including for a resolved legacy path.
+New standalone paths share `actor/hash.pdf` across projects, and late completion
+has no account-generation checks around archive, page-count, refresh, or error
+updates. This review did not run browser or cloud tests.
+
+The next change needs a single-document journal/runner with stable IDs, staged
+bytes, actor scope, nullable/existing project identity, and explicit replacement
+intent before any cloud row mutation. Reuse the existing persistence, lock and
+receipt concepts without weakening the project journal's new-project/path
+invariants. Published or legacy PDF bytes must not be overwritten blindly; keep
+the old version visible until the new upload is confirmed and retain unconfirmed
+archive intent. Test restart at each write boundary, lost replies, offline/quota
+failure, unavailable local storage/locks, account changes, competing tabs,
+dedup/aliases, missing or changed source files, and newer published bytes.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
