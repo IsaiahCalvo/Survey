@@ -7,6 +7,8 @@ const { exec, spawn } = require('child_process');
 const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
 const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
+const { createRecoveryBundleWriter } = require('./electron/recoveryBundleWriter.cjs');
+const { isExpectedElectronAnalyticsEntry } = require('./electronAnalyticsBridge');
 const { createNativeQuitCoordinator } = require('./electron/nativeQuitCoordinator.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
@@ -904,6 +906,16 @@ ipcMain.handle('dialog:openFile', async (event, options = {}) => {
     throw error;
   }
 });
+
+const recoveryBundleWriter = createRecoveryBundleWriter({
+  authorize: event => nativeEditorWindows.get(event.sender.id)?.win.webContents === event.sender
+    && isExpectedElectronAnalyticsEntry({ senderUrl: event.senderFrame?.url, development: process.env.NODE_ENV === 'development',
+      devPort: DEV_PORT, appPath: app.getAppPath(), platform: process.platform }),
+  chooseDestination: (event, options) => dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), options),
+});
+for (const method of ['start', 'append', 'finish', 'abort']) {
+  ipcMain.handle(`recovery-bundle:${method}`, (event, input) => recoveryBundleWriter[method](event, input));
+}
 
 ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, data }) => {
   const { canceled, filePath } = await dialog.showSaveDialog({

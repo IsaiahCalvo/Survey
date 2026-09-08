@@ -106,6 +106,7 @@
       "src/electron-main.js",
       "src/electronAnalyticsBridge.js",
       "src/electron/atomicFileWriter.cjs",
+      "src/electron/recoveryBundleWriter.cjs",
       "src/electron/nativeQuitCoordinator.cjs",
       "src/electron/msalAuthMain.js",
       "src/electron/msalCacheStore.cjs",

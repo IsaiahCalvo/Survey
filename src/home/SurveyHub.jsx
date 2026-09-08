@@ -24,6 +24,7 @@ import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoadingSkeletons from './HubLoadingSkeletons';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
+import LocalStorageStatus from './LocalStorageStatus.jsx';
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
@@ -41,6 +42,10 @@ export default function SurveyHub({
   localRecoveryError = '',
   onRecoverLocalCopy,
   onDiscardLocalRecoveryCopy,
+  onExportLocalRecoveryCopy,
+  onImportLocalRecoveryBundle,
+  localRecoveryNotice = '',
+  localStorageStatusActive = true,
   onRetryLocalRecoveryCopies,
   onLocalDocumentsVisibilityChange,
   documents = [],
@@ -187,8 +192,8 @@ export default function SurveyHub({
               style={{ margin: '0 8px 8px', padding: 16, overflow: 'auto', minHeight: 0, flex: 1 }}>
               <p style={{ margin: '0 0 16px', color: 'var(--ink-200)', fontSize: 13 }}>
                 PDFs are copied into this browser or app profile. They are not uploaded or shared.
-                Keep the original as a backup; clearing app or browser data removes this copy.
               </p>
+              <LocalStorageStatus active={localStorageStatusActive} />
               {localDocumentsError ? <div role="alert" style={{ marginBottom: 16 }}>
                 <p>{localDocumentsError}</p>
                 <button type="button" className="btn" onClick={onRetryLocalDocuments}>Refresh local files</button>
@@ -214,6 +219,8 @@ export default function SurveyHub({
                 <p style={{ color: 'var(--ink-200)', fontSize: 13 }}>
                   Saved session snapshots. These may already match a saved document. Recover as a separate copy to review them; the original stays unchanged.
                 </p>
+                {onImportLocalRecoveryBundle ? <button type="button" className="btn" disabled={localDocumentBusy} onClick={onImportLocalRecoveryBundle}>Restore recovery file</button> : null}
+                {localRecoveryNotice ? <p role="status">{localRecoveryNotice}</p> : null}
                 {localRecoveryError ? <div role="alert">
                   <p>{localRecoveryError}</p>
                   <button type="button" className="btn" onClick={onRetryLocalRecoveryCopies}>Refresh recovery copies</button>
@@ -231,6 +238,8 @@ export default function SurveyHub({
                       </div>
                       <button type="button" className="btn" disabled={localDocumentBusy}
                         aria-label={`Recover ${row.name} as copy`} onClick={() => { void onRecoverLocalCopy?.(row); }}>Recover as copy</button>
+                      {onExportLocalRecoveryCopy ? <button type="button" className="btn" disabled={localDocumentBusy}
+                        aria-label={`Export recovery file for ${row.name}`} onClick={() => { void onExportLocalRecoveryCopy(row); }}>Export recovery file</button> : null}
                       <button type="button" className="btn" disabled={localDocumentBusy}
                         aria-label={`Discard recovery snapshot for ${row.name}`} onClick={() => { void onDiscardLocalRecoveryCopy?.(row); }}>Discard</button>
                     </li>

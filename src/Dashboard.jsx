@@ -39,7 +39,7 @@ import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 import { importLocalDocument, importLocalDocumentCopy, listLocalDocuments, openLocalDocument } from './services/localDocumentStore.js';
-import { listLocalDocumentDrafts, readLocalDocumentDraft, discardLocalDocumentDraft } from './services/localDocumentDraftStore.js';
+import { listLocalDocumentDrafts, readLocalDocumentDraft, readExistingLocalDocumentDraft, verifyExistingLocalDocumentDraftReceipt, discardLocalDocumentDraft } from './services/localDocumentDraftStore.js';
 import { createLocalDocumentStateReader } from './services/localDocumentState.js';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
@@ -108,6 +108,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   const localFileInputRef = useRef(null);
+  const localRecoveryInputRef = useRef(null);
   const [localDocuments, setLocalDocuments] = useState([]);
   const [localDocumentsLoading, setLocalDocumentsLoading] = useState(true);
   const [localDocumentsError, setLocalDocumentsError] = useState('');
@@ -122,6 +123,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
   const [localRecoveryLoading, setLocalRecoveryLoading] = useState(true);
   const [localRecoveryListError, setLocalRecoveryListError] = useState('');
   const [localRecoveryActionError, setLocalRecoveryActionError] = useState('');
+  const [localRecoveryNotice, setLocalRecoveryNotice] = useState('');
   const localRecoveryGenerationRef = useRef(0);
   const [localDocumentsVisible, setLocalDocumentsVisible] = useState(false);
   const localRecoveryVisibilityRef = useRef(null);
@@ -266,6 +268,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     localBusyRef.current = true;
     setLocalDocumentBusy(true);
     setLocalRecoveryActionError('');
+    setLocalRecoveryNotice('');
     try { await action(isCurrent); }
     catch (error) {
       if (isCurrent()) {
@@ -283,7 +286,7 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     if (recovered.metadata.sessionId !== sessionId || recovered.metadata.sequence !== sequence) {
       throw new Error('This snapshot changed. Refresh the list and choose it again.');
     }
-    const name = `${recovered.file.name.replace(/\.pdf$/i, '')} (recovered).pdf`;
+    const name = `${recovered.file.name.replace(/\.pdf$/i, '').slice(0, 1008)} (recovered).pdf`;
     const file = new File([recovered.file], name, { type: 'application/pdf' });
     const manifest = await importLocalDocumentCopy(file, recovered.state);
     if (!isCurrent()) return;
@@ -304,6 +307,41 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     await discardLocalDocumentDraft(sessionId, { expectedSequence: sequence });
     if (isCurrent()) await refreshLocalRecoveryCopies();
   });
+  const exportLocalRecoveryCopy = ({ sessionId, sequence }) => runLocalRecoveryAction(async isCurrent => {
+    const recovered = await readExistingLocalDocumentDraft(sessionId, { expectedSequence: sequence });
+    if (!isCurrent()) return;
+    const { createLocalRecoveryBundle } = await import('./services/localRecoveryBundle.js');
+    const bundle = await createLocalRecoveryBundle(recovered);
+    if (!isCurrent()) return;
+    // A writer may have advanced while the immutable bundle was prepared.
+    // Recheck the selected receipt without mutating or acknowledging its draft.
+    await verifyExistingLocalDocumentDraftReceipt(recovered.metadata);
+    if (!isCurrent()) return;
+    const { saveLocalRecoveryBundle } = await import('./services/saveLocalRecoveryBundle.js');
+    const result = await saveLocalRecoveryBundle(bundle, recovered.metadata.name, { isCurrent });
+    if (!isCurrent() || result.canceled) return;
+    setLocalRecoveryNotice(result.durabilityWarning
+      ? 'The recovery file was written, but the system could not confirm the final disk flush. Keep this snapshot until you verify the exported file.'
+      : result.saved ? 'Recovery file saved. The source snapshot was kept. Use Restore recovery file to verify it as a separate copy.'
+      : 'Recovery download started. Confirm the file finished saving before relying on it. The source snapshot was kept.');
+  });
+  const restoreLocalRecoveryFile = event => {
+    const selected = event.target.files?.[0]; event.target.value = '';
+    if (!selected) return;
+    void runLocalRecoveryAction(async isCurrent => {
+      const { parseLocalRecoveryBundle } = await import('./services/localRecoveryBundle.js');
+      const recovered = await parseLocalRecoveryBundle(selected);
+      if (!isCurrent()) return;
+      const name = `${recovered.file.name.replace(/\.pdf$/i, '').slice(0, 1009)} (restored).pdf`;
+      const copy = new File([recovered.file], name, { type: 'application/pdf' });
+      const manifest = await importLocalDocumentCopy(copy, recovered.state);
+      if (!isCurrent()) return;
+      localListGenerationRef.current++;
+      setLocalDocuments(rows => [manifest, ...rows.filter(entry => entry.localId !== manifest.localId)]);
+      setLocalDocumentsLoading(false);
+      await openManagedLocalDocument(manifest.localId, isCurrent);
+    });
+  };
   // Destination project for the next browser-input upload. The browser file
   // picker fires `handleFileUpload` separately, so the project id chosen in
   // the Projects tab is stashed here for that handler to read.
@@ -2474,6 +2512,8 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         onChange={handleFileUpload}
         style={{ display: 'none' }}
       />
+      <input ref={localRecoveryInputRef} data-local-recovery-input type="file" accept=".survey-recovery"
+        onChange={restoreLocalRecoveryFile} style={{ display: 'none' }} />
       <input
         ref={projectFileInputRef}
         type="file"
@@ -2495,6 +2535,10 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         localRecoveryError={localRecoveryActionError || localRecoveryListError}
         onRecoverLocalCopy={recoverLocalCopy}
         onDiscardLocalRecoveryCopy={discardLocalRecoveryCopy}
+        onExportLocalRecoveryCopy={exportLocalRecoveryCopy}
+        onImportLocalRecoveryBundle={() => { if (!localBusyRef.current) localRecoveryInputRef.current?.click(); }}
+        localRecoveryNotice={localRecoveryNotice}
+        localStorageStatusActive={recoveryVisible}
         onRetryLocalRecoveryCopies={refreshLocalRecoveryCopies}
         onLocalDocumentsVisibilityChange={setLocalDocumentsVisible}
         documents={documents}

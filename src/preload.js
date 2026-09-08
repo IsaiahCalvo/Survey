@@ -46,6 +46,10 @@ function saveLogSnapshotOnce(payload) {
 contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
   saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),
+  startRecoveryBundleSave: (options) => ipcRenderer.invoke('recovery-bundle:start', options),
+  appendRecoveryBundleSave: (chunk) => ipcRenderer.invoke('recovery-bundle:append', chunk),
+  finishRecoveryBundleSave: (transfer) => ipcRenderer.invoke('recovery-bundle:finish', transfer),
+  abortRecoveryBundleSave: (transfer) => ipcRenderer.invoke('recovery-bundle:abort', transfer),
   openPath: (path) => ipcRenderer.invoke('shell:openPath', path),
   readFile: (path) => ipcRenderer.invoke('fs:readFile', path),
   writeFile: (path, data) => ipcRenderer.invoke('fs:writeFile', { path, data }),

@@ -31,10 +31,10 @@ function notifyChange() {
 
 export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUMENT_DRAFT_DB_NAME,
   maxDocumentBytes = LOCAL_DOCUMENT_MAX_BYTES, maxStateBytes = LOCAL_DOCUMENT_MAX_STATE_BYTES, timeoutMs = 10_000,
-  fingerprintBlob = fingerprintLocalPdfBlob, compareBytes = sameLocalPdfBytes } = {}) {
+  fingerprintBlob = fingerprintLocalPdfBlob, compareBytes = sameLocalPdfBytes, existingOnly = false } = {}) {
   if (typeof dbName !== 'string' || !dbName.trim() || !positive(maxDocumentBytes)
     || !positive(maxStateBytes) || !positive(timeoutMs) || typeof fingerprintBlob !== 'function'
-    || typeof compareBytes !== 'function') throw new TypeError('Invalid local draft store options.');
+    || typeof compareBytes !== 'function' || typeof existingOnly !== 'boolean') throw new TypeError('Invalid local draft store options.');
   let connection = null; let opening = null; let cancelOpen = null; let closed = false;
   const active = () => { if (closed) throw fail('closed', 'The local draft store is closed.'); };
 
@@ -43,7 +43,7 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
     if (connection) return connection;
     if (opening) return opening;
     opening = new Promise((resolve, reject) => {
-      let request; let settled = false;
+      let request; let settled = false; let openFailure;
       const finish = (error, db) => {
         if (settled) { db?.close(); return; }
         settled = true; clearTimeout(timer); cancelOpen = null;
@@ -57,10 +57,15 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
       try {
         const storage = indexedDB === undefined ? globalThis.indexedDB : indexedDB;
         if (!storage?.open) throw fail('unavailable', 'Local draft storage is unavailable.');
-        request = storage.open(dbName, 2);
+        request = existingOnly ? storage.open(dbName) : storage.open(dbName, 2);
       } catch (error) { finish(error); return; }
       request.onupgradeneeded = event => {
         if (settled || closed) { request.transaction.abort(); return; }
+        if (existingOnly) {
+          openFailure = fail('not-found', 'No existing local recovery storage was found.');
+          request.transaction.abort();
+          return;
+        }
         try {
           if (event.oldVersion === 0) for (const name of legacyStores) request.result.createObjectStore(name, { keyPath: 'sessionId' });
           if (event.oldVersion < 2) {
@@ -71,11 +76,15 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
         catch (error) { request.transaction.abort(); finish(error); }
       };
       request.onblocked = () => finish(fail('blocked', 'Local drafts are busy in another window. Please retry.'));
-      request.onerror = () => finish(request.error || fail('unavailable', 'Local drafts could not be opened.'));
+      request.onerror = () => finish(openFailure || request.error || fail('unavailable', 'Local drafts could not be opened.'));
       request.onsuccess = () => {
         const db = request.result;
         if (settled || closed) { db.close(); finish(fail('closed', 'The local draft store is closed.')); return; }
-        if (stores.some(name => !db.objectStoreNames.contains(name))) {
+        if (existingOnly && db.version !== 1 && db.version !== 2) {
+          db.close(); finish(fail('unsupported-format', 'This recovery storage version is not supported. Its data was kept.')); return;
+        }
+        const requiredStores = existingOnly && db.version === 1 ? legacyStores : stores;
+        if (requiredStores.some(name => !db.objectStoreNames.contains(name))) {
           db.close(); finish(fail('corrupt', 'Local draft storage is incomplete. Its data was kept.')); return;
         }
         connection = db;
@@ -88,10 +97,11 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
   }
 
   async function transact(names, mode, run) {
+    if (existingOnly && mode !== 'readonly') throw fail('read-only', 'Existing recovery storage is read-only.');
     const db = await database(); active();
     return new Promise((resolve, reject) => {
       let tx;
-      try { tx = db.transaction(names, mode); }
+      try { tx = db.transaction(existingOnly && db.version === 1 ? names.filter(name => name !== SHARED_BYTES) : names, mode); }
       catch (error) { if (connection === db) connection = null; reject(error); return; }
       let result; let error;
       const abort = cause => { error ||= cause; try { tx.abort(); } catch { /* already settled */ } };
@@ -155,6 +165,7 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
 
   function createWriter(file) {
     active();
+    if (existingOnly) throw fail('read-only', 'Existing recovery storage is read-only.');
     if (!(file instanceof File) || !isManagedLocalDocument(file) || !positive(file.localRevision)
       || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 1024) {
       throw fail('invalid-input', 'A managed local PDF is required for a draft.');
@@ -295,7 +306,9 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
             done({ metadata: metadataOf(row), blob: bytes.blob, state: copiedState });
             return;
           }
-          if (!validReference(bytes) || bytes.size !== row.size) throw fail('corrupt', 'The draft PDF reference is invalid. Its data was kept.');
+          if (!validReference(bytes) || bytes.size !== row.size || !tx.objectStoreNames.contains(SHARED_BYTES)) {
+            throw fail('corrupt', 'The draft PDF reference is invalid. Its data was kept.');
+          }
           const payload = tx.objectStore(SHARED_BYTES).get(bytes.payloadId);
           payload.onsuccess = () => {
             try {
@@ -316,10 +329,44 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
       catch { throw fail('corrupt', 'The shared recovery PDF could not be verified. Its data was kept.'); }
       if (actual !== fingerprint) throw fail('corrupt', 'The shared recovery PDF bytes have changed. Its data was kept.');
     }
+    if (existingOnly) {
+      // Export verification can take time. A selected sequence must still
+      // identify this exact session/file after hashing, including after a
+      // discard or a connection retirement while those bytes were being read.
+      await verifyReceipt(metadata);
+    }
     // Deliberately no local/cloud identity. Only atomic import-copy may turn
     // these retained bytes and state into an editable library document.
     const file = new File([blob], metadata.name, { type: metadata.type, lastModified: Date.parse(metadata.updated_at) });
     return { metadata, file, state };
+  }
+
+  // This is a final selection check, not another PDF-integrity proof. The
+  // caller must already hold verified bytes/state from the existing-only read.
+  async function verifyReceipt(metadata) {
+    if (!existingOnly) throw fail('read-only', 'Receipt verification requires an existing-only reader.');
+    if (!metadata || typeof metadata !== 'object') throw fail('invalid-input', 'The selected draft metadata is required.');
+    // Copy before awaiting storage so caller mutation cannot change which
+    // sequence, writer, immutable File or source is being checked.
+    const expected = metadataOf(metadata);
+    checkSession(expected.sessionId);
+    validateMetadata({ ...expected, discarded: false }, expected.sessionId);
+    return transact([SESSIONS], 'readonly', (tx, done, abort) => {
+      const request = tx.objectStore(SESSIONS).get(expected.sessionId);
+      request.onsuccess = () => {
+        try {
+          const row = request.result;
+          if (!row) throw fail('not-found', 'The requested draft is no longer available.');
+          validateMetadata(row, expected.sessionId);
+          if (row.discarded) throw fail('discarded', 'This draft was discarded.');
+          const latest = metadataOf(row);
+          if (Object.keys(expected).some(key => latest[key] !== expected[key])) {
+            throw fail('sequence-conflict', 'The draft changed during verification. Refresh before exporting it.');
+          }
+          done(true);
+        } catch (error) { abort(error); }
+      };
+    });
   }
 
   async function discardDraft(sessionId, { expectedSequence } = {}) {
@@ -366,7 +413,7 @@ export function createLocalDocumentDraftStore({ indexedDB, dbName = LOCAL_DOCUME
   // Graceful connection close is not cancellation: an active transaction may
   // still commit. Use writer.seal() and await it before close() when draining.
   function close() { closed = true; cancelOpen?.(); connection?.close(); connection = null; }
-  return Object.freeze({ createWriter, listDrafts, readDraft, discardDraft, close });
+  return Object.freeze({ createWriter, listDrafts, readDraft, verifyReceipt, discardDraft, close });
 }
 
 let defaultStore;
@@ -375,4 +422,16 @@ export const createLocalDocumentDraftWriter = file => production().createWriter(
 export const createLocalDraftWriter = createLocalDocumentDraftWriter;
 export const listLocalDocumentDrafts = () => production().listDrafts();
 export const readLocalDocumentDraft = (sessionId, options) => production().readDraft(sessionId, options);
+// Export does not initialize or upgrade the writable store. A fresh scoped
+// connection also lets an old v1 draft be exported without a migration write.
+export async function readExistingLocalDocumentDraft(sessionId, options) {
+  const reader = createLocalDocumentDraftStore({ existingOnly: true });
+  try { return await reader.readDraft(sessionId, options); }
+  finally { reader.close(); }
+}
+export async function verifyExistingLocalDocumentDraftReceipt(metadata) {
+  const reader = createLocalDocumentDraftStore({ existingOnly: true });
+  try { return await reader.verifyReceipt(metadata); }
+  finally { reader.close(); }
+}
 export const discardLocalDocumentDraft = (sessionId, options) => production().discardDraft(sessionId, options);

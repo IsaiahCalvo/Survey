@@ -15,6 +15,7 @@ async function load(name, modules) {
   const key = `__recoveryLibrary${crypto.randomUUID().replaceAll('-', '')}`;
   globalThis[key] = modules;
   let source = await readFile(file, 'utf8');
+  source = `const __recoveryRuntimeDeps = globalThis[${JSON.stringify(key)}];\n` + source.replace(/import\('\.\/services\/(localRecoveryBundle|saveLocalRecoveryBundle)\.js'\)/g, (_all, name) => `Promise.resolve(__recoveryRuntimeDeps[${JSON.stringify(name)}])`);
   source = source.replace(/^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?/gm, (_all, bindings, specifier) => {
     const name = specifier.split('/').at(-1).replace(/\.(jsx|js)$/, '');
     const value = `globalThis[${JSON.stringify(key)}][${JSON.stringify(name)}]`;
@@ -29,7 +30,7 @@ async function load(name, modules) {
   delete globalThis[key]; return result.default;
 }
 
-async function mount(t, { listOverride = null, isActive = true, initialTab = null } = {}) {
+async function mount(t, { listOverride = null, isActive = true, initialTab = null, displayName = 'Plans.pdf' } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://local.test' });
   const restore = [];
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
@@ -38,17 +39,20 @@ async function mount(t, { listOverride = null, isActive = true, initialTab = nul
     Object.defineProperty(globalThis, key, { configurable: true, value });
     restore.push(() => previous ? Object.defineProperty(globalThis, key, previous) : delete globalThis[key]);
   }
-  const row = { sessionId: 'session-a', sequence: 4, name: 'Plans.pdf', size: 1024, updatedAt: '2026-09-08T12:00:00Z' };
+  const row = { sessionId: 'session-a', sequence: 4, name: displayName, size: 1024, updatedAt: '2026-09-08T12:00:00Z' };
   if (initialTab) localStorage.setItem('survey-hub-tab', initialTab);
   const state = { rows: [row], lists: 0, reads: [], imports: [], opens: [], discarded: [], selected: [],
     user: null, confirmAnswer: false, confirmations: [], importError: null, readError: null,
-    discardError: null, listOverride, readOverride: null, cloudCalls: 0, isActive };
+    discardError: null, listOverride, readOverride: null, cloudCalls: 0, isActive,
+    exportReads: [], bundleCreates: [], exported: [], receiptChecks: [], parsed: [], saveResult: { downloadStarted: true } };
   const file = new File(['%PDF-draft'], row.name, { type: 'application/pdf' });
   file.id = 'never-copy-binding'; file.path = '/private/original.pdf';
   const savedState = { version: 1, pdfId: 'source-local-id', entries: { retained: 'unchanged' } };
   const managed = new File(['%PDF-copy'], 'Plans (recovered).pdf', { type: 'application/pdf' });
   Object.assign(managed, { localId: 'new-local-id', _surveyPdfId: 'new-local-id', storageMode: 'local' });
   const draftStore = {
+    async readExistingLocalDocumentDraft(...args) { state.exportReads.push(args); if (state.readError) throw state.readError; return { metadata: { ...row }, file, state: savedState }; },
+    async verifyExistingLocalDocumentDraftReceipt(...args) { state.receiptChecks.push(args); if (state.receiptError) throw state.receiptError; },
     async listLocalDocumentDrafts() { state.lists++; return state.listOverride ? state.listOverride() : [...state.rows]; },
     async readLocalDocumentDraft(...args) {
       state.reads.push(args); if (state.readError) throw state.readError;
@@ -75,6 +79,11 @@ async function mount(t, { listOverride = null, isActive = true, initialTab = nul
   const hooks = { projects: empty, templates: empty, initialLoading: false, refetch: noop };
   const Dashboard = await load('Dashboard.jsx', { react: React, SurveyHub: { default: SurveyHub },
     localDocumentStore: store, localDocumentDraftStore: draftStore,
+    localRecoveryBundle: {
+      async createLocalRecoveryBundle(value) { state.bundleCreates.push(value); return state.bundleOverride ? state.bundleOverride(value) : new Blob(['portable']); },
+      async parseLocalRecoveryBundle(value) { state.parsed.push(value); if (state.parseError) throw state.parseError; return { metadata: row, file, state: savedState }; },
+    },
+    saveLocalRecoveryBundle: { async saveLocalRecoveryBundle(...args) { state.exported.push(args); assert.equal(args[2].isCurrent(), true); return state.saveResult; } },
     localDocumentState: { createLocalDocumentStateReader: noop },
     AuthContext: { useAuth: () => ({ user: state.user, isAuthenticated: !!state.user, features: {} }) },
     MSGraphContext: { useMSGraph: () => ({}) },
@@ -100,8 +109,23 @@ async function mount(t, { listOverride = null, isActive = true, initialTab = nul
     event: async name => act(async () => window.dispatchEvent(new dom.window.Event(name))),
     click: async label => { const el = [...document.querySelectorAll('button')].find(el => el.textContent.trim() === label);
       assert.ok(el, `button ${label}`); await act(async () => el.click()); },
+    restoreFile: async () => {
+      const input = document.querySelector('[data-local-recovery-input]');
+      Object.defineProperty(input, 'files', { configurable: true, value: [new File(['portable'], 'copy.survey-recovery')] });
+      await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+    },
   };
 }
+
+test('recovery and portable restore suffixes stay within the managed display-name limit', async t => {
+  const h = await mount(t, { displayName: 'a'.repeat(1024) });
+  await h.click('Recover as copy');
+  assert.ok(h.state.imports[0][0].name.length <= 1024);
+  assert.match(h.state.imports[0][0].name, / \(recovered\)\.pdf$/);
+  await h.restoreFile();
+  assert.ok(h.state.imports[1][0].name.length <= 1024);
+  assert.match(h.state.imports[1][0].name, / \(restored\)\.pdf$/);
+});
 
 test('signed-out recovery list reads metadata only; recovering creates and opens a separate copy while retaining the source', async t => {
   const h = await mount(t);
@@ -116,6 +140,37 @@ test('signed-out recovery list reads metadata only; recovering creates and opens
   assert.equal(snapshot, h.savedState, 'snapshot stays separate from the new File bindings');
   assert.deepEqual(h.state.opens, ['new-local-id']); assert.equal(h.state.selected[0][0], h.managed);
   assert.deepEqual(h.state.discarded, []); assert.equal(h.state.rows.length, 1); assert.equal(h.state.cloudCalls, 0);
+});
+
+test('export works when importing a new copy has no quota; it never imports or discards and browser notice is honest', async t => {
+  const h = await mount(t); h.state.importError = new DOMException('Full', 'QuotaExceededError');
+  await h.click('Export recovery file');
+  assert.equal(h.state.exported.length, 1); assert.equal(h.state.imports.length, 0); assert.equal(h.state.discarded.length, 0);
+  assert.deepEqual(h.state.exportReads, [['session-a', { expectedSequence: 4 }]]);
+  assert.equal(h.state.receiptChecks.length, 1); assert.equal(h.state.rows.length, 1); assert.equal(h.state.cloudCalls, 0);
+  assert.match(document.body.textContent, /download started/); assert.doesNotMatch(document.body.textContent, /Recovery file saved/);
+});
+
+test('export rejects changed receipts and abandoned Home scopes before file dispatch', async t => {
+  const h = await mount(t); h.state.receiptError = new Error('Newer snapshot');
+  await h.click('Export recovery file'); assert.equal(h.state.exported.length, 0); assert.match(document.body.textContent, /Newer snapshot/);
+  h.state.receiptError = null; let finish;
+  h.state.bundleOverride = () => new Promise(resolve => { finish = resolve; });
+  await h.click('Export recovery file'); h.state.isActive = false; await h.render();
+  await act(async () => finish(new Blob(['portable'])));
+  assert.equal(h.state.exported.length, 0); assert.equal(h.state.discarded.length, 0);
+});
+
+test('restore imports bytes and complete state into a new identity; invalid or quota failure never opens', async t => {
+  const h = await mount(t);
+  h.state.parseError = new Error('Invalid bundle'); await h.restoreFile();
+  assert.equal(h.state.imports.length, 0); assert.match(document.body.textContent, /Invalid bundle/);
+  h.state.parseError = null; h.state.importError = new DOMException('Full', 'QuotaExceededError'); await h.restoreFile();
+  assert.equal(h.state.opens.length, 0); assert.equal(h.state.discarded.length, 0);
+  h.state.importError = null; await h.restoreFile();
+  const [file, saved] = h.state.imports.at(-1);
+  assert.equal(file.name, 'Plans (restored).pdf'); assert.equal(file.id, undefined); assert.equal(file.path, undefined); assert.equal(saved, h.savedState);
+  assert.equal(h.state.selected.length, 1); assert.equal(h.state.rows.length, 1); assert.equal(h.state.cloudCalls, 0);
 });
 
 test('discard requires a named snapshot-only confirmation and deletes only the displayed sequence', async t => {
