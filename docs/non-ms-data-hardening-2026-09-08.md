@@ -1755,6 +1755,103 @@ The opt-in test file passed 4/4. Production build, AST-only graph update and dif
 checks passed. App/viewer source and webhook code were not changed, so no new
 browser or live billing-flow verification is claimed for this database-only step.
 
+### Billing webhook integration — local implementation
+
+This section supersedes the preceding database-only step's caller-work list.
+The local webhook now uses `billingReconciliation.ts` and migration
+`20260908191000_billing_reconciliation_outbox.sql`. No live function, migration,
+Stripe customer, payment or email was changed or tested.
+
+Each handled event first checks its immutable event receipt. New work reads the
+full subscription and a private observation revision in one database snapshot,
+then fetches current Stripe state. Plan, free-cap archives, revision, receipt and
+up to three frozen email intents commit in one transaction. A separate revision
+is needed even when the plan row is unchanged: a newer no-op observation must
+invalidate an older pending provider read. Unchanged subscription rows still
+avoid UPDATE and do not advance the UI's `updated_at` signal.
+
+All stale/55P03/40P01/40001 retries repeat the database-read/provider-read cycle,
+with bounded backoff and three attempts. There are no fallback direct plan
+writes or separate archive calls. Processing failures return 503, while bad
+signatures return 400. Exact retries after a lost commit reply or cleared link
+use the receipt; they do not reapply plan or archive writes. Customer identity
+comes from the saved database binding. Conflicting event/provider metadata,
+environment, subscription, customer or invoice identity fails closed.
+
+Normal initial checkout requires an existing saved customer and an active or
+trialing paid subscription. Incomplete/past-due initial subscriptions cannot
+grant paid access. No account or missing subscription row is provisioned by a
+webhook, and another linked subscription is never replaced automatically.
+Obsolete terminal events receive checked ignored receipts without archiving
+the current plan. Invoice success/failure events reconcile current subscription
+and invoice state rather than copying their old event status into the database.
+
+Billing email uses the existing Brevo service. Account notices keep the bound
+Auth email; payment notices keep the freshly validated invoice billing email.
+A cancellation first observed by an invoice event can queue both its cancellation
+notice and paid receipt. Ordered claims drain both. Event and semantic keys
+prevent repeated notices, while schedule/resume/reschedule can send a new
+confirmation. Frozen payloads survive retries without switching recipients or
+copy. Recorded timestamps and historical wording make clear that a queued
+notice is a billing record, not a fresh statement of the current account state.
+No billing email contains an expiring portal-session URL.
+
+Only service callers can supply a billing delivery UUID and send deadline.
+The provider receives the same UUID on retries. Claims use two-minute leases,
+token-fenced completion and a server deadline. Both caller and sender reject
+expired work and reserve the provider request budget before sending. Automatic
+retry stops short of Brevo's documented 30-minute key lifetime: after 25 minutes
+an uncertain send stays in `needs_review`, rather than blindly sending again.
+An exact, narrowly recognized processed-key error records acknowledgement, not
+proof of inbox delivery. Unrecognized errors and absent provider receipts stay
+failures. Arbitrary process suspension, provider delays and cross-service clock
+drift preclude an absolute exactly-once delivery claim.
+
+Verification for this integration:
+
+- 23 actual isolated PostgreSQL checks, including actual shared caller → SQL
+  checkout, cancellation/archive/outbox, and duplicate-after-unlink flows.
+  Role checks, forged claims, no-op revision fencing, atomic rollback, stale
+  binding, ordered notices, lease/token fencing, cutoff and migration replay pass.
+- 47 actual webhook/shared-module checks with controlled SDK/DB/email boundaries;
+  these test caller behavior and do not substitute for SQL atomicity tests.
+- 33 sender/policy/layout checks, including deadlines, frozen key reuse, exact
+  duplicate handling, rendered billing record text and escaping. Invite policies
+  and wildcard CORS remain intact.
+- Seven real pinned Stripe signature/actual endpoint checks under Deno, using
+  synthetic events and intercepted network access. Raw-body changes, wrong or
+  expired signatures fail before database work; a verified database failure is not
+  acknowledged. No host credentials or live Stripe call is used.
+- Deno type checking covers both changed endpoints and the signature fixture.
+
+Frozen full regression run: 5,263 tests, 5,199 passed, 64 skipped, zero failures
+or cancellations, exit 0. The preceding baseline was 5,199 / 5,137 / 62. Both
+new opt-in integrations passed separately (PostgreSQL 3/3, Deno 1/1). The
+production build, AST-only graph update and staged whitespace checks passed.
+No viewer/browser flow, live inbox delivery or live payment is claimed verified
+by these local billing tests. The original worktree's scoped app/test files
+remain untouched; this work is isolated on the non-Microsoft hardening branch.
+
+Rollout is still gated. Apply prerequisite quota/receipt migrations and 191000
+first; verify service-only RPC grants, current schema types and the production
+INSERT/RLS issue noted earlier. Deploy and verify the updated `send-email`
+contract before replacing `stripe-webhook`. Never roll back to the old direct
+write/archive handler after new receipts are in use. Preserve receipts, heads
+and unsent/uncertain outbox rows on any rollback.
+
+There is no independent outbox scheduler in this slice. Delivery resumes through
+Stripe event retries or an explicitly authorized replay; after Stripe stops
+retrying, retained pending/uncertain records need an operator/worker. A live
+alert/recovery path and real provider duplicate-response wording must be checked
+before rollout. Unknown prices, multi-item subscriptions, non-USD receipt amounts
+and statuses not supported by the current database enum (`unpaid`, `paused`,
+`incomplete_expired`) fail visibly instead of guessing entitlement or billing
+copy. Their product rules and consumers need a separate tested change. This is
+not a claim that billing or the broader data architecture is fully optimized.
+Cross-device upload receipts/tombstones, immutable old PDF generations, remaining
+publish/revocation paths and the approved live rollout remain in scope. Microsoft
+365 trials and live Microsoft sync tests remain deferred.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
@@ -1762,6 +1859,8 @@ browser or live billing-flow verification is claimed for this database-only step
 - [Electron app lifecycle](https://www.electronjs.org/docs/latest/api/app)
 - [Stripe webhook retries, event ordering and duplicate handling](https://docs.stripe.com/webhooks)
 - [Stripe immutable event data and delivery-count fields](https://docs.stripe.com/api/events/object)
+- [Stripe subscription statuses](https://docs.stripe.com/api/subscriptions/object)
+- [Brevo idempotency keys and 30-minute lifetime](https://developers.brevo.com/docs/heterogenous-versions-batch-emails)
 
 ## Rollback
 

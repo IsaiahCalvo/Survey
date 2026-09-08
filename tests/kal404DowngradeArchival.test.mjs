@@ -1,54 +1,30 @@
-/* KAL-404 residual — the customer.subscription.updated pro→free branch used to
- * only log "Actual archival will be handled by frontend when user logs in",
- * but no frontend/login-time call to handle_downgrade_to_free ever existed.
- * The webhook must now archive overage itself, mirroring the
- * customer.subscription.deleted path. Source-assertion style
- * (kal31LastOwnerCascadeMigration.test.mjs). */
+// Boundary contracts only. Runtime handler cases live in
+// billingWebhookReconciliation.test.mjs; real PostgreSQL tests prove atomicity.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 
-const repoRoot = path.resolve(new URL('.', import.meta.url).pathname, '..');
-const source = fs.readFileSync(
-  path.join(repoRoot, 'supabase/functions/stripe-webhook/index.ts'),
-  'utf8',
-);
+const source = file => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+const endpoint = source('supabase/functions/stripe-webhook/index.ts');
+const reconciliation = source('supabase/functions/_shared/billingReconciliation.ts');
 
-function functionBody(name) {
-  const start = source.indexOf(`async function ${name}`);
-  assert.ok(start >= 0, `${name} must exist`);
-  const nextFn = source.indexOf('\nasync function ', start + 1);
-  return source.slice(start, nextFn === -1 ? source.length : nextFn);
-}
-
-test('subscription update pro→free calls handle_downgrade_to_free (no frontend hand-off)', () => {
-  const body = functionBody('handleSubscriptionUpdate');
-
-  assert.match(body, /isDowngradeToFree = oldTier === 'pro' && tier === 'free'/);
-  assert.match(body, /rpc\('handle_downgrade_to_free',\s*\{\s*p_user_id: actualUserId\s*\}/);
-  assert.doesNotMatch(
-    body,
-    /handled by frontend/i,
-    'the stale "frontend will archive on login" note must be gone — that code path never existed',
-  );
+test('KAL404 webhook awaits one reconciliation boundary, never a separate archival side effect', () => {
+  assert.match(endpoint, /await reconcileBillingEvent\(event,/);
+  assert.doesNotMatch(endpoint, /handleSubscription(Update|Deleted)|handle_downgrade_to_free|\.from\(|\.rpc\(/);
+  assert.doesNotMatch(endpoint, /handled by frontend/i);
 });
 
-test('archival runs only after the tier update succeeds, gated on the downgrade flag', () => {
-  const body = functionBody('handleSubscriptionUpdate');
-
-  const update = body.indexOf(".from('user_subscriptions')");
-  const successLog = body.indexOf('Subscription updated for user');
-  const archiveCall = body.indexOf("rpc('handle_downgrade_to_free'");
-  const gate = body.indexOf('if (isDowngradeToFree && actualUserId)');
-  assert.ok(update >= 0 && successLog >= 0 && archiveCall >= 0 && gate >= 0);
-  assert.ok(
-    update < successLog && successLog < gate && gate < archiveCall,
-    'archive call must sit inside the update-success branch behind the downgrade gate',
-  );
+test('KAL404 reconciliation submits snapshot, patch and notification in one RPC', () => {
+  assert.match(reconciliation, /checkedRpc\(deps\.db, 'reconcile_billing_subscription_event',\s*\{/);
+  for (const field of ['p_expected', 'p_patch', 'p_notification', 'p_expected_revision']) {
+    assert.match(reconciliation, new RegExp(`${field}:`));
+  }
+  assert.doesNotMatch(reconciliation, /handle_downgrade_to_free|\.update\(|\.insert\(|\.upsert\(/);
 });
 
-test('the subscription.deleted path keeps its own archival call (mirrored behavior)', () => {
-  const body = functionBody('handleSubscriptionDeleted');
-  assert.match(body, /rpc\('handle_downgrade_to_free',\s*\{\s*p_user_id: userSubscription\.user_id\s*\}/);
+test('KAL404 failed reconciliation is retryable, not falsely acknowledged as a completed downgrade', () => {
+  assert.match(endpoint, /Billing reconciliation requires retry'\s*\},\s*503/);
+  assert.match(reconciliation, /result\?\.outcome === 'stale'/);
+  assert.match(reconciliation, /RETRY_CODES = new Set\(\['55P03', '40P01', '40001'\]\)/);
+  assert.match(reconciliation, /if \(error\) throw new BillingReconciliationError/);
 });

@@ -22,6 +22,12 @@ import {
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.
 const BREVO_API_KEY = resolveBrevoApiKey(Deno.env.get('BREVO_API_KEY'));
 const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
+const BILLING_DELIVERY_TEMPLATES = new Set([
+    'trial-ending', 'payment-failed', 'payment-succeeded',
+    'subscription-canceled', 'subscription-cancel-scheduled',
+]);
+const DELIVERY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DELIVERY_DEADLINE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 type CallerContext =
     | { type: 'service' }
@@ -183,7 +189,24 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { to, subject, template, data } = await req.json();
+        const { to, subject, template, data, billingDeliveryKey, billingSendBefore } = await req.json();
+        let billingDeadline = NaN;
+
+        // Only the trusted billing outbox may supply a provider delivery key.
+        // User sends retain their existing recipient and rate-limit policy.
+        if (billingDeliveryKey !== undefined || billingSendBefore !== undefined) {
+            billingDeadline = typeof billingSendBefore === 'string' ? Date.parse(billingSendBefore) : NaN;
+            const allowed = caller.type === 'service' && BILLING_DELIVERY_TEMPLATES.has(template)
+                && typeof billingDeliveryKey === 'string' && DELIVERY_KEY.test(billingDeliveryKey)
+                && typeof billingSendBefore === 'string' && DELIVERY_DEADLINE.test(billingSendBefore)
+                && Number.isFinite(billingDeadline);
+            if (!allowed) {
+                return new Response(JSON.stringify({ error: 'Invalid billing delivery key' }), {
+                    status: caller.type === 'service' ? 400 : 403,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                });
+            }
+        }
 
         if (!to || !subject || !template) {
             return new Response(
@@ -223,16 +246,22 @@ Deno.serve(async (req) => {
         // frame (supabase/functions/_shared/emailLayout.ts) — see
         // docs/design/email-style-guide.md. Reskins preserve each message's
         // information and links; copy is sentence case per the copy style guide.
+        // Templates receive safeData below, so this record time is HTML-escaped
+        // just like other billing text. Queued records are not live plan status.
+        const billingRecord = (data: any) => typeof data.recordedAt === 'string' && data.recordedAt
+            ? `<p style="${MUTED}" class="em-mut">Billing record from ${data.recordedAt}. Your current plan and payment status are in Survey.</p>`
+            : '';
         const templates = {
             'trial-ending': (data: any) => renderEmailLayout({
-                heading: 'Your trial is ending soon',
-                preheader: `Your Pro trial ends on ${data.trialEndDate}.`,
-                footerReason: `You're receiving this because you have a Survey Pro trial.`,
+                heading: data.recordedAt ? 'Trial ending notice' : 'Your trial is ending soon',
+                preheader: `Your Survey trial ${data.recordedAt ? 'was due to end' : 'ends'} on ${data.trialEndDate}.`,
+                footerReason: `You're receiving this because you have a Survey trial.`,
                 bodyHtml:
+                    billingRecord(data) +
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">Your Pro trial will end in <strong>${data.daysLeft} days</strong> on ${data.trialEndDate}.</p>` +
-                    `<p style="${P}">To continue enjoying all Pro features, no action is needed — your subscription will automatically start at $9.99/month.</p>` +
-                    `<p style="${P}"><strong>Want to cancel?</strong> You can do so anytime before ${data.trialEndDate} with no charge.</p>` +
+                    `<p style="${P}">Your trial ${data.recordedAt ? 'was due to end' : 'will end'} in <strong>${data.daysLeft} days</strong> on ${data.trialEndDate}.</p>` +
+                    `<p style="${P}">After the trial, your selected plan and its billing terms apply. Check your subscription settings for pricing and renewal details.</p>` +
+                    `<p style="${P}"><strong>Want to make a change?</strong> ${data.recordedAt ? 'Review your current subscription settings.' : `Review or cancel your subscription before ${data.trialEndDate}.`}</p>` +
                     emailButton('Manage subscription', data.portalUrl) +
                     `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
             }),
@@ -240,16 +269,17 @@ Deno.serve(async (req) => {
             'payment-failed': (data: any) => renderEmailLayout({
                 heading: 'Payment failed',
                 headingColor: EMAIL_DANGER,
-                preheader: `We couldn't process your Pro subscription payment.`,
+                preheader: `We couldn't process your Survey subscription payment.`,
                 footerReason: `You're receiving this because a payment on your Survey subscription failed.`,
                 bodyHtml:
+                    billingRecord(data) +
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">We were unable to process your payment for your Pro subscription ($9.99/month).</p>` +
+                    `<p style="${P}">We were unable to process a payment for your Survey subscription.</p>` +
                     `<p style="${P}"><strong>What happens now?</strong></p>` +
                     `<ul style="${LIST}">` +
-                    `<li>Your subscription is currently <strong>past due</strong></li>` +
-                    `<li>We'll retry the payment in a few days</li>` +
-                    `<li>If payment fails again, your subscription may be canceled</li>` +
+                    `<li>Check your payment method and subscription status in Survey</li>` +
+                    `<li>Your billing settings show any payment action needed</li>` +
+                    `<li>Unresolved payment issues may affect your subscription</li>` +
                     `</ul>` +
                     emailButton('Update payment method', data.portalUrl) +
                     `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
@@ -261,30 +291,32 @@ Deno.serve(async (req) => {
             // 'subscription-canceled', which fires when the plan really ends.
             'subscription-cancel-scheduled': (data: any) => renderEmailLayout({
                 heading: 'Cancellation confirmed',
-                preheader: `Your Pro plan stays active until ${data.endDate || 'the end of your billing period'}.`,
+                preheader: `Your Survey subscription ${data.recordedAt ? 'was' : 'is'} scheduled to end on ${data.endDate || 'the end of your billing period'}.`,
                 footerReason: `You're receiving this because you canceled your Survey subscription.`,
                 bodyHtml:
+                    billingRecord(data) +
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">Your cancellation went through. No further charges will be made.</p>` +
+                    `<p style="${P}">${data.recordedAt ? 'A cancellation was recorded. Automatic renewal was scheduled to stop.' : 'Your cancellation is scheduled. This subscription will not renew automatically.'}</p>` +
                     `<ul style="${LIST}">` +
-                    `<li>You keep <strong>Pro</strong> until <strong>${data.endDate || 'the end of your current billing period'}</strong> — you already paid for it</li>` +
-                    `<li>After that you move to the Free plan automatically</li>` +
-                    `<li>Your documents and data stay exactly where they are</li>` +
+                    `<li>Your subscription ${data.recordedAt ? 'was' : 'is'} scheduled to end on <strong>${data.endDate || 'the end of your current billing period'}</strong></li>` +
+                    `<li>${data.recordedAt ? 'The record shows a planned move to the Free plan' : 'After that you move to the Free plan automatically'}</li>` +
+                    `<li>Your stored files are retained; Free-plan limits may archive items</li>` +
                     `</ul>` +
                     emailButton('Manage subscription', data.portalUrl) +
-                    `<p style="${MUTED}" class="em-mut">Changed your mind? You can resume your plan any time before ${data.endDate || 'it ends'} from Account Settings.</p>`,
+                    `<p style="${MUTED}" class="em-mut">${data.recordedAt ? 'Check Account Settings for your current plan and available changes.' : `Changed your mind? You can resume your plan any time before ${data.endDate || 'it ends'} from Account Settings.`}</p>`,
             }),
 
             'subscription-canceled': (data: any) => renderEmailLayout({
                 heading: 'Subscription canceled',
-                preheader: `You've been moved to the Free plan.`,
+                preheader: data.recordedAt ? 'Your account moved to the Free plan at the time of this record.' : `You've been moved to the Free plan.`,
                 footerReason: `You're receiving this because your Survey subscription changed.`,
                 bodyHtml:
+                    billingRecord(data) +
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">Your Pro subscription has been canceled as requested.</p>` +
+                    `<p style="${P}">Your Survey subscription has ended.</p>` +
                     `<p style="${P}"><strong>What's next?</strong></p>` +
                     `<ul style="${LIST}">` +
-                    `<li>You've been moved to the Free plan</li>` +
+                    `<li>${data.recordedAt ? 'Your account moved to the Free plan at the time of this record' : "You've been moved to the Free plan"}</li>` +
                     `<li>Your data is safe and secure</li>` +
                     `<li>You can reactivate anytime from Account Settings in the app</li>` +
                     `</ul>` +
@@ -294,15 +326,16 @@ Deno.serve(async (req) => {
 
             'payment-succeeded': (data: any) => renderEmailLayout({
                 heading: 'Thanks — payment received',
-                preheader: `Your ${data.planName || 'Survey'} subscription is active.`,
+                preheader: `Your Survey payment was received.`,
                 footerReason: `You're receiving this because a payment was made on your Survey subscription.`,
                 bodyHtml:
+                    billingRecord(data) +
                     `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
-                    `<p style="${P}">Your subscription is active. Here's your receipt.</p>` +
+                    `<p style="${P}">We received your payment. Here's your receipt.</p>` +
                     emailDetailRows([
-                        ['Plan', String(data.planName || 'Survey Pro')],
+                        ['Plan', String(data.planName || 'Survey subscription')],
                         ['Amount', `$${data.amount}`],
-                        ['Next billing date', String(data.nextBillingDate || '—')],
+                        ['Invoice period end', String(data.periodEnd || data.nextBillingDate || '—')],
                     ]) +
                     emailButton('View billing', data.portalUrl) +
                     `<p style="${MUTED}" class="em-mut">Questions about your billing? Reply to this email for support.</p>`,
@@ -389,27 +422,64 @@ Deno.serve(async (req) => {
 
         console.log(`Sending ${template} email to ${recipient}`);
 
-        const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: {
-                'api-key': BREVO_API_KEY,
-                'content-type': 'application/json',
-                'accept': 'application/json',
-            },
-            body: JSON.stringify({
-                sender: EMAIL_SENDER,
-                to: [{ email: recipient }],
-                subject: safeSubject,
-                htmlContent: html,
-            }),
-        });
+        const providerController = new AbortController();
+        let providerTimer: ReturnType<typeof setTimeout> | undefined;
+        const result = await Promise.race([
+          (async () => {
+            // A delayed claim or edge request must not start a fresh send after
+            // its lease/key window. Leave room for the whole provider deadline.
+            if (billingDeliveryKey && Date.now() + 30_000 > billingDeadline) {
+                throw Object.assign(new Error('Billing delivery window expired; request a fresh claim'), {
+                    code: 'BILLING_SEND_WINDOW_EXPIRED',
+                });
+            }
+            const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                signal: providerController.signal,
+                headers: {
+                    'api-key': BREVO_API_KEY,
+                    'content-type': 'application/json',
+                    'accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    sender: EMAIL_SENDER,
+                    to: [{ email: recipient }],
+                    subject: safeSubject,
+                    htmlContent: html,
+                    ...(billingDeliveryKey ? { headers: { idempotencyKey: billingDeliveryKey } } : {}),
+                }),
+            });
 
-        if (!brevoRes.ok) {
-            const errText = await brevoRes.text();
-            console.error('Brevo API error:', brevoRes.status, errText);
-            throw new Error(`Brevo send failed (${brevoRes.status})`);
-        }
-        const result = await brevoRes.json();
+            if (!brevoRes.ok) {
+                const errText = await brevoRes.text();
+                if (providerController.signal.aborted) throw new Error('Brevo request timed out; delivery is unknown');
+                let providerError;
+                try { providerError = JSON.parse(errText); } catch { /* Not a confirmed duplicate. */ }
+                // A generic duplicate_parameter can describe unrelated input.
+                // Acknowledge only the explicit processed-key response for our
+                // service-scoped key. This is not proof of inbox delivery.
+                if (billingDeliveryKey && brevoRes.status === 400
+                    && providerError?.code === 'duplicate_parameter'
+                    && providerError?.message === 'Email for the idempotency key has already been processed') {
+                    return { messageId: `duplicate:${billingDeliveryKey}` };
+                }
+                console.error('Brevo API error:', brevoRes.status, errText);
+                throw new Error(`Brevo send failed (${brevoRes.status})`);
+            }
+            const providerResult = await brevoRes.json();
+            if (providerController.signal.aborted) throw new Error('Brevo request timed out; delivery is unknown');
+            if (typeof providerResult?.messageId !== 'string' || !providerResult.messageId.trim()) {
+                throw new Error('Brevo did not return a message receipt; delivery is unknown');
+            }
+            return providerResult;
+          })(),
+          new Promise<never>((_resolve, reject) => {
+            providerTimer = setTimeout(() => {
+                providerController.abort();
+                reject(new Error('Brevo request timed out; delivery is unknown'));
+            }, 30_000);
+          }),
+        ]).finally(() => clearTimeout(providerTimer));
 
         console.log('Email sent successfully!');
         console.log('Brevo messageId:', result.messageId);
@@ -426,11 +496,13 @@ Deno.serve(async (req) => {
     } catch (error) {
         console.error('Error sending email:', error);
         const message = error instanceof Error ? error.message : String(error);
+        const expiredClaim = error && typeof error === 'object' && 'code' in error
+            && error.code === 'BILLING_SEND_WINDOW_EXPIRED';
         return new Response(
             JSON.stringify({ error: message }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 500,
+                status: expiredClaim ? 503 : 500,
             }
         );
     }
