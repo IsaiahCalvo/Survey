@@ -12,6 +12,10 @@ import {
   installLeasedBrowserAccount,
 } from '../agent-cli/lib/leased-browser-session.mjs';
 import { loadVerifiedTestAccounts } from './test-account-lease.mjs';
+import {
+  assertHarnessAccountIdentity,
+  makeSignedInClient,
+} from '../tests/phase35-e2e/eraser-permission-harness.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const LOGS_ROOT = path.join(REPO_ROOT, 'Logs');
@@ -200,10 +204,36 @@ async function waitForStorageDownloadProof(storageResponses, label, timeoutMs = 
 
 async function openAsUser(browser, credentials, accountIndex, document, label, evidence) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-  const leasedAccount = await installLeasedBrowserAccount(context, { accountIndex });
+  const origin = new URL(BASE_URL).origin;
+  const leasedAccount = await installLeasedBrowserAccount(context, { accountIndex, origin });
   if (leasedAccount.userId !== credentials.userId || leasedAccount.email !== credentials.email) {
     throw new Error(`${label}: verified lease account changed before browser launch`);
   }
+  // Seed only this exact leased actor. Password-only browser setup cannot pass
+  // the server CAPTCHA gate, and the machine-local dev relay is owner-only.
+  // Check that the leased user still exists before requesting a magic link.
+  const actorLookup = await ownerClient.auth.admin.getUserById(credentials.userId);
+  if (actorLookup.error) throw new Error(`${label}: leased auth user unavailable`);
+  assertHarnessAccountIdentity(credentials, actorLookup.data?.user);
+  // Reuse the existing lease-test auth helper; no email is sent.
+  const signedIn = await makeSignedInClient({
+    admin: ownerClient,
+    config: {
+      supabaseUrl: process.env.VITE_SUPABASE_URL,
+      anonKey: process.env.VITE_SUPABASE_ANON_KEY,
+    },
+  }, credentials);
+  const { data, error } = await signedIn.auth.getSession();
+  if (error || !data?.session) throw new Error(`${label}: leased session unavailable`);
+  assertHarnessAccountIdentity(credentials, data.session.user);
+  const projectRef = new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0];
+  await context.addInitScript(({ storageKey, session, origin }) => {
+    if (window.location.origin !== origin || window.top !== window) return;
+    // Preserve a refreshed session across the harness's reload checks.
+    if (!window.localStorage.getItem(storageKey)) {
+      window.localStorage.setItem(storageKey, JSON.stringify(session));
+    }
+  }, { storageKey: `sb-${projectRef}-auth-token`, session: data.session, origin });
   const page = await context.newPage();
   const consoleLines = [];
   const storageResponses = [];

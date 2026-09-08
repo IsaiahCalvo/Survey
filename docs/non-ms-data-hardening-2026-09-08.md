@@ -389,6 +389,53 @@ the reproductions and required acceptance tests. Neither the old local bytes nor
 the live namespace has been changed: actor scoping must preserve and expose old
 unattributed pending data for recovery, not silently discard or replay it.
 
+### Live two-user baseline: passed after test-login repair
+
+The current FIX20 harness has supported viewer hooks and real UI shape creation.
+Its first run on product revision `9109b5e2` stopped before login because its
+password-only setup hit the server CAPTCHA gate. No collaboration assertion ran
+in that failed baseline. Its temporary document and storage object were removed.
+
+The harness now reuses the existing leased-test sign-in helper. It checks the
+exact auth user ID and email before requesting a session, verifies the returned
+identity, and seeds only the configured app origin's top-level page. It does not
+overwrite a refreshed session on reload. The password override for this harness
+gets the same origin/frame restriction. Product login rules and the machine-local
+owner relay are unchanged. No test account was created and no email was sent.
+
+The complete existing test passed twice, including after the final origin and
+session-retention changes. The final run at `2026-09-08T04:21:30Z` used two leased
+free/active accounts and an isolated disposable PDF. It proved:
+
+- Both users see each other's UI-created circles exactly once.
+- Rectangle, callout and counter changes reach the other user.
+- A collaborator cannot move or delete the other author's rectangle or callout.
+- Each user can delete their own tested marks without deleting the other's.
+- Reload preserves each remaining circle exactly once in both clients and in
+  the authoritative stored Yjs state; deleted marks stay absent.
+- Both clients load the actual PDF from authenticated storage, without a byte
+  override. The final run logged no browser console errors.
+
+The final fixture was `d4fd7d3b-0883-4a43-b5f7-8e6e12b3a4c1`. The harness removed
+its exact document and storage object. Coordinator read-only checks found no
+remaining objects/documents in the test folder, no new survey sessions for the
+leased actors, and unchanged free/active baselines. Cleanup was attested and the
+lease released. Raw logs remain private in the isolated QA worktree; they are not
+safe public handoff artifacts.
+
+This closes the live **baseline** gap for those existing checks only. It does not
+prove offline reconnect, access revocation during offline work, the old provider's
+account switch, or any Microsoft flow. New tests for those boundaries remain
+pending confirmation under the selected test-first workflow. The legacy raw-data
+recovery design has not been migrated or enabled.
+
+After the final test-login changes, the full offline suite passed again: 4,299
+tests, 4,245 passed, 54 skipped, zero failed or canceled, exit 0. The existing
+24 lease/identity checks and seven registry/lifecycle checks also passed. No new
+regression test was added in this slice. Independent review found no remaining
+blocker in the two-file login-setup diff. Product source is unchanged from the
+already built and native-tested `9109b5e2` revision.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

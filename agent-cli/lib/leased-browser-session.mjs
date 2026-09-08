@@ -2,16 +2,18 @@ import { loadVerifiedTestAccounts } from '../../scripts/test-account-lease.mjs';
 
 export async function installLeasedBrowserAccount(
   target,
-  { accountIndex = 0 } = {},
+  { accountIndex = 0, origin = null } = {},
 ) {
   // Lease verification runs synchronously before addInitScript yields, so a
   // missing/mismatched lease fails before the browser can navigate.
   const accounts = loadVerifiedTestAccounts({ minimumAccounts: accountIndex + 1 });
   const account = accounts[accountIndex];
-  await target.addInitScript(({ credentials }) => {
+  await target.addInitScript(({ credentials, origin }) => {
+    if (origin && (window.location.origin !== origin || window.top !== window)) return;
     window.localStorage.setItem('__fix20AuthOverride', JSON.stringify(credentials));
   }, {
     credentials: { email: account.email, password: account.password },
+    origin,
   });
   return account;
 }

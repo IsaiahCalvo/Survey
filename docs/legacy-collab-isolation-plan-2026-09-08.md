@@ -262,6 +262,33 @@ account-lease rules for any later real-auth tests.
 
 ## Existing verification
 
+### Current callback and recovery audit (`9109b5e2`)
+
+The namespace change must retire work inside the called services, not just
+detach the provider's React effects:
+
+- `YDocProvider.jsx:208` keys the inner mount by document only; its main cleanup
+  dependencies at line 592 contain no actor. Undo setup at lines 651–689 reads
+  the actor once, and role lookup at line 1542 depends only on the document.
+- The backfill effect checks cancellation before calling `runBackfill`, but
+  cannot stop a call already running (`YDocProvider.jsx:988`). That service queues
+  a Web Lock without an abort signal (`crdtBackfill.js:436`) and has later local
+  changes and a cloud cutover seal after awaited reads. It needs scope checks
+  inside the operation, including after waits, not just around the call.
+- `annotationCloudSync.js:618` and `:717` start legacy writes with the shared
+  auth client, then change a captured Y.Doc at lines 685 and 768. These delayed
+  continuations must reject a retired scope before touching the document.
+- The registry has no public, non-creating recovery read. `getOrCreateYDoc`
+  creates a document and increments its reference count; purge destroys it.
+  Recovery therefore needs a narrow snapshot-only accessor, not either API.
+- Read old IndexedDB records with an existing-only, read-only transaction over
+  the raw `updates` and `custom` stores. Do not use `IndexeddbPersistence` to
+  inspect a recovery candidate: opening it applies updates and writes state.
+
+These are current-source findings, not a claim that the fixes have shipped.
+Pending raw updates and deletions must survive export; annotation counts or a
+matching state vector alone do not establish byte-complete recovery.
+
 The seven existing registry/lifecycle tests passed on the audited revision.
 They cover registry reuse, per-document distinction, no-destroy release, lock
 release, and cancellation of a waiting lock. They do not cover actor isolation
