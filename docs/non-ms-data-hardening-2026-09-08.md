@@ -1252,6 +1252,88 @@ tests account for two passes and the explicit database opt-in skip; that databas
 test was also run separately and passed. Production build passes. This is a
 local migration/test result, not a live application or production-policy proof.
 
+## Document and object-byte quota repair: local follow-up
+
+`20260908160000_document_quota_guard.sql` moves the document INSERT self-count
+behind a no-argument, actor-scoped definer helper. It keeps the inclusive
+`get_actual_storage_usage(actor) <= get_storage_limit(actor)` expression. A
+separate private document guard serializes active-slot additions, including
+bulk inserts, restores, and owner changes, with the same trusted-role and
+wrong-owner protections as the project guard. Document UPDATE/DELETE remain
+owner/co-owner operations; editor permission alone does not gain those rights.
+Direct document roles still take precedence over inherited project roles, and
+user-archived documents remain private to their permanent owner.
+
+The storage review found two distinct races in the current BEFORE trigger.
+At REPEATABLE READ, two 60-byte files both committed against a 100-byte fixture
+limit because the advisory lock did not refresh the transaction snapshot.
+At READ COMMITTED, deleting an existing 60-byte object while another transaction
+recreated the same path at 50 bytes let that INSERT use the old size as a
+non-growth exemption. A competing 90-byte INSERT then committed before the
+recreated row became visible, leaving 140 bytes against the 100-byte limit.
+The ordinary concurrent READ COMMITTED growth check already worked.
+
+The tested storage design moves quota enforcement to the actual AFTER row
+event. That is still inside the same transaction: rejection rolls back the
+statement. It distinguishes an actual new object from the INSERT probe of an
+upsert, while unchanged/shrinking UPDATEs compare their actual OLD and NEW
+sizes. Positive additions update a private per-owner guard before reading the
+current total. The owner remains path-derived even for the storage service's
+JWT-less writes; there is no service/admin byte-quota exemption. Missing-size
+permission probes and zero-byte additions keep their existing behavior. The
+guard has no auth-user foreign key, preserving valid legacy/service UUID paths
+whose user row no longer exists. No DELETE trigger or extra object-row lock is
+needed. PostgreSQL's [trigger rules](https://www.postgresql.org/docs/current/trigger-definition.html)
+define the upsert event and transaction behavior used here.
+
+Review caught an additional candidate bug before release: a valid uppercase or
+otherwise noncanonical UUID folder could normalize to an owner while escaping
+the canonical-prefix SUM. New/growing allocations must therefore use the
+canonical lowercase UUID owner folder already used by the app. Existing
+same-prefix, non-growing legacy saves stay supported. Negative actual byte
+sizes are invalid rather than credits against usage. Read-only live aggregate
+checks found zero noncanonical owner prefixes and zero negative, noninteger, or
+missing stored sizes in the documents bucket; no object was rewritten.
+
+Adjacent audit only: the live database has the old combined
+`trigger_update_storage_on_document_change` as well as the separate insert and
+delete triggers, all calling the incremental `update_user_storage` function.
+This doubles legacy counter updates on INSERT/DELETE and adds a no-op callback
+to metadata UPDATE. Actual quotas and the current app meter use object bytes,
+not that counter. Removing only the old combined trigger is a separate bounded
+cleanup; this batch does not backfill counters or change legacy views.
+
+Frozen verification for the two forward migrations:
+
+- Document harness: 30 actual PostgreSQL checks passed, including direct and
+  inherited project sharing, owner-only metadata changes, byte-gate preservation,
+  cap races, restores, transfers, rollback, and private grants.
+- Storage harness: 23 actual PostgreSQL checks passed. It first reproduces both
+  deployed race shapes, then applies the actual migration twice using a
+  non-superuser postgres role with TRIGGER permission on another role's table.
+  It preserves unrelated policies/triggers/limits and the existing function ACL.
+  Checks cover same/shrinking over-quota saves, upsert event identity, probes,
+  zero bytes, invalid sizes/prefixes, renames, owner/bucket moves, null-JWT service
+  writes, transaction rollback, private guards, and non-owner legacy paths.
+- The combined document harness with `--with-storage-guard` passed all 30 checks
+  against both new migrations together. The prior project harness also passes.
+  Final root opt-in runs used deliberately invalid inherited PostgreSQL settings
+  and still used only their owned local Unix sockets. All clusters stopped and
+  their exact temporary directories were removed.
+- App suite: 5,011 tests total, 4,954 passed, 57 skipped, zero failures/cancellations,
+  exit 0 (prior baseline: 5,005 total). The six added tests contribute four
+  offline passes and two explicit PostgreSQL opt-in skips; both database tests
+  separately ran and passed. The final fixture-only path-parser correction was
+  also rerun through its source checks and full database harness. Build passes.
+
+Same-prefix unchanged/shrinking storage updates now return before the owner
+aggregate query, removing that query from ordinary saves as well as avoiding
+the guard write. No numeric production latency or egress reduction is claimed.
+These migrations are local, not applied to Supabase. Live storage-API upload,
+save/retry, and collaboration verification remain required after an approved
+rollout. Plan-change atomicity, the duplicate legacy counter trigger, durable
+single-file background uploads, and older mutable PDF paths remain open.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
