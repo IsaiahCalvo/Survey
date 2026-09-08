@@ -2276,6 +2276,111 @@ confirmed billing cleanup. Cancellation and invoice reconciliation must remain
 possible: closing alone is not a cancellation receipt. A one-shot preflight check
 or final customer reread cannot cover a provider create that finishes afterward.
 
+## Billing lifecycle: durable SQL contract, endpoint integration still pending
+
+Migration `20260909010000` implements the database part of the billing race fix.
+It is not deployed. Checkout, portal, account deletion and the provider runner do
+not yet call these new RPCs. This is tested progress toward the full boundary,
+not a claim that live billing or the whole deletion flow is fixed.
+
+The service-only contract is:
+
+| RPC | Persisted result |
+| --- | --- |
+| `begin_billing_operation` | One admission for a frozen actor, operation UUID, kind, provider scope, request spec and expected customer. |
+| `settle_billing_operation` | Exact confirmed result and any customer that still needs cleanup, even after closure or auth removal. |
+| `begin_billing_account_closure` | Permanent account closure plus the current linked customer's cleanup record. |
+| `claim_billing_customer_cleanup` | At most 100 exact candidates with a saved cursor; no candidates while an operation remains unresolved. |
+| `ack_billing_customer_cleanup` | Removal receipt for an exact, already registered customer and provider scope. |
+| `read_billing_account_closure` | Readiness based on pending work and coverage of the current customer, never on page emptiness. |
+
+Only the first committed begin response with `outcome:admitted` can authorize
+one provider call. Exact replays return `pending` or `settled`; they never renew
+permission. Changed actor, kind, scope, spec or customer fails, including after
+settlement. The server records an immutable admission timestamp for future
+recovery checks. A caller must await the RPC commit before contacting Stripe;
+an admitted value observed inside an uncommitted SQL transaction is not enough.
+
+`pending` has no age-based release. A timeout or lost result is not a confirmed
+failure. Settlement accepts only an exact successful result or a provider-confirmed
+failure that created no new resource. The latter is a trusted service attestation,
+not something SQL can independently prove. A successful late customer creation
+records cleanup separately from linking a subscription, so a rejected binding
+cannot erase the new customer's cleanup duty. Known checkout/portal customers
+must match the subscription row and are registered before admission.
+
+Provider scope fixes test/live mode, account and API version. The legacy
+subscription row does not store this scope; the future runner must verify it
+from the configured provider, not infer it from the customer ID. Existing
+pre-ledger orphan customers remain a separate inventory/reconciliation gate.
+
+A permanent customer-owner table follows the existing globally unique bare
+customer column. It keeps the original account even after a binding is cleared
+or auth is removed. This prevents cleanup for A from deleting a customer later
+claimed by B. Same-account stale-customer clearing/replacement stays allowed
+while open; cross-account reuse is rejected. The new trigger allows unchanged
+customer/owner writes, so counters and cancellation reconciliation still work
+during closure. Supported sharing/collaboration uses separate project/document
+permissions; it does not transfer billing-customer ownership.
+
+Operation, ownership, cleanup and closure records have no auth foreign keys.
+Client roles cannot read or write them. Service RPCs verify the actual SQL role,
+not a claimed JWT role, and require READ COMMITTED. Short transactions use
+fail-fast locks where a subscription tuple could reverse the account/customer
+lock order. No SQL transaction waits for Stripe. Claims and acknowledgments
+reject closure made in the same top transaction, including nested savepoints;
+status cannot report complete until that closure has committed.
+
+Pending checks use indexed `EXISTS` rather than counts over all history. Cleanup
+uses a partial index and a `(provider_scope, customer_id)` cursor, advances before
+returning the batch, and wraps at the end. Failed or lost batches recur in a later
+cycle without blocking access to later customers. Completion still checks all
+unresolved operations, remaining customer records and the linked customer's
+removal receipt. No record is treated as removed just because its page was read.
+
+The one-time owner backfill uses set-based conflict checks under table locks,
+not one advisory lock per historical customer. Conflicting historic ownership
+aborts the migration. Installation size and lock-window checks remain required
+before deployment. Pending request/result payloads are capped at 16 KiB per
+object; receipt retention and redaction of settled payloads still need a policy.
+The future runner must never put credentials or full provider responses in these
+records. No timer-based deletion of unresolved work is permitted.
+
+Verification:
+
+- 25 new installed-PostgreSQL lifecycle cases cover single-use/replayed admission,
+  concurrent begin/close, rollback, committed-closure checks, late settlement,
+  exact customer ownership, cross-account reuse, malformed input, role spoofing,
+  stale isolation levels, failed-page fairness, auth removal and migration replay.
+- The same fixture runs all 23 prior webhook/revision/outbox/quota cases with the
+  new guard installed. It also applies a real cancellation transition after
+  closure, retaining the customer link and allowing the expected archive changes.
+- With 50,000 retired operations and 50,000 removed customer records, the pending
+  probes use their partial indexes without filtering retired history. These are
+  local query-plan checks, not hosted latency or live Stripe proof.
+- All 8 opt-in PostgreSQL wrappers passed, including the earlier atomic transition
+  and separate lock-interleaving suites. The full Node suite passed with 5,448
+  tests: 5,379 passed, 69 skipped, zero failures/cancellations, 585 files, exit 0.
+  The previous committed baseline was 5,447/5,378/69. The final timestamp change
+  was followed by another passing opt-in PostgreSQL run; the final focused wrapper
+  confirms all 48 combined SQL cases. Production build and AST graph update passed.
+  No UI source changed; browser testing cannot establish this unwired SQL contract.
+  No live auth, billing or Storage mutation.
+
+Still required: wire the three endpoints and final auth-deletion readiness check;
+record old scoped customers before rotation; implement recovery for lost replies
+and interrupted workers; verify late checkout/portal effects with the actual
+provider; and test the full authenticated route under account leases. An
+idempotency key alone cannot support unbounded provider retries: Stripe may prune
+keys after 24 hours, so recovery needs a bounded, verified protocol rather than a
+new admission. [Stripe idempotency reference](https://docs.stripe.com/api/idempotent_requests)
+
+No auth-schema trigger is installed. Direct service/admin auth deletion can still
+bypass the planned endpoint readiness check; existing durable receipts survive
+that bypass. A rollback must preserve these receipts and the permanent owner
+records, never turn unresolved work into success or restore unsafe customer reuse.
+Microsoft remains deferred; nothing was pushed or deployed.
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions

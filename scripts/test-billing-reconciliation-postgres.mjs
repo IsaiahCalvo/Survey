@@ -110,6 +110,13 @@ try{
   const guardBefore=scalar(`SELECT jsonb_agg(pg_get_functiondef(oid) ORDER BY oid) FROM pg_proc WHERE oid IN ('survey_private.enforce_project_quota()'::regprocedure,'survey_private.enforce_document_quota()'::regprocedure,'public.enforce_documents_storage_quota()'::regprocedure)`);
   apply(migration);
   apply(reconciliationMigration);
+  // Existing pre-ledger bindings must receive immutable ownership receipts.
+  sql(`INSERT INTO auth.users VALUES('${uuid(800)}'); UPDATE user_subscriptions SET stripe_customer_id='cus_LegacyBeforeMigration' WHERE user_id='${uuid(800)}'`);
+  // Install the actual account and billing lifecycle guards before exercising
+  // the existing webhook/revision/outbox cases. No provider or auth API runs.
+  sql('CREATE TABLE templates(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id),name text)');
+  apply('20260908230000_account_storage_closing.sql');
+  apply('20260909010000_billing_account_lifecycle.sql');
   const atomicTables=[...fullTables,'survey_private.project_quota_guards','survey_private.document_quota_guards','survey_private.storage_quota_guards'];
   const a=actor(1,{projects:3,documents:7}),b=actor(2,{projects:2,documents:6});
   sql(`UPDATE projects SET user_archived_at='2025-01-01' WHERE id='${uuid(101)}'; UPDATE documents SET user_archived_at='2025-01-02' WHERE id='${uuid(1001)}';
@@ -306,6 +313,282 @@ try{
     assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policyBefore);
     assert.equal(scalar(`SELECT jsonb_agg(pg_get_functiondef(oid) ORDER BY oid) FROM pg_proc WHERE oid IN ('survey_private.enforce_project_quota()'::regprocedure,'survey_private.enforce_document_quota()'::regprocedure,'public.enforce_documents_storage_quota()'::regprocedure)`),guardBefore);
   });
+  // Billing lifecycle contract: SQL receipts only. Provider outcomes below are
+  // synthetic attestations; these tests never create or delete Stripe objects.
+  const scope={mode:'test',account:'platform',api_version:'2026-02-25.clover'};
+  const requestSpec={metadata:{purpose:'synthetic-local-fixture'}};
+  const operation=(n,user,kind='customer_create',customer=null,overrides={})=>({id:uuid(10000+n),user,kind,customer,scope,requestSpec,...overrides});
+  const operationArgs=o=>[quote(o.id),quote(o.user),quote(o.kind),json(o.scope),json(o.requestSpec),quote(o.customer)].join(',');
+  const beginSql=o=>`SELECT public.begin_billing_operation(${operationArgs(o)})`;
+  const begin=o=>JSON.parse(asRole(null,beginSql(o)).stdout);
+  const startCreate=o=>{
+    const prior=scalar(`SELECT stripe_customer_id FROM user_subscriptions WHERE user_id=${quote(o.user)}`);
+    sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id=${quote(o.user)}`);
+    const value=begin(o);
+    // A different already-admitted creator may win customer binding before
+    // this pending creator returns. Closure must retain both exact customers.
+    if(prior)sql(`UPDATE user_subscriptions SET stripe_customer_id=${quote(prior)} WHERE user_id=${quote(o.user)}`);
+    return value;
+  };
+  const settleSql=(o,value)=>`SELECT public.settle_billing_operation(${operationArgs(o)},${json(value)})`;
+  const settle=(o,value)=>JSON.parse(asRole(null,settleSql(o,value)).stdout);
+  const closeSql=(user,providerScope=scope)=>`SELECT public.begin_billing_account_closure(${quote(user)},${json(providerScope)})`;
+  const closeBilling=user=>JSON.parse(asRole(null,closeSql(user)).stdout);
+  const cleanupSql=(user,limit=100)=>`SELECT public.claim_billing_customer_cleanup(${quote(user)},${limit})`;
+  const cleanup=(user,limit=100)=>JSON.parse(asRole(null,cleanupSql(user,limit)).stdout);
+  const ackSql=(user,customer,providerScope=scope)=>`SELECT public.ack_billing_customer_cleanup(${quote(user)},${json(providerScope)},${quote(customer)})`;
+  const ack=(user,customer,providerScope=scope)=>JSON.parse(asRole(null,ackSql(user,customer,providerScope)).stdout);
+  const readClosure=user=>JSON.parse(asRole(null,`SELECT public.read_billing_account_closure(${quote(user)})`).stdout);
+  const succeeded=customer=>({outcome:'succeeded',customer_id:customer,data:{id:'synthetic-provider-result'}});
+  const failed={outcome:'failed',customer_id:null,data:{code:'synthetic-confirmed-no-create'}};
+  const rejects=command=>assert.notEqual(asRole(null,command,'service_role',false).status,0,command);
+  let lifecycleChecks=0;
+  const lifecycleCheck=async(label,work)=>{await check('LIFECYCLE '+label,work);lifecycleChecks++;};
+
+  await lifecycleCheck('admission is single-use and exact replay never authorizes another provider call',()=>{
+    const user=actor(50),o=operation(50,user);
+    const admitted=startCreate(o);assert.equal(admitted.outcome,'admitted');
+    assert.ok(Number.isFinite(Date.parse(admitted.admitted_at)));
+    const replay=begin(o);assert.equal(replay.outcome,'pending');assert.equal(replay.admitted_at,admitted.admitted_at);
+    for(const change of [{user:b},{kind:'portal_create'},{customer:'cus_changed'},{scope:{...scope,mode:'live'}},{requestSpec:{changed:true}}])rejects(beginSql({...o,...change}));
+    settle(o,succeeded('cus_New50'));assert.equal(begin(o).outcome,'settled');
+    rejects(beginSql({...o,requestSpec:{changed:true}}));rejects(settleSql(o,succeeded('cus_Other50')));
+    const settled=settle(o,succeeded('cus_New50'));assert.equal(settled.outcome,'settled');assert.equal(settled.admitted_at,admitted.admitted_at);
+  });
+  await lifecycleCheck('closure preserves pending creation and late success becomes separate cleanup work',()=>{
+    const user=actor(51),o=operation(51,user);startCreate(o);closeBilling(user);
+    assert.equal(cleanup(user).complete,false);assert.deepEqual(cleanup(user).customers,[]);
+    rejects(ackSql(user,'cus_51'));rejects(beginSql(operation(510,user)));
+    settle(o,succeeded('cus_Late51'));
+    const page=cleanup(user);assert.equal(page.complete,false);
+    assert.deepEqual(page.customers.map(c=>c.customer_id).sort(),['cus_51','cus_Late51']);
+    ack(user,'cus_51');assert.equal(readClosure(user).complete,false);
+    ack(user,'cus_Late51');assert.equal(readClosure(user).complete,true);
+    // Replaying a committed settlement cannot reopen a removed customer's job.
+    settle(o,succeeded('cus_Late51'));assert.equal(cleanup(user).complete,true);
+  });
+  await lifecycleCheck('known-customer operations register before provider work and cannot change result binding',()=>{
+    const user=actor(52),checkoutOp=operation(52,user,'checkout_create','cus_52');
+    begin(checkoutOp);closeBilling(user);
+    rejects(settleSql(checkoutOp,succeeded('cus_foreign')));
+    assert.equal(readClosure(user).complete,false);
+    settle(checkoutOp,succeeded('cus_52'));
+    assert.deepEqual(cleanup(user).customers.map(c=>c.customer_id),['cus_52']);
+    rejects(ackSql(user,'cus_foreign'));rejects(ackSql(user,'cus_52',{...scope,mode:'live'}));
+    ack(user,'cus_52');assert.equal(readClosure(user).complete,true);
+  });
+  await lifecycleCheck('timeout is not a no-create receipt and confirmed failures cannot invent a customer',()=>{
+    const user=actor(53),o=operation(53,user);startCreate(o);closeBilling(user);
+    sql(`UPDATE survey_private.billing_operations SET admitted_at='2000-01-01' WHERE operation_id='${o.id}'`);
+    assert.equal(begin(o).outcome,'pending'); // Time alone never renews admission.
+    rejects(settleSql(o,{outcome:'timeout',customer_id:null,data:{}}));
+    rejects(settleSql(o,{...failed,customer_id:'cus_unknown'}));
+    rejects(settleSql(o,succeeded(null)));assert.equal(cleanup(user).complete,false);
+    settle(o,failed);ack(user,'cus_53');assert.equal(readClosure(user).complete,true);
+  });
+  await lifecycleCheck('closure blocks changed binding but preserves real cancellation reconciliation and counters',()=>{
+    const user=actor(54,{projects:2,documents:6});closeBilling(user);
+    rejects(`UPDATE user_subscriptions SET stripe_customer_id='cus_replacement' WHERE user_id='${user}'`);
+    // Owner-role writes reach the trigger as well, rather than failing only ACL.
+    errorState(sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`,false),'23514');
+    sql(`UPDATE user_subscriptions SET storage_used_bytes=999 WHERE user_id='${user}'`);
+    const cancellationResult=result(54,expected(user),patch({status:'canceled',stripe_subscription_id:null,stripe_price_id:null}),'evt_lifecycle_cancel_54',{type:'customer.subscription.deleted'});
+    assert.equal(cancellationResult.outcome,'applied');assert.equal(expected(user).tier,'free');
+    assert.equal(expected(user).stripe_subscription_id,null);assert.equal(expected(user).stripe_customer_id,'cus_54');
+    assert.equal(cancellationResult.projects_archived_count,1);assert.equal(cancellationResult.documents_archived_count,1);
+  });
+  await lifecycleCheck('permanent receipts survive direct auth removal and late settlement without reopening admission',()=>{
+    const user=actor(55),o=operation(55,user);startCreate(o);closeBilling(user);
+    // An admin can still bypass the application protocol; no auth-schema
+    // trigger is installed. Its deletion must not erase unknown provider work.
+    sql(`DELETE FROM auth.users WHERE id='${user}'`);
+    settle(o,succeeded('cus_AfterAuth55'));
+    assert.deepEqual(cleanup(user).customers.map(c=>c.customer_id).sort(),['cus_55','cus_AfterAuth55']);
+    rejects(beginSql(operation(550,user)));ack(user,'cus_55');ack(user,'cus_AfterAuth55');
+    assert.equal(readClosure(user).complete,true);
+  });
+  await lifecycleCheck('independent core closure denies new operations but does not pretend billing is canceled',()=>{
+    const user=actor(56),o=operation(56,user);startCreate(o);
+    asRole(null,`SELECT public.delete_account_owned_rows('${user}')`);
+    rejects(beginSql(operation(560,user)));assert.equal(readClosure(user).complete,false);
+    settle(o,failed);closeBilling(user);assert.equal(cleanup(user).complete,false);
+    ack(user,'cus_56');assert.equal(readClosure(user).complete,true);
+  });
+  await lifecycleCheck('client roles cannot read ledgers or call lifecycle service RPCs',()=>{
+    const user=actor(57),o=operation(57,user);
+    const commands=[beginSql(o),settleSql(o,failed),closeSql(user),cleanupSql(user),ackSql(user,'cus_57'),`SELECT public.read_billing_account_closure('${user}')`];
+    for(const role of ['anon','authenticated'])for(const command of commands)errorState(asRole(user,command,role,false),'42501');
+    rejects(beginSql(operation(570,uuid(999999))));
+  });
+  await lifecycleCheck('input validation rejects malformed scopes, specs, kind and page limits',()=>{
+    const user=actor(58),o=operation(58,user);
+    for(const scopeValue of [null,{},[],{...scope,mode:'unknown'},{...scope,extra:'bad'},{...scope,account:'cus_not_account'}])rejects(beginSql({...o,scope:scopeValue}));
+    for(const spec of [null,[],{large:'x'.repeat(20000)}])rejects(beginSql({...o,requestSpec:spec}));
+    rejects(beginSql({...o,kind:'unknown'}));rejects(beginSql({...o,kind:'portal_create'}));
+    closeBilling(user);for(const limit of ['NULL',0,101,-1])rejects(cleanupSql(user,limit));
+    rejects(closeSql(user,{...scope,mode:'live'}));
+  });
+  await lifecycleCheck('concurrent admission permits one provider call and retry only reads its receipt',async()=>{
+    const user=actor(59),o=operation(59,user,'checkout_create','cus_59');
+    const first=session('lifecycle-first-admission');first.send(`${beginSql(o)}; SELECT 'admission-held';`);await first.wait('admission-held');
+    errorState(asRole(null,beginSql(o),'service_role',false),'55P03');
+    const firstResult=await first.finish();assert.equal(firstResult.status,0,firstResult.stderr);
+    assert.match(firstResult.stdout,/"outcome": "admitted"/);assert.equal(begin(o).outcome,'pending');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.billing_operations WHERE operation_id='${o.id}'`),'1');
+  });
+  await lifecycleCheck('closure racing an admitted operation fails fast and retries as pending',async()=>{
+    const user=actor(60),o=operation(60,user,'portal_create','cus_60');
+    const first=session('lifecycle-admit-before-close');first.send(`${beginSql(o)}; SELECT 'admission-held';`);await first.wait('admission-held');
+    errorState(asRole(null,closeSql(user),'service_role',false),'55P03');
+    const done=await first.finish();assert.equal(done.status,0,done.stderr);
+    assert.equal(closeBilling(user).complete,false);assert.deepEqual(cleanup(user).customers,[]);
+    settle(o,succeeded('cus_60'));ack(user,'cus_60');assert.equal(readClosure(user).complete,true);
+  });
+  await lifecycleCheck('committing closure defeats both concurrent and later new admission',async()=>{
+    const user=actor(61),o=operation(61,user,'checkout_create','cus_61');
+    const closer=session('lifecycle-close-before-admit');closer.send(`${closeSql(user)}; SELECT 'closure-held';`);await closer.wait('closure-held');
+    errorState(asRole(null,beginSql(o),'service_role',false),'55P03');
+    const done=await closer.finish();assert.equal(done.status,0,done.stderr);
+    errorState(asRole(null,beginSql(o),'service_role',false),'23514');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.billing_operations WHERE operation_id='${o.id}'`),'0');
+  });
+  await lifecycleCheck('rolled-back admission and closure leave no execution or cleanup receipt',async()=>{
+    const user=actor(62),o=operation(62,user,'checkout_create','cus_62');
+    const tx=session('lifecycle-rollback-admit');tx.send(`${beginSql(o)}; SELECT 'admission-held';`);await tx.wait('admission-held');await tx.finish(false);
+    assert.equal(begin(o).outcome,'admitted');settle(o,succeeded('cus_62'));
+    const closer=session('lifecycle-rollback-close');closer.send(`${closeSql(user)}; SELECT 'closure-held';`);await closer.wait('closure-held');await closer.finish(false);
+    assert.equal(readClosure(user).closing,false);rejects(cleanupSql(user));
+  });
+  await lifecycleCheck('same transaction or savepoint cannot authorize provider cleanup before closure commits',()=>{
+    for(const [n,savepoint] of [[63,false],[64,true]]){
+      const user=actor(n);
+      const prefix=`BEGIN; ${savepoint?'SAVEPOINT nested;':''} ${closeSql(user)}; ${savepoint?'RELEASE SAVEPOINT nested;':''}`;
+      errorState(asRole(null,`${prefix} ${cleanupSql(user)}; COMMIT;`,'service_role',false),'23514');
+      assert.equal(readClosure(user).closing,false);
+      errorState(asRole(null,`${prefix} ${ackSql(user,`cus_${n}`)}; COMMIT;`,'service_role',false),'23514');
+      assert.equal(readClosure(user).closing,false);closeBilling(user);ack(user,`cus_${n}`);assert.equal(readClosure(user).complete,true);
+    }
+    const user=actor(65);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
+    const receipt=asRole(null,`BEGIN; ${closeSql(user)}; COMMIT;`).stdout;
+    assert.match(receipt,/"complete": false/);assert.equal(readClosure(user).complete,true);
+  });
+  await lifecycleCheck('repeatable-read and serializable lifecycle calls fail rather than trust stale snapshots',()=>{
+    const user=actor(66),o=operation(66,user,'checkout_create','cus_66');
+    for(const isolation of ['REPEATABLE READ','SERIALIZABLE']){
+      errorState(asRole(null,`BEGIN ISOLATION LEVEL ${isolation}; ${beginSql(o)}; COMMIT;`,'service_role',false),'25001');
+      errorState(asRole(null,`BEGIN ISOLATION LEVEL ${isolation}; ${closeSql(user)}; COMMIT;`,'service_role',false),'25001');
+    }
+  });
+  await lifecycleCheck('subscription tuple then account lock uses NOWAIT rather than a reverse deadlock',async()=>{
+    const user=actor(67),holder=session('lifecycle-account-lock','postgres');
+    holder.send(`SELECT user_id FROM survey_private.account_write_guards WHERE user_id='${user}' FOR UPDATE; SELECT 'guard-held';`);await holder.wait('guard-held');
+    errorState(sql(`UPDATE user_subscriptions SET stripe_customer_id='cus_New67' WHERE user_id='${user}'`,false),'55P03');
+    const done=await holder.finish();assert.equal(done.status,0,done.stderr);
+    assert.equal(expected(user).stripe_customer_id,'cus_67');
+    sql(`UPDATE user_subscriptions SET stripe_customer_id='cus_New67' WHERE user_id='${user}'`);
+    assert.equal(expected(user).stripe_customer_id,'cus_New67');
+  });
+  await lifecycleCheck('old customers cannot be transferred to another actor before or after cleanup claim',()=>{
+    const user=actor(68),other=actor(69),o=operation(68,user,'checkout_create','cus_68');
+    begin(o);settle(o,succeeded('cus_68'));
+    sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
+    assert.notEqual(sql(`UPDATE user_subscriptions SET stripe_customer_id='cus_68' WHERE user_id='${other}'`,false).status,0);
+    closeBilling(user);assert.deepEqual(cleanup(user).customers.map(c=>c.customer_id),['cus_68']);
+    assert.notEqual(sql(`UPDATE user_subscriptions SET stripe_customer_id='cus_68' WHERE user_id='${other}'`,false).status,0);
+    ack(user,'cus_68');sql(`DELETE FROM auth.users WHERE id='${user}'`);
+    assert.notEqual(sql(`UPDATE user_subscriptions SET stripe_customer_id='cus_68' WHERE user_id='${other}'`,false).status,0);
+    assert.equal(expected(other).stripe_customer_id,'cus_69');
+  });
+  await lifecycleCheck('late customer results cannot claim another actor customer or erase pending work',()=>{
+    const user=actor(70),other=actor(71),o=operation(70,user);startCreate(o);closeBilling(user);
+    rejects(settleSql(o,succeeded('cus_71')));assert.equal(readClosure(user).complete,false);
+    settle(o,succeeded('cus_New70'));assert.equal(expected(other).stripe_customer_id,'cus_71');
+    assert.deepEqual(cleanup(user).customers.map(c=>c.customer_id).sort(),['cus_70','cus_New70']);
+  });
+  await lifecycleCheck('cleanup pages are bounded and acknowledgments do not mix provider modes',()=>{
+    const user=actor(72);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
+    for(let n=0;n<6;n++){
+      const o=operation(720+n,user,'customer_create',null,{scope:{...scope,mode:n%2?'live':'test'}});
+      begin(o);settle(o,succeeded(`cus_Page${n}`));
+    }
+    closeBilling(user);const seen=new Set();
+    for(let page=0;page<3;page++){
+      const batch=cleanup(user,2);assert.equal(batch.customers.length,2);assert.equal(batch.complete,false);
+      for(const customer of batch.customers){assert.ok(!seen.has(customer.customer_id));seen.add(customer.customer_id);ack(user,customer.customer_id,customer.provider_scope);}
+    }
+    assert.equal(seen.size,6);assert.equal(cleanup(user,2).complete,true);
+  });
+  await lifecycleCheck('role-claim spoofing and direct private-table access cannot bypass the body guard',()=>{
+    const user=actor(73),o=operation(73,user,'checkout_create','cus_73');
+    const signature='public.begin_billing_operation(uuid,uuid,text,jsonb,jsonb,text)';
+    sql(`GRANT EXECUTE ON FUNCTION ${signature} TO authenticated`);
+    errorState(sql(`${actorContext(user,'authenticated')} SET request.jwt.claim.role='service_role'; ${beginSql(o)}`,false),'42501');
+    sql(`REVOKE EXECUTE ON FUNCTION ${signature} FROM authenticated`);
+    for(const role of ['anon','authenticated','service_role'])for(const table of ['billing_operations','billing_customer_cleanup','billing_account_lifecycles','billing_customer_owners']){
+      errorState(asRole(user,`SELECT * FROM survey_private.${table}`,role,false),'42501');
+    }
+  });
+  await lifecycleCheck('failed and lost cleanup pages advance fairly and recur in a later cycle',()=>{
+    const user=actor(74);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
+    for(let n=0;n<6;n++){const o=operation(740+n,user);begin(o);settle(o,succeeded(`cus_Fair${n}`));}
+    closeBilling(user);const pages=[];
+    for(let n=0;n<4;n++){
+      const value=cleanup(user,2);assert.equal(value.complete,false);assert.equal(value.has_pending_operations,false);
+      assert.equal(value.has_pending_customers,true);assert.equal(value.customers.length,2);pages.push(value.customers.map(c=>c.customer_id));
+    }
+    assert.equal(new Set(pages.slice(0,3).flat()).size,6);assert.deepEqual(pages[3],pages[0]);
+    for(const customer of pages.slice(0,3).flat())ack(user,customer);
+    const empty=cleanup(user,2);assert.equal(empty.complete,true);assert.deepEqual(empty.customers,[]);
+  });
+  await lifecycleCheck('pre-migration customer ownership survives clear and rejects later transfer',()=>{
+    const user=uuid(800),other=actor(75);
+    assert.equal(scalar(`SELECT user_id FROM survey_private.billing_customer_owners WHERE customer_id='cus_LegacyBeforeMigration'`),user);
+    sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
+    assert.notEqual(sql(`UPDATE user_subscriptions SET stripe_customer_id='cus_LegacyBeforeMigration' WHERE user_id='${other}'`,false).status,0);
+    assert.equal(expected(other).stripe_customer_id,'cus_75');
+  });
+  await lifecycleCheck('pending lookups use partial indexes without scanning retired receipt history',()=>{
+    const user=actor(76);
+    // Synthetic private history isolates access paths; it is not provider proof
+    // and never authorizes cleanup of external objects.
+    sql(`INSERT INTO survey_private.billing_operations(operation_id,user_id,kind,provider_scope,request_spec,state,result)
+      SELECT md5('lifecycle-history-'||n)::uuid,'${user}','customer_create',${json(scope)},'{}','settled','{"outcome":"failed","customer_id":null,"data":{}}'
+      FROM generate_series(1,50000) n;
+      INSERT INTO survey_private.billing_customer_cleanup(user_id,provider_scope,customer_id,removed)
+      SELECT '${user}',${json(scope)},'cus_History'||n,true FROM generate_series(1,50000) n;
+      INSERT INTO survey_private.billing_customer_owners(customer_id,user_id)
+      SELECT 'cus_History'||n,'${user}' FROM generate_series(1,50000) n;
+      ANALYZE survey_private.billing_operations; ANALYZE survey_private.billing_customer_cleanup;`);
+    const queries=[
+      [`SELECT 1 FROM survey_private.billing_operations WHERE user_id='${user}' AND state='pending' LIMIT 1`,'billing_operations_unresolved'],
+      [`SELECT 1 FROM survey_private.billing_customer_cleanup WHERE user_id='${user}' AND NOT removed LIMIT 1`,'billing_customer_cleanup_pending'],
+    ];
+    const flatten=node=>[node,...(node.Plans||[]).flatMap(flatten)];
+    for(const [query,index] of queries){
+      const plan=JSON.parse(scalar(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${query}`))[0].Plan;
+      const nodes=flatten(plan);assert.ok(nodes.some(n=>n['Index Name']===index),JSON.stringify(plan));
+      assert.ok(nodes.every(n=>!(n['Rows Removed by Filter']>0)),JSON.stringify(plan));
+      console.log(`PLAN lifecycle pending: ${index}; 50000 retired receipts excluded`);
+    }
+  });
+  await lifecycleCheck('migration replay preserves all exact admitted and removed receipts',()=>{
+    const tables=['survey_private.billing_operations','survey_private.billing_customer_cleanup','survey_private.billing_account_lifecycles','survey_private.billing_customer_owners'];
+    // Digests avoid materializing the synthetic history as tool output.
+    const compactSnapshot=()=>tables.map(table=>scalar(`SELECT md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) FROM ${table} t`));
+    const before=compactSnapshot();apply('20260909010000_billing_account_lifecycle.sql');assert.deepEqual(compactSnapshot(),before);
+    assert.equal(scalar(`SELECT count(*) FROM pg_constraint WHERE contype='f' AND conrelid IN (${tables.map(t=>`${quote(t)}::regclass`).join(',')})`),'0');
+  });
+  await lifecycleCheck('conflicting historic customer ownership aborts migration replay atomically',()=>{
+    const user=actor(77),other=actor(78);
+    // Exact synthetic corrupt legacy receipt; no provider deletion occurs.
+    sql(`INSERT INTO survey_private.billing_customer_cleanup(user_id,provider_scope,customer_id,removed) VALUES('${other}',${json(scope)},'cus_77',true)`);
+    const before=snapshot(['survey_private.billing_account_lifecycles']);
+    const replay=run('psql',[...psqlArgs,'-f',join(root,'supabase/migrations/20260909010000_billing_account_lifecycle.sql')],false);
+    errorState(replay,'23514');assert.deepEqual(snapshot(['survey_private.billing_account_lifecycles']),before);
+    assert.equal(scalar(`SELECT user_id FROM survey_private.billing_customer_owners WHERE customer_id='cus_77'`),user);
+    sql(`DELETE FROM survey_private.billing_customer_cleanup WHERE user_id='${other}' AND provider_scope=${json(scope)} AND customer_id='cus_77'`);
+  });
+  console.log(`Billing lifecycle PostgreSQL checks passed: ${lifecycleChecks}`);
   console.log(`Billing reconciliation PostgreSQL checks passed: ${checks}`);
 }finally{
   for(const child of children)child.kill('SIGKILL');
