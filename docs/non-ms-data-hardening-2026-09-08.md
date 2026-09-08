@@ -319,10 +319,75 @@ changes existing save locations. Shared cloud files also need a separate offline
 access/revocation policy and leased real-account checks; a local receipt is not a
 new permission grant. No production retention cleanup or extra index was applied.
 
-This is a design, not an implemented offline-close guarantee. Required proofs
-include hung network with successful local storage, transaction abort after a
-successful request, memory fallback, quota, account switch, deletion/quarantine,
-new edits during save, and deactivate/offline/quit without reopening each tab.
+The actor-bound local receipts and focused form-save behavior above are
+implemented and tested. This does not establish a general offline library or a
+new offline permission policy. Those remaining designs still need their own
+storage, account-switch, deletion, revoke-access and cold-start proofs.
+
+## Follow-up: thumbnail sharing and print cache bounds
+
+The local thumbnail row and selected preview now share the same first-page
+render job when they use the same immutable File. Memory and in-flight keys
+include source/version and the actor-bound download callback. Replacing a File
+cannot reuse a thumbnail whose cloud path still describes the old bytes.
+Failures can retry on a later mount. Inline PDF URLs use weakly held numeric
+source IDs, so long base64 strings do not become retained LRU keys. A selected
+preview can promote its shared queued job without a second download or render.
+Cloud rows still cannot initiate a full PDF download.
+
+Measured in the mounted component test with a 25 MiB Blob and a counted renderer:
+two reads / 50 MiB and two renders became one read / 25 MiB and one render.
+The browser check used the actual component and PDF.js parser with a 15,177-byte
+PDF: one read produced two loaded 773 x 1000 images with the same raster and no
+page errors. The browser check was a mounted component check, not a live-account
+document-library test. Eight new thumbnail tests cover source changes, callback
+changes, queue priority, retries and compact inline keys.
+
+The custom print panel's cache now has a 32 MiB conservative string-byte budget
+and a 32-entry LRU. Oversized images still reach their caller but are not cached;
+eviction does not invalidate images already returned. Source swaps retire old
+callbacks and pending results. Equal concurrent requests share one render, and
+a synchronous page-load failure no longer prevents future retries.
+
+**The custom panel is disabled in the current product.** These cache bounds are
+hardening for that path, not a measured reduction in the default print path.
+The 600-render synthetic check retained 32 images and 6,401,472 conservative
+string bytes, versus 600 images and about 120 MB before; the render count stayed
+600. This is not total browser memory accounting. Seven focused tests pass.
+
+Browser QA enabled that panel only through a response override in an isolated
+test context; no product flag changed. Rotate, larger preview, cancel and reopen
+worked, with no extra raster on reopen and no page errors. The unmodified default
+print route also prepared a ready 1224 x 1584 page and invoked the print boundary
+once. The OS print call was intercepted to avoid sending a print job; this does
+not claim native print-dialog or printer-output verification.
+
+Combined frozen checks: 4,299 tests, 4,245 passed, 54 skipped, zero failed or
+canceled; `npm test` exited 0. The Vite build and all seven native save/quit checks
+passed. Graphify AST update and whitespace checks passed. Logs are local under
+`/tmp/survey-cache-frozen-{tests,build,electron,graph}-20260908.log`.
+
+### Live collaboration check: harness blocked, not passed
+
+A separate worktree frozen at `732886a4` ran the official eraser-permission suite
+under a coordinator-held exact three-account lease. The first case failed while
+waiting for a dev-only eraser harness element; eight serial cases did not run.
+That element and its related API are absent from this revision's product source.
+The result is a stale-harness blocker, not proof of a product permission failure
+or of passing live collaboration. No old test seam was reintroduced and no
+assertion was weakened. The harness now also has a unit-tested exact email/ID
+check before accepting an authenticated test session.
+
+All three accounts retained their recorded free/active baseline. Read-only
+backend checks found no remaining test PDFs or storage objects in the exact test
+folder. No production schema, retention policy or Microsoft service changed.
+
+The independent legacy collaboration review also found document-only local keys
+and missing initial state exchange for a late offline follower. Its private
+[isolation and recovery plan](legacy-collab-isolation-plan-2026-09-08.md) records
+the reproductions and required acceptance tests. Neither the old local bytes nor
+the live namespace has been changed: actor scoping must preserve and expose old
+unattributed pending data for recovery, not silently discard or replay it.
 
 ## Sources
 

@@ -3,9 +3,19 @@ import assert from 'node:assert/strict';
 import * as Y from 'yjs';
 
 import {
+  assertHarnessAccountIdentity,
   probeRejectedCurrentInsert,
   replaceFixtureRows,
 } from '../phase35-e2e/eraser-permission-harness.mjs';
+
+test('live harness accepts only the exact leased email and user id', () => {
+  const account = { id: 'leased-user', email: 'bot@example.test' };
+  assert.doesNotThrow(() => assertHarnessAccountIdentity(account, { id: 'leased-user', email: 'BOT@example.test' }));
+  for (const user of [null, { id: 'other', email: account.email }, { id: account.id, email: 'other@example.test' }]) {
+    assert.throws(() => assertHarnessAccountIdentity(account, user), /exact leased account/);
+  }
+  assert.throws(() => assertHarnessAccountIdentity({}, {}), /exact leased account/);
+});
 
 test('fixture WAL seed uses the authenticated owner append RPC, never service-role direct insert', async () => {
   const adminTables = [];

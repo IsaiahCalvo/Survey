@@ -103,20 +103,21 @@ test('a broken IndexedDB degrades to no cache instead of breaking thumbnails', a
 });
 
 test('PdfPageThumb checks the durable cache before downloading or queueing', () => {
-  // Source-text assertions: the ordering is the entire performance win, and the
-  // component cannot be rendered here (no jsdom / React test renderer).
+  // Keep the cloud cache-first ordering explicit; mounted local-source and
+  // queue-priority behavior is covered by thumbnailLocalCoalescing.test.mjs.
   const THUMB = read('../src/home/PdfPageThumb.jsx');
   assert.match(THUMB, /import \{ thumbnailStore, thumbCacheKey \} from '\.\.\/services\/thumbnailStore'/);
 
-  const body = THUMB.match(/const persistKey = thumbCacheKey\(doc\);[\s\S]*?\}\)\(\);/)[0];
+  const body = THUMB.match(/const persistKey = doc\?\.file \|\| doc\?\.dataUrl \? null : thumbCacheKey\(doc\);[\s\S]*?\}\)\(\);/)[0];
   const idbAt = body.indexOf('thumbnailStore().get(persistKey)');
   const downloadAt = body.indexOf('resolvePdfBytes(doc, downloadDocument)');
-  const slotAt = body.indexOf('acquireSlot(priority)');
+  const slotAt = body.indexOf('acquireSlot(priority, requestKey)');
   assert.ok(idbAt > -1 && downloadAt > -1 && slotAt > -1);
   assert.ok(idbAt < downloadAt, 'the durable cache is read BEFORE the PDF is downloaded');
   assert.ok(idbAt < slotAt, 'a cache hit never waits on the render queue');
   // A hit returns immediately — it must not fall through into the render path.
   assert.match(body, /if \(stored\) return stored;/);
-  // Every successful render is persisted for later visits.
+  // Stable cloud sources persist for later visits. Supplied local bytes may
+  // have replaced the metadata path's original PDF, so bypass that old key.
   assert.match(body, /if \(persistKey\) void thumbnailStore\(\)\.put\(persistKey, result\)/);
 });

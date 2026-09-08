@@ -4,7 +4,7 @@
    the app's own PDFThumbnail (App.jsx): a local File, an inline data URL, or a
    Supabase storage path (authenticated download for selected previews only).
 
-   One HIGH-resolution render is done per document and cached by id, then
+   One HIGH-resolution render is done per source/version and cached, then
    reused everywhere — the big preview pane and the small file-row thumbnails
    share the same image. CSS `object-fit: contain` handles the fit, so the one
    crisp image looks right at any display size.
@@ -25,7 +25,8 @@ import { canResolveThumbnailBytes, createThumbnailRequestPool } from './thumbnai
 
 /* Two tiers of cache.
 
-   In-memory (this bounded LRU): keyed by document id, lives for the page.
+   In-memory (this bounded LRU): keyed by source/version and actor-bound
+   download callback, lives for the page.
    Stops a re-render on every search keystroke or re-selection without
    exhausting an iOS WebView on accounts with many documents.
 
@@ -34,10 +35,35 @@ import { canResolveThumbnailBytes, createThumbnailRequestPool } from './thumbnai
    Before it existed, every reload re-downloaded the whole PDF for every
    visible row — 6.3s of transfer for a single 25MB drawing. The memory tier
    is checked synchronously first; the durable tier is checked before any
-   network work happens. Value: { url, aspect } or the in-memory 'FAILED'
-   sentinel. */
+   network work happens. Value: { url, aspect }. Failures are not cached. */
 const thumbCache = new Map();
 const thumbnailRequests = createThumbnailRequestPool();
+const sourceObjectIds = new WeakMap();
+const inlineSourceIds = new WeakMap();
+let nextSourceObjectId = 0;
+const sourceObjectId = (source) => {
+  if (!source || !['object', 'function'].includes(typeof source)) return source || null;
+  if (!sourceObjectIds.has(source)) sourceObjectIds.set(source, ++nextSourceObjectId);
+  return sourceObjectIds.get(source);
+};
+const inlineSourceId = (doc) => {
+  if (!doc.dataUrl) return null;
+  let source = inlineSourceIds.get(doc);
+  if (source?.url !== doc.dataUrl) {
+    source = { url: doc.dataUrl, id: ++nextSourceObjectId };
+    inlineSourceIds.set(doc, source);
+  }
+  // Do not retain an entire base64 PDF in the long-lived thumbnail LRU key.
+  return source.id;
+};
+// Local Files are immutable, but replacement Files can retain the same document
+// id/path. Download callbacks change with the signed-in actor. CSS row/preview
+// sizes share the same first-page raster; include its pixel contract explicitly.
+const memoryThumbKey = (doc, downloadDocument) => doc && JSON.stringify([
+  doc.id || null, sourceObjectId(downloadDocument), thumbCacheKey(doc),
+  doc.file ? sourceObjectId(doc.file) : inlineSourceId(doc),
+  `page-1:${TARGET}:jpeg-0.9:v1`,
+]);
 const MAX_CACHE_ENTRIES = 24;
 const readCachedThumb = (docId) => {
   if (!docId || !thumbCache.has(docId)) return null;
@@ -66,17 +92,28 @@ const cacheThumb = (docId, value) => {
    backlog and its box does not sit empty while off-screen rows render. */
 let activeRenders = 0;
 const renderWaiters = [];
+const priorityRequests = new Set();
 const MAX_CONCURRENT = 3;
-const acquireSlot = (priority = false) => {
+const acquireSlot = (priority = false, key = null) => {
+  priority = priority || priorityRequests.has(key);
+  priorityRequests.delete(key);
   if (activeRenders < MAX_CONCURRENT) { activeRenders += 1; return Promise.resolve(); }
   return new Promise((resolve) => {
-    if (priority) renderWaiters.unshift(resolve);
-    else renderWaiters.push(resolve);
+    const waiter = { resolve, key };
+    if (priority) renderWaiters.unshift(waiter);
+    else renderWaiters.push(waiter);
   });
 };
+acquireSlot.prioritize = (key) => {
+  if (!key) return;
+  priorityRequests.add(key);
+  const index = renderWaiters.findIndex((waiter) => waiter.key === key);
+  if (index > 0) renderWaiters.unshift(...renderWaiters.splice(index, 1));
+};
+acquireSlot.clearPriority = (key) => priorityRequests.delete(key);
 const releaseSlot = () => {
   const next = renderWaiters.shift();
-  if (next) next();
+  if (next) next.resolve();
   else activeRenders = Math.max(0, activeRenders - 1);
 };
 
@@ -172,10 +209,15 @@ const renderFirstPage = async (arrayBuffer) => {
   }
 };
 
-const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled = () => false) =>
-  thumbnailRequests.run(docId && `${docId}:${priority ? 'preview' : 'local'}`, isCancelled, (hasActiveConsumer) => {
+const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled = () => false) => {
+  // A row may join preview work only if these bytes are already on-device.
+  const requestKey = docId && `${docId}:${canResolveThumbnailBytes(doc, false) ? 'local' : priority ? 'preview' : 'local'}`;
+  if (priority) acquireSlot.prioritize?.(requestKey);
+  return thumbnailRequests.run(requestKey, isCancelled, (hasActiveConsumer) => {
   const promise = (async () => {
-    const persistKey = thumbCacheKey(doc);
+    // Metadata can still describe the predecessor when a File is replaced.
+    // Never let its persistent thumbnail override the supplied local bytes.
+    const persistKey = doc?.file || doc?.dataUrl ? null : thumbCacheKey(doc);
     if (persistKey) {
       const stored = await thumbnailStore().get(persistKey);
       if (stored) return stored;
@@ -184,7 +226,7 @@ const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled =
     // A missing cached row image is not a corrupt PDF. Leave a placeholder
     // without poisoning the cache: a selected preview can still render it.
     if (!hasActiveConsumer() || !canResolveThumbnailBytes(doc, priority)) return 'DEFERRED';
-    await acquireSlot(priority);
+    await acquireSlot(priority, requestKey);
     try {
       // Limit downloads as well as renders. Do not start a queued transfer
       // after every consumer has left this screen.
@@ -199,8 +241,9 @@ const loadThumb = (docId, doc, downloadDocument, priority = false, isCancelled =
       releaseSlot();
     }
   })();
-  return promise;
+  return promise.finally(() => acquireSlot.clearPriority?.(requestKey));
 });
+};
 
 /* US Letter portrait — the loading-state default aspect before the real
    page aspect is known (most documents are portrait letter). */
@@ -217,7 +260,7 @@ export default function PdfPageThumb({
   // and moves the request to the front of the shared queue.
   priority = false,
 }) {
-  const docId = doc?.id;
+  const docId = memoryThumbKey(doc, downloadDocument);
   const hostRef = useRef(null);
   const [nearViewport, setNearViewport] = useState(() => typeof IntersectionObserver === 'undefined');
   const [data, setData] = useState(null);
@@ -246,7 +289,6 @@ export default function PdfPageThumb({
     let cancelled = false;
 
     const existing = readCachedThumb(docId);
-    if (existing === 'FAILED') { setData(null); setFailed(true); return undefined; }
     if (existing) { setData(existing); setFailed(false); return undefined; }
 
     setData(null);
@@ -259,15 +301,14 @@ export default function PdfPageThumb({
         const result = await loadThumb(docId, doc, downloadDocument, priority, () => cancelled);
         if (cancelled) return;
         if (result === 'DEFERRED') { setFailed(true); return; }
-        cacheThumb(docId, result);
         if (result === 'FAILED') { setFailed(true); return; }
+        cacheThumb(docId, result);
         setData(result);
       } catch (error) {
-        // Corrupt PDF, missing storage file, etc. — show the placeholder and
-        // do not retry this document.
+        // Show the placeholder for this mount. Leave future mounts eligible
+        // to retry transient file/worker failures instead of poisoning cache.
         console.warn('[PdfPageThumb] thumbnail render failed:', error?.message || error);
         if (!cancelled) {
-          cacheThumb(docId, 'FAILED');
           setFailed(true);
         }
       }

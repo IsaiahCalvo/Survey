@@ -752,6 +752,15 @@ export async function setDocumentLocked(harness, locked) {
   if (update.error) throw new Error(`[ERASER_E2E_INFRA] set document lock: ${update.error.message}`);
 }
 
+export function assertHarnessAccountIdentity(account, user) {
+  const expectedId = account?.id || account?.userId;
+  const expectedEmail = String(account?.email || '').trim().toLowerCase();
+  if (!expectedId || !expectedEmail || user?.id !== expectedId
+    || String(user?.email || '').trim().toLowerCase() !== expectedEmail) {
+    throw new Error('[ERASER_E2E_INFRA] Authenticated session does not match the exact leased account');
+  }
+}
+
 export async function makeSignedInClient(harness, account) {
   const client = createClient(harness.config.supabaseUrl, harness.config.anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -780,6 +789,7 @@ export async function makeSignedInClient(harness, account) {
   if (signIn.error) {
     throw new Error(`[ERASER_E2E_INFRA] signIn(${account.email}): ${signIn.error.message}`);
   }
+  assertHarnessAccountIdentity(account, signIn.data?.user);
   return client;
 }
 
@@ -849,6 +859,7 @@ export async function openDocumentAs(
         + (sessionResult.error?.message || 'missing session'),
     );
   }
+  assertHarnessAccountIdentity(account, session.user);
   const projectRef = new URL(harness.config.supabaseUrl).hostname.split('.')[0];
   const authStorageKey = `sb-${projectRef}-auth-token`;
   await context.addInitScript(({ email, password, sessionValue, storageKey }) => {

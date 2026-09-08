@@ -63,6 +63,7 @@ import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
 import PrintPanel from './components/PrintPanel';
 import BrowserPrintDocument from './components/BrowserPrintDocument.jsx';
 import { createPrintPageError, waitForPrintImages } from './utils/printImageReadiness.js';
+import { createPrintPreviewCache } from './utils/printPreviewCache.js';
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
@@ -30493,8 +30494,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // PDF.js is already loaded for the main app, so we reuse the same pdfDoc and
   // cache each rasterized page by (pageNumber, targetWidth) for instant
   // re-use when the user flips through pages or opens Bigger Preview.
-  const printPanelRenderCacheRef = useRef(new Map());
+  const printPanelRenderCacheRef = useRef(null);
   const printPanelInflightRef = useRef(new Map());
+  const printPanelRenderSourceRef = useRef(pdfDoc);
+  if (!printPanelRenderCacheRef.current || printPanelRenderSourceRef.current !== pdfDoc) {
+    printPanelRenderCacheRef.current?.clear();
+    printPanelRenderCacheRef.current = createPrintPreviewCache();
+    printPanelInflightRef.current = new Map();
+    printPanelRenderSourceRef.current = pdfDoc;
+  }
   // UX 2026-04-24: cache of per-page content-based rotation detection
   // results. Acrobat-style "Auto" orientation rotates each page so the
   // drawing's text reads upright regardless of how the underlying sheet
@@ -30504,10 +30512,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // new document loads.
   const printPanelContentRotRef = useRef(new Map());
   useEffect(() => {
-    // New document → drop any cached renders + in-flight promises.
-    printPanelRenderCacheRef.current = new Map();
-    printPanelInflightRef.current = new Map();
+    printPanelRenderSourceRef.current = pdfDoc;
+    const cache = printPanelRenderCacheRef.current;
+    const inflight = printPanelInflightRef.current;
     printPanelContentRotRef.current = new Map();
+    return () => {
+      cache.clear();
+      inflight.clear();
+      if (printPanelRenderCacheRef.current === cache) printPanelRenderSourceRef.current = null;
+    };
   }, [pdfDoc]);
   // Reset the Auto-rotation cache whenever the user rotates pages in the
   // main viewer so the panel's Auto mode follows their live view.
@@ -30566,6 +30579,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // sheet; the base render is always at the page's own aspect so zooming
   // stays crisp.
   const printPanelGetThumbnail = useCallback(async (pageNumber, opts = {}) => {
+    if (printPanelRenderSourceRef.current !== pdfDoc) return null;
     const targetWidth = Math.max(40, Math.round(opts?.targetWidth || 140));
     const rotation = ((opts?.rotation || 0) % 360 + 360) % 360;
     const mirrorH = !!opts?.mirrorH;
@@ -30582,8 +30596,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.log(`[PrintPanel→App] pdfDoc not ready yet for page ${pageNumber}`);
       return null;
     }
-    const job = (async () => {
+    // Register the promise before even a synchronous getPage failure reaches
+    // finally; otherwise a settled null promise can prevent every later retry.
+    const job = Promise.resolve().then(async () => {
       try {
+        if (printPanelRenderSourceRef.current !== pdfDoc || printPanelRenderCacheRef.current !== cache) return null;
         const page = await pdfDoc.getPage(pageNumber);
         // UX 2026-04-24: the page's own /Rotate tag MUST be combined with
         // our user-requested rotation. Passing just `rotation` to pdfjs
@@ -30637,6 +30654,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           width: canvas.width,
           height: canvas.height,
         };
+        // Source changes retire both the completed cache and pending work.
+        // Rotation, mirrors and annotation mode remain part of the exact key.
+        if (printPanelRenderSourceRef.current !== pdfDoc || printPanelRenderCacheRef.current !== cache) return null;
         cache.set(key, result);
         console.log(`[PrintPanel→App] rendered page=${pageNumber} @ ${canvas.width}×${canvas.height} (target ${targetWidth}px, rot=${rotation}, mirror=${mirrorH?'H':''}${mirrorV?'V':''}, annot=${withAnnotations})`);
         return result;
@@ -30646,7 +30666,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } finally {
         inflight.delete(key);
       }
-    })();
+    });
     inflight.set(key, job);
     return job;
   }, [pdfDoc]);
