@@ -3,6 +3,52 @@ import { normalizeCalloutsForSync } from '../utils/calloutSyncPayload.js';
 const localIdPattern = /^local:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const prefixes = ['annotationsByPage_', 'pdfData_', 'surveyMarkers_', 'callouts_', 'pdfSidebar_', 'regionOverlayStates_'];
 
+function invalidNativeDeletion() {
+  throw new Error('The saved local document state has invalid native deletion data. Its copy was kept.');
+}
+
+// Only the new deletion field is strict JSON. In particular, stringify must not
+// silently drop native identity metadata or invoke a custom toJSON/accessor.
+function copyDeletionJson(value, ancestors = new Set()) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (!value || typeof value !== 'object' || ancestors.has(value)) invalidNativeDeletion();
+  const array = Array.isArray(value);
+  if (!array && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+    invalidNativeDeletion();
+  }
+  const keys = Reflect.ownKeys(value);
+  if (array && keys.length !== value.length + 1) invalidNativeDeletion();
+  ancestors.add(value);
+  const copy = array ? [] : {};
+  for (const key of keys) {
+    if (array && key === 'length') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== 'string' || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')
+      || (array && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))) invalidNativeDeletion();
+    Object.defineProperty(copy, key, { value: copyDeletionJson(descriptor.value, ancestors),
+      enumerable: true, configurable: true, writable: true });
+  }
+  ancestors.delete(value);
+  return copy;
+}
+
+function copyDeletedPdfAnnotations(value) {
+  const entries = copyDeletionJson(value);
+  if (!Array.isArray(entries)) invalidNativeDeletion();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+      || !Number.isSafeInteger(entry.pageNumber) || entry.pageNumber <= 0
+      || typeof entry.pdfAnnotationId !== 'string' || !entry.pdfAnnotationId.trim()
+      || (entry.pdfAnnotationType != null && typeof entry.pdfAnnotationType !== 'string')
+      || (entry.pdfNativeAnnotationIdentity != null && (typeof entry.pdfNativeAnnotationIdentity !== 'object'
+        || Array.isArray(entry.pdfNativeAnnotationIdentity)))) invalidNativeDeletion();
+  }
+  // Keep the complete native fingerprint and any JSON metadata verbatim. This
+  // storage boundary checks shape, not whether the PDF exporter can match it.
+  return entries;
+}
+
 export function isManagedLocalDocument(file) {
   return !file?.id && file?.storageMode === 'local'
     && typeof file.localId === 'string' && localIdPattern.test(file.localId)
@@ -12,11 +58,12 @@ export function isManagedLocalDocument(file) {
 // Store exactly the formats existing loaders consume. The durable IndexedDB
 // snapshot owns a managed document's saved state; old shared keys are recovery
 // data with unknown provenance, not a managed file's hydration transport.
-export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations,
+export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations,
   surveyMarkers, callouts, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations,
   regionOverlayDisabled }) {
   if (!localIdPattern.test(pdfId || '')) throw new Error('Invalid local document identity');
-  const values = [annotationsByPage || {}, { items: items || {}, annotations: annotations || {} },
+  const values = [annotationsByPage || {}, { items: items || {}, annotations: annotations || {},
+    ...(deletedPdfAnnotations === undefined ? {} : { deletedPdfAnnotations: copyDeletedPdfAnnotations(deletedPdfAnnotations) }) },
     surveyMarkers || {}, normalizeCalloutsForSync(callouts || []),
     { pageNames: pageNames || {}, bookmarks: bookmarks || [], spaces: spaces || [],
       activeSpaceId: activeSpaceId ?? null, pageTransformations: pageTransformations || {} },
@@ -42,6 +89,9 @@ export function createLocalDocumentStateReader(file) {
       const isCallouts = key === `callouts_${file.localId}`;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) !== isCallouts) {
         throw new Error('The saved local document state has an invalid entry. Its copy was kept.');
+      }
+      if (key === `pdfData_${file.localId}` && Object.hasOwn(parsed, 'deletedPdfAnnotations')) {
+        copyDeletedPdfAnnotations(parsed.deletedPdfAnnotations);
       }
       entries[key] = raw;
     }

@@ -2958,6 +2958,85 @@ does not bound its path arrays. Cleanup then needs file-version evidence or expl
 approval before the normal guarded protocol. No historical queue backfill or live
 inventory mutation was performed in this turn.
 
+## Canonical local native state and complete SQL survey change tokens
+
+The saved managed-local snapshot now owns imported marks as well as app-created
+marks. Reopening it runs embedded-PDF diagnostics only: it does not replace saved
+geometry, callouts, survey markers, spaces or explicit empty state with the older
+state embedded in the PDF bytes. A fresh local import without a saved snapshot
+still imports native marks normally. This keeps source bytes separate from saved
+edits and avoids a second semantic import on each reopen.
+
+Native deletion records now live in the optional `pdfData.deletedPdfAnnotations`
+field inside the existing six-key version-one snapshot. Older snapshots without
+the field remain readable. Serialization retains full native identity metadata
+and rejects lossy JSON. Hydration, dirty tracking, recovery drafts, manual save,
+page-state capture and native-quit revision checks all include these records.
+Same-document File replacements no longer clear managed-local deletion state.
+The existing unmanaged/cloud File-reset behavior remains unchanged.
+
+Page transforms now keep document-level items and other unbound metadata as
+owned copies, update both assigned-page aliases, and strip page-bucket eraser
+replay fields. Recognizable page-bound metadata without a declared remap is
+rejected. Native occurrence page numbers follow supported moves; an unproven
+synthetic PDF.js-ID shift or a copy of a page with native deletion records stops
+without publishing new bytes or state. Exact writer-issued native-copy identity
+proof remains open. This helper is not a whole-document capture validator.
+
+Migration `20260909060000_document_survey_revision.sql` adds a private permanent
+document revision for all attached survey sessions (including inactive ones)
+and their items. Rebinds, metadata changes, item moves, detachments, cascades and
+restore writes count. Row guards share the annotation WAL lock; inverse lock
+paths fail promptly rather than wait in a cycle. Statement transition tables
+increment once per affected document/event, including 1,000-row batches. Direct
+counter access and TRUNCATE bypasses are denied. This is a missing source token
+for a future atomic publication, not that publication API itself. It has not been
+applied to a live provider.
+
+Verification on the final source:
+
+- `npm test` exits 0 across 602 files: 5,822 tests, 5,748 pass, 74 skip,
+  zero failures/cancellations. The committed baseline was 599 files, 5,795 tests,
+  5,722 pass and 73 skip. The added opt-in PostgreSQL check passes separately.
+  `npx vite build`, `graphify update .` and `git diff --check` pass.
+- 24 actual-viewer-source, mounted React and local IndexedDB tests pass for
+  hydration, exact save/page state, deletion-only dirty/recovery/undo and stale
+  native-quit receipts. Existing page/form/queue/materializer checks also pass.
+- The disposable local PostgreSQL harness passes 12 grouped contracts; both
+  wrapper tests pass without skips, including actual nonempty KAL48 restore.
+- In-app browser, isolated `127.0.0.1:5222`, 1200x732, external requests blocked:
+  imported the real drawing fixture through Home / On this device / Open local
+  PDF; deleted native `15R`; saved and cold-reopened with that mark absent and
+  other marks present. Rotation retained the deletion. An unsafe Duplicate
+  stopped with the expected error and left the one-page file intact.
+- On the final canonical-import branch, native `17R` delete/save/Undo removed
+  only its deletion record. A mouse drag followed by Save and close/reopen kept
+  its exact edited transform, with a clean saved tab. The form fixture retained
+  a focused Cmd+S edit on reopen; Duplicate created an independent copied field,
+  and both different field values survived another close/reopen.
+- Page identity, visible canvas/forms, no framework overlay and inspected
+  screenshots pass. Temporary HMR errors from an unfinished/discarded helper
+  were cleared by a full reload; final checks used the final source. The mock
+  route lacks the root toast host, so the expected unsafe-copy error was checked
+  in the console, not claimed as a rendered toast. Offline config/blocked font
+  warnings are expected. Source-byte thumbnails still show embedded marks, not
+  the current saved annotation overlay; that existing preview gap remains open.
+- Removed the two exact QA library records and five matching recovery sessions;
+  the test origin has no remaining library documents or active recovery drafts.
+  Original fixture files remain available. Closed only the new browser tab and
+  stopped only the test server; the owner's server/tabs were left alone.
+
+Logs: `/tmp/survey-native-state-frozen-tests.log`,
+`/tmp/survey-native-state-build.log`, `/tmp/survey-survey-revision-postgres.log`,
+`/tmp/survey-native-state-graph.log`. Screenshots are local test evidence at
+`/tmp/survey-local-native-deletion-rotation.png` and
+`/tmp/survey-local-canonical-form-copy.png`.
+
+No push, deploy, live migration, cloud cost reduction, Microsoft testing or
+real-auth multi-user proof is claimed. Atomic cloud PDF/checkpoint publication
+and generation-aware reader/writer adoption remain open; this pass deliberately
+does not remap cloud tombstones into the old document-scoped durable stream.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import React, { act, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { JSDOM } from 'jsdom';
+import { IDBFactory } from 'fake-indexeddb';
 import { buildLocalDocumentState } from '../src/services/localDocumentState.js';
 import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from '../src/hooks/useManagedLocalSaveTracking.js';
+import { useManagedLocalDraftTracking } from '../src/hooks/useManagedLocalDraftTracking.js';
+import { createLocalDocumentDraftStore } from '../src/services/localDocumentDraftStore.js';
 
 const localId = 'local:00000000-0000-4000-8000-000000000001';
 const fileFor = () => ({ localId, _surveyPdfId: localId, storageMode: 'local' });
@@ -70,12 +73,60 @@ test('full local tracking starts clean after sidebar hydration and tracks metada
     pageNames: { 1: 'Updated' }, bookmarks: [],
     spaces: [{ id: 'space' }], activeSpaceId: 'space', pageTransformations: { 1: { rotation: 90 } },
     regionOverlayDisabled: new Map([['region', true]]),
+    deletedPdfAnnotations: [{ pageNumber: 1, pdfAnnotationId: '44R' }],
   })) {
     await act(async () => edit({ bookmarks: [{ id: 'loaded' }], [key]: value }));
     assert.equal(api.dirty, true, `${key} changes count as unsaved`);
     await act(async () => edit({ bookmarks: [{ id: 'loaded' }] }));
     assert.equal(api.dirty, false, 'undo to saved full state clears dirty');
   }
+});
+
+test('mounted deletion-only edit becomes dirty and durable recovery records undo without changing PDF bytes', async t => {
+  const file = Object.assign(new File(['%PDF-1.7\noriginal native annotation bytes'], 'native.pdf'), fileFor(), { localRevision: 1 });
+  const store = createLocalDocumentDraftStore({ indexedDB: new IDBFactory() });
+  const captures = [];
+  let writers = 0, tracking, recovery, edit;
+  const createWriter = ownedFile => {
+    writers++;
+    const writer = store.createWriter(ownedFile);
+    return { capture: state => { captures.push(state); return writer.capture(state); }, seal: () => writer.seal() };
+  };
+  function Harness() {
+    const [deletedPdfAnnotations, setDeleted] = useState([]); edit = setDeleted;
+    const current = snapshot({ annotationsByPage: {}, deletedPdfAnnotations });
+    tracking = useManagedLocalSaveTracking({ file, pdfId: localId, snapshot: current });
+    recovery = useManagedLocalDraftTracking({ file, snapshot: current, ready: tracking.ready, dirty: tracking.dirty, createWriter });
+    return null;
+  }
+  await mount(t, Harness);
+  // mount registered its cleanup first, so it seals before this store closes.
+  t.after(async () => { await new Promise(resolve => setImmediate(resolve)); store.close(); });
+  assert.equal(tracking.ready, true);
+  assert.equal(tracking.dirty, false);
+  assert.equal(writers, 0, 'clean native hydration does not create recovery bytes');
+  const deleted = [{ pageNumber: 1, pdfAnnotationId: '44R', pdfAnnotationType: 'Square',
+    pdfNativeAnnotationIdentity: { rect: [1, 2, 30, 40], contents: 'native mark' } }];
+  await act(async () => edit(deleted));
+  assert.equal(tracking.dirty, true, 'no object-list change is needed to mark a native deletion dirty');
+  await act(async () => { await recovery.flush(); });
+  let [row] = await store.listDrafts();
+  const firstSequence = row.sequence;
+  const first = await store.readDraft(row.sessionId, { expectedSequence: row.sequence });
+  assert.deepEqual(JSON.parse(first.state.entries[`pdfData_${localId}`]).deletedPdfAnnotations, deleted);
+  assert.equal(await first.file.text(), await file.text());
+  await act(async () => edit([]));
+  assert.equal(tracking.dirty, false, 'undo returns to the saved baseline');
+  await act(async () => { await recovery.flush(); });
+  [row] = await store.listDrafts();
+  assert.ok(row.sequence > firstSequence, 'undo supersedes the already committed deletion recovery');
+  const undone = await store.readDraft(row.sessionId, { expectedSequence: row.sequence });
+  assert.deepEqual(JSON.parse(undone.state.entries[`pdfData_${localId}`]).deletedPdfAnnotations, []);
+  assert.equal(await undone.file.text(), await file.text());
+  assert.equal(writers, 1);
+  assert.equal(captures.length, 2);
+  assert.equal(captures[0].entries[`annotationsByPage_${localId}`], captures[1].entries[`annotationsByPage_${localId}`]);
+  assert.equal(file._localDocumentState, undefined, 'recovery never pretends to be canonical Save');
 });
 
 test('a late snapshot acknowledgement keeps newer metadata dirty and rejects retired files', async t => {

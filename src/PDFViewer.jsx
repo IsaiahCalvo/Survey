@@ -4030,7 +4030,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
   const [locallyDeletedPdfAnnotations, setLocallyDeletedPdfAnnotations] = useState([]);
-  useEffect(() => { setLocallyDeletedPdfAnnotations([]); }, [pdfFile]);
+  // File objects also change after a same-document page save. Only the
+  // document-load path may reset these; page commits remap them explicitly.
+  const deletedPdfAnnotationsRef = useRef([]);
+  useEffect(() => {
+    if (!isManagedLocalDocument(pdfFile)) setLocallyDeletedPdfAnnotations([]);
+  }, [pdfFile]);
 
   // R2.2 Slice 2 (THE FLIP): the callout list is a pure DERIVED projection of
   // annotationsByPage -- every data.type==='callout' object's embedded
@@ -12642,14 +12647,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   pageStructureStateRef.current = {
     annotationsByPage: annotationsByPageRef.current || {},
     surveyMarkers: surveyMarkersRef.current || {},
+    items: items || {},
     annotations: annotations || {},
     pageNames: pageNames || {},
     pageTransformations: pageTransformations || {},
     bookmarks: bookmarks || [],
     spaces: spacesRef.current || [],
+    activeSpaceId,
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
-  const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
+  const getPageStructureState = useCallback(() => ({
+    ...pageStructureStateRef.current,
+    ...(isManagedLocalDocument(pdfFile)
+      ? { deletedPdfAnnotations: deletedPdfAnnotationsRef.current } : {}),
+  }), [pdfFile]);
   const managedLocalPageMutationRef = useRef(false);
   const flushPendingFormFieldsRef = useRef(null);
   const withPageMutation = useCallback(run => {
@@ -12668,19 +12679,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (isManagedLocalDocument(file)) {
       if (!next) throw new Error('Local page state is required before replacing PDF bytes');
       file._localDocumentState = buildLocalDocumentState({
-        ...next, pdfId: file.localId, items, activeSpaceId,
+        ...next, pdfId: file.localId,
         callouts: deriveCalloutsFromByPage(next.annotationsByPage),
       });
     }
     return onUpdatePDFFile?.(file, tabId);
-  }, [onUpdatePDFFile, tabId, items, activeSpaceId]);
+  }, [onUpdatePDFFile, tabId]);
   const commitPageStructureState = useCallback((next, operation) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
     surveyMarkersRef.current = next.surveyMarkers;
     spacesRef.current = next.spaces;
+    if (isManagedLocalDocument(pdfFile)) {
+      deletedPdfAnnotationsRef.current = next.deletedPdfAnnotations;
+      setLocallyDeletedPdfAnnotations(next.deletedPdfAnnotations);
+    }
     setAnnotationsByPage(next.annotationsByPage);
     setSurveyMarkers(next.surveyMarkers);
+    setItems(next.items);
     setAnnotations(next.annotations);
     setPageNames(next.pageNames);
     setPageTransformations(next.pageTransformations);
@@ -19528,6 +19544,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ]),
     ).values(),
   ], annotationsByPage), [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations, annotationsByPage]);
+  deletedPdfAnnotationsRef.current = deletedPdfAnnotations;
 
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     managedLocal: isManagedLocalDocument(pdfFile),
@@ -21001,6 +21018,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setPdfId(null);
       setItems({});
       setAnnotations({});
+      setLocallyDeletedPdfAnnotations([]);
       setSurveyMarkers({});
       setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
@@ -21021,6 +21039,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       : loadPDFData(id);
     setItems(data.items || {});
     setAnnotations(data.annotations || {});
+    if (!isSamePdfReload) {
+      setLocallyDeletedPdfAnnotations(managedLocalStateReader ? (data.deletedPdfAnnotations || []) : []);
+    }
     const isCloudBackedDoc = !!pdfFile?.id;
     setSurveyAnnotationHydration(isCloudBackedDoc ? {
       ...ANNOTATION_HYDRATION_PENDING,
@@ -21254,9 +21275,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Track unsaved annotation changes
   const savedAnnotationsByPageRef = useRef({});
   const managedLocalSnapshot = useMemo(() => isManagedLocalDocument(pdfFile) && pdfId === pdfFile.localId
-    ? buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, surveyMarkers, callouts,
+    ? buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations, surveyMarkers, callouts,
       pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled })
-    : null, [pdfFile, pdfId, annotationsByPage, items, annotations, surveyMarkers, callouts,
+    : null, [pdfFile, pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations, surveyMarkers, callouts,
     pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled]);
   const managedLocalSaveTracking = useManagedLocalSaveTracking({ file: pdfFile, pdfId, snapshot: managedLocalSnapshot,
     hydrated: !!pdfDoc && !isLoadingPDF && !pdfLoadError });
@@ -21742,7 +21763,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     managedLocalReady: managedLocalSaveTracking.ready };
   const managedLocalStateRef = useRef(null);
   const managedLocalWritesRef = useRef(new WeakMap());
-  managedLocalStateRef.current = { items, annotations, callouts, pageNames, bookmarks,
+  managedLocalStateRef.current = { items, annotations, deletedPdfAnnotations, callouts, pageNames, bookmarks,
     activeSpaceId, pageTransformations, regionOverlayDisabled };
   const captureManagedLocalSnapshot = (file, snapshot) => buildLocalDocumentState({ ...managedLocalStateRef.current,
       pdfId: file.localId, annotationsByPage: snapshot,
@@ -21958,7 +21979,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const quitAnnotationReceiptRef = useRef(null);
   const getQuitSaveRevision = () => JSON.stringify([
     pdfId, pdfFile?.id || null, user?.id || null, annotationsByPageRef.current,
-    surveyMarkersRef.current, spacesRef.current, items, annotations,
+    surveyMarkersRef.current, spacesRef.current, items, annotations, deletedPdfAnnotations,
     pageNames, bookmarks, activeSpaceId, pageTransformations, entities,
     Object.fromEntries(regionOverlayDisabled || new Map()),
   ]);
@@ -22499,6 +22520,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             console.warn('[PDFImport] embedded PDF annotation diagnostics failed:', diagError);
             setPdfNativeAnnotationLayerPolicyByPage({});
           }
+          }
+        } else if (isManagedLocalDocument(pdfFile) && pdfFile._localDocumentState != null) {
+          // The validated local snapshot owns all semantic state, including
+          // empty pages and deleted native marks. Original PDF bytes must not
+          // overwrite saved geometry, forms, callouts, spaces or markers.
+          const { nativeLayerPolicyByPage, unsupportedCounts } = await importAnnotationsFromPdf(pdf, {
+            rawPdfBytes: arrayBuffer,
+            diagnosticsOnly: true,
+          });
+          if (isCancelled) return;
+          setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
+          if (unsupportedCounts && Object.keys(unsupportedCounts).length > 0) {
+            setUnsupportedAnnotationCounts(unsupportedCounts);
+            setShowUnsupportedNotice(true);
           }
         } else {
         try {

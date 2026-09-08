@@ -17,9 +17,67 @@ const asPage = (value) => {
   return Number.isInteger(page) && page > 0 ? page : null;
 };
 
-const remapPageFields = (value, mapPage) => {
+const remappedDomains = new Set(['annotationsByPage', 'surveyMarkers', 'annotations',
+  'pageNames', 'pageTransformations', 'bookmarks', 'spaces', 'regionOverlayDisabled',
+  'deletedPdfAnnotations']);
+const pageBindingKeys = new Set(['page', 'pages', 'pageId', 'pageIds', 'pageNumber',
+  'pageNumbers', 'page_number', 'targetPage', 'sourcePage', 'assignedPages',
+  ...remappedDomains]);
+
+// Extra document metadata is opaque, not a schema for arbitrary page bindings.
+// Detect recognizable addresses conservatively; this is not a complete capture
+// validator and cannot infer custom address encodings from their values.
+function assertUnboundMetadata(value, path, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value) || value instanceof Set) {
+    for (const entry of value) assertUnboundMetadata(entry, path, seen);
+    return;
+  }
+  for (const [key, entry] of value instanceof Map ? value.entries() : Object.entries(value)) {
+    if (pageBindingKeys.has(key) || /^[1-9]\d*$/.test(String(key))) {
+      throw new Error(`An undeclared page binding in ${path} cannot be remapped. Your document was kept.`);
+    }
+    assertUnboundMetadata(entry, `${path}.${String(key)}`, seen);
+  }
+}
+
+function validateNativeDeletions(entries) {
+  if (!Array.isArray(entries)) throw new Error('The native deletion list is malformed. Your document was kept.');
+  const seen = new Set();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+        || !Number.isSafeInteger(entry.pageNumber) || entry.pageNumber < 1
+        || typeof entry.pdfAnnotationId !== 'string' || !entry.pdfAnnotationId.trim()
+        || ['pageId', 'page'].some(key => key in entry && entry[key] !== entry.pageNumber)) {
+      throw new Error('A native deletion identity is malformed. Your document was kept.');
+    }
+    const key = JSON.stringify([entry.pageNumber, entry.pdfAnnotationId]);
+    if (seen.has(key)) throw new Error('A native deletion identity is ambiguous. Your document was kept.');
+    seen.add(key);
+  }
+}
+
+const remapPageFields = (value, mapPage, sourcePage = null) => {
   if (!value || typeof value !== 'object') return value;
   const next = { ...value };
+  const identity = value.pdfNativeAnnotationIdentity;
+  const synthetic = String(value.pdfAnnotationId || '').trim().match(/^annot_p(\d+)_\d+$/i);
+  if (synthetic) {
+    const nativePage = Number(synthetic[1]) + 1;
+    if ((sourcePage != null && sourcePage !== nativePage) || mapPage(nativePage) !== nativePage) {
+      throw new Error('A synthetic native identity needs an exact PDF remap. Your document was kept.');
+    }
+  }
+  if (identity != null) {
+    if (identity.v !== 1 || !Number.isSafeInteger(identity.pageNumber) || identity.pageNumber < 1
+        || !Number.isSafeInteger(identity.annotsIndex) || identity.annotsIndex < 0
+        || !identity.fingerprint || typeof identity.fingerprint !== 'object'
+        || (sourcePage != null && identity.pageNumber !== sourcePage)) {
+      throw new Error('A native identity occurrence is malformed or mismatched. Your document was kept.');
+    }
+    next.pdfNativeAnnotationIdentity = { ...identity, pageNumber: mapPage(identity.pageNumber) };
+  }
   for (const key of ['pageNumber', 'pageId', 'page']) {
     if (!(key in next)) continue;
     const page = asPage(next[key]);
@@ -37,10 +95,10 @@ const remapPageFields = (value, mapPage) => {
     next.id = `form-field:${newFormPage}:${next.fieldId}`;
   }
   if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
-    next.data = remapPageFields(next.data, mapPage);
+    next.data = remapPageFields(next.data, mapPage, sourcePage);
   }
   if (next.legacyCallout && typeof next.legacyCallout === 'object') {
-    next.legacyCallout = remapPageFields(next.legacyCallout, mapPage);
+    next.legacyCallout = remapPageFields(next.legacyCallout, mapPage, sourcePage);
   }
   return next;
 };
@@ -50,7 +108,7 @@ const remapPageKeyed = (source, mapPage, transformValue = (value) => value) => {
   for (const [key, value] of Object.entries(source || {})) {
     const mapped = mapPage(asPage(key));
     if (mapped == null) continue;
-    next[mapped] = transformValue(value, mapped);
+    next[mapped] = transformValue(value, mapped, asPage(key));
   }
   return next;
 };
@@ -58,14 +116,15 @@ const remapPageKeyed = (source, mapPage, transformValue = (value) => value) => {
 const remapIdKeyed = (source, mapPage) => {
   const next = {};
   for (const [id, value] of Object.entries(source || {})) {
-    const page = asPage(value?.pageNumber ?? value?.pageId ?? value?.page);
+    const page = asPage(value?.pageNumber ?? value?.pageId ?? value?.page
+      ?? value?.pdfNativeAnnotationIdentity?.pageNumber);
     if (page == null) {
       next[id] = value;
       continue;
     }
     const mapped = mapPage(page);
     if (mapped == null) continue;
-    next[id] = remapPageFields(value, () => mapped);
+    next[id] = remapPageFields(value, () => mapped, page);
   }
   return next;
 };
@@ -126,6 +185,7 @@ const remapSpaces = (spaces, mapPage) => (
         return {
           ...entry,
           pageId: mapped,
+          ...('pageNumber' in entry ? { pageNumber: mapped } : {}),
           ...(Array.isArray(entry?.regions)
             ? { regions: entry.regions.map((region) => remapPageFields(region, () => mapped)) }
             : {}),
@@ -151,11 +211,22 @@ const remapRegionOverlay = (source, mapPage) => {
   return next;
 };
 
+const remapNativeDeletions = (source, mapPage) => source.flatMap((entry) => {
+  const mapped = mapPage(entry.pageNumber);
+  if (mapped == null) return [];
+  return [remapPageFields(entry, () => mapped, entry.pageNumber)];
+});
+
 const baseRemap = (model, mapPage) => ({
-  annotationsByPage: remapPageKeyed(model.annotationsByPage, mapPage, (page, mapped) => ({
+  // Keep document-level data; callers must declare any additional page-bound
+  // domains before they can be remapped here. transformPageState owns model.
+  ...model,
+  ...(model.deletedPdfAnnotations !== undefined
+    ? { deletedPdfAnnotations: remapNativeDeletions(model.deletedPdfAnnotations, mapPage) } : {}),
+  annotationsByPage: remapPageKeyed(model.annotationsByPage, mapPage, (page, mapped, sourcePage) => ({
     ...(page || {}),
     objects: (Array.isArray(page?.objects) ? page.objects : [])
-      .map((object) => remapPageFields(object, () => mapped)),
+      .map((object) => remapPageFields(object, () => mapped, sourcePage)),
   })),
   surveyMarkers: remapIdKeyed(model.surveyMarkers, mapPage),
   annotations: remapIdKeyed(model.annotations, mapPage),
@@ -208,7 +279,7 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
   const forms = copiedFormMap(copiedWidgets, sourcePage, targetPage);
 
   for (const space of source.spaces || []) {
-    const entry = (space?.assignedPages || []).find((candidate) => asPage(candidate?.pageId) === sourcePage);
+    const entry = (space?.assignedPages || []).find((candidate) => asPage(candidate?.pageId ?? candidate?.pageNumber) === sourcePage);
     for (const region of entry?.regions || []) {
       if (region?.regionId) regionIds.set(region.regionId, createId());
     }
@@ -285,10 +356,11 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
   );
   next.spaces = next.spaces.map((space, index) => {
     const sourceSpace = source.spaces?.[index];
-    const entry = (sourceSpace?.assignedPages || []).find((candidate) => asPage(candidate?.pageId) === sourcePage);
+    const entry = (sourceSpace?.assignedPages || []).find((candidate) => asPage(candidate?.pageId ?? candidate?.pageNumber) === sourcePage);
     if (!entry) return space;
     const copiedEntry = clone(entry);
     copiedEntry.pageId = targetPage;
+    if ('pageNumber' in copiedEntry) copiedEntry.pageNumber = targetPage;
     copiedEntry.regions = (copiedEntry.regions || []).map((region) => ({
       ...replaceRegionId(region, regionIds),
       pageId: targetPage,
@@ -312,7 +384,25 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
   return next;
 }
 
-export function transformPageState(model = {}, op, { createId = fallbackId, copiedWidgets = [] } = {}) {
+export function transformPageState(model = {}, op, {
+  createId = fallbackId, copiedWidgets = [],
+} = {}) {
+  // Remapping and later edits must never mutate the captured source, including
+  // nested metadata in fields that this helper does not need to transform.
+  model = clone(model);
+  for (const [key, value] of Object.entries(model)) {
+    if (!remappedDomains.has(key)) {
+      if (pageBindingKeys.has(key)) throw new Error(`An undeclared page binding in ${key} cannot be remapped. Your document was kept.`);
+      assertUnboundMetadata(value, key);
+    }
+  }
+  if (model.deletedPdfAnnotations !== undefined) validateNativeDeletions(model.deletedPdfAnnotations);
+  for (const page of Object.values(model.annotationsByPage || {})) {
+    if (!page || typeof page !== 'object') continue;
+    delete page.eraserMutation;
+    delete page.eraserMaterializedMutationIds;
+    delete page.eraserPresentationRevision;
+  }
   const type = op?.type;
   if (type === 'rotate') {
     const next = baseRemap(model, (page) => page);
@@ -355,6 +445,11 @@ export function transformPageState(model = {}, op, { createId = fallbackId, copi
     const afterPage = asPage(op.afterPage ?? op.page ?? op.target);
     if (sourcePage == null || afterPage == null) throw new Error(`${type} requires source and target pages`);
     const targetPage = afterPage + 1;
+    // Copy can reorder /Annots and replace refs. An outer native ID mapping is
+    // insufficient: a future writer proof must include the exact new occurrence.
+    if (model.deletedPdfAnnotations?.some(entry => entry.pageNumber === sourcePage)) {
+      throw new Error('A copied native deletion needs an exact PDF identity. Your document was kept.');
+    }
     const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
     return addPageClone(next, model, sourcePage, targetPage, createId, copiedWidgets);
   }

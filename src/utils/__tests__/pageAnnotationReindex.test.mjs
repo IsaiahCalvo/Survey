@@ -134,3 +134,148 @@ test('serialized hard reopen retains the transformed page identity graph', () =>
   assert.deepEqual(reopened.bookmarks[0].pageIds, [1, 4]);
   assert.equal(reopened.spaces[0].assignedPages.find((page) => page.pageId === 4).regions[0].regionId, 'r2');
 });
+
+test('page moves own all output data and keep assigned-page aliases in sync', () => {
+  const input = make();
+  input.items = { item: { name: 'Door', moduleData: { notes: ['kept'] } } };
+  input.custom = { labels: ['document metadata'] };
+  input.annoMeta = { custom: { authors: ['author-a'] } };
+  input.spaces[0].assignedPages[0].pageNumber = 2;
+  const before = structuredClone(input);
+  const out = transformPageState(input, { type: 'move', from: 2, to: 1 });
+  assert.equal(out.spaces[0].assignedPages[0].pageId, 1);
+  assert.equal(out.spaces[0].assignedPages[0].pageNumber, 1);
+  assert.deepEqual(out.items, input.items);
+  assert.deepEqual(out.custom, input.custom);
+  assert.deepEqual(out.annoMeta, input.annoMeta);
+  out.items.item.moduleData.notes.push('new');
+  out.custom.labels.push('new');
+  out.annoMeta.custom.authors.push('new');
+  out.annotationsByPage[1].objects[0].data.extra = { new: true };
+  out.spaces[0].assignedPages[0].regions[0].points.push(3);
+  assert.deepEqual(input, before);
+});
+
+test('remapped and copied page buckets contain materialized geometry, never old eraser intent', () => {
+  const input = make();
+  Object.assign(input.annotationsByPage[2], {
+    eraserMutation: { mutationId: 'old' },
+    eraserMaterializedMutationIds: ['old'], eraserPresentationRevision: 9,
+    custom: { color: 'red' },
+  });
+  for (const op of [{ type: 'move', from: 2, to: 1 }, { type: 'duplicate', page: 2 }]) {
+    const out = transformPageState(input, op);
+    for (const page of Object.values(out.annotationsByPage)) {
+      assert.equal('eraserMutation' in page, false);
+      assert.equal('eraserMaterializedMutationIds' in page, false);
+      assert.equal('eraserPresentationRevision' in page, false);
+    }
+    const target = op.type === 'move' ? 1 : 3;
+    assert.deepEqual(out.annotationsByPage[target].custom, { color: 'red' });
+    assert.equal(out.annotationsByPage[target].objects.length, 1);
+  }
+  assert.equal(input.annotationsByPage[2].eraserMutation.mutationId, 'old');
+});
+
+test('native deletion records follow surviving pages and retain all native metadata', () => {
+  const tombstones = [
+    { pageNumber: 1, pdfAnnotationId: '7R', pdfAnnotationType: 'Ink', author: { name: 'A' } },
+    { pageNumber: 2, pageId: 2, page: 2, pdfAnnotationId: '8R', rect: [1, 2, 3, 4] },
+    { pageNumber: 3, pdfAnnotationId: '9R', custom: { retained: true } },
+  ];
+  const input = { deletedPdfAnnotations: tombstones };
+  const cases = [
+    [{ type: 'move', from: 2, to: 1 }, [2, 1, 3]],
+    [{ type: 'insert', afterPage: 1 }, [1, 3, 4]],
+    [{ type: 'delete', page: 2 }, [1, 2]],
+    [{ type: 'rotate', page: 2 }, [1, 2, 3]],
+  ];
+  for (const [op, pages] of cases) {
+    const output = transformPageState(input, op).deletedPdfAnnotations;
+    assert.deepEqual(output.map(entry => entry.pageNumber), pages);
+    for (const entry of output) {
+      const source = tombstones.find(item => item.pdfAnnotationId === entry.pdfAnnotationId);
+      assert.deepEqual(entry, { ...source, pageNumber: entry.pageNumber,
+        ...('pageId' in source ? { pageId: entry.pageNumber, page: entry.pageNumber } : {}) });
+    }
+    output[0].author.name = 'changed';
+  }
+  assert.equal(tombstones[0].author.name, 'A');
+});
+
+test('ambiguous native deletions and undeclared metadata page bindings block remapping', () => {
+  const valid = { pageNumber: 2, pdfAnnotationId: '8R' };
+  for (const deletedPdfAnnotations of [null, {}, [null], [{ ...valid, pageNumber: 0 }],
+    [{ ...valid, pageNumber: '2' }], [{ ...valid, pdfAnnotationId: '' }],
+    [{ ...valid, pageId: 1 }], [valid, { ...valid, author: 'different' }]]) {
+    assert.throws(() => transformPageState({ deletedPdfAnnotations }, { type: 'delete', page: 1 }), /native deletion/i);
+  }
+  for (const input of [
+    { annoMeta: { custom: { pageNumber: 2 } } },
+    { custom: { nested: [{ pageIds: [1, 2] }] } },
+    { custom: { 2: { note: 'page-keyed domain is not declared' } } },
+  ]) assert.throws(() => transformPageState(input, { type: 'move', from: 2, to: 1 }), /page binding/i);
+});
+
+test('copying a page with native deletions requires an exact new native identity', () => {
+  const input = { deletedPdfAnnotations: [{ pageNumber: 2, pdfAnnotationId: '8R' }] };
+  const before = structuredClone(input);
+  assert.throws(() => transformPageState(input, { type: 'duplicate', page: 2 }), /native.*identity/i);
+  assert.throws(() => transformPageState(input, { type: 'copy', source: 2, afterPage: 3 }), /native.*identity/i);
+  assert.deepEqual(input, before);
+  const unrelated = transformPageState(input, { type: 'duplicate', page: 1 });
+  assert.deepEqual(unrelated.deletedPdfAnnotations, [{ pageNumber: 3, pdfAnnotationId: '8R' }]);
+});
+
+test('an outer native ID map alone cannot authorize copying tombstones', () => {
+  const entry = { pageNumber: 2, pageId: 2, pdfAnnotationId: '8R',
+    pdfAnnotationType: 'Ink', rect: [1, 2, 3, 4], author: { id: 'original-author' } };
+  const input = { deletedPdfAnnotations: [entry] };
+  assert.throws(() => transformPageState(input, { type: 'copy', source: 2, afterPage: 3 }, {
+    copiedNativeAnnotations: [{ sourcePage: 2, targetPage: 4,
+      sourcePdfAnnotationId: '8R', targetPdfAnnotationId: '19R' }],
+  }), /native.*identity/i);
+});
+
+test('copy supports pageNumber-only space entries and updates all copied aliases', () => {
+  const input = make();
+  delete input.spaces[0].assignedPages[0].pageId;
+  input.spaces[0].assignedPages[0].pageNumber = 2;
+  const out = transformPageState(input, { type: 'duplicate', page: 2 }, { createId: ids('region-new', 'anno-new') });
+  const [original, copied] = out.spaces[0].assignedPages;
+  assert.equal(original.pageId, 2);
+  assert.equal(original.pageNumber, 2);
+  assert.equal(copied.pageId, 3);
+  assert.equal(copied.pageNumber, 3);
+  assert.equal(copied.regions[0].regionId, 'region-new');
+});
+
+test('surviving native identity occurrences follow the page without changing index or fingerprint', () => {
+  const identity = { v: 1, pageNumber: 2, annotsIndex: 7, fingerprint: { subtype: 'ink', rect: [1, 2, 3, 4] } };
+  const native = { pdfAnnotationId: '8R', pdfNativeAnnotationIdentity: identity };
+  const input = { annotationsByPage: { 2: { objects: [{ type: 'path', data: native }] } },
+    deletedPdfAnnotations: [{ pageNumber: 2, ...native }] };
+  const out = transformPageState(input, { type: 'move', from: 2, to: 1 });
+  const expected = { ...identity, pageNumber: 1 };
+  assert.deepEqual(out.annotationsByPage[1].objects[0].data.pdfNativeAnnotationIdentity, expected);
+  assert.deepEqual(out.deletedPdfAnnotations[0].pdfNativeAnnotationIdentity, expected);
+  assert.equal(identity.pageNumber, 2);
+});
+
+test('synthetic native IDs cannot be guessed when pages shift, but same-page rotation remains safe', () => {
+  const identity = { v: 1, pageNumber: 2, annotsIndex: 3, fingerprint: { subtype: 'ink' } };
+  const native = { pdfAnnotationId: 'annot_p1_9', pdfNativeAnnotationIdentity: identity };
+  for (const input of [
+    { annotationsByPage: { 2: { objects: [{ type: 'path', data: native }] } } },
+    { deletedPdfAnnotations: [{ pageNumber: 2, ...native }] },
+  ]) {
+    for (const op of [{ type: 'move', from: 2, to: 1 }, { type: 'insert', afterPage: 1 },
+      { type: 'delete', page: 1 }, { type: 'duplicate', page: 1 }]) {
+      assert.throws(() => transformPageState(input, op), /synthetic.*identity/i);
+    }
+    const rotated = transformPageState(input, { type: 'rotate', page: 2 });
+    assert.deepEqual(rotated.deletedPdfAnnotations ?? rotated.annotationsByPage,
+      input.deletedPdfAnnotations ?? input.annotationsByPage);
+    assert.doesNotThrow(() => transformPageState(input, { type: 'delete', page: 2 }));
+  }
+});

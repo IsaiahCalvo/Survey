@@ -6,6 +6,7 @@ import { persistThenCommitPageMutation } from '../src/utils/pageMutationTransact
 import { transformPageState, pageNumberAfterOperation } from '../src/utils/pageAnnotationReindex.js';
 import { createUndoManager, userUndo } from '../src/lib/collab/crdtUndoManager.js';
 import { syncByPageToDoc, docToByPage } from '../src/services/annotationDocStore.js';
+import { isManagedLocalDocument } from '../src/services/localDocumentState.js';
 
 // Agreed narrow seam for the giant viewer: execute its actual named callbacks,
 // not a copied reset implementation. React setters are the test boundary.
@@ -57,19 +58,23 @@ function fixture(t, { withYjs = true } = {}) {
   const reset = callback('resetPageStructureHistory', environment);
   const state = {
     annotationsByPage: { 2: { objects: [{ id: 'flat-shape', type: 'rect', left: 3, top: 4, width: 5, height: 6 }] } },
-    surveyMarkers: {}, annotations: {}, pageNames: { 2: 'Physical page' },
+    surveyMarkers: {}, items: { item: { name: 'Door', quantity: 2 } }, annotations: {}, pageNames: { 2: 'Physical page' },
+    deletedPdfAnnotations: [{ pageNumber: 2, pdfAnnotationId: '44R', pdfAnnotationType: 'Square' }],
     pageTransformations: {}, bookmarks: [], spaces: [], regionOverlayDisabled: new Map(),
   };
   const committed = {};
   const commitEnvironment = {
     pageStructureStateRef: { current: state }, annotationsByPageRef: { current: state.annotationsByPage },
     surveyMarkersRef: { current: state.surveyMarkers }, spacesRef: { current: state.spaces },
+    deletedPdfAnnotationsRef: { current: state.deletedPdfAnnotations },
     resetPageStructureHistory: reset,
     clearAnnotationSelectionForContextChange: reason => { committed.selectionReason = reason; },
-    pdfId: null, numPages: 2, pageNumberAfterOperation,
+    pdfId: null, pdfFile: { localId: 'local:00000000-0000-4000-8000-000000000001',
+      _surveyPdfId: 'local:00000000-0000-4000-8000-000000000001', storageMode: 'local' },
+    isManagedLocalDocument, numPages: 2, pageNumberAfterOperation,
     setPageNum: update => { ui.page = update(ui.page); },
   };
-  for (const key of ['AnnotationsByPage', 'SurveyMarkers', 'Annotations', 'PageNames', 'PageTransformations', 'Bookmarks', 'Spaces', 'RegionOverlayDisabled']) {
+  for (const key of ['AnnotationsByPage', 'SurveyMarkers', 'Items', 'Annotations', 'LocallyDeletedPdfAnnotations', 'PageNames', 'PageTransformations', 'Bookmarks', 'Spaces', 'RegionOverlayDisabled']) {
     commitEnvironment[`set${key}`] = value => { committed[key] = value; };
   }
   const commit = callback('commitPageStructureState', commitEnvironment);
@@ -107,11 +112,17 @@ test('successful page persistence resets all history only at the actual viewer c
   assert.equal(f.undoManager.undoStack.length, 1);
   assert.equal(f.undoManager.redoStack.length, 1);
   assert.equal(f.commitEnvironment.pageStructureStateRef.current, f.state);
+  assert.equal(f.commitEnvironment.deletedPdfAnnotationsRef.current, f.state.deletedPdfAnnotations);
+  assert.deepEqual(f.committed, {}, 'pending persistence publishes no new items or tombstones');
   release();
   await pending;
   assertReset(f);
   assert.equal(f.commitEnvironment.pageStructureStateRef.current, f.next);
   assert.equal(f.committed.AnnotationsByPage, f.next.annotationsByPage);
+  assert.equal(f.committed.Items, f.next.items);
+  assert.equal(f.committed.LocallyDeletedPdfAnnotations, f.next.deletedPdfAnnotations);
+  assert.equal(f.commitEnvironment.deletedPdfAnnotationsRef.current, f.next.deletedPdfAnnotations);
+  assert.equal(f.next.deletedPdfAnnotations[0].pageNumber, 1);
   assert.equal(f.committed.selectionReason, 'page-structure-change');
   assert.equal(f.ui.page, 1);
 });
@@ -133,6 +144,7 @@ test('rejected persistence preserves all history, toast, flags and old page stat
   assert.deepEqual(f.undoManager.undoStack, undo);
   assert.deepEqual(f.undoManager.redoStack, redo);
   assert.equal(f.commitEnvironment.pageStructureStateRef.current, f.state);
+  assert.equal(f.commitEnvironment.deletedPdfAnnotationsRef.current, f.state.deletedPdfAnnotations);
   assert.deepEqual(f.committed, {});
 });
 

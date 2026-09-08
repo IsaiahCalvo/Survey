@@ -10,9 +10,12 @@ const source = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'u
 const tree = parse(source, { sourceType: 'module', plugins: ['jsx'] });
 const localId = 'local:8ad364a5-786f-470f-858d-253c52bff3bd';
 const file = { localId, _surveyPdfId: localId, storageMode: 'local' };
+const tombstones = [{ pageNumber: 1, pdfAnnotationId: '44R', pdfAnnotationType: 'Square',
+  pdfNativeAnnotationIdentity: { rect: [1, 2, 30, 40], contents: 'removed native mark' } }];
 const canonical = buildLocalDocumentState({ pdfId: localId,
   annotationsByPage: { 1: { objects: [{ id: 'saved-mark' }] } },
   items: { item: { name: 'saved-item' } }, annotations: { label: { pageNumber: 1 } },
+  deletedPdfAnnotations: tombstones,
   surveyMarkers: { marker: { pageNumber: 1 } }, callouts: [],
   pageNames: { 1: 'saved-page' }, bookmarks: [{ id: 'saved-bookmark', pageIds: [1] }],
   regionOverlayDisabled: new Map([['saved-region', true]]),
@@ -32,6 +35,30 @@ function find(node, predicate) {
 const evaluate = (node, scope) => new Function(...Object.keys(scope), `return (${source.slice(node.start, node.end)});`)(...Object.values(scope));
 const isCall = (node, name) => node.type === 'CallExpression' && node.callee.name === name;
 const noLegacy = () => assert.fail('managed files must not read or write shared legacy storage');
+
+test('actual hydration restores native deletion data only on a different document and clears absent old-format data', () => {
+  const hydrate = find(tree, node => isCall(node, 'useEffect')
+    && node.arguments[1]?.elements?.some(entry => entry.name === 'activePdfChangeIdentity'));
+  const branch = find(hydrate.arguments[0], node => node.type === 'IfStatement'
+    && node.test.type === 'UnaryExpression' && node.test.argument.name === 'isSamePdfReload'
+    && !!find(node.consequent, child => isCall(child, 'setLocallyDeletedPdfAnnotations')));
+  assert.ok(branch, 'the actual document-identity guard must own tombstone hydration');
+  const hydrateDeleted = scope => new Function(...Object.keys(scope), source.slice(branch.start, branch.end))(...Object.values(scope));
+  for (const [data, managed, expected] of [
+    [JSON.parse(reader.getItem(`pdfData_${localId}`)), reader, tombstones],
+    [{ items: {} }, reader, []],
+    [{ deletedPdfAnnotations: tombstones }, null, []],
+  ]) {
+    let current = [{ pageNumber: 9, pdfAnnotationId: 'previous-document' }];
+    const setLocallyDeletedPdfAnnotations = value => { current = value; };
+    hydrateDeleted({ data, managedLocalStateReader: managed, isSamePdfReload: false, setLocallyDeletedPdfAnnotations });
+    assert.deepEqual(current, expected, 'new identity never inherits the prior document deletions');
+    const pending = [{ pageNumber: 3, pdfAnnotationId: 'unsaved-current-document' }];
+    current = pending;
+    hydrateDeleted({ data, managedLocalStateReader: managed, isSamePdfReload: true, setLocallyDeletedPdfAnnotations });
+    assert.equal(current, pending, 'same-document PDF reload cannot replace pending deletions with older canonical state');
+  }
+});
 
 test('actual main hydration expressions use canonical entries and never adopt shared raw keys', () => {
   const hydrate = find(tree, node => isCall(node, 'useEffect')
@@ -109,17 +136,19 @@ test('actual page publication updates the view but never changes managed legacy 
   const variable = find(tree, node => node.type === 'VariableDeclarator' && node.id.name === 'commitPageStructureState');
   const ref = () => ({ current: null });
   const scope = { pdfId: localId, pdfFile: file, isManagedLocalDocument,
-    pageStructureStateRef: ref(), annotationsByPageRef: ref(), surveyMarkersRef: ref(), spacesRef: ref(),
+    pageStructureStateRef: ref(), annotationsByPageRef: ref(), surveyMarkersRef: ref(), spacesRef: ref(), deletedPdfAnnotationsRef: ref(),
     saveAnnotationsByPage: noLegacy, saveSurveyMarkers: noLegacy, localStorage: { setItem: noLegacy },
-    setAnnotationsByPage() {}, setSurveyMarkers() {}, setAnnotations() {}, setPageNames() {}, setPageTransformations() {},
+    setAnnotationsByPage() {}, setSurveyMarkers() {}, setItems() {}, setAnnotations() {}, setLocallyDeletedPdfAnnotations() {}, setPageNames() {}, setPageTransformations() {},
     setBookmarks() {}, setSpaces() {}, setRegionOverlayDisabled() {}, setUndoHistory() {}, setRedoHistory() {},
     resetPageStructureHistory() {},
     clearAnnotationSelectionForContextChange() {}, setPageNum: run => run(1), numPages: 2, pageNumberAfterOperation: () => 1,
   };
   const next = { annotationsByPage: { 1: { objects: [{ id: 'remapped' }] } }, surveyMarkers: {}, spaces: [],
+    items: { item: { pageNumber: 1 } }, deletedPdfAnnotations: tombstones,
     annotations: {}, pageNames: {}, pageTransformations: {}, bookmarks: [], regionOverlayDisabled: new Map() };
   evaluate(variable.init.arguments[0], scope)(next, { type: 'delete', page: 1 });
   assert.equal(scope.annotationsByPageRef.current, next.annotationsByPage);
+  assert.equal(scope.deletedPdfAnnotationsRef.current, next.deletedPdfAnnotations);
 });
 
 test('independent cold readers keep exact checkpoint revisions without altering preexisting raw drafts', async () => {
