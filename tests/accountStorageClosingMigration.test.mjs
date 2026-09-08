@@ -31,7 +31,7 @@ test('account closure protects foreign children and guards final storage metadat
 
 test('account closing fixture uses installed isolated PostgreSQL and the earlier tracked guards',()=>{
   const source=readFileSync(script,'utf8');
-  for(const name of ['20260908160000_document_quota_guard.sql','20260908200000_document_identity_tombstones.sql','20260908201000_document_publication_authorization.sql','20260908220000_document_storage_retirement.sql','20260908230000_account_storage_closing.sql'])assert.ok(source.includes(name),name);
+  for(const name of ['20260908160000_document_quota_guard.sql','20260908200000_document_identity_tombstones.sql','20260908201000_document_publication_authorization.sql','20260908220000_document_storage_retirement.sql','20260908230000_account_storage_closing.sql','20260909000000_account_storage_cleanup_scan.sql'])assert.ok(source.includes(name),name);
   assert.match(source,/process\.getuid\?\.\(\)===0/);assert.match(source,/filter\(\(\[key\]\)=>!\/\^PG\/i\.test\(key\)\)/);
   assert.match(source,/listen_addresses=''/);assert.match(source,/\['-X','-h',socket,'-p',port,'-U','postgres','-d','postgres'/);
   assert.match(source,/owned local server stopped before cleanup/);assert.match(source,/rmSync\(temp,\{recursive:true,force:true\}\)/);

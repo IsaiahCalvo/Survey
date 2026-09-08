@@ -1,7 +1,7 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { deleteStripeCustomer, runAccountDeletionStages } from '../_shared/accountDeletion.ts';
-import { cleanupDocumentStorage } from '../_shared/documentStorageCleanup.js';
+import { cleanupAccountStorage } from '../_shared/accountStorageCleanup.js';
 
 type AdminClient = ReturnType<typeof createClient<any>>;
 
@@ -17,44 +17,14 @@ const json = (status: number, body: Record<string, unknown>) => new Response(JSO
   headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 });
 
-async function listOwnedStorage(
-  admin: AdminClient,
-  prefix: string,
-): Promise<string[]> {
-  const paths: string[] = [];
-  for (let offset = 0; ; offset += 100) {
-    const { data, error } = await admin.storage.from('documents').list(prefix, { limit: 100, offset });
-    if (error) throw new Error(`Could not inspect stored documents: ${error.message}`);
-    // A missing/malformed page is not proof that the account has no files.
-    // Fail before final auth deletion; a later request can safely retry.
-    if (!Array.isArray(data) || data.length > 100) {
-      throw new Error('Could not verify stored document inventory');
-    }
-    const entries = data;
-    for (const entry of entries) {
-      if (!entry || typeof entry.name !== 'string' || !entry.name
-        || entry.name === '.' || entry.name === '..' || /[\/\u0000-\u001f\u007f]/.test(entry.name)
-        || !(entry.id === null || (typeof entry.id === 'string' && entry.id.length > 0))) {
-        throw new Error('Could not verify a stored document entry');
-      }
-      const path = `${prefix}/${entry.name}`;
-      if (entry.id) paths.push(path);
-      else paths.push(...await listOwnedStorage(admin, path));
-    }
-    if (entries.length < 100) break;
-  }
-  return paths;
-}
+class AccountCleanupPending extends Error {}
 
 async function removeOwnedStorage(admin: AdminClient, userId: string) {
-  // Files normally live directly below documents/<user-id>, but recursively
-  // walk the prefix so a legacy/nested upload cannot survive account deletion.
-  const paths = await listOwnedStorage(admin, userId);
-  for (let offset = 0; offset < paths.length; offset += 100) {
-    const cleanup = await cleanupDocumentStorage(admin, paths.slice(offset, offset + 100));
-    if (cleanup.pendingPaths.length || cleanup.retainedPaths.length) {
-      throw new Error('Stored documents are still pending safe cleanup. Account deletion can be retried.');
-    }
+  const cleanup = await cleanupAccountStorage(admin, userId);
+  if (!cleanup.complete) {
+    // The closing fence and cursor persist. Never proceed to auth deletion
+    // merely because the current request ran out of time or work budget.
+    throw new AccountCleanupPending('Account cleanup is not finished. Retry deletion to continue; shared files may need review.');
   }
 }
 
@@ -124,6 +94,9 @@ Deno.serve(async (req) => {
 
     return json(200, { deleted: true });
   } catch (error) {
+    if (error instanceof AccountCleanupPending) {
+      return json(202, { deleted: false, pending: true, code: 'account-cleanup-pending', error: error.message });
+    }
     console.error('delete-account failed', error instanceof Error ? error.message : String(error));
     return json(500, { error: 'Account deletion could not finish. Please try again or contact support.' });
   }

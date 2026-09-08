@@ -53,6 +53,23 @@ test('account deletion sends the destructive confirmation and surfaces every saf
   );
 });
 
+test('pending account cleanup never resolves as deletion or triggers client sign-out', async () => {
+  const responses = [
+    { deleted: false, pending: true, error: 'Account cleanup is not finished. Retry deletion to continue.' },
+    { deleted: false, pending: true },
+    { deleted: true },
+  ];
+  const client = { invoke: async () => ({ data: responses.shift(), error: null }) };
+  let signOuts = 0;
+  const requestThenSignOut = async () => { const result = await requestAccountDeletion(client); signOuts++; return result; };
+  await assert.rejects(requestThenSignOut(), /Retry deletion/);
+  await assert.rejects(requestThenSignOut(), /did not complete/);
+  assert.equal(signOuts, 0);
+  assert.deepEqual(await requestThenSignOut(), { deleted: true });
+  assert.equal(signOuts, 1);
+  assert.match(read('src/contexts/AuthContext.jsx'), /await requestAccountDeletion\(supabase\.functions\);[\s\S]*auth\.signOut/);
+});
+
 test('Google disconnect unlinks only Google and refuses the final provider before any request', async () => {
   const google = { identity_id: 'google-id', provider: 'google' };
   const email = { identity_id: 'email-id', provider: 'email' };

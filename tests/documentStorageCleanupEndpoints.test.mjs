@@ -7,7 +7,7 @@ import {homedir} from 'node:os';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 test('scheduled and account cleanup use the shared checked protocol, never direct Storage removal',()=>{
  for(const path of ['supabase/functions/archive-purge-sweep/index.ts','supabase/functions/delete-account/index.ts']){
-  const source=read(path);assert.match(source,/documentStorageCleanup\.js/);assert.doesNotMatch(source,/\.remove\(/);assert.match(source,/'Access-Control-Allow-Origin': '\*'/);
+  const source=read(path);assert.match(source,/(?:document|account)StorageCleanup\.js/);assert.doesNotMatch(source,/\.remove\(/);assert.match(source,/'Access-Control-Allow-Origin': '\*'/);
  }
  const sweep=read('supabase/functions/archive-purge-sweep/index.ts');
  assert.match(sweep,/if \(!dryRun\) \{[\s\S]*drainDocumentStorageCleanup\(supabase, UNLINK_CHUNK\)/);

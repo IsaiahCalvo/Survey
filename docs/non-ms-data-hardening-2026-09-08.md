@@ -2151,6 +2151,131 @@ Read-only Supabase project discovery and direct lookup of the repo's configured
 project both failed with connector HTTP 522 in this turn. No schema, grants,
 isolation settings or deployed Storage version were verified live.
 
+## Bounded account Storage cleanup with durable scan progress
+
+Migration `20260909000000` and the shared `accountStorageCleanup.js` helper replace
+the recursive full-account inventory. The service-only claim RPC reads at most
+100 raw keys from one source per call. It alternates Storage metadata and pending
+cleanup jobs, keeps a separate cursor for each, and skips an exhausted source
+until the other finishes. Both cursors reset only at the end of a cycle. A lost
+reply or failed early path therefore does not prevent later keys from being
+offered, and remaining keys return in a later cycle.
+
+Reference checks run after the bounded raw page, not before it. Fully shared pages
+still advance the cursor without reading the rest of the account. A separate
+`has_remaining` check includes all canonical-prefix metadata and queued paths,
+including references, so an empty eligible page cannot authorize auth deletion.
+Names shared by both sources may be offered more than once; retirement/removal/
+acknowledgment remains idempotent. Claims do not retire paths or change Storage
+metadata. Cursor updates commit before the caller receives its page.
+
+The claim requires a committed account closure. A private transition trigger
+records the top transaction ID, which also catches uncommitted closure inside a
+savepoint. Preexisting committed closures get receipts under an installation
+table lock. No `xmin` wrap arithmetic or role-claim bypass is used. The migration
+and claim use READ COMMITTED; absent receipts, failed cursor updates and invalid
+callers fail closed. The cursor table has no auth FK, so auth cleanup cannot erase
+retry state.
+
+Storage keysets use the provider's existing bytewise `(bucket_id, name COLLATE C)`
+index; this migration does not add a provider-owned index. The private queue uses
+a bounded 36-character prefix plus SHA-256 key index. Its index entries do not
+contain full path text: a test confirms an allowed 2,048-character Unicode path
+exceeds the full-text B-tree entry limit but remains valid in the new index and
+is scanned exactly. Matching the document reference lookup's default collation
+keeps its existing `idx_documents_file_path` usable. The Postgres pagination and
+index guidance led to these separate keysets and fixed-size index keys.
+
+The Edge Storage stage makes at most three claims per request and shares one
+45-second work budget, with a 15-second maximum per request. It passes only the
+remaining time into the existing guarded remover. A normal claim/removal uses
+bounded batches; any cleanup error or retained path stops the stage as pending.
+The prior 200-request bound within the remover still applies; no full list or
+recursive folder walk remains. These bounds apply to the Storage stage, not the
+earlier billing, auth lookup or core SQL purge.
+
+Unfinished work returns `202` with `deleted:false`, `pending:true` and a clear retry
+message. A later authorized deletion request resumes the server-side cursors; no
+client cursor or automatic actor-switching retry is added. The unchanged
+`requestAccountDeletion` helper rejects pending results and only resolves
+`deleted:true`. Thus AuthContext cannot sign out merely because one bounded request
+ended. The actual self-service delete button remains disabled; this batch does
+not enable a new deletion UI or a background account-deletion worker.
+
+Verification for this batch:
+
+- 53 account-helper tests plus 66 existing cleanup tests pass. They exercise the
+  actual shared helpers with synthetic service replies: budgets, lost replies,
+  partial failures, long/raw keys, shared pages, durable-cursor retries and exact
+  completion checks. The broader helper/client/endpoint run passed 144 tests.
+- Actual Edge handlers and pinned SDK pass 22 checks, including malformed scan
+  replies, nested raw names, three-claim pending progress, and a retry that obtains
+  an independent empty receipt before final auth deletion. Deno type checking and
+  production build pass; no live billing, account or Storage requests were sent.
+- The new disposable PostgreSQL fixture passes 20 checks, including savepoints,
+  limit-one source fairness, lost claim responses, rollback, overlap, shared-prefix
+  progress, source exhaustion and migration replay. The prior 38 account-closing
+  cases also pass with the new scan migration installed. These are installed PG
+  tests with actual tracked functions, not a full hosted-schema restore.
+- With 100,000 unrelated rows in each source and another 100,000 documents, both
+  raw-page plans read exactly 100 indexed rows with no rows removed by filtering.
+  Each used 100 index-only document-reference lookups. This proves the fixture's
+  matching-index access paths, not hosted latency or a query plan on every provider
+  version. Root opt-in wrapper verification also includes the earlier publication
+  and Storage suites; live compatibility remains gated.
+- Browser QA at the isolated local fixture used the actual request/cleanup helpers
+  with synthetic SQL, Storage, cursor and session state: stage 350 files, run a
+  three-claim batch, keep the session with 50 files left, reload, resume, then allow
+  simulated sign-out only after a fresh empty receipt. Identity/content, no overlay,
+  console, screenshots and interactions passed. In-app browser acquisition failed,
+  so a separate Chrome tab was used and closed; the owned server was stopped. This
+  is not full AccountSettings/AuthProvider or live-auth testing.
+
+The final full suite passed: 5,447 tests, 5,378 passed, 69 skipped, zero failures
+or cancellations (585 files, exit 0). The prior committed baseline was 5,389 total,
+5,321 passed and 68 skipped. The opt-in PostgreSQL wrapper run passed all 17 tests
+with no skips. AST graph update and diff checks also passed.
+
+Read-only hosted checks on September 8, 2026, at about 18:36–18:39 UTC succeeded,
+after the earlier access failures recorded above. The database reports PostgreSQL
+17.6; the connected SQL session uses READ COMMITTED. Catalog checks confirm valid,
+ready, nonpartial indexes for `(bucket_id, name COLLATE "C")` and a unique
+`(bucket_id, name)` index. A read-only EXPLAIN for a synthetic account prefix chose
+an index-only scan with bucket, lower/upper prefix and cursor bounds. This is
+hosted plan evidence, not measured hosted latency or Storage API version proof.
+
+The migration role has the Storage trigger privilege and TRUNCATE grant option.
+The hosted `anon`, `authenticated` and `service_role` roles still have TRUNCATE on
+`storage.objects`; the local retirement migration's revocation and postcondition
+have not been deployed. Those grants must be removed as part of the guarded
+rollout because TRUNCATE bypasses row triggers. This does not mean PostgREST exposes
+a raw TRUNCATE endpoint. These checks used read-only transactions and did not
+change any grant, schema, account, billing or file data.
+
+Remaining gates: Storage API version/custom-trigger compatibility, physical
+provider deletion proof, noncanonical/legacy namespace discovery, large core-row
+purge budgeting, and shared-file transfer policy. A future provider layout with
+duplicate object names across versions requires its own compatible inventory
+design. Do not deploy the new Edge handler before the claim migration: a missing
+RPC deliberately leaves cleanup pending. No Microsoft work, push or deployment.
+
+### Next safety gap: new billing during account closure
+
+A separate source audit found that `create-checkout-session` can replace a deleted
+customer and create Checkout while the account is closing. `delete-account` reads
+one customer ID before cancellation and does not track concurrent provider creates.
+Thus cancellation of C1, persistence of C2, then auth deletion can leave C2 outside
+that cleanup request. Portal creation also lacks a closing check. Existing webhook
+customer binding, fresh provider reads, revision checks and receipts do not reject
+a still-present closing auth user.
+
+This batch does not fix that race. The next boundary needs durable billing-deletion
+state and tracked in-flight provider operations, with new checkout/portal operations
+and customer replacement denied once deletion begins. Auth deletion must wait for
+confirmed billing cleanup. Cancellation and invoice reconciliation must remain
+possible: closing alone is not a cancellation receipt. A one-shot preflight check
+or final customer reread cannot cover a provider create that finishes afterward.
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions
@@ -2202,3 +2327,7 @@ Preserve account closing markers once enabled. Removing them or reverting the RP
 to its old unfenced version would reopen the late-upload race and project cascade
 data loss. A partial closure must resume guarded cleanup, not silently reactivate
 the account; a shared-file transfer needs its own reviewed operation.
+Keep scan cursors and closure receipts when rolling code back. Do not replace
+pending replies with success or return to a full recursive inventory. The older
+guarded remover can still service durable jobs, but auth deletion still needs an
+independent empty check of metadata and pending cleanup work.

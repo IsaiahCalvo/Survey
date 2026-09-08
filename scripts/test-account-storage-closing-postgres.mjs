@@ -75,8 +75,9 @@ try{
     asRole(null,upload(late),'storage_admin');assert.equal(scalar(`SELECT count(*) FROM storage.objects WHERE name='${late}'`),'1');
   });
   const migration='20260908230000_account_storage_closing.sql';apply(migration);
+  const scanMigration='20260909000000_account_storage_cleanup_scan.sql';apply(scanMigration);
   const guards='survey_private.account_write_guards',pathGuards='survey_private.document_storage_path_guards',queue='survey_private.document_storage_cleanup';
-  const tables=['auth.users','projects','templates','documents','project_collaborators','document_collaborators','storage.objects',guards,pathGuards,queue];
+  const tables=['auth.users','projects','templates','documents','project_collaborators','document_collaborators','storage.objects',guards,pathGuards,queue,'survey_private.account_storage_cleanup_scans'];
   const allSnapshot=()=>snapshot(tables);
   const closeSql=actor=>`SELECT public.delete_account_owned_rows(${quote(actor)}::uuid)`;
   const close=actor=>asRole(null,closeSql(actor),'service_role');
@@ -216,7 +217,7 @@ try{
     const actor=fixtureActor(70+index);asRole(actor,createTemplate(7000+index,actor));const first=session('old-close-'+index,'service_role',null,isolation);first.send("SELECT count(*) FROM templates;SELECT 'SNAPSHOT';");await first.wait('SNAPSHOT');asRole(actor,createTemplate(7010+index,actor));const before=allSnapshot();first.send(closeSql(actor)+';');errorState(await first.finish(),'25001');assert.deepEqual(allSnapshot(),before);close(actor);assert.equal(scalar(`SELECT count(*) FROM templates WHERE user_id='${actor}'`),'0');
   });
   await check('migration replay preserves closing fences, foreign data and pending cleanup exactly',()=>{
-    const before=allSnapshot();apply(migration);assert.deepEqual(allSnapshot(),before);
+    const before=allSnapshot();apply(migration);apply(scanMigration);assert.deepEqual(allSnapshot(),before);
   });
   console.log(`Account storage closing PostgreSQL checks passed: ${checks}`);
 }finally{
