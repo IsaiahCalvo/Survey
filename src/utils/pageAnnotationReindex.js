@@ -179,9 +179,33 @@ const replaceRegionId = (value, regionIds) => {
   return next;
 };
 
-function addPageClone(next, source, sourcePage, targetPage, createId) {
+function copiedFormMap(copiedWidgets, sourcePage, targetPage) {
+  const bySource = new Map();
+  const targets = new Set();
+  for (const entry of copiedWidgets || []) {
+    if (entry?.sourcePage !== sourcePage || entry?.targetPage !== targetPage
+        || !entry.sourceFieldId || !entry.targetFieldId || !entry.targetFieldName
+        || entry.sourceFieldId === entry.targetFieldId) {
+      throw new Error('The copied form identity does not match this page action. Your document was kept.');
+    }
+    const prior = bySource.get(entry.sourceFieldId);
+    if (prior) {
+      if (prior.targetFieldId === entry.targetFieldId && prior.targetFieldName === entry.targetFieldName) continue;
+      throw new Error('The copied form identity is ambiguous. Your document was kept.');
+    }
+    if (targets.has(entry.targetFieldId)) {
+      throw new Error('Two form fields share a copied identity. Your document was kept.');
+    }
+    targets.add(entry.targetFieldId);
+    bySource.set(entry.sourceFieldId, entry);
+  }
+  return bySource;
+}
+
+function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidgets) {
   const annotationIds = new Map();
   const regionIds = new Map();
+  const forms = copiedFormMap(copiedWidgets, sourcePage, targetPage);
 
   for (const space of source.spaces || []) {
     const entry = (space?.assignedPages || []).find((candidate) => asPage(candidate?.pageId) === sourcePage);
@@ -195,11 +219,22 @@ function addPageClone(next, source, sourcePage, targetPage, createId) {
     const clonedPage = clone(sourcePageData);
     clonedPage.objects = (clonedPage.objects || []).map((object) => {
       const oldId = object?.data?.id || object?.data?.annoId || object?.id || object?.annotationId || null;
-      const newId = createId();
+      const isForm = object?.data?.type === 'form-field' || object?.type === 'form-field';
+      const form = isForm ? forms.get(object?.data?.fieldId ?? object?.fieldId) : null;
+      if (isForm && !form) {
+        throw new Error('A saved form value could not be matched to the copied PDF. Your document was kept.');
+      }
+      const newId = form ? `form-field:${targetPage}:${form.targetFieldId}` : createId();
       if (oldId) annotationIds.set(oldId, newId);
       let copied = mintPastedCloneIdentity(object, newId);
       copied = remapPageFields(copied, () => targetPage);
       copied = replaceRegionId(copied, regionIds);
+      if (form) {
+        copied.data = { ...copied.data, type: 'form-field', fieldId: form.targetFieldId,
+          fieldName: form.targetFieldName, pageNumber: targetPage };
+        if ('fieldId' in copied) copied.fieldId = form.targetFieldId;
+        if ('fieldName' in copied) copied.fieldName = form.targetFieldName;
+      }
       if (copied?.data?.legacyCallout) {
         copied.data.legacyCallout = {
           ...copied.data.legacyCallout,
@@ -277,7 +312,7 @@ function addPageClone(next, source, sourcePage, targetPage, createId) {
   return next;
 }
 
-export function transformPageState(model = {}, op, { createId = fallbackId } = {}) {
+export function transformPageState(model = {}, op, { createId = fallbackId, copiedWidgets = [] } = {}) {
   const type = op?.type;
   if (type === 'rotate') {
     const next = baseRemap(model, (page) => page);
@@ -321,7 +356,7 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
     if (sourcePage == null || afterPage == null) throw new Error(`${type} requires source and target pages`);
     const targetPage = afterPage + 1;
     const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
-    return addPageClone(next, model, sourcePage, targetPage, createId);
+    return addPageClone(next, model, sourcePage, targetPage, createId, copiedWidgets);
   }
 
   throw new Error(`transformPageState: unknown op type ${type}`);

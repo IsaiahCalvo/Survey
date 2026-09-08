@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { JSDOM } from 'jsdom';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { mutatePdfPages } from '../src/utils/pdfPageMutation.js';
+import { mutatePdfPages, mutatePdfPagesWithIdentity } from '../src/utils/pdfPageMutation.js';
 import { transformPageState } from '../src/utils/pageAnnotationReindex.js';
 import { buildFormFieldObject, usePdfjsFormFieldPersistence } from '../src/hooks/usePdfjsFormFieldPersistence.js';
 
@@ -62,8 +62,9 @@ for (const operation of operations) {
     const before = await widgets(bytes);
     const input = modelFor(before);
     const untouched = structuredClone(input);
-    const after = await widgets(await mutatePdfPages(bytes, operation));
-    const transformed = transformPageState(input, operation);
+    const result = await mutatePdfPagesWithIdentity(bytes, operation);
+    const after = await widgets(result.bytes);
+    const transformed = transformPageState(input, operation, result);
     for (const original of before) {
       const native = after.find(widget => widget.id === original.id);
       if (!native) {
@@ -122,24 +123,53 @@ test('a mounted form persistence hook edits a moved widget once and preserves it
 });
 
 for (const operation of [{ type: 'duplicate', page: 1 }, { type: 'copy', source: 3, afterPage: 1 }]) {
-  test(`${operation.type}: physical copy changes native widget IDs; remapper does not invent a clone mapping`, async () => {
+  test(`${operation.type}: saved copied values use the writer's real widget IDs and unique field names`, async () => {
     const bytes = await fixture();
     const before = await widgets(bytes);
-    const after = await widgets(await mutatePdfPages(bytes, operation));
+    const result = await mutatePdfPagesWithIdentity(bytes, operation);
+    const after = await widgets(result.bytes);
     const clone = after.find(widget => !before.some(original => original.id === widget.id));
     assert.ok(clone, 'actual pdf-lib copy emits a new PDF.js widget ID');
     const source = before.find(widget => widget.pageNumber === (operation.page || operation.source));
-    assert.equal(clone.fieldName, source.fieldName);
-    const output = transformPageState(modelFor(before), operation);
+    assert.notEqual(clone.fieldName, source.fieldName, 'copy has its own registered field');
+    const output = transformPageState(modelFor(before), operation, result);
     const carrier = output.annotationsByPage[clone.pageNumber].objects[0];
-    // Characterize an OPEN prerequisite, not successful copied-form recovery.
-    // The physical writer must return a proven old->new widget map before the
-    // clone's saved value can be safely attached to its regenerated widget.
-    assert.equal(carrier.data.fieldId, source.id);
-    assert.notEqual(carrier.data.fieldId, clone.id, 'known clone mismatch remains visible rather than guessed');
+    assert.equal(carrier.data.fieldId, clone.id);
+    assert.equal(carrier.data.fieldName, clone.fieldName);
+    assert.equal(carrier.data.id, `form-field:${clone.pageNumber}:${clone.id}`);
     assert.equal(carrier.data.value, `saved-${source.fieldName}`);
+    assert.equal(carrier.meta.authorId, `author-${source.fieldName}`);
   });
 }
+
+test('copy fails closed when a saved field has no proven native identity, leaving input intact', () => {
+  const model = { annotationsByPage: { 1: { objects: [buildFormFieldObject(1, { fieldId: '9R', value: '' }, 'author', 'editor')] } } };
+  const before = structuredClone(model);
+  assert.throws(() => transformPageState(model, { type: 'duplicate', page: 1 }), /could not be matched/);
+  assert.deepEqual(model, before);
+});
+
+test('copied form map rejects wrong pages, aliases and conflicts; repeated identical entries remain one field', () => {
+  const object = buildFormFieldObject(1, { fieldId: '9R', value: false }, 'author', 'editor');
+  Object.assign(object, { id: 'custom', annotationId: 'custom' });
+  object.data.id = 'custom';
+  const model = { annotationsByPage: { 1: { objects: [object] } } };
+  const op = { type: 'duplicate', page: 1 };
+  const entry = { sourcePage: 1, targetPage: 2, sourceFieldId: '9R', targetFieldId: '99R', targetFieldName: 'copied' };
+  for (const copiedWidgets of [
+    [{ ...entry, targetPage: 3 }], [{ ...entry, targetFieldId: '9R' }],
+    [entry, { ...entry, targetFieldId: '100R' }],
+    [entry, { ...entry, sourceFieldId: '10R' }],
+  ]) assert.throws(() => transformPageState(model, op, { copiedWidgets }), /identity/);
+  const result = transformPageState(model, op, { copiedWidgets: [entry, { ...entry }] });
+  const carrier = result.annotationsByPage[2].objects[0];
+  assert.equal(carrier.id, 'form-field:2:99R');
+  assert.equal(carrier.annotationId, 'form-field:2:99R');
+  assert.equal(carrier.data.id, 'form-field:2:99R');
+  assert.equal(carrier.data.value, false);
+  assert.equal(result.annotationsByPage[2].objects.length, 1);
+  assert.equal(model.annotationsByPage[1].objects[0].data.id, 'custom');
+});
 
 test('non-form identities and native field IDs are not rewritten by spelling alone', () => {
   const object = { type: 'rect', pageNumber: 1, data: { type: 'rect', id: 'form-field:1:9R', fieldId: '9R', pageNumber: 1 } };

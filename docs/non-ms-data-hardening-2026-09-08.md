@@ -2651,11 +2651,10 @@ spanning publication. Actual multi-user/provider tests still need leased account
 The stock no-auth fixture bypasses cloud replacement and reloads the original PDF;
 it can prove rendered remapping but not a durable cloud reopen.
 
-Physical duplicate/copy has another open form boundary: pdf-lib gives copied
-widgets new native IDs. The current state-transform API has no writer-produced
-old-to-new widget map. Tests expose this mismatch without inventing an ID or dropping
-the copied value. That map must join the publication receipt before claiming copied
-forms are correct.
+The copied-form slice below now supplies writer-produced widget identities with
+the rewritten bytes, and verifies local save/reopen. The shared cloud publication
+receipt still needs to commit that matching state with its byte generation; this
+local repair does not close the multi-user protocol above.
 
 The legacy sidecar loader already excludes authoritative cloud annotations, markers,
 callouts and spaces; it is not a fallback overwrite of those stores. It still loads
@@ -2663,6 +2662,122 @@ entities/view state from a stable JSON path without a matching PDF generation. I
 swallowed save failures, full-blob upload and first-open wait remain separate work.
 Versioned download caching and shared offline access/revocation policy remain open.
 No cloud mutation or Microsoft live testing was performed in this pass.
+
+### Copied forms: independent fields, bounded copy and real saved values
+
+The old `copyPages` call cloned the selected widget's parent and all its sibling
+widgets, even those on other pages. Copied widgets pointed at detached page
+objects, and their fields were missing from AcroForm's registered field list.
+PDF.js could display them, but their duplicate field names linked live controls
+to the originals. Export could report success while editing the original field.
+An ID-only state fix would not have repaired either fault.
+
+`mutatePdfPagesWithIdentity` now returns bytes and the exact copied widget map
+from one PDF load/rewrite. The byte-only wrapper remains compatible. The writer
+copies page content apart from widgets, then builds independent registered
+fields with unique names, real page links and only the selected page's widgets.
+It preserves shared widgets within each copied field, inherited field settings,
+choice lists and matching radio export/default values. Mutable field/appearance
+containers are separate; immutable streams stay in the same private PDF context.
+It never traverses a widget's old page tree to build its new page link.
+
+The page-action hook consumes this result before persistence. Saved carriers
+receive the exact native IDs/names and canonical page IDs; values, author metadata
+and existing non-form copy behavior remain intact. Missing or ambiguous mappings
+fail before persistence. File, local revision and live-state checks still reject
+stale work. Queued copies advance both the committed bytes and their state.
+An independent mounted-hook interleave exposed a pre-existing queue gap: with
+the old File prop still rendered, a new edit between two successful page actions
+could be replaced by the prior committed graph. The queue now keeps the original
+observed fingerprint and only reuses that graph if the live view still matches
+the known old capture or the prior commit. A third state rejects before the
+second rewrite/persist and retains the edit. Tests cover refusal and both valid
+queue cases. This is hook-level proof; the viewer's pre-action `flushSync` can
+mask this timing in normal use. Edits arriving during the later persistence
+await still need a stronger publication/version check; this narrower guard does
+not cover that interval.
+
+Two export faults are also fixed: a name-resolved field must own the exact target
+widget, and radio writes use that widget's actual on-state to update the group
+value and all sibling appearances. This covers labels that differ from PDF
+on-state names and repeated export labels. An old orphan field with an original's
+name is skipped with a diagnostic, never redirected to the original.
+
+`PdfjsFormLayer` now supplies the shared annotation store to the installed PDF.js
+AnnotationLayer constructor. Passing it only to `render` was ignored by PDF.js
+6.1.200. Real renderer tests verify shared page storage, remount retention, a new
+document with identical widget IDs, and `saveDocument` cold reopen.
+
+Storage comparison against the exact pre-change writer (`b2d3a41e`), using the
+same generated 100-page PDF with one text field displayed once on each page:
+
+| Duplicate page 1 | Before | After |
+| --- | ---: | ---: |
+| Input bytes | 80,784 | 80,784 |
+| Output bytes | 123,001 | 81,124 |
+| Added indirect objects | 303 | 5 |
+| Added widgets outside live pages | 99 | 0 |
+| New field registered and linked to actual page | No | Yes |
+
+A 40-page fixture shows the same bounded-copy pattern. These are fixture byte and
+object counts, not production latency or Supabase quota measurements. No second
+production PDF.js parse or first-view eager pdf-lib import was added. Module-design
+guidance kept bytes and identity in one result; React guidance kept the writer
+lazy-loaded and mapped field identities with keyed lookups.
+
+Verification includes independent actual PDF.js controls and PDF export/reparse
+tests for text, checkbox, radio, dropdown/list, same-page and cross-page shared
+widgets, merged/nested fields, inheritance, nonzero-generation references,
+repeated copies and aliases. Failure tests cover unmatched saved carriers,
+unregistered/malformed/cyclic fields and unstable direct-widget identities.
+
+Real browser flow: dev-only mock-auth route → Home → On this device → local file
+picker → edit form → mobile Pages → Duplicate → edit original/copy independently
+→ Save → full reload → Home → On this device → Open. The actual managed local
+record reached revision 4 with 9,748 PDF bytes and matching page-1/page-2 form
+state. Cold reopen retained both text values, original Good/copy Poor radio
+choices, original unchecked/copy checked, and the copy's Mechanical dropdown.
+The real Export annotated PDF button produced 10,935 bytes, two pages and 12
+editable registered fields; independent parsing verified all these values and
+exactly one selected radio appearance per group. Final source was reloaded and
+the export rerun after the last exporter fix.
+After the final queue guard, a fresh real local-file run performed two Duplicate
+actions, edited only the third page, saved and fully reloaded. The reopened
+three-page file retained `Chained value` on pages 1/2 and `Third copy only` on
+page 3 (revision 4, 11,316 bytes). This verifies the final hook in the real UI,
+not just the controlled interleave's fail-closed behavior.
+
+The in-app browser returned `Browser is not available: iab`; regular Playwright
+used a new tab on 127.0.0.1:5229. Desktop 1200×800 and mobile 430×932 showed the
+distinct field values. No blank page/framework overlay or console errors; one
+expected warning reported missing Supabase credentials/offline mode. No Supabase,
+Stripe or Microsoft requests. Mock-actor Home upload-recovery read warnings are
+not real account/recovery verification. The pre-existing form-control appearance
+styling is not claimed fixed by this data slice.
+After reloading away from each test document, exact identity/revision/size checks
+guarded cleanup of the two synthetic local PDFs and their six draft snapshots.
+Both local document and active draft lists were empty afterward. The source
+fixture and exported PDF proof remain; only the two owned test tabs/servers were
+closed. Existing owner tabs, its server and its pending browser dialog were not
+touched.
+
+Explicit bounds: structural page changes reject direct widget dictionaries and
+XFA; copying rejects unsupported field types/actions and malformed or ambiguous
+field trees. These cases leave the original file/state unchanged with a visible
+error; there is no silent flattening or dropped value. Automatic repair of old
+orphan copied fields, deleted-page AcroForm cleanup, full PDF action/destination
+remapping, and shared cloud byte/state generation publication remain open. No
+push, merge, deployment, provider mutation or Microsoft live testing is included.
+
+Final verification on frozen source: `npm test` exit 0, 5,731 tests total,
+5,662 pass, 69 skip, 0 fail/cancel across 593 files. The prior baseline was
+5,690 total / 5,621 pass / 69 skip; this slice adds 41 passing cases and removes
+no skips. `npx vite build`, `git diff --check` and `graphify update .` pass.
+Logs: `/tmp/survey-copied-form-release-tests.log`,
+`/tmp/survey-copied-form-release-build.log`,
+`/tmp/survey-copied-form-release-graph.log`. Intermediate runs exposed and then
+fixed the radio and nested-field cases; only the frozen-source run is the final
+pass. Generated graph files and unrelated owner work remain outside the commit.
 
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 

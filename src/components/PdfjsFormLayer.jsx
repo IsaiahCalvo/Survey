@@ -193,13 +193,12 @@ export default function PdfjsFormLayer({
           }
         }
 
-        const layer = new pdfjsLib.AnnotationLayer({ div, page, viewport });
+        const layer = new pdfjsLib.AnnotationLayer({ div, page, viewport, annotationStorage: pdf.annotationStorage });
         await layer.render({
           annotations: widgets,
           linkService: LINK_SERVICE_STUB,
           downloadManager: null,
           renderForms: true,
-          annotationStorage: pdf.annotationStorage,
           imageResourcesPath: '',
           enableScripting: false,
           hasJSActions: false,

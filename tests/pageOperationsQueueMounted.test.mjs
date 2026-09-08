@@ -10,9 +10,91 @@ import { JSDOM } from 'jsdom';
 import { PDFDocument } from 'pdf-lib';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { buildFormFieldObject } from '../src/hooks/usePdfjsFormFieldPersistence.js';
 
 const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+
+for (const fileKind of ['local', 'cloud']) {
+  for (const unbound of [false, true]) {
+    test(`${fileKind} copied form ${unbound ? 'rejects unmatched state before persistence' : 'queues bytes and matching native field identities together'}`, async t => {
+      const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
+      const restores = [];
+      for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
+        HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
+        const before = Object.getOwnPropertyDescriptor(globalThis, key);
+        Object.defineProperty(globalThis, key, { configurable: true, value });
+        restores.push(() => before ? Object.defineProperty(globalThis, key, before) : delete globalThis[key]);
+      }
+      const { usePageOperations, cleanup } = await loadUsePageOperations();
+      const pdf = await PDFDocument.create();
+      const field = pdf.getForm().createTextField('original');
+      field.setText('embedded');
+      field.addToPage(pdf.addPage([200, 200]), { x: 10, y: 10, width: 100, height: 20 });
+      const ref = field.acroField.Kids().get(0);
+      const sourceFieldId = `${ref.objectNumber}R${ref.generationNumber || ''}`;
+      const file = new File([await pdf.save()], 'copied-form.pdf', { type: 'application/pdf' });
+      Object.assign(file, fileKind === 'local'
+        ? { storageMode: 'local', localId: `local:${crypto.randomUUID()}`, localRevision: 1 }
+        : { storageMode: 'cloud', id: crypto.randomUUID(), user_id: crypto.randomUUID() });
+      const state = { annotationsByPage: { 1: { objects: [buildFormFieldObject(1, {
+        fieldId: unbound ? '99999R' : sourceFieldId, fieldName: 'original', fieldType: 'Tx', value: 'latest unsaved PDF value',
+      }, 'original-author', 'editor')] } } };
+      const before = structuredClone(state);
+      const persisted = [], committed = [];
+      let api;
+      function Harness() {
+        api = usePageOperations({ pdfFile: file, getPageState: () => state,
+          onUpdatePDFFile: async (nextFile, nextState) => persisted.push({ file: nextFile, state: nextState }),
+          commitPageState: next => committed.push(next),
+          setPageNames() {}, setPageTransformations() {}, setClipboardPage() {}, setClipboardType() {},
+        });
+        return null;
+      }
+      const root = createRoot(document.getElementById('root'));
+      t.after(async () => {
+        await act(async () => root.unmount()); await cleanup(); dom.window.close();
+        restores.reverse().forEach(restore => restore());
+      });
+      await act(async () => root.render(React.createElement(Harness)));
+      let outcomes;
+      await act(async () => {
+        outcomes = await Promise.all([
+          api.handleDuplicatePage(1),
+          ...(unbound ? [] : [api.handleDuplicatePage(2)]),
+        ]);
+      });
+      assert.deepEqual(state, before, 'source snapshot stays unchanged');
+      if (unbound) {
+        assert.deepEqual(outcomes, [false]);
+        assert.equal(persisted.length, 0);
+        assert.equal(committed.length, 0);
+        return;
+      }
+      assert.deepEqual(outcomes, [true, true]);
+      assert.equal(persisted.length, 2);
+      for (let index = 0; index < persisted.length; index++) {
+        const saved = persisted[index];
+        const reopened = await PDFDocument.load(await saved.file.arrayBuffer());
+        assert.equal(reopened.getPageCount(), index + 2);
+        const fields = reopened.getForm().getFields();
+        assert.equal(fields.length, index + 2, 'each queued copy has its own registered field');
+        const carriers = Object.values(saved.state.annotationsByPage).flatMap(page => page.objects);
+        assert.equal(new Set(carriers.map(object => object.data.fieldId)).size, index + 2);
+        for (const carrier of carriers) {
+          const native = fields.find(candidate => candidate.getName() === carrier.data.fieldName);
+          assert.ok(native, 'saved state names an actual field in the same saved bytes');
+          const widgetRef = native.acroField.Kids().get(0);
+          assert.equal(carrier.data.fieldId, `${widgetRef.objectNumber}R${widgetRef.generationNumber || ''}`);
+          assert.equal(carrier.data.id, `form-field:${carrier.pageNumber}:${carrier.data.fieldId}`);
+          assert.equal(carrier.data.value, 'latest unsaved PDF value');
+          assert.equal(carrier.meta.authorId, 'original-author');
+        }
+        assert.equal(committed[index], saved.state, 'commit uses the exact persisted graph');
+      }
+    });
+  }
+}
 
 async function loadUsePageOperations() {
   const hookPath = path.join(repoRoot, 'src/hooks/usePageOperations.js');
@@ -77,6 +159,52 @@ async function pdfFixture() {
 async function pageWidths(file) {
   const pdf = await PDFDocument.load(await file.arrayBuffer());
   return pdf.getPages().map((page) => page.getWidth());
+}
+
+for (const editBetweenActions of [false, true]) {
+  test(`queued page action ${editBetweenActions ? 'keeps edits received between actions and rejects the stale graph' : 'accepts a live view matching the prior committed graph'}`, async t => {
+    const dom = new JSDOM('<div id="root"></div>');
+    const restores = [];
+    for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
+      const before = Object.getOwnPropertyDescriptor(globalThis, key);
+      Object.defineProperty(globalThis, key, { configurable: true, value });
+      restores.push(() => before ? Object.defineProperty(globalThis, key, before) : delete globalThis[key]);
+    }
+    const { usePageOperations, cleanup } = await loadUsePageOperations();
+    const file = await pdfFixture();
+    let live = { annotationsByPage: {}, pageNames: { 1: 'A', 2: 'B', 3: 'C' } };
+    const persisted = [], committed = [];
+    let api;
+    function Harness() {
+      api = usePageOperations({ pdfFile: file, getPageState: () => live,
+        onUpdatePDFFile: async (next, state) => persisted.push({ file: next, state }),
+        commitPageState: state => {
+          committed.push(state);
+          live = structuredClone(state);
+          if (editBetweenActions && committed.length === 1) {
+            live.annotationsByPage[2] = { objects: [{ type: 'rect', data: { id: 'edit-between-actions' }, pageNumber: 2 }] };
+          }
+        }, setPageNames() {}, setPageTransformations() {}, setClipboardPage() {}, setClipboardType() {},
+      });
+      return null;
+    }
+    const root = createRoot(document.getElementById('root'));
+    t.after(async () => { await act(async () => root.unmount()); await cleanup(); dom.window.close(); restores.reverse().forEach(restore => restore()); });
+    await act(async () => root.render(React.createElement(Harness)));
+    let outcomes;
+    await act(async () => { outcomes = await Promise.all([api.handleReorderPages(1, 3), api.handleDeletePage(1)]); });
+    assert.deepEqual(outcomes, [true, !editBetweenActions]);
+    assert.equal(persisted.length, editBetweenActions ? 1 : 2);
+    assert.equal(committed.length, persisted.length);
+    if (editBetweenActions) {
+      assert.equal(live.annotationsByPage[2].objects[0].data.id, 'edit-between-actions');
+      assert.deepEqual(live.pageNames, { 1: 'B', 2: 'C', 3: 'A' });
+      assert.deepEqual(await pageWidths(persisted[0].file), [200, 300, 100]);
+    } else {
+      assert.deepEqual(live.pageNames, { 1: 'C', 2: 'A' });
+      assert.deepEqual(await pageWidths(persisted[1].file), [300, 100]);
+    }
+  });
 }
 
 for (const savedDuringRewrite of [true, false]) {

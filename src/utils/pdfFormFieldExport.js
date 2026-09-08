@@ -216,6 +216,16 @@ export const applyFormFieldValuesToPdfDoc = (pdfDoc, entries = []) => {
     if (form && fieldName) {
       try { field = form.getFieldMaybe(fieldName) || null; } catch { field = null; }
     }
+    // A name is not widget identity: older copied pages can have orphan fields
+    // with the original's name. Never send their value to that original field.
+    let fieldWidgetIndex = -1;
+    if (field) {
+      try { fieldWidgetIndex = field.acroField.getWidgets().findIndex(widget => widget.dict === widgetDict); } catch { /* malformed field */ }
+      if (fieldWidgetIndex < 0) {
+        recordFormSkip(diagnostics, 'widget-field-mismatch');
+        return;
+      }
+    }
 
     try {
       if (field instanceof PDFTextField) {
@@ -225,13 +235,21 @@ export const applyFormFieldValuesToPdfDoc = (pdfDoc, entries = []) => {
         else field.uncheck();
       } else if (field instanceof PDFRadioGroup) {
         const onState = widgetOnStateName(context, widgetDict);
+        // /AP on-state names may be numeric while /Opt exports are labels.
+        // Validate their /Kids alignment, but do not select by label: several
+        // widgets can have the same export label and distinct on-states.
+        const exports = field.acroField.getExportValues();
+        const option = exports ? exports[fieldWidgetIndex]?.decodeText?.() : onState;
+        if (!onState || typeof option !== 'string') {
+          recordFormSkip(diagnostics, 'radio-option-unresolved');
+          return;
+        }
+        const onValue = PDFName.of(onState);
         if (isTruthyCheckValue(entry.value)) {
-          if (!onState) {
-            recordFormSkip(diagnostics, 'radio-option-unresolved');
-            return;
-          }
-          field.select(onState);
-        } else if (onState && field.getSelected() === onState) {
+          // The AcroForm setter updates /V and every sibling /AS together.
+          field.acroField.setValue(onValue);
+          field.markAsDirty();
+        } else if (field.acroField.getValue() === onValue) {
           field.clear();
         }
       } else if (field instanceof PDFDropdown || field instanceof PDFOptionList) {

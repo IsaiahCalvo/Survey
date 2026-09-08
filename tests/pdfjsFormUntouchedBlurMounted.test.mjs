@@ -17,8 +17,9 @@ async function loadLayer() {
   let source = await readFile(layerUrl, 'utf8');
   source = source.replace("import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';", `
     const pdfjsLib = { AnnotationLayer: class {
-      constructor({ div }) { this.div = div; }
-      async render({ annotations, annotationStorage }) {
+      constructor({ div, annotationStorage }) { this.div = div; this.annotationStorage = annotationStorage; }
+      async render({ annotations }) {
+        const annotationStorage = this.annotationStorage;
         for (const widget of annotations) {
           const section = document.createElement('section');
           section.setAttribute('data-annotation-id', widget.id);

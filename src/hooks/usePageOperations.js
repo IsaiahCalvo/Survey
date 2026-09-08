@@ -11,6 +11,10 @@ import { transformPageState } from '../utils/pageAnnotationReindex.js';
 // imported dynamically at the call site below instead of at first viewer paint.
 import { persistThenCommitPageMutation } from '../utils/pageMutationTransaction.js';
 
+const fingerprintPageState = state => JSON.stringify(state, (_key, value) => (
+  value instanceof Map ? Object.fromEntries(value) : value
+));
+
 export function usePageOperations({
   pdfFile,
   onUpdatePDFFile,
@@ -27,10 +31,12 @@ export function usePageOperations({
   const pdfFileRef = useRef(pdfFile);
   const renderedPdfFileRef = useRef(pdfFile);
   const pageStateRef = useRef(null);
+  const pageStateObservedFingerprintRef = useRef(null);
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
     pdfFileRef.current = pdfFile;
     pageStateRef.current = null;
+    pageStateObservedFingerprintRef.current = null;
   }
   const mutationQueueRef = useRef(Promise.resolve());
 
@@ -44,13 +50,18 @@ export function usePageOperations({
     try {
       const managedLocal = currentPdfFile.storageMode === 'local' && !!currentPdfFile.localId && !currentPdfFile.id;
       const expectedLocalRevision = currentPdfFile.localRevision;
-      const stateFingerprint = () => JSON.stringify(getPageState?.(), (_key, value) => (
-        value instanceof Map ? Object.fromEntries(value) : value
-      ));
+      const stateFingerprint = () => fingerprintPageState(getPageState?.());
       const observedState = stateFingerprint();
+      // A queued action can precede React's new File prop. Only reuse its
+      // committed graph while the live view is that graph or the known old
+      // capture. A third state means edits arrived between actions; it must
+      // not be replaced by our older queued snapshot.
+      if (pageStateRef.current && observedState !== pageStateObservedFingerprintRef.current
+        && observedState !== fingerprintPageState(pageStateRef.current)) {
+        throw new Error('New edits arrived between page actions. Your latest edits were kept. Retry the page action.');
+      }
       const sourceState = pageStateRef.current
         || (typeof getPageState === 'function' ? getPageState() : null);
-      const nextState = sourceState ? transformPageState(sourceState, operation) : null;
       const pdfOperation = operation?.type === 'rotate'
         ? {
           ...operation,
@@ -58,13 +69,18 @@ export function usePageOperations({
             + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
         }
         : operation;
-      const { mutatePdfPages } = await import('../utils/pdfPageMutation.js');
-      const pdfBytes = await mutatePdfPages(await currentPdfFile.arrayBuffer(), pdfOperation);
+      const { mutatePdfPagesWithIdentity } = await import('../utils/pdfPageMutation.js');
+      const { bytes: pdfBytes, copiedWidgets } = await mutatePdfPagesWithIdentity(
+        await currentPdfFile.arrayBuffer(), pdfOperation,
+      );
       if (pdfFileRef.current !== currentPdfFile
         || (managedLocal && currentPdfFile.localRevision !== expectedLocalRevision)
         || stateFingerprint() !== observedState) {
         throw new Error('The document changed during this page action. Your latest edits were kept. Retry the page action.');
       }
+      // A copied native form must use the exact widget identity and unique
+      // field name emitted with these bytes. Never guess it from page order.
+      const nextState = sourceState ? transformPageState(sourceState, operation, { copiedWidgets }) : null;
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
       // round-trips so the per-user delete authority gate keeps resolving
@@ -91,6 +107,7 @@ export function usePageOperations({
       // so rapid taps cannot branch from a stale page count or overwrite work.
       pdfFileRef.current = newFile;
       pageStateRef.current = nextState;
+      pageStateObservedFingerprintRef.current = observedState;
       return true;
     } catch (error) {
       console.error(`Error ${errorVerb} page:`, error);

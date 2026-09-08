@@ -1,4 +1,5 @@
 import { PDFDocument, degrees } from 'pdf-lib';
+import { assertStablePageWidgetIdentities, copyPageWithForms } from './pdfPageFormCopy.js';
 
 const pageNumber = (value, count, label) => {
   const page = Number(value);
@@ -19,10 +20,12 @@ function reorderPages(pdf, from, to) {
   pdf.insertPage(to - 1, moved);
 }
 
-export async function mutatePdfPages(inputBytes, operation) {
+export async function mutatePdfPagesWithIdentity(inputBytes, operation) {
   const pdf = await PDFDocument.load(inputBytes);
   const count = pdf.getPageCount();
   const type = operation?.type;
+  if (type !== 'rotate') assertStablePageWidgetIdentities(pdf);
+  let copiedWidgets = [];
 
   if (type === 'delete') {
     if (count <= 1) throw new Error('A PDF must keep at least one page.');
@@ -35,8 +38,7 @@ export async function mutatePdfPages(inputBytes, operation) {
   } else if (type === 'duplicate' || type === 'copy') {
     const source = pageNumber(operation.page ?? operation.source, count, 'source');
     const afterPage = pageNumber(operation.afterPage ?? operation.page ?? operation.target, count, 'afterPage');
-    const [copied] = await pdf.copyPages(pdf, [source - 1]);
-    pdf.insertPage(afterPage, copied);
+    copiedWidgets = await copyPageWithForms(pdf, source, afterPage + 1);
   } else if (type === 'move' || type === 'reorder') {
     const from = pageNumber(operation.from, count, 'from');
     const to = pageNumber(operation.to, count, 'to');
@@ -50,5 +52,10 @@ export async function mutatePdfPages(inputBytes, operation) {
     throw new Error(`Unsupported PDF page mutation: ${type}`);
   }
 
-  return pdf.save();
+  return { bytes: await pdf.save(), copiedWidgets };
+}
+
+// Existing byte-only callers keep their return contract.
+export async function mutatePdfPages(inputBytes, operation) {
+  return (await mutatePdfPagesWithIdentity(inputBytes, operation)).bytes;
 }
