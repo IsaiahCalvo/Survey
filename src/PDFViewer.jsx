@@ -19,7 +19,7 @@ import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from './hooks/us
 import { useManagedLocalDraftTracking } from './hooks/useManagedLocalDraftTracking.js';
 import { saveLocalDocumentState } from './services/localDocumentStore.js';
 import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
-import { loadPdfjs } from './utils/pdfWorkerConfig';
+import { loadPdfjs, getPdfjsDocumentOptions } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
@@ -397,6 +397,7 @@ import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortPd
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
 import { renderPathToSvgAttrs } from './utils/svgPathAttrs';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
+import { prepareManagedLocalBookmarks } from './utils/managedLocalBookmarkHydration.js';
 import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
 import { renderAnnotationHydrationPageCover } from './components/annotationHydrationCover';
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
@@ -12953,12 +12954,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     if (!pdfId) return;
+    // Managed imports hydrate before first interaction. Later renderer results
+    // remain available for explicit Reimport, but cannot overwrite saved edits.
+    if (isManagedLocalDocument(pdfFile)) return;
     if (!Array.isArray(pdfBookmarks) || pdfBookmarks.length === 0) return;
     importPdfBookmarksIntoSidebar(pdfBookmarks);
     if (!hasImportedPdfBookmarks) {
       setHasImportedPdfBookmarks(true);
     }
-  }, [hasImportedPdfBookmarks, importPdfBookmarksIntoSidebar, pdfBookmarks, pdfId]);
+  }, [hasImportedPdfBookmarks, importPdfBookmarksIntoSidebar, pdfBookmarks, pdfId, pdfFile]);
 
   useEffect(() => {
     if (!window.electronAPI?.onReimportPdfBookmarks) return undefined;
@@ -22086,7 +22090,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let cancelled = false;
     setPdfOutlinePageLookup(null);
 
-    if (!pdfDoc) {
+    if (!pdfDoc || isManagedLocalDocument(pdfFile)) {
       return undefined;
     }
 
@@ -22104,9 +22108,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => {
       cancelled = true;
     };
-  }, [extractPdfOutlineBookmarks, pdfDoc, pdfId]);
+  }, [extractPdfOutlineBookmarks, pdfDoc, pdfId, pdfFile]);
 
   useEffect(() => {
+    if (isManagedLocalDocument(pdfFile)) return;
     if (!pdfOutlinePageLookup || !Array.isArray(bookmarks) || bookmarks.length === 0) {
       return;
     }
@@ -22154,7 +22159,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return changed ? next : prev;
     });
-  }, [bookmarks.length, pdfOutlinePageLookup]);
+  }, [bookmarks.length, pdfOutlinePageLookup, pdfFile]);
 
   // Load PDF
   useEffect(() => {
@@ -22178,6 +22183,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Hoisted so the outer catch's rewrite-and-retry path can reuse
       // bytes we've already fetched instead of re-downloading.
       let arrayBuffer;
+      let managedOutlineLoad = null;
       try {
         // Note: verbosity cannot be set directly on imports in ES modules
         // PDF.js will use default verbosity level
@@ -22246,7 +22252,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const transferCloudBytes = Boolean(pdfFile?.id);
           const primaryPdfData = transferCloudBytes ? arrayBuffer : arrayBuffer.slice(0);
           if (transferCloudBytes) arrayBuffer = null;
-          const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
+          const loadingTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
             data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
@@ -22267,7 +22273,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               arrayBuffer = await retryBlob.arrayBuffer();
             }
             // Use fresh buffer clone for recovery attempt
-            const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false,
+            const recoveryTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
               data: arrayBuffer.slice(0),
               verbosity: pdfjsLib.VerbosityLevel.ERRORS,
               stopAtErrors: false,
@@ -22295,7 +22301,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 parseSpeed: pdfLib.ParseSpeeds.Fastest,
               });
               const rewritten = await rewriteDoc.save({ useObjectStreams: false });
-              const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false,
+              const rewriteTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
                 data: rewritten.buffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,
@@ -22318,6 +22324,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
+        // Resolve fresh local outlines alongside page/annotation loading. A
+        // canonical sidebar (even empty) must never be rebuilt from PDF bytes.
+        if (isManagedLocalDocument(pdfFile) && !pdfFile._localDocumentState) {
+          managedOutlineLoad = extractPdfOutlineBookmarks(pdf).catch(() => []);
+        }
 
         // Load project data from Supabase if available
         if (pdfFile.projectId) {
@@ -22657,6 +22668,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // as a URL/blob, not as a File object with an .id property.
         // The simple canvas rendering in PDFPageCanvas will handle rendering on the main thread.
 
+        // The first clean baseline includes source bookmarks. Do not rebase
+        // after the renderer's later callback: it may race real user edits.
+        const managedOutline = await managedOutlineLoad;
+        if (isCancelled) return;
+        if (managedOutline) {
+          setPdfBookmarks(managedOutline);
+          setBookmarks(prepareManagedLocalBookmarks(managedOutline));
+          setHasImportedPdfBookmarks(true);
+        }
         perfLoad.mark(docName, 'PDF ready for rendering');
         perfLoad.end(docName);
         if (isCancelled) return;

@@ -5,9 +5,16 @@
   },
   "rewrites": [
     { "source": "/(.*)/assets/(.*)", "destination": "/assets/$2" },
-    { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|api/|sw\\.js$|ocr/|paintWorker\\.js$|favicon\\.ico$).*)", "destination": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache" },
+        { "key": "Content-Type", "value": "text/javascript; charset=utf-8" }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [

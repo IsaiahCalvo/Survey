@@ -4,6 +4,7 @@ import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 import { installSurveyAnalytics } from './utils/surveyAnalytics';
 import { installPreloadRecovery } from './utils/preloadRecovery.js';
+import { registerBrowserOffline } from './offline/registerBrowserOffline.js';
 
 installSurveyAnalytics();
 
@@ -13,6 +14,9 @@ installSurveyAnalytics();
 // unacknowledged cloud work. The small helper also enforces the 20s loop guard.
 if (typeof window !== 'undefined') {
   installPreloadRecovery(window);
+  // Preparing public app assets is independent of auth and local PDF data.
+  // No forced activation or reload: open documents keep their current version.
+  void registerBrowserOffline(window, { production: import.meta.env.PROD, moduleUrl: import.meta.url });
 }
 
 // Console log capture — stores all console output for "Save Log" button

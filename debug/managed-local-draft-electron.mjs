@@ -69,15 +69,31 @@ async function records(name, names) {
         db = open.result;
         if (settled) { db.close(); return; }
         if (names.some(name => !db.objectStoreNames.contains(name))) { finish(null, null); return; }
-        const tx = db.transaction(names, 'readonly');
-        const requests = names.map(name => tx.objectStore(name).getAll());
+        // Include v2 payloads in the SAME snapshot as their session references.
+        // Legacy v1 databases retain inline blobs and have no shared store.
+        const snapshotNames = [...names];
+        if (names.includes('sessions') && db.objectStoreNames.contains('sharedPdfBytes')) snapshotNames.push('sharedPdfBytes');
+        const tx = db.transaction(snapshotNames, 'readonly');
+        const requests = snapshotNames.map(name => tx.objectStore(name).getAll());
         tx.onabort = () => finish(tx.error || new Error('QA IDB snapshot aborted'));
         tx.oncomplete = async () => {
           try {
             const result = {};
-            for (let index = 0; index < names.length; index++) result[names[index]] = await Promise.all(requests[index].result.map(async row => {
+            const raw = Object.fromEntries(snapshotNames.map((name, index) => [name, requests[index].result]));
+            const shared = new Map((raw.sharedPdfBytes || []).map(row => [row.payloadId, row]));
+            for (const storeName of snapshotNames) result[storeName] = await Promise.all(raw[storeName].map(async row => {
               const copy = { ...row };
-              if (copy.blob) { copy.byteSize = copy.blob.size; copy.byteSha256 = await hash(await copy.blob.arrayBuffer()); delete copy.blob; }
+              let blob = copy.blob;
+              if (storeName === 'pdfBytes' && names.includes('sessions') && Object.hasOwn(copy, 'payloadId')) {
+                const payload = shared.get(copy.payloadId);
+                if (Object.hasOwn(copy, 'blob') || !payload || payload.incarnation !== copy.payloadIncarnation
+                  || payload.fingerprint !== copy.payloadId || copy.fingerprint !== copy.payloadId
+                  || payload.size !== copy.size || !(payload.blob instanceof Blob) || payload.blob.size !== copy.size) {
+                  throw new Error('QA draft byte reference does not resolve to its exact shared payload');
+                }
+                blob = payload.blob;
+              }
+              if (blob) { copy.byteSize = blob.size; copy.byteSha256 = await hash(await blob.arrayBuffer()); delete copy.blob; }
               if (copy.state) {
                 copy.stateSha256 = await hash(new TextEncoder().encode(JSON.stringify(copy.state)));
                 copy.statePdfId = copy.state.pdfId;

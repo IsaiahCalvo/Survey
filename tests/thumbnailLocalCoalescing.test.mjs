@@ -33,7 +33,7 @@ async function mount(t) {
   const url = new URL('../src/home/PdfPageThumb.jsx', import.meta.url);
   let source = await readFile(url, 'utf8');
   source = source.replace("from 'react'", `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)}`)
-    .replace("import { loadPdfjs } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => globalThis.__localThumbQa.pdfjs;')
+    .replace("import { loadPdfjs, getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => globalThis.__localThumbQa.pdfjs; const getPdfjsDocumentOptions = () => ({});')
     .replace("import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';", 'const readBlobAsArrayBuffer = file => globalThis.__localThumbQa.read(file);')
     .replace("import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';", 'const thumbnailStore = () => ({ get: async () => globalThis.__localThumbQa.stored, put: async () => true }); const thumbCacheKey = doc => doc.file_path ? doc.id + doc.file_path : null;')
     .replace("from './thumbnailRequestPolicy'", `from ${JSON.stringify(new URL('../src/home/thumbnailRequestPolicy.js', import.meta.url).href)}`);

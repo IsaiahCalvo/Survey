@@ -61,7 +61,7 @@ async function mount(t, { priority = false, failDownload = false } = {}) {
   let source = await readFile(componentUrl, 'utf8');
   source = source
     .replace("from 'react'", `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)}`)
-    .replace("import { loadPdfjs } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => globalThis.__thumbnailLifecycleState.pdfjs;')
+    .replace("import { loadPdfjs, getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => globalThis.__thumbnailLifecycleState.pdfjs; const getPdfjsDocumentOptions = () => ({});')
     .replace("import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';", 'const readBlobAsArrayBuffer = async () => new ArrayBuffer(1);')
     .replace("import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';", "const thumbnailStore = () => ({ get: async () => null, put: async () => true }); const thumbCacheKey = doc => doc?.id;")
     .replace("from './thumbnailRequestPolicy'", `from ${JSON.stringify(new URL('../src/home/thumbnailRequestPolicy.js', import.meta.url).href)}`);

@@ -36,6 +36,7 @@ import {
 import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import { getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig.js';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
@@ -228,7 +229,7 @@ function isPdfDocumentProxy(source) {
 // the buffer it receives, so byte sources are CLONED here.
 function buildGetDocumentParams(source, password) {
   if (source == null) return null;
-  const base = { isEvalSupported: false };
+  const base = { ...getPdfjsDocumentOptions(), isEvalSupported: false };
   if (password) base.password = password;
   if (source instanceof Uint8Array) return { ...base, data: source.slice(0) };
   if (source instanceof ArrayBuffer) return { ...base, data: new Uint8Array(source.slice(0)) };

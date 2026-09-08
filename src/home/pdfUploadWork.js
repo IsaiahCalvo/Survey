@@ -1,3 +1,5 @@
+import { getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig.js';
+
 // Page-count probes own short-lived PDF.js tasks, never viewer documents.
 export async function readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs }) {
   const arrayBuffer = await readBlobAsArrayBuffer(file);
@@ -6,6 +8,7 @@ export async function readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs 
     let task;
     try {
       task = pdfjsLib.getDocument({
+        ...getPdfjsDocumentOptions(),
         isEvalSupported: false,
         // A failed parse may have transferred/detached its input already.
         data: arrayBuffer.slice(0),

@@ -17,6 +17,23 @@
  */
 let pdfjsPromise;
 
+// Vite emits app modules under assets/; the build plugin emits these owned
+// directories alongside them. Dev serves the same directories explicitly.
+// Leave useWorkerFetch to PDF.js: its DOM factory uses XHR for native file://,
+// whereas HTTP(S) workers can fetch these same-origin resources themselves.
+export function getPdfjsDocumentOptions(resourceRoot) {
+  const version = typeof __SURVEY_PDFJS_RESOURCE_VERSION__ === 'string' ? __SURVEY_PDFJS_RESOURCE_VERSION__ : 'dev';
+  const directory = `${import.meta.env?.DEV ? '/assets/pdfjs/' : './pdfjs/'}${version}/`;
+  const root = resourceRoot || new URL(directory, import.meta.url).href;
+  return {
+    cMapUrl: new URL('cmaps/', root).href,
+    cMapPacked: true,
+    standardFontDataUrl: new URL('standard_fonts/', root).href,
+    wasmUrl: new URL('wasm/', root).href,
+    iccUrl: new URL('iccs/', root).href,
+  };
+}
+
 export const loadPdfjs = () => {
   if (!pdfjsPromise) {
     pdfjsPromise = (async () => {

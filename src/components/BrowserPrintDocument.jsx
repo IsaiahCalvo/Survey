@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
+import { loadPdfjs, getPdfjsDocumentOptions } from '../utils/pdfWorkerConfig.js';
 import { buildBrowserPrintLayout } from '../utils/browserPrintLayout.js';
 import { createPrintPageError, waitForPrintImages } from '../utils/printImageReadiness.js';
 import { showToast } from '../utils/toast.js';
@@ -92,7 +92,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
         );
         if (!mountedRef.current || !sameInputs(jobInputs, latestInputsRef.current)) return false;
 
-        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes) });
+        loadingTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), data: new Uint8Array(bytes) });
         loadingTaskRef.current = loadingTask;
         const pdf = await loadingTask.promise;
         if (!mountedRef.current) return false;

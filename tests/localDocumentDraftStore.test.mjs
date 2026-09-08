@@ -245,7 +245,7 @@ test('a newer canonical page file cannot change bytes or state retained by the i
   drafts.close(); library.close();
 });
 
-test('corrupt or missing bytes, metadata, and state fail closed without repairing or deleting the draft', async () => {
+test('corrupt or missing inline bytes, metadata, and state fail closed without repairing or deleting the draft', async () => {
   const changes = [
     ['pdfBytes', (_value, object, sessionId) => object.delete(sessionId)],
     ['snapshots', (_value, object, sessionId) => object.delete(sessionId)],
@@ -258,7 +258,12 @@ test('corrupt or missing bytes, metadata, and state fail closed without repairin
   ];
   for (const [name, change] of changes) {
     const indexedDB = new IDBFactory(); let writeTransactions = 0;
-    const drafts = createLocalDocumentDraftStore({ indexedDB: observedFactory(indexedDB, (_tx, args) => { if (args[1] === 'readwrite') writeTransactions++; }) });
+    const drafts = createLocalDocumentDraftStore({
+      // Retain coverage of the v1-compatible inline recovery format. Shared
+      // payload/reference corruption has its own v2 tests.
+      fingerprintBlob: async () => { throw new Error('Inline fallback'); },
+      indexedDB: observedFactory(indexedDB, (_tx, args) => { if (args[1] === 'readwrite') writeTransactions++; }),
+    });
     const writer = drafts.createWriter(pdf()); await writer.capture(state());
     await alter(indexedDB, [name], tx => {
       const object = tx.objectStore(name); const request = object.get(writer.sessionId);
