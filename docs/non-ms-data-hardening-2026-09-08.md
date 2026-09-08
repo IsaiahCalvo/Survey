@@ -1611,6 +1611,71 @@ high-risk viewer file, production schema, live account or Microsoft code changed
 The 14 checked browser assertions are controlled local evidence, not deployed
 auth, production collaboration, or all-platform no-regression proof.
 
+## Bounded optional PDF metadata and legacy reuse — follow-up
+
+The two follow-ups above are now implemented locally. Optional page counting
+has one 15-second deadline across reading, module loading and both parse
+attempts, plus at most one second per task cleanup. A failed optional probe
+returns an unknown count through the upload hooks; it does not lose staged
+bytes, block document publication forever, or hold the upload locks indefinitely.
+A failed parse whose cleanup cannot be confirmed does not start another parser.
+Late promise failures remain observed and cannot start another attempt.
+
+Browser probes own a native module worker from creation and pass its port to
+the public PDFWorker constructor. Both wrappers and native ports are released,
+and any file/cross-origin wrapper URL is revoked. This also covers a worker that
+never answers its initial message: the installed PDF.js worker's own destroy
+method cannot terminate that unregistered native worker. The probe never uses
+or terminates a viewer's global worker port. Worker startup failure leaves page
+count unknown rather than moving optional parsing onto the UI thread. The viewer
+parser and its fallback behavior are unchanged.
+
+Account changes and hook unmount abort active metadata work. Single-file uploads
+also stop their probe when their view retires. Existing project uploads still
+survive hiding Home. Effect-owned controllers remain usable after React StrictMode
+cleanup/replay. Runner scope checks still block stale-account cloud writes after
+optional failure; staged retry bytes remain available.
+
+Existing matching-hash legacy rows with null file size can now reuse published
+bytes. New candidate rows still require an exact numeric size. Missing-object
+repair still rejects an unknown size; read-only reuse does not weaken repair
+guards. Composed real runner/journal/transport tests cover all three cases.
+
+These deadlines bound asynchronous metadata work, not a blocked browser event
+loop, browser suspension, upload hashing, Storage transport, or all PDF viewer
+work. A canceled read/module load can finish in the background, but cannot launch
+a late parser. Browser file-origin behavior has unit coverage for URL/worker
+ownership. Other device/runtime behavior still needs end-to-end evidence.
+
+Controlled Home upload QA passed all six probe modes with the real 15-second
+deadline and one-second cleanup bound: normal, stuck read, stuck module load,
+stuck parse, stuck cleanup, and an actual native worker that never replies.
+Every case published exactly one PDF to the localhost mock, cleared its local
+receipt and left upload controls usable. Normal and cleanup-timeout cases kept
+the correct one-page count; other stalled cases saved null. The worker-startup
+case completed in 17.04 seconds including UI/upload overhead and called native
+termination exactly once. Each probe used the real installed PDF.js; fault modes
+only held the selected optional stage or supplied a silent native module worker.
+The actual hooks, journals, runners and SDK remained in the browser flow. Eight
+checks passed including Home identity and final 390px layout; page and console
+errors were zero. Screenshots were reviewed. Cloud/auth remained synthetic and
+localhost-only; this does not prove live provider permissions or collaboration.
+
+Native Electron file:// helper checks also passed using the exact compiled helper
+and installed PDF.js 6.1.200, with an isolated profile and no cloud/auth actions.
+A known PDF returned one page; native workers terminated and closed after success
+and mid-load cancellation, while pre-cancellation created none. Page errors were
+zero and the owned profile was removed. This Electron runtime reports file:// as
+both origins and uses a direct same-origin worker file. Its Blob-wrapper branch
+was not selected; null-origin/cross-origin wrapping remains unit-tested, not native
+end-to-end proven. These checks cover the helper, not an authenticated upload UI.
+
+Frozen regression verification: 5,195 total tests, 5,135 passed, 60 skipped,
+zero failures/cancellations, exit 0 (prior frozen baseline: 5,152 / 5,092 / 60).
+The focused parser, single/project runner and mounted-hook run passed 181/181.
+Production build, AST-only graph update and diff checks passed. No high-risk
+viewer file, live schema, existing account or Microsoft code changed.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

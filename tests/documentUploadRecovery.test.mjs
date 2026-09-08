@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { preparePdfUpload } from '../src/home/pdfUploadWork.js';
+import { preparePdfUpload, readPdfPageCount } from '../src/home/pdfUploadWork.js';
 import { IDBFactory } from 'fake-indexeddb';
+import { createClient } from '@supabase/supabase-js';
+import { createDocumentUploadCloud } from '../src/services/documentUploadCloud.js';
 import { createDocumentUploadJournal } from '../src/services/documentUploadJournal.js';
 import { stageDocumentUpload, runDocumentUpload, withDocumentUploadLock } from '../src/home/documentUploadRecovery.js';
 
@@ -80,6 +82,102 @@ test('published dedup uses current bytes without upload, parser, or page-count m
   const result = await runDocumentUpload({ ...f.context, attemptId: id });
   assert.equal(result.document.id, old.id); assert.equal(result.reused, true); assert.equal(await result.file.text(), 'newer published bytes');
   assert.equal(f.events.includes('uploadFile'), false); assert.equal(f.events.includes('readPageCount'), false);
+});
+
+// Compose the real journal, runner and cloud adapter. Only the network/auth
+// boundary is local: no Supabase account or network connection is used.
+async function nullableSizeFixture(t, { missing = false, candidate = false } = {}) {
+  const f = fixture();
+  const journal = createDocumentUploadJournal({ indexedDB: new IDBFactory(), dbName: `nullable-size-${crypto.randomUUID()}` });
+  t.after(() => journal.close());
+  f.context.journal = journal;
+  const attemptId = await f.stage();
+  const attempt = await journal.get(actorId, attemptId);
+  const row = { id: candidate ? attempt.documentId : uuid(99), user_id: actorId, project_id: null,
+    name: 'plan.pdf', content_sha256: attempt.contentSha, file_path: candidate ? attempt.filePath : `${actorId}/legacy.pdf`,
+    file_size: null, page_count: null, name_aliases: [], archived: false, user_archived_at: null,
+    created_at: '2026-09-08T00:00:00Z', updated_at: '2026-09-08T00:00:00Z' };
+  const published = new Blob(['%PDF newer published edits'], { type: 'application/pdf' });
+  const requests = [];
+  const client = createClient('https://offline-fixture.invalid', 'fixture-publishable-not-a-secret', {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: async (url, init = {}) => {
+      const request = { method: init.method || 'GET', url: new URL(String(url)) };
+      requests.push(request);
+      assert.equal(request.method, 'GET', 'legacy reuse must not write a row or storage object');
+      if (request.url.pathname.includes('/storage/v1/object/')) {
+        assert.equal(decodeURIComponent(request.url.pathname.split('/storage/v1/object/documents/')[1]), row.file_path);
+        return missing ? Response.json({ statusCode: '404', error: 'StorageError', message: 'Not found' }, { status: 404 }) : new Response(published);
+      }
+      assert.equal(request.url.pathname, '/rest/v1/documents');
+      const filters = request.url.searchParams;
+      assert.equal(filters.get('user_id'), `eq.${actorId}`);
+      const matches = [...filters].every(([key, value]) => ['select', 'limit'].includes(key)
+        || (value === 'is.null' ? row[key] === null : value === `eq.${row[key]}`));
+      return Response.json(matches ? [row] : []);
+    } },
+  });
+  client.auth.getSession = async () => ({ data: { session: { user: { id: actorId }, access_token: 'fixture-token' } }, error: null });
+  client.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+  const cloud = await createDocumentUploadCloud({ client, actorId, tier: 'pro', isCurrent: () => true });
+  return { ...f, row, published, requests, journal, attemptId, context: { ...f.context, cloud, attemptId } };
+}
+
+test('real adapter and runner reuse a published matching-hash legacy PDF whose size is unknown', async t => {
+  const f = await nullableSizeFixture(t);
+  const result = await runDocumentUpload(f.context);
+  assert.equal(result.document.id, f.row.id);
+  assert.equal(result.document.file_size, null);
+  assert.equal(result.reused, true);
+  assert.equal(await result.file.text(), '%PDF newer published edits');
+  assert.equal(f.requests.filter(request => request.url.pathname.includes('/storage/')).length, 1);
+  assert.equal(await f.journal.get(actorId, f.attemptId), null);
+  assert.equal(await f.journal.readFile(actorId, f.attemptId), null);
+});
+
+test('real adapter exact 404 cannot repair an unknown-size legacy PDF and retains the retry bytes', async t => {
+  const f = await nullableSizeFixture(t, { missing: true });
+  await assert.rejects(runDocumentUpload(f.context), error => error.code === 'upload-pending'
+    && error.cause?.code === 'DOCUMENT_UPLOAD_INVALID');
+  assert.equal(f.requests.filter(request => request.url.pathname.includes('/storage/')).length, 1,
+    'a real missing-object response was checked before repair was denied');
+  assert.equal(f.requests.every(request => request.method === 'GET'), true);
+  const pending = await f.journal.get(actorId, f.attemptId);
+  assert.equal(pending.phase, 'running');
+  assert.equal(pending.target.id, f.row.id);
+  assert.equal(pending.target.file_size, null);
+  assert.equal(await (await f.journal.readFile(actorId, f.attemptId)).text(), '%PDF original');
+});
+
+test('a candidate receipt with unknown size is not treated as a reusable legacy document', async t => {
+  const f = await nullableSizeFixture(t, { candidate: true });
+  await assert.rejects(runDocumentUpload(f.context), { code: 'cloud-conflict' });
+  assert.equal(f.requests.some(request => request.url.pathname.includes('/storage/')), false);
+  assert.equal((await f.journal.get(actorId, f.attemptId)).phase, 'running');
+  assert.equal(await (await f.journal.readFile(actorId, f.attemptId)).text(), '%PDF original');
+});
+
+test('a newly created candidate requires a numeric-size receipt before it can complete', async () => {
+  const f = fixture(); const attemptId = await f.stage();
+  const create = f.context.cloud.createDocument;
+  f.context.cloud.createDocument = async input => {
+    assert.equal(input.file_size, pdf().size, 'new candidates use the staged byte count');
+    const row = await create(input);
+    row.file_size = null;
+    return row;
+  };
+  await assert.rejects(runDocumentUpload({ ...f.context, attemptId }), { code: 'cloud-conflict' });
+  assert.equal(f.events.includes('ensureDocumentFile'), false);
+  assert.ok(f.records.has(attemptId)); assert.ok(f.bytes.has(attemptId));
+});
+
+test('the real adapter denies a new candidate with unknown size before any cloud request', async t => {
+  const f = await nullableSizeFixture(t, { candidate: true });
+  const { id, user_id, project_id, name, file_path, content_sha256, page_count, archived } = f.row;
+  await assert.rejects(f.context.cloud.createDocument({ id, user_id, project_id, name, file_path,
+    content_sha256, page_count, archived, file_size: null }), { code: 'DOCUMENT_UPLOAD_INVALID' });
+  assert.equal(f.requests.length, 0);
+  assert.ok(await f.journal.readFile(actorId, f.attemptId));
 });
 
 test('alias choice is saved before mutation and never asked twice after restart', async () => {
@@ -365,4 +463,68 @@ test('new row receipt commits before published-byte read; later deletion cannot 
   f.documents.delete(initial.documentId); f.events.length = 0;
   await assert.rejects(runDocumentUpload({ ...f.context, attemptId: id }), { code: 'cloud-conflict' });
   assert.deepEqual(f.events, ['readDocument']); assert.ok(f.bytes.has(id));
+});
+
+function trackHeldUploadLocks(context) {
+  const held = new Set(); const manager = context.locks;
+  context.locks = { request: (name, options, work) => manager.request(name, options, async () => {
+    assert.equal(held.has(name), false, 'one upload owns each exclusive lock');
+    held.add(name);
+    try { return await work(); } finally { held.delete(name); }
+  }) };
+  return held;
+}
+
+test('a hung real page-count probe releases upload/content locks and lets the next same-content attempt finish', { timeout: 2000 }, async () => {
+  const f = fixture(); const firstId = await f.stage(); const secondId = await f.stage();
+  const held = trackHeldUploadLocks(f.context);
+  let entered; const parsing = new Promise(resolve => { entered = resolve; });
+  let parses = 0, taskCleanup = 0, workerCleanup = 0;
+  const readPageCount = file => readPdfPageCount(file, {
+    readBlobAsArrayBuffer: blob => blob.arrayBuffer(), timeoutMs: 20, cleanupTimeoutMs: 10,
+    loadPdfjs: async () => ({ VerbosityLevel: { ERRORS: 0 },
+      PDFWorker: class { destroy() { workerCleanup++; } },
+      getDocument() {
+        parses++; entered();
+        return { promise: new Promise(() => {}), destroy() { taskCleanup++; return new Promise(() => {}); } };
+      },
+    }),
+  });
+  const first = runDocumentUpload({ ...f.context, attemptId: firstId, readPageCount });
+  await parsing;
+  const second = runDocumentUpload({ ...f.context, attemptId: secondId, readPageCount });
+  const [created, reused] = await Promise.all([first, second]);
+  assert.equal(created.document.page_count, null);
+  assert.equal(reused.document.id, created.document.id);
+  assert.equal(reused.reused, true);
+  assert.equal(parses, 1, 'the queued matching upload reuses the confirmed PDF without parsing again');
+  assert.equal(taskCleanup, 1); assert.equal(workerCleanup, 1);
+  assert.equal(f.documents.size, 1); assert.equal(f.uploads.size, 1);
+  assert.equal(f.records.size, 0); assert.equal(f.bytes.size, 0);
+  assert.equal(held.size, 0, 'both per-attempt locks and the shared content lock were released');
+});
+
+test('actor retirement during the real page-count probe prevents row creation and keeps retry bytes', { timeout: 2000 }, async () => {
+  const f = fixture(); const attemptId = await f.stage();
+  const held = trackHeldUploadLocks(f.context); const controller = new AbortController();
+  let entered, finishParse; const parsing = new Promise(resolve => { entered = resolve; });
+  const parsed = new Promise(resolve => { finishParse = resolve; }); let destroyed = 0;
+  const pending = runDocumentUpload({ ...f.context, attemptId,
+    readPageCount: file => readPdfPageCount(file, {
+      signal: controller.signal, timeoutMs: 1000, cleanupTimeoutMs: 10,
+      readBlobAsArrayBuffer: blob => blob.arrayBuffer(),
+      loadPdfjs: async () => ({ VerbosityLevel: { ERRORS: 0 }, getDocument() {
+        entered(); return { promise: parsed, async destroy() { destroyed++; } };
+      } }),
+    }),
+  });
+  await parsing; f.retire(); controller.abort();
+  await assert.rejects(pending, { code: 'scope-changed' });
+  finishParse({ numPages: 7 }); await new Promise(setImmediate);
+  assert.equal(destroyed, 1); assert.equal(held.size, 0);
+  assert.equal(f.events.includes('createDocument'), false);
+  assert.equal(f.documents.size, 0);
+  assert.equal(f.uploads.size, 1, 'the confirmed pre-parse upload is not deleted');
+  assert.equal(f.records.get(attemptId).phase, 'running');
+  assert.equal(await f.bytes.get(attemptId).text(), '%PDF original');
 });

@@ -42,7 +42,7 @@ async function mount(t, initial = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'survey-document-recovery-mounted-'));
   const indexedDB = new IDBFactory(); let journal = createDocumentUploadJournal({ indexedDB });
   const state = { actorId: actorA, active: true, lists: [], bytesRead: 0, factories: [], cloudCalls: [], saved: [],
-    discarded: [], locks: [], rows: new Map(), files: new Map(), chooseAlias: async () => false, ...initial };
+    discarded: [], locks: [], rows: new Map(), files: new Map(), parses: [], chooseAlias: async () => false, ...initial };
   state.list = actor => journal.list(actor);
   state.discard = (actor, id) => journal.discard(actor, id);
   const journalAdapter = {
@@ -62,7 +62,9 @@ async function mount(t, initial = {}) {
     async addAlias(row, name) { state.cloudCalls.push('addAlias'); const saved = state.rows.get(row.id); saved.name_aliases = [...new Set([...(saved.name_aliases || []), name])]; return structuredClone(saved); },
   };
   const key = `__documentRecoveryMounted${Math.random()}`;
-  globalThis[key] = { preparePdfUpload, readPdfPageCount: async () => null,
+  globalThis[key] = { preparePdfUpload, readPdfPageCount: async (file, options) => {
+    state.parses.push({ file, options }); return state.parse ? state.parse(file, options) : null;
+  },
     readBlobAsArrayBuffer: blob => blob.arrayBuffer(), computeContentSha256: async bytes => createHash('sha256').update(bytes).digest('hex') };
   let source = await readFile(new URL('../src/home/useDocumentUploadRecovery.js', import.meta.url), 'utf8');
   source = source.replace(/import \{ ([^}]+) \} from '([^']+)';/g, (line, names, file) => {
@@ -96,7 +98,7 @@ async function mount(t, initial = {}) {
     } }, onDiscard: row => { state.pendingClick = state.api.discard(row.id); return state.pendingClick.catch(() => {}); } });
   }
   const render = async () => {
-    await act(async () => { root.render(React.createElement(App)); });
+    await act(async () => { root.render(state.strict ? React.createElement(React.StrictMode, null, React.createElement(App)) : React.createElement(App)); });
     await act(async () => state.api.refresh());
   };
   const unmount = async () => { if (!unmounted) { unmounted = true; await act(async () => root.unmount()); } };
@@ -331,4 +333,38 @@ test('a completed row cannot be retried while its final metadata refresh is held
   await act(async () => { held.resolve([]); await run; });
   assert.equal(safe, true, 'the deleted local attempt must not remain actionable during its final list refresh');
   assert.equal(f.state.api.busy, false); assert.equal(await f.journal.get(actorA, pending.id), null);
+});
+
+for (const retirement of ['account', 'hide', 'unmount']) test(`single upload parser receives a signal aborted by ${retirement}`, async t => {
+  const f = await mount(t); const pending = await f.seed();
+  const held = defer(); f.state.parse = () => held.promise;
+  let run; await act(async () => { run = f.state.api.retry(pending.id); run.catch(() => {}); });
+  await settle(() => f.state.parses.length === 1);
+  const signal = f.state.parses[0].options.signal;
+  assert.ok(signal instanceof AbortSignal); assert.equal(signal.aborted, false);
+  if (retirement === 'account') {
+    f.state.actorId = actorB; await f.render(); f.state.actorId = actorA; await f.render();
+  } else if (retirement === 'hide') { f.state.active = false; await f.render(); }
+  else await f.unmount();
+  assert.equal(signal.aborted, true);
+  await act(async () => { held.resolve(7); await assert.rejects(run, { code: 'scope-changed' }); });
+  assert.equal(f.state.cloudCalls.includes('createDocument'), false); assert.ok(await f.journal.get(actorA, pending.id));
+  if (retirement === 'account') {
+    f.state.parse = async (_file, { signal: next }) => { assert.notEqual(next, signal); assert.equal(next.aborted, false); return 2; };
+    await act(async () => f.state.api.retry(pending.id)); assert.equal(f.state.parses.length, 2);
+  }
+});
+
+test('single upload StrictMode effect replay leaves a usable parser signal', async t => {
+  const f = await mount(t, { strict: true }); const pending = await f.seed();
+  f.state.parse = async (_file, { signal }) => { assert.ok(signal instanceof AbortSignal); assert.equal(signal.aborted, false); return 3; };
+  await act(async () => f.state.api.retry(pending.id));
+  assert.equal(f.state.parses.length, 1); assert.equal(f.state.saved[0].result.document.page_count, 3);
+  await f.unmount(); assert.equal(f.state.parses[0].options.signal.aborted, true);
+});
+
+test('single upload optional parser failure still confirms a PDF without a page count', async t => {
+  const f = await mount(t); const pending = await f.seed(); f.state.parse = async () => { throw new Error('parser failed'); };
+  await act(async () => f.state.api.retry(pending.id));
+  assert.equal(f.state.saved[0].result.document.page_count, null); assert.equal(f.state.saved[0].result.complete, true);
 });

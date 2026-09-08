@@ -12,9 +12,9 @@ import { transformWithOxc } from 'vite';
 
 const require = createRequire(import.meta.url);
 const defer = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
-async function mount(t) {
+async function mount(t, { strict = false } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'survey-project-recovery-mounted-'));
-  const state = { actorId: 'A', active: true, rows: new Map(), lists: [], clouds: [], runs: [], stages: [], saved: [], locks: [], discarded: [] };
+  const state = { actorId: 'A', active: true, rows: new Map(), lists: [], clouds: [], runs: [], stages: [], saved: [], locks: [], discarded: [], parses: [] };
   state.list = async actor => state.rows.get(actor) || [];
   state.run = async args => { state.runs.push(args); return { complete: true }; };
   const journal = { list: actor => { state.lists.push(actor); return state.list(actor); },
@@ -27,11 +27,14 @@ async function mount(t) {
     withProjectUploadLock: async (args, work) => { state.locks.push(args); return work(); },
   };
   const key = `__projectRecovery${Math.random()}`;
-  globalThis[key] = { engine };
+  globalThis[key] = { engine, readPdfPageCount: async (file, options) => {
+    state.parses.push({ file, options }); return state.parse ? state.parse(file, options) : null;
+  } };
   let source = await readFile(new URL('../src/home/useProjectUploadRecovery.js', import.meta.url), 'utf8');
   source = source.replace(/import \{ ([^}]+) \} from '([^']+)';/g, (line, names, file) => {
     if (file === 'react') return `import { ${names} } from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};`;
     if (file === './projectUploadRecovery.js') return `const { ${names} } = globalThis[${JSON.stringify(key)}].engine;`;
+    if (file === './pdfUploadWork.js') return `const { ${names} } = globalThis[${JSON.stringify(key)}];`;
     return `const { ${names} } = {};`;
   });
   const modulePath = path.join(dir, 'hook.mjs'); await writeFile(modulePath, source);
@@ -53,13 +56,15 @@ async function mount(t) {
       onSaved: () => { state.saved.push(state.actorId); return state.afterSaved?.(); } });
     return React.createElement(Panel, { recovery: state.api, onDiscard: row => state.api.discard(row.id) });
   }
-  const render = () => act(async () => { root.render(React.createElement(App)); });
+  let unmounted = false;
+  const unmount = async () => { if (!unmounted) { unmounted = true; await act(async () => root.unmount()); } };
+  const render = () => act(async () => { root.render(strict ? React.createElement(React.StrictMode, null, React.createElement(App)) : React.createElement(App)); });
   t.after(async () => {
-    await act(async () => root.unmount()); dom.window.close(); delete globalThis[key];
+    await unmount(); dom.window.close(); delete globalThis[key];
     for (const [name, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; }
     await rm(dir, { recursive: true, force: true });
   });
-  await render(); return { state, node, render };
+  await render(); return { state, node, render, unmount };
 }
 
 test('metadata lists never auto-replay; hidden homes defer scans and current account masks old rows', async t => {
@@ -140,4 +145,41 @@ test('completion stays busy through held library and metadata reads before showi
   await act(async () => { listed.resolve([]); await pending; });
   assert.equal(state.api.busy, false); assert.match(node.textContent, /Project saved to the cloud/);
   assert.equal(node.querySelector('details').open, true);
+});
+
+for (const retirement of ['account', 'unmount']) test(`project parser signal aborts on ${retirement} and stale callbacks cannot parse again`, async t => {
+  const f = await mount(t); const held = defer(); f.state.parse = () => held.promise;
+  let readCount;
+  f.state.run = async args => { readCount = args.cloud.readPageCount; await readCount(new Blob(['pdf'])); return { complete: true }; };
+  let run; await act(async () => { run = f.state.api.start('Test', []); run.catch(() => {}); });
+  assert.equal(f.state.parses.length, 1); const signal = f.state.parses[0].options.signal;
+  assert.ok(signal instanceof AbortSignal); assert.equal(signal.aborted, false);
+  if (retirement === 'account') { f.state.actorId = 'B'; await f.render(); f.state.actorId = 'A'; await f.render(); }
+  else await f.unmount();
+  assert.equal(signal.aborted, true);
+  await act(async () => { held.resolve(3); await assert.rejects(run, { code: 'actor-changed' }); });
+  assert.equal(await readCount(new Blob(['pdf'])), null); assert.equal(f.state.parses.length, 1); assert.deepEqual(f.state.saved, []);
+});
+
+test('hiding Home does not abort an ongoing project parser', async t => {
+  const f = await mount(t); const held = defer(); f.state.parse = () => held.promise;
+  f.state.run = async args => { await args.cloud.readPageCount(new Blob(['pdf'])); return { complete: true }; };
+  let run; await act(async () => { run = f.state.api.start('Test', []); });
+  const signal = f.state.parses[0].options.signal; assert.ok(signal instanceof AbortSignal);
+  f.state.active = false; await f.render(); assert.equal(signal.aborted, false);
+  await act(async () => { held.resolve(4); await run; }); assert.deepEqual(f.state.saved, ['A']);
+});
+
+test('project StrictMode effect replay creates a usable parser controller', async t => {
+  const f = await mount(t, { strict: true });
+  f.state.parse = async (_file, { signal }) => { assert.ok(signal instanceof AbortSignal); assert.equal(signal.aborted, false); return 3; };
+  f.state.run = async args => { assert.equal(await args.cloud.readPageCount(new Blob(['pdf'])), 3); return { complete: true }; };
+  await act(async () => f.state.api.start('Test', [])); assert.equal(f.state.parses.length, 1);
+  await f.unmount(); assert.equal(f.state.parses[0].options.signal.aborted, true);
+});
+
+test('project optional parser failure remains a null count, not a failed upload', async t => {
+  const f = await mount(t); f.state.parse = async () => { throw new Error('parser failed'); };
+  f.state.run = async args => { assert.equal(await args.cloud.readPageCount(new Blob(['pdf'])), null); return { complete: true }; };
+  await act(async () => f.state.api.start('Test', [])); assert.deepEqual(f.state.saved, ['A']);
 });

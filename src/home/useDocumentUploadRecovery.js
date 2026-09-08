@@ -8,7 +8,6 @@ import { computeContentSha256 } from '../services/contentHash.js';
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
 
 const prepareFile = file => preparePdfUpload(file, { readBlobAsArrayBuffer, computeContentSha256 });
-const readPageCount = file => readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs }).catch(() => null);
 const stale = () => Object.assign(new Error('The account or upload view changed. Saved retry bytes were kept.'), { code: 'scope-changed' });
 
 // List only local metadata. Never poll or replay cloud work on startup. A new
@@ -19,8 +18,15 @@ export function useDocumentUploadRecovery({ actorId, tier, client, active = true
   if (scopeRef.current?.actorId !== actorId || scopeRef.current?.active !== active) scopeRef.current = { actorId, active };
   const scope = scopeRef.current;
   const mounted = useRef(false), busyRef = useRef(null), generation = useRef(0);
+  const parserScopeRef = useRef(null);
   const [snapshot, setSnapshot] = useState(null), [work, setWork] = useState(null);
   const current = useCallback(() => mounted.current && scopeRef.current === scope && !!actorId && active, [scope, actorId, active]);
+  const readPageCount = useCallback(async file => {
+    const owner = parserScopeRef.current;
+    if (!current() || owner?.scope !== scope || owner.controller.signal.aborted) return null;
+    try { return await readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs, signal: owner.controller.signal }); }
+    catch { return null; } // Page count is optional; the engine checks scope again.
+  }, [current, scope]);
   const refresh = useCallback(async () => {
     if (!current()) return;
     const request = ++generation.current;
@@ -33,6 +39,15 @@ export function useDocumentUploadRecovery({ actorId, tier, client, active = true
     }
   }, [actorId, current, getJournal, scope]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    // Effect-owned: StrictMode cleanup/replay must allocate a fresh controller.
+    const owner = { scope, controller: new AbortController() };
+    parserScopeRef.current = owner;
+    return () => {
+      owner.controller.abort();
+      if (parserScopeRef.current === owner) parserScopeRef.current = null;
+    };
+  }, [scope]);
   useEffect(() => {
     if (!active || !actorId) return undefined;
     void refresh();

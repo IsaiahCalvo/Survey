@@ -8,7 +8,6 @@ import { computeContentSha256 } from '../services/contentHash.js';
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
 
 const prepareFile = file => preparePdfUpload(file, { readBlobAsArrayBuffer, computeContentSha256 });
-const readPageCount = file => readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs }).catch(() => null);
 const stale = () => Object.assign(new Error('The signed-in account changed. Saved upload copies were kept.'), { code: 'actor-changed' });
 
 // No polling or automatic cloud replay. Lists contain metadata only. The scope
@@ -19,11 +18,18 @@ export function useProjectUploadRecovery({ actorId, tier, client, active = true,
   if (scopeRef.current?.actorId !== actorId) scopeRef.current = { actorId };
   const scope = scopeRef.current;
   const mounted = useRef(false);
+  const parserScopeRef = useRef(null);
   const busyRef = useRef(null);
   const generation = useRef(0);
   const [snapshot, setSnapshot] = useState(null);
   const [work, setWork] = useState(null);
   const current = useCallback(() => mounted.current && scopeRef.current === scope && !!actorId, [scope, actorId]);
+  const readPageCount = useCallback(async file => {
+    const owner = parserScopeRef.current;
+    if (!current() || owner?.scope !== scope || owner.controller.signal.aborted) return null;
+    try { return await readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs, signal: owner.controller.signal }); }
+    catch { return null; } // Page count is optional; the engine checks scope again.
+  }, [current, scope]);
   const refresh = useCallback(async () => {
     if (!current() || !active) return;
     const request = ++generation.current;
@@ -37,6 +43,16 @@ export function useProjectUploadRecovery({ actorId, tier, client, active = true,
     }
   }, [active, actorId, current, getJournal, scope]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    // Project uploads survive hiding Home; only account/unmount retires this
+    // owner. Each StrictMode effect setup still gets a fresh controller.
+    const owner = { scope, controller: new AbortController() };
+    parserScopeRef.current = owner;
+    return () => {
+      owner.controller.abort();
+      if (parserScopeRef.current === owner) parserScopeRef.current = null;
+    };
+  }, [scope]);
   useEffect(() => {
     if (!active || !actorId) return undefined;
     void refresh();

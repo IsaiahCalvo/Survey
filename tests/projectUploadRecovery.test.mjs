@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { IDBFactory } from 'fake-indexeddb';
 import { createProjectUploadJournal } from '../src/services/projectUploadJournal.js';
-import { preparePdfUpload } from '../src/home/pdfUploadWork.js';
+import { preparePdfUpload, readPdfPageCount } from '../src/home/pdfUploadWork.js';
 import { stageProjectUpload, resumeStaging, runProjectUpload, withProjectUploadLock } from '../src/home/projectUploadRecovery.js';
 
 const actorId = '11111111-1111-4111-8111-111111111111';
@@ -42,6 +42,93 @@ function fixture(t) {
     restart() { journal.close(); journal = createProjectUploadJournal({ indexedDB }); context.journal = journal; },
   };
 }
+
+function boundedPageProbe({ hangParse = true, hangCleanup = false, signal } = {}) {
+  const events = [];
+  let resolveParse, announceParse;
+  const entered = new Promise(resolve => { announceParse = resolve; });
+  const parse = new Promise(resolve => { resolveParse = resolve; });
+  class PDFWorker {
+    constructor() { events.push('worker-created'); this.promise = Promise.resolve(); }
+    destroy() { events.push('worker-destroyed'); }
+  }
+  const readPageCount = blob => readPdfPageCount(blob, {
+    signal, timeoutMs: hangParse ? 30 : 1000, cleanupTimeoutMs: 5,
+    readBlobAsArrayBuffer: async file => { events.push('read'); return file.arrayBuffer(); },
+    loadPdfjs: async () => ({ PDFWorker, VerbosityLevel: { ERRORS: 0 },
+      getDocument(options) {
+        assert.ok(options.worker instanceof PDFWorker, 'the actual helper owns and passes its worker');
+        assert.ok(options.data instanceof ArrayBuffer);
+        events.push('parse'); announceParse();
+        return { promise: hangParse ? parse : Promise.resolve({ numPages: 3 }),
+          destroy() { events.push('task-destroyed'); return hangCleanup ? new Promise(() => {}) : Promise.resolve(); } };
+      },
+    }),
+  });
+  return { readPageCount, entered, events, resolveParse };
+}
+
+for (const [hangParse, hangCleanup, count] of [[true, false, null], [true, true, null], [false, true, 3]]) {
+  test(`real page-count helper bounds parse=${hangParse ? 'hung' : 'ready'} cleanup=${hangCleanup ? 'hung' : 'ready'} inside project recovery`, { timeout: 2000 }, async t => {
+    const f = fixture(t); const attemptId = await f.stage();
+    const attempt = await f.context.journal.get(actorId, attemptId);
+    const probe = boundedPageProbe({ hangParse, hangCleanup });
+    f.context.cloud.readPageCount = probe.readPageCount;
+    assert.equal(await (await f.context.journal.readFile(actorId, attemptId, attempt.files[0].id)).text(), '%PDF-1.7\nplan');
+    const result = await runProjectUpload({ ...f.context, attemptId });
+    assert.equal(result.complete, true);
+    assert.equal(f.projects.size, 1); assert.equal(f.uploads.size, 1);
+    assert.equal([...f.documents.values()][0].page_count, count);
+    assert.deepEqual(probe.events, ['read', 'worker-created', 'parse', 'task-destroyed', 'worker-destroyed']);
+    assert.equal(await f.context.journal.get(actorId, attemptId), null);
+    assert.equal(await f.context.journal.readFile(actorId, attemptId, attempt.files[0].id), null, 'successful receipts release staged bytes');
+    assert.equal(await withProjectUploadLock({ ...f.context, attemptId }, () => 'released'), 'released');
+  });
+}
+
+test('a timed-out page probe is not repeated after its row was published but receipt cleanup failed', { timeout: 2000 }, async t => {
+  const f = fixture(t); const attemptId = await f.stage();
+  const probe = boundedPageProbe({ hangParse: true, hangCleanup: true });
+  f.context.cloud.readPageCount = probe.readPageCount;
+  const patch = f.context.journal.patchAttempt;
+  f.context.journal.patchAttempt = async (actor, id, values) => {
+    if (values.phase === 'complete') throw new Error('local receipt write failed');
+    return patch(actor, id, values);
+  };
+  await assert.rejects(runProjectUpload({ ...f.context, attemptId }));
+  const saved = await f.context.journal.get(actorId, attemptId);
+  assert.equal(saved.files[0].state, 'confirmed');
+  assert.equal([...f.documents.values()][0].page_count, null);
+  assert.ok(await f.context.journal.readFile(actorId, attemptId, saved.files[0].id));
+  const writes = f.events.filter(([kind]) => kind === 'createDocument' || kind === 'uploadFile').length;
+  f.restart();
+  await runProjectUpload({ ...f.context, attemptId });
+  assert.equal(probe.events.filter(event => event === 'parse').length, 1, 'published rows never reparse original bytes');
+  assert.equal(f.events.filter(([kind]) => kind === 'createDocument' || kind === 'uploadFile').length, writes);
+  assert.equal(await f.context.journal.get(actorId, attemptId), null);
+  assert.equal(await withProjectUploadLock({ ...f.context, attemptId }, () => 'released'), 'released');
+});
+
+test('actor retirement aborts the real hung probe, retains staged bytes and prevents late row publication', { timeout: 2000 }, async t => {
+  const f = fixture(t); const attemptId = await f.stage();
+  const attempt = await f.context.journal.get(actorId, attemptId);
+  const controller = new AbortController();
+  const probe = boundedPageProbe({ hangParse: true, hangCleanup: true, signal: controller.signal });
+  f.context.cloud.readPageCount = probe.readPageCount;
+  const pending = runProjectUpload({ ...f.context, attemptId });
+  const rejected = assert.rejects(pending, { code: 'scope-changed' });
+  await probe.entered;
+  f.retire(); controller.abort();
+  await rejected;
+  assert.equal(f.projects.size, 1); assert.equal(f.uploads.size, 1); assert.equal(f.documents.size, 0);
+  assert.ok(await f.context.journal.get(actorId, attemptId));
+  assert.equal(await (await f.context.journal.readFile(actorId, attemptId, attempt.files[0].id)).text(), '%PDF-1.7\nplan');
+  const before = f.events.length;
+  probe.resolveParse({ numPages: 99 }); await new Promise(setImmediate);
+  assert.equal(f.events.length, before, 'late parser result cannot create or update a row');
+  assert.equal(probe.events.filter(event => event === 'worker-destroyed').length, 1);
+  assert.equal(await f.context.locks.request(`survey:project-upload:${actorId}:${attemptId}`, { mode: 'exclusive' }, () => 'released'), 'released');
+});
 
 test('all bytes stage before network; success finishes the exact attempt and keeps cloud rows', async t => {
   const f = fixture(t); const attemptId = await f.stage();

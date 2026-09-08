@@ -62,9 +62,14 @@ function ownedPath(path, actorId) {
     && path.split('/').every(part => part && part !== '.' && part !== '..');
 }
 function assertDocument(row, attempt, target = attempt.target) {
+  // A reused legacy row may not record its size. This permits reading its
+  // published PDF, not repairing missing bytes; the cloud adapter still needs
+  // an exact recorded size for repair. Our own candidate must retain its size.
+  const validSize = (Number.isSafeInteger(row?.file_size) && row.file_size >= 0)
+    || (row?.file_size === null && row.id !== attempt.documentId);
   check(row && UUID.test(row.id || '') && row.user_id === attempt.actorId && row.project_id === attempt.projectId
     && row.content_sha256 === attempt.contentSha && ownedPath(row.file_path, attempt.actorId)
-    && Number.isSafeInteger(row.file_size) && row.file_size >= 0 && row.user_archived_at == null
+    && validSize && row.user_archived_at == null
     && (row.archived === false || row.archived === true)
     && (!target || (row.id === target.id && row.file_path === target.file_path)),
   'The cloud document changed or is no longer available. Its saved upload was kept.', attempt);
