@@ -15,6 +15,7 @@
 import { supabase } from '../supabaseClient';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeDocumentItem } from './archiveContract';
+import { cleanupDocumentStorage } from './documentStorageCleanup.js';
 
 // file_size and page_count feed the Archive preview pane, which mirrors the
 // Documents ledger's preview: you should be able to tell WHICH file you are
@@ -83,9 +84,9 @@ export async function restoreDocument(documentId) {
  * first (ON DELETE CASCADE clears marks, history, snapshots, revisions, invites,
  * collaborators, presence and the Excel-sync tables), then the stored PDF, then
  * the local durable copy. Storage is content-addressed and shared between
- * duplicate uploads, so the RPC reports which paths no surviving document row
- * references and only those are unlinked — matching the existing rule that an
- * object we cannot PROVE is unshared is kept.
+ * duplicate uploads. The purge RPC reports cleanup candidates; a fresh storage
+ * retirement transaction must confirm they remain unshared before unlinking.
+ * Failed cleanup stays pending; referenced paths are kept.
  *
  * Both follow-up steps are best-effort: the row is already gone, so a storage or
  * IndexedDB hiccup must not report the delete as failed.
@@ -97,12 +98,15 @@ export async function deleteDocumentForever(documentId) {
   if (!result.success) return result;
 
   const orphanedPaths = result.data?.orphaned_paths || [];
+  let storageCleanupPending = false;
   if (orphanedPaths.length > 0) {
     try {
-      const { error } = await supabase.storage.from('documents').remove(orphanedPaths);
-      if (error) console.warn('[KAL-428] stored PDF not removed:', error);
+      const cleanup = await cleanupDocumentStorage(supabase, orphanedPaths);
+      storageCleanupPending = cleanup.pendingPaths.length > 0;
+      if (storageCleanupPending) console.warn('[KAL-428] stored PDF cleanup pending:', cleanup.errors);
     } catch (err) {
-      console.warn('[KAL-428] stored PDF removal threw:', err);
+      storageCleanupPending = true;
+      console.warn('[KAL-428] stored PDF cleanup pending:', err);
     }
   }
 
@@ -112,7 +116,7 @@ export async function deleteDocumentForever(documentId) {
     console.warn('[KAL-428] local durable copy not purged:', err);
   }
 
-  return { success: true, data: result.data };
+  return { success: true, data: result.data, ...(storageCleanupPending ? { storageCleanupPending: true } : {}) };
 }
 
 /**

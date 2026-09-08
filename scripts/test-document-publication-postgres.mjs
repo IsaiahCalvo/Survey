@@ -49,7 +49,7 @@ try{
     CREATE TABLE documents(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,project_id uuid REFERENCES projects(id) ON DELETE CASCADE,name text,file_path text,file_size bigint,content_sha256 text,archived boolean DEFAULT false,user_archived_at timestamptz,updated_at timestamptz DEFAULT now(),annotations jsonb DEFAULT '{}');
     CREATE TABLE project_collaborators(project_id uuid REFERENCES projects(id) ON DELETE CASCADE,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,role text,status text,PRIMARY KEY(project_id,user_id));
     CREATE TABLE document_collaborators(document_id uuid REFERENCES documents(id) ON DELETE CASCADE,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,role text,status text,PRIMARY KEY(document_id,user_id));
-    CREATE TABLE storage.objects(bucket_id text,name text,metadata jsonb,bytes bytea,PRIMARY KEY(bucket_id,name));
+    CREATE TABLE storage.objects(bucket_id text,name text,metadata jsonb,bytes bytea,version text,PRIMARY KEY(bucket_id,name));
     CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ SELECT (string_to_array(name,'/'))[1:array_length(string_to_array(name,'/'),1)-1] $$;
     ALTER TABLE projects ENABLE ROW LEVEL SECURITY;ALTER TABLE documents ENABLE ROW LEVEL SECURITY;ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
     GRANT SELECT,INSERT,UPDATE,DELETE ON projects,documents TO authenticated,service_role;
@@ -85,7 +85,7 @@ try{
   sql(`INSERT INTO auth.users VALUES('${owner}'),('${editor}'),('${viewer}'),('${other}');UPDATE user_subscriptions SET tier='pro';
     INSERT INTO projects(id,user_id,name) VALUES('${project}','${owner}','Shared fixture');
     INSERT INTO project_collaborators VALUES('${project}','${editor}','editor','active'),('${project}','${viewer}','viewer','active');
-    INSERT INTO storage.objects VALUES('documents','${owner}/private.pdf','{"size":4}',decode('25504446','hex'))`);
+    INSERT INTO storage.objects(bucket_id,name,metadata,bytes) VALUES('documents','${owner}/private.pdf','{"size":4}',decode('25504446','hex'))`);
   const insert=(id,actor=editor,proj=project,path=`${actor}/nested/fixture-${id}.pdf`,extra='')=>`INSERT INTO documents(id,user_id,project_id,name,file_path,file_size${extra?',content_sha256':''}) VALUES('${id}','${actor}',${quote(proj)},'fixture',${quote(path)},4${extra?','+quote(extra):''})`;
   const snapshot=(tables=['projects','documents','project_collaborators','document_collaborators','storage.objects'])=>tables.map(table=>scalar(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM ${table} t`));
   await check('BEFORE guards: a deleted UUID can be inserted again',()=>{
@@ -95,13 +95,13 @@ try{
     asRole(viewer,insert(uuid(201),viewer));asRole(other,insert(uuid(202),other,null,`${owner}/private.pdf`));
     assert.equal(asRole(other,`SELECT encode(bytes,'hex') FROM storage.objects WHERE name='${owner}/private.pdf'`).stdout,'25504446');sql(`DELETE FROM documents WHERE id IN ('${uuid(201)}','${uuid(202)}')`);
   });
-  const identityMigration='20260908200000_document_identity_tombstones.sql',authorizationMigration='20260908201000_document_publication_authorization.sql';
+  const identityMigration='20260908200000_document_identity_tombstones.sql',authorizationMigration='20260908201000_document_publication_authorization.sql',storageMigration='20260908220000_document_storage_retirement.sql';
   // Synthetic permissive baseline: prove the migration removes table grants
   // that would bypass row DELETE triggers, including inherited PUBLIC access.
   sql('GRANT TRUNCATE ON public.documents TO PUBLIC,anon,authenticated,service_role');
   assert.equal(scalar("SELECT bool_and(has_table_privilege(role_name,'public.documents','TRUNCATE')) FROM unnest(ARRAY['anon','authenticated','service_role','publication_member']) role_name"),'t');
   const policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');
-  const before=snapshot();apply(identityMigration);apply(authorizationMigration);assert.deepEqual(snapshot(),before);
+  const before=snapshot();apply(identityMigration);apply(authorizationMigration);apply(storageMigration);assert.deepEqual(snapshot(),before);
   const identities='survey_private.document_identity_guards';
   await check('application roles cannot TRUNCATE documents and bypass row tombstones',()=>{
     const before=snapshot(['documents',identities]);
@@ -284,7 +284,8 @@ try{
     sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
   });
   await check('migration replay keeps documents, identities, policies and shared data unchanged',()=>{
-    const before=snapshot(['documents',identities,'projects','project_collaborators','storage.objects']);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);assert.deepEqual(snapshot(['documents',identities,'projects','project_collaborators','storage.objects']),before);
+    const tables=['documents',identities,'projects','project_collaborators','storage.objects','survey_private.document_storage_path_guards','survey_private.document_storage_cleanup'];
+    const before=snapshot(tables);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);apply(storageMigration);assert.deepEqual(snapshot(tables),before);
     assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
   });
   console.log(`Document publication PostgreSQL checks passed: ${checks}`);

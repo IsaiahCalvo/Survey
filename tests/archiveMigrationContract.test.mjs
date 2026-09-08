@@ -149,9 +149,12 @@ test('KAL-428/429: a shared stored PDF is never removed while in use', () => {
   );
   const project = MIGRATION.match(/FUNCTION public\.purge_archived_project[\s\S]*?\n\$\$;/)?.[0] || '';
   assert.match(project, /WHERE NOT EXISTS \(SELECT 1 FROM public\.documents WHERE file_path = p\)/);
-  // The services unlink exactly what the database reported and nothing else.
-  assert.match(DOC_SERVICE, /orphaned_paths[\s\S]*?storage\.from\('documents'\)\.remove\(orphanedPaths\)/);
-  assert.match(PROJECT_SERVICE, /orphaned_paths[\s\S]*?storage\.from\('documents'\)\.remove\(orphanedPaths\)/);
+  // The purge receipt is only a candidate list. A fresh retirement transaction
+  // must authorize deletion; stale reference checks must not bypass that guard.
+  for (const source of [DOC_SERVICE, PROJECT_SERVICE]) {
+    assert.match(source, /orphaned_paths[\s\S]*?cleanupDocumentStorage\(supabase, orphanedPaths\)/);
+    assert.doesNotMatch(source, /\.remove\(/);
+  }
 });
 
 test('KAL-428: permanent delete also clears the local durable copy', () => {

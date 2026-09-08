@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {homedir} from 'node:os';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+test('scheduled and account cleanup use the shared checked protocol, never direct Storage removal',()=>{
+ for(const path of ['supabase/functions/archive-purge-sweep/index.ts','supabase/functions/delete-account/index.ts']){
+  const source=read(path);assert.match(source,/documentStorageCleanup\.js/);assert.doesNotMatch(source,/\.remove\(/);assert.match(source,/'Access-Control-Allow-Origin': '\*'/);
+ }
+ const sweep=read('supabase/functions/archive-purge-sweep/index.ts');
+ assert.match(sweep,/if \(!dryRun\) \{[\s\S]*drainDocumentStorageCleanup\(supabase, UNLINK_CHUNK\)/);
+ assert.doesNotMatch(sweep,/\.in\('file_path', chunk\)/);
+});
+test('actual cleanup Edge handlers and pinned SDK pass offline endpoint checks',{
+ skip:process.env.SURVEY_DENO_INTEGRATION!=='1',timeout:60000,
+},()=>{
+ const result=spawnSync('deno',['run','--allow-env','--no-config','--node-modules-dir=none','--no-lock','--cached-only','scripts/test-storage-cleanup-endpoints-deno.ts'],{
+  cwd:resolve(import.meta.dirname,'..'),encoding:'utf8',timeout:45000,
+  env:{PATH:process.env.PATH,DENO_DIR:process.env.DENO_DIR||(process.platform==='darwin'?resolve(homedir(),'Library/Caches/deno'):resolve(homedir(),'.cache/deno'))},
+ });
+ assert.equal(result.error,undefined);assert.equal(result.status,0,result.stderr+result.stdout);
+ assert.match(result.stdout,/PASS 14 actual Storage cleanup Edge endpoint checks/);
+});

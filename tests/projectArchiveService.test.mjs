@@ -6,6 +6,7 @@ import * as Y from 'yjs';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { purgeAnnotationDoc } from '../src/services/annotationDocSync.js';
+import { cleanupDocumentStorage } from '../src/services/documentStorageCleanup.js';
 import { getLegacyYDocScopeKey } from '../src/lib/collab/legacyYDocScope.js';
 import { getOrCreateYDoc, snapshotRegisteredYDoc, _evictForTest } from '../src/lib/collab/ydocRegistry.js';
 
@@ -19,6 +20,7 @@ function fixture(data = { ok: true, orphaned_paths: [], deleted_document_ids: [d
     localCopies: new Map([[deletedId, 'deleted document local state'], [survivorId, 'foreign owner pending edits']]),
     response: { data, error: null }, purgeError: false };
   const context = {
+    cleanupDocumentStorage,
     console: { error() {}, warn: (...args) => state.warnings.push(args) },
     supabase: {
       from(table) {

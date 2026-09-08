@@ -95,7 +95,8 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(source, /caller\.auth\.getUser\(\)/);
   assert.match(source, /deleteStripeCustomer\(stripe, subscription\?\.stripe_customer_id\)/);
   assert.match(source, /listOwnedStorage\(admin, userId\)/);
-  assert.match(source, /storage\.from\('documents'\)\.remove\(paths\.slice/);
+  assert.match(source, /cleanupDocumentStorage\(admin, paths\.slice/);
+  assert.doesNotMatch(source, /storage\.from\('documents'\)\.remove/);
   assert.match(source, /admin\.rpc\('delete_account_owned_rows'/);
   assert.match(source, /deleteDatabaseRows:[\s\S]*removeStorage:[\s\S]*deleteAuthUser:/);
   assert.match(source, /admin\.auth\.admin\.deleteUser\(user\.id\)/);

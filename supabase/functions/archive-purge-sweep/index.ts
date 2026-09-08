@@ -8,18 +8,18 @@
 // is the trusted scheduled caller that does the ONE thing SQL cannot: unlink the
 // stored PDF objects that the purge left unreferenced.
 //
-// Why storage is not done in SQL: the purge RPCs deliberately only report
-// `orphaned_paths` — the file_paths no surviving document row points at — and
-// leave the unlink to the caller, exactly as the client services do
-// (src/services/documentArchiveService.js). Deleting rows from storage.objects
-// in SQL would drop the metadata but strand the S3 bytes forever, which defeats
-// the point of a cleanup job. The Storage API removes both.
+// Document-delete triggers queue cleanup candidates. The shared helper commits
+// retirement after checking all surviving references, then calls the Storage API
+// and acknowledges missing metadata. A stale orphaned_paths receipt is not delete
+// authority. Direct SQL metadata deletion would strand provider bytes; an API
+// acknowledgment is still not an independent audit of physical byte removal.
 //
 // This function is MACHINE-invoked (Supabase Cron / pg_cron). It is not part of
 // any user flow: it authenticates a shared secret, never an end user, and holds
 // no per-user session. See docs/KAL-431-archive-auto-cleanup.md before enabling.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { drainDocumentStorageCleanup } from '../_shared/documentStorageCleanup.js';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -61,8 +61,7 @@ const secretsMatch = (a: string, b: string): boolean => {
   return diff === 0;
 };
 
-const STORAGE_BUCKET = 'documents';
-// Storage removes are chunked so one huge backlog cannot blow the request up.
+// Drain a bounded durable backlog, even when this run purges no new rows.
 const UNLINK_CHUNK = 100;
 
 // Mirrors normalizeBatchLimit / MAX_BATCH_LIMIT in
@@ -158,54 +157,23 @@ Deno.serve(async (req) => {
     orphaned_count: orphanedPaths.length,
   });
 
-  // ── Unlink stored PDFs the purge left unreferenced ──────────────────────
-  // Best-effort by design: the database rows are already gone and committed. A
-  // storage failure must not fail the run — it leaves a stray object, which the
-  // logged path list makes recoverable, whereas retrying the purge would not.
+  // Candidate paths are queued by the document-delete transaction. A later
+  // reference SELECT is not a deletion fence: retire paths in a committed RPC
+  // before the Storage call. Failed/lost replies keep jobs for the next run.
   let unlinked = 0;
   const unlinkErrors: string[] = [];
   const failedPaths: string[] = [];
 
-  if (orphanedPaths.length > 0 && !dryRun) {
-    for (let i = 0; i < orphanedPaths.length; i += UNLINK_CHUNK) {
-      const chunk = orphanedPaths.slice(i, i + UNLINK_CHUNK);
-
-      // Re-check immediately before deleting. Uploads are content-addressed and
-      // deduped, so between the sweep committing and this call the same user can
-      // re-upload an identical PDF and land a LIVE row back on the very path we
-      // are about to remove. Dropping any path that has come back to life costs
-      // one query and prevents deleting the bytes of a live document.
-      const { data: revived, error: checkError } = await supabase
-        .from('documents')
-        .select('file_path')
-        .in('file_path', chunk);
-
-      if (checkError) {
-        // Cannot prove the paths are still unreferenced — skip rather than risk
-        // deleting a live document's bytes. The paths stay in the run log.
-        unlinkErrors.push(`recheck_failed: ${checkError.message}`);
-        failedPaths.push(...chunk);
-        log('unlink_recheck_failed', { chunk_size: chunk.length, message: checkError.message });
-        continue;
-      }
-
-      const stillReferenced = new Set((revived ?? []).map((r) => r.file_path));
-      const safeToRemove = chunk.filter((p) => !stillReferenced.has(p));
-      if (stillReferenced.size > 0) {
-        log('unlink_skipped_revived', { count: stillReferenced.size });
-      }
-      if (safeToRemove.length === 0) continue;
-
-      const { data: removed, error: rmError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .remove(safeToRemove);
-      if (rmError) {
-        unlinkErrors.push(rmError.message);
-        failedPaths.push(...safeToRemove);
-        log('unlink_chunk_failed', { chunk_size: safeToRemove.length, message: rmError.message });
-      } else {
-        unlinked += Array.isArray(removed) ? removed.length : safeToRemove.length;
-      }
+  if (!dryRun) {
+    try {
+      const cleanup = await drainDocumentStorageCleanup(supabase, UNLINK_CHUNK);
+      unlinked = cleanup.removedPaths.length;
+      failedPaths.push(...cleanup.pendingPaths);
+      unlinkErrors.push(...cleanup.errors);
+      if (cleanup.retainedPaths.length) log('unlink_kept_referenced', { count: cleanup.retainedPaths.length });
+    } catch (error) {
+      unlinkErrors.push('Durable storage cleanup could not run; queued paths were kept.');
+      log('unlink_queue_failed', { message: error instanceof Error ? error.message : 'cleanup unavailable' });
     }
   }
 

@@ -1976,7 +1976,7 @@ Apply the additive receipt migration before expecting local cache reclamation.
 Do not roll the client back to clearing a pre-read child list. Physical Storage
 deletion is unchanged in this batch and its known race remains open.
 
-## Storage cleanup: verified provider boundary for the next change
+## Storage cleanup: verified provider boundary
 
 Official Storage source at commit
 `b41d14fa15547284b351ea024f8c83a201cdc83a` establishes why a stronger protocol is
@@ -1995,15 +1995,79 @@ needed. This is source evidence, not the deployed project's version:
   Missing metadata does not trigger row deletion. Lost delete replies and
   backend partial failures must not be described as verified byte removal.
 
-Next implementation requirements: exact bucket/path retirement, all surviving
-references checked atomically, short guarded transactions, a durable physical
-cleanup queue, service-role/final-upload enforcement, move/rename handling, fresh
-paths for new uploads, and account-closing protection for previously unseen
-paths. Retired paths must never reopen, including after account deletion. Physical
-cleanup continues through the Storage API, never direct metadata deletion.
-Supabase discourages Storage schema changes; custom final-write guards require
-version-pinned provider integration tests and an explicit rollout compatibility
-gate. No such Storage migration is implemented or deployed by this receipt batch.
+These findings drive the implementation below. Supabase discourages Storage
+schema changes; custom final-write guards require version-pinned provider tests
+and a live compatibility check before rollout. No migration has been deployed.
+
+## Committed path retirement and durable cleanup
+
+Migration `20260908220000` adds a private path guard and cleanup queue. Document
+deletion or path changes queue the old exact path in the same transaction. The
+retirement RPC checks every surviving reference, including shared and archived
+documents, then permanently retires only unreferenced paths. Short advisory locks,
+real guard-row writes and two-second lock timeouts protect concurrent writers and
+old transaction snapshots. Retired paths never reopen. The guard uses a path hash;
+pending jobs keep exact paths privately until acknowledged and have no user or
+document foreign key that could erase retry state during account deletion.
+
+The Storage metadata trigger requires retirement to have committed in an earlier
+transaction before deletion or an outgoing move. It rejects publication, new
+metadata and version-changing writes to retired paths, including privileged
+Storage completion. Metadata-only refreshes and normal nonretired replacements
+remain supported. Trigger replacement does not require dropping a provider-owned
+trigger; grant checks fail closed if application roles can still truncate the
+protected tables. Provider ownership, schema and version compatibility remain
+rollout gates, not local-fixture claims.
+
+One shared client/Edge helper now performs retire, Storage API remove, then
+acknowledge in that order. It serves document and project archive deletion, the
+generic file-delete hook, scheduled cleanup and account deletion. It rejects
+malformed or incomplete receipts and never falls back to an unguarded remove.
+Requests use batches of 100, a 15-second request timeout, a 45-second work budget
+and a 200-request ceiling. Failed batches split within those bounds so one bad
+path need not stop healthy paths. Timed-out provider requests may still finish;
+the committed retirement and durable retry state make that safe for publication.
+An acknowledged path means the API replied and metadata is absent, not a separate
+physical byte audit.
+
+The scheduled sweep drains old jobs even when no new document rows are purged.
+Its service-only queue claim skips locked rows and paths with surviving references,
+and delays claimed jobs for one minute before returning them. A failed oldest
+batch therefore cannot repeatedly exclude later work. Lost replies remain safe
+to retry. Archive services preserve a successful row purge while reporting pending
+storage cleanup; account deletion stops before final auth deletion if cleanup is
+pending or a shared reference survives. Dry-run sweeps do not claim jobs.
+
+Verification for this batch:
+
+- Full suite: 5,385 tests, 5,318 passed, 67 skipped, zero failures or cancellations,
+  exit 0. Prior baseline: 5,288 / 5,223 / 65. The two added opt-in skips were also
+  run explicitly below.
+- Combined disposable PostgreSQL run: all 33 earlier publication/quota/purge
+  checks plus 28 storage checks passed with the new migration installed; wrapper
+  result 9/9. This includes old snapshots, rollback after a simulated external
+  delete, privileged final writes, shared paths, claim fairness and hosted-style
+  non-owner trigger replacement. Physical provider deletion is an explicit stub.
+- Actual Edge handlers and installed pinned SDK passed 14 checks (wrapper 2/2)
+  with synthetic network replies; Deno type checking passed without network access.
+- Shared helper and client/service focused tests passed 147/147, including lost
+  replies, malformed receipts, retry limits, partial failures and Yjs preservation.
+- Browser QA used the actual project archive service, shared helper and native
+  IndexedDB with synthetic SQL/Storage replies. Delete followed the checked order;
+  a shared PDF and collaborator's unsent drawing survived deletion and reload.
+  Screenshots, page state and console checks passed. The in-app browser was
+  unavailable, so a separate Chrome tab was used. This is not full Archive-screen
+  or live-auth/provider QA. Production build and AST graph update passed.
+
+Remaining work is explicit: account-closing protection against previously unseen
+paths, safe backfill of known pre-migration failed cleanup jobs, and live provider
+compatibility/physical cleanup tests. Do not treat every unreferenced object as
+garbage: it may be a legitimate upload awaiting publication. The current app's
+new-upload paths include fresh document/project/operation IDs; retry after
+retirement must use a new operation path. Other upload protocols, including TUS
+and S3-compatible clients, still need proof that every physical replacement
+changes the metadata version. Immutable PDF generations are separate future work.
+Microsoft, production data, billing accounts and external services were untouched.
 
 ## Sources
 
@@ -2026,3 +2090,8 @@ change or deletion is part of this slice. Older clients may not read a new pendi
 draft format, so resolve or migrate pending work before downgrading those clients.
 Once a billing caller uses the transition receipts, preserve those receipts on
 rollback; dropping them would discard proof of prior committed events.
+Once storage retirement is enabled, preserve guards and pending cleanup jobs.
+Deploy the migration before new callers; an old server makes the helper defer
+cleanup, not delete unsafely. Rolling callers back can make old direct-delete
+requests fail against the guards. Do not remove guards or reopen retired paths to
+make those requests succeed. Roll back only with a reviewed, guarded cleanup path.

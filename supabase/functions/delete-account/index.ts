@@ -1,6 +1,7 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { deleteStripeCustomer, runAccountDeletionStages } from '../_shared/accountDeletion.ts';
+import { cleanupDocumentStorage } from '../_shared/documentStorageCleanup.js';
 
 type AdminClient = ReturnType<typeof createClient<any>>;
 
@@ -41,8 +42,10 @@ async function removeOwnedStorage(admin: AdminClient, userId: string) {
   // walk the prefix so a legacy/nested upload cannot survive account deletion.
   const paths = await listOwnedStorage(admin, userId);
   for (let offset = 0; offset < paths.length; offset += 100) {
-    const { error } = await admin.storage.from('documents').remove(paths.slice(offset, offset + 100));
-    if (error) throw new Error(`Could not remove stored documents: ${error.message}`);
+    const cleanup = await cleanupDocumentStorage(admin, paths.slice(offset, offset + 100));
+    if (cleanup.pendingPaths.length || cleanup.retainedPaths.length) {
+      throw new Error('Stored documents are still pending safe cleanup. Account deletion can be retried.');
+    }
   }
 }
 

@@ -16,6 +16,7 @@ import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange } from './libraryChangeBus.js';
 import { storageDownloads } from '../services/storageDownloads.js';
+import { cleanupDocumentStorage } from '../services/documentStorageCleanup.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 import { randomUUID } from '../utils/randomUUIDPolyfill.js';
 import { queueToolPreferenceWrite } from './toolPreferenceWriteQueue.js';
@@ -860,11 +861,12 @@ export const useStorage = () => {
       throw new Error('Supabase not available');
     }
 
-    const { error } = await supabase.storage
-      .from('documents')
-      .remove([filePath]);
-
-    if (error) throw error;
+    const cleanup = await cleanupDocumentStorage(supabase, [filePath]);
+    if (cleanup.pendingPaths.length > 0) {
+      const error = new Error(cleanup.errors.join(' ') || 'Document storage cleanup is pending.');
+      error.code = 'storage-cleanup-pending';
+      throw error;
+    }
     storageDownloads(supabase).invalidate(filePath);
   }, []);
 

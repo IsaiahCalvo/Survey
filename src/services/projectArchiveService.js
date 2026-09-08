@@ -19,6 +19,7 @@
 import { supabase } from '../supabaseClient';
 import { purgeAnnotationDoc } from './annotationDocSync';
 import { normalizeProjectItem } from './archiveContract';
+import { cleanupDocumentStorage } from './documentStorageCleanup.js';
 
 const PROJECT_ARCHIVE_COLUMNS =
   'id, user_id, name, user_archived_at, user_archive_expires_at, user_archived_by, archive_group_id';
@@ -74,8 +75,8 @@ export async function restoreProject(projectId) {
  *
  * The RPC removes the documents and the project in one transaction (cascade
  * clears every child table) and reports the stored PDF paths that no surviving
- * document row still references. Only those are unlinked — a path shared with a
- * duplicate upload elsewhere in the account is kept.
+ * document row still references. A fresh storage retirement transaction must
+ * confirm each candidate remains unshared before unlinking it.
  */
 export async function deleteProjectForever(projectId) {
   if (!projectId) return { success: false, error: 'No project selected.' };
@@ -84,12 +85,15 @@ export async function deleteProjectForever(projectId) {
   if (!result.success) return result;
 
   const orphanedPaths = result.data?.orphaned_paths || [];
+  let storageCleanupPending = false;
   if (orphanedPaths.length > 0) {
     try {
-      const { error } = await supabase.storage.from('documents').remove(orphanedPaths);
-      if (error) console.warn('[KAL-429] stored PDFs not removed:', error);
+      const cleanup = await cleanupDocumentStorage(supabase, orphanedPaths);
+      storageCleanupPending = cleanup.pendingPaths.length > 0;
+      if (storageCleanupPending) console.warn('[KAL-429] stored PDF cleanup pending:', cleanup.errors);
     } catch (err) {
-      console.warn('[KAL-429] stored PDF removal threw:', err);
+      storageCleanupPending = true;
+      console.warn('[KAL-429] stored PDF cleanup pending:', err);
     }
   }
 
@@ -112,7 +116,9 @@ export async function deleteProjectForever(projectId) {
     }
   }
 
-  return { success: true, data: result.data, ...(localCleanupDeferred ? { localCleanupDeferred: true } : {}) };
+  return { success: true, data: result.data,
+    ...(storageCleanupPending ? { storageCleanupPending: true } : {}),
+    ...(localCleanupDeferred ? { localCleanupDeferred: true } : {}) };
 }
 
 /**
