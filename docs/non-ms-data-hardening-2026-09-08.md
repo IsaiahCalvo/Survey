@@ -136,6 +136,104 @@ This protects app-controlled exits, not process kills or power loss. Continuous
 transactional persistence remains required. No quit-coordinator code is included
 in this first slice.
 
+## Follow-up batch: local writes and Save focus
+
+The local annotation backup now compares freshly serialized content with the
+exact stored key. Three identical saves produce one `setItem`, down from three.
+This avoids duplicate writes after the automatic mirror without deferring a
+changed edit. There is no object-identity cache: nested mutations still serialize,
+and removed or replaced storage entries still get written. Read failure falls
+back to the prior write attempt; failed writes preserve the last saved copy.
+
+The main viewer keyboard effect now belongs only to the active tab. Hidden tabs
+previously handled the same Save event, causing extra writes and saves of other
+documents. Cmd/Ctrl+S now also works with a PDF form field focused. Tool shortcuts
+retain their typing guard, and Save does not interrupt input composition.
+The native PDF zoom listener now also belongs only to the active tab; its
+regression test reproduced hidden tabs zooming on each native zoom event.
+
+The 19 focused tests passed, including the failures reproduced before the patch.
+An independent read-only review found no blocker in these two changes. Browser
+QA on the local four-canvas PDF form fixture confirmed focused Cmd+S emitted one
+successful local manual save with no cloud write; the entered field value
+survived reload. The fixture's blank value was restored. This is local evidence,
+not a deployed or live collaboration result.
+
+The existing transactional annotation outbox was inspected before considering a
+new local snapshot store. It is currently tied to cloud document and actor IDs,
+while local-only files still use a legacy file-derived identity. Reusing it needs
+an explicit identity and recovery migration, not a second uncoordinated store.
+No local data was migrated or deleted in this batch.
+
+### Native exit implementation in the follow-up batch
+
+Native exit now uses one main-process coordinator and one AppShell response per
+editor window. Every open PDF tab, including inactive tabs, must save and confirm
+the same revision. Sender, renderer generation, attempt and participant checks
+reject stale, duplicate and wrong-window replies. The timeout cancels exit;
+repeated quit requests cannot bypass a pending save. Print and OAuth windows do
+not stand in for document windows.
+
+Normal window close and both updater restart paths use the same check. Failed
+exit calls and later updater errors cancel the confirmed attempt, release input,
+restore the app menu and restore unload warnings. The packaging list includes
+the new main-process helper so packaged builds can load it.
+
+The viewer writes the existing annotation backup and verifies existing legacy
+backup formats. It checks the captured document/account/content revision again
+before acknowledgment. Native form blur uses React's synchronous commit path;
+unfinished text, drawing or erase work can veto exit instead of being discarded.
+Locked clean tabs issue no writes; locked dirty tabs veto exit.
+
+Current limits are deliberate and must remain visible before rollout:
+
+- Idle drawing tools can require switching to Pan before exit, even without an
+  in-progress stroke. This conservative gate is not a zero-regression UX claim.
+- Pending or unverified cloud metadata can block offline exit. A disabled tab's
+  `idle` status is not proof of persistence; the receipt work below is still needed.
+- Existing backup keys and local file identity are unchanged. This does not add
+  a full local-only document library, bytes store or migration.
+- The handshake does not protect process kills or power loss, and this batch
+  does not prove real-account collaboration or deployed behavior.
+
+Follow-up verification on frozen product files: 4,194 tests, 4,140 passed,
+54 skipped, zero failed or canceled, exit 0. The production build passed. The
+root agent repeated the isolated Electron fixture successfully: atomic IPC
+writes, quota preservation and quit veto, Save retry, focused field immediate
+quit/relaunch with exact value restoration, and home-only quit. The fixture
+captures the native dialog call and chooses its sole Keep open action; it is not
+a visual audit of the operating system's dialog. Frozen browser QA also retained
+the focused-field value through reload with no page errors and restored the
+fixture's blank value. No real auth, Microsoft or cloud write was part of these
+fixtures. Generated graph files and diagnostic logs remain outside the commit.
+
+### Next offline gate: a local-only durability receipt
+
+The queue's IndexedDB `put()` resolves after transaction completion, but the
+same interface can silently use an in-memory fallback. A receipt must name its
+persistent storage capability; an in-memory result cannot prove crash recovery.
+Waiting for pending writes alone also misses accepted remote updates that have
+not yet reached the local accepted-state journal.
+
+The proposed next step reuses the existing stores: track local write completion
+apart from the network queue, checkpoint only the accepted Y.Doc, read accepted
+and pending records plus their scope/incarnation in one transaction, and prove
+that a fresh reader can restore the captured revision. Optimistic or quarantined
+edits must never be copied into the accepted checkpoint. Changed scope or content,
+failed storage, or unresolved dependencies must invalidate the receipt.
+
+Inactive tabs need a retained receipt from their old scope. The existing close
+path must still seal the old writer immediately; delaying that seal until local
+storage finishes could leave two writers active after a quick tab switch. A
+separate local-close promise can finish before the existing network teardown.
+The native close gate must compare the receipt with the tab's current revision,
+not the disabled hook's reset `idle` status.
+
+This is a design, not an implemented offline-close guarantee. Required proofs
+include hung network with successful local storage, transaction abort after a
+successful request, memory fallback, quota, account switch, deletion/quarantine,
+new edits during save, and deactivate/offline/quit without reopening each tab.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

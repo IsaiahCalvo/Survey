@@ -7,11 +7,16 @@ const { exec, spawn } = require('child_process');
 const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
 const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
+const { createNativeQuitCoordinator } = require('./electron/nativeQuitCoordinator.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
 const SURVEY_ANALYTICS_MAX_BYTES = 32 * 1024;
 let surveyMainWindow = null;
+const nativeEditorWindows = new Map();
+const allowedNativeCloseIds = new Set();
+let nativeExitAllowed = false;
+let nativeQuitMenu = null;
 
 // 2026-06-04 — Continuous main-process renderer console capture.
 // The in-page console buffer (window.__consoleLogBuffer in src/main.jsx) lives in
@@ -176,6 +181,7 @@ function setupAutoUpdater(win) {
   });
   autoUpdater.on('error', (err) => {
     console.warn('[updater] error:', err?.message || err);
+    nativeQuitCoordinator.failConfirmedUpdate();
     send('updater:status', { state: 'error', error: err?.message || String(err) });
   });
   autoUpdater.on('download-progress', (p) => {
@@ -195,7 +201,7 @@ function setupAutoUpdater(win) {
         detail: 'Restart the app now to finish installing, or close the app later to apply on next launch.'
       });
       if (response === 0) {
-        autoUpdater.quitAndInstall(false, true);
+        requestNativeExit({ kind: 'update' });
       }
     } catch (dErr) {
       console.warn('[updater] dialog failed:', dErr?.message || dErr);
@@ -231,8 +237,8 @@ ipcMain.handle('updater:download', async () => {
 ipcMain.handle('updater:installNow', async () => {
   if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
   try {
-    autoUpdater.quitAndInstall(false, true);
-    return { ok: true };
+    requestNativeExit({ kind: 'update' });
+    return { ok: true, pending: true };
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
   }
@@ -302,6 +308,7 @@ function createWindow() {
     },
   });
   surveyMainWindow = win;
+  registerNativeEditorWindow(win);
   win.once('closed', () => {
     if (surveyMainWindow === win) surveyMainWindow = null;
   });
@@ -1672,9 +1679,90 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
   });
 });
 
-// Track if we're in the process of quitting
-let isQuitting = false;
-let quitAttempt = 0;
+// A native exit is permitted only after all editor windows have saved and
+// confirmed their current local revisions. Auxiliary print/OAuth windows hold
+// no app documents and are deliberately not participants.
+function restoreNativeQuitMenu() {
+  if (nativeQuitMenu) Menu.setApplicationMenu(nativeQuitMenu);
+  nativeQuitMenu = null;
+}
+
+function showNativeQuitFailure(reason) {
+  nativeExitAllowed = false;
+  allowedNativeCloseIds.clear();
+  restoreNativeQuitMenu();
+  console.warn('Quit canceled:', reason);
+  const options = { type: 'error', title: 'The app was kept open',
+    message: 'Local saves could not be confirmed.', detail: reason, buttons: ['Keep open'],
+    defaultId: 0, cancelId: 0 };
+  const win = surveyMainWindow && !surveyMainWindow.isDestroyed() ? surveyMainWindow : null;
+  const shown = win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options);
+  Promise.resolve(shown).catch(() => {});
+}
+
+const nativeQuitCoordinator = createNativeQuitCoordinator({
+  send: (id, request) => {
+    const entry = nativeEditorWindows.get(id);
+    if (!entry || entry.win.isDestroyed()) throw new Error('editor window unavailable');
+    entry.win.webContents.send('app:beforeQuit', request);
+  },
+  onFailure: showNativeQuitFailure,
+  onReady: (action) => {
+    try {
+      if (action.kind === 'close') {
+        const entry = nativeEditorWindows.get(action.id);
+        restoreNativeQuitMenu();
+        if (entry && !entry.win.isDestroyed()) {
+          allowedNativeCloseIds.add(action.id);
+          entry.win.close();
+        }
+        return;
+      }
+      nativeExitAllowed = true;
+      if (action.kind === 'update') {
+        autoUpdater.quitAndInstall(false, true);
+      } else {
+        fileWatchers.forEach((watcher) => watcher.close());
+        fileWatchers.clear();
+        app.quit();
+      }
+    } catch (error) { throw error; }
+  },
+});
+
+function requestNativeExit(action) {
+  if (nativeQuitCoordinator.pending) return false;
+  const participants = [...nativeEditorWindows.entries()]
+    .filter(([id, entry]) => !entry.win.isDestroyed() && (action.kind !== 'close' || id === action.id))
+    .map(([id, entry]) => ({ id, generation: entry.generation }));
+  nativeQuitMenu = Menu.getApplicationMenu();
+  Menu.setApplicationMenu(null);
+  return nativeQuitCoordinator.request(participants, action);
+}
+
+function registerNativeEditorWindow(win) {
+  const id = win.webContents.id;
+  const entry = { win, generation: 0 };
+  nativeEditorWindows.set(id, entry);
+  win.webContents.on('did-start-loading', () => {
+    entry.generation++;
+    nativeQuitCoordinator.invalidate(id);
+  });
+  win.webContents.on('render-process-gone', () => nativeQuitCoordinator.invalidate(id));
+  win.webContents.on('will-prevent-unload', (event) => {
+    if (nativeExitAllowed || allowedNativeCloseIds.has(id)) event.preventDefault();
+  });
+  win.on('close', (event) => {
+    if (nativeExitAllowed || allowedNativeCloseIds.has(id)) return;
+    event.preventDefault();
+    requestNativeExit({ kind: 'close', id });
+  });
+  win.once('closed', () => {
+    nativeQuitCoordinator.invalidate(id);
+    nativeEditorWindows.delete(id);
+    allowedNativeCloseIds.delete(id);
+  });
+}
 
 app.whenReady().then(() => {
   createWindow();
@@ -1682,64 +1770,15 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
-  if (!isQuitting) {
-    event.preventDefault();
-    isQuitting = true;
-    const attempt = ++quitAttempt;
-
-    // Notify all windows to save their work
-    const windows = BrowserWindow.getAllWindows();
-
-    if (windows.length === 0) {
-      app.quit();
-      return;
-    }
-
-    // Send save request to all windows
-    let windowsResponded = 0;
-    const checkAndQuit = () => {
-      if (!isQuitting || attempt !== quitAttempt) return;
-      windowsResponded++;
-      if (windowsResponded >= windows.length) {
-        // All windows have responded, now quit
-        setTimeout(() => {
-          if (!isQuitting || attempt !== quitAttempt) return;
-          // Clean up file watchers
-          fileWatchers.forEach((watcher) => {
-            watcher.close();
-          });
-          fileWatchers.clear();
-
-          app.quit();
-        }, 100);
-      }
-    };
-
-    windows.forEach((win) => {
-      if (win.isDestroyed()) {
-        checkAndQuit();
-        return;
-      }
-
-      // Send message to renderer to save
-      win.webContents.send('app:beforeQuit', { quitAttemptId: attempt });
-
-      // Give each window 5 seconds to save, then continue
-      setTimeout(checkAndQuit, 5000);
-    });
-  }
+  if (nativeExitAllowed) return;
+  event.preventDefault();
+  requestNativeExit({ kind: 'quit' });
 });
 
-// Handle save completion from renderer
+// Only the expected window's main frame may answer its generation-bound check.
 ipcMain.on('app:saveComplete', (event, result) => {
-  if (isQuitting && result?.saved === false && result.quitAttemptId === quitAttempt) {
-    // A failed local save in ANY tab cancels this quit. Other tabs reporting
-    // success cannot undo it, and old timeout callbacks cannot quit a retry.
-    isQuitting = false;
-    quitAttempt++;
-    console.warn('Quit canceled: local document changes could not be saved.');
-  }
-  // Successful saves retain the existing timeout-based quit behavior.
+  if (!event.sender || event.senderFrame !== event.sender.mainFrame) return;
+  nativeQuitCoordinator.report(event.sender.id, result);
 });
 
 app.on('window-all-closed', () => {

@@ -45,6 +45,7 @@ import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
+import { useNativeQuitSave } from './hooks/useNativeQuitSave.js';
 import { getNextSelectModeMenuOpen, getSelectFamilyIconName, getSelectFamilyLabel, getSelectModeIconName, getSelectModeMenuFocusIndex, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
@@ -742,6 +743,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
+  const { register: registerQuitSave, confirmedRef: nativeExitConfirmedRef } = useNativeQuitSave(tabs);
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
@@ -1051,6 +1053,7 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handler = (event) => {
+      if (nativeExitConfirmedRef.current) return undefined;
       // Closing the window also closes inactive tabs, including local edits.
       if (!tabs.some(shouldWarnBeforeUnloadForTab)) return undefined;
       // Modern browsers ignore the returned string and show their own
@@ -2957,6 +2960,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onCloseAfterFailure={handleTabClose}
                       onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                       onAnnotationsExistChange={handleAnnotationsExistChange}
+                      onRegisterQuitSave={registerQuitSave}
                       onRequestCreateTemplate={handleCreateTemplateRequest}
                       initialViewState={tabViewState}
                       onViewStateChange={handleViewStateChange}

@@ -74,7 +74,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('fileWatcher:error', subscription);
   },
 
-  // App lifecycle APIs
+  // App lifecycle: one AppShell handler aggregates all tabs. Replies echo the
+  // main-process attempt/generation and prepare/confirm phase, never per-tab ACKs.
   onBeforeQuit: (callback) => {
     const subscription = (_event, request) => callback(request);
     ipcRenderer.on('app:beforeQuit', subscription);

@@ -45,13 +45,22 @@ test('closing the window warns for an unsaved inactive local tab', () => {
     { id: 'home', isHome: true },
     { id: 'local', file: { name: 'local.pdf' }, hasUnsavedAnnotations: true },
   ];
-  const install = new Function('window', 'tabs', 'activeTabId', 'shouldWarnBeforeUnloadForTab',
-    `return (${effect});`)(dom.window, tabs, 'home', shouldWarnBeforeUnloadForTab);
+  const nativeExitConfirmedRef = { current: false };
+  const install = new Function('window', 'tabs', 'activeTabId', 'shouldWarnBeforeUnloadForTab', 'nativeExitConfirmedRef',
+    `return (${effect});`)(dom.window, tabs, 'home', shouldWarnBeforeUnloadForTab, nativeExitConfirmedRef);
   const cleanup = install();
   try {
     const event = new dom.window.Event('beforeunload', { cancelable: true });
     dom.window.dispatchEvent(event);
     assert.equal(event.defaultPrevented, true);
+    nativeExitConfirmedRef.current = true;
+    const confirmedEvent = new dom.window.Event('beforeunload', { cancelable: true });
+    dom.window.dispatchEvent(confirmedEvent);
+    assert.equal(confirmedEvent.defaultPrevented, false, 'a confirmed native exit does not raise a second prompt');
+    nativeExitConfirmedRef.current = false;
+    const canceledEvent = new dom.window.Event('beforeunload', { cancelable: true });
+    dom.window.dispatchEvent(canceledEvent);
+    assert.equal(canceledEvent.defaultPrevented, true, 'canceling native exit restores the unsaved warning');
     tabs[1].hasUnsavedAnnotations = false;
     const savedEvent = new dom.window.Event('beforeunload', { cancelable: true });
     dom.window.dispatchEvent(savedEvent);

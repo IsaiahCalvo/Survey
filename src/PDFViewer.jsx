@@ -143,6 +143,7 @@ import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebu
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
 import { deferUntilEraseCommitsFinish } from './utils/pendingEraseCommits.js';
+import { verifyLegacyQuitBackups } from './services/legacyQuitBackups.js';
 
 import { debugMark } from './utils/debugBridge';
 import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
@@ -425,7 +426,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -21768,35 +21769,84 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => clearInterval(autoSaveInterval);
   }, [pdfFilePath, hasUnsavedAnnotations, handleSaveDocument]);
 
-  // Handle app quit - save before closing
+  // Native exit saves local snapshots only. Cloud requests may outlive the
+  // handshake; they must not be mistaken for an unfinished local write.
+  const quitSaveHandlerRef = useRef(null);
+  const quitCloudMetaReceiptRef = useRef(null);
+  const getQuitCloudMetaRevision = () => JSON.stringify([
+    pdfFile?.id || null, user?.id || null, surveyMarkersRef.current, spacesRef.current,
+  ]);
   useEffect(() => {
-    if (!window.electronAPI?.onBeforeQuit) {
-      return;
+    if (isActive && normalAnnotationHydration.ready
+      && normalAnnotationHydration.documentId === pdfFile?.id
+      && cloudSyncStatus?.healthy && cloudSyncStatus.stage === 'idle' && cloudSyncQueueSize === 0) {
+      quitCloudMetaReceiptRef.current = getQuitCloudMetaRevision();
     }
-
-    const handleBeforeQuit = async ({ quitAttemptId } = {}) => {
-      let saved = true;
-      if (hasUnsavedAnnotations) {
-        try {
-          saved = await handleSaveDocument(true, (localBackupSaved) => {
-            if (!localBackupSaved) {
-              window.electronAPI?.notifySaveComplete?.({ saved: false, quitAttemptId });
-            }
-          });
-        } catch (error) {
-          saved = false;
-          console.error('Error saving before quit:', error);
-        }
+    // A metadata edit alone is not a receipt. Capture only a hydration/status
+    // event from the durable document; inactive tabs retain their last receipt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudSyncStatus, cloudSyncQueueSize, normalAnnotationHydration]);
+  const getQuitSaveRevision = () => JSON.stringify([
+    pdfId, pdfFile?.id || null, user?.id || null, annotationsByPageRef.current,
+    surveyMarkersRef.current, spacesRef.current, items, annotations,
+    pageNames, bookmarks, activeSpaceId, pageTransformations, entities,
+  ]);
+  const getQuitSaveBlockReason = () => {
+    if (editingAnnotation || richTextEditor || showRegionSelection || pendingSurveyMarker
+      || textToolDragRef.current || counterDragRef.current?.active
+      || !['pan', 'select', 'text-select'].includes(activeTool)
+      || deferUntilEraseCommitsFinish(() => {})) {
+      return 'Finish drawing or editing and switch to Pan, then close again. The app was kept open.';
+    }
+    if (toolPreferencesSaveError) return toolPreferencesSaveError;
+    if (pdfFile?.id && (!cloudSyncStatus?.healthy || cloudSyncStatus.stage !== 'idle'
+      || cloudSyncQueueSize > 0 || pendingSurveyMarkerSyncRef.current
+      || quitCloudMetaReceiptRef.current !== getQuitCloudMetaRevision())) {
+      return 'Document changes are still pending or could not sync. Wait for Save to finish, then close again.';
+    }
+    if (!documentLocked && !verifyLegacyQuitBackups({
+      storage: localStorage, pdfId, cloudBacked: !!pdfFile?.id, items, annotations,
+      surveyMarkers: surveyMarkersRef.current, callouts, pageNames, bookmarks,
+      spaces: spacesRef.current, activeSpaceId, pageTransformations,
+    })) return 'Some local document settings could not be verified. Keep the document open and retry Save.';
+    return null;
+  };
+  const saveLocalBeforeQuit = async () => {
+    if (!pdfId || !pdfFile) return { saved: false };
+    const reason = getQuitSaveBlockReason();
+    if (reason) return { saved: false, reason };
+    const snapshot = annotationsByPageRef.current;
+    const revision = getQuitSaveRevision();
+    // A locked tab must remain a zero-write path. Only an already-clean tab
+    // can acknowledge; pre-lock unsaved work needs an explicit user decision.
+    if (documentLocked) return hasUnsavedAnnotations
+      ? { saved: false, reason: 'This locked document still has unsaved changes. Keep it open and resolve them before closing.' }
+      : { saved: true, revision };
+    try {
+      const saved = await saveAnnotationsByPage(pdfId, snapshot);
+      // A late save must not clear a newer edit or a different document/account.
+      if (quitSaveHandlerRef.current?.getRevision() !== revision) return { saved: false };
+      if (saved !== true) {
+        setHasUnsavedAnnotations(true);
+        onUnsavedAnnotationsChange?.(true, tabId);
+        showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        return { saved: false };
       }
-      // A failure vetoes this quit; a later successful tab must not erase it.
-      if (window.electronAPI?.notifySaveComplete) {
-        window.electronAPI.notifySaveComplete({ saved: saved === true, quitAttemptId });
-      }
-    };
-
-    const removeListener = window.electronAPI.onBeforeQuit(handleBeforeQuit);
-    return removeListener;
-  }, [hasUnsavedAnnotations, handleSaveDocument]);
+      savedAnnotationsByPageRef.current = snapshot;
+      setHasUnsavedAnnotations(false);
+      onUnsavedAnnotationsChange?.(false, tabId);
+      return { saved: true, revision };
+    } catch { return { saved: false }; }
+  };
+  quitSaveHandlerRef.current = { saveLocal: saveLocalBeforeQuit,
+    getRevision: () => getQuitSaveBlockReason() ? null : getQuitSaveRevision() };
+  useEffect(() => {
+    if (!onRegisterQuitSave || !tabId) return;
+    return onRegisterQuitSave(tabId, {
+      saveLocal: () => quitSaveHandlerRef.current.saveLocal(),
+      getRevision: () => quitSaveHandlerRef.current.getRevision(),
+    });
+  }, [onRegisterQuitSave, tabId]);
 
   // Load note content when note dialog opens
   useEffect(() => {
@@ -23984,6 +24034,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Keyboard shortcuts
   useEffect(() => {
+    // Hidden tabs stay mounted. Only the visible document owns shortcuts.
+    if (!isActive) return undefined;
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
       const isFormField =
@@ -23992,6 +24044,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           activeElement.tagName === 'TEXTAREA' ||
           activeElement.isContentEditable ||
           activeElement.contentEditable === 'true');
+
+      // Save also applies while typing in a PDF form. Keep tool and text
+      // shortcuts below their focus guard, and do not interrupt composition.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.isComposing && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSaveDocument();
+        return;
+      }
 
       // KAL-75 (G1): a locked/read-only document must not arm mutating tools
       // from the keyboard — the read-only CSS layer blocks the toolbar, this
@@ -24172,12 +24232,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             pdfSidebarRef.current?.openSearchPanel({ focus: true, select: true });
             return;
           }
-          // Save document (Cmd/Ctrl+S)
-          if (key === 's') {
-            e.preventDefault();
-            handleSaveDocument();
-            return;
-          }
           if (key === '0') {
             e.preventDefault();
             zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
@@ -24273,11 +24327,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout]);
+  }, [goToNextPage, goToPreviousPage, scrollMode, zoomIn, zoomOut, handleSaveDocument, activeTool, setEraserMode, eraserMode, clipboardAnnotation, clipboardCallout, handlePasteCallout, isActive]);
 
   // Electron: listen for pdf-zoom custom events forwarded from main process
   // (Ctrl/Cmd+Plus/Minus are intercepted by electron-main.js to prevent UI zoom)
   useEffect(() => {
+    if (!isActive) return undefined;
     const handlePdfZoom = (e) => {
       const { direction } = e.detail || {};
       if (direction === 'in') zoomIn();
@@ -24286,7 +24341,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     window.addEventListener('pdf-zoom', handlePdfZoom);
     return () => window.removeEventListener('pdf-zoom', handlePdfZoom);
-  }, [zoomIn, zoomOut, resetZoom]);
+  }, [zoomIn, zoomOut, resetZoom, isActive]);
 
   // Enforce continuous mode
   useEffect(() => {

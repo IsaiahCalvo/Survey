@@ -1603,7 +1603,14 @@ export const saveAnnotationsByPage = (pdfId, annotationsByPage) => {
   try {
     const data = JSON.stringify(annotationsByPage);
     if (typeof data !== 'string') return false;
-    localStorage.setItem(`annotationsByPage_${pdfId}`, data);
+    const key = `annotationsByPage_${pdfId}`;
+    // The automatic mirror may have already saved these exact bytes. Read the
+    // real storage value, not an object cache: callers can mutate nested state,
+    // and another window can replace or remove the stored snapshot.
+    try {
+      if (localStorage.getItem(key) === data) return true;
+    } catch { /* A failed read must not prevent the existing write attempt. */ }
+    localStorage.setItem(key, data);
     return true;
   } catch {
     // These entries may be the only copy of local/offline edits, not a cache.

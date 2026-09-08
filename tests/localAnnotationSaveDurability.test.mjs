@@ -14,10 +14,10 @@ const callbackSource = viewerSource.slice(
   callbackStart + 'const handleSaveDocument = useCallback('.length,
   callbackEnd + '\n  }'.length,
 );
-const quitStart = viewerSource.indexOf('const handleBeforeQuit = async (');
-const quitEnd = viewerSource.indexOf('\n\n    const removeListener', quitStart);
+const quitStart = viewerSource.indexOf('const saveLocalBeforeQuit = async (');
+const quitEnd = viewerSource.indexOf('\n  quitSaveHandlerRef.current =', quitStart);
 assert.ok(quitStart >= 0 && quitEnd > quitStart, 'test the real viewer quit handler');
-const quitSource = viewerSource.slice(quitStart + 'const handleBeforeQuit = '.length, quitEnd).replace(/;\s*$/, '');
+const quitSource = viewerSource.slice(quitStart + 'const saveLocalBeforeQuit = '.length, quitEnd).replace(/;\s*$/, '');
 
 const dirtyMarker = viewerSource.indexOf('// Mark annotations as dirty when they change');
 const dirtyStart = viewerSource.indexOf('useEffect(', dirtyMarker);
@@ -210,44 +210,70 @@ test('successful local backup still clears dirty state if cloud flush fails', as
   assert.deepEqual(h.state.toasts, []);
 });
 
-function quitHarness({ dirty = true, save } = {}) {
-  const results = [];
-  const window = { electronAPI: { notifySaveComplete: (result) => results.push(result) } };
-  const quit = new Function('window', 'hasUnsavedAnnotations', 'handleSaveDocument', 'console',
-    `return (${quitSource});`)(window, dirty, save, { error() {} });
-  return { quit, results };
+function quitHarness({ dirty = true, locked = false, save = async () => true, reason = null } = {}) {
+  const state = { dirty, revision: 'initial', writes: [], notifications: [] };
+  const snapshot = {};
+  const savedRef = { current: { 1: { objects: [{ id: 'deleted' }] } } };
+  const scope = {
+    pdfId: 'local', pdfFile: {}, tabId: 'inactive-tab', documentLocked: locked,
+    hasUnsavedAnnotations: dirty, annotationsByPageRef: { current: snapshot },
+    getQuitSaveBlockReason: () => reason, getQuitSaveRevision: () => state.revision,
+    quitSaveHandlerRef: { current: { getRevision: () => state.revision } },
+    saveAnnotationsByPage: async (...args) => { state.writes.push(args); return save(...args); },
+    savedAnnotationsByPageRef: savedRef, setHasUnsavedAnnotations: value => { state.dirty = value; },
+    onUnsavedAnnotationsChange: (...args) => state.notifications.push(args), showToast() {},
+  };
+  const quit = new Function(...Object.keys(scope), `return (${quitSource});`)(...Object.values(scope));
+  return { quit, state, savedRef, snapshot };
 }
 
-test('quit reports a failed local save before a pending cloud flush finishes', async () => {
-  let finishFlush;
-  const flush = new Promise((resolve) => { finishFlush = resolve; });
-  const h = saveCallbackHarness({ localSaved: false, cloud: true, overrides: {
-    cloudSyncForceFlush: () => flush,
-  } });
-  const q = quitHarness({ save: h.save });
-  const pendingQuit = q.quit({ quitAttemptId: 17 });
-  assert.deepEqual(q.results, [{ saved: false, quitAttemptId: 17 }], 'veto quit before waiting for the network');
-  finishFlush();
-  await pendingQuit;
-  assert.ok(q.results.every((result) => result.saved === false && result.quitAttemptId === 17));
+test('native local save awaits acknowledgment and persists last-object deletion without a cloud dependency', async () => {
+  let finish;
+  const q = quitHarness({ save: () => new Promise(resolve => { finish = resolve; }) });
+  let done = false;
+  const result = q.quit().then(value => { done = true; return value; });
+  await Promise.resolve();
+  assert.equal(done, false);
+  assert.equal(q.state.dirty, true);
+  finish(true);
+  assert.deepEqual(await result, { saved: true, revision: 'initial' });
+  assert.equal(q.savedRef.current, q.snapshot);
+  assert.deepEqual(q.state.writes, [['local', {}]]);
+  assert.deepEqual(q.state.notifications, [[false, 'inactive-tab']]);
 });
 
 test('quit sends failure if the save throws, and true only for a confirmed save', async () => {
   const failed = quitHarness({ save: async () => { throw new Error('storage blocked'); } });
-  await failed.quit({ quitAttemptId: 18 });
-  assert.deepEqual(failed.results, [{ saved: false, quitAttemptId: 18 }]);
+  assert.deepEqual(await failed.quit(), { saved: false });
   const saved = quitHarness({ save: async () => true });
-  await saved.quit({ quitAttemptId: 19 });
-  assert.deepEqual(saved.results, [{ saved: true, quitAttemptId: 19 }]);
+  assert.deepEqual(await saved.quit(), { saved: true, revision: 'initial' });
   const unknown = quitHarness({ save: async () => undefined });
-  await unknown.quit({ quitAttemptId: 20 });
-  assert.deepEqual(unknown.results, [{ saved: false, quitAttemptId: 20 }]);
+  assert.deepEqual(await unknown.quit(), { saved: false });
 });
 
-test('clean viewers acknowledge quit without issuing another save', async () => {
-  const q = quitHarness({ dirty: false, save: () => { throw new Error('must not run'); } });
-  await q.quit({ quitAttemptId: 21 });
-  assert.deepEqual(q.results, [{ saved: true, quitAttemptId: 21 }]);
+test('locked viewers issue zero writes, and only clean locked state can confirm', async () => {
+  for (const dirty of [true, false]) {
+    const q = quitHarness({ dirty, locked: true });
+    assert.equal((await q.quit()).saved, !dirty);
+    assert.equal(q.state.writes.length, 0);
+  }
+});
+
+test('an edit or actor change during the async write cannot clear newer dirty state', async () => {
+  let finish;
+  const q = quitHarness({ save: () => new Promise(resolve => { finish = resolve; }) });
+  const pending = q.quit();
+  q.state.revision = 'newer';
+  finish(true);
+  assert.deepEqual(await pending, { saved: false });
+  assert.equal(q.state.dirty, true);
+  assert.equal(q.state.notifications.length, 0);
+});
+
+test('an unfinished edit or unverified backup vetoes before writing', async () => {
+  const q = quitHarness({ reason: 'Finish editing' });
+  assert.deepEqual(await q.quit(), { saved: false, reason: 'Finish editing' });
+  assert.equal(q.state.writes.length, 0);
 });
 
 test('mounted Save keeps a quota failure visible and clears dirty only after a successful retry', async (t) => {
