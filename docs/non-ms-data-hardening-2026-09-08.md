@@ -1676,14 +1676,97 @@ The focused parser, single/project runner and mounted-hook run passed 181/181.
 Production build, AST-only graph update and diff checks passed. No high-risk
 viewer file, live schema, existing account or Microsoft code changed.
 
+## Atomic existing-subscription commit boundary — local implementation
+
+Fresh local tests of the actual webhook request handler confirmed 14 cases:
+database failures return HTTP 200; stale subscription updates can affect zero
+rows but still archive a newer paid account's files; failed archives cannot be
+recovered by replay after the first request clears the link or changes the tier;
+old events overwrite newer state; duplicate scheduling events repeat email; and
+a late checkout can mark a canceled provider subscription active. Stripe/database/
+email boundaries in these reproductions were synthetic and local. The existing
+webhook is still unchanged; these findings are not claimed fixed in production.
+
+`20260908190000_atomic_billing_subscription_transition.sql` adds a service-only
+database commit boundary for an existing linked subscription. It compares the
+full typed subscription snapshot, including metadata, counters and timestamps,
+and checks exact actor/customer/subscription binding. A stale request does not
+change subscription or archive state and does not publish an event receipt.
+Client roles cannot call it or read its private receipt table. A trusted SQL role
+check also rejects forged JWT role claims if a grant is accidentally widened.
+
+Plan fields, cancellation metadata, oldest-first free-cap archives and the event
+receipt commit together. An archive failure or suppressed subscription UPDATE
+rolls everything back. Exact event replay returns the saved result without
+repeating writes, including after cancellation clears the subscription link.
+A changed event binding or digest fails closed. The digest must use canonical
+immutable signed event identity/data, not delivery headers, mutable delivery
+counts, or the subsequently fetched provider subscription. Receipt retention has
+no automatic purge; the actor FK is indexed for account deletion.
+Distinct events describing unchanged plan state still receive separate receipts,
+but do not rewrite the subscription or advance its `updated_at` refresh signal.
+
+The lock order is account key-share, project/document/storage allocation guards,
+affected project/document rows, then subscription row. The account lock prevents
+the demonstrated guard-FK/account-cascade cycle. Data/subscription locks use
+NOWAIT because other paths can hold a row before reaching a quota guard. The
+whole transaction fails for retry on contention, rather than waiting with a
+partial plan change. Guard writes also reject stale repeatable-read/serializable
+snapshots. Other multi-operation service transactions can still deadlock; callers
+must retry the whole transaction on 55P03, 40P01 and 40001 with bounded backoff.
+
+The free caps remain one active project and five active documents, including
+user-archived rows as before. ID breaks equal-time ties. Only the system archive
+flag changes; storage bytes, document state, shares, user archives and the legacy
+project-status model stay unchanged. Upgrades never unarchive files implicitly.
+Existing over-cap storage remains intact and is still metered; archiving does not
+free storage bytes. Other accounts' data is not changed.
+
+Required next caller work remains: read the current DB snapshot **before** a
+fresh provider lookup, construct a validated patch, and apply it through this
+RPC. A stale result or retryable SQL error requires a new DB read and provider
+lookup, not replay of an old event snapshot. Event timestamps are not ordering
+proof. Checkout binding/provisioning, invoice reconciliation, webhook failure
+responses and durable email delivery/deduplication still need their own integrated
+path and tests. The new function is not wired into the webhook or deployed.
+Direct service subscription updates and legacy archive helpers still bypass this
+commit boundary. No live billing event, account, migration or Microsoft call ran.
+
+The frozen local PostgreSQL runs passed 35 checks: 24 in the main fixture and
+11 in the concurrency fixture. Of those, six are labeled hand-SQL before-fix/
+proposed-protocol reproductions; 29 exercise the actual new migration/RPC.
+The main fixture loads tracked subscription schema, tier-limit functions and
+all three quota guards. Sharing policies, file bytes and the storage-usage sum
+are controlled fixture dependencies, not the hosted service. No real storage
+service or usage-counter trigger is represented there. Full-row CAS tests
+explicitly cover a changed counter. The concurrency fixture uses minimal tables
+and labeled tier limits with the actual document guard and new transition RPC.
+Both allocation orderings, conflicting event IDs, duplicate delivery across
+READ COMMITTED/REPEATABLE READ/SERIALIZABLE, restore contention, account deletion,
+zero-row UPDATE, stale link, archive-error rollback, unchanged-state write
+suppression and migration replay passed. All disposable servers stopped before
+their exact data directories were removed. A separate harness fault check also
+verified cleanup after its launcher failed after PostgreSQL had already started.
+
+Frozen full-suite result: 5,199 total, 5,137 passed, 62 skipped, zero failures or
+cancellations, exit 0. The prior baseline was 5,195 / 5,135 / 60; the two added
+PostgreSQL tests are opt-in skips in the offline suite and both passed separately.
+The opt-in test file passed 4/4. Production build, AST-only graph update and diff
+checks passed. App/viewer source and webhook code were not changed, so no new
+browser or live billing-flow verification is claimed for this database-only step.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
 - [Postgres index guidance](https://supabase.com/docs/guides/database/postgres/indexes)
 - [Electron app lifecycle](https://www.electronjs.org/docs/latest/api/app)
+- [Stripe webhook retries, event ordering and duplicate handling](https://docs.stripe.com/webhooks)
+- [Stripe immutable event data and delivery-count fields](https://docs.stripe.com/api/events/object)
 
 ## Rollback
 
 Code rollback must keep unsent drafts, backups and outbox records. No live schema
 change or deletion is part of this slice. Older clients may not read a new pending
 draft format, so resolve or migrate pending work before downgrading those clients.
+Once a billing caller uses the transition receipts, preserve those receipts on
+rollback; dropping them would discard proof of prior committed events.
