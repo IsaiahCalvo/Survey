@@ -81,8 +81,8 @@ function transactionCompletion(transaction, timeoutMs = REQUEST_TIMEOUT_MS) {
   });
 }
 
-async function openDatabase(indexedDb, timeoutMs) {
-  const request = indexedDb.open(DB_NAME, DB_VERSION);
+async function openDatabase(indexedDb, timeoutMs, existingOnly = false) {
+  const request = existingOnly ? indexedDb.open(DB_NAME) : indexedDb.open(DB_NAME, DB_VERSION);
   const db = await new Promise((resolve, reject) => {
     let settled = false;
     const finish = (callback, value) => {
@@ -106,6 +106,13 @@ async function openDatabase(indexedDb, timeoutMs) {
       request.error || new Error('IndexedDB open failed'),
     );
     request.onupgradeneeded = () => {
+      if (existingOnly) {
+        request.transaction.abort();
+        const error = new Error('Persistent annotation database is missing');
+        error.code = 'ANNOTATION_LOCAL_STORAGE_UNAVAILABLE';
+        finish(reject, error);
+        return;
+      }
       const opened = request.result;
       for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
         if (!opened.objectStoreNames.contains(name)) {
@@ -161,6 +168,7 @@ export function createMemoryAnnotationOutbox() {
   };
 
   return {
+    storageKind: 'memory',
     async list(documentId, actorUserId) {
       return listStore(pending, documentId, actorUserId);
     },
@@ -312,12 +320,13 @@ let sharedMemoryAnnotationOutbox = null;
 export async function createAnnotationOutbox({
   indexedDb = globalThis.indexedDB,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  existingOnly = false,
 } = {}) {
   if (!indexedDb?.open) {
     sharedMemoryAnnotationOutbox ??= createMemoryAnnotationOutbox();
     return sharedMemoryAnnotationOutbox;
   }
-  const db = await openDatabase(indexedDb, timeoutMs);
+  const db = await openDatabase(indexedDb, timeoutMs, existingOnly);
   const activeTransactions = new Set();
   const inFlight = new Set();
   let closing = false;
@@ -369,8 +378,51 @@ export async function createAnnotationOutbox({
   );
 
   return {
+    storageKind: 'indexeddb',
+    async readLocalStateFresh(documentId, actorUserId, expectedIncarnation) {
+      // A retired viewer's original connection is closed. Revalidate through
+      // a read-only fresh connection without creating a missing database.
+      const fresh = await createAnnotationOutbox({ indexedDb, timeoutMs, existingOnly: true });
+      try {
+        const state = await fresh.readLocalState(documentId, actorUserId, expectedIncarnation);
+        if (await fresh.getDocumentIncarnation(documentId) !== expectedIncarnation) {
+          throw staleIncarnationError(documentId);
+        }
+        return state;
+      } finally {
+        await fresh.close();
+      }
+    },
     async list(documentId, actorUserId) {
       return list(PENDING_STORE, documentId, actorUserId);
+    },
+    async readLocalState(documentId, actorUserId, expectedIncarnation) {
+      const scopeKey = actorScopeKey(documentId, actorUserId);
+      return run(
+        [CHECKPOINT_STORE, ACCEPTED_STORE, PENDING_STORE, QUARANTINE_STORE, INCARNATION_STORE],
+        'readonly',
+        async (stores, transaction) => {
+          // One transaction sees pending-to-accepted moves and compaction as
+          // whole operations. Separate reads could miss an entry between them.
+          const [incarnationRow, checkpoint, accepted, pending, quarantined] = await Promise.all([
+            requestResult(stores[INCARNATION_STORE].get(documentId), transaction, timeoutMs),
+            requestResult(stores[CHECKPOINT_STORE].get(scopeKey), transaction, timeoutMs),
+            ...[ACCEPTED_STORE, PENDING_STORE, QUARANTINE_STORE].map((name) => (
+              requestResult(stores[name].index('scopeKey').getAll(scopeKey), transaction, timeoutMs)
+            )),
+          ]);
+          const incarnation = Number(incarnationRow?.incarnation) || 0;
+          if (incarnation !== expectedIncarnation) throw staleIncarnationError(documentId);
+          return {
+            documentId, actorUserId, incarnation,
+            checkpointUpdate: cloneBytes(checkpoint?.update),
+            acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
+            accepted: accepted.map(cloneRecord),
+            pending: pending.map(cloneRecord),
+            quarantined: quarantined.map(cloneRecord),
+          };
+        },
+      );
     },
     async getDocumentIncarnation(documentId) {
       return run(
@@ -578,15 +630,25 @@ export async function createAnnotationOutbox({
             ...records.map((record) => record.update),
           ].filter(Boolean).map(cloneBytes);
           if (updates.length) {
+            const update = Y.mergeUpdates(updates);
+            const acceptedKeys = [...new Set([
+              ...(checkpoint?.acceptedKeys || []),
+              ...records.map((record) => record.key),
+            ])];
+            const previousUpdate = cloneBytes(checkpoint?.update);
+            if (records.length === 0 && previousUpdate
+              && previousUpdate.length === update.length
+              && previousUpdate.every((byte, index) => byte === update[index])
+              && (checkpoint.acceptedKeys || []).length === acceptedKeys.length
+              && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key)) {
+              // Keep the incarnation check and transaction completion above/
+              // below, but do not put identical checkpoint bytes on clean close.
+              return false;
+            }
             await requestResult(stores[CHECKPOINT_STORE].put({
               scopeKey,
-              update: Y.mergeUpdates(updates),
-              acceptedKeys: [
-                ...new Set([
-                  ...(checkpoint?.acceptedKeys || []),
-                  ...records.map((record) => record.key),
-                ]),
-              ],
+              update,
+              acceptedKeys,
             }), transaction);
           }
           await Promise.all(records.map((record) => requestResult(

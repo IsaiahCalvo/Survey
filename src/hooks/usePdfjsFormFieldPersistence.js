@@ -29,8 +29,14 @@ export function buildFormFieldObject(pageNumber, payload, existingAuthorId, user
   };
 }
 
-export function usePdfjsFormFieldPersistence({ handleSaveAnnotations, userId, annotationsByPageRef }) {
-  const formFieldSaveTimersRef = useRef(new Map());
+export function usePdfjsFormFieldPersistence({ handleSaveAnnotations, userId, documentId, annotationsByPageRef }) {
+  const scopeRef = useRef(null);
+  const scopeKey = JSON.stringify([documentId || null, userId || null]);
+  if (scopeRef.current?.key !== scopeKey) {
+    scopeRef.current = { key: scopeKey, pending: new Map(), mounted: false };
+  }
+  const scope = scopeRef.current;
+  const isCurrent = () => scopeRef.current === scope && scope.mounted;
 
   const commitPdfjsFormField = useCallback((pageNumber, payload) => {
     const fieldId = payload?.fieldId;
@@ -51,40 +57,55 @@ export function usePdfjsFormFieldPersistence({ handleSaveAnnotations, userId, an
     });
   }, [annotationsByPageRef, handleSaveAnnotations, userId]);
 
-  const handlePdfjsFormFieldChange = useCallback((pageNumber, payload) => {
+  const commitPendingField = useCallback((key) => {
+    if (!isCurrent()) return false;
+    const entry = scope.pending.get(key);
+    if (!entry) return false;
+    clearTimeout(entry.timer);
+    entry.timer = null;
+    // Retain a failed commit for an explicit retry. A successful commit updates
+    // the viewer's snapshot ref synchronously before the next field is merged.
+    commitPdfjsFormField(entry.pageNumber, entry.payload);
+    if (scope.pending.get(key) === entry) scope.pending.delete(key);
+    return true;
+  }, [scope, commitPdfjsFormField]);
+
+  const queueField = useCallback((pageNumber, payload, immediate) => {
     const fieldId = payload?.fieldId;
-    if (pageNumber == null || fieldId == null) return;
+    if (!isCurrent() || pageNumber == null || fieldId == null) return;
     const key = `${pageNumber}:${fieldId}`;
-    const timers = formFieldSaveTimersRef.current;
-    const existing = timers.get(key);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      timers.delete(key);
-      commitPdfjsFormField(pageNumber, payload);
-    }, 400);
-    timers.set(key, timer);
-  }, [commitPdfjsFormField]);
+    clearTimeout(scope.pending.get(key)?.timer);
+    const entry = { pageNumber, payload, timer: null };
+    scope.pending.set(key, entry);
+    if (immediate) commitPendingField(key);
+    else entry.timer = setTimeout(() => commitPendingField(key), 400);
+  }, [scope, commitPendingField]);
+
+  const handlePdfjsFormFieldChange = useCallback((pageNumber, payload) => {
+    queueField(pageNumber, payload, false);
+  }, [queueField]);
 
   const handlePdfjsFormFieldBlur = useCallback((pageNumber, payload) => {
-    const fieldId = payload?.fieldId;
-    if (pageNumber == null || fieldId == null) return;
-    const key = `${pageNumber}:${fieldId}`;
-    const timers = formFieldSaveTimersRef.current;
-    const existing = timers.get(key);
-    if (existing) {
-      clearTimeout(existing);
-      timers.delete(key);
+    queueField(pageNumber, payload, true);
+  }, [queueField]);
+
+  const flushPendingFormFields = useCallback(() => {
+    if (!isCurrent()) return 0;
+    let committed = 0;
+    for (const key of [...scope.pending.keys()]) {
+      if (commitPendingField(key)) committed++;
     }
-    commitPdfjsFormField(pageNumber, payload);
-  }, [commitPdfjsFormField]);
+    return committed;
+  }, [scope, commitPendingField]);
 
   useEffect(() => {
-    const timers = formFieldSaveTimersRef.current;
+    scope.mounted = true;
     return () => {
-      timers.forEach((timer) => clearTimeout(timer));
-      timers.clear();
+      scope.mounted = false;
+      scope.pending.forEach((entry) => clearTimeout(entry.timer));
+      scope.pending.clear();
     };
-  }, []);
+  }, [scope]);
 
-  return { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur };
+  return { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur, flushPendingFormFields };
 }

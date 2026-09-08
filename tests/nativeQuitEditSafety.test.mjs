@@ -55,23 +55,51 @@ test('mounted native hook commits focused field blur before reading the snapshot
   assert.equal(replies.at(-1).saved, false);
 });
 
-test('actual viewer readiness gate vetoes tracked erase work and unfinished tool sessions', async () => {
+function viewerGate(overrides = {}) {
   const source = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  const start = source.indexOf('const getQuitSaveBlockReason = () => {');
+  const start = source.indexOf('const getQuitSaveBlockReason = ');
   const end = source.indexOf('\n  const saveLocalBeforeQuit', start);
   const block = source.slice(start + 'const getQuitSaveBlockReason = '.length, end).replace(/;\s*$/, '');
   const scope = { editingAnnotation: null, richTextEditor: null, showRegionSelection: false, pendingSurveyMarker: null,
     textToolDragRef: { current: null }, counterDragRef: { current: null }, activeTool: 'pan', deferUntilEraseCommitsFinish,
-    toolPreferencesSaveError: null, pdfFile: {}, documentLocked: true };
-  const gate = new Function(...Object.keys(scope), `return (${block});`)(...Object.values(scope));
+    toolPreferencesSaveError: null, pdfFile: {}, documentLocked: true,
+    pendingSurveyMarkerSyncRef: { current: false }, quitAnnotationReceiptRef: { current: { locallyDurable: true } },
+    isAnnotationLocalReceiptCurrent: receipt => receipt?.locallyDurable === true,
+    verifyLegacyQuitBackups: () => true, localStorage: {}, pdfId: 'local', items: [], annotations: [],
+    surveyMarkersRef: { current: {} }, callouts: [], pageNames: {}, bookmarks: [], spacesRef: { current: [] },
+    activeSpaceId: null, pageTransformations: {}, ...overrides };
+  return new Function(...Object.keys(scope), `return (${block});`)(...Object.values(scope));
+}
+
+test('actual viewer readiness gate vetoes tracked erase work and unfinished tool sessions', async () => {
+  const gate = viewerGate();
   assert.equal(gate(), null);
   let finish;
   const pending = trackPendingEraseCommit(new Promise(resolve => { finish = resolve; }));
   assert.match(gate(), /Finish drawing/);
   finish(); await pending; await Promise.resolve();
   assert.equal(gate(), null);
-  const idlePenGate = new Function(...Object.keys(scope), `return (${block});`)(...Object.values({ ...scope, activeTool: 'pen' }));
+  const idlePenGate = viewerGate({ activeTool: 'pen' });
   assert.match(idlePenGate(), /switch to Pan/, 'explicit conservative limit: finish and leave an untracked drawing tool');
+});
+
+test('cloud readiness uses current local proof rather than network status or queue length', () => {
+  const gate = viewerGate({ pdfFile: { id: 'cloud' }, documentLocked: false,
+    cloudSyncStatus: { healthy: false, stage: 'offline' }, cloudSyncQueueSize: 99 });
+  assert.equal(gate(), null, 'offline cloud work does not block a proven local save');
+  const stale = viewerGate({ pdfFile: { id: 'cloud' }, documentLocked: false,
+    isAnnotationLocalReceiptCurrent: () => false });
+  assert.equal(stale({ requireLocalReceipt: false }), null, 'initial prepare is allowed to capture a proof');
+  assert.ok(stale(), 'confirm needs a current proof');
+  assert.equal(viewerGate({ pdfFile: { id: 'cloud' }, documentLocked: true,
+    isAnnotationLocalReceiptCurrent: () => { throw new Error('locked path must not request a proof'); } })(), null);
+});
+
+test('pending survey marker propagation still vetoes cloud close before local capture', () => {
+  const gate = viewerGate({ pdfFile: { id: 'cloud' }, documentLocked: false,
+    pendingSurveyMarkerSyncRef: { current: true } });
+  assert.ok(gate({ requireLocalReceipt: false }));
+  assert.ok(gate());
 });
 
 test('legacy quit receipts verify restored formats and fail closed for missing or stale bytes', () => {

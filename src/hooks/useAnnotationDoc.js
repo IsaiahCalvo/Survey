@@ -173,6 +173,19 @@ function runDurableStackedInkRepair(handle, documentId, opts = {}) {
   }
 }
 
+function localReceiptError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+// Compute only for a save/close check, not on every render. Fresh serialization
+// also catches nested mutations; reference equality cannot prove saved content.
+function localViewSignature(scope) {
+  return JSON.stringify([
+    scope.documentId, scope.actorUserId,
+    scope.view.annotationsByPage, scope.view.spaces, scope.view.surveyMarkers,
+  ]);
+}
+
 export function useAnnotationDoc({
   documentId,
   userId,
@@ -235,6 +248,124 @@ export function useAnnotationDoc({
   surveyMarkersRef.current = surveyMarkers;
   docRoleRef.current = docRole;
 
+  const localReceiptScopeRef = useRef(null);
+  const localScopeKey = JSON.stringify([documentId || null, userId || null]);
+  if (localReceiptScopeRef.current?.key !== localScopeKey) {
+    localReceiptScopeRef.current = {
+      key: localScopeKey, documentId, actorUserId: userId,
+      handle: null, ready: false, closeReceipt: null, mounted: false,
+      receipts: new WeakMap(),
+    };
+  }
+  const localScope = localReceiptScopeRef.current;
+  localScope.enabled = enabled;
+  localScope.renderedReady = localScope.ready;
+  localScope.view = { annotationsByPage, spaces, surveyMarkers };
+  localScope.fallbackIds = metaFallbackIdsRef.current;
+  useEffect(() => {
+    localScope.mounted = true;
+    return () => { localScope.mounted = false; };
+  }, [localScope]);
+
+  const captureLocalReceiptState = (handle, scope) => {
+    const pages = stripMetaFallbackCallouts(
+      scope.view.annotationsByPage, scope.fallbackIds,
+    );
+    if (Object.values(pages || {}).some((page) => page?.eraserMutation?.id)) {
+      throw localReceiptError('ANNOTATION_LOCAL_EDIT_PENDING', 'An erase operation is still being committed.');
+    }
+    const result = handle.applyByPage(pages);
+    if (result?.identityChanged) {
+      if (result.normalizedByPage) setAnnotationsByPage((previous) => (
+        preserveTransientPagePresentationState(previous, result.normalizedByPage)
+      ));
+      throw localReceiptError('ANNOTATION_LOCAL_REVISION_CHANGED', 'Annotation identities are still being saved. Retry the local save check.');
+    }
+    // Match hydration's empty-state rule. Do not invent an empty metadata
+    // update when a read-only document has never stored spaces.
+    if (handle.getMeta(SPACES_KEY) !== undefined || scope.view.spaces?.length > 0) {
+      handle.setMeta(SPACES_KEY, scope.view.spaces);
+    }
+    handle.applySurveyMarkers(scope.view.surveyMarkers);
+  };
+
+  const ensureLocalDurability = useCallback(async () => {
+    const scope = localScope;
+    const isCurrentScope = () => scope.mounted && localReceiptScopeRef.current === scope;
+    if (!isCurrentScope() || !scope.documentId || !scope.actorUserId) {
+      throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The document or account changed during the local save check.');
+    }
+    const signature = localViewSignature(scope);
+    const isCurrent = () => isCurrentScope() && localViewSignature(scope) === signature;
+    let result;
+    let receiptHandle;
+    if (scope.enabled) {
+      const handle = scope.handle;
+      if (!scope.ready || !scope.renderedReady || !handle?.flushLocalDurability) {
+        throw localReceiptError('ANNOTATION_LOCAL_NOT_READY', 'The local document is still loading.');
+      }
+      // Capture pending React state before asking the store for its own proof.
+      // These are the same diff-only writes used by the regular capture effects.
+      captureLocalReceiptState(handle, scope);
+      const revision = handle.getLocalRevision?.();
+      if (!Number.isSafeInteger(revision)) {
+        throw localReceiptError('ANNOTATION_LOCAL_UNVERIFIED', 'The local document revision could not be verified.');
+      }
+      result = await handle.flushLocalDurability({
+        expectedDocumentId: scope.documentId, expectedActorUserId: scope.actorUserId,
+        isCurrent: () => isCurrent() && scope.handle === handle && scope.ready,
+      });
+      receiptHandle = handle;
+      if (result?.revision !== revision || handle.getLocalRevision() !== revision
+        || result.writerId !== handle.writerId) {
+        throw localReceiptError('ANNOTATION_LOCAL_REVISION_CHANGED', 'The local document revision changed during the save check.');
+      }
+    } else {
+      if (!scope.closeReceipt) {
+        throw localReceiptError('ANNOTATION_LOCAL_NOT_READY', 'This tab has no confirmed local close record yet.');
+      }
+      const closed = await scope.closeReceipt;
+      result = closed.proof;
+      receiptHandle = closed.handle;
+      if (closed.viewSignature !== signature) {
+        throw localReceiptError('ANNOTATION_LOCAL_REVISION_CHANGED', 'The tab changed after its local save.');
+      }
+      if (!receiptHandle?.revalidateLocalReceipt) {
+        throw localReceiptError('ANNOTATION_LOCAL_UNVERIFIED', 'The inactive tab needs a fresh local storage check.');
+      }
+      // Another browser context can purge shared IndexedDB after teardown.
+      // Re-read persistent state before prepare; use the synchronous predicate
+      // only for the short prepare-to-confirm interval.
+      const refreshed = await receiptHandle.revalidateLocalReceipt(result);
+      if (refreshed !== result) {
+        throw localReceiptError('ANNOTATION_LOCAL_UNVERIFIED', 'The local storage check returned a different receipt.');
+      }
+    }
+    if (!isCurrent()) {
+      throw localReceiptError('ANNOTATION_LOCAL_REVISION_CHANGED', 'The document changed during its local save.');
+    }
+    if (result?.locallyDurable !== true || result.documentId !== scope.documentId
+      || result.actorUserId !== scope.actorUserId
+      || receiptHandle?.isLocalReceiptCurrent?.(result) !== true) {
+      throw localReceiptError('ANNOTATION_LOCAL_UNVERIFIED', 'Local document storage could not be verified.');
+    }
+    const receipt = Object.freeze({ ...result, viewSignature: signature });
+    // The service's proof is identity-bound. Keep its original object private
+    // while exposing a view-bound wrapper to the native close check.
+    scope.receipts.set(receipt, { proof: result, handle: receiptHandle, signature });
+    return receipt;
+  }, [localScope]);
+
+  const isLocalDurabilityCurrent = useCallback((receipt) => {
+    try {
+      if (!localScope.mounted || localReceiptScopeRef.current !== localScope) return false;
+      const issued = localScope.receipts.get(receipt);
+      if (!issued || localViewSignature(localScope) !== issued.signature) return false;
+      if (localScope.enabled && (!localScope.ready || localScope.handle !== issued.handle)) return false;
+      return issued.handle.isLocalReceiptCurrent?.(issued.proof) === true;
+    } catch { return false; }
+  }, [localScope]);
+
   // Open the durable doc on documentId; hydrate from it (authoritative) or seed
   // it with whatever the viewer already has (covers marks drawn/imported before
   // the id resolved).
@@ -249,6 +380,9 @@ export function useAnnotationDoc({
     let unsubscribeSync = null;
     let unsubscribeHistoryQuarantine = null;
     readyRef.current = false;
+    localScope.ready = false;
+    localScope.handle = null;
+    localScope.closeReceipt = null;
     metaFallbackIdsRef.current = new Set();
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
@@ -277,10 +411,14 @@ export function useAnnotationDoc({
         }
         return;
       }
-      if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
+      if (cancelled || localReceiptScopeRef.current !== localScope || !localScope.enabled) {
+        try { await handle.destroy(); } catch { /* */ }
+        return;
+      }
       handleRef.current = handle;
+      localScope.handle = handle;
       const updateSyncStatus = (next) => {
-        if (cancelled || !next) return;
+        if (cancelled || localReceiptScopeRef.current !== localScope || !next) return;
         setSyncStatus({
           stage: next.stage || (next.healthy === false ? 'error' : 'idle'),
           healthy: next.healthy !== false,
@@ -291,13 +429,13 @@ export function useAnnotationDoc({
       updateSyncStatus(handle.getSyncStatus?.());
       unsubscribeSync = handle.onSyncStatus?.(updateSyncStatus) || null;
       unsubscribeHistoryQuarantine = handle.onHistoryQuarantine?.((event) => {
-        if (cancelled) return;
+        if (cancelled || localReceiptScopeRef.current !== localScope) return;
         onHistoryQuarantineRef.current?.(event);
       }) || null;
 
       // Remote ops (other devices) → reflect into React state.
       handle.onChange((byPage) => {
-        if (cancelled) return;
+        if (cancelled || localReceiptScopeRef.current !== localScope) return;
         // Slice 6: callout groups ride INSIDE `byPage` (they live in the same
         // `annotations` Y.Map as every other object), carrying their verbatim
         // data.legacyCallout payloads. PDFViewer derives callouts[] from
@@ -453,6 +591,8 @@ export function useAnnotationDoc({
       }
 
       readyRef.current = true;
+      localScope.ready = true;
+      localScope.fallbackIds = metaFallbackIdsRef.current;
       // Drives the existing "import embedded marks when empty" effect: a
       // never-imported PDF hydrates empty (count 0) → that effect runs the
       // importer → its marks flow back through capture below → durable.
@@ -466,7 +606,32 @@ export function useAnnotationDoc({
       readyRef.current = false;
       unsubscribeSync?.();
       unsubscribeHistoryQuarantine?.();
-      if (h) { h.destroy().catch(() => {}); }
+      if (h && localScope.handle === h) {
+        let signature;
+        let revision;
+        let captureError = null;
+        try {
+          if (!localScope.ready || !localScope.renderedReady) throw localReceiptError('ANNOTATION_LOCAL_NOT_READY', 'The local document did not finish loading.');
+          captureLocalReceiptState(h, localScope);
+          signature = localViewSignature(localScope);
+          revision = h.getLocalRevision?.();
+        } catch (error) { captureError = error; }
+        localScope.handle = null;
+        localScope.ready = false;
+        // Seal the writer synchronously. Never keep it alive while waiting for
+        // local storage: a new tab activation may already be opening its writer.
+        h.destroy().catch(() => {});
+        const receipt = h.getLocalCloseReceipt?.();
+        localScope.closeReceipt = Promise.resolve(receipt).then((result) => {
+          if (captureError) throw captureError;
+          if (result?.locallyDurable !== true || !Number.isSafeInteger(revision)
+            || result.revision !== revision || result.writerId !== h.writerId) {
+            throw localReceiptError('ANNOTATION_LOCAL_UNVERIFIED', 'Local document storage could not be verified.');
+          }
+          return { proof: result, handle: h, viewSignature: signature };
+        });
+        localScope.closeReceipt.catch(() => {});
+      } else if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers]);
 
@@ -735,6 +900,8 @@ export function useAnnotationDoc({
     applyEraseHistoryTransition,
     restoreEraseDeletion,
     getHistoryQuarantineGeneration,
+    ensureLocalDurability,
+    isLocalDurabilityCurrent,
     forceFlush,
     commitEraserMutation,
     metaGet,

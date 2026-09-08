@@ -19403,6 +19403,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     restoreEraseDeletion: restoreDurableEraseDeletion,
     getHistoryQuarantineGeneration,
     forceFlush: cloudSyncForceFlush,
+    ensureLocalDurability: ensureAnnotationLocalDurability,
+    isLocalDurabilityCurrent: isAnnotationLocalReceiptCurrent,
     commitEraserMutation: commitEraserMutationToDoc,
     status: cloudSyncStatus,
     queueSize: cloudSyncQueueSize,
@@ -21630,9 +21632,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
+  const flushPendingFormFieldsRef = useRef(null);
+  const saveDocumentScopeRef = useRef(null);
+  saveDocumentScopeRef.current = { pdfId, pdfFile, actorUserId: user?.id };
   const handleSaveDocument = useCallback(async (silent = false, onLocalBackupResult = null) => {
     // Feature Gate: Cloud Sync - still save locally regardless of plan
     if (!pdfId || !pdfFile) return false;
+    const scope = saveDocumentScopeRef.current;
+    if (scope?.pdfId !== pdfId || scope.pdfFile !== pdfFile || scope.actorUserId !== user?.id) return false;
 
     // KAL-75 (G5): LOCKED documents — save is a no-op. Edits are blocked
     // while locked so there is nothing to persist, but the cloud flush below
@@ -21646,13 +21653,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (document.body.getAttribute('data-kal49-locked') === 'true') return true;
 
     try {
+      // Native PDF inputs debounce their payloads. Save must include the latest
+      // text now, without blurring the field or waiting for that timer.
+      flushPendingFormFieldsRef.current?.();
+      const snapshot = annotationsByPageRef.current;
       // UX 2026-04-27 (Phase 27 follow-up): split the cloud-side save (always
       // automatic) from the PDF-file output (user choice). The cloud-side
       // save is the "your work is preserved" guarantee — runs first, never
       // prompts. The file output runs second and only on explicit user action.
 
       // --- Step 1: cloud / local annotation backup (silent, always runs) ---
-      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, surveyMarkers);
+      const annotationCounts = summarizeAnnotationCountsForSaveExport(snapshot, callouts, surveyMarkers);
       let supabaseAnnotationSaveRan = false;
       let supabaseAnnotationSaveError = null;
       console.log('[PDFSaveExport] action start ' + JSON.stringify({
@@ -21667,9 +21678,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
         silent
       }));
-      const localBackupSaved = saveAnnotationsByPage(pdfId, annotationsByPage);
+      const localBackupSaved = saveAnnotationsByPage(pdfId, snapshot);
       if (localBackupSaved) {
-        savedAnnotationsByPageRef.current = { ...annotationsByPage };
+        savedAnnotationsByPageRef.current = { ...snapshot };
         setHasUnsavedAnnotations(false);
         if (onUnsavedAnnotationsChange) {
           onUnsavedAnnotationsChange(false, tabId);
@@ -21772,26 +21783,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Native exit saves local snapshots only. Cloud requests may outlive the
   // handshake; they must not be mistaken for an unfinished local write.
   const quitSaveHandlerRef = useRef(null);
-  const quitCloudMetaReceiptRef = useRef(null);
-  const getQuitCloudMetaRevision = () => JSON.stringify([
-    pdfFile?.id || null, user?.id || null, surveyMarkersRef.current, spacesRef.current,
-  ]);
-  useEffect(() => {
-    if (isActive && normalAnnotationHydration.ready
-      && normalAnnotationHydration.documentId === pdfFile?.id
-      && cloudSyncStatus?.healthy && cloudSyncStatus.stage === 'idle' && cloudSyncQueueSize === 0) {
-      quitCloudMetaReceiptRef.current = getQuitCloudMetaRevision();
-    }
-    // A metadata edit alone is not a receipt. Capture only a hydration/status
-    // event from the durable document; inactive tabs retain their last receipt.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudSyncStatus, cloudSyncQueueSize, normalAnnotationHydration]);
+  const quitAnnotationReceiptRef = useRef(null);
   const getQuitSaveRevision = () => JSON.stringify([
     pdfId, pdfFile?.id || null, user?.id || null, annotationsByPageRef.current,
     surveyMarkersRef.current, spacesRef.current, items, annotations,
     pageNames, bookmarks, activeSpaceId, pageTransformations, entities,
   ]);
-  const getQuitSaveBlockReason = () => {
+  const getQuitSaveBlockReason = ({ requireLocalReceipt = true } = {}) => {
     if (editingAnnotation || richTextEditor || showRegionSelection || pendingSurveyMarker
       || textToolDragRef.current || counterDragRef.current?.active
       || !['pan', 'select', 'text-select'].includes(activeTool)
@@ -21799,10 +21797,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return 'Finish drawing or editing and switch to Pan, then close again. The app was kept open.';
     }
     if (toolPreferencesSaveError) return toolPreferencesSaveError;
-    if (pdfFile?.id && (!cloudSyncStatus?.healthy || cloudSyncStatus.stage !== 'idle'
-      || cloudSyncQueueSize > 0 || pendingSurveyMarkerSyncRef.current
-      || quitCloudMetaReceiptRef.current !== getQuitCloudMetaRevision())) {
-      return 'Document changes are still pending or could not sync. Wait for Save to finish, then close again.';
+    if (!documentLocked && pdfFile?.id && (pendingSurveyMarkerSyncRef.current
+      || (requireLocalReceipt && !isAnnotationLocalReceiptCurrent(quitAnnotationReceiptRef.current)))) {
+      return 'The local document copy could not be verified. Keep it open and retry Save.';
     }
     if (!documentLocked && !verifyLegacyQuitBackups({
       storage: localStorage, pdfId, cloudBacked: !!pdfFile?.id, items, annotations,
@@ -21813,7 +21810,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const saveLocalBeforeQuit = async () => {
     if (!pdfId || !pdfFile) return { saved: false };
-    const reason = getQuitSaveBlockReason();
+    const reason = getQuitSaveBlockReason({ requireLocalReceipt: false });
     if (reason) return { saved: false, reason };
     const snapshot = annotationsByPageRef.current;
     const revision = getQuitSaveRevision();
@@ -21823,6 +21820,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       ? { saved: false, reason: 'This locked document still has unsaved changes. Keep it open and resolve them before closing.' }
       : { saved: true, revision };
     try {
+      if (pdfFile.id) {
+        // This proves the recoverable local Y.Doc, not a successful network
+        // request. Inactive tabs re-read storage through their sealed writer.
+        quitAnnotationReceiptRef.current = await ensureAnnotationLocalDurability();
+        if (!isAnnotationLocalReceiptCurrent(quitAnnotationReceiptRef.current)) {
+          return { saved: false, reason: 'The document changed while saving. Keep it open and retry Save.' };
+        }
+        if (quitSaveHandlerRef.current?.getRevision() !== revision) return { saved: false };
+      }
       const saved = await saveAnnotationsByPage(pdfId, snapshot);
       // A late save must not clear a newer edit or a different document/account.
       if (quitSaveHandlerRef.current?.getRevision() !== revision) return { saved: false };
@@ -26755,11 +26761,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [handleSaveAnnotations]);
 
-  const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur } = usePdfjsFormFieldPersistence({
+  const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur, flushPendingFormFields } = usePdfjsFormFieldPersistence({
+    documentId: pdfId,
     handleSaveAnnotations,
     userId: user?.id,
     annotationsByPageRef,
   });
+  flushPendingFormFieldsRef.current = flushPendingFormFields;
 
   // UX: Shared annotation z-order reorder handler. Called by the right-click
   // menu's Bring to Front / Forward / Send Backward / to Back items and by

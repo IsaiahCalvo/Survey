@@ -229,6 +229,96 @@ separate local-close promise can finish before the existing network teardown.
 The native close gate must compare the receipt with the tab's current revision,
 not the disabled hook's reset `idle` status.
 
+### Implemented: local receipts and offline native exit
+
+The third batch implements that receipt using the existing actor-scoped outbox.
+It tracks local writes apart from cloud requests, checkpoints accepted state
+only, and reads checkpoint, pending, accepted, quarantine and incarnation records
+in one transaction. Detached Yjs recovery must cover the captured edits and
+deletions. Memory fallback, missing predecessors, quarantine, storage failures,
+permission rejection, purge and changed revisions cannot report success.
+
+Inactive tabs retain an identity-bound close receipt. Their writer seals at once,
+while a separate local-close promise can finish before network teardown. Before
+native quit, inactive tabs re-read through a fresh, read-only IndexedDB connection.
+This catches a purge, missing database or replaced bytes from another browser
+context without rewriting a checkpoint or contacting the backend. Final checks
+bind the original proof to the current document, actor and visible state.
+
+The native viewer now asks for local proof instead of requiring a healthy, idle
+cloud queue. It still checks unfinished edits, pending legacy survey propagation,
+tool preference failures, existing backup formats and the complete viewer
+revision. Locked clean tabs remain a zero-write path. This supersedes the earlier
+cloud-idle gate; it does not grant offline access or replace permission checks.
+
+The accepted checkpoint also skips byte-identical writes inside its existing
+incarnation-checked transaction. Measured: one initial checkpoint put, zero extra
+puts for two unchanged receipt checks plus clean close. All three proof reads
+still run. New accepted keys and changed bytes still write and compact atomically.
+
+Frozen third-batch verification: 4,269 tests, 4,215 passed, 54 skipped, zero failed
+or canceled, exit 0. Production build passed. Real mounted hook plus actual sync
+and outbox integration tests cover changed values, last-object deletion, inactive
+revalidation and second-connection purge. The isolated browser fixture uses real
+IndexedDB and Yjs with a blocked backend stub: active save, fresh recovery,
+delete invalidation, local close before cloud completion, retired read-back and
+cross-connection purge veto all passed. The native Electron fixture again passed
+atomic writes, quota preservation, quit veto, Save retry, focused-field immediate
+quit/relaunch restoration and home-only exit. No real account or cloud write was
+used. This is not production or live multi-user proof.
+
+Browser QA found and reproduced a further manual Save timing issue: a 400 ms
+form-input timer could run after Cmd+S saved an older React snapshot, leaving the
+tab dirty until a second Save. Save now flushes this viewer's pending field values
+first, then reads the current annotation ref. It preserves input focus and cancels
+the timer. Pending fields and retained callbacks cannot cross documents/accounts;
+an old Save callback cannot flush or write through a newer document's ref. Locked
+Save remains a zero-flush, zero-write path. Browser QA confirmed a single immediate
+focused Save stays clean after the old timer window and restores the exact value
+after reload. The isolated context was discarded after testing.
+
+### Measured verification cost and bounded cache
+
+Fresh persistence proof originally reconstructed two detached Yjs documents for
+every call, even when their exact persisted inputs had not changed. A single-entry
+cache per handle now avoids only that repeated reconstruction. It compares the
+captured update, freshly read checkpoint and record bytes, keys, scope, status,
+dependencies and deferred-publication flag. It does not use a hash or trust object
+identity or a revision alone. All storage reads and scope/incarnation/quarantine/
+dependency checks still run. Changed bytes, changed metadata or a pending-to-
+accepted move use full verification again. The cache holds only the last proof.
+
+Single-run local measurements with fake IndexedDB, rectangular marks and blocked
+transport (not a browser, production or heavy-ink benchmark):
+
+| Annotations | Encoded bytes | Repeat before | Repeat after | Close before | Close after |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 22,813 | 5.16 ms | 2.32 ms | 5.02 ms | 2.35 ms |
+| 1,000 | 230,462 | 37.85 ms | 19.48 ms | 36.90 ms | 15.45 ms |
+| 10,000 | 2,337,642 | 352.98 ms | 139.33 ms | 352.24 ms | 136.50 ms |
+
+The first 10,000-mark proof still takes about 295 ms in this fixture. Verification
+has real CPU cost; this is not proof of unlimited scale or a zero-latency result.
+No extra cloud requests occurred, and repeat/close checkpoint puts remained zero.
+
+### Final combined verification
+
+After the form flush and exact-input cache changes, the full suite passed again:
+4,283 tests, 4,229 passed, 54 skipped, zero failed or canceled, exit 0. The build
+passed. The updated native fixture also verifies that one immediate focused Save
+stays clean beyond the old debounce delay and keeps focus, before testing actual
+quit/relaunch recovery. All seven native checks passed. Root browser QA repeated
+single-Save reload and the real-IndexedDB receipt checks together in an isolated
+context: exact value restored, focus preserved, zero page errors. Independent
+final review found no concrete blocker in the form flush or receipt cache.
+
+This tested branch is not merged or production-verified. Microsoft testing is
+still deferred. The next local-first phase must settle account-free local file
+ownership, stable file identity and copy/verify recovery migration before it
+changes existing save locations. Shared cloud files also need a separate offline
+access/revocation policy and leased real-account checks; a local receipt is not a
+new permission grant. No production retention cleanup or extra index was applied.
+
 This is a design, not an implemented offline-close guarantee. Required proofs
 include hung network with successful local storage, transaction abort after a
 successful request, memory fallback, quota, account switch, deletion/quarantine,

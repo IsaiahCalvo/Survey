@@ -150,10 +150,15 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
   const previous = { 1: { objects: [{ id: 'previous' }] } };
   const next = { 1: { objects: [{ id: 'latest' }] } };
   const savedRef = { current: previous };
+  const pdfFile = overrides.pdfFile || { id: 'cloud-doc' };
+  const user = overrides.user || { id: 'owner' };
   const scope = {
-    pdfId: 'current', pdfFile: { id: 'cloud-doc' }, tabId: 'tab-current',
+    pdfId: 'current', pdfFile, tabId: 'tab-current',
+    saveDocumentScopeRef: { current: { pdfId: overrides.pdfId || 'current', pdfFile, actorUserId: user.id } },
     annotationsByPage: next, callouts: [], surveyMarkers: {}, spaces: [], selectedTemplate: null,
-    user: { id: 'owner' }, features: { cloudSync: cloud },
+    annotationsByPageRef: { current: overrides.annotationsByPage || next },
+    flushPendingFormFieldsRef: { current: () => {} },
+    user, features: { cloudSync: cloud },
     document: { body: { getAttribute: () => null } },
     summarizeAnnotationCountsForSaveExport: () => ({ byType: {} }),
     saveAnnotationsByPage: () => localSaved,
@@ -173,6 +178,54 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     complete: () => JSON.parse(state.logs.find((line) => line.startsWith('[PDFSaveExport] action complete '))
       .slice('[PDFSaveExport] action complete '.length)),
   };
+}
+
+test('manual Save flushes pending form input before reading its latest snapshot', async () => {
+  const latest = { 1: { objects: [{ type: 'form-field', data: { value: 'just typed' } }] } };
+  const pagesRef = { current: {} };
+  let flushed = 0;
+  let written;
+  let counted;
+  const h = saveCallbackHarness({ overrides: {
+    annotationsByPageRef: pagesRef,
+    flushPendingFormFieldsRef: { current: () => { flushed++; pagesRef.current = latest; } },
+    saveAnnotationsByPage: (_id, snapshot) => { written = snapshot; return true; },
+    summarizeAnnotationCountsForSaveExport: snapshot => { counted = snapshot; return { byType: {} }; },
+  } });
+  await h.save();
+  assert.equal(flushed, 1);
+  assert.equal(written, latest);
+  assert.equal(counted, latest);
+  assert.deepEqual(h.savedRef.current, latest);
+  assert.equal(h.state.dirty, false);
+});
+
+test('locked manual Save never flushes queued form edits or writes a snapshot', async () => {
+  const h = saveCallbackHarness({ overrides: {
+    document: { body: { getAttribute: () => 'true' } },
+    flushPendingFormFieldsRef: { current: () => { throw new Error('locked form flush'); } },
+    saveAnnotationsByPage: () => { throw new Error('locked snapshot write'); },
+  } });
+  assert.equal(await h.save(), true);
+  assert.equal(h.state.logs.length, 0);
+  assert.equal(h.state.notifications.length, 0);
+});
+
+for (const changed of ['pdfId', 'pdfFile', 'actorUserId']) {
+  test(`an old retained Save callback cannot flush or write after ${changed} changes`, async () => {
+    const pdfFile = { id: 'cloud-doc' };
+    const current = { pdfId: 'current', pdfFile, actorUserId: 'owner' };
+    const scopeRef = { current };
+    const h = saveCallbackHarness({ overrides: {
+      pdfFile, saveDocumentScopeRef: scopeRef,
+      flushPendingFormFieldsRef: { current: () => { throw new Error('retired callback flushed new fields'); } },
+      saveAnnotationsByPage: () => { throw new Error('retired callback wrote a snapshot'); },
+    } });
+    scopeRef.current = { ...current, [changed]: changed === 'pdfFile' ? { id: 'cloud-doc' } : 'different' };
+    assert.equal(await h.save(), false);
+    assert.equal(h.state.logs.length, 0, 'reject before entering the save action');
+    assert.equal(h.state.notifications.length, 0);
+  });
 }
 
 for (const silent of [false, true]) {
@@ -210,15 +263,20 @@ test('successful local backup still clears dirty state if cloud flush fails', as
   assert.deepEqual(h.state.toasts, []);
 });
 
-function quitHarness({ dirty = true, locked = false, save = async () => true, reason = null } = {}) {
-  const state = { dirty, revision: 'initial', writes: [], notifications: [] };
+function quitHarness({ dirty = true, locked = false, cloud = false, save = async () => true,
+  reason = null, ensure = async () => ({ locallyDurable: true }), proofCurrent = true } = {}) {
+  const state = { dirty, revision: 'initial', writes: [], notifications: [], receiptCalls: 0, gates: [], proofCurrent };
   const snapshot = {};
   const savedRef = { current: { 1: { objects: [{ id: 'deleted' }] } } };
   const scope = {
-    pdfId: 'local', pdfFile: {}, tabId: 'inactive-tab', documentLocked: locked,
+    pdfId: 'local', pdfFile: cloud ? { id: 'cloud-document' } : {}, tabId: 'inactive-tab', documentLocked: locked,
     hasUnsavedAnnotations: dirty, annotationsByPageRef: { current: snapshot },
-    getQuitSaveBlockReason: () => reason, getQuitSaveRevision: () => state.revision,
-    quitSaveHandlerRef: { current: { getRevision: () => state.revision } },
+    getQuitSaveBlockReason: options => { state.gates.push(options); return reason; }, getQuitSaveRevision: () => state.revision,
+    quitSaveHandlerRef: { current: { getRevision: () => cloud && !locked && !state.proofCurrent ? null : state.revision } },
+    quitAnnotationReceiptRef: { current: null },
+    ensureAnnotationLocalDurability: async () => { state.receiptCalls++; return ensure(); },
+    isAnnotationLocalReceiptCurrent: receipt => state.proofCurrent && receipt?.locallyDurable === true,
+    cloudSyncForceFlush: () => { throw new Error('native local receipt must not wait for the backend'); },
     saveAnnotationsByPage: async (...args) => { state.writes.push(args); return save(...args); },
     savedAnnotationsByPageRef: savedRef, setHasUnsavedAnnotations: value => { state.dirty = value; },
     onUnsavedAnnotationsChange: (...args) => state.notifications.push(args), showToast() {},
@@ -253,10 +311,63 @@ test('quit sends failure if the save throws, and true only for a confirmed save'
 
 test('locked viewers issue zero writes, and only clean locked state can confirm', async () => {
   for (const dirty of [true, false]) {
-    const q = quitHarness({ dirty, locked: true });
+    const q = quitHarness({ dirty, locked: true, cloud: true });
     assert.equal((await q.quit()).saved, !dirty);
     assert.equal(q.state.writes.length, 0);
+    assert.equal(q.state.receiptCalls, 0, 'a locked cloud tab cannot write through receipt capture');
   }
+});
+
+test('native cloud close waits for a local receipt, without asking for backend completion', async () => {
+  let finish;
+  const q = quitHarness({ cloud: true, ensure: () => new Promise(resolve => { finish = resolve; }) });
+  let done = false;
+  const pending = q.quit().then(result => { done = true; return result; });
+  await Promise.resolve();
+  assert.equal(q.state.receiptCalls, 1);
+  assert.equal(q.state.writes.length, 0);
+  assert.equal(done, false);
+  assert.deepEqual(q.state.gates[0], { requireLocalReceipt: false }, 'prepare may obtain its first proof');
+  finish({ locallyDurable: true });
+  assert.deepEqual(await pending, { saved: true, revision: 'initial' });
+  assert.equal(q.state.writes.length, 1);
+});
+
+test('failed, missing, or stale local proof vetoes cloud quit before the legacy snapshot write', async () => {
+  for (const options of [
+    { ensure: async () => { throw new Error('offline local store failed'); } },
+    { ensure: async () => undefined },
+    { proofCurrent: false },
+  ]) {
+    const q = quitHarness({ cloud: true, ...options });
+    assert.equal((await q.quit()).saved, false);
+    assert.equal(q.state.writes.length, 0);
+    assert.equal(q.state.dirty, true);
+  }
+});
+
+test('a latest viewer edit during local receipt capture cannot acknowledge or clear dirty', async () => {
+  let finish;
+  const q = quitHarness({ cloud: true, ensure: () => new Promise(resolve => { finish = resolve; }) });
+  const pending = q.quit();
+  q.state.revision = 'newer-viewer-edit';
+  finish({ locallyDurable: true });
+  assert.equal((await pending).saved, false);
+  assert.equal(q.state.writes.length, 0, 'changed viewer state cannot overwrite a local snapshot');
+  assert.equal(q.state.dirty, true);
+  assert.equal(q.state.notifications.length, 0);
+});
+
+test('receipt invalidation during the legacy write cannot acknowledge quit', async () => {
+  let finish;
+  const q = quitHarness({ cloud: true, save: () => new Promise(resolve => { finish = resolve; }) });
+  const pending = q.quit();
+  while (!finish) await Promise.resolve();
+  q.state.proofCurrent = false;
+  finish(true);
+  assert.equal((await pending).saved, false);
+  assert.equal(q.state.dirty, true);
+  assert.equal(q.state.notifications.length, 0);
 });
 
 test('an edit or actor change during the async write cannot clear newer dirty state', async () => {

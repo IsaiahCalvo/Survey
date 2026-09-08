@@ -87,6 +87,10 @@ const DURABLE_MAP_NAMES = [
   ERASE_OUTBOX_MAP,
 ];
 const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map());
+// Retired handles are no longer active, but an inactive viewer may still hold
+// their receipt. A purge must invalidate those receipts before its first await.
+const LOCAL_RECEIPT_PURGE_EPOCHS = (globalThis.__annotationLocalReceiptPurgeEpochs__ ??= new Map());
+const ISSUED_LOCAL_RECEIPTS = new WeakMap();
 
 function historyQuarantineDedupeKey(state, evidenceKeys = []) {
   const normalizedKeys = [...new Set(
@@ -364,6 +368,11 @@ export async function openAnnotationDoc({
     repairCheckpointGeneration: 0,
     pendingAppends: 0,
     localMutationOrdinal: 0,
+    localReceiptRevision: 0,
+    localReceiptPurgeEpoch: LOCAL_RECEIPT_PURGE_EPOCHS.get(documentId) || 0,
+    localRecoveryProof: null,
+    localWriteTasks: new Set(),
+    localCloseReceipt: null,
     permissionRejectedCutoff: 0,
     outbox: outboxStore,
     actorUserId,
@@ -564,6 +573,9 @@ export async function openAnnotationDoc({
     // --- observe local mutations → append to the durable log ---
     state.onDocUpdate = (update, origin, _doc, transaction) => {
       if (state.destroyed || state.deleted) return;
+      // Include remote updates and delete-only updates, not just local WAL
+      // epochs. Any visible change invalidates a receipt already being read.
+      state.localReceiptRevision += 1;
       // A closing handle owns only receipts from its already-running effects,
       // not new edits in the registry doc borrowed by the next viewer.
       if (state.closePromise && origin !== state.eraseOutboxOrigin) return;
@@ -2410,7 +2422,208 @@ function persistOutboxRecord(state, record) {
     historyTag: _historyTag,
     ...durableRecord
   } = record;
-  return state.outbox.put(durableRecord);
+  const task = Promise.resolve().then(() => state.outbox.put(durableRecord));
+  state.localWriteTasks.add(task);
+  task.then(
+    () => state.localWriteTasks.delete(task),
+    () => state.localWriteTasks.delete(task),
+  );
+  return task;
+}
+
+function localDurabilityError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+function isLocalReceiptCurrent(state, receipt) {
+  // This synchronous final check covers changes observed in this renderer.
+  // Reusing an inactive receipt first requires revalidateLocalReceipt, which
+  // also catches storage changes made by another browser context.
+  const issued = receipt && ISSUED_LOCAL_RECEIPTS.get(receipt);
+  if (!issued || issued.state !== state || state.deleted || state.quarantinedLocalHistory
+    || state.permissionRejectedCutoff > 0
+    || state.localReceiptPurgeEpoch !== (LOCAL_RECEIPT_PURGE_EPOCHS.get(state.documentId) || 0)
+    || receipt.revision !== state.localReceiptRevision
+    || receipt.documentId !== state.documentId || receipt.actorUserId !== state.actorUserId
+    || receipt.incarnation !== state.documentIncarnation || receipt.writerId !== state.writerId) return false;
+  // The live observer counts every Yjs update, including remote changes and
+  // delete-only transactions. Avoid serializing the full doc on active checks.
+  if (!state.destroyed && state.onDocUpdate) return true;
+  // Destroy detaches the retired observer. Compare actual bytes as well, so a
+  // later change to the shared registry document cannot reuse an old receipt.
+  const current = encodeSnapshot(state.doc);
+  return current.length === issued.update.length
+    && current.every((byte, index) => byte === issued.update[index]);
+}
+
+function deleteSetCovers(expectedUpdate, recoveredUpdate) {
+  const expected = Y.decodeUpdate(expectedUpdate).ds.clients;
+  const recovered = Y.decodeUpdate(recoveredUpdate).ds.clients;
+  for (const [client, ranges] of expected) {
+    const saved = recovered.get(client) || [];
+    for (const range of ranges) {
+      let cursor = range.clock;
+      const end = range.clock + range.len;
+      for (const candidate of saved) {
+        if (candidate.clock > cursor) break;
+        cursor = Math.max(cursor, candidate.clock + candidate.len);
+        if (cursor >= end) break;
+      }
+      if (cursor < end) return false;
+    }
+  }
+  return true;
+}
+
+async function flushLocalDurability(state, {
+  expectedDocumentId = state.documentId,
+  expectedActorUserId = state.actorUserId,
+  isCurrent = () => true,
+} = {}, allowClosing = false) {
+  if (!allowClosing) assertHandleWritable(state);
+  const revision = state.localReceiptRevision;
+  const assertCurrent = () => {
+    assertStateWritable(state);
+    if (state.localReceiptPurgeEpoch !== (LOCAL_RECEIPT_PURGE_EPOCHS.get(state.documentId) || 0)) {
+      throw deletedDocumentError(state.documentId);
+    }
+    if (state.destroyed || (!allowClosing && state.closePromise)) {
+      throw localDurabilityError('ANNOTATION_HANDLE_CLOSED', 'The annotation handle closed during the local save.');
+    }
+    if (expectedDocumentId !== state.documentId || expectedActorUserId !== state.actorUserId || !isCurrent()) {
+      throw localDurabilityError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The document or account changed during the local save.');
+    }
+    if (revision !== state.localReceiptRevision) {
+      throw localDurabilityError('ANNOTATION_LOCAL_REVISION_CHANGED', 'Annotations changed during the local save. Retry the current revision.');
+    }
+    // Conservative first receipt contract: historical quarantine also requires
+    // review. Never turn a recovery record into an ordinary publishable edit.
+    if (state.quarantinedLocalHistory) {
+      throw localDurabilityError('ANNOTATION_LOCAL_QUARANTINED', 'Quarantined annotation history requires review before confirming a local save.');
+    }
+  };
+  assertCurrent();
+  if (state.outbox?.storageKind !== 'indexeddb' || typeof state.outbox.readLocalState !== 'function') {
+    throw localDurabilityError('ANNOTATION_LOCAL_STORAGE_UNAVAILABLE', 'Persistent annotation storage is unavailable. Memory alone cannot confirm a local save.');
+  }
+  const capturedUpdate = encodeSnapshot(state.doc);
+  // Only backend-accepted bytes belong in the clean checkpoint. Pending edits
+  // remain exact actor-bound records, subject to server permission on replay.
+  const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
+  await Promise.allSettled([...state.localWriteTasks]);
+  assertCurrent();
+  await state.outbox.compactAccepted(
+    state.documentId, state.actorUserId, acceptedUpdate, true, state.documentIncarnation,
+  );
+  assertCurrent();
+  const stored = await state.outbox.readLocalState(
+    state.documentId, state.actorUserId, state.documentIncarnation,
+  );
+  assertCurrent();
+  // Deletion may have committed while a caller was waiting for the scope read.
+  // Do not return an old-incarnation receipt after that local purge.
+  if (await state.outbox.getDocumentIncarnation(state.documentId) !== state.documentIncarnation) {
+    throw deletedDocumentError(state.documentId);
+  }
+  assertCurrent();
+  verifyLocalRecovery(state, stored, capturedUpdate);
+  assertCurrent();
+  const receipt = Object.freeze({
+    locallyDurable: true, documentId: state.documentId, actorUserId: state.actorUserId,
+    incarnation: state.documentIncarnation, writerId: state.writerId, revision,
+  });
+  ISSUED_LOCAL_RECEIPTS.set(receipt, { state, update: capturedUpdate });
+  return receipt;
+}
+
+async function revalidateLocalReceipt(state, receipt) {
+  const assertCurrent = () => {
+    if (!isLocalReceiptCurrent(state, receipt)) {
+      throw localDurabilityError('ANNOTATION_LOCAL_RECEIPT_STALE', 'The saved local annotation receipt is no longer current.');
+    }
+  };
+  assertCurrent();
+  if (typeof state.outbox?.readLocalStateFresh !== 'function') {
+    throw localDurabilityError('ANNOTATION_LOCAL_STORAGE_UNAVAILABLE', 'Persistent annotation storage cannot be checked.');
+  }
+  const stored = await state.outbox.readLocalStateFresh(
+    state.documentId, state.actorUserId, state.documentIncarnation,
+  );
+  assertCurrent();
+  verifyLocalRecovery(state, stored, ISSUED_LOCAL_RECEIPTS.get(receipt).update);
+  assertCurrent();
+  return receipt;
+}
+
+function sameReceiptKeys(left = [], right = []) {
+  return left.length === right.length && left.every((key, index) => key === right[index]);
+}
+
+function sameRecoveryRows(left, right) {
+  return left.length === right.length && left.every((row, index) => {
+    const other = right[index];
+    return ['key', 'documentId', 'actorUserId', 'incarnation', 'status', 'publishAfterAcceptance']
+      .every((field) => row[field] === other[field])
+      && sameReceiptKeys(row.dependsOn, other.dependsOn)
+      && bytesEqual(row.update, other.update);
+  });
+}
+
+function sameRecoveryInputs(left, right) {
+  return left.documentId === right.documentId && left.actorUserId === right.actorUserId
+    && left.incarnation === right.incarnation
+    && bytesEqual(left.checkpointUpdate, right.checkpointUpdate)
+    && sameReceiptKeys(left.acceptedKeys, right.acceptedKeys)
+    && sameRecoveryRows(left.accepted, right.accepted)
+    && sameRecoveryRows(left.pending, right.pending);
+}
+
+function verifyLocalRecovery(state, stored, capturedUpdate) {
+  if (!stored.checkpointUpdate?.length) {
+    throw localDurabilityError('ANNOTATION_LOCAL_INCOMPLETE', 'The saved annotation checkpoint is missing.');
+  }
+  if (stored.quarantined.length || stored.pending.some((row) => (
+    !['pending', 'ambiguous'].includes(row.status)
+  ))) {
+    throw localDurabilityError('ANNOTATION_LOCAL_QUARANTINED', 'Stored annotation updates require review before confirming a local save.');
+  }
+  for (const row of [...stored.accepted, ...stored.pending]) {
+    if (row.documentId !== state.documentId || row.actorUserId !== state.actorUserId
+      || (Number(row.incarnation) || 0) !== state.documentIncarnation) {
+      throw localDurabilityError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'Stored annotation updates do not match this document and account.');
+    }
+  }
+  const availableKeys = new Set([
+    ...stored.acceptedKeys, ...stored.accepted.map((row) => row.key), ...stored.pending.map((row) => row.key),
+  ]);
+  if (stored.pending.some((row) => (row.dependsOn || []).some((key) => !availableKeys.has(key)))) {
+    throw localDurabilityError('ANNOTATION_LOCAL_INCOMPLETE', 'A pending annotation update is missing its predecessor.');
+  }
+  // A single last-proof entry saves only detached reconstruction. Every caller
+  // still performs fresh transactions and all scope/quarantine/dependency
+  // checks above. These are owned read clones, never optimistic live objects.
+  const previous = state.localRecoveryProof;
+  if (previous && bytesEqual(previous.capturedUpdate, capturedUpdate)
+    && sameRecoveryInputs(previous.stored, stored)) return;
+  const captured = createDetachedYDoc(`local-receipt-captured:${state.writerId}`);
+  const recovered = createDetachedYDoc(`local-receipt-recovered:${state.writerId}`);
+  try {
+    Y.applyUpdate(captured, capturedUpdate, HYDRATE_ORIGIN);
+    for (const update of [
+      stored.checkpointUpdate,
+      ...stored.accepted.map((row) => row.update),
+      ...stored.pending.filter((row) => !row.publishAfterAcceptance).map((row) => row.update),
+    ].filter(Boolean)) Y.applyUpdate(recovered, update, HYDRATE_ORIGIN);
+    const missing = Y.decodeUpdate(Y.diffUpdate(capturedUpdate, Y.encodeStateVector(recovered)));
+    if (missing.structs.length || !deleteSetCovers(capturedUpdate, encodeSnapshot(recovered))
+      || !durableDocsEqual(captured, recovered)) {
+      throw localDurabilityError('ANNOTATION_LOCAL_INCOMPLETE', 'The stored annotation state does not yet cover this revision.');
+    }
+    state.localRecoveryProof = { capturedUpdate, stored };
+  } finally {
+    captured.destroy();
+    recovered.destroy();
+  }
 }
 
 async function appendOp(state, record) {
@@ -3285,6 +3498,12 @@ function makeHandle(state) {
     writerId: state.writerId,
     doc: state.doc,
 
+    getLocalRevision: () => state.localReceiptRevision,
+    isLocalReceiptCurrent: (receipt) => isLocalReceiptCurrent(state, receipt),
+    revalidateLocalReceipt: (receipt) => revalidateLocalReceipt(state, receipt),
+    flushLocalDurability: (options) => flushLocalDurability(state, options),
+    getLocalCloseReceipt: () => state.localCloseReceipt,
+
     /** Current annotations in render shape. */
     getByPage() {
       const byPage = docToByPage(state.doc);
@@ -3637,6 +3856,10 @@ function makeHandle(state) {
       unregisterActiveState(state);
       state.eraseOutboxClosing = true;
       clearEraseOutboxRetry(state);
+      // Expose local durability independently of the cloud teardown below.
+      // The close promise still seals this observer before control returns.
+      state.localCloseReceipt = flushLocalDurability(state, {}, true);
+      state.localCloseReceipt.catch(() => {}); // caller may inspect it later
       if (state.deleted) {
         state.destroyed = true;
       }
@@ -3671,6 +3894,7 @@ function makeHandle(state) {
           await finalizeSnapshotResult(state, result);
         } catch { /* */ }
       }
+      await state.localCloseReceipt.catch(() => {});
       state.destroyed = true;
       // Detach the local-mutation observer: registry docs survive destroy by
       // design (undo/state across reopen), so leaving the listener attached
@@ -3710,6 +3934,7 @@ function makeHandle(state) {
  */
 export async function purgeAnnotationDoc(documentId) {
   if (!documentId) return;
+  LOCAL_RECEIPT_PURGE_EPOCHS.set(documentId, (LOCAL_RECEIPT_PURGE_EPOCHS.get(documentId) || 0) + 1);
   const purgeError = deletedDocumentError(documentId);
   const activeStates = [...(ACTIVE_STATES.get(documentId) || [])];
   for (const state of activeStates) {

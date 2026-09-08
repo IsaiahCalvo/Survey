@@ -68,6 +68,13 @@ try {
   await page.evaluate(() => window.__restoreQaStorage());
   await page.keyboard.press('Meta+s');
   await page.waitForFunction(() => !document.querySelector('[title="Unsaved changes (Cmd/Ctrl+S to save)"]'));
+  await field.fill('Immediate manual save QA');
+  await page.keyboard.press('Meta+s');
+  // Observe beyond the former 400 ms field timer: one Save must cancel it,
+  // stay clean, and retain focus without waiting for blur or a second Save.
+  await page.waitForTimeout(550);
+  assert.equal(await page.getByTitle('Unsaved changes (Cmd/Ctrl+S to save)', { exact: true }).count(), 0);
+  assert.equal(await field.evaluate(element => element === document.activeElement), true);
   // Do not blur: native close must commit this live PDF form input itself.
   await field.fill('Immediate native quit QA');
   const closed = desktop.waitForEvent('close', { timeout: 20_000 });
@@ -90,7 +97,7 @@ try {
   await desktop.evaluate(({ app }) => app.quit());
   await homeClosed;
   desktop = null;
-  console.log(JSON.stringify({ nativeAtomicWrite: 'passed', localQuotaPreservesDirtyAndNeighbor: 'passed', nativeQuitVeto: 'passed', saveRetry: 'passed', focusedFieldNormalQuitAndRestore: 'passed', homeOnlyQuit: 'passed' }));
+  console.log(JSON.stringify({ nativeAtomicWrite: 'passed', localQuotaPreservesDirtyAndNeighbor: 'passed', nativeQuitVeto: 'passed', saveRetry: 'passed', immediateFocusedManualSave: 'passed', focusedFieldNormalQuitAndRestore: 'passed', homeOnlyQuit: 'passed' }));
 } finally {
   // A failed assertion may leave a deliberately vetoed save. Discard only
   // this fixture's isolated process/profile, never bypass a user's quit guard.
