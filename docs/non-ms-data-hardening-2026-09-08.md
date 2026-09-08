@@ -1334,6 +1334,82 @@ save/retry, and collaboration verification remain required after an approved
 rollout. Plan-change atomicity, the duplicate legacy counter trigger, durable
 single-file background uploads, and older mutable PDF paths remain open.
 
+## Counter writes and system archive permissions: local follow-up
+
+`20260908170000_remove_duplicate_storage_counter_trigger.sql` removes only the
+old combined document storage-counter trigger. Each INSERT and DELETE now
+calls the unchanged legacy counter function once instead of twice. Metadata
+and annotation UPDATEs no longer call that no-op function. The migration pins
+the known function body and checks the exact events, function, enabled state,
+arguments, and conditions of all three triggers before changing anything.
+Replay still checks the two retained triggers. Unknown drift stops the patch.
+It does not backfill the already inaccurate legacy counter or change the
+object-byte quota, app meter, views, or function configuration and grants.
+
+`20260908171000_archive_helpers_service_only.sql` removes PUBLIC, anon, and
+authenticated execution of four system archive helpers: the downgrade wrapper,
+both project archive overloads, and the document archive helper. These definer
+functions accept an account ID without checking the caller. Source and live
+catalog review found the billing webhook and the postgres-owned wrapper as
+known callers, not app RPC requests. The patch keeps postgres and service-role
+execution and changes no function body, owner, search path, policy, or row.
+All four owner/definer checks run before any ACL write, in one transaction.
+
+The archive tests use the real tracked function definitions and isolated local
+users, projects, documents, status rows, shares, and storage objects. They first
+show authenticated cross-account calls, then prove client calls are denied for
+both own and other accounts while service calls and the nested downgrade still
+work. The UUID project overload changes `project_status`; the integer overload
+changes the quota `archived` flag. The tests keep that distinction and check
+that file bytes, row identities, shares, and other fields survive.
+
+These fixes are local only. They have not changed Supabase permissions or
+production counters. A lower callback/write count is verified in PostgreSQL;
+no production latency or egress saving is claimed.
+
+Frozen database verification: 26 counter checks and 48 archive-permission checks
+passed on installed PostgreSQL. The root combined opt-in run and existing
+webhook contracts passed 9/9 tests, with deliberately invalid inherited PG
+connection settings. Both harnesses scrub those settings, use their own Unix
+socket, stop their server, and remove only their exact temporary cluster. A
+separate reviewer also found no migration defects and passed the same three
+test files. The final archive fixture pins the confirmed live public search path
+and includes non-null user archives; extra PUBLIC/anon grants in that fixture
+are synthetic revocation cases, not a claim about live grants.
+
+Full regression suite: 5,017 tests total, 4,958 passed, 59 skipped, zero failures
+or cancellations, exit 0 (prior baseline: 5,011 total, 4,954 passed, 57 skipped).
+The six new tests add four offline passes and two explicit database opt-in skips;
+both database tests also ran separately and passed. The production build and
+graph update passed. There is no app-source/UI change in this batch, and these
+results do not stand in for live upload, billing, or collaboration tests after
+an approved database rollout. Supabase best-practice guidance informed the
+least-privilege ACL changes, short migration transactions, and lock-order review.
+
+### Remaining plan-change and caller-scope work
+
+The billing webhook still updates the subscription and archives excess rows in
+separate calls, and some database failures are logged before returning HTTP 200.
+Its scheduled-cancel email can run before the update error is checked. A stale
+subscription update affecting zero rows can still lead to an archive call.
+These are open issues, not fixed by the four-helper permission patch.
+
+A local two-session lock fixture reproduced deadlocks for both subscription-first
+locking and guard-first locking that takes the subscription row before archive
+rows. Taking quota guards, then affected archive rows, then the subscription row
+avoided the demonstrated delete cycle. A future service-only plan transition
+must use one transaction, a fixed lock order, exact account/customer/subscription
+binding, whole-transaction retries, and explicit applied/duplicate/stale outcomes.
+Webhook event deduplication and current-state reconciliation need tests before
+replacing the existing handlers; timestamps alone are not an ordering guarantee.
+Do not invent automatic unarchiving on upgrade or delete bytes during downgrade.
+
+The separate `swap_active_project(uuid,uuid,uuid)` function also trusts its supplied
+account ID. It is intended as a self-service operation, so removing authenticated
+execution is not the same fix as for system-only archive helpers. Its caller
+scope and monthly-swap concurrency need their own behavior tests and narrow fix.
+No real account was used to exercise these gaps. Microsoft work stays deferred.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
