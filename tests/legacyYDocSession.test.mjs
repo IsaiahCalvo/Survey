@@ -192,3 +192,95 @@ test('a previously destroyed doc is rejected before auth or local resources atta
     ydoc, documentId: 'doc', actorUserId: 'a', getSession() {}, createTransportProvider() {},
   }), /destroyed/);
 });
+
+function closeLifecycle(overrides = {}) {
+  const receipt = Object.freeze({ local: true });
+  return { receipt, role: () => 'leader', detach: async () => {},
+    prepareLocalClose: async () => receipt,
+    isLocalCloseReceiptCurrent: candidate => candidate === receipt,
+    validateLocalCloseReceipt: async () => true,
+    ...overrides,
+  };
+}
+
+test('session close receipts require this exact live generation and a fresh disk check', async t => {
+  let checked = 0;
+  const local = closeLifecycle({ validateLocalCloseReceipt: async () => { checked++; return true; } });
+  const s = setup(t, { attachLocalLifecycle: () => local });
+  assert.equal(s.handle.isLocalCloseReceiptCurrent(local.receipt), false, 'not issued through this session');
+  const receipt = await s.handle.prepareLocalClose();
+  assert.equal(s.handle.isLocalCloseReceiptCurrent(receipt), true);
+  assert.equal(await s.handle.validateLocalCloseReceipt(receipt), true);
+  assert.equal(checked, 1);
+  await assert.rejects(s.handle.validateLocalCloseReceipt({ ...receipt }), { code: 'LOCAL_CLOSE_CANCELLED' });
+  const other = setup(t, { attachLocalLifecycle: () => local });
+  assert.equal(other.handle.isLocalCloseReceiptCurrent(receipt), false);
+  await s.handle.detach();
+  assert.equal(s.handle.isLocalCloseReceiptCurrent(receipt), false);
+});
+
+test('account retirement cancels an in-flight close and rejects its late receipt', async t => {
+  const pending = deferred();
+  let signal;
+  const local = closeLifecycle({ prepareLocalClose: options => { signal = options.signal; return pending.promise; } });
+  const s = setup(t, { attachLocalLifecycle: () => local });
+  const attempt = s.handle.prepareLocalClose();
+  const rejected = assert.rejects(attempt, { code: 'LOCAL_CLOSE_CANCELLED' });
+  s.emit('SIGNED_IN', { user: { id: 'b' } });
+  assert.equal(signal.aborted, true);
+  pending.resolve(local.receipt);
+  await rejected;
+  assert.equal(s.handle.isLocalCloseReceiptCurrent(local.receipt), false);
+});
+
+test('caller cancellation reaches the local writer without retiring the session', async t => {
+  const pending = deferred();
+  let signal;
+  const local = closeLifecycle({ prepareLocalClose: options => { signal = options.signal; return pending.promise; } });
+  const s = setup(t, { attachLocalLifecycle: () => local });
+  const cancel = new AbortController();
+  const attempt = s.handle.prepareLocalClose({ signal: cancel.signal });
+  const rejected = assert.rejects(attempt, { code: 'LOCAL_CLOSE_CANCELLED' });
+  cancel.abort();
+  assert.equal(signal.aborted, true);
+  pending.resolve(local.receipt);
+  await rejected;
+  assert.equal(s.handle.isCurrent(), true);
+});
+
+test('retirement or live edits during fresh verification prevent a close approval', async t => {
+  for (const retire of [false, true]) {
+    const pending = deferred();
+    let signal, current = true;
+    const local = closeLifecycle({
+      isLocalCloseReceiptCurrent: candidate => current && candidate === local.receipt,
+      validateLocalCloseReceipt: (_receipt, options) => { signal = options.signal; return pending.promise; },
+    });
+    const s = setup(t, { attachLocalLifecycle: () => local });
+    const receipt = await s.handle.prepareLocalClose();
+    const attempt = s.handle.validateLocalCloseReceipt(receipt);
+    const rejected = assert.rejects(attempt, { code: 'LOCAL_CLOSE_CANCELLED' });
+    if (retire) {
+      s.emit('SIGNED_OUT', null);
+      assert.equal(signal.aborted, true);
+    } else current = false;
+    pending.resolve(true);
+    await rejected;
+  }
+});
+
+test('unsupported close proof fails closed without treating detach as a save receipt', async t => {
+  const s = setup(t);
+  await assert.rejects(s.handle.prepareLocalClose(), { code: 'LOCAL_CLOSE_UNAVAILABLE' });
+  assert.equal(s.counts.localClosed, 0);
+  assert.equal(s.handle.isCurrent(), true);
+});
+
+test('a missing or false fresh verification result is not a durable close approval', async t => {
+  for (const result of [false, undefined, null, {}]) {
+    const local = closeLifecycle({ validateLocalCloseReceipt: async () => result });
+    const s = setup(t, { attachLocalLifecycle: () => local });
+    const receipt = await s.handle.prepareLocalClose();
+    await assert.rejects(s.handle.validateLocalCloseReceipt(receipt), { code: 'LOCAL_CLOSE_CANCELLED' });
+  }
+});

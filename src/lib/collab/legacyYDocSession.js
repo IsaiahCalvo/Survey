@@ -25,7 +25,32 @@ export function attachLegacyYDocSession({
   let lifecycle = null;
   let provider = null;
   let closePromise = null;
+  const closeReceipts = new WeakSet();
   const isCurrent = () => !retired && !detached;
+  const closeCanceled = () => Object.assign(new Error('The account-bound local save check was canceled'), { code: 'LOCAL_CLOSE_CANCELLED' });
+  const receiptCurrent = receipt => !!receipt && closeReceipts.has(receipt) && isCurrent()
+    && !!lifecycle?.isLocalCloseReceiptCurrent?.(receipt);
+  async function runCloseCheck(method, args, options = {}) {
+    const capturedLifecycle = lifecycle;
+    if (!isCurrent() || options.signal?.aborted) throw closeCanceled();
+    if (typeof capturedLifecycle?.[method] !== 'function') {
+      throw Object.assign(new Error('This local session cannot confirm a durable close'), { code: 'LOCAL_CLOSE_UNAVAILABLE' });
+    }
+    const attempt = new AbortController();
+    const cancel = () => attempt.abort();
+    controller.signal.addEventListener('abort', cancel, { once: true });
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      if (controller.signal.aborted || options.signal?.aborted) attempt.abort();
+      if (attempt.signal.aborted) throw closeCanceled();
+      const result = await capturedLifecycle[method](...args, { ...options, signal: attempt.signal });
+      if (!isCurrent() || lifecycle !== capturedLifecycle || attempt.signal.aborted) throw closeCanceled();
+      return result;
+    } finally {
+      controller.signal.removeEventListener('abort', cancel);
+      options.signal?.removeEventListener('abort', cancel);
+    }
+  }
   const closeLocal = () => {
     if (!lifecycle || closePromise) return closePromise;
     // The registry still owns the live bytes. Completion here only means that
@@ -106,6 +131,19 @@ export function attachLegacyYDocSession({
     role: () => lifecycle?.role() ?? 'unknown',
     getProvider: () => provider,
     restartTransport: () => isCurrent() ? coordinator.restart() : Promise.resolve(null),
+    async prepareLocalClose(options) {
+      const receipt = await runCloseCheck('prepareLocalClose', [], options);
+      if (!isCurrent() || !lifecycle.isLocalCloseReceiptCurrent(receipt)) throw closeCanceled();
+      closeReceipts.add(receipt);
+      return receipt;
+    },
+    isLocalCloseReceiptCurrent: receiptCurrent,
+    async validateLocalCloseReceipt(receipt, options) {
+      if (!receiptCurrent(receipt)) throw closeCanceled();
+      const verified = await runCloseCheck('validateLocalCloseReceipt', [receipt], options);
+      if (verified !== true || !receiptCurrent(receipt)) throw closeCanceled();
+      return true;
+    },
     detach() {
       if (detached) return closePromise;
       detached = true;

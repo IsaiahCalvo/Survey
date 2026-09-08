@@ -34,6 +34,7 @@ import { IndexeddbPersistence } from 'y-indexeddb';
 import * as Y from 'yjs';
 import { attachStorageFailureDetector } from './storageFailureDetector.js';
 import { getLegacyYDocScopeKey } from './legacyYDocScope.js';
+import { createLegacyYDocCloseCoordinator } from './legacyYDocCloseCoordinator.js';
 
 // Origin tag for BroadcastChannel-applied updates.
 // Locked by 27-RESEARCH.md Pattern 2: Phase 29 observers can short-circuit echo loops
@@ -229,14 +230,20 @@ function attachScopedLifecycle(ydoc, documentId, options) {
   let releaseLock;
   const lifetime = new Promise((resolve) => { releaseLock = resolve; });
   let election;
+  const closeCoordinator = createLegacyYDocCloseCoordinator({
+    ydoc, documentId, actorUserId, senderId,
+    send: post, sendCancellation: fields => post('close-cancel', fields, true), getRole: () => role,
+    getDatabase: () => hydrated ? persistence?.db : null,
+    isCurrent: () => !detached,
+  });
 
   function setRole(next) {
     if (detached || role === next) return;
     role = next;
     onRoleChange(next);
   }
-  function post(type, fields = {}) {
-    if (detached) return null;
+  function post(type, fields = {}, allowDetachedCancellation = false) {
+    if (detached && !(allowDetachedCancellation && type === 'close-cancel')) return null;
     const message = {
       ...fields, protocol: SCOPED_PROTOCOL, version: SCOPED_PROTOCOL_VERSION,
       documentId, actorUserId, senderId, sequence: ++sequence, type,
@@ -297,7 +304,8 @@ function attachScopedLifecycle(ydoc, documentId, options) {
       || !isNonemptyString(message.senderId) || message.senderId === senderId
       || !Number.isSafeInteger(message.sequence) || message.sequence <= 0
       || (message.recipientId !== undefined && message.recipientId !== senderId)
-      || !['sync-request', 'sync-response', 'update'].includes(message.type)) return;
+      || !['sync-request', 'sync-response', 'update', 'close-request', 'close-ack', 'close-error', 'close-cancel', 'close-storage-changed'].includes(message.type)) return;
+    if (closeCoordinator.receive(message)) return;
     if (message.type === 'sync-response' && (
       message.recipientId !== senderId || !ownRequests.has(message.requestSequence)
     )) return;
@@ -368,6 +376,7 @@ function attachScopedLifecycle(ydoc, documentId, options) {
         for (const request of waitingPeers.values()) replyTo(request);
         waitingPeers.clear();
         retrySync(true);
+        closeCoordinator.onReady();
       });
       storageDetector = attachStorageFailureDetector({
         onState: (state) => {
@@ -387,6 +396,7 @@ function attachScopedLifecycle(ydoc, documentId, options) {
   function detach() {
     if (detached) return election;
     detached = true;
+    closeCoordinator.dispose();
     clearRetries();
     waitingPeers.clear();
     seenMessages.clear();
@@ -404,5 +414,10 @@ function attachScopedLifecycle(ydoc, documentId, options) {
     return election;
   }
 
-  return { detach, role: () => role };
+  return {
+    detach, role: () => role,
+    prepareLocalClose: closeCoordinator.prepareLocalClose,
+    isLocalCloseReceiptCurrent: closeCoordinator.isLocalCloseReceiptCurrent,
+    validateLocalCloseReceipt: closeCoordinator.validateLocalCloseReceipt,
+  };
 }

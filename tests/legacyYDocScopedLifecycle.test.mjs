@@ -397,3 +397,167 @@ test('an already destroyed scoped doc cannot acquire a lifecycle', async (t) => 
   assert.equal(env.groups.size, 0);
   assert.equal(env.pending.size, 0);
 });
+
+function openCloseScope(env, documentId = 'close-doc', actorUserId = 'actor') {
+  return env.open(documentId, actorUserId, new Y.Doc({ guid: getLegacyYDocScopeKey(documentId, actorUserId) }));
+}
+
+test('last follower edit is proved on disk before simultaneous detach and cold reopen', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  const follower = openCloseScope(env);
+  await pause(20);
+  env.setDrop(message => message.type === 'update');
+  follower.doc.getMap('annotations').set('last-edit', 'must survive');
+  const followerReceipt = await follower.handle.prepareLocalClose();
+  const leaderReceipt = await leader.handle.prepareLocalClose();
+  assert.equal(follower.handle.isLocalCloseReceiptCurrent(followerReceipt), true);
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent(leaderReceipt), true);
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent(followerReceipt), false, 'receipts are bound to one exact mount');
+  assert.equal(await follower.handle.validateLocalCloseReceipt(followerReceipt), true);
+  assert.equal(await leader.handle.validateLocalCloseReceipt(leaderReceipt), true);
+  await Promise.all([follower.handle.detach(), leader.handle.detach()]);
+  assert.equal(follower.handle.isLocalCloseReceiptCurrent(followerReceipt), false);
+  const cold = openCloseScope(env);
+  await until(cold.ready);
+  assert.equal(cold.doc.getMap('annotations').get('last-edit'), 'must survive');
+});
+
+test('a dropped save acknowledgment times out without detaching or claiming a receipt', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  const follower = openCloseScope(env);
+  await pause(20);
+  env.setDrop(message => message.type === 'close-ack');
+  await assert.rejects(follower.handle.prepareLocalClose({ timeoutMs: 40 }), { code: 'LOCAL_CLOSE_TIMEOUT' });
+  assert.equal(leader.handle.role(), 'leader');
+  assert.equal(follower.handle.role(), 'follower');
+  env.setDrop(() => false);
+  const receipt = await follower.handle.prepareLocalClose();
+  assert.equal(follower.handle.isLocalCloseReceiptCurrent(receipt), true);
+});
+
+test('a pending follower close survives promotion and verifies before cold reopen', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  const follower = openCloseScope(env);
+  await pause(20);
+  env.setDrop(message => message.type === 'close-request' || message.type === 'update');
+  follower.doc.getMap('annotations').set('unsent-before-promotion', 'keep');
+  const pending = follower.handle.prepareLocalClose();
+  await until(() => env.sent.some(entry => entry.message.type === 'close-request'));
+  await leader.handle.detach();
+  const receipt = await pending;
+  assert.equal(follower.handle.role(), 'leader');
+  assert.equal(await follower.handle.validateLocalCloseReceipt(receipt), true);
+  await follower.handle.detach();
+  const cold = openCloseScope(env);
+  await until(cold.ready);
+  assert.equal(cold.doc.getMap('annotations').get('unsent-before-promotion'), 'keep');
+});
+
+test('wrong-scope and wrong-snapshot acknowledgments cannot complete a close', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  const follower = openCloseScope(env);
+  await pause(20);
+  env.setDrop(message => message.type === 'close-request');
+  const pending = follower.handle.prepareLocalClose({ timeoutMs: 80 });
+  await until(() => env.sent.some(entry => entry.message.type === 'close-request'));
+  const request = env.sent.find(entry => entry.message.type === 'close-request');
+  const sender = new env.Channel(request.name);
+  t.after(() => sender.close());
+  const ack = { ...request.message, type: 'close-ack', senderId: 'wrong-peer',
+    recipientId: request.message.senderId, sequence: 12345 };
+  sender.postMessage({ ...ack, actorUserId: 'wrong-actor' });
+  sender.postMessage({ ...ack, sequence: 12346, snapshotHash: '0'.repeat(64) });
+  sender.postMessage({ ...ack, sequence: 12347, requestId: 'old-request' });
+  await assert.rejects(pending, { code: 'LOCAL_CLOSE_TIMEOUT' });
+});
+
+test('later edits invalidate a real receipt and copied receipts are not accepted', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  const receipt = await leader.handle.prepareLocalClose();
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent(receipt), true);
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent({ ...receipt }), false);
+  leader.doc.getMap('annotations').set('newer', 1);
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent(receipt), false);
+});
+
+test('fresh close proof detects storage cleared without a version-change event and permits save retry', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  leader.doc.getMap('annotations').set('required', 'keep');
+  const receipt = await leader.handle.prepareLocalClose();
+  assert.equal(await leader.handle.validateLocalCloseReceipt(receipt), true);
+  const db = await new Promise((resolve, reject) => {
+    const request = env.factory.open(getLegacyYDocScopeKey('close-doc', 'actor'));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('updates', 'readwrite');
+      tx.oncomplete = resolve;
+      tx.onabort = tx.onerror = () => reject(tx.error);
+      tx.objectStore('updates').clear();
+    });
+  } finally { db.close(); }
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent(receipt), true, 'live state alone cannot prove disk contents');
+  await assert.rejects(leader.handle.validateLocalCloseReceipt(receipt), { code: 'LEGACY_CLOSE_INCOMPLETE' });
+  assert.equal(leader.doc.getMap('annotations').get('required'), 'keep', 'failed proof never drops live edits');
+  const retry = await leader.handle.prepareLocalClose();
+  assert.equal(await leader.handle.validateLocalCloseReceipt(retry), true);
+});
+
+test('a queued close aborts on detach and a late acknowledgment cannot revive it', async t => {
+  const env = setup(t);
+  const leader = openCloseScope(env);
+  await until(leader.ready);
+  const follower = openCloseScope(env);
+  await pause(20);
+  env.setDrop(message => message.type === 'close-request');
+  const pending = follower.handle.prepareLocalClose();
+  const rejected = assert.rejects(pending, { code: 'LOCAL_CLOSE_CANCELLED' });
+  await until(() => env.sent.some(entry => entry.message.type === 'close-request'));
+  await follower.handle.detach();
+  await rejected;
+  assert.equal(follower.handle.isLocalCloseReceiptCurrent({}), false);
+});
+
+test('blocked initial open rejects close in bounded time without releasing the writer lock', async t => {
+  const env = setup(t);
+  const originalOpen = env.factory.open.bind(env.factory);
+  let release;
+  env.factory.open = (...args) => {
+    const request = originalOpen(...args);
+    Object.defineProperty(request, 'onsuccess', { configurable: true, set(handler) {
+      request.addEventListener('success', event => { release = () => handler(event); }, { once: true });
+    } });
+    return request;
+  };
+  let leader;
+  try {
+    leader = openCloseScope(env);
+    await until(() => !!release);
+    env.factory.open = originalOpen;
+    const follower = openCloseScope(env);
+    await assert.rejects(leader.handle.prepareLocalClose({ timeoutMs: 30 }), { code: 'LOCAL_CLOSE_TIMEOUT' });
+    assert.equal(leader.handle.role(), 'leader');
+    assert.equal(follower.handle.role(), 'follower');
+    assert.equal(follower.ready(), false);
+  } finally {
+    env.factory.open = originalOpen;
+    release?.();
+  }
+  await until(leader.ready);
+  const receipt = await leader.handle.prepareLocalClose();
+  assert.equal(leader.handle.isLocalCloseReceiptCurrent(receipt), true);
+});

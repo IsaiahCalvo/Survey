@@ -3,7 +3,281 @@ import assert from 'node:assert/strict';
 import * as Y from 'yjs';
 import { IDBFactory } from 'fake-indexeddb';
 import { getOrCreateYDoc, summarizeRegisteredYDoc, snapshotRegisteredYDoc, _getRefCountForTest, _evictForTest } from '../src/lib/collab/ydocRegistry.js';
-import { probeLegacyYDocRecovery, inspectLegacyYDocRecovery, buildLegacyYDocRecoveryExport } from '../src/lib/collab/legacyYDocRecovery.js';
+import { probeLegacyYDocRecovery, inspectLegacyYDocRecovery, buildLegacyYDocRecoveryExport, LegacyYDocRecoveryLimitError } from '../src/lib/collab/legacyYDocRecovery.js';
+
+const exceeds = limit => error => error instanceof LegacyYDocRecoveryLimitError
+  && error.code === 'LEGACY_RECOVERY_LIMIT' && error.limit === limit && error.actual > error.maximum;
+
+// Independent test oracle uses Node's UTF-8 encoder over the returned graph.
+function retainedTextBytes(value, seen = new Set()) {
+  if (typeof value === 'string') return Buffer.byteLength(value, 'utf8');
+  if (!value || typeof value !== 'object' || seen.has(value)) return 0;
+  seen.add(value);
+  const count = entry => retainedTextBytes(entry, seen);
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return 0;
+  if (value instanceof Blob) return count(value.type) + (typeof value.name === 'string' ? count(value.name) : 0);
+  if (value instanceof RegExp) return count(value.source) + count(value.flags);
+  if (value instanceof Map) return [...value].reduce((sum, [key, entry]) => sum + count(key) + count(entry), 0);
+  if (value instanceof Set) return [...value].reduce((sum, entry) => sum + count(entry), 0);
+  let total = 0;
+  if (value instanceof Error) for (const key of ['name', 'message', 'stack', 'cause']) {
+    if (key in value && !Object.prototype.propertyIsEnumerable.call(value, key)) total += count(key) + count(value[key]);
+  }
+  for (const key of Object.keys(value)) total += count(key) + count(value[key]);
+  return total;
+}
+
+test('inspection text limit exactly counts UTF-8 values, keys, schema and result metadata', async () => {
+  for (const value of ['aé漢😀\ud800\udc00\ud800\udc00\ud800\u0000', { '鍵😀\udc00': 'é\ud800' }]) {
+    const indexedDB = new IDBFactory(); const id = crypto.randomUUID();
+    await seedBudgetValue(indexedDB, id, value);
+    const before = await inspectLegacyYDocRecovery(id, { indexedDB });
+    const bytes = retainedTextBytes(before);
+    const exact = await inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxTextBytes: bytes } });
+    assert.equal(retainedTextBytes(exact), bytes);
+    await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxTextBytes: bytes - 1 } }), exceeds('maxTextBytes'));
+    assert.deepEqual((await inspectLegacyYDocRecovery(id, { indexedDB })).indexedDB, before.indexedDB);
+  }
+});
+
+test('inspection text cap includes non-enumerable Error name/message/stack and nested cause', async () => {
+  const indexedDB = new IDBFactory(); const id = crypto.randomUUID();
+  const error = new TypeError('é'.repeat(1000), { cause: new Error('cause😀') });
+  error.stack = 'stack\ud800'.repeat(1000); error.cause.stack = 'inner stack';
+  await seedBudgetValue(indexedDB, id, error);
+  const before = await inspectLegacyYDocRecovery(id, { indexedDB });
+  const restored = before.indexedDB.stores[0].records[0].value;
+  assert.equal(restored.name, 'TypeError');
+  assert.equal(restored.message, error.message); assert.equal(restored.stack, error.stack);
+  assert.equal(restored.cause.message, error.cause.message);
+  const bytes = retainedTextBytes(before);
+  await inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxTextBytes: bytes } });
+  await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxTextBytes: bytes - 1 } }), exceeds('maxTextBytes'));
+  await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxTextBytes: 1000 } }), exceeds('maxTextBytes'));
+  assert.deepEqual((await inspectLegacyYDocRecovery(id, { indexedDB })).indexedDB, before.indexedDB);
+});
+
+test('aggregate text limit stops multi-record cursors early and leaves all text unchanged', async () => {
+  const factory = new IDBFactory(); const id = crypto.randomUUID();
+  await seedBudgetValue(factory, id, 'x'.repeat(4000));
+  const db = await new Promise((resolve, reject) => {
+    const request = factory.open(id); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  const tx = db.transaction('data', 'readwrite');
+  for (let index = 0; index < 100; index++) tx.objectStore('data').put('x'.repeat(4000), index);
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+  db.close();
+  const before = await inspectLegacyYDocRecovery(id, { indexedDB: factory });
+  let reads = 0;
+  const wrapped = { open(name) {
+    const request = factory.open(name);
+    request.addEventListener('success', () => {
+      const database = request.result; const transaction = database.transaction.bind(database);
+      database.transaction = (...args) => {
+        const read = transaction(...args); const objectStore = read.objectStore.bind(read);
+        read.objectStore = storeName => {
+          const store = objectStore(storeName); const openCursor = store.openCursor.bind(store);
+          store.openCursor = () => { const cursor = openCursor(); cursor.addEventListener('success', () => { if (cursor.result) reads++; }); return cursor; };
+          return store;
+        };
+        return read;
+      };
+    });
+    return request;
+  } };
+  await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB: wrapped, limits: { maxTextBytes: 8192 } }), exceeds('maxTextBytes'));
+  assert.ok(reads >= 2 && reads <= 3, `must stop before retaining all 101 rows, got ${reads}`);
+  assert.deepEqual((await inspectLegacyYDocRecovery(id, { indexedDB: factory })).indexedDB, before.indexedDB);
+});
+
+async function seedBudgetValue(factory, id, value) {
+  const db = await new Promise((resolve, reject) => {
+    const request = factory.open(id);
+    request.onupgradeneeded = () => request.result.createObjectStore('data');
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  const tx = db.transaction('data', 'readwrite');
+  tx.objectStore('data').put(value, 'value');
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+  db.close();
+}
+
+test('recovery limit options require known positive safe integers before accessing storage', async () => {
+  for (const bad of [0, -1, 1.5, NaN, Infinity, '2', null, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(inspectLegacyYDocRecovery('limits', { limits: { maxRecords: bad }, indexedDB: { open() { assert.fail('must not open'); } } }), TypeError);
+    await assert.rejects(buildLegacyYDocRecoveryExport({}, { limits: { maxGraphNodes: bad } }), TypeError);
+  }
+  await assert.rejects(buildLegacyYDocRecoveryExport({}, { limits: { typo: 5 } }), TypeError);
+  await assert.rejects(inspectLegacyYDocRecovery('limits', { limits: [] }), TypeError);
+});
+
+test('inspection record cap is shared across stores and failure leaves all records unchanged', async () => {
+  const indexedDB = new IDBFactory(); const id = crypto.randomUUID();
+  await seed(indexedDB, id);
+  const before = await inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxRecords: 6 } });
+  assert.equal(before.indexedDB.stores.reduce((total, store) => total + store.records.length, 0), 6);
+  await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxRecords: 5 } }), exceeds('maxRecords'));
+  const after = await inspectLegacyYDocRecovery(id, { indexedDB });
+  assert.deepEqual(after.indexedDB, before.indexedDB);
+  assert.equal((await probeLegacyYDocRecovery(id, { indexedDB })).state, 'present');
+});
+
+test('inspection counts unique full backing buffers and limits primitive/deep traversal without mutation', async () => {
+  const indexedDB = new IDBFactory(); const id = crypto.randomUUID();
+  const backing = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer;
+  const value = { backing, a: new Uint8Array(backing, 2, 2), b: new DataView(backing, 1, 3) };
+  value.self = value;
+  await seedBudgetValue(indexedDB, id, value);
+  const before = await inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxBinaryBytes: 8 } });
+  await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB, limits: { maxBinaryBytes: 7 } }), exceeds('maxBinaryBytes'));
+  assert.deepEqual((await inspectLegacyYDocRecovery(id, { indexedDB })).indexedDB, before.indexedDB);
+  const hugeId = crypto.randomUUID();
+  await seedBudgetValue(indexedDB, hugeId, new Array(20_000).fill(1));
+  await assert.rejects(inspectLegacyYDocRecovery(hugeId, { indexedDB, limits: { maxValues: 100 } }), exceeds('maxValues'));
+  assert.equal((await inspectLegacyYDocRecovery(hugeId, { indexedDB })).indexedDB.stores[0].records[0].value.length, 20_000);
+  const deepId = crypto.randomUUID();
+  await seedBudgetValue(indexedDB, deepId, { a: { b: { c: 1 } } });
+  await assert.rejects(inspectLegacyYDocRecovery(deepId, { indexedDB, limits: { maxDepth: 2 } }), exceeds('maxDepth'));
+  assert.deepEqual((await inspectLegacyYDocRecovery(deepId, { indexedDB })).indexedDB.stores[0].records[0].value, { a: { b: { c: 1 } } });
+});
+
+test('inspection registry budget failure retains pending Yjs bytes and does not touch disk', async t => {
+  const id = crypto.randomUUID(); const doc = getOrCreateYDoc(id);
+  t.after(() => { _evictForTest(id); doc.destroy(); });
+  doc.getMap('pending').set('value', 'still here');
+  const before = snapshotRegisteredYDoc(id);
+  await assert.rejects(inspectLegacyYDocRecovery(id, { limits: { maxBinaryBytes: 1 }, indexedDB: { open() { assert.fail('registry fails first'); } } }), exceeds('maxBinaryBytes'));
+  assert.deepEqual(snapshotRegisteredYDoc(id), before);
+});
+
+test('export exact binary budget includes unique backing bytes and duplicate visible view output', async () => {
+  const backing = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]).buffer;
+  const view = new Uint8Array(backing, 2, 2);
+  const value = { backing, view, alias: view, other: new DataView(backing, 1, 3) };
+  const result = await buildLegacyYDocRecoveryExport(value, { limits: { maxBinaryBytes: 13, maxGraphNodes: 4 } });
+  const restored = decodeRecoveryExport(result);
+  assert.equal(restored.view, restored.alias);
+  assert.equal(restored.view.buffer, restored.backing);
+  await assert.rejects(buildLegacyYDocRecoveryExport(value, { limits: { maxBinaryBytes: 12 } }), exceeds('maxBinaryBytes'));
+  await assert.rejects(buildLegacyYDocRecoveryExport(value, { limits: { maxGraphNodes: 3 } }), exceeds('maxGraphNodes'));
+  assert.deepEqual([...new Uint8Array(backing)], [0, 1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('export JSON cap exactly counts complete envelope, escapes, Unicode, nodes and punctuation', async () => {
+  const cycle = {}; cycle.self = cycle;
+  for (const value of [null, 'é😀\ud800\udc00\ud800\u0000\b\n\\"', { '名\n': ['é', NaN, -0, undefined, 123n], nested: { ok: true } }, new Uint8Array([0, 255]), new Map([['a', 'b'], ['next', cycle]]), new Set(['a', 'b', cycle]), new Error('message', { cause: cycle })]) {
+    const complete = await buildLegacyYDocRecoveryExport(value);
+    const bytes = Buffer.byteLength(JSON.stringify(complete), 'utf8');
+    assert.deepEqual(await buildLegacyYDocRecoveryExport(value, { limits: { maxJsonBytes: bytes } }), complete);
+    await assert.rejects(buildLegacyYDocRecoveryExport(value, { limits: { maxJsonBytes: bytes - 1 } }), exceeds('maxJsonBytes'));
+  }
+});
+
+test('aggregate JSON cap stops fresh string getters before retaining a whole flat object or array', async () => {
+  for (const source of [{}, []]) {
+    let reads = 0;
+    for (let index = 0; index < 10_000; index++) {
+      Object.defineProperty(source, index, { enumerable: true, get() { reads++; return `${index}:`.padEnd(4000, 'x'); } });
+    }
+    await assert.rejects(buildLegacyYDocRecoveryExport(source, { limits: { maxJsonBytes: 8192 } }), exceeds('maxJsonBytes'));
+    assert.ok(reads <= 3, `only the first bounded values may be read, got ${reads}`);
+    assert.ok(Object.getOwnPropertyDescriptor(source, '9999').get, 'later source getters remain untouched');
+  }
+});
+
+test('aggregate JSON cap stops lazy Map/Set entries and counts shared reference entries', async () => {
+  for (const Base of [Map, Set]) {
+    let reads = 0;
+    class FreshValues extends Base {
+      *[Symbol.iterator]() {
+        for (let index = 0; index < 10_000; index++) {
+          reads++;
+          const text = `${index}:`.padEnd(4000, 'x');
+          yield Base === Map ? [index, text] : text;
+        }
+      }
+    }
+    await assert.rejects(buildLegacyYDocRecoveryExport(new FreshValues(), { limits: { maxJsonBytes: 8192 } }), exceeds('maxJsonBytes'));
+    assert.ok(reads <= 3, `only bounded entries may be fetched, got ${reads}`);
+  }
+  const child = {}; let reads = 0; const source = {};
+  for (let index = 0; index < 10_000; index++) Object.defineProperty(source, index, { enumerable: true, get() { reads++; return child; } });
+  await assert.rejects(buildLegacyYDocRecoveryExport(source, { limits: { maxJsonBytes: 8192 } }), exceeds('maxJsonBytes'));
+  assert.ok(reads < 1000, `references must consume the aggregate byte budget, got ${reads}`);
+});
+
+test('export values and depth caps stop huge primitive arrays and deep nesting while cycles remain valid', async () => {
+  const array = new Array(20_000).fill(1);
+  await assert.rejects(buildLegacyYDocRecoveryExport(array, { limits: { maxValues: 100 } }), exceeds('maxValues'));
+  assert.equal(array.length, 20_000);
+  assert.deepEqual(decodeRecoveryExport(await buildLegacyYDocRecoveryExport([1], { limits: { maxValues: 3 } })), [1]);
+  await assert.rejects(buildLegacyYDocRecoveryExport([1], { limits: { maxValues: 2 } }), exceeds('maxValues'));
+  const cycle = {}; cycle.self = cycle;
+  const decoded = decodeRecoveryExport(await buildLegacyYDocRecoveryExport(cycle, { limits: { maxDepth: 1, maxGraphNodes: 1 } }));
+  assert.equal(decoded.self, decoded);
+  const deep = { a: { b: { c: 1 } } };
+  await buildLegacyYDocRecoveryExport(deep, { limits: { maxDepth: 3 } });
+  await assert.rejects(buildLegacyYDocRecoveryExport(deep, { limits: { maxDepth: 2 } }), exceeds('maxDepth'));
+  let veryDeep = {}; for (let i = 0; i < 10_000; i++) veryDeep = { nested: veryDeep };
+  await assert.rejects(buildLegacyYDocRecoveryExport(veryDeep), exceeds('maxDepth'));
+});
+
+test('cancelled inspect/export reject explicitly without reading, partial exports, or source changes', async () => {
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(inspectLegacyYDocRecovery('cancel', { signal: controller.signal, indexedDB: { open() { assert.fail('must not open'); } } }), { name: 'AbortError', code: 'LEGACY_RECOVERY_ABORTED' });
+  await assert.rejects(buildLegacyYDocRecoveryExport({}, { signal: controller.signal }), { name: 'AbortError' });
+  const during = new AbortController(); const values = new Array(20_000).fill('unchanged');
+  const promise = buildLegacyYDocRecoveryExport(values, { signal: during.signal });
+  setTimeout(() => during.abort(), 0);
+  await assert.rejects(promise, { name: 'AbortError' });
+  assert.equal(values.length, 20_000); assert.equal(values[0], 'unchanged');
+  const late = new AbortController(); let request;
+  const pending = inspectLegacyYDocRecovery('cancel-open', { signal: late.signal, indexedDB: { open() { return (request = {}); } } });
+  late.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  let closed = 0; request.result = { close() { closed++; } }; request.onsuccess();
+  assert.equal(closed, 1);
+});
+
+test('export cancels an outstanding Blob read and ignores its later result without changing the Blob', async () => {
+  let finish;
+  class SlowBlob extends Blob { arrayBuffer() { return new Promise(resolve => { finish = resolve; }); } }
+  const blob = new SlowBlob(['abc']); const controller = new AbortController();
+  const exporting = buildLegacyYDocRecoveryExport(blob, { signal: controller.signal });
+  assert.equal(typeof finish, 'function');
+  controller.abort();
+  await assert.rejects(exporting, { name: 'AbortError', code: 'LEGACY_RECOVERY_ABORTED' });
+  finish(new Uint8Array([97, 98, 99]).buffer);
+  assert.equal(blob.size, 3);
+  await assert.rejects(buildLegacyYDocRecoveryExport(blob, { limits: { maxBinaryBytes: 2 } }), exceeds('maxBinaryBytes'));
+  await assert.rejects(buildLegacyYDocRecoveryExport({}, { signal: {} }), TypeError);
+});
+
+test('cancellation during real IndexedDB cursors aborts only the read and preserves all source rows', async () => {
+  const factory = new IDBFactory(); const id = crypto.randomUUID(); await seed(factory, id);
+  const before = await inspectLegacyYDocRecovery(id, { indexedDB: factory });
+  const controller = new AbortController(); let reads = 0;
+  const wrapped = { open(name) {
+    const request = factory.open(name);
+    request.addEventListener('success', () => {
+      const db = request.result; const transaction = db.transaction.bind(db);
+      db.transaction = (...args) => {
+        const tx = transaction(...args); const objectStore = tx.objectStore.bind(tx);
+        tx.objectStore = name => {
+          const store = objectStore(name); const openCursor = store.openCursor.bind(store);
+          store.openCursor = () => {
+            const cursor = openCursor(); cursor.addEventListener('success', () => { if (++reads === 2) controller.abort(); }); return cursor;
+          };
+          return store;
+        };
+        return tx;
+      };
+    });
+    return request;
+  } };
+  await assert.rejects(inspectLegacyYDocRecovery(id, { indexedDB: wrapped, signal: controller.signal }), { name: 'AbortError', code: 'LEGACY_RECOVERY_ABORTED' });
+  assert.deepEqual((await inspectLegacyYDocRecovery(id, { indexedDB: factory })).indexedDB, before.indexedDB);
+});
 
 // Test-only decoder: roundtrip the export graph rather than merely finding a
 // matching base64 string. Allocate buffers before views so forward references

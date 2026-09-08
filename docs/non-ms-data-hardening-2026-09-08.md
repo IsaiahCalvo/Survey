@@ -502,6 +502,121 @@ Remaining rollout gates:
 Microsoft 365 work is still deferred. No new account, trial, cloud migration,
 production data deletion or Supabase configuration change was made in this slice.
 
+### Live regression after helper checkpoint `4e01f7a0`
+
+The isolated QA worktree ran the existing FIX20 contract against local revision
+`4e01f7a0f8ef80c001d8615968489805bbba3059`, served at `http://127.0.0.1:5178/`,
+with the actual Supabase backend. This means local app code with a live backend, not a
+deployed production revision. The same two exact pre-existing accounts were
+reserved under `DATA-SCOPED-HELPERS-20260908`; no account was created.
+
+The run passed: both users saw UI-created circles exactly once; rectangle,
+callout and counter changes reached the other user; foreign-author move/delete
+was denied; own deletes preserved the other user's work; reload and authoritative
+stored state matched. Both clients downloaded the real authenticated PDF.
+Browser console error count was zero. The log contains 58 aborted requests
+(36 analytics, 19 HEAD reads, 3 broadcast); the earlier baseline had the same
+analytics/HEAD counts and 2 broadcast aborts. Do not report a failure-free network
+or attribute these aborts to the new unused actor runtime.
+
+Private evidence: isolated QA worktree
+`Logs/2026-09-08_05-05-05_fix20-multi-user-collab/evidence.json`.
+Fixture `c9a93387-2700-41de-b33a-f1a732523c1b` and its exact storage object were
+removed by the harness. Coordinator checks found zero remaining document,
+storage object, collaborators or new actor survey sessions. Validated document
+foreign keys cascade except survey sessions (checked separately). Both exact
+email/user-ID pairs remained free/active; cleanup was attested and the lease
+released at 05:07:00 UTC. The temporary port-5178 server was stopped.
+
+Gmail checked more than one minute after the local checkpoint found no related
+GitHub, Vercel, Supabase or Resend alert. This checkpoint was not pushed or deployed.
+The real-account pass protects the unchanged current provider behavior; the new
+actor-scoped provider rollout and close-proof acceptance tests still remain.
+
+### Close proof and bounded recovery — next local slice
+
+This slice closes two helper-level gaps. It still does **not** switch
+`YDocProvider`/AppShell to the new actor-scoped store or change the live quit
+gate. Ordinary `detach()` remains cleanup, not a durable-save acknowledgment.
+
+- A scoped tab can request an exact full-snapshot save from the local writer.
+  The writer applies the snapshot before appending it to the existing update
+  log, then waits for transaction completion. A successful request callback or
+  the persistence library's `synced` event is not enough. This also preserves
+  pending structs and deletion-only updates across later compaction.
+- Close receipts belong to one exact mount, snapshot, actor, and storage
+  generation. Late edits, retirement, storage changes, wrong acknowledgments,
+  timeouts, and cancellation cannot approve a close. The session forwards
+  cancellation to local work; a sealed session sends only a data-free cancel
+  control message during teardown. Duplicate completed requests are bounded
+  and suppressed.
+- Final receipt validation opens the existing scoped database read-only and
+  verifies its full stored state in a detached scratch document. Missing stores
+  remain absent. A stale receipt is not enough when another tab clears data
+  without changing the database version. Failure preserves live edits and
+  allows a new save attempt. Callers must keep all needed sessions attached
+  until their receipts pass this check and remain current.
+  Review removed a whole-live-document encoding from each stored-row check:
+  the regression now measures two full live encodes for both four and 106
+  stored rows, while pending structs and delete-only bytes still invalidate
+  stale receipts. A pending follower close also survives writer promotion and
+  passes fresh verification before a successful cold reopen.
+- Recovery inspection and export now cap records, binary/text bytes, visited values,
+  depth, graph nodes, and final JSON bytes. They support cancellation and reject
+  incomplete output. Defaults are overridable with positive safe integers.
+  Review caught a delayed aggregate-size check: an 8 KiB limit formerly read
+  10,000 fresh 4,000-character values before rejecting. The regression now
+  stops within three reads, including flat objects, arrays, maps, and sets.
+  Exact JSON-byte boundaries, cycles, binary aliases, and error causes remain
+  covered. No recovery source is rewritten, imported, or deleted.
+  Inspection also caps raw UTF-8 text at 32 MiB by default, including keys,
+  error fields, schema and result metadata. A real 101-row IndexedDB fixture
+  with 4,000-character values stops within three reads under an 8 KiB cap;
+  every source row remains unchanged. Text counting avoids a full encoded copy.
+
+Real Chromium module check: two isolated tabs using actual IndexedDB, Web Locks,
+BroadcastChannel, and current source. The final follower update was deliberately
+dropped from ordinary transport. The follower's close proof delivered it, both
+tabs passed a fresh disk check, both lifecycles detached, and cold reopen restored
+both edits. Zero page errors. This is local module proof, not UI activation or
+live Supabase collaboration proof. The earlier leased FIX20 run is still the
+current-provider baseline.
+
+The existing actual Electron save/quit fixture passed all seven checks again:
+atomic writes, quota failure preserving dirty state and a neighbor document,
+quit veto, retry, immediate focused manual save, focused-field quit/relaunch,
+and home-only quit. Native logs:
+`/tmp/survey-close-proof-electron-20260908.log`. Build passed at
+`/tmp/survey-close-proof-build-20260908.log`.
+
+Rendered browser regression also passed in an isolated 1440-by-1000 context:
+`http://localhost:5218/?testPdf=e2e/prog-07-form-fields.pdf` loaded the actual
+form PDF, typing into `siteRef` then Cmd+S kept the value and focus and cleared
+dirty state beyond the old 400 ms timer. Page title was Survey, the PDF and
+controls rendered, and there was no Vite overlay or page error. Screenshot
+`/tmp/survey-close-proof-browser-20260908.png` was visually checked. The Browser
+plugin was unavailable; connected Playwright was used under the frontend test
+skill. This check protects the existing rendered save path, not the unwired
+scoped close APIs. No mobile layout claim is made.
+
+Final frozen verification, including the text cap: `npm test` exited 0 with
+4,445 tests, 4,391 passed, 54 skipped, zero failed or canceled. All 114 focused
+close/session/lifecycle/recovery tests passed separately. Final build, graph
+update, diff check, and all seven native checks passed. Private logs use the
+prefix `/tmp/survey-close-recovery-checkpoint-` and suffix `-20260908.log`
+(`tests`, `focused`, `build`, `graph`, `electron`). No regression was found in
+these checks; this is not proof of every possible user state or forced shutdown.
+
+Limits: synchronous Yjs decoding/encoding and the browser's initial structured
+clone cannot be preempted by a timer. The fresh close verifier currently reads
+the whole scoped update log; do not claim constant-time close or a hard CPU
+limit. A blocked old writer still retains its lock until safe cleanup finishes;
+the new bounded check rejects close rather than releasing that lock early.
+Forced process termination is not a guaranteed save. Recovery UI, provider
+wiring, all-tab close integration, and post-integration multi-user/offline tests
+remain required. No Microsoft work, live schema change, account creation,
+deployment, or push occurred in this slice.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
