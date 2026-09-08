@@ -2852,6 +2852,91 @@ Storage policy only allows an actor's own namespace, so collaborator staging
 must not silently gain owner-path write rights. No new generation schema or
 client adoption is activated by this slice, and no live migration was applied.
 
+## Shared PDF generation prerequisites — not activated
+
+This slice prepares, but does not switch on, atomic PDF/state publication.
+Existing cloud saves still use the legacy storage path and sync protocol.
+
+- Outbox v4 adds a `retiredScopes` store; it does not rewrite old rows or keys.
+  Optional `pdfGenerationId` scopes isolate pending edits, accepted receipts and
+  checkpoints. Retiring a scope atomically saves pending work in quarantine,
+  keeps old accepted evidence, and blocks normal replay and scope deletion.
+  A late old write either preserves its exact evidence and reports retirement,
+  or rejects an identity conflict. Compacted identities cannot acquire new bytes
+  after retirement, including the first transition from a legacy/null scope.
+- Generated destructive calls require the exact document, actor, generation and
+  incarnation. Whole-document deletion remains a separate operation. The memory
+  fallback shares these rules but makes no persistent-storage claim; its rollback
+  log tracks changed keys rather than copying every document's backlog.
+- `materializeAnnotationGenerationState` captures owned, frozen semantic Yjs
+  state: surviving annotations, native deletion identities, markers and all
+  metadata. It does not carry old erase intent into a new semantic state. Missing
+  Yjs dependencies, pending erase effects, unknown nonempty maps, invalid JSON,
+  conflicting tombstones and ambiguous multi-lane eraser fallbacks fail closed.
+- `captureAcceptedAnnotationState` requires fresh ordered cloud catch-up and
+  clean accepted/live state. It keeps the covered sequence and snapshot tuple
+  separate, watches account changes, and ends with an atomic local retirement/
+  incarnation check. Its issued captures bind to one handle and cannot be copied
+  into a valid receipt. Revalidation detects nested JSON mutation even when Yjs
+  emits no event. This is a local preflight, **not a server CAS receipt**.
+- Migration `20260909050000_legacy_annotation_revision.sql` adds a private,
+  monotonic revision for `document_annotations`, `doc_yjs_state` and
+  `doc_yjs_updates`. Bulk writes increment once per affected document per
+  statement event, including service writes and deletion cascades; failed
+  statements roll back the token. It uses the shared WAL lock and fails on
+  conflicting lock order instead of waiting while holding child rows. It requires
+  READ COMMITTED and blocks TRUNCATE bypasses. A missing counter means baseline
+  zero, not an empty annotation store. No public capture RPC is added.
+
+The SQL token does **not** cover survey items, session/page remaps, Storage JSON
+sidecars or PDF bytes. It also cannot prove that cached JSON matches source rows.
+The Yjs capture does not include those sources either. The full publication
+transaction still needs exact proofs for every participating source, immutable
+staged bytes, version-bound readers/writers, old-PDF recovery, and server-side
+comparison under the shared lock. No caller should adopt a non-null generation
+before that protocol is complete.
+
+Independent review reproduced and fixed a capture-validity race when deletion
+occurred during the last account check. It also found mutable recovery-prefix
+and accepted-receipt fields, and a late-put path that could add different bytes
+under an already-compacted identity. Those cases now have focused regressions.
+The PostgreSQL harness passes all 13 grouped contracts on a disposable local
+cluster, including bulk edits, moved document IDs, rollback, restore, cascades,
+role access and contention with the WAL. This is not a hosted migration test.
+
+Browser checks used the in-app browser at a separate local origin,
+`http://127.0.0.1:5222/?testPdf=e2e/prog-07-form-fields.pdf`, with all external
+requests blocked and no real auth. A real IndexedDB v3-to-v4 upgrade preserved
+legacy bytes. Two connections exercised retirement versus a late put and late
+receipt; a full reload retained both quarantined edits, old acceptance and the
+new generation's separate queue. A fresh reload of frozen code also rejected a
+conflicting late put into a compacted legacy scope. The first attempt used a
+cached pre-fix module, so it is not counted as a frozen-source pass.
+The browser also ran the real sync handle with a local-only backend double and
+real IndexedDB: an accepted capture revalidated, a nested mutation without a Yjs
+event invalidated it, and the temporary auth listener count returned to zero.
+The rendered PDF form accepted a focused Cmd+S; its value survived reload and
+was restored to `A. Surveyor`. Page identity, visible canvas/form, no framework
+overlay and the interaction passed. Console output was limited to the expected
+offline-config warning and blocked Google Fonts request. Test document rows were
+removed; only their local deletion counters remain. No user's cloud data changed.
+
+Frozen verification: `npm test` exits 0 across 599 files: 5,795 total, 5,722 pass,
+73 skip, zero fail/cancel. The prior committed baseline was 5,738 total,
+5,666 pass and 72 skip. The extra skipped check is the opt-in local PostgreSQL
+harness; it passes separately (2 wrapper tests, no skips). The 19 accepted-capture,
+12 materialization and 24 generation-outbox tests all pass. `npx vite build` and
+`git diff --check` pass. Logs: `/tmp/survey-generation-prereqs-frozen-tests.log`,
+`/tmp/survey-generation-prereqs-frozen-build.log`,
+`/tmp/survey-generation-prereqs-postgres.log`. No push, deployment, live migration,
+provider usage reduction, or real-auth multi-user proof is claimed.
+
+Rollback requires care: a v3 client explicitly opening a v4 database receives a
+VersionError; an open old connection can block an upgrade until it closes. The
+new code closes on versionchange and rejects open/upgrade failures instead of
+silently claiming memory is durable. Preserve v4 recovery data on rollback; do
+not delete the database or lower its version to make an older bundle open it.
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions
@@ -2875,6 +2960,8 @@ inventory mutation was performed in this turn.
 
 ## Sources
 
+- [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
+- [PostgreSQL transition-table trigger rules](https://www.postgresql.org/docs/current/sql-createtrigger.html)
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
 - [Postgres index guidance](https://supabase.com/docs/guides/database/postgres/indexes)
 - [Electron app lifecycle](https://www.electronjs.org/docs/latest/api/app)

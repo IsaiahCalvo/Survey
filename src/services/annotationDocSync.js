@@ -28,6 +28,7 @@ import {
 import {
   createAnnotationOutbox,
 } from './annotationDocOutbox.js';
+import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
 import { erasedPathSurvivorsShareGeometry } from '../utils/pageSpaceEraser.js';
 import {
   ERASE_OUTBOX_MAP,
@@ -92,6 +93,7 @@ const ACTIVE_STATES = (globalThis.__annotationDocSyncActiveStates__ ??= new Map(
 // their receipt. A purge must invalidate those receipts before its first await.
 const LOCAL_RECEIPT_PURGE_EPOCHS = (globalThis.__annotationLocalReceiptPurgeEpochs__ ??= new Map());
 const ISSUED_LOCAL_RECEIPTS = new WeakMap();
+const ISSUED_ACCEPTED_CAPTURES = new WeakMap();
 
 function historyQuarantineDedupeKey(state, evidenceKeys = []) {
   const normalizedKeys = [...new Set(
@@ -1634,6 +1636,160 @@ function currentSyncStatus(state) {
       : 'error',
     queueSize,
   };
+}
+
+function captureNotReady(reason) {
+  const error = new Error(`Accepted annotation capture is not ready: ${reason}`);
+  error.code = 'ANNOTATION_CAPTURE_NOT_READY';
+  return error;
+}
+
+function assertAcceptedCaptureReady(state) {
+  assertHandleWritable(state);
+  if (!state.supabase || !state.syncHealthy || state.realtimePhase !== 'ready'
+    || state.durabilityGap || state.repairCheckpointUpdate
+    || state.pendingAppends > 0 || state.appendRecords.size > 0
+    || state.outboxReplayScheduled || state.localWriteTasks.size > 0
+    || state.legacyRecoveryPending || state.legacyUnresolvedEntries > 0
+    || state.quarantinedLocalHistory || state.openHistoryQuarantineEvidenceKeys.size > 0
+    || state.editEpoch > state.acceptedEditEpoch) {
+    throw captureNotReady('sync or recovery work remains');
+  }
+}
+
+async function assertAcceptedCaptureActor(state) {
+  if (typeof state.supabase?.auth?.getSession !== 'function') {
+    throw captureNotReady('an authenticated cloud handle is required');
+  }
+  const { data, error } = await withCloudRequest(
+    state, state.supabase.auth.getSession(), 'accepted capture session',
+  );
+  assertHandleWritable(state);
+  if (error || data?.session?.user?.id !== state.actorUserId || !data?.session?.access_token) {
+    const mismatch = new Error('Accepted annotation capture requires its original signed-in user');
+    mismatch.code = 'ANNOTATION_ACTOR_MISMATCH';
+    throw mismatch;
+  }
+}
+
+// Input comes only from the strict, JSON-only materializer. Sorting keys lets
+// two equivalent Yjs histories compare without relying on their insertion order.
+function acceptedCaptureJson(value) {
+  if (Array.isArray(value)) return `[${value.map(acceptedCaptureJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => (
+      `${JSON.stringify(key)}:${acceptedCaptureJson(value[key])}`
+    )).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** Local preflight ONLY. This is neither a server CAS receipt nor a complete
+ * document checkpoint: PDF bytes, legacy SQL, items and sidecars are excluded.
+ * Future publication must atomically compare its server-owned generation/head
+ * and all other source tokens; even a fresh tail sweep can miss a later commit.
+ * No current save path uses this seam or activates PDF generations. */
+async function captureAcceptedAnnotationState(state) {
+  assertAcceptedCaptureReady(state);
+  if (typeof state.supabase.auth?.onAuthStateChange !== 'function') {
+    throw captureNotReady('account changes must be observable during capture');
+  }
+  let actorChanged = false;
+  const { data } = state.supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user?.id !== state.actorUserId || !session?.access_token) actorChanged = true;
+  });
+  const subscription = data?.subscription;
+  if (typeof subscription?.unsubscribe !== 'function') {
+    throw captureNotReady('account change subscription is unavailable');
+  }
+  try {
+    return await captureAcceptedAnnotationStateForActor(state, () => {
+      if (actorChanged) {
+        const error = new Error('The signed-in account changed during annotation capture');
+        error.code = 'ANNOTATION_ACTOR_MISMATCH';
+        throw error;
+      }
+    });
+  } finally {
+    subscription.unsubscribe();
+  }
+}
+
+async function captureAcceptedAnnotationStateForActor(state, assertActorUnchanged) {
+  await assertAcceptedCaptureActor(state);
+  const snapshotChain = state.snapshotChain;
+  await snapshotChain;
+  assertAcceptedCaptureReady(state);
+  const caughtUp = await catchUpTail(state);
+  assertHandleWritable(state);
+  // withActorRequest pins the read's JWT, not the user's later active session.
+  // Recheck after every cloud phase before exposing a captured result.
+  await assertAcceptedCaptureActor(state);
+  if (!caughtUp) throw captureNotReady('ordered cloud catch-up failed');
+  const authoritativeChain = state.authoritativeChain;
+  await authoritativeChain;
+  await assertAcceptedCaptureActor(state);
+  // Last async read: deletion OR retirement during a prior session check must
+  // invalidate this legacy-scope capture. The auth listener fences account
+  // changes during the atomic local scope/incarnation check. Generated sync
+  // handles are not enabled yet; never infer a PDF generation from a local one.
+  if (typeof state.outbox?.assertScopeCurrent !== 'function') {
+    throw captureNotReady('the current local scope cannot be checked');
+  }
+  await state.outbox.assertScopeCurrent(state.documentId, state.actorUserId, state.documentIncarnation);
+  assertActorUnchanged();
+  assertAcceptedCaptureReady(state);
+  if (snapshotChain !== state.snapshotChain || authoritativeChain !== state.authoritativeChain
+    || state.lastSeq !== state.coveredSeq) {
+    throw captureNotReady('the accepted head changed during capture');
+  }
+  if (![state.coveredSeq, state.snapshotBaseAtSeq ?? 0, state.snapshotBaseWriterEpoch]
+    .every(value => Number.isSafeInteger(value) && value >= 0)) {
+    throw captureNotReady('head counters are not exact safe integers');
+  }
+  const annotationState = materializeAnnotationGenerationState(state.acceptedDoc);
+  const liveState = materializeAnnotationGenerationState(state.doc);
+  if (acceptedCaptureJson(annotationState) !== acceptedCaptureJson(liveState)) {
+    throw captureNotReady('visible state contains changes without accepted proof');
+  }
+  const capture = Object.freeze({
+    version: 1,
+    documentId: state.documentId,
+    actorUserId: state.actorUserId,
+    writerId: state.writerId,
+    documentIncarnation: state.documentIncarnation,
+    coveredSeq: state.coveredSeq,
+    snapshotBase: Object.freeze({ atSeq: state.snapshotBaseAtSeq,
+      writerId: state.snapshotBaseWriterId, writerEpoch: state.snapshotBaseWriterEpoch }),
+    annotationState,
+  });
+  ISSUED_ACCEPTED_CAPTURES.set(capture, {
+    state,
+    signature: acceptedCaptureJson(capture),
+    localRevision: state.localReceiptRevision,
+    snapshotGeneration: state.snapshotGeneration,
+    // Plain objects inside Y.Map can be mutated without a Yjs event. Keep
+    // private byte copies as well as semantic state; expose neither shadow doc.
+    acceptedBytes: encodeSnapshot(state.acceptedDoc),
+    liveBytes: encodeSnapshot(state.doc),
+  });
+  return capture;
+}
+
+async function revalidateAcceptedAnnotationCapture(state, capture) {
+  const issued = capture && ISSUED_ACCEPTED_CAPTURES.get(capture);
+  if (!issued || issued.state !== state) return false;
+  try {
+    const current = await captureAcceptedAnnotationState(state);
+    const proof = ISSUED_ACCEPTED_CAPTURES.get(current);
+    return issued.signature === proof.signature
+      && issued.localRevision === proof.localRevision
+      && issued.snapshotGeneration === proof.snapshotGeneration
+      && bytesEqual(issued.acceptedBytes, proof.acceptedBytes)
+      && bytesEqual(issued.liveBytes, proof.liveBytes);
+  } catch {
+    return false;
+  }
 }
 
 function notifySyncStatus(state) {
@@ -3504,6 +3660,9 @@ function makeHandle(state) {
     revalidateLocalReceipt: (receipt) => revalidateLocalReceipt(state, receipt),
     flushLocalDurability: (options) => flushLocalDurability(state, options),
     getLocalCloseReceipt: () => state.localCloseReceipt,
+
+    captureAcceptedAnnotationState: () => captureAcceptedAnnotationState(state),
+    revalidateAcceptedAnnotationCapture: (capture) => revalidateAcceptedAnnotationCapture(state, capture),
 
     /** Current annotations in render shape. */
     getByPage() {

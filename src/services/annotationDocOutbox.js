@@ -1,7 +1,8 @@
 import * as Y from 'yjs';
 
 const DB_NAME = 'survey-annotation-outbox-v2';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
+const RETIRED_STORE = 'retiredScopes';
 const PENDING_STORE = 'pending';
 const ACCEPTED_STORE = 'accepted';
 const QUARANTINE_STORE = 'quarantined';
@@ -22,6 +23,8 @@ function cloneRecord(record) {
   return {
     ...record,
     update: cloneBytes(record.update),
+    ...(record.checkpointUpdate == null ? {} : { checkpointUpdate: cloneBytes(record.checkpointUpdate) }),
+    ...(record.dependsOn == null ? {} : { dependsOn: [...record.dependsOn] }),
   };
 }
 
@@ -126,6 +129,9 @@ async function openDatabase(indexedDb, timeoutMs, existingOnly = false) {
       if (!opened.objectStoreNames.contains(INCARNATION_STORE)) {
         opened.createObjectStore(INCARNATION_STORE, { keyPath: 'documentId' });
       }
+      if (!opened.objectStoreNames.contains(RETIRED_STORE)) {
+        opened.createObjectStore(RETIRED_STORE, { keyPath: 'scopeKey' });
+      }
     };
     request.onsuccess = () => {
       if (settled) {
@@ -149,170 +155,403 @@ function normalizePendingRecord(record) {
   };
 }
 
-export function createMemoryAnnotationOutbox() {
-  const pending = new Map();
-  const accepted = new Map();
-  const quarantined = new Map();
-  const checkpoints = new Map();
-  const incarnations = new Map();
+// Both implementations share transaction-level scope rules. Memory is not
+// durable; only IndexedDB transaction completion is a persistent receipt.
+function scopeError(message = 'Annotation outbox scope does not match') {
+  return Object.assign(new Error(message), { code: 'ANNOTATION_OUTBOX_SCOPE_MISMATCH' });
+}
 
-  const listStore = (store, documentId, actorUserId) => {
-    const scopeKey = actorScopeKey(documentId, actorUserId);
-    return [...store.values()]
-      .filter((record) => record.scopeKey === scopeKey)
-      .sort((left, right) => (
-        (left.ordinal || 0) - (right.ordinal || 0)
-        || String(left.key).localeCompare(String(right.key))
-      ))
-      .map(cloneRecord);
+function pdfGeneration(options) {
+  const value = options?.pdfGenerationId;
+  if (value == null) return null;
+  if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)) {
+    throw scopeError('pdfGenerationId must be a canonical UUID or null');
+  }
+  return value;
+}
+
+function generationScopeKey(documentId, actorUserId, options) {
+  const generation = pdfGeneration(options);
+  if (generation == null) return actorScopeKey(documentId, actorUserId);
+  if (!documentId || !actorUserId || [documentId, actorUserId].some(value => typeof value !== 'string' || value.includes('\u0000'))) {
+    throw scopeError('Generated outbox scope requires exact document and actor IDs');
+  }
+  return actorScopeKey(documentId, actorUserId) + '\u0000pdf-generation\u0000' + generation;
+}
+
+/** Null/absent generation retains the historical key byte-for-byte. */
+export function annotationOutboxRecordKey({ documentId, actorUserId, writerId, clientSeq, pdfGenerationId }) {
+  const scopeKey = generationScopeKey(documentId, actorUserId, { pdfGenerationId });
+  if (pdfGenerationId != null && (
+    typeof writerId !== 'string' || !writerId || writerId.includes('\u0000')
+    || !Number.isSafeInteger(clientSeq) || clientSeq < 0
+  )) throw scopeError('Generated outbox key requires an exact writer and sequence');
+  return [scopeKey, writerId, clientSeq].join('\u0000');
+}
+
+function normalizedRecord(record) {
+  const normalized = normalizePendingRecord(record);
+  const generation = pdfGeneration(record);
+  normalized.scopeKey = generationScopeKey(record.documentId, record.actorUserId, record);
+  if (generation != null) {
+    requireIncarnation(record.incarnation);
+    if (record.key !== annotationOutboxRecordKey(record)) throw scopeError();
+    if (record.dependsOn != null && (!Array.isArray(record.dependsOn)
+      || record.dependsOn.some(key => typeof key !== 'string' || !key.startsWith(normalized.scopeKey + '\u0000')))) {
+      throw scopeError('Outbox dependencies cannot cross PDF generations');
+    }
+  }
+  return normalized;
+}
+
+function retiredError(marker, evidence = {}) {
+  return Object.assign(new Error('Annotation PDF generation is retired; saved edits require recovery review'), {
+    code: 'ANNOTATION_PDF_GENERATION_RETIRED',
+    pdfGenerationId: marker.pdfGenerationId,
+    replacementGenerationId: marker.replacementGenerationId,
+    ...evidence,
+  });
+}
+
+function assertKeyScope(record, options) {
+  const generation = pdfGeneration(options);
+  if (!record) return;
+  if (generation !== pdfGeneration(record)
+    || (options?.documentId != null && options.documentId !== record.documentId)
+    || (options?.actorUserId != null && options.actorUserId !== record.actorUserId)
+    || (generation != null && (!options?.documentId || !options?.actorUserId))) throw scopeError();
+}
+
+function requireIncarnation(value) {
+  if (!Number.isSafeInteger(value) || value < 0) throw scopeError('An exact document incarnation is required');
+}
+
+function sameBytes(left, right) {
+  return left?.length === right?.length && [...(left || [])].every((byte, index) => byte === right[index]);
+}
+
+function assertSameEvidence(existing, record) {
+  if (!existing) return;
+  if (['key', 'documentId', 'actorUserId', 'writerId', 'clientSeq', 'ordinal'].some(key => existing[key] !== record[key])
+    || (Number(existing.incarnation) || 0) !== (Number(record.incarnation) || 0)
+    || pdfGeneration(existing) !== pdfGeneration(record)
+    || !sameBytes(existing.update, record.update)
+    || (existing.checkpointUpdate != null && !sameBytes(existing.checkpointUpdate, record.checkpointUpdate))
+    || JSON.stringify(existing.dependsOn || []) !== JSON.stringify(record.dependsOn || [])) {
+    throw scopeError('An outbox identity cannot replace saved annotation bytes or dependencies');
+  }
+}
+
+function sameReceiptValue(left, right) {
+  if (left === right) return true;
+  if (ArrayBuffer.isView(left) || ArrayBuffer.isView(right)) {
+    return ArrayBuffer.isView(left) && ArrayBuffer.isView(right) && sameBytes(left, right);
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (left instanceof Date || right instanceof Date) return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();
+  const keys = Object.keys(left).sort(), otherKeys = Object.keys(right).sort();
+  return keys.length === otherKeys.length && keys.every((key, index) => key === otherKeys[index] && sameReceiptValue(left[key], right[key]));
+}
+
+function quarantineRecord(record) {
+  return { ...cloneRecord(record), originalStatus: record.originalStatus ?? record.status, status: 'generation-retired' };
+}
+
+const ALL_STORES = [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE, CHECKPOINT_STORE, INCARNATION_STORE, RETIRED_STORE];
+const sortedRecords = records => records.sort((left, right) => (
+  (left.ordinal || 0) - (right.ordinal || 0) || String(left.key).localeCompare(String(right.key))
+)).map(cloneRecord);
+
+function buildOutbox({ storageKind, run, close, readFresh }) {
+  const incarnation = async (stores, documentId, expected) => {
+    const current = Number((await stores[INCARNATION_STORE].get(documentId))?.incarnation) || 0;
+    if (expected != null && current !== (Number(expected) || 0)) throw staleIncarnationError(documentId);
+    return current;
   };
-
-  return {
-    storageKind: 'memory',
-    async list(documentId, actorUserId) {
-      return listStore(pending, documentId, actorUserId);
+  const markerFor = (stores, scopeKey) => stores[RETIRED_STORE].get(scopeKey);
+  const assertOpen = async (stores, scopeKey) => {
+    const marker = await markerFor(stores, scopeKey);
+    if (marker) throw retiredError(marker);
+  };
+  const scopedRead = (storeName, documentId, actorUserId, options) => {
+    const scopeKey = generationScopeKey(documentId, actorUserId, options);
+    return run([storeName, RETIRED_STORE], 'readonly', async stores => {
+      await assertOpen(stores, scopeKey);
+      return sortedRecords(await stores[storeName].getAll(scopeKey));
+    });
+  };
+  const localState = (documentId, actorUserId, expectedIncarnation, options, retiredOnly = false) => {
+    const scopeKey = generationScopeKey(documentId, actorUserId, options);
+    return run(ALL_STORES, 'readonly', async stores => {
+      const current = await incarnation(stores, documentId, expectedIncarnation);
+      const marker = await markerFor(stores, scopeKey);
+      if (retiredOnly && !marker) throw scopeError('The requested annotation scope is not retired');
+      if (!retiredOnly && marker) throw retiredError(marker);
+      const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
+      const [accepted, pending, quarantined] = await Promise.all(
+        [ACCEPTED_STORE, PENDING_STORE, QUARANTINE_STORE].map(name => stores[name].getAll(scopeKey)),
+      );
+      return {
+        documentId, actorUserId, incarnation: current,
+        ...(pdfGeneration(options) == null ? {} : { pdfGenerationId: pdfGeneration(options) }),
+        ...(retiredOnly ? { retirement: { ...marker } } : {}),
+        checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
+        accepted: sortedRecords(accepted), pending: sortedRecords(pending), quarantined: sortedRecords(quarantined),
+      };
+    });
+  };
+  const mutateKeys = (keys, expectedIncarnation, options, reject = false) => {
+    if (pdfGeneration(options) != null) {
+      requireIncarnation(expectedIncarnation);
+      generationScopeKey(options?.documentId, options?.actorUserId, options);
+    }
+    if (!keys?.length) return Promise.resolve();
+    return run([PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE, RETIRED_STORE, INCARNATION_STORE], 'readwrite', async stores => {
+      if (pdfGeneration(options) != null) await incarnation(stores, options.documentId, expectedIncarnation);
+      const records = await Promise.all(keys.map(key => stores[PENDING_STORE].get(key)));
+      for (let index = 0; index < keys.length; index += 1) {
+        const evidence = records[index] || await stores[QUARANTINE_STORE].get(keys[index])
+          || await stores[ACCEPTED_STORE].get(keys[index]);
+        assertKeyScope(evidence, options);
+        if (evidence) await assertOpen(stores, evidence.scopeKey);
+      }
+      if (options?.documentId && options?.actorUserId) {
+        await assertOpen(stores, generationScopeKey(options.documentId, options.actorUserId, options));
+      }
+      for (const record of records) {
+        if (!record || (expectedIncarnation != null
+          && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0))) continue;
+        if (reject) {
+          const rejected = { ...record, status: 'rejected' };
+          await stores[PENDING_STORE].put(rejected);
+          await stores[QUARANTINE_STORE].put(rejected);
+        } else await stores[PENDING_STORE].delete(record.key);
+      }
+    });
+  };
+  const api = {
+    storageKind,
+    async list(documentId, actorUserId, options) { return scopedRead(PENDING_STORE, documentId, actorUserId, options); },
+    async listQuarantined(documentId, actorUserId, options) { return scopedRead(QUARANTINE_STORE, documentId, actorUserId, options); },
+    async readLocalState(documentId, actorUserId, expectedIncarnation, options) {
+      return localState(documentId, actorUserId, expectedIncarnation, options);
+    },
+    async readRetiredScope(documentId, actorUserId, expectedIncarnation, options) {
+      return localState(documentId, actorUserId, expectedIncarnation, options, true);
     },
     async getDocumentIncarnation(documentId) {
-      return incarnations.get(documentId) || 0;
+      return run([INCARNATION_STORE], 'readonly', stores => incarnation(stores, documentId));
+    },
+    async assertScopeCurrent(documentId, actorUserId, expectedIncarnation, options) {
+      const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      if (pdfGeneration(options) != null) requireIncarnation(expectedIncarnation);
+      return run([INCARNATION_STORE, RETIRED_STORE], 'readonly', async stores => {
+        await incarnation(stores, documentId, expectedIncarnation);
+        await assertOpen(stores, scopeKey);
+      });
     },
     async put(record) {
-      const normalized = normalizePendingRecord(record);
-      if ((Number(normalized.incarnation) || 0) !== (incarnations.get(record.documentId) || 0)) {
-        throw staleIncarnationError(record.documentId);
-      }
-      pending.set(normalized.key, normalized);
-    },
-    async delete(key, expectedIncarnation = null) {
-      const record = pending.get(key);
-      if (
-        record
-        && expectedIncarnation != null
-        && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0)
-      ) return;
-      pending.delete(key);
-    },
-    async deleteMany(keys, expectedIncarnation = null) {
-      for (const key of keys) {
-        const record = pending.get(key);
-        if (
-          record
-          && expectedIncarnation != null
-          && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0)
-        ) continue;
-        pending.delete(key);
-      }
-    },
-    async markRejected(keys, expectedIncarnation = null) {
-      for (const key of keys) {
-        const record = pending.get(key);
-        if (
-          record
-          && expectedIncarnation != null
-          && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0)
-        ) continue;
-        if (record) {
-          const rejected = { ...record, status: 'rejected' };
-          pending.set(key, rejected);
-          quarantined.set(key, rejected);
+      const normalized = normalizedRecord(record);
+      const marker = await run(ALL_STORES, 'readwrite', async stores => {
+        await incarnation(stores, record.documentId, Number(record.incarnation) || 0);
+        const retired = await markerFor(stores, normalized.scopeKey);
+        let quarantined, accepted;
+        for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
+          const existing = await stores[name].get(record.key);
+          if (existing && existing.scopeKey !== normalized.scopeKey) throw scopeError();
+          if (pdfGeneration(record) != null || retired) assertSameEvidence(existing, normalized);
+          if (name === QUARANTINE_STORE) quarantined = existing;
+          if (name === ACCEPTED_STORE) accepted = existing;
         }
-      }
+        if (pdfGeneration(record) != null || retired) {
+          const checkpoint = await stores[CHECKPOINT_STORE].get(normalized.scopeKey);
+          if (checkpoint?.acceptedKeys?.includes(record.key)) throw scopeError('A compacted annotation identity cannot be put again');
+        }
+        if (retired) await stores[QUARANTINE_STORE].put(quarantineRecord(quarantined || normalized));
+        else if (!accepted || pdfGeneration(record) == null) await stores[PENDING_STORE].put(normalized);
+        return retired;
+      });
+      // Throw after commit: queued old edits must survive without authorizing replay.
+      if (marker) throw retiredError(marker, { evidenceSaved: true });
     },
-    async listQuarantined(documentId, actorUserId) {
-      return listStore(quarantined, documentId, actorUserId);
-    },
-    async deleteFromOrdinal(
-      documentId,
-      actorUserId,
-      writerId,
-      ordinal,
-      expectedIncarnation = null,
-    ) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      for (const [key, record] of pending) {
-        if (
-          record.scopeKey === scopeKey
-          && record.writerId === writerId
-          && record.ordinal >= ordinal
-          && (
-            expectedIncarnation == null
-            || (Number(record.incarnation) || 0) === (Number(expectedIncarnation) || 0)
-          )
-        ) pending.delete(key);
-      }
+    async delete(key, expectedIncarnation = null, options) { return mutateKeys([key], expectedIncarnation, options); },
+    async deleteMany(keys, expectedIncarnation = null, options) { return mutateKeys(keys, expectedIncarnation, options); },
+    async markRejected(keys, expectedIncarnation = null, options) { return mutateKeys(keys, expectedIncarnation, options, true); },
+    async deleteFromOrdinal(documentId, actorUserId, writerId, ordinal, expectedIncarnation = null, options) {
+      const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      if (pdfGeneration(options) != null) requireIncarnation(expectedIncarnation);
+      return run([PENDING_STORE, RETIRED_STORE, INCARNATION_STORE], 'readwrite', async stores => {
+        if (pdfGeneration(options) != null) await incarnation(stores, documentId, expectedIncarnation);
+        await assertOpen(stores, scopeKey);
+        for (const record of await stores[PENDING_STORE].getAll(scopeKey)) {
+          if (record.writerId === writerId && record.ordinal >= ordinal
+            && (expectedIncarnation == null || (Number(record.incarnation) || 0) === (Number(expectedIncarnation) || 0))) {
+            await stores[PENDING_STORE].delete(record.key);
+          }
+        }
+      });
     },
     async settleAccepted(record) {
-      const normalized = normalizePendingRecord({ ...record, status: 'accepted' });
-      if ((Number(normalized.incarnation) || 0) !== (incarnations.get(record.documentId) || 0)) {
-        throw staleIncarnationError(record.documentId);
-      }
-      accepted.set(normalized.key, normalized);
-      pending.delete(normalized.key);
-    },
-    async loadCleanState(documentId, actorUserId) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      const checkpoint = checkpoints.get(scopeKey);
-      return {
-        checkpointUpdate: cloneBytes(checkpoint?.update),
-        acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
-        records: listStore(accepted, documentId, actorUserId),
-      };
-    },
-    async compactAccepted(
-      documentId,
-      actorUserId,
-      acceptedSnapshot,
-      force = false,
-      expectedIncarnation = 0,
-    ) {
-      if ((Number(expectedIncarnation) || 0) !== (incarnations.get(documentId) || 0)) {
-        throw staleIncarnationError(documentId);
-      }
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      const records = listStore(accepted, documentId, actorUserId);
-      if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
-      const updates = [
-        checkpoints.get(scopeKey)?.update,
-        acceptedSnapshot,
-        ...records.map((record) => record.update),
-      ].filter(Boolean).map(cloneBytes);
-      checkpoints.set(scopeKey, {
-        scopeKey,
-        update: Y.mergeUpdates(updates),
-        acceptedKeys: [
-          ...new Set([
-            ...(checkpoints.get(scopeKey)?.acceptedKeys || []),
-            ...records.map((record) => record.key),
-          ]),
-        ],
-      });
-      for (const record of records) accepted.delete(record.key);
-      return true;
-    },
-    async deleteScope(documentId, actorUserId, expectedIncarnation = 0) {
-      if ((Number(expectedIncarnation) || 0) !== (incarnations.get(documentId) || 0)) {
-        throw staleIncarnationError(documentId);
-      }
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      for (const store of [pending, accepted, quarantined]) {
-        for (const [key, record] of store) {
-          if (record.scopeKey === scopeKey) store.delete(key);
+      const normalized = normalizedRecord({ ...record, status: 'accepted' });
+      const marker = await run(ALL_STORES, 'readwrite', async stores => {
+        await incarnation(stores, record.documentId, Number(record.incarnation) || 0);
+        const retired = await markerFor(stores, normalized.scopeKey);
+        if (pdfGeneration(record) != null || retired) {
+          const checkpoint = await stores[CHECKPOINT_STORE].get(normalized.scopeKey);
+          if (checkpoint?.acceptedKeys?.includes(record.key)) throw scopeError('A compacted annotation identity cannot be settled again');
         }
-      }
-      checkpoints.delete(scopeKey);
+        let known = false, accepted;
+        for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
+          const existing = await stores[name].get(record.key);
+          if (existing && existing.scopeKey !== normalized.scopeKey) throw scopeError();
+          if (existing) known = true;
+          if (pdfGeneration(record) != null || retired) assertSameEvidence(existing, normalized);
+          if (name === ACCEPTED_STORE) accepted = existing;
+        }
+        if (accepted && (pdfGeneration(record) != null || retired)) {
+          if (!sameReceiptValue(accepted, normalized)) throw scopeError('An accepted annotation receipt is immutable');
+          return retired;
+        }
+        if (pdfGeneration(record) != null || retired) {
+          if (retired && !known) {
+            throw scopeError('Unknown retired annotation receipt');
+          }
+        }
+        await stores[ACCEPTED_STORE].put(normalized);
+        await stores[PENDING_STORE].delete(normalized.key);
+        return retired;
+      });
+      if (marker) throw retiredError(marker, { evidenceSaved: true, acceptedEvidenceSaved: true });
+    },
+    async loadCleanState(documentId, actorUserId, options) {
+      const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      return run([CHECKPOINT_STORE, ACCEPTED_STORE, RETIRED_STORE], 'readonly', async stores => {
+        await assertOpen(stores, scopeKey);
+        const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
+        return { checkpointUpdate: cloneBytes(checkpoint?.update), acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
+          records: sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey)) };
+      });
+    },
+    async compactAccepted(documentId, actorUserId, acceptedSnapshot, force = false, expectedIncarnation = 0, options) {
+      const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      return run([CHECKPOINT_STORE, ACCEPTED_STORE, INCARNATION_STORE, RETIRED_STORE], 'readwrite', async stores => {
+        await incarnation(stores, documentId, expectedIncarnation);
+        await assertOpen(stores, scopeKey);
+        const checkpoint = await stores[CHECKPOINT_STORE].get(scopeKey);
+        const records = sortedRecords(await stores[ACCEPTED_STORE].getAll(scopeKey));
+        if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
+        const updates = [checkpoint?.update, acceptedSnapshot, ...records.map(record => record.update)].filter(Boolean).map(cloneBytes);
+        if (updates.length) {
+          const update = Y.mergeUpdates(updates);
+          const acceptedKeys = [...new Set([...(checkpoint?.acceptedKeys || []), ...records.map(record => record.key)])];
+          if (!records.length && checkpoint?.update && sameBytes(checkpoint.update, update)
+            && (checkpoint.acceptedKeys || []).length === acceptedKeys.length
+            && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key)) return false;
+          await stores[CHECKPOINT_STORE].put({ scopeKey, update, acceptedKeys });
+        }
+        for (const record of records) await stores[ACCEPTED_STORE].delete(record.key);
+        return true;
+      });
+    },
+    async retireScope(documentId, actorUserId, expectedIncarnation, options = {}) {
+      requireIncarnation(expectedIncarnation);
+      const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      const replacementGenerationId = pdfGeneration({ pdfGenerationId: options.replacementGenerationId });
+      if (!replacementGenerationId || replacementGenerationId === pdfGeneration(options)
+        || options.reason !== 'cloud-generation-replaced' || expectedIncarnation == null) throw scopeError('Invalid PDF generation retirement');
+      return run(ALL_STORES, 'readwrite', async stores => {
+        const current = await incarnation(stores, documentId, expectedIncarnation);
+        const previous = await markerFor(stores, scopeKey);
+        if (previous) {
+          if (previous.incarnation !== current || previous.replacementGenerationId !== replacementGenerationId
+            || previous.reason !== options.reason) throw scopeError('Conflicting PDF generation retirement');
+          return { ...previous };
+        }
+        const marker = { scopeKey, documentId, actorUserId, incarnation: current,
+          pdfGenerationId: pdfGeneration(options), replacementGenerationId, reason: options.reason, retiredAt: Date.now() };
+        await stores[RETIRED_STORE].put(marker);
+        for (const record of await stores[PENDING_STORE].getAll(scopeKey)) {
+          const existing = await stores[QUARANTINE_STORE].get(record.key);
+          if (existing) assertSameEvidence(existing, record);
+          await stores[QUARANTINE_STORE].put(quarantineRecord(existing || record));
+          await stores[PENDING_STORE].delete(record.key);
+        }
+        // Accepted rows/checkpoint bytes and keys remain exact old-scope evidence.
+        return { ...marker };
+      });
+    },
+    async deleteScope(documentId, actorUserId, expectedIncarnation, options) {
+      const scopeKey = generationScopeKey(documentId, actorUserId, options);
+      if (pdfGeneration(options) != null) requireIncarnation(expectedIncarnation);
+      return run(ALL_STORES, 'readwrite', async stores => {
+        await incarnation(stores, documentId, expectedIncarnation ?? 0);
+        await assertOpen(stores, scopeKey);
+        for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
+          for (const record of await stores[name].getAll(scopeKey)) await stores[name].delete(record.key);
+        }
+        await stores[CHECKPOINT_STORE].delete(scopeKey);
+      });
     },
     async deleteDocument(documentId) {
-      incarnations.set(documentId, (incarnations.get(documentId) || 0) + 1);
-      for (const store of [pending, accepted, quarantined]) {
-        for (const [key, record] of store) {
-          if (record.documentId === documentId) store.delete(key);
+      return run(ALL_STORES, 'readwrite', async stores => {
+        const current = await incarnation(stores, documentId);
+        await stores[INCARNATION_STORE].put({ documentId, incarnation: current + 1 });
+        for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
+          for (const record of await stores[name].getAll()) {
+            if (record.documentId === documentId) await stores[name].delete(record.key);
+          }
         }
-      }
-      for (const key of checkpoints.keys()) {
-        if (key.startsWith(`${documentId}\u0000`)) checkpoints.delete(key);
-      }
+        for (const name of [CHECKPOINT_STORE, RETIRED_STORE]) {
+          for (const record of await stores[name].getAll()) {
+            if (record.scopeKey.startsWith(documentId + '\u0000')) await stores[name].delete(record.scopeKey);
+          }
+        }
+      });
     },
-    async close() {},
+    close,
   };
+  if (readFresh) api.readLocalStateFresh = readFresh;
+  return api;
+}
+
+export function createMemoryAnnotationOutbox() {
+  const maps = Object.fromEntries(ALL_STORES.map(name => [name, new Map()]));
+  let chain = Promise.resolve();
+  const run = (names, mode, operation) => {
+    const task = chain.then(async () => {
+      // Record only changed entries for rollback; never copy the full pending
+      // journal for each edit when IndexedDB is unavailable.
+      const undo = new Map();
+      const remember = (name, key) => {
+        if (mode !== 'readwrite') throw new Error('Read-only annotation transaction');
+        if (!undo.has(name)) undo.set(name, new Map());
+        if (!undo.get(name).has(key)) undo.get(name).set(key, { had: maps[name].has(key), value: maps[name].get(key) });
+      };
+      const stores = Object.fromEntries(names.map(name => [name, {
+        async get(key) { return structuredClone(maps[name].get(key)); },
+        async put(record) {
+          const key = [CHECKPOINT_STORE, RETIRED_STORE].includes(name) ? record.scopeKey
+            : name === INCARNATION_STORE ? record.documentId : record.key;
+          remember(name, key);
+          maps[name].set(key, structuredClone(record));
+        },
+        async delete(key) { remember(name, key); maps[name].delete(key); },
+        async getAll(scopeKey) {
+          return [...maps[name].values()].filter(record => scopeKey === undefined || record.scopeKey === scopeKey).map(record => structuredClone(record));
+        },
+      }]));
+      try { return await operation(stores); } catch (error) {
+        for (const [name, records] of undo) for (const [key, previous] of records) {
+          if (previous.had) maps[name].set(key, previous.value);
+          else maps[name].delete(key);
+        }
+        throw error;
+      }
+    });
+    chain = task.catch(() => {});
+    return task;
+  };
+  return buildOutbox({ storageKind: 'memory', run, close: async () => {} });
 }
 
 let sharedMemoryAnnotationOutbox = null;
@@ -330,429 +569,62 @@ export async function createAnnotationOutbox({
   const activeTransactions = new Set();
   const inFlight = new Set();
   let closing = false;
-
-  const run = (storeNames, mode, operation) => {
+  const run = (names, mode, operation) => {
     if (closing) return Promise.reject(new Error('annotation outbox is closing'));
-    const names = Array.isArray(storeNames) ? storeNames : [storeNames];
     const transaction = db.transaction(names, mode);
     activeTransactions.add(transaction);
     const completion = transactionCompletion(transaction, timeoutMs);
     const task = (async () => {
       try {
-        const stores = Object.fromEntries(
-          names.map((name) => [name, transaction.objectStore(name)]),
-        );
-        const value = await operation(stores, transaction);
+        const stores = Object.fromEntries(names.map(name => {
+          const store = transaction.objectStore(name);
+          return [name, {
+            get: key => requestResult(store.get(key), transaction, timeoutMs),
+            put: record => requestResult(store.put(record), transaction, timeoutMs),
+            delete: key => requestResult(store.delete(key), transaction, timeoutMs),
+            getAll: scopeKey => requestResult(scopeKey === undefined ? store.getAll()
+              : store.index('scopeKey').getAll(scopeKey), transaction, timeoutMs),
+          }];
+        }));
+        const value = await operation(stores);
         await completion;
         return value;
       } catch (error) {
         try { transaction.abort(); } catch { /* transaction already closed */ }
         await completion.catch(() => {});
         throw error;
-      } finally {
-        activeTransactions.delete(transaction);
-      }
+      } finally { activeTransactions.delete(transaction); }
     })();
     inFlight.add(task);
     task.finally(() => inFlight.delete(task)).catch(() => {});
     return task;
   };
-
-  const list = async (storeName, documentId, actorUserId) => run(
-    storeName,
-    'readonly',
-    async (stores, transaction) => {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      const rows = await requestResult(
-        stores[storeName].index('scopeKey').getAll(scopeKey),
-        transaction,
-        timeoutMs,
-      );
-      return rows
-        .sort((left, right) => (
-          (left.ordinal || 0) - (right.ordinal || 0)
-          || String(left.key).localeCompare(String(right.key))
-        ))
-        .map(cloneRecord);
-    },
-  );
-
-  return {
-    storageKind: 'indexeddb',
-    async readLocalStateFresh(documentId, actorUserId, expectedIncarnation) {
-      // A retired viewer's original connection is closed. Revalidate through
-      // a read-only fresh connection without creating a missing database.
+  return buildOutbox({
+    storageKind: 'indexeddb', run,
+    async readFresh(documentId, actorUserId, expectedIncarnation, options) {
       const fresh = await createAnnotationOutbox({ indexedDb, timeoutMs, existingOnly: true });
       try {
-        const state = await fresh.readLocalState(documentId, actorUserId, expectedIncarnation);
-        if (await fresh.getDocumentIncarnation(documentId) !== expectedIncarnation) {
-          throw staleIncarnationError(documentId);
-        }
+        const state = await fresh.readLocalState(documentId, actorUserId, expectedIncarnation, options);
+        await fresh.assertScopeCurrent(documentId, actorUserId, expectedIncarnation, options);
         return state;
-      } finally {
-        await fresh.close();
-      }
-    },
-    async list(documentId, actorUserId) {
-      return list(PENDING_STORE, documentId, actorUserId);
-    },
-    async readLocalState(documentId, actorUserId, expectedIncarnation) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      return run(
-        [CHECKPOINT_STORE, ACCEPTED_STORE, PENDING_STORE, QUARANTINE_STORE, INCARNATION_STORE],
-        'readonly',
-        async (stores, transaction) => {
-          // One transaction sees pending-to-accepted moves and compaction as
-          // whole operations. Separate reads could miss an entry between them.
-          const [incarnationRow, checkpoint, accepted, pending, quarantined] = await Promise.all([
-            requestResult(stores[INCARNATION_STORE].get(documentId), transaction, timeoutMs),
-            requestResult(stores[CHECKPOINT_STORE].get(scopeKey), transaction, timeoutMs),
-            ...[ACCEPTED_STORE, PENDING_STORE, QUARANTINE_STORE].map((name) => (
-              requestResult(stores[name].index('scopeKey').getAll(scopeKey), transaction, timeoutMs)
-            )),
-          ]);
-          const incarnation = Number(incarnationRow?.incarnation) || 0;
-          if (incarnation !== expectedIncarnation) throw staleIncarnationError(documentId);
-          return {
-            documentId, actorUserId, incarnation,
-            checkpointUpdate: cloneBytes(checkpoint?.update),
-            acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
-            accepted: accepted.map(cloneRecord),
-            pending: pending.map(cloneRecord),
-            quarantined: quarantined.map(cloneRecord),
-          };
-        },
-      );
-    },
-    async getDocumentIncarnation(documentId) {
-      return run(
-        INCARNATION_STORE,
-        'readonly',
-        async (stores, transaction) => {
-          const row = await requestResult(
-            stores[INCARNATION_STORE].get(documentId),
-            transaction,
-            timeoutMs,
-          );
-          return Number(row?.incarnation) || 0;
-        },
-      );
-    },
-    async put(record) {
-      const normalized = normalizePendingRecord(record);
-      await run(
-        [PENDING_STORE, INCARNATION_STORE],
-        'readwrite',
-        async (stores, transaction) => {
-          const current = await requestResult(
-            stores[INCARNATION_STORE].get(record.documentId),
-            transaction,
-            timeoutMs,
-          );
-          if ((Number(normalized.incarnation) || 0) !== (Number(current?.incarnation) || 0)) {
-            throw staleIncarnationError(record.documentId);
-          }
-          await requestResult(stores[PENDING_STORE].put(normalized), transaction);
-        },
-      );
-    },
-    async delete(key, expectedIncarnation = null) {
-      await run(PENDING_STORE, 'readwrite', async (stores, transaction) => {
-        const record = await requestResult(
-          stores[PENDING_STORE].get(key),
-          transaction,
-        );
-        if (
-          record
-          && expectedIncarnation != null
-          && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0)
-        ) return;
-        await requestResult(stores[PENDING_STORE].delete(key), transaction);
-      });
-    },
-    async deleteMany(keys, expectedIncarnation = null) {
-      if (!keys?.length) return;
-      await run(PENDING_STORE, 'readwrite', async (stores, transaction) => {
-        for (const key of keys) {
-          const record = await requestResult(
-            stores[PENDING_STORE].get(key),
-            transaction,
-          );
-          if (
-            record
-            && expectedIncarnation != null
-            && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0)
-          ) continue;
-          await requestResult(stores[PENDING_STORE].delete(key), transaction);
-        }
-      });
-    },
-    async markRejected(keys, expectedIncarnation = null) {
-      if (!keys?.length) return;
-      await run(
-        [PENDING_STORE, QUARANTINE_STORE],
-        'readwrite',
-        async (stores, transaction) => {
-          for (const key of keys) {
-            const record = await requestResult(
-              stores[PENDING_STORE].get(key),
-              transaction,
-              timeoutMs,
-            );
-            if (!record) continue;
-            if (
-              expectedIncarnation != null
-              && (Number(record.incarnation) || 0) !== (Number(expectedIncarnation) || 0)
-            ) continue;
-            const rejected = { ...record, status: 'rejected' };
-            await requestResult(
-              stores[PENDING_STORE].put(rejected),
-              transaction,
-              timeoutMs,
-            );
-            await requestResult(
-              stores[QUARANTINE_STORE].put(rejected),
-              transaction,
-              timeoutMs,
-            );
-          }
-        },
-      );
-    },
-    async listQuarantined(documentId, actorUserId) {
-      return list(QUARANTINE_STORE, documentId, actorUserId);
-    },
-    async deleteFromOrdinal(
-      documentId,
-      actorUserId,
-      writerId,
-      ordinal,
-      expectedIncarnation = null,
-    ) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      await run(PENDING_STORE, 'readwrite', async (stores, transaction) => {
-        const rows = await requestResult(
-          stores[PENDING_STORE].index('scopeKey').getAll(scopeKey),
-          transaction,
-          timeoutMs,
-        );
-        await Promise.all(rows
-          .filter((record) => (
-            record.writerId === writerId
-            && record.ordinal >= ordinal
-            && (
-              expectedIncarnation == null
-              || (Number(record.incarnation) || 0) === (Number(expectedIncarnation) || 0)
-            )
-          ))
-          .map((record) => requestResult(
-            stores[PENDING_STORE].delete(record.key),
-            transaction,
-            timeoutMs,
-          )));
-      });
-    },
-    async settleAccepted(record) {
-      const normalized = normalizePendingRecord({ ...record, status: 'accepted' });
-      await run(
-        [PENDING_STORE, ACCEPTED_STORE, INCARNATION_STORE],
-        'readwrite',
-        async (stores, transaction) => {
-          const current = await requestResult(
-            stores[INCARNATION_STORE].get(record.documentId),
-            transaction,
-          );
-          if ((Number(normalized.incarnation) || 0) !== (Number(current?.incarnation) || 0)) {
-            throw staleIncarnationError(record.documentId);
-          }
-          await requestResult(stores[ACCEPTED_STORE].put(normalized), transaction);
-          await requestResult(stores[PENDING_STORE].delete(normalized.key), transaction);
-        },
-      );
-    },
-    async loadCleanState(documentId, actorUserId) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      return run(
-        [CHECKPOINT_STORE, ACCEPTED_STORE],
-        'readonly',
-        async (stores, transaction) => {
-          const [checkpoint, records] = await Promise.all([
-            requestResult(stores[CHECKPOINT_STORE].get(scopeKey), transaction),
-            requestResult(
-              stores[ACCEPTED_STORE].index('scopeKey').getAll(scopeKey),
-              transaction,
-            ),
-          ]);
-          return {
-            checkpointUpdate: cloneBytes(checkpoint?.update),
-            acceptedKeys: [...(checkpoint?.acceptedKeys || [])],
-            records: records
-              .sort((left, right) => (
-                (left.ordinal || 0) - (right.ordinal || 0)
-                || String(left.key).localeCompare(String(right.key))
-              ))
-              .map(cloneRecord),
-          };
-        },
-      );
-    },
-    async compactAccepted(
-      documentId,
-      actorUserId,
-      acceptedSnapshot,
-      force = false,
-      expectedIncarnation = 0,
-    ) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      return run(
-        [CHECKPOINT_STORE, ACCEPTED_STORE, INCARNATION_STORE],
-        'readwrite',
-        async (stores, transaction) => {
-          const [incarnation, checkpoint, records] = await Promise.all([
-            requestResult(
-              stores[INCARNATION_STORE].get(documentId),
-              transaction,
-            ),
-            requestResult(stores[CHECKPOINT_STORE].get(scopeKey), transaction),
-            requestResult(
-              stores[ACCEPTED_STORE].index('scopeKey').getAll(scopeKey),
-              transaction,
-            ),
-          ]);
-          if (
-            (Number(expectedIncarnation) || 0)
-            !== (Number(incarnation?.incarnation) || 0)
-          ) throw staleIncarnationError(documentId);
-          if (!force && records.length < COMPACT_AFTER_DELTAS) return false;
-          const updates = [
-            checkpoint?.update,
-            acceptedSnapshot,
-            ...records.map((record) => record.update),
-          ].filter(Boolean).map(cloneBytes);
-          if (updates.length) {
-            const update = Y.mergeUpdates(updates);
-            const acceptedKeys = [...new Set([
-              ...(checkpoint?.acceptedKeys || []),
-              ...records.map((record) => record.key),
-            ])];
-            const previousUpdate = cloneBytes(checkpoint?.update);
-            if (records.length === 0 && previousUpdate
-              && previousUpdate.length === update.length
-              && previousUpdate.every((byte, index) => byte === update[index])
-              && (checkpoint.acceptedKeys || []).length === acceptedKeys.length
-              && acceptedKeys.every((key, index) => checkpoint.acceptedKeys[index] === key)) {
-              // Keep the incarnation check and transaction completion above/
-              // below, but do not put identical checkpoint bytes on clean close.
-              return false;
-            }
-            await requestResult(stores[CHECKPOINT_STORE].put({
-              scopeKey,
-              update,
-              acceptedKeys,
-            }), transaction);
-          }
-          await Promise.all(records.map((record) => requestResult(
-            stores[ACCEPTED_STORE].delete(record.key),
-            transaction,
-          )));
-          return true;
-        },
-      );
-    },
-    async deleteScope(documentId, actorUserId, expectedIncarnation = 0) {
-      const scopeKey = actorScopeKey(documentId, actorUserId);
-      await run(
-        [
-          PENDING_STORE,
-          ACCEPTED_STORE,
-          QUARANTINE_STORE,
-          CHECKPOINT_STORE,
-          INCARNATION_STORE,
-        ],
-        'readwrite',
-        async (stores, transaction) => {
-          const incarnation = await requestResult(
-            stores[INCARNATION_STORE].get(documentId),
-            transaction,
-          );
-          if (
-            (Number(expectedIncarnation) || 0)
-            !== (Number(incarnation?.incarnation) || 0)
-          ) throw staleIncarnationError(documentId);
-          for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
-            const rows = await requestResult(
-              stores[name].index('scopeKey').getAll(scopeKey),
-              transaction,
-            );
-            await Promise.all(rows.map((record) => requestResult(
-              stores[name].delete(record.key),
-              transaction,
-            )));
-          }
-          await requestResult(stores[CHECKPOINT_STORE].delete(scopeKey), transaction);
-        },
-      );
-    },
-    async deleteDocument(documentId) {
-      await run(
-        [
-          PENDING_STORE,
-          ACCEPTED_STORE,
-          QUARANTINE_STORE,
-          CHECKPOINT_STORE,
-          INCARNATION_STORE,
-        ],
-        'readwrite',
-        async (stores, transaction) => {
-          const current = await requestResult(
-            stores[INCARNATION_STORE].get(documentId),
-            transaction,
-          );
-          await requestResult(stores[INCARNATION_STORE].put({
-            documentId,
-            incarnation: (Number(current?.incarnation) || 0) + 1,
-          }), transaction);
-          for (const name of [PENDING_STORE, ACCEPTED_STORE, QUARANTINE_STORE]) {
-            const rows = await requestResult(stores[name].getAll(), transaction);
-            await Promise.all(rows
-              .filter((record) => record.documentId === documentId)
-              .map((record) => requestResult(
-                stores[name].delete(record.key),
-                transaction,
-              )));
-          }
-          const checkpoints = await requestResult(
-            stores[CHECKPOINT_STORE].getAll(),
-            transaction,
-          );
-          await Promise.all(checkpoints
-            .filter((record) => record.scopeKey.startsWith(`${documentId}\u0000`))
-            .map((record) => requestResult(
-              stores[CHECKPOINT_STORE].delete(record.scopeKey),
-              transaction,
-            )));
-        },
-      );
+      } finally { await fresh.close(); }
     },
     async close() {
       closing = true;
       if (inFlight.size > 0) {
         let timer;
-        await Promise.race([
-          Promise.allSettled([...inFlight]),
-          new Promise((resolve) => {
-            timer = setTimeout(() => {
-              for (const transaction of activeTransactions) {
-                try { transaction.abort(); } catch { /* already closed */ }
-              }
-              resolve();
-            }, timeoutMs);
-          }),
-        ]);
+        await Promise.race([Promise.allSettled([...inFlight]), new Promise(resolve => {
+          timer = setTimeout(() => {
+            for (const transaction of activeTransactions) {
+              try { transaction.abort(); } catch { /* already closed */ }
+            }
+            resolve();
+          }, timeoutMs);
+        })]);
         if (timer) clearTimeout(timer);
         await Promise.allSettled([...inFlight]);
       }
       db.close();
     },
-  };
+  });
 }

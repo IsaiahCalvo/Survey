@@ -209,7 +209,7 @@ test('outbox upgrades an existing version-one database before quarantining a rej
 
   const first = await createAnnotationOutbox({ indexedDb, timeoutMs: 100 });
   await first.markRejected([key]);
-  assert.equal(indexedDb.databases.get(OUTBOX_DB_NAME).version, 3);
+  assert.equal(indexedDb.databases.get(OUTBOX_DB_NAME).version, 4);
   assert.equal(indexedDb.databases.get(OUTBOX_DB_NAME).stores.has('quarantined'), true);
   assert.equal(indexedDb.databases.get(OUTBOX_DB_NAME).stores.has('documentIncarnations'), true);
   assert.deepEqual(
