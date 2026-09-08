@@ -1,5 +1,6 @@
 // Device-owned PDFs, not a cache: no auth, cloud bindings, eviction or legacy
 // migration. Metadata reads never load PDF bytes. Both records commit together.
+import { createLocalDocumentStateReader } from './localDocumentState.js';
 export const LOCAL_DOCUMENT_DB_NAME = 'survey-local-documents-v1';
 export const LOCAL_DOCUMENT_MAX_BYTES = 256 * 1024 * 1024;
 export const LOCAL_DOCUMENT_MAX_STATE_BYTES = 16 * 1024 * 1024;
@@ -88,6 +89,9 @@ function copyDocumentState(input, localId, maxBytes) {
   return result;
 }
 
+// Shared strict snapshot validation for the independent crash-draft store.
+export { copyDocumentState as copyLocalDocumentState };
+
 function notifyChange() {
   try { if (typeof window !== 'undefined') window.dispatchEvent(new window.Event('local-document-store-changed')); }
   catch { /* Notification failure cannot undo a completed storage commit. */ }
@@ -171,7 +175,7 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
     });
   }
 
-  async function prepare(file) {
+  async function prepare(file, { nativeBytes = false } = {}) {
     active();
     if (!file || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 1024
       || !positiveInteger(file.size) || file.size > maxDocumentBytes || typeof file.arrayBuffer !== 'function') {
@@ -179,7 +183,9 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
     }
     const name = file.name;
     const size = file.size;
-    const bytes = await file.arrayBuffer(); active();
+    // Recovery state belongs to this Blob's exact bytes, not an overridable
+    // instance method which could return another same-sized PDF.
+    const bytes = await (nativeBytes ? Blob.prototype.arrayBuffer.call(file) : file.arrayBuffer()); active();
     if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== size) throw fail('invalid-input', 'The PDF bytes do not match the selected file size.');
     const header = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 1024));
     const signature = [37, 80, 68, 70, 45];
@@ -202,19 +208,45 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
     return value;
   }
 
-  async function importLocalDocument(file) {
-    const prepared = await prepare(file);
-    const localId = `local:${crypto.randomUUID()}`;
+  async function commitImport(prepared, localId, state) {
     const timestamp = new Date().toISOString();
     const manifest = { id: localId, localId, storageMode: 'local', name: prepared.name,
       size: prepared.size, type: prepared.type, created_at: timestamp, updated_at: timestamp, revision: 1 };
-    await transact([MANIFESTS, PDF_BYTES], 'readwrite', (tx, done) => {
-      tx.objectStore(MANIFESTS).add({ ...manifest, bytesRevision: 1 });
+    await transact(state ? [MANIFESTS, PDF_BYTES, DOCUMENT_STATE] : [MANIFESTS, PDF_BYTES], 'readwrite', (tx, done) => {
+      tx.objectStore(MANIFESTS).add({ ...manifest, bytesRevision: 1, ...(state ? { stateRevision: 1 } : {}) });
       tx.objectStore(PDF_BYTES).add({ localId, revision: 1, blob: prepared.blob });
+      if (state) tx.objectStore(DOCUMENT_STATE).add({ localId, revision: 1, state });
       done(manifest);
     });
     notifyChange();
     return manifest;
+  }
+
+  async function importLocalDocument(file) {
+    const prepared = await prepare(file);
+    return commitImport(prepared, `local:${crypto.randomUUID()}`);
+  }
+
+  // Recovery creates a separate document, never a patch to its source. Capture
+  // state before reading bytes; only the six outer storage keys are rekeyed.
+  // Annotation IDs, authors, page layout and user content remain unchanged.
+  async function importLocalDocumentCopy(file, inputState) {
+    active();
+    const sourceId = inputState && Object.getOwnPropertyDescriptor(inputState, 'pdfId')?.value;
+    checkId(sourceId);
+    const snapshot = copyDocumentState(inputState, sourceId, maxStateBytes);
+    if (Object.keys(snapshot).some(key => !['version', 'pdfId', 'entries'].includes(key))) {
+      throw fail('invalid-state', 'The recovery snapshot contains unsupported fields. Its source was kept.');
+    }
+    const reader = createLocalDocumentStateReader({ localId: sourceId,
+      _surveyPdfId: sourceId, storageMode: 'local', _localDocumentState: snapshot });
+    const localId = `local:${crypto.randomUUID()}`;
+    const entries = Object.fromEntries(Object.keys(snapshot.entries).map(key => [
+      key.slice(0, -sourceId.length) + localId, reader.getItem(key),
+    ]));
+    const state = copyDocumentState({ version: 1, pdfId: localId, entries }, localId, maxStateBytes);
+    const prepared = await prepare(file, { nativeBytes: true });
+    return commitImport(prepared, localId, state);
   }
 
   async function listLocalDocuments() {
@@ -316,12 +348,13 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
   // Graceful handle close, not transaction cancellation: seal future calls and
   // pending opens, but an already active IDB transaction may still commit.
   function close() { closed = true; cancelOpen?.(); connection?.close(); connection = null; }
-  return { importLocalDocument, listLocalDocuments, openLocalDocument, replaceLocalDocument, saveLocalDocumentState, close };
+  return { importLocalDocument, importLocalDocumentCopy, listLocalDocuments, openLocalDocument, replaceLocalDocument, saveLocalDocumentState, close };
 }
 
 let defaultStore;
 const productionStore = () => (defaultStore ||= createLocalDocumentStore());
 export const importLocalDocument = file => productionStore().importLocalDocument(file);
+export const importLocalDocumentCopy = (file, state) => productionStore().importLocalDocumentCopy(file, state);
 export const listLocalDocuments = () => productionStore().listLocalDocuments();
 export const openLocalDocument = localId => productionStore().openLocalDocument(localId);
 export const replaceLocalDocument = (localId, file, options) => productionStore().replaceLocalDocument(localId, file, options);

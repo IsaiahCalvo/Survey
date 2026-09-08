@@ -862,6 +862,37 @@ test-harness scope variable after adding the readiness gate. Those tests now
 require all cloud/managed/unmanaged branches and supply the new readiness input;
 no product guard or old oracle was removed to get a pass.
 
+## Per-session local recovery design (September 8)
+
+Managed local editors now retain recovery state separately from canonical Save.
+The first dirty edit starts a session bound to the exact immutable PDF File.
+Later edits update only metadata and the six saved-state payloads, not another
+PDF copy. A fixed 150ms deadline coalesces fast changes; slow writes retain the
+latest next snapshot. Empty states after undo/delete replace old marks too.
+Cloud and unmanaged files never start these writers. Failed writes retain the
+latest pending state, show an error, and retry on a later edit or explicit Save.
+Recovery failure does not change the result of a successful canonical Save.
+The recovery list reads metadata only while Home's local Documents view is
+shown. Hidden updates invalidate the list without a scan. Event bursts share a
+read; changes during a read invalidate its result and request one trailing read.
+
+The device library offers **Recover as copy** and confirmed **Discard**. A copy
+imports retained PDF bytes, metadata and all six state payloads in one new
+document transaction. It never overwrites the original, merges old state into a
+new page layout, or carries cloud/native-path authority. Only the outer storage
+keys change; mark IDs, authors and user text remain unchanged. Native Blob reads
+prevent an overridden File method from swapping same-sized PDF bytes. Discard
+requires the exact listed sequence and leaves a tombstone so queued old writes
+cannot recreate that session. Later editing may start a new independent session.
+
+These are saved session snapshots, not a claim that every copy is unsaved.
+Canonical Save does not silently discard them. No automatic retention cleanup
+has been implemented; repeated edited sessions retain PDF bytes until explicit
+discard. A state-write receipt is not a fresh integrity scan of the stored PDF;
+recovery verifies the paired rows before creating a copy. Browser profile
+deletion, disk corruption, uncommitted canvas gestures and form input before
+the existing input debounce remain outside this recovery guarantee.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

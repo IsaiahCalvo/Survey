@@ -36,6 +36,13 @@ export default function SurveyHub({
   onImportLocalDocument,
   onOpenLocalDocument,
   onRetryLocalDocuments,
+  localRecoveryCopies = [],
+  localRecoveryLoading = false,
+  localRecoveryError = '',
+  onRecoverLocalCopy,
+  onDiscardLocalRecoveryCopy,
+  onRetryLocalRecoveryCopies,
+  onLocalDocumentsVisibilityChange,
   documents = [],
   projects = [],
   templates = [],
@@ -86,6 +93,9 @@ export default function SurveyHub({
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
   const [documentStorage, setDocumentStorage] = useState(() => user ? 'cloud' : 'local');
+  useEffect(() => {
+    onLocalDocumentsVisibilityChange?.(tab === 'documents' && documentStorage === 'local' && !settingsOpen);
+  }, [tab, documentStorage, settingsOpen, onLocalDocumentsVisibilityChange]);
   useEffect(() => { if (!user) setDocumentStorage('local'); }, [user?.id]);
 
   useEffect(() => {
@@ -199,6 +209,34 @@ export default function SurveyHub({
                   </li>
                 ))}
               </ul>
+              <section aria-label="Recovery copies" style={{ borderTop: '1px solid var(--ink-500)', marginTop: 24, paddingTop: 16 }}>
+                <h2 style={{ margin: '0 0 8px', fontSize: 16 }}>Recovery copies</h2>
+                <p style={{ color: 'var(--ink-200)', fontSize: 13 }}>
+                  Saved session snapshots. These may already match a saved document. Recover as a separate copy to review them; the original stays unchanged.
+                </p>
+                {localRecoveryError ? <div role="alert">
+                  <p>{localRecoveryError}</p>
+                  <button type="button" className="btn" onClick={onRetryLocalRecoveryCopies}>Refresh recovery copies</button>
+                </div> : null}
+                {localRecoveryLoading ? <p role="status">Loading recovery copies…</p> : null}
+                {!localRecoveryLoading && localRecoveryCopies.length === 0 ? <p>No recovery copies on this device.</p> : null}
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {localRecoveryCopies.map(row => (
+                    <li key={row.sessionId} style={{ borderTop: '1px solid var(--ink-500)', padding: '12px 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ overflowWrap: 'anywhere', color: 'var(--ink-100)' }}>{row.name}</div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-200)', marginTop: 4 }}>
+                          {new Date(row.updatedAt || row.updated_at).toLocaleString()} · {Math.ceil((Number(row.size) || 0) / 1024).toLocaleString()} KB
+                        </div>
+                      </div>
+                      <button type="button" className="btn" disabled={localDocumentBusy}
+                        aria-label={`Recover ${row.name} as copy`} onClick={() => { void onRecoverLocalCopy?.(row); }}>Recover as copy</button>
+                      <button type="button" className="btn" disabled={localDocumentBusy}
+                        aria-label={`Discard recovery snapshot for ${row.name}`} onClick={() => { void onDiscardLocalRecoveryCopy?.(row); }}>Discard</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </section>
           </HubShell>
         ) : documentsInitialLoading ? (

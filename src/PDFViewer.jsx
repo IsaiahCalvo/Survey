@@ -16,6 +16,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createManagedLocalEditingContext } from './utils/managedLocalEditingContext.js';
 import { buildLocalDocumentState, createLocalDocumentStateReader, isManagedLocalDocument } from './services/localDocumentState.js';
 import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from './hooks/useManagedLocalSaveTracking.js';
+import { useManagedLocalDraftTracking } from './hooks/useManagedLocalDraftTracking.js';
 import { saveLocalDocumentState } from './services/localDocumentStore.js';
 import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
@@ -21224,6 +21225,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled]);
   const managedLocalSaveTracking = useManagedLocalSaveTracking({ file: pdfFile, pdfId, snapshot: managedLocalSnapshot,
     hydrated: !!pdfDoc && !isLoadingPDF && !pdfLoadError });
+  const managedLocalDraftTracking = useManagedLocalDraftTracking({ file: pdfFile, snapshot: managedLocalSnapshot,
+    ready: managedLocalSaveTracking.ready, dirty: managedLocalSaveTracking.dirty,
+    onError: (error, file) => showToast(`Could not keep a recovery snapshot for ${file.name}. Use Save and keep the file open. ${error?.message || ''}`, 'error'),
+  });
 
   // Mark annotations as dirty when they change
   useEffect(() => {
@@ -21792,6 +21797,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         && saveDocumentScopeRef.current?.pdfId === scope.pdfId
         && saveDocumentScopeRef.current?.actorUserId === scope.actorUserId;
       if (managedLocal && !localScopeStillCurrent) return false;
+      // Recovery is a second copy, not the Save acknowledgement. Retry a
+      // pending recovery write without delaying or failing canonical Save.
+      if (managedLocal && localBackupSaved) {
+        void Promise.resolve().then(() => managedLocalDraftTracking.flush()).catch(() => {});
+      }
       const localSaveStillCurrent = !managedLocal || (localBackupSaved && managedLocalSaveTracking.markSaved(
         pdfFile, localSnapshot, captureManagedLocalSnapshot(pdfFile, annotationsByPageRef.current),
       ));
@@ -21889,7 +21899,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return false;
     }
   }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush,
-    managedLocalSaveTracking.ready, managedLocalSaveTracking.markSaved]);
+    managedLocalSaveTracking.ready, managedLocalSaveTracking.markSaved, managedLocalDraftTracking.flush]);
 
   useManagedLocalAutoSave({ file: pdfFile,
     enabled: isManagedLocalDocument(pdfFile) && managedLocalSaveTracking.ready && hasUnsavedAnnotations,

@@ -38,7 +38,8 @@ import { archiveItems } from './services/archiveService';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
-import { importLocalDocument, listLocalDocuments, openLocalDocument } from './services/localDocumentStore.js';
+import { importLocalDocument, importLocalDocumentCopy, listLocalDocuments, openLocalDocument } from './services/localDocumentStore.js';
+import { listLocalDocumentDrafts, readLocalDocumentDraft, discardLocalDocumentDraft } from './services/localDocumentDraftStore.js';
 import { createLocalDocumentStateReader } from './services/localDocumentState.js';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
@@ -103,7 +104,7 @@ const hasNameConflict = (
 };
 
 
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOpenDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSelect, onActivateOpenDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   const localFileInputRef = useRef(null);
@@ -117,6 +118,52 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
   const localMountedRef = useRef(false);
   const localOpenCallbackRef = useRef(onDocumentSelect);
   localOpenCallbackRef.current = onDocumentSelect;
+  const [localRecoveryCopies, setLocalRecoveryCopies] = useState([]);
+  const [localRecoveryLoading, setLocalRecoveryLoading] = useState(true);
+  const [localRecoveryListError, setLocalRecoveryListError] = useState('');
+  const [localRecoveryActionError, setLocalRecoveryActionError] = useState('');
+  const localRecoveryGenerationRef = useRef(0);
+  const [localDocumentsVisible, setLocalDocumentsVisible] = useState(false);
+  const localRecoveryVisibilityRef = useRef(null);
+  const localRecoveryReadRef = useRef(null);
+  const localRecoveryInvalidatedRef = useRef(true);
+  const recoveryVisible = isActive && localDocumentsVisible;
+  if (localRecoveryVisibilityRef.current?.active !== recoveryVisible) {
+    localRecoveryVisibilityRef.current = { active: recoveryVisible };
+    localRecoveryGenerationRef.current++;
+    localRecoveryInvalidatedRef.current = true;
+  }
+  const refreshLocalRecoveryCopies = useCallback(async () => {
+    localRecoveryGenerationRef.current++;
+    localRecoveryInvalidatedRef.current = true;
+    if (!localMountedRef.current || !localRecoveryVisibilityRef.current?.active) return;
+    if (localRecoveryReadRef.current) return localRecoveryReadRef.current;
+    // Same-turn events share a read. Events arriving during that read invalidate
+    // its result and request one trailing latest read, never a concurrent scan.
+    const pending = Promise.resolve().then(async () => {
+      while (localMountedRef.current && localRecoveryVisibilityRef.current?.active
+        && localRecoveryInvalidatedRef.current) {
+        localRecoveryInvalidatedRef.current = false;
+        const generation = localRecoveryGenerationRef.current;
+        const current = () => localMountedRef.current && localRecoveryVisibilityRef.current?.active
+          && generation === localRecoveryGenerationRef.current;
+        try {
+          const rows = await listLocalDocumentDrafts();
+          if (current()) { setLocalRecoveryCopies(rows); setLocalRecoveryListError(''); }
+        } catch (error) {
+          if (current()) setLocalRecoveryListError(`Could not read recovery copies: ${error.message || 'Storage unavailable'}`);
+        } finally {
+          if (current()) setLocalRecoveryLoading(false);
+        }
+      }
+    }).finally(() => {
+      if (localRecoveryReadRef.current === pending) localRecoveryReadRef.current = null;
+      if (localMountedRef.current && localRecoveryVisibilityRef.current?.active
+        && localRecoveryInvalidatedRef.current) void refreshLocalRecoveryCopies();
+    });
+    localRecoveryReadRef.current = pending;
+    return pending;
+  }, []);
   const refreshLocalDocuments = useCallback(async () => {
     const generation = ++localListGenerationRef.current;
     try {
@@ -145,18 +192,31 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
       window.removeEventListener('local-document-store-changed', refreshLocalDocuments);
     };
   }, [refreshLocalDocuments]);
+  useEffect(() => {
+    window.addEventListener('focus', refreshLocalRecoveryCopies);
+    window.addEventListener('local-document-draft-changed', refreshLocalRecoveryCopies);
+    return () => {
+      localRecoveryGenerationRef.current++;
+      window.removeEventListener('focus', refreshLocalRecoveryCopies);
+      window.removeEventListener('local-document-draft-changed', refreshLocalRecoveryCopies);
+    };
+  }, [refreshLocalRecoveryCopies]);
+  useEffect(() => {
+    if (recoveryVisible) void refreshLocalRecoveryCopies();
+  }, [recoveryVisible, refreshLocalRecoveryCopies]);
 
-  const openManagedLocalDocument = async localId => {
+  const openManagedLocalDocument = async (localId, isCurrent = () => true) => {
+    if (!isCurrent()) return;
     const file = await openLocalDocument(localId);
     if (!file || file.storageMode !== 'local' || file.localId !== localId || file.id != null) {
       throw new Error('The saved local PDF has an invalid identity');
     }
-    if (!localMountedRef.current) return;
+    if (!localMountedRef.current || !isCurrent()) return;
     // Validate before opening, without overwriting unversioned recovery keys.
     createLocalDocumentStateReader(file);
     // This is the managed copy, never the picker File or its original/native
     // path. Local identity is device-owned and never stamped with a cloud id.
-    if (localMountedRef.current) await localOpenCallbackRef.current?.(file, null);
+    if (localMountedRef.current && isCurrent()) await localOpenCallbackRef.current?.(file, null);
   };
   const importAndOpenLocalDocument = async file => {
     const manifest = await importLocalDocument(file);
@@ -199,6 +259,51 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
     event.target.value = '';
     if (file) void runLocalDocumentAction(() => importAndOpenLocalDocument(file));
   };
+  const runLocalRecoveryAction = async action => {
+    const scope = localRecoveryVisibilityRef.current;
+    if (localBusyRef.current || !localMountedRef.current || !scope?.active) return;
+    const isCurrent = () => localMountedRef.current && localRecoveryVisibilityRef.current === scope;
+    localBusyRef.current = true;
+    setLocalDocumentBusy(true);
+    setLocalRecoveryActionError('');
+    try { await action(isCurrent); }
+    catch (error) {
+      if (isCurrent()) {
+        setLocalRecoveryActionError(`Could not complete the recovery action: ${error.message || 'Storage unavailable'}`);
+        await refreshLocalRecoveryCopies();
+      }
+    } finally {
+      localBusyRef.current = false;
+      if (localMountedRef.current) setLocalDocumentBusy(false);
+    }
+  };
+  const recoverLocalCopy = ({ sessionId, sequence }) => runLocalRecoveryAction(async isCurrent => {
+    const recovered = await readLocalDocumentDraft(sessionId, { expectedSequence: sequence });
+    if (!isCurrent()) return;
+    if (recovered.metadata.sessionId !== sessionId || recovered.metadata.sequence !== sequence) {
+      throw new Error('This snapshot changed. Refresh the list and choose it again.');
+    }
+    const name = `${recovered.file.name.replace(/\.pdf$/i, '')} (recovered).pdf`;
+    const file = new File([recovered.file], name, { type: 'application/pdf' });
+    const manifest = await importLocalDocumentCopy(file, recovered.state);
+    if (!isCurrent()) return;
+    localListGenerationRef.current++;
+    setLocalDocuments(rows => [manifest, ...rows.filter(entry => entry.localId !== manifest.localId)]);
+    setLocalDocumentsLoading(false);
+    // Recovery never replaces or discards the source session snapshot.
+    await openManagedLocalDocument(manifest.localId, isCurrent);
+  });
+  const discardLocalRecoveryCopy = ({ sessionId, sequence, name }) => runLocalRecoveryAction(async isCurrent => {
+    const confirmed = await askConfirm({
+      title: 'Discard this recovery snapshot?',
+      message: `Discard the saved session snapshot for "${name}"? This removes only this snapshot. The original document and other copies stay unchanged.`,
+      confirmLabel: 'Discard snapshot',
+      danger: true,
+    });
+    if (!confirmed || !isCurrent()) return;
+    await discardLocalDocumentDraft(sessionId, { expectedSequence: sequence });
+    if (isCurrent()) await refreshLocalRecoveryCopies();
+  });
   // Destination project for the next browser-input upload. The browser file
   // picker fires `handleFileUpload` separately, so the project id chosen in
   // the Projects tab is stashed here for that handler to read.
@@ -2385,6 +2490,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
         onImportLocalDocument={handleOpenLocalClick}
         onOpenLocalDocument={row => { void runLocalDocumentAction(() => openManagedLocalDocument(row.localId)); }}
         onRetryLocalDocuments={refreshLocalDocuments}
+        localRecoveryCopies={localRecoveryCopies}
+        localRecoveryLoading={localRecoveryLoading}
+        localRecoveryError={localRecoveryActionError || localRecoveryListError}
+        onRecoverLocalCopy={recoverLocalCopy}
+        onDiscardLocalRecoveryCopy={discardLocalRecoveryCopy}
+        onRetryLocalRecoveryCopies={refreshLocalRecoveryCopies}
+        onLocalDocumentsVisibilityChange={setLocalDocumentsVisible}
         documents={documents}
         projects={projects}
         templates={templates}

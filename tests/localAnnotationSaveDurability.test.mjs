@@ -170,6 +170,7 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     summarizeAnnotationCountsForSaveExport: () => ({ byType: {} }),
     saveAnnotationsByPage: () => localSaved,
     isManagedLocalDocument,
+    managedLocalDraftTracking: { flush: async () => null },
     savedAnnotationsByPageRef: savedRef,
     setHasUnsavedAnnotations: (dirty) => { state.dirty = dirty; },
     onUnsavedAnnotationsChange: (...args) => state.notifications.push(args),
@@ -332,6 +333,30 @@ test('mounted managed Save stays clean when a focused form flush commits React s
   assert.equal(api.dirty, false, 'the next React render matches the exact committed full-state snapshot');
   assert.deepEqual(JSON.parse(file._localDocumentState.entries[`annotationsByPage_${localId}`]), latest);
 });
+
+for (const pendingRecovery of [false, true]) {
+  test(`canonical Save succeeds while supplemental recovery ${pendingRecovery ? 'stays pending' : 'fails'}`, async () => {
+    const localId = 'local:00000000-0000-4000-8000-000000000001';
+    const file = { localId, _surveyPdfId: localId, storageMode: 'local', localRevision: 1 };
+    let retries = 0;
+    const helpers = managedLocalHelpers(file, async () => ({ revision: 2 }));
+    const h = saveCallbackHarness({ overrides: {
+      pdfId: localId, pdfFile: file, ...helpers,
+      managedLocalPageMutationRef: { current: false },
+      managedLocalSaveTracking: { ready: true, markSaved: () => true },
+      managedLocalDraftTracking: { flush: () => {
+        retries++;
+        return pendingRecovery ? new Promise(() => {}) : Promise.reject(new Error('Recovery quota'));
+      } },
+    } });
+    assert.equal(await h.save(true), true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(retries, 1);
+    assert.equal(file.localRevision, 2);
+    assert.equal(h.state.dirty, false);
+    assert.equal(h.state.cloudWrites, 0);
+  });
+}
 
 for (const failed of [false, true]) {
   test(`managed Save ${failed ? 'keeps failed metadata dirty and visible' : 'does not clear metadata edited while the real write waits'}`, async () => {

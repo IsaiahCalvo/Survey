@@ -2933,6 +2933,7 @@ export default function App({ devPreviewReturnTab = null }) {
             <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             <Dashboard
               ref={dashboardRef}
+              isActive={currentView === 'dashboard'}
               onDocumentSelect={handleDocumentSelect}
               onActivateOpenDocument={handleActivateOpenDocument}
               onBack={handleBack}
