@@ -16,11 +16,15 @@ import {
   assertHarnessAccountIdentity,
   makeSignedInClient,
 } from '../tests/phase35-e2e/eraser-permission-harness.mjs';
+import {
+  preloadFix20OfflineInspection, readFix20LocalState, runFix20OfflineClose,
+} from './lib/fix20-offline-close.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const LOGS_ROOT = path.join(REPO_ROOT, 'Logs');
 const BASE_URL = process.env.FIX20_BASE_URL || 'http://localhost:5173/';
 const CHROME_EXECUTABLE = process.env.FIX20_CHROME_EXECUTABLE || null;
+const OFFLINE_PROOF = process.env.FIX20_OFFLINE_PROOF === '1';
 
 function loadEnv(file) {
   const p = path.join(REPO_ROOT, file);
@@ -242,6 +246,9 @@ async function openAsUser(browser, credentials, accountIndex, document, label, e
     consoleLines.push(line);
     evidence.console.push(line);
   });
+  page.on('pageerror', (error) => {
+    evidence.pageErrors.push({ label, name: error.name, message: error.message, ts: new Date().toISOString() });
+  });
   page.on('response', (response) => {
     const url = response.url();
     if (!isDocumentStorageResponse(url, document)) return;
@@ -285,6 +292,7 @@ async function openAsUser(browser, credentials, accountIndex, document, label, e
   await page.waitForSelector('.survey-pdfjs-page-div[data-page-number="1"]', { timeout: 60_000 });
   const storageProof = await waitForStorageDownloadProof(storageResponses, label);
   await waitForHarness(page);
+  await assertOpenDocumentSurface({ page, label }, document, credentials.userId);
   evidence.storageDownloadProof[label] = {
     pass: true,
     usedPdfByteOverride: false,
@@ -307,6 +315,23 @@ async function getHarnessState(client) {
   return client.page.evaluate(() => window.__fix20CollabHarness.getState());
 }
 
+async function assertOpenDocumentSurface(client, document, actorUserId) {
+  const tab = client.page.locator('[data-pdf-tab-id]').filter({
+    has: client.page.getByTitle(document.name, { exact: true }),
+  });
+  await tab.waitFor({ state: 'visible', timeout: 20000 });
+  if (await tab.count() !== 1) throw new Error(`${client.label}: expected one exact document title tab`);
+  const page = client.page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
+  await page.waitFor({ state: 'visible', timeout: 20000 });
+  await page.locator('[data-svg-annotation-layer="1"]').waitFor({ state: 'visible', timeout: 20000 });
+  const geometry = await page.locator('canvas').first().evaluate(canvas => ({ width: canvas.width, height: canvas.height }));
+  if (!geometry.width || !geometry.height) throw new Error(`${client.label}: PDF canvas is blank or uninitialized`);
+  const state = await getHarnessState(client);
+  if (state.documentId !== document.id || state.documentName !== document.name || state.userId !== actorUserId) {
+    throw new Error(`${client.label}: visible title/document/actor does not match the disposable fixture`);
+  }
+}
+
 async function waitForEntity(client, id, kind = 'annotation', shouldExist = true, timeoutMs = 15_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -319,7 +344,7 @@ async function waitForEntity(client, id, kind = 'annotation', shouldExist = true
   throw new Error(`${client.label}: timed out waiting for ${kind} ${id} exist=${shouldExist}`);
 }
 
-async function createCircleThroughProductionUi(client, timeoutMs = 20_000) {
+async function createCircleThroughProductionUi(client, timeoutMs = 20_000, position = [0.28, 0.34, 0.42, 0.48]) {
   const before = await getHarnessState(client);
   const existingIds = new Set(before.annotations.map((entry) => entry.id));
 
@@ -330,9 +355,9 @@ async function createCircleThroughProductionUi(client, timeoutMs = 20_000) {
   const box = await page.boundingBox();
   if (!box) throw new Error('Production PDF page has no drawable geometry');
 
-  await client.page.mouse.move(box.x + box.width * 0.28, box.y + box.height * 0.34);
+  await client.page.mouse.move(box.x + box.width * position[0], box.y + box.height * position[1]);
   await client.page.mouse.down();
-  await client.page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.48, { steps: 8 });
+  await client.page.mouse.move(box.x + box.width * position[2], box.y + box.height * position[3], { steps: 8 });
   await client.page.mouse.up();
 
   const startedAt = Date.now();
@@ -385,6 +410,7 @@ const evidence = {
   ydocRealtimeProof: {},
   console: [],
   networkFailures: [],
+  pageErrors: [],
   result: 'pending',
 };
 
@@ -582,6 +608,8 @@ try {
   await clientB.page.waitForSelector('.survey-pdfjs-page-div[data-page-number="1"]', { timeout: 60_000 });
   await waitForHarness(clientA.page);
   await waitForHarness(clientB.page);
+  await assertOpenDocumentSurface(clientA, document, userA.userId);
+  await assertOpenDocumentSurface(clientB, document, userB.userId);
   await sleep(3000);
   const reloadA = await getHarnessState(clientA);
   const reloadB = await getHarnessState(clientB);
@@ -671,6 +699,63 @@ try {
       && circleRowsAfterDelete.length === 0,
   };
 
+  if (OFFLINE_PROOF) {
+    const clients = { A: clientA, B: clientB };
+    const actors = { A: userA.userId, B: userB.userId };
+    const assertActor = async label => {
+      const state = await getHarnessState(clients[label]);
+      if (state.documentId !== document.id || state.userId !== actors[label]) throw new Error(`${label}: offline proof scope changed`);
+    };
+    await runFix20OfflineClose({ documentId: document.id, actorA: userA.userId, actorB: userB.userId, evidence,
+      actions: {
+        preload: () => preloadFix20OfflineInspection(clientA.page),
+        setAOffline: offline => clientA.context.setOffline(offline),
+        getState: label => getHarnessState(clients[label]),
+        create: async label => {
+          await assertActor(label);
+          return createCircleThroughProductionUi(clients[label], 20000,
+            label === 'A' ? [0.18, 0.4, 0.3, 0.52] : [0.58, 0.4, 0.7, 0.52]);
+        },
+        saveA: async () => {
+          await assertActor('A');
+          // Use shipped keyboard commands; do not await or fake cloud status.
+          await clientA.page.keyboard.press('Escape');
+          await clientA.page.keyboard.press('v');
+          await clientA.page.keyboard.press(process.platform === 'darwin' ? 'Meta+s' : 'Control+s');
+        },
+        readLocalA: () => readFix20LocalState(clientA.page, document.id, userA.userId),
+        closeA: async () => {
+          await assertActor('A');
+          await clientA.page.keyboard.press('Escape');
+          await clientA.page.keyboard.press('v');
+          const tab = clientA.page.locator('[data-pdf-tab-id]').filter({ has: clientA.page.getByTitle(document.name, { exact: true }) });
+          if (await tab.count() !== 1) throw new Error('A: exact fixture tab is missing or duplicated');
+          await tab.getByRole('button').click();
+          await tab.waitFor({ state: 'detached', timeout: 30000 });
+        },
+        reopenA: async () => {
+          await assertBrowserUsesLeasedAccount(clientA.page, { account: userA, timeoutMs: 45000 });
+          await clientA.page.evaluate(id => window.__fix20OpenDocumentById(id), document.id);
+          await waitForHarness(clientA.page);
+          await assertOpenDocumentSurface(clientA, document, userA.userId);
+        },
+        loadDurable: () => loadDurableAnnotationState(ownerClient, document.id),
+        deleteOwn: async (label, id) => {
+          await assertActor(label);
+          return clients[label].page.evaluate(id => window.__fix20CollabHarness.tryDelete(id), id);
+        },
+        screenshot: async stage => {
+          for (const label of ['A', 'B']) {
+            await assertOpenDocumentSurface(clients[label], document, actors[label]);
+            const filename = `${stage}-${label}.png`;
+            await clients[label].page.screenshot({ path: path.join(logDir, filename), fullPage: false });
+            (evidence.offlineScreenshots ??= []).push(filename);
+          }
+        },
+      },
+    });
+  }
+
   evidence.ydocRealtimeProof = {
     userAFinalYDoc: reloadA.ydoc,
     userBFinalYDoc: reloadB.ydoc,
@@ -684,6 +769,8 @@ try {
   };
 
   const mustPass = [
+    evidence.pageErrors.length === 0,
+    !OFFLINE_PROOF || evidence.offlineCloseProof?.pass === true,
     evidence.storageDownloadProof.usedPdfByteOverride === false,
     evidence.storageDownloadProof.A?.pass,
     evidence.storageDownloadProof.B?.pass,
@@ -712,6 +799,13 @@ try {
   evidence.result = 'fail';
   evidence.error = err?.stack || err?.message || String(err);
 } finally {
+  if (OFFLINE_PROOF) {
+    try { await clientA?.context?.setOffline(false); }
+    catch (error) {
+      runError ||= new Error(`Could not restore the offline fixture context: ${error.message}`);
+      evidence.result = 'fail'; evidence.error ||= runError.message;
+    }
+  }
   try { await clientA?.context?.close(); } catch {}
   try { await clientB?.context?.close(); } catch {}
   try { await browser?.close(); } catch {}
@@ -740,6 +834,10 @@ try {
     runError = new Error(`Disposable cleanup failed: ${evidence.disposableCleanup.errors.join('; ')}`);
     evidence.result = 'fail';
     evidence.error = runError.message;
+  }
+  if (evidence.pageErrors.length && !runError) {
+    runError = new Error('The app raised an uncaught page error during the collaboration run');
+    evidence.result = 'fail'; evidence.error = runError.message;
   }
   fs.writeFileSync(path.join(logDir, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n');
   fs.writeFileSync(path.join(logDir, 'console.log'), evidence.console.join('\n') + '\n');

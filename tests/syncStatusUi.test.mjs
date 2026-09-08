@@ -188,15 +188,8 @@ test('a real annotation save error is never hidden by a connecting transport', (
   );
 });
 
-test('shared-state lookup stays fail-safe and refreshes when sharing changes after open', () => {
-  const provider = providerSource();
-  assert.match(provider, /useState\(null\)/);
-  assert.match(provider, /table:\s*'document_collaborators'/);
-  assert.match(provider, /event:\s*'\*'/);
-  assert.match(provider, /setInterval\(refreshSharedState,\s*30_000\)/);
-  assert.match(provider, /isDocShared === true/);
-  assert.match(appSource(), /isSharedDocument:\s*yjsIsDocShared/);
-});
+// Shared-status refresh behavior is exercised through the real module and
+// mounted provider in documentCollaborationStatus/legacyYDocProviderMounted.
 
 test('sync failures emit privacy-safe analytics categories without raw error text', () => {
   const src = appSource();

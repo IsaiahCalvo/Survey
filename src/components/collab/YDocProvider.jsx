@@ -55,7 +55,6 @@ const ydocProviderDebug = (...args) => {
 // agnostic — if v2.5+ ever flips to Hocuspocus, the change is one line here.
 import { createSupabaseYjsProvider as createTransportProvider } from '../../lib/collab/SupabaseYjsProvider.js';
 import {
-  hasRemoteDocumentCollaborator,
   isTransportChannelJoined,
 } from '../../lib/collab/transportStatus.js';
 import { buildOrigin } from '../../lib/collab/originBuilder.js';
@@ -110,7 +109,7 @@ import {
 // surface (per checker W5: ship an actual surface, not paper-over).
 import { auditResidue } from '../../lib/collab/cleanupResidueAudit.js';
 import { isOwner } from '../../lib/collab/permissionScope.js';
-import { fetchMyDocumentRole } from '../../lib/collab/documentRole.js';
+import { attachDocumentCollaborationStatus } from '../../lib/collab/documentCollaborationStatus.js';
 import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
 
 // Phase 35 Plan 05 — sticky-per-document dismissal persistence. Stored as a
@@ -1486,105 +1485,24 @@ function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, c
   // resolves; it must not create a false red failure for a private document.
   // Realtime row changes and a bounded poll keep this current when a
   // private document is shared or unshared while it remains open.
+  const collaborationStatusRef = useRef(null);
   useEffect(() => {
-    if (!docId) { setIsDocShared(false); return undefined; }
-    let cancelled = false;
+    if (!docId) { setIsDocShared(false); setDocRole(null); return undefined; }
     const runtime = lifecycleRef.current;
-    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
-    const refreshSharedState = async () => {
-      if (!current()) return;
-      try {
-        // "Shared" = an explicit active row for another user, or my own
-        // collaborator row when I am not the owner. The latter matters because
-        // document owners are not guaranteed to have a collaborator row.
-        // If identity/role cannot be resolved, retain unknown rather than
-        // presenting a false healthy state.
-        let myId = null;
-        try {
-          const session = await getSupabaseSession('YDocProvider.isDocShared');
-          myId = session?.user?.id ?? null;
-        } catch { myId = null; }
-        if (!current() || myId !== actorUserId) { if (current()) setIsDocShared(null); return; }
-        const { data, error } = await supabase
-          .from('document_collaborators')
-          .select('user_id')
-          .eq('document_id', docId)
-          .eq('status', 'active');
-        if (error) {
-          if (current()) setIsDocShared(null);
-          return;
-        }
-        const activeCollaboratorUserIds = (data || [])
-          .map((row) => row?.user_id)
-          .filter(Boolean);
-        const hasExplicitRemote = hasRemoteDocumentCollaborator({
-          activeCollaboratorUserIds,
-          currentUserId: myId,
-          currentRole: null,
-        });
-        if (hasExplicitRemote) {
-          if (current()) setIsDocShared(true);
-          return;
-        }
-        // Owners are not guaranteed to have a document_collaborators row. If
-        // my row is the only row, an editor/viewer still has the row-less owner
-        // to sync with; an owner with only their own row does not.
-        const currentRole = await fetchMyDocumentRole(supabase, docId);
-        if (current()) {
-          setIsDocShared(hasRemoteDocumentCollaborator({
-            activeCollaboratorUserIds,
-            currentUserId: myId,
-            currentRole,
-          }));
-        }
-      } catch { if (current()) setIsDocShared(null); }
+    const status = attachDocumentCollaborationStatus({
+      client: supabase, documentId: docId, actorUserId, isActive,
+      isCurrent: () => actorMatchesRef.current && runtime?.isCurrent() === true,
+      signal: runtime?.signal,
+      getSession: () => getSupabaseSession('YDocProvider.isDocShared'),
+      onSharedState: setIsDocShared, onRole: setDocRole,
+    });
+    collaborationStatusRef.current = status;
+    return () => {
+      status.dispose();
+      if (collaborationStatusRef.current === status) collaborationStatusRef.current = null;
     };
-    if (!current()) return undefined;
-    void refreshSharedState();
-
-    const channelSuffix = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const collaboratorChannel = supabase
-      .channel(`ydoc-shared-state:${docId}:${channelSuffix}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'document_collaborators',
-        filter: `document_id=eq.${docId}`,
-      }, () => {
-        void refreshSharedState();
-      })
-      .subscribe();
-    const refreshTimer = setInterval(refreshSharedState, 30_000);
-
-    const cleanup = () => {
-      cancelled = true;
-      clearInterval(refreshTimer);
-      try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
-      runtime?.signal?.removeEventListener('abort', cleanup);
-    };
-    runtime?.signal?.addEventListener('abort', cleanup, { once: true });
-    if (!runtime?.isCurrent()) cleanup();
-    return cleanup;
   }, [docId, actorUserId, sessionEpoch]);
-
-  // 2026-07-01 — resolve the caller's effective role once per document open.
-  // Fail-open: any error → null → the read-write presentation stands (the
-  // server keeps rejecting viewer writes either way). fetchMyDocumentRole
-  // swallows RPC/network errors internally, so no try/catch needed here.
-  useEffect(() => {
-    if (!docId) { setDocRole(null); return undefined; }
-    let cancelled = false;
-    const runtime = lifecycleRef.current;
-    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
-    (async () => {
-      if (!current()) return;
-      const resolved = await fetchMyDocumentRole(supabase, docId);
-      if (current()) setDocRole(resolved);
-    })();
-    return () => { cancelled = true; };
-  }, [docId, actorUserId, sessionEpoch]);
+  useEffect(() => { collaborationStatusRef.current?.setActive(isActive); }, [isActive]);
 
   // Banner gates: must have a non-ok storage state AND the user has not dismissed it this session.
   // CONTEXT.md forbids silent fallback — every non-ok code surfaces, NB: the banner component itself

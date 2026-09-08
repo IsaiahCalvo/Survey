@@ -13,6 +13,7 @@ import * as archive from '../src/lib/collab/legacyYDocRecoveryArchive.js';
 import { IDBFactory } from 'fake-indexeddb';
 import { getLegacyYDocScopeKey } from '../src/lib/collab/legacyYDocScope.js';
 import { createQueueRetryHandlers } from '../src/lib/collab/crdtQueueRetryHandlers.js';
+import { attachDocumentCollaborationStatus } from '../src/lib/collab/documentCollaborationStatus.js';
 
 // Mount the shipped provider, not a copied callback. Only its module boundaries
 // are adapted: React, Yjs, registry retention and queue retry guards stay real;
@@ -41,6 +42,7 @@ async function mount(t, options = {}) {
   const supabase = {
     auth: { session: () => ({ data: { session: { user: { id: actor } } } }), user: () => ({ id: actor }) },
     realtime: { connect() {} },
+    rpc: async (_name, args) => { calls.roles.push(args.doc_id); return { data: 'owner', error: null }; },
     from(table) {
       const query = { table, filters: [] }; calls.sql.push(query);
       const builder = { select() { return builder; }, eq(...args) { query.filters.push(args); return builder; },
@@ -111,7 +113,7 @@ async function mount(t, options = {}) {
     'documentMetadataResolver.js': { resolveDocumentMetadata: async id => { calls.metadata.push(id); return options.metadata ? options.metadata(id) : { userId: actor, cutoverCompletedAt: null }; } },
     'cleanupResidueAudit.js': { auditResidue: args => { calls.audits.push(args); return { residueIds: ['residue'] }; } },
     'permissionScope.js': { isOwner: (user, owner) => user === owner },
-    'documentRole.js': { fetchMyDocumentRole: async (_client, id) => { calls.roles.push(id); return 'owner'; } },
+    'documentCollaborationStatus.js': { attachDocumentCollaborationStatus },
     'CleanupResidueReviewPanel.jsx': { CleanupResidueReviewPanel: props => { cleanupProps = props; return null; } },
   };
   const key = `__providerTest_${crypto.randomUUID().replaceAll('-', '')}`;
@@ -175,6 +177,26 @@ test('document close uses the supplied save gate and never falls back to browser
   assert.equal((await h.value.closeDocument()).saved, false);
   assert.equal(checked, 1);
   assert.equal(navigated, 0);
+});
+
+test('mounted inactive provider keeps role and save retries while only shared-status polling sleeps', async t => {
+  const h = await mount(t, { props: { isActive: false } });
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+  const statusReads = () => h.calls.sql.filter(query => query.table === 'document_collaborators').length;
+  assert.equal(h.value.docRole, 'owner');
+  assert.equal(h.value.isDocShared, false);
+  assert.equal(h.calls.roles.length, 1);
+  assert.equal(statusReads(), 1);
+  assert.equal(h.calls.intervals.some(item => item.delay === 30_000 && !item.canceled), false);
+  assert.ok(h.calls.intervals.some(item => item.delay === 1_000 && !item.canceled), 'save retry stays mounted');
+  await h.render({ isActive: true });
+  assert.equal(statusReads(), 2);
+  assert.equal(h.calls.roles.length, 1);
+  assert.ok(h.calls.intervals.some(item => item.delay === 30_000 && !item.canceled));
+  await h.render({ isActive: false });
+  assert.equal(h.calls.intervals.some(item => item.delay === 30_000 && !item.canceled), false);
+  assert.ok(h.calls.intervals.some(item => item.delay === 1_000 && !item.canceled));
+  assert.equal(h.calls.runtimes.length, 1, 'activation does not recreate sync transport');
 });
 
 test('same raw document uses distinct actor-scoped registry objects and retains the untouched raw source', async t => {
@@ -262,12 +284,15 @@ test('returning to the bound actor starts a fresh session and retries backfill c
   const h = await mount(t, { hydrate: () => hydrate.promise });
   const doc = h.value.ydoc;
   const oldRuntime = h.calls.runtimes[0];
+  assert.equal(h.calls.roles.length, 1);
   assert.ok(h.calls.hydrate.length > 0);
   assert.equal(h.calls.backfill.length, 0);
   await h.render({ currentActorUserId: 'actor-b' });
   assert.equal(oldRuntime.isCurrent(), false);
   await h.render({ currentActorUserId: 'actor-a' });
   assert.equal(h.calls.runtimes.length, 2);
+  assert.equal(h.calls.roles.length, 2, 'same-actor return needs a fresh authoritative role, not a retired cache');
+  assert.equal(h.value.docRole, 'owner');
   assert.strictEqual(h.value.ydoc, doc);
   assert.equal(h.value.accessRevoked, false);
   assert.equal(h.value.getOriginContext().userId, 'actor-a');

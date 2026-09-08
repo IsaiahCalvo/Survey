@@ -150,15 +150,8 @@ test(
   },
 );
 
-test(
-  'wiring #2: YDocProvider resolves the role per document open and exposes docRole',
-  { skip: !existsSync(YDOC_PROVIDER) ? 'YDocProvider.jsx missing' : false },
-  () => {
-    const src = readFileSync(YDOC_PROVIDER, 'utf8');
-    assert.ok(src.includes('fetchMyDocumentRole'), 'YDocProvider must call fetchMyDocumentRole');
-    assert.ok(src.includes('docRole'), 'YDocProvider must expose docRole on the context value');
-  }
-);
+// The mounted provider tests verify role resolution and context delivery;
+// avoid pinning the provider's internal import path here.
 
 test(
   'wiring #3: YDocProvider mounts the viewer_access banner gated on !accessRevoked (revoked copy wins)',

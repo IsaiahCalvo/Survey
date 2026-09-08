@@ -676,6 +676,65 @@ live schema change, account creation, Microsoft testing, push or deploy occurred
 Do not claim all optimization opportunities exhausted or all regressions ruled
 out. The active goal remains open.
 
+### Integrated live collaboration check
+
+At 2026-09-08 06:33 UTC, the exact `5bc98366` revision passed the leased FIX20
+two-user harness against live Supabase. Real UI ellipses appeared exactly once
+for each actor; rectangle, callout and counter edits propagated. Foreign move
+and delete attempts were denied, own deletes preserved the other actor's work,
+both reloads matched, and durable backend rows retained exactly one copy with
+the right author. Both users downloaded the actual test PDF through Storage;
+there was no byte override. Console errors: zero. Network aborts: 19 HEAD reads,
+36 analytics POSTs, four realtime broadcast POSTs. This is not a claim of zero
+network failures.
+
+Private evidence is in the isolated QA worktree under
+`Logs/2026-09-08_06-33-09_fix20-multi-user-collab/evidence.json`.
+An earlier run at 06:31 failed because the test Vite process lacked the public
+Supabase environment and created a null client. Restarting that owned process
+with the test target's public URL/anon key fixed setup; no product change was
+needed. SQL then confirmed both runs' exact documents, storage objects and
+collaborator rows absent, no new survey sessions for either leased actor, and
+both accounts still free/active. The lease remains held for the next offline
+test, not for account provisioning. Offline/reconnect, checked app-tab close,
+and real account transitions remain separate required checks.
+
+## Hidden-tab polling and live offline proof (September 8, 06:47 UTC)
+
+The status reader now belongs to one document/actor runtime. It keeps the
+initial permission read, coalesces pending reads, stops presentation polling
+for inactive/hidden documents, and checks again on activation, focus and
+reconnect. Collaboration transport and pending-save retries are not paused.
+For ten inactive private tabs, focused mounted tests measured startup role
+RPCs dropping from 20 to 10 and recurring status requests from 20 per thirty
+seconds to zero. Thirty invalidations coalesce to two reads. No permission
+result is cached across actors or opens.
+
+The extended leased two-user harness passed with these exact runtime files
+on top of `5bc98366`. User A drew and saved offline; a fresh read-only
+IndexedDB reconstruction recovered the exact authored edit from checkpoint
+and replayable outbox without claiming a cloud acknowledgment. User B edited
+online. Reconnect converged both edits exactly once with correct authors on
+both clients. Actual app-tab X and permission-checked online reopen retained
+both; SQL confirmed the durable rows. All earlier ownership/delete isolation
+and reload checks also passed. This does not prove cold offline cloud reopen.
+
+Private evidence: QA worktree
+`Logs/2026-09-08_06-46-59_fix20-multi-user-collab/evidence.json` and four
+`offline-*.png` screenshots. Root inspected both reopened views and the owner
+converged view: real nonblank PDF, both distinct ellipses, no blocking overlay.
+There were zero page errors. Network evidence includes 61 aborted requests
+and six expected disconnected requests during the deliberate offline period;
+it is not a zero-network-error claim. Exact SQL cleanup verified all three
+run documents, storage objects, invites and collaborators absent, no new
+survey sessions, and both exact leased accounts still free/active. Root
+attested cleanup and released the lease at 06:49 UTC; owned QA server stopped.
+
+Final full suite: 4,544 tests, 4,490 passed, 54 skipped, zero failed/canceled.
+Build and graph update passed. The first full run caught an offline unit
+source assertion being misclassified as a live harness; only that assertion
+construction changed, not the lease policy or live harness. No push/deploy.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
