@@ -110,6 +110,24 @@ test('export and parse perform no IndexedDB work', async t => {
   await parseLocalRecoveryBundle(await createLocalRecoveryBundle(input()));
 });
 
+test('parse owns the exact streamed PDF before verification and does not retain mutable read buffers', async t => {
+  const original = input();
+  const bundle = await createLocalRecoveryBundle(original);
+  const buffers = [];
+  const read = ReadableStreamBYOBReader.prototype.read;
+  t.mock.method(ReadableStreamBYOBReader.prototype, 'read', async function (...args) {
+    assert.ok(args[0].byteLength <= 1024 * 1024);
+    const result = await read.apply(this, args);
+    if (result.value?.byteLength) buffers.push(result.value);
+    return result;
+  });
+  const parsed = await parseLocalRecoveryBundle(bundle);
+  assert.equal(buffers.reduce((total, bytes) => total + bytes.byteLength, 0), original.file.size);
+  for (const bytes of buffers) bytes.fill(0);
+  assert.equal(await parsed.file.text(), await original.file.text());
+  assert.deepEqual(parsed.state, original.state);
+});
+
 test('rejects bad magic, version/reserved fields, truncated bytes and appended bytes', async () => {
   const bundle = await createLocalRecoveryBundle(input());
   for (const [offset, value, expected] of [[0, 0, 'invalid-recovery-format'], [16, 2, 'unsupported-recovery-version'], [28, 1, 'unsupported-recovery-version']]) {

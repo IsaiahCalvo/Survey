@@ -166,21 +166,42 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     localRecoveryReadRef.current = pending;
     return pending;
   }, []);
+  const localListVisibleRef = useRef(false);
+  const localListReadRef = useRef(null);
+  const localListInvalidatedRef = useRef(true);
+  if (localListVisibleRef.current !== recoveryVisible) {
+    localListVisibleRef.current = recoveryVisible;
+    localListGenerationRef.current++;
+    localListInvalidatedRef.current = true;
+  }
   const refreshLocalDocuments = useCallback(async () => {
-    const generation = ++localListGenerationRef.current;
-    try {
-      const rows = await listLocalDocuments();
-      if (localMountedRef.current && generation === localListGenerationRef.current) {
-        setLocalDocuments(rows);
-        setLocalListError('');
+    localListGenerationRef.current++;
+    localListInvalidatedRef.current = true;
+    if (!localMountedRef.current || !localListVisibleRef.current) return;
+    if (localListReadRef.current) return localListReadRef.current;
+    // Hidden events only invalidate. Visible bursts share one metadata scan;
+    // events during that scan request one trailing read of the latest rows.
+    const pending = Promise.resolve().then(async () => {
+      while (localMountedRef.current && localListVisibleRef.current && localListInvalidatedRef.current) {
+        localListInvalidatedRef.current = false;
+        const generation = localListGenerationRef.current;
+        const current = () => localMountedRef.current && localListVisibleRef.current
+          && generation === localListGenerationRef.current;
+        try {
+          const rows = await listLocalDocuments();
+          if (current()) { setLocalDocuments(rows); setLocalListError(''); }
+        } catch (error) {
+          if (current()) setLocalListError(`Could not read files on this device: ${error.message || 'Storage unavailable'}`);
+        } finally {
+          if (current()) setLocalDocumentsLoading(false);
+        }
       }
-    } catch (error) {
-      if (localMountedRef.current && generation === localListGenerationRef.current) {
-        setLocalListError(`Could not read files on this device: ${error.message || 'Storage unavailable'}`);
-      }
-    } finally {
-      if (localMountedRef.current && generation === localListGenerationRef.current) setLocalDocumentsLoading(false);
-    }
+    }).finally(() => {
+      if (localListReadRef.current === pending) localListReadRef.current = null;
+      if (localMountedRef.current && localListVisibleRef.current && localListInvalidatedRef.current) void refreshLocalDocuments();
+    });
+    localListReadRef.current = pending;
+    return pending;
   }, []);
   useEffect(() => {
     localMountedRef.current = true;
@@ -194,6 +215,9 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
       window.removeEventListener('local-document-store-changed', refreshLocalDocuments);
     };
   }, [refreshLocalDocuments]);
+  useEffect(() => {
+    if (recoveryVisible) void refreshLocalDocuments();
+  }, [recoveryVisible, refreshLocalDocuments]);
   useEffect(() => {
     window.addEventListener('focus', refreshLocalRecoveryCopies);
     window.addEventListener('local-document-draft-changed', refreshLocalRecoveryCopies);

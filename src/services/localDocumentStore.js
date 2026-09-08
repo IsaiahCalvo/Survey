@@ -1,6 +1,7 @@
 // Device-owned PDFs, not a cache: no auth, cloud bindings, eviction or legacy
 // migration. Metadata reads never load PDF bytes. Both records commit together.
 import { createLocalDocumentStateReader } from './localDocumentState.js';
+import { LocalPdfByteSnapshotError, snapshotLocalPdfBlob } from './localPdfByteSnapshot.js';
 export const LOCAL_DOCUMENT_DB_NAME = 'survey-local-documents-v1';
 export const LOCAL_DOCUMENT_MAX_BYTES = 256 * 1024 * 1024;
 export const LOCAL_DOCUMENT_MAX_STATE_BYTES = 16 * 1024 * 1024;
@@ -104,6 +105,7 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
   let opening = null;
   let cancelOpen = null;
   let closed = false;
+  const pendingPreparations = new Set();
   const active = () => { if (closed) throw fail('closed', 'The local document store is closed.'); };
 
   async function database() {
@@ -175,25 +177,34 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
     });
   }
 
-  async function prepare(file, { nativeBytes = false } = {}) {
+  async function prepare(file) {
     active();
-    if (!file || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 1024
-      || !positiveInteger(file.size) || file.size > maxDocumentBytes || typeof file.arrayBuffer !== 'function') {
+    let name; let declaredSize; let blob;
+    try {
+      name = file?.name;
+      declaredSize = file?.size;
+      // Native branding rejects file-like objects and bypasses instance or
+      // File-subclass overrides. Capture metadata and the source before await.
+      blob = Blob.prototype.slice.call(file, 0, undefined, 'application/pdf');
+    } catch { throw fail('invalid-input', 'Choose a real PDF File or a named Blob.'); }
+    const size = blob.size;
+    if (typeof name !== 'string' || !name.trim() || name.length > 1024
+      || !positiveInteger(size) || size > maxDocumentBytes || declaredSize !== size) {
       throw fail('invalid-input', `Choose a nonempty PDF with a name up to 1024 characters and size up to ${maxDocumentBytes} bytes.`);
     }
-    const name = file.name;
-    const size = file.size;
-    // Recovery state belongs to this Blob's exact bytes, not an overridable
-    // instance method which could return another same-sized PDF.
-    const bytes = await (nativeBytes ? Blob.prototype.arrayBuffer.call(file) : file.arrayBuffer()); active();
-    if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== size) throw fail('invalid-input', 'The PDF bytes do not match the selected file size.');
-    const header = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 1024));
-    const signature = [37, 80, 68, 70, 45];
-    let isPdf = false;
-    for (let offset = 0; offset <= header.length - signature.length && !isPdf; offset++) isPdf = signature.every((byte, index) => header[offset + index] === byte);
-    if (!isPdf) throw fail('invalid-input', 'The selected file does not contain a PDF header.');
-    // Blob snapshots caller-owned bytes before the asynchronous database open.
-    return { name, size, type: 'application/pdf', blob: new Blob([bytes], { type: 'application/pdf' }) };
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    pendingPreparations.add(cancel);
+    let ownedBlob;
+    try {
+      ownedBlob = await snapshotLocalPdfBlob(blob, { maxBytes: maxDocumentBytes, timeoutMs, signal: controller.signal });
+    } catch (error) {
+      if (error?.code === 'aborted' && closed) throw fail('closed', 'The local document store is closed.');
+      if (error instanceof LocalPdfByteSnapshotError) throw fail(error.code, error.message);
+      throw error;
+    } finally { pendingPreparations.delete(cancel); }
+    active();
+    return { name, size, type: 'application/pdf', blob: ownedBlob };
   }
 
   function validateManifest(value, localId) {
@@ -245,7 +256,7 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
       key.slice(0, -sourceId.length) + localId, reader.getItem(key),
     ]));
     const state = copyDocumentState({ version: 1, pdfId: localId, entries }, localId, maxStateBytes);
-    const prepared = await prepare(file, { nativeBytes: true });
+    const prepared = await prepare(file);
     return commitImport(prepared, localId, state);
   }
 
@@ -347,7 +358,11 @@ export function createLocalDocumentStore({ indexedDB, dbName = LOCAL_DOCUMENT_DB
 
   // Graceful handle close, not transaction cancellation: seal future calls and
   // pending opens, but an already active IDB transaction may still commit.
-  function close() { closed = true; cancelOpen?.(); connection?.close(); connection = null; }
+  function close() {
+    closed = true;
+    for (const cancel of pendingPreparations) cancel();
+    cancelOpen?.(); connection?.close(); connection = null;
+  }
   return { importLocalDocument, importLocalDocumentCopy, listLocalDocuments, openLocalDocument, replaceLocalDocument, saveLocalDocumentState, close };
 }
 

@@ -32,7 +32,7 @@ async function load(fileName, modules) {
   return module.default;
 }
 
-async function mount(t, { user = null, rows = [], listOverride = null } = {}) {
+async function mount(t, { user = null, rows = [], listOverride = null, isActive = true } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://local.test' });
   const restore = [];
   for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document,
@@ -42,11 +42,16 @@ async function mount(t, { user = null, rows = [], listOverride = null } = {}) {
     restore.push(() => old ? Object.defineProperty(globalThis, name, old) : delete globalThis[name]);
   }
   const state = { user, rows, cloudRows: empty, lists: 0, imports: [], opens: [], selected: [], auth: 0,
-    cloudWrites: 0, importError: null, listOverride, openError: null, cloudPassed: [], restored: [], restoreError: null };
+    cloudWrites: 0, importError: null, listOverride, openError: null, cloudPassed: [], restored: [], restoreError: null,
+    isActive, activeLists: 0, maxActiveLists: 0 };
   const managed = new File(['%PDF-managed'], 'managed.pdf', { type: 'application/pdf' });
   Object.assign(managed, { localId: 'local-a', _surveyPdfId: 'local-a', storageMode: 'local', localRevision: 1 });
   const store = {
-    async listLocalDocuments() { state.lists++; return state.listOverride ? state.listOverride() : [...state.rows]; },
+    async listLocalDocuments() {
+      state.lists++; state.activeLists++; state.maxActiveLists = Math.max(state.maxActiveLists, state.activeLists);
+      try { return state.listOverride ? await state.listOverride(state.lists) : [...state.rows]; }
+      finally { state.activeLists--; }
+    },
     async importLocalDocument(file) {
       state.imports.push(file); if (state.importError) throw state.importError;
       const row = { id: 'local-a', localId: 'local-a', name: file.name, storageMode: 'local', size: file.size, revision: 1 };
@@ -86,18 +91,20 @@ async function mount(t, { user = null, rows = [], listOverride = null } = {}) {
   let bump;
   function App() {
     const [docs, setDocs] = useState([]); const [, setVersion] = useState(0); bump = () => setVersion(v => v + 1);
-    return React.createElement(Dashboard, { documents: docs, setDocuments: setDocs, entities: empty,
+    return React.createElement(Dashboard, { documents: docs, setDocuments: setDocs, entities: empty, isActive: state.isActive,
       onDocumentSelect: (...args) => state.selected.push(args), onShowAuthModal: () => state.auth++ });
   }
   const root = createRoot(document.getElementById('root'));
-  t.after(async () => { await act(async () => root.unmount()); dom.window.close(); restore.reverse().forEach(fn => fn()); });
+  let mounted = true;
+  const unmount = async () => { if (mounted) { mounted = false; await act(async () => root.unmount()); } };
+  t.after(async () => { await unmount(); dom.window.close(); restore.reverse().forEach(fn => fn()); });
   await act(async () => root.render(React.createElement(App)));
   const click = async label => {
     const button = [...document.querySelectorAll('button')].find(el => el.textContent.trim() === label);
     assert.ok(button, `button ${label}`);
     await act(async () => button.click());
   };
-  return { state, managed, click, render: async () => act(async () => bump()),
+  return { state, managed, click, unmount, render: async () => act(async () => bump()),
     pick: async file => {
       const input = document.querySelector('input[data-local-pdf-input]'); assert.ok(input, 'separate local picker');
       Object.defineProperty(input, 'files', { configurable: true, value: [file] });
@@ -191,4 +198,90 @@ test('late startup metadata cannot hide an import and store notifications refres
   await act(async () => window.dispatchEvent(new window.Event('local-document-store-changed')));
   assert.ok(document.body.textContent.includes('updated.pdf'));
   assert.deepEqual(h.state.opens, ['local-a'], 'refresh does not open or read bytes');
+});
+
+test('hidden Home and initial cloud view invalidate events without local metadata scans', async t => {
+  const h = await mount(t, { isActive: false, user: { id: 'cloud-user' } });
+  assert.equal(h.state.lists, 0);
+  await act(async () => {
+    window.dispatchEvent(new window.Event('focus'));
+    window.dispatchEvent(new window.Event('local-document-store-changed'));
+  });
+  assert.equal(h.state.lists, 0);
+  h.state.isActive = true; await h.render();
+  assert.equal(h.state.lists, 0, 'visible cloud view does not scan local storage');
+  await h.click('On this device');
+  assert.equal(h.state.lists, 1);
+  await h.click('Cloud');
+  await act(async () => window.dispatchEvent(new window.Event('local-document-store-changed')));
+  assert.equal(h.state.lists, 1);
+  await h.click('On this device');
+  assert.equal(h.state.lists, 2, 'reopened local view gets a fresh list');
+});
+
+test('same-turn events share one scan and events during a scan produce one trailing latest scan', async t => {
+  const h = await mount(t);
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  h.state.listOverride = () => pending;
+  const before = h.state.lists;
+  await act(async () => {
+    for (let i = 0; i < 8; i++) window.dispatchEvent(new window.Event('local-document-store-changed'));
+  });
+  assert.equal(h.state.lists, before + 1);
+  await act(async () => {
+    for (let i = 0; i < 8; i++) window.dispatchEvent(new window.Event('focus'));
+  });
+  assert.equal(h.state.lists, before + 1);
+  h.state.listOverride = null;
+  h.state.rows = [{ localId: 'latest', name: 'latest.pdf', storageMode: 'local', size: 1024 }];
+  await act(async () => finish([{ localId: 'stale', name: 'stale.pdf', storageMode: 'local', size: 1024 }]));
+  assert.equal(h.state.lists, before + 2);
+  assert.equal(h.state.maxActiveLists, 1);
+  assert.match(document.body.textContent, /latest.pdf/);
+  assert.doesNotMatch(document.body.textContent, /stale.pdf/);
+  assert.deepEqual(h.state.opens, []);
+});
+
+test('hide and reopen while a read is pending ignores that result and starts one fresh scan', async t => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const h = await mount(t, { listOverride: () => pending });
+  assert.equal(h.state.lists, 1);
+  h.state.isActive = false; await h.render();
+  await act(async () => window.dispatchEvent(new window.Event('focus')));
+  h.state.isActive = true; await h.render();
+  assert.equal(h.state.lists, 1);
+  h.state.listOverride = null;
+  h.state.rows = [{ localId: 'reopened', name: 'reopened.pdf', storageMode: 'local', size: 1024 }];
+  await act(async () => finish([{ localId: 'old', name: 'old.pdf', storageMode: 'local', size: 1024 }]));
+  assert.equal(h.state.lists, 2);
+  assert.equal(h.state.maxActiveLists, 1);
+  assert.match(document.body.textContent, /reopened.pdf/);
+  assert.doesNotMatch(document.body.textContent, /old.pdf/);
+});
+
+test('a failed latest scan retains visible rows and explicit retry clears the error', async t => {
+  const row = { localId: 'kept', name: 'kept.pdf', storageMode: 'local', size: 1024 };
+  const h = await mount(t, { rows: [row] });
+  h.state.listOverride = () => { throw new Error('Storage temporarily unavailable'); };
+  await act(async () => window.dispatchEvent(new window.Event('local-document-store-changed')));
+  assert.match(document.body.textContent, /kept.pdf/);
+  assert.match(document.body.textContent, /Storage temporarily unavailable/);
+  h.state.listOverride = null;
+  await h.click('Refresh local files');
+  assert.match(document.body.textContent, /kept.pdf/);
+  assert.doesNotMatch(document.body.textContent, /Storage temporarily unavailable/);
+});
+
+test('unmount during a queued refresh prevents a trailing scan and stale result publication', async t => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const h = await mount(t, { listOverride: () => pending });
+  await act(async () => window.dispatchEvent(new window.Event('local-document-store-changed')));
+  await h.unmount();
+  await act(async () => finish([]));
+  assert.equal(h.state.lists, 1);
+  assert.equal(h.state.maxActiveLists, 1);
+  assert.equal(h.state.cloudWrites, 0);
 });

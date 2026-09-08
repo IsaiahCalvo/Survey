@@ -1,6 +1,7 @@
 import { copyLocalDocumentState, LOCAL_DOCUMENT_MAX_BYTES, LOCAL_DOCUMENT_MAX_STATE_BYTES } from './localDocumentStore.js';
 import { createLocalDocumentStateReader } from './localDocumentState.js';
 import { fingerprintLocalPdfBlob } from './localPdfByteFingerprint.js';
+import { snapshotLocalPdfBlob } from './localPdfByteSnapshot.js';
 
 export const LOCAL_RECOVERY_BUNDLE_EXTENSION = '.survey-recovery';
 export const LOCAL_RECOVERY_BUNDLE_HEADER_BYTES = 64;
@@ -142,7 +143,9 @@ export async function createLocalRecoveryBundle({ metadata, file, state }, optio
   });
 }
 
-/** Strict v1 reader. PDF bytes remain Blob slices, never a whole-file buffer.
+/** Strict v1 reader. Own the PDF bytes before checking their fingerprint: a
+ * selected physical bundle can otherwise change after verification. A bounded
+ * byte stream avoids a whole-file buffer where the runtime supports BYOB.
  * Call importLocalDocumentCopy(file,state) only after explicit user choice. */
 export async function parseLocalRecoveryBundle(blob, options = {}) {
   const retained = nativeSlice(blob);
@@ -177,8 +180,17 @@ export async function parseLocalRecoveryBundle(blob, options = {}) {
     const metadata = copyMetadata(manifest.metadata);
     if (metadata.size !== pdfLength) throw fail('recovery-size-mismatch', 'The recovery PDF size does not match its metadata');
     const state = copyState(manifest.state, metadata.sourceLocalId);
-    const pdf = nativeSlice(retained, LOCAL_RECOVERY_BUNDLE_HEADER_BYTES + manifestLength, undefined, 'application/pdf');
-    await verifyPdfHeader(pdf, control);
+    let pdf;
+    try {
+      pdf = await snapshotLocalPdfBlob(nativeSlice(retained, LOCAL_RECOVERY_BUNDLE_HEADER_BYTES + manifestLength, undefined, 'application/pdf'),
+        { maxBytes: LOCAL_DOCUMENT_MAX_BYTES, timeoutMs: control.remaining(), signal: options.signal });
+    } catch (error) {
+      control.current();
+      if (error?.code === 'invalid-input') throw fail('invalid-recovery-pdf', 'The recovery file does not contain a valid PDF');
+      if (error?.code === 'timed-out') throw fail('recovery-timed-out', 'Recovery file processing timed out');
+      if (error?.code === 'aborted') throw fail('recovery-canceled', 'Recovery export was canceled');
+      throw error;
+    }
     const fingerprint = await fingerprintLocalPdfBlob(pdf, { timeoutMs: control.remaining() });
     control.current();
     if (fingerprint !== manifest.pdfFingerprint) throw fail('recovery-integrity-failed', 'The recovery PDF bytes are damaged');
