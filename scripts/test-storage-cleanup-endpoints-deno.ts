@@ -10,9 +10,11 @@ let calls:string[]=[],queue=new Set<string>(),objects=new Set<string>(),retired=
 let fault='',shared=false,checks=0,claimCalls=0,scanCursor:string|null=null;
 const providerScope={mode:'test',account:'acct_Fixture',api_version:'2026-02-25.clover'};
 let billingClosing=false,customerId:string|null=null,operations=new Map<string,any>(),customers=new Map<string,any>(),providerCreates=0,providerBodies:URLSearchParams[]=[],recoveryValues:any[]=[],afterCustomerRead:(()=>void)|null=null;
+let providerCustomerCreates=0,providerCustomers=new Map<string,any>(),everBound=new Set<string>();
+let beforeCustomerRotate:(()=>void)|null=null,missingProviderCustomers=new Set<string>();
 const billingState=()=>({closing:billingClosing,has_pending_operations:[...operations.values()].some(o=>o.state==='pending'),has_pending_customers:[...customers.values()].some(c=>!c.removed),current_customer_covered:!customerId||customers.get(JSON.stringify(providerScope)+customerId)?.removed===true,complete:billingClosing&&![...operations.values()].some(o=>o.state==='pending')&&![...customers.values()].some(c=>!c.removed)&&(!customerId||customers.get(JSON.stringify(providerScope)+customerId)?.removed===true)});
 const registerCustomer=(id:string,scope=providerScope)=>{const key=JSON.stringify(scope)+id;if(!customers.has(key))customers.set(key,{customer_id:id,provider_scope:scope,removed:false});};
-const reset=(problem='',referenced=false)=>{calls=[];queue=new Set([path]);objects=new Set([path]);retired=new Set();fault=problem;shared=referenced;claimCalls=0;scanCursor=null;billingClosing=false;customerId=null;operations=new Map();customers=new Map();providerCreates=0;providerBodies=[];recoveryValues=[];afterCustomerRead=null;};
+const reset=(problem='',referenced=false)=>{calls=[];queue=new Set([path]);objects=new Set([path]);retired=new Set();fault=problem;shared=referenced;claimCalls=0;scanCursor=null;billingClosing=false;customerId=null;operations=new Map();customers=new Map();providerCreates=0;providerBodies=[];recoveryValues=[];afterCustomerRead=null;providerCustomerCreates=0;providerCustomers=new Map();everBound=new Set();beforeCustomerRotate=null;missingProviderCustomers=new Set();};
 const ok=(data:unknown)=>Response.json(data);
 const fail=()=>Response.json({code:'fixture_failure',message:'Synthetic boundary failure',error:'Synthetic boundary failure',statusCode:'500'},{status:500});
 globalThis.fetch=async(input:Request|URL|string,init?:RequestInit)=>{
@@ -27,7 +29,7 @@ globalThis.fetch=async(input:Request|URL|string,init?:RequestInit)=>{
      const id=headers.get('idempotency-key')?.replace('survey-billing:','');const op=operations.get(id!);assert.ok(op,'A durable exact operation must precede every provider POST');assert.equal(op.state,'pending');assert.deepEqual(op.provider_scope,providerScope);
      if(fault==='provider-post')return Response.json({error:{type:'api_error',message:'Synthetic lost response'}},{status:500});
      const metadata=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith('metadata[')).map(([key,value])=>[key.slice(9,-1),value]));
-     if(url.pathname==='/v1/customers')return ok({id:'cus_Created',object:'customer',livemode:false,metadata});
+     if(url.pathname==='/v1/customers'){providerCustomerCreates++;const value={id:providerCustomerCreates===1?'cus_Created':`cus_Created${providerCustomerCreates}`,object:'customer',livemode:false,metadata};providerCustomers.set(value.id,value);return ok(value);}
      const portal=url.pathname==='/v1/billing_portal/sessions';assert.ok(portal||url.pathname==='/v1/checkout/sessions');
      return ok({id:portal?'bps_Fixture':'cs_test_Fixture',object:portal?'billing_portal.session':'checkout.session',customer:form.get('customer'),mode:'subscription',livemode:fault==='wrong-mode',url:fault==='bad-url'?'https://evil.invalid/':portal?'https://billing.stripe.com/p/session/fixture':'https://checkout.stripe.com/c/pay/fixture',metadata});
    }
@@ -36,7 +38,9 @@ globalThis.fetch=async(input:Request|URL|string,init?:RequestInit)=>{
    if(url.pathname.startsWith('/v1/customers/')){
      const id=decodeURIComponent(url.pathname.slice('/v1/customers/'.length));
      if(method==='DELETE'){assert.equal(billingClosing,true,'Closing receipt must commit before provider DELETE');assert.ok([...customers.values()].some(c=>c.customer_id===id&&!c.removed));if(fault==='billing-delete')return fail();if(fault==='billing-404')return Response.json({error:{type:'invalid_request_error',code:'resource_missing',message:'Synthetic absence'}},{status:404});return ok({id:fault==='deleted-wrong-id'?'cus_Wrong':id,object:'customer',deleted:true});}
-     assert.equal(method,'GET');afterCustomerRead?.();afterCustomerRead=null;return ok({id,object:'customer',livemode:fault==='wrong-mode',...(fault==='saved-deleted'?{deleted:true}:{})});
+     assert.equal(method,'GET');afterCustomerRead?.();afterCustomerRead=null;
+     if(fault==='candidate-404'||missingProviderCustomers.has(id))return Response.json({error:{type:'invalid_request_error',code:'resource_missing',message:'Synthetic absence'}},{status:404});
+     return ok(providerCustomers.get(id)||{id,object:'customer',livemode:fault==='wrong-mode',...(fault==='saved-deleted'?{deleted:true}:{})});
    }
    throw Error(`Unexpected synthetic provider boundary ${method} ${url.pathname}`);
  }
@@ -55,7 +59,7 @@ globalThis.fetch=async(input:Request|URL|string,init?:RequestInit)=>{
  }
  if(url.pathname==='/rest/v1/archive_purge_runs'){assert.equal(method,'PATCH');return new Response(null,{status:204});}
  const rpc=url.pathname.split('/rest/v1/rpc/')[1];
- if(['begin_billing_operation','settle_billing_operation','read_billing_operation','scan_pending_billing_operations','advance_billing_operation_recovery_cursor','rotate_billing_customer','begin_billing_account_closure','read_billing_account_closure','claim_billing_customer_cleanup','ack_billing_customer_cleanup'].includes(rpc)){
+ if(['begin_billing_operation','settle_billing_operation','read_billing_operation','scan_pending_billing_operations','advance_billing_operation_recovery_cursor','rotate_billing_customer','read_reusable_billing_customer','retire_reusable_billing_customer','begin_billing_account_closure','read_billing_account_closure','claim_billing_customer_cleanup','ack_billing_customer_cleanup'].includes(rpc)){
    assert.equal(body.p_user_id,actor);const headers=new Headers(init?.headers);assert.equal(headers.get('apikey'),'fixture-service-key');
    if(rpc==='read_billing_account_closure'){if(fault==='final-billing-pending'&&objects.size===0)return ok({...billingState(),has_pending_operations:true,complete:false});return ok(billingState());}
    if(rpc==='scan_pending_billing_operations')return ok({operations:[...operations.values()].filter(o=>o.state==='pending').slice(0,body.p_limit)});
@@ -64,17 +68,39 @@ globalThis.fetch=async(input:Request|URL|string,init?:RequestInit)=>{
    if(rpc==='begin_billing_operation'){
      if(billingClosing||fault==='admission-closing')return Response.json({code:'23514',message:'ACCOUNT_CLOSING'},{status:400});
      if(fault==='admission')return fail();
+     if([...operations.values()].some(o=>o.state==='pending'&&o.kind===body.p_kind)
+       ||(body.p_kind==='customer_create'&&[...operations.values()].some(o=>o.kind==='customer_create'&&o.state==='settled'&&o.result?.outcome==='succeeded'&&['available','untracked'].includes(o.customer_binding_state))))return Response.json({code:'40001',message:'BILLING_OPERATION_PENDING'},{status:400});
      const op={operation_id:body.p_operation_id,user_id:actor,kind:body.p_kind,provider_scope:body.p_provider_scope,request_spec:body.p_request_spec,expected_customer_id:body.p_expected_customer_id,state:'pending',result:null,admitted_at:new Date().toISOString(),recovery_cursor:null};operations.set(op.operation_id,op);if(op.expected_customer_id)registerCustomer(op.expected_customer_id,op.provider_scope);return ok({...op,outcome:'admitted'});
    }
    if(rpc==='settle_billing_operation'){
      const op=operations.get(body.p_operation_id);assert.ok(op);assert.equal(op.kind,body.p_kind);assert.deepEqual(op.provider_scope,body.p_provider_scope);assert.deepEqual(op.request_spec,body.p_request_spec);
      if(fault==='settle')return fail();if(fault==='late-close'&&op.kind!=='customer_create'){billingClosing=true;op.result={outcome:'customer_removed',customer_id:op.expected_customer_id,data:{}};}else op.result=body.p_result;
-     op.state='settled';if(op.result.customer_id&&op.result.outcome!=='customer_removed')registerCustomer(op.result.customer_id,op.provider_scope);return ok({...op,outcome:'settled'});
+     op.state='settled';if(op.kind==='customer_create'&&op.result.outcome==='succeeded')op.customer_binding_state='available';if(op.result.customer_id&&op.result.outcome!=='customer_removed')registerCustomer(op.result.customer_id,op.provider_scope);return ok({...op,outcome:'settled'});
+   }
+   if(rpc==='read_reusable_billing_customer'){
+     if(billingClosing)return ok({outcome:'closing',operation:null,customer_id:customerId});
+     if(customerId)return ok({outcome:'bound',operation:null,customer_id:customerId});
+     if([...operations.values()].some(o=>o.kind==='customer_create'&&o.state==='pending'))return ok({outcome:'review',operation:null,customer_id:null});
+     const candidate=[...operations.values()].filter(o=>o.kind==='customer_create'&&o.state==='settled'&&o.result?.outcome==='succeeded'&&['available','untracked'].includes(o.customer_binding_state)).sort((a,b)=>a.operation_id.localeCompare(b.operation_id))[0];
+     if(!candidate)return ok({outcome:'none',operation:null,customer_id:null});
+     if(candidate.customer_binding_state==='untracked'||JSON.stringify(candidate.provider_scope)!==JSON.stringify(body.p_provider_scope)||everBound.has(candidate.result.customer_id)||customers.get(JSON.stringify(candidate.provider_scope)+candidate.result.customer_id)?.removed!==false)return ok({outcome:'review',operation:candidate,customer_id:null});
+     return ok({outcome:'candidate',operation:candidate,customer_id:null});
+   }
+   if(rpc==='retire_reusable_billing_customer'){
+     const op=operations.get(body.p_operation_id);assert.ok(op);assert.equal(op.user_id,actor);assert.deepEqual(op.provider_scope,body.p_provider_scope);assert.equal(op.result.customer_id,body.p_customer_id);
+     if(billingClosing)return ok({outcome:'closing',customer_id:body.p_customer_id});
+     if(customerId===body.p_customer_id||!['available','untracked','retired'].includes(op.customer_binding_state))return ok({outcome:'stale',customer_id:body.p_customer_id});
+     const cleanup=customers.get(JSON.stringify(body.p_provider_scope)+body.p_customer_id);assert.ok(cleanup);cleanup.removed=true;
+     op.customer_binding_state='retired';return ok({outcome:'retired',customer_id:body.p_customer_id});
    }
    if(rpc==='rotate_billing_customer'){
+     const race=beforeCustomerRotate;beforeCustomerRotate=null;race?.();
      if(billingClosing||fault==='late-customer-close'){billingClosing=true;return ok({outcome:'closing',customer_id:customerId});}
+     if(fault==='rotate-before')return fail();
      if(customerId!==body.p_expected_customer_id)return ok({outcome:'stale',customer_id:customerId});
-     if(customerId)registerCustomer(customerId);customerId=body.p_customer_operation_id?operations.get(body.p_customer_operation_id)?.result.customer_id:null;return ok({outcome:'applied',customer_id:customerId});
+     if(customerId)registerCustomer(customerId);const op=body.p_customer_operation_id?operations.get(body.p_customer_operation_id):null;
+     if(op){assert.equal(op.kind,'customer_create');assert.equal(op.state,'settled');assert.equal(op.result.outcome,'succeeded');assert.equal(op.customer_binding_state,'available');assert.deepEqual(op.provider_scope,body.p_provider_scope);assert.equal(everBound.has(op.result.customer_id),false);op.customer_binding_state='bound';everBound.add(op.result.customer_id);}
+     customerId=op?.result.customer_id||null;if(fault==='rotate-after')return fail();return ok({outcome:'applied',customer_id:customerId});
    }
    if(rpc==='begin_billing_account_closure'){billingClosing=true;assert.deepEqual(body.p_provider_scope,providerScope);if(customerId)registerCustomer(customerId);return ok(fault==='malformed-closure'?{closing:true,complete:true}:billingState());}
    if(rpc==='claim_billing_customer_cleanup')return ok({...billingState(),customers:[...customers.values()].filter(c=>!c.removed).slice(0,body.p_limit).map(({removed,...c})=>c)});
@@ -178,5 +204,89 @@ await check('open checkout with a past expiry settles but never supplies its old
 for(const [kind,endpoint] of [['checkout',checkout],['portal',portal]] as const)await check(`${kind} expiry between recovery and URL selection prevents reuse`,async()=>{
  const originalNow=Date.now;let now=originalNow();Date.now=()=>now;
  try{const {op,value}=await lostSession(endpoint,kind);afterCustomerRead=()=>{assert.equal(op.state,'settled','Positive recovery precedes this delayed customer read');now+=360000;};const response=await endpoint(request({}));assert.equal(response.status,200);assert.notEqual((await response.json()).url,value.url);assert.equal(providerCreates,2);assert.equal(op.state,'settled');}finally{Date.now=originalNow;afterCustomerRead=null;}
+});
+const createUnboundCustomer=async()=>{
+ reset('rotate-before');const data=await noUrl(await checkout(request({})));assert.equal(data.pending,true);
+ assert.equal(providerCustomerCreates,1);assert.equal(customerId,null);assert.equal(called('POST /v1/checkout/sessions'),false);
+ const op=[...operations.values()][0];assert.equal(op.kind,'customer_create');assert.equal(op.state,'settled');assert.equal(op.customer_binding_state,'available');
+ return op;
+};
+await check('checkout retries a settled unbound customer without creating a second customer',async()=>{
+ const op=await createUnboundCustomer();fault='';const response=await checkout(request({}));assert.equal(response.status,200);assert.ok((await response.json()).url);
+ assert.equal(providerCustomerCreates,1);assert.equal(customerId,'cus_Created');assert.equal(op.customer_binding_state,'bound');
+ assert.equal(providerCreates,2);assert.equal(providerBodies.at(-1)!.get('customer'),'cus_Created');
+});
+await check('repeated pre-commit binding failures retain one reusable customer through later success',async()=>{
+ const op=await createUnboundCustomer();await noUrl(await checkout(request({})));assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,1);assert.equal(op.customer_binding_state,'available');
+ fault='';assert.ok((await(await checkout(request({}))).json()).url);assert.equal(providerCustomerCreates,1);assert.equal(customerId,'cus_Created');
+});
+await check('lost binding reply after commit retries against the same authoritative customer',async()=>{
+ reset('rotate-after');assert.equal((await noUrl(await checkout(request({})))).pending,true);assert.equal(customerId,'cus_Created');assert.equal(providerCustomerCreates,1);
+ const op=[...operations.values()][0];assert.equal(op.customer_binding_state,'bound');fault='';assert.ok((await(await checkout(request({}))).json()).url);
+ assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,2);assert.equal(providerBodies.at(-1)!.get('customer'),'cus_Created');
+});
+for(const reason of ['wrong-scope','untracked'])await check(`${reason} settled customer blocks fresh provider creation and requires review`,async()=>{
+ const op=await createUnboundCustomer();if(reason==='wrong-scope')op.provider_scope={...providerScope,mode:'live'};else op.customer_binding_state='untracked';
+ fault='';const before=providerCreates;const data=await noUrl(await checkout(request({})));assert.equal(data.pending,true);assert.equal(providerCreates,before);assert.equal(providerCustomerCreates,1);assert.equal(customerId,null);
+});
+await check('two checkout attempts reuse one settled customer and preserve the binding winner',async()=>{
+ const op=await createUnboundCustomer();fault='';const responses=await Promise.all([checkout(request({})),checkout(request({}))]);const data=await Promise.all(responses.map(r=>r.json()));
+ assert.ok(data.some(d=>typeof d.url==='string'));assert.equal(providerCustomerCreates,1);assert.equal(customerId,'cus_Created');assert.equal(op.customer_binding_state,'bound');
+ assert.ok(providerBodies.filter(form=>form.has('customer')).every(form=>form.get('customer')==='cus_Created'));
+ assert.ok((await(await checkout(request({}))).json()).url);assert.equal(providerCustomerCreates,1);
+});
+await check('a different authoritative binding winner is verified and used without creating a customer',async()=>{
+ const op=await createUnboundCustomer();fault='';providerCustomers.set('cus_Winner',{id:'cus_Winner',object:'customer',livemode:false});
+ afterCustomerRead=()=>{customerId='cus_Winner';registerCustomer(customerId);};const response=await checkout(request({}));assert.ok((await response.json()).url);
+ assert.equal(customerId,'cus_Winner');assert.equal(providerCustomerCreates,1);assert.equal(op.customer_binding_state,'available');assert.equal(providerBodies.at(-1)!.get('customer'),'cus_Winner');assert.ok(called('GET /v1/customers/cus_Winner'));
+});
+await check('exact deleted candidate is retired before a replacement customer can be created',async()=>{
+ const op=await createUnboundCustomer();fault='';providerCustomers.set('cus_Created',{id:'cus_Created',object:'customer',deleted:true});
+ const response=await checkout(request({}));assert.ok((await response.json()).url);assert.equal(op.customer_binding_state,'retired');assert.equal(providerCustomerCreates,2);assert.equal(customerId,'cus_Created2');
+ assert.ok(calls.findIndex(c=>c.includes('retire_reusable_billing_customer'))<calls.lastIndexOf('POST /v1/customers'));assert.equal(providerBodies.at(-1)!.get('customer'),'cus_Created2');
+});
+await check('candidate 404 is not retirement proof and retries keep the original customer',async()=>{
+ const op=await createUnboundCustomer();fault='candidate-404';await noUrl(await checkout(request({})));assert.equal(called('retire_reusable_billing_customer'),false);assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,1);assert.equal(op.customer_binding_state,'available');
+ fault='';assert.ok((await(await checkout(request({}))).json()).url);assert.equal(providerCustomerCreates,1);assert.equal(customerId,'cus_Created');
+});
+await check('a wrong customer tombstone cannot retire the available customer or permit another create',async()=>{
+ const op=await createUnboundCustomer();fault='';providerCustomers.set('cus_Created',{id:'cus_Foreign',object:'customer',deleted:true});await noUrl(await checkout(request({})));
+ assert.equal(called('retire_reusable_billing_customer'),false);assert.equal(op.customer_binding_state,'available');assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,1);
+});
+await check('closure during candidate verification blocks binding and all later provider POSTs',async()=>{
+ const op=await createUnboundCustomer();fault='';afterCustomerRead=()=>{billingClosing=true;};assert.equal((await noUrl(await checkout(request({})))).code,'account-closing');
+ assert.equal(customerId,null);assert.equal(op.customer_binding_state,'available');assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,1);
+});
+await check('candidate retirement losing a concurrent binding race never starts a replacement create',async()=>{
+ const op=await createUnboundCustomer();fault='';providerCustomers.set('cus_Created',{id:'cus_Created',object:'customer',deleted:true});afterCustomerRead=()=>{customerId='cus_Created';op.customer_binding_state='bound';};
+ await noUrl(await checkout(request({})));assert.equal(op.customer_binding_state,'bound');assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,1);assert.ok(called('retire_reusable_billing_customer'));
+});
+await check('a previously bound customer is not reused after its binding is cleared',async()=>{
+ const op=await createUnboundCustomer();fault='';op.customer_binding_state='bound';everBound.add('cus_Created');
+ assert.ok((await(await checkout(request({}))).json()).url);assert.equal(providerCustomerCreates,2);assert.equal(customerId,'cus_Created2');assert.equal(op.customer_binding_state,'bound');
+});
+await check('a permanent seen-binding fact defeats an apparently available customer receipt',async()=>{
+ const op=await createUnboundCustomer();fault='';everBound.add('cus_Created');await noUrl(await checkout(request({})));
+ assert.equal(providerCustomerCreates,1);assert.equal(providerCreates,1);assert.equal(op.customer_binding_state,'available');assert.equal(customerId,null);
+});
+for(const [label,endpoint] of [['checkout',checkout],['portal',portal]] as const)for(const marker of ['false','true',null,0])await check(`${label} malformed deleted marker ${JSON.stringify(marker)} never clears billing or creates`,async()=>{
+ reset();customerId='cus_Known';providerCustomers.set(customerId,{id:customerId,object:'customer',livemode:false,deleted:marker});
+ await noUrl(await endpoint(request({})));assert.equal(customerId,'cus_Known');assert.equal(providerCreates,0);assert.equal(operations.size,0);assert.equal(called('rotate_billing_customer'),false);assert.equal(called('retire_reusable_billing_customer'),false);
+});
+for(const route of ['legacy-clear','fresh-create'])for(const proof of ['live','wrong-mode','deleted','404'])await check(`${route} stale different winner ${proof} must be verified before checkout creation`,async()=>{
+ reset();if(route==='legacy-clear'){customerId='cus_Legacy';providerCustomers.set(customerId,{id:customerId,object:'customer',deleted:true});}
+ const winner='cus_Winner';providerCustomers.set(winner,{id:winner,object:'customer',livemode:proof==='wrong-mode',...(proof==='deleted'?{deleted:true}:{})});if(proof==='404')missingProviderCustomers.add(winner);
+ beforeCustomerRotate=()=>{customerId=winner;registerCustomer(winner);everBound.add(winner);};
+ const response=await checkout(request({}));assert.equal(customerId,winner);assert.ok(called('GET /v1/customers/cus_Winner'));assert.equal(providerCustomerCreates,route==='fresh-create'?1:0);
+ if(proof==='live'){
+   assert.equal(response.status,200);assert.ok((await response.json()).url);assert.equal(providerBodies.at(-1)!.get('customer'),winner);
+   assert.ok(calls.indexOf('GET /v1/customers/cus_Winner')<calls.indexOf('POST /v1/checkout/sessions'));assert.equal(providerCreates,route==='fresh-create'?2:1);
+ }else{
+   await noUrl(response);assert.equal(called('POST /v1/checkout/sessions'),false);assert.equal(providerCreates,route==='fresh-create'?1:0);
+ }
+});
+await check('reusable candidate malformed deletion marker cannot bind retire or start checkout',async()=>{
+ const op=await createUnboundCustomer();fault='';providerCustomers.set('cus_Created',{...providerCustomers.get('cus_Created'),deleted:'false'});const rotations=calls.filter(c=>c.includes('rotate_billing_customer')).length;
+ await noUrl(await checkout(request({})));assert.equal(customerId,null);assert.equal(op.customer_binding_state,'available');assert.equal(providerCreates,1);assert.equal(called('retire_reusable_billing_customer'),false);assert.equal(calls.filter(c=>c.includes('rotate_billing_customer')).length,rotations);
 });
 console.log(`PASS ${checks-storageChecks} actual billing Edge endpoint checks; pinned SDK synthetic HTTP only`);

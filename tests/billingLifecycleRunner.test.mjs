@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BILLING_API_VERSION, BillingPendingError, BillingClosedError, billingSpecDigest, resolveBillingProviderScope,
   executeBillingOperation, recoverBillingOperations, cleanupAccountBilling, rotateBillingCustomer, assertBillingClosureReady,
-  recoveredBillingSession } from '../supabase/functions/_shared/billingLifecycle.ts';
+  recoveredBillingSession, reuseBillingCustomer, verifyBoundBillingCustomer } from '../supabase/functions/_shared/billingLifecycle.ts';
 
 const userId = '11111111-1111-4111-8111-111111111111';
 const scope = { mode: 'test', account: 'acct_fixture', api_version: '2026-02-25.clover' };
@@ -483,3 +483,225 @@ for (const expiry of [undefined, null, '1800000001', 1799999999, 1800000000, 180
     assert.equal(recoveredBillingSession(recovery, 'checkout_create', specs.checkout_create), null);
   });
 }
+
+async function reusableFixture() {
+  const f = fixture();
+  await f.execute(); // Real create + settlement; pretend the process ended before binding.
+  f.op = [...f.operations.values()][0]; f.op.customer_binding_state = 'available';
+  f.link = null; f.calls.length = 0;
+  f.onRetrieve = id => copy(f.resources.find(resource => resource.id === id)
+    || { id, object: 'customer', livemode: false });
+  f.onRpc = (name, args, normal) => {
+    if (name === 'read_reusable_billing_customer') {
+      assert.deepEqual(args, { p_user_id: userId, p_provider_scope: scope });
+      const value = f.closing ? { outcome: 'closing', customer_id: f.link, operation: null }
+        : f.link ? { outcome: 'bound', customer_id: f.link, operation: null }
+        : f.op.customer_binding_state === 'available' ? { outcome: 'candidate', customer_id: null, operation: copy(f.op) }
+        : { outcome: 'none', customer_id: null, operation: null };
+      return f.readReuse ? f.readReuse(value) : { data: value };
+    }
+    if (name === 'rotate_billing_customer') {
+      assert.equal(args.p_expected_customer_id, null); assert.equal(args.p_customer_operation_id, f.op.operation_id);
+      const rotate = () => {
+        if (f.closing) return { data: { outcome: 'closing', customer_id: f.link } };
+        if (f.link) return { data: { outcome: 'stale', customer_id: f.link } };
+        f.link = f.op.result.customer_id; f.op.customer_binding_state = 'bound';
+        return { data: { outcome: 'applied', customer_id: f.link } };
+      };
+      return f.onRotate ? f.onRotate(rotate) : rotate();
+    }
+    if (name === 'retire_reusable_billing_customer') {
+      assert.deepEqual(args, { p_user_id: userId, p_provider_scope: scope, p_operation_id: f.op.operation_id, p_customer_id: f.op.result.customer_id });
+      const retire = () => {
+        if (f.closing) return { data: { outcome: 'closing', customer_id: f.op.result.customer_id } };
+        if (f.link) return { data: { outcome: 'stale', customer_id: f.op.result.customer_id } };
+        f.op.customer_binding_state = 'retired'; return { data: { outcome: 'retired', customer_id: f.op.result.customer_id } };
+      };
+      return f.onRetire ? f.onRetire(retire) : retire();
+    }
+    return normal();
+  };
+  f.reuse = extra => reuseBillingCustomer({ db: f.db, stripe: f.stripe, scope, userId, ...extra });
+  f.noPost = () => assert.equal(f.calls.some(call => call.name.startsWith('create:')), false, 'reuse must never issue a provider create');
+  return f;
+}
+
+test('settled unbound customer survives a crash and is positively verified then bound without creation', async () => {
+  const f = await reusableFixture();
+  assert.deepEqual(await f.reuse(), { customerId: f.op.result.customer_id });
+  assert.deepEqual(f.calls.map(call => call.name), ['read_reusable_billing_customer', 'retrieve', 'rotate_billing_customer']);
+  assert.equal(f.link, f.op.result.customer_id); f.noPost();
+});
+
+test('already bound customer requires exact live provider GET but no rotation', async () => {
+  const f = await reusableFixture(); f.link = 'cus_bound';
+  assert.deepEqual(await f.reuse(), { customerId: 'cus_bound' });
+  assert.equal(f.calls.find(call => call.name === 'retrieve').id, 'cus_bound');
+  assert.equal(f.count('rotate_billing_customer'), 0); f.noPost();
+});
+
+for (const outcome of ['none', 'review', 'closing']) test(`reuse ${outcome} envelope never creates a customer`, async () => {
+  const f = await reusableFixture(); f.readReuse = () => ({ data: { outcome, customer_id: null, operation: null } });
+  if (outcome === 'none') assert.deepEqual(await f.reuse(), { customerId: null });
+  else await assert.rejects(f.reuse(), outcome === 'closing' ? BillingClosedError : BillingPendingError);
+  assert.equal(f.count('retrieve'), 0); f.noPost();
+});
+
+for (const receipt of [null, {}, { outcome: 'none', customer_id: null, operation: {} },
+  { outcome: 'bound', customer_id: 'cus_bound', operation: {} }, { outcome: 'bound', customer_id: null, operation: null },
+  { outcome: 'candidate', customer_id: 'cus_injected', operation: null }, { outcome: 'none', customer_id: 'cus_injected', operation: null }]) {
+  test(`malformed reuse inventory never authorizes provider work: ${JSON.stringify(receipt)}`, async () => {
+    const f = await reusableFixture(); f.readReuse = () => ({ data: receipt });
+    await assert.rejects(f.reuse(), BillingPendingError); assert.equal(f.count('retrieve'), 0); f.noPost();
+  });
+}
+
+for (const patch of [{ user_id: '22222222-2222-4222-8222-222222222222' }, { provider_scope: { ...scope, account: 'acct_other' } },
+  { state: 'pending' }, { customer_binding_state: 'bound' }, { customer_binding_state: 'retired' },
+  { kind: 'portal_create' }, { result: { outcome: 'succeeded', customer_id: 'cus_created0', data: { id: 'cus_different' } } }]) {
+  test(`invalid reusable operation identity cannot bind: ${JSON.stringify(patch)}`, async () => {
+    const f = await reusableFixture();
+    f.readReuse = value => ({ data: { ...value, outcome: 'candidate', operation: { ...copy(f.op), ...patch } } });
+    await assert.rejects(f.reuse(), BillingPendingError); assert.equal(f.count('rotate_billing_customer'), 0); f.noPost();
+  });
+}
+
+for (const field of ['actor', 'operation', 'spec', 'mode', 'id', 'object']) test(`provider candidate ${field} mismatch blocks binding`, async () => {
+  const f = await reusableFixture();
+  if (field === 'actor') f.resources[0].metadata.supabase_user_id = 'wrong';
+  if (field === 'operation') f.resources[0].metadata.survey_billing_operation_id = 'wrong';
+  if (field === 'spec') f.resources[0].metadata.survey_billing_spec = 'wrong';
+  if (field === 'mode') f.resources[0].livemode = true;
+  if (field === 'id') f.onRetrieve = () => ({ ...f.resources[0], id: 'cus_wrong' });
+  if (field === 'object') f.resources[0].object = 'subscription';
+  await assert.rejects(f.reuse(), BillingPendingError); assert.equal(f.count('rotate_billing_customer'), 0); f.noPost();
+});
+
+for (const committed of [false, true]) test(`lost customer binding reply ${committed ? 'after' : 'before'} commit recovers without a new POST`, async () => {
+  const f = await reusableFixture(); let lose = true;
+  f.onRotate = normal => {
+    if (!lose) return normal(); lose = false;
+    if (committed) normal(); throw Error('rotation reply lost');
+  };
+  await assert.rejects(f.reuse(), BillingPendingError);
+  assert.deepEqual(await f.reuse(), { customerId: f.op.result.customer_id });
+  assert.equal(f.count('rotate_billing_customer'), committed ? 1 : 2); f.noPost();
+});
+
+test('competing binding winner is fetched and returned rather than the stale candidate', async () => {
+  const f = await reusableFixture(); f.onRotate = normal => { f.link = 'cus_winner'; return normal(); };
+  assert.deepEqual(await f.reuse(), { customerId: 'cus_winner' });
+  assert.deepEqual(f.calls.filter(call => call.name === 'retrieve').map(call => call.id), [f.op.result.customer_id, 'cus_winner']); f.noPost();
+});
+
+test('unverified competing customer winner is never returned', async () => {
+  const f = await reusableFixture(); f.onRotate = normal => { f.link = 'cus_winner'; return normal(); };
+  f.onRetrieve = id => id === 'cus_winner' ? { object: 'customer', id, livemode: true } : copy(f.resources[0]);
+  await assert.rejects(f.reuse(), BillingPendingError); f.noPost();
+});
+
+test('closure between candidate GET and binding prevents reuse', async () => {
+  const f = await reusableFixture(); f.onRetrieve = () => { f.closing = true; return copy(f.resources[0]); };
+  await assert.rejects(f.reuse(), BillingClosedError); assert.equal(f.link, null); f.noPost();
+});
+
+test('only an exact deleted customer tombstone retires a settled candidate', async () => {
+  const f = await reusableFixture(); f.onRetrieve = id => ({ object: 'customer', id, deleted: true });
+  assert.deepEqual(await f.reuse(), { customerId: null });
+  assert.equal(f.op.customer_binding_state, 'retired'); assert.equal(f.count('retire_reusable_billing_customer'), 1);
+  assert.equal(f.count('rotate_billing_customer'), 0); f.noPost();
+});
+
+for (const failure of ['404', 'wrong_id', 'wrong_object']) test(`candidate deletion ${failure} is not retirement proof`, async () => {
+  const f = await reusableFixture(); f.onRetrieve = id => {
+    if (failure === '404') throw Object.assign(Error('not found'), { statusCode: 404 });
+    return { object: failure === 'wrong_object' ? 'subscription' : 'customer', id: failure === 'wrong_id' ? 'cus_wrong' : id, deleted: true };
+  };
+  await assert.rejects(f.reuse(), BillingPendingError); assert.equal(f.count('retire_reusable_billing_customer'), 0); f.noPost();
+});
+
+for (const receipt of [null, {}, { outcome: 'retired', customer_id: 'cus_wrong' }, { outcome: 'stale', customer_id: 'cus_created0' }]) {
+  test(`retirement requires exact final acknowledgement: ${JSON.stringify(receipt)}`, async () => {
+    const f = await reusableFixture(); f.onRetrieve = id => ({ object: 'customer', id, deleted: true });
+    f.onRetire = () => ({ data: receipt });
+    await assert.rejects(f.reuse(), BillingPendingError); f.noPost();
+  });
+}
+
+test('candidate bound by a competing caller cannot be retired from an earlier tombstone read', async () => {
+  const f = await reusableFixture();
+  f.onRetrieve = id => { f.link = id; return { object: 'customer', id, deleted: true }; };
+  await assert.rejects(f.reuse(), BillingPendingError); assert.equal(f.op.customer_binding_state, 'available'); f.noPost();
+});
+
+test('customer reuse provider timeout leaves candidate available and never binds after a late reply', { timeout: 2000 }, async () => {
+  const f = await reusableFixture(), late = defer(); f.onRetrieve = () => late.promise;
+  await assert.rejects(f.reuse({ requestTimeoutMs: 5, maxDurationMs: 50 }), BillingPendingError);
+  late.resolve(copy(f.resources[0])); await tick();
+  assert.equal(f.count('rotate_billing_customer'), 0); assert.equal(f.op.customer_binding_state, 'available'); f.noPost();
+});
+
+for (const receipt of [null, {}, { outcome: 'applied', customer_id: null }, { outcome: 'applied', customer_id: 'not-a-customer' }]) {
+  test(`candidate binding requires a valid authoritative customer receipt: ${JSON.stringify(receipt)}`, async () => {
+    const f = await reusableFixture(); f.onRotate = () => ({ data: receipt });
+    await assert.rejects(f.reuse(), BillingPendingError); f.noPost();
+  });
+}
+
+for (const response of [{ object: 'customer', id: 'cus_bound', deleted: true },
+  { object: 'customer', id: 'cus_bound', livemode: true }, { object: 'customer', id: 'cus_other', livemode: false },
+  { object: 'subscription', id: 'cus_bound', livemode: false }]) {
+  test(`bound customer is not reused from invalid provider proof: ${JSON.stringify(response)}`, async () => {
+    const f = await reusableFixture(); f.link = 'cus_bound'; f.onRetrieve = () => response;
+    await assert.rejects(f.reuse(), BillingPendingError);
+    assert.equal(f.count('rotate_billing_customer'), 0); assert.equal(f.count('retire_reusable_billing_customer'), 0); f.noPost();
+  });
+}
+
+for (const deleted of [undefined, false]) test(`bound verification permits only a live exact customer with marker ${deleted}`, async () => {
+  const f = fixture(); f.onRetrieve = id => ({ object: 'customer', id, livemode: false, deleted });
+  assert.equal(await verifyBoundBillingCustomer({ stripe: f.stripe, scope, customerId: 'cus_bound' }), 'cus_bound');
+  assert.deepEqual(f.calls.map(call => call.name), ['retrieve']);
+  assert.equal(f.calls[0].id, 'cus_bound');
+});
+
+for (const deleted of [true, null, 0, 1, '', 'false', 'true', {}]) {
+  test(`bound verification rejects non-live or malformed deletion marker ${JSON.stringify(deleted)}`, async () => {
+    const f = fixture(); f.onRetrieve = id => ({ object: 'customer', id, livemode: false, deleted });
+    await assert.rejects(verifyBoundBillingCustomer({ stripe: f.stripe, scope, customerId: 'cus_bound' }), BillingPendingError);
+    assert.equal(f.count('retrieve'), 1);
+  });
+}
+
+for (const kind of ['candidate', 'bound', 'winner']) {
+  for (const deleted of [null, 0, 'false']) test(`reuse ${kind} rejects malformed deletion marker ${JSON.stringify(deleted)}`, async () => {
+    const f = await reusableFixture();
+    if (kind === 'bound') f.link = 'cus_bound';
+    if (kind === 'winner') f.onRotate = normal => { f.link = 'cus_winner'; return normal(); };
+    f.onRetrieve = id => kind === 'candidate' ? { ...copy(f.resources[0]), deleted }
+      : id === f.op.result.customer_id ? copy(f.resources[0]) : { object: 'customer', id, livemode: false, deleted };
+    await assert.rejects(f.reuse(), BillingPendingError);
+    assert.equal(f.count('retire_reusable_billing_customer'), 0); f.noPost();
+  });
+}
+
+for (const response of [{ object: 'customer', id: 'cus_wrong', livemode: false },
+  { object: 'subscription', id: 'cus_bound', livemode: false }, { object: 'customer', id: 'cus_bound', livemode: true }]) {
+  test(`bound verification rejects identity or mode mismatch: ${JSON.stringify(response)}`, async () => {
+    const f = fixture(); f.onRetrieve = () => response;
+    await assert.rejects(verifyBoundBillingCustomer({ stripe: f.stripe, scope, customerId: 'cus_bound' }), BillingPendingError);
+  });
+}
+
+test('bound verification never treats a 404 as live or deleted proof', async () => {
+  const f = fixture(); f.onRetrieve = () => { throw Object.assign(Error('not found'), { statusCode: 404 }); };
+  await assert.rejects(verifyBoundBillingCustomer({ stripe: f.stripe, scope, customerId: 'cus_bound' }), BillingPendingError);
+  assert.deepEqual(f.calls.map(call => call.name), ['retrieve']);
+});
+
+test('bound verification times out without acting on a late live receipt', { timeout: 2000 }, async () => {
+  const f = fixture(), late = defer(); f.onRetrieve = () => late.promise;
+  await assert.rejects(verifyBoundBillingCustomer({ stripe: f.stripe, scope, customerId: 'cus_bound', requestTimeoutMs: 5 }), BillingPendingError);
+  late.resolve({ object: 'customer', id: 'cus_bound', livemode: false }); await tick();
+  assert.deepEqual(f.calls.map(call => call.name), ['retrieve']);
+});

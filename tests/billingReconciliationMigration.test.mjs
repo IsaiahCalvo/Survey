@@ -23,12 +23,12 @@ test('reconciliation migration keeps snapshot, reconciliation and notification R
 
 test('billing reconciliation fixture uses installed private-socket PostgreSQL and tracked subscription/quota SQL',()=>{
   const source=readFileSync(script,'utf8');
-  for(const name of ['20241223000001_create_user_subscriptions.sql','20260215170000_fix_subscription_type_dependency.sql',
+  for(const name of ['20241223000001_create_user_subscriptions.sql','20260703010000_secure_user_subscriptions_rls.sql','20260215170000_fix_subscription_type_dependency.sql',
     '20260818010000_kal390_storage_quota_trigger.sql','20260908130000_project_quota_guard.sql',
     '20260908160000_document_quota_guard.sql','20260908161000_storage_quota_guard.sql',
     '20260908190000_atomic_billing_subscription_transition.sql','20260908191000_billing_reconciliation_outbox.sql',
     '20260908230000_account_storage_closing.sql','20260909010000_billing_account_lifecycle.sql',
-    '20260909020000_billing_operation_recovery.sql'])assert.ok(source.includes(name),name);
+    '20260909020000_billing_operation_recovery.sql','20260909030000_billing_customer_reuse.sql'])assert.ok(source.includes(name),name);
   assert.match(source,/process\.getuid\?\.\(\)===0/);
   assert.match(source,/filter\(\(\[key\]\)=>!\/\^PG\/i\.test\(key\)\)/);
   assert.match(source,/listen_addresses=''/);
@@ -43,10 +43,22 @@ test('billing reconciliation and notification outbox pass actual isolated Postgr
 },()=>{
   const result=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:120_000});
   assert.equal(result.status,0,`${result.stdout}\n${result.stderr}\n${result.error?.message||''}`);
-  assert.match(result.stdout,/Billing reconciliation PostgreSQL checks passed: 61/);
+  assert.match(result.stdout,/Billing reconciliation PostgreSQL checks passed: 75/);
   assert.match(result.stdout,/Billing lifecycle PostgreSQL checks passed: 25/);
   assert.match(result.stdout,/Billing recovery PostgreSQL checks passed: 13/);
+  assert.match(result.stdout,/Billing reuse PostgreSQL checks passed: 14/);
   assert.match(result.stdout,/Disposable local PostgreSQL stopped; exact temporary cluster removed/);
+});
+test('billing reuse preserves permanent binding facts and bounds exact recovery without inferring provider proof',()=>{
+  const sql=readFileSync(new URL('../supabase/migrations/20260909030000_billing_customer_reuse.sql',import.meta.url),'utf8').replace(/--[^\n]*/g,'');
+  assert.match(sql,/ever_bound boolean NOT NULL DEFAULT true/);assert.match(sql,/ever_bound SET DEFAULT false/);
+  assert.doesNotMatch(sql,/SET ever_bound=false|SET customer_binding_state='available'|\bhttp_(?:get|post)\b|REFERENCES\s+auth\.users/i);
+  assert.match(sql,/customer_binding_state text NOT NULL DEFAULT 'untracked'/);assert.match(sql,/BILLING_CUSTOMER_REUSE_REQUIRED/);
+  assert.match(sql,/ORDER BY operation_id LIMIT 1 FOR SHARE NOWAIT/);assert.match(sql,/LIMIT 2 FOR UPDATE NOWAIT/);
+  for(const name of ['read_reusable_billing_customer','retire_reusable_billing_customer'])assert.match(sql,new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\(`));
+  assert.match(sql,/current_customer=p_customer_id OR operation\.customer_binding_state NOT IN/);
+  assert.match(sql,/Removed billing customer cannot be rebound/);assert.match(sql,/FROM PUBLIC,anon,authenticated,service_role/);
+  assert.doesNotMatch(sql,/auth\.role\(|request\.jwt\.claim\.role/);
 });
 
 test('billing recovery reads cannot admit provider work and confirmed deletion revokes only known-customer calls',()=>{

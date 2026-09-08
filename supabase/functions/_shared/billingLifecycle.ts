@@ -250,15 +250,78 @@ export function recoveredBillingSession(recovery: any, kind: string, spec: any) 
 export async function recoverBillingOperations(options: any) {
   return recoverWithBudget(options, budgetFor(options.requestTimeoutMs, options.maxDurationMs));
 }
-export async function rotateBillingCustomer({ db, scope, userId, expectedCustomerId, operationId = null,
-  requestTimeoutMs = 15000 }: any) {
+async function rotateWithBudget({ db, scope, userId, expectedCustomerId, operationId = null }: any, budget: Budget) {
   assertScope(scope);
   const receipt = await rpc(db, 'rotate_billing_customer', { p_user_id: userId, p_provider_scope: scope,
-    p_expected_customer_id: expectedCustomerId, p_customer_operation_id: operationId }, budgetFor(requestTimeoutMs));
+    p_expected_customer_id: expectedCustomerId, p_customer_operation_id: operationId }, budget);
   pending(['applied', 'stale', 'closing'].includes(receipt?.outcome)
     && (receipt.customer_id === null || typeof receipt.customer_id === 'string'));
   if (receipt.outcome === 'closing') throw new BillingClosedError();
   return receipt.customer_id;
+}
+export async function rotateBillingCustomer(options: any) {
+  return rotateWithBudget(options, budgetFor(options.requestTimeoutMs));
+}
+function liveCustomer(value: any, scope: any) {
+  pending((value.deleted === undefined || value.deleted === false) && value.livemode === (scope.mode === 'live'));
+  return value.id;
+}
+export async function verifyBoundBillingCustomer({ stripe, scope, customerId, requestTimeoutMs = 15000 }: any) {
+  assertScope(scope); pending(customerPattern.test(customerId));
+  let value: any;
+  try { value = await timed(() => stripe.customers.retrieve(customerId), budgetFor(requestTimeoutMs)); }
+  catch { throw new BillingPendingError(); }
+  pending(value?.object === 'customer' && value.id === customerId);
+  return liveCustomer(value, scope);
+}
+export async function reuseBillingCustomer({ db, stripe, scope, userId, requestTimeoutMs = 15000,
+  maxDurationMs = 45000 }: any) {
+  assertScope(scope); pending(uuid.test(userId));
+  const budget = budgetFor(requestTimeoutMs, maxDurationMs);
+  const saved = await rpc(db, 'read_reusable_billing_customer', { p_user_id: userId, p_provider_scope: scope }, budget);
+  pending(object(saved) && ['none', 'bound', 'candidate', 'review', 'closing'].includes(saved.outcome)
+    && (saved.customer_id === null || customerPattern.test(saved.customer_id)));
+  if (saved.outcome === 'closing') throw new BillingClosedError();
+  if (saved.outcome === 'review') throw new BillingPendingError('The saved billing customer needs review before starting new billing.');
+  if (saved.outcome === 'none') {
+    pending(saved.operation === null && saved.customer_id === null);
+    return { customerId: null };
+  }
+  const retrieve = async (id: string) => {
+    let value: any;
+    try { value = await timed(() => stripe.customers.retrieve(id), budget); }
+    catch { throw new BillingPendingError(); }
+    pending(value?.object === 'customer' && value.id === id);
+    return value;
+  };
+  if (saved.outcome === 'bound') {
+    pending(saved.operation === null && customerPattern.test(saved.customer_id));
+    return { customerId: liveCustomer(await retrieve(saved.customer_id), scope) };
+  }
+  pending(saved.customer_id === null);
+  const op = validateOperation(saved.operation, userId, scope);
+  pending(op.kind === 'customer_create' && op.state === 'settled' && op.customer_binding_state === 'available');
+  const result = validateResult(op, op.result);
+  pending(result.outcome === 'succeeded' && result.data.id === result.customer_id);
+  const candidate = await retrieve(result.customer_id);
+  if (candidate.deleted === true) {
+    // An exact tombstone may retire this candidate, but a timeout or 404 cannot.
+    // The SQL guard rejects retirement if another caller bound it meanwhile.
+    const retired = await rpc(db, 'retire_reusable_billing_customer', { p_user_id: userId, p_provider_scope: scope,
+      p_operation_id: op.operation_id, p_customer_id: result.customer_id }, budget);
+    pending(object(retired) && ['retired', 'stale', 'closing'].includes(retired.outcome)
+      && retired.customer_id === result.customer_id);
+    if (retired.outcome === 'closing') throw new BillingClosedError();
+    pending(retired.outcome === 'retired');
+    return { customerId: null };
+  }
+  liveCustomer(candidate, scope);
+  pending(equal(await providerResult(op, candidate), result));
+  const bound = await rotateWithBudget({ db, scope, userId, expectedCustomerId: null, operationId: op.operation_id }, budget);
+  pending(customerPattern.test(bound));
+  // A competing caller may have won the binding CAS. Use only the authoritative
+  // winner and verify its provider identity before starting checkout against it.
+  return { customerId: bound === result.customer_id ? bound : liveCustomer(await retrieve(bound), scope) };
 }
 function deletedReceipt(value: any, customerId: string) {
   return value?.object === 'customer' && value.id === customerId && value.deleted === true;

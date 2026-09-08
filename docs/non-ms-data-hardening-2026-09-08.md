@@ -2466,6 +2466,83 @@ Provider references: [customer deletion](https://docs.stripe.com/api/customers/d
 [idempotency retention](https://docs.stripe.com/api/idempotent_requests),
 [event listing](https://docs.stripe.com/api/events/list).
 
+## Reuse a created customer after interrupted binding
+
+`20260909030000_billing_customer_reuse.sql` closes the settled-but-unlinked
+customer gap above. New confirmed customer creations become `available` only
+when their exact customer has no prior binding or removal fact and the account
+is open. A subscription binding changes that operation to `bound` in the same
+transaction, including changed bindings made by older/direct writers. Clearing
+the link never makes a once-bound customer available again.
+
+The permanent owner record now has an `ever_bound` exclusion bit. Every owner
+present at migration time starts excluded: old receipts cannot prove the absence
+of a former binding. This is conservative, not a claim of known history. New
+owner registrations alone default to false. Existing operations stay `untracked`;
+an old pending creation that settles against a preexisting owner cannot become
+automatically reusable. Replaying the migration preserves all later facts.
+
+A service-only lookup reads at most one raw indexed candidate across all provider
+scopes. An earlier wrong-scope or untracked record needs review; the query does not
+scan past it. New customer admission checks the same available/untracked set under
+the account lifecycle lock, so a stale empty preflight cannot authorize a duplicate.
+There is no timeout that releases an unresolved or untracked creation.
+
+Checkout now runs this lookup before creating a customer. A candidate must match
+the exact actor, scope, operation, settled result and metadata/spec digest at the
+provider. Linking uses the current-binding CAS. A crash before the binding commit
+leaves a reusable customer; a lost reply after commit returns the existing bound
+customer on retry. A different CAS winner gets its own provider identity/mode
+check before checkout, including the legacy clear and fresh-creation paths.
+
+An exact deleted-customer tombstone may retire an unused candidate. The retirement
+RPC checks the actor, scope, operation and customer, rejects a currently bound
+customer, and records disposition plus the scoped removal receipt together. A
+404, timeout, malformed deletion flag or missing proof does not retire anything.
+Changed bindings cannot reattach a customer with a removal receipt. Runtime reuse
+only reads provider state; it does not delete a customer or make a provider POST.
+All reuse helper calls share its bounded time budget. SDK retries remain disabled.
+
+Verification:
+
+- 184 runner checks pass, including 72 additions for restart reuse, lost binding
+  replies, concurrent winners, exact proof, malformed receipts and timeouts.
+- 75 actual local PostgreSQL cases pass (61 retained plus 14 reuse cases), with
+  separate-session races, failed-update rollback, role/isolation checks, historical
+  owner conservatism and migration replay. The exact lookup reads one indexed row
+  through 50,000 retired successes; it does not filter through that history.
+  The fixture also loads the current subscription RLS migration: an authenticated
+  client's own-row UPDATE changes no rows and INSERT fails, without changing any
+  billing fact or operation. The service recovery path remains valid.
+- 74 billing and 22 Storage cases run the actual Deno handlers and pinned SDK
+  with synthetic HTTP and no network permission. Crashes before and after binding
+  retain one customer creation; invalid or unverified winners never reach checkout.
+  All six SQL wrappers and four endpoint wrappers pass with their opt-in checks.
+- Deno type checking and production build pass. No UI source or browser route was
+  changed in this slice; prior component reply-contract evidence remains separate
+  from these endpoint tests. No real provider, auth, Storage or Microsoft mutation.
+- Full `npm test` passed with 5,636 total tests: 5,567 passed, 69 skipped, zero
+  failures or cancellations across 586 files, exit 0. Baseline was 5,563 total,
+  5,494 passed and 69 skipped. Final focused checks passed after the additional
+  RLS fixture test; the opt-in database checks are separate from skipped defaults.
+  AST graph update passed. Generated graph files are not part of this commit.
+
+Deployment still needs ordered migrations, lock-window review and leased live
+account/provider tests. Old untracked records need a scoped support review, not
+guessed reuse or a bulk deletion. Direct legacy clears still require a verified
+service caller and old-customer recording; the database cannot recover pre-ledger
+orphans. Whole-endpoint deadlines, persistent request-intent handling after a lost
+final HTTP response, and receipt retention/redaction remain open.
+
+The wider data-layer audit found these current non-billing priorities for the next
+pass: `AppShell.handleUpdatePDFFile`/`useStorage.replaceDocument` still overwrite a
+published cloud PDF path before related page mappings commit; the viewer's legacy
+JSON sidecar save still swallows failure and writes a whole shared-state blob;
+and `storageDownloads` only shares in-flight reads, not versioned bytes across
+reopens. Versioned cloud-byte publication must precede a durable cache. Offline
+access to shared cached files needs a defined revocation policy; fresh permission
+checks must not be bypassed. No changes to these paths were made in this slice.
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions

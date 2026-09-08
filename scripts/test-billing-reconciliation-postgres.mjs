@@ -97,6 +97,10 @@ try{
     GRANT SELECT,INSERT,UPDATE ON projects,documents TO authenticated;
     GRANT SELECT,INSERT,UPDATE,DELETE ON projects,documents,storage.objects TO service_role;`);
   apply('20241223000001_create_user_subscriptions.sql');
+  // Match current client RLS, not the original self-write policies. Explicit
+  // table privileges let the test reach RLS instead of passing on a missing GRANT.
+  apply('20260703010000_secure_user_subscriptions_rls.sql');
+  sql('GRANT SELECT,INSERT,UPDATE ON user_subscriptions TO authenticated');
   sql('GRANT SELECT ON user_subscriptions TO service_role');
   for(const name of ['get_user_tier','get_project_limit','get_document_limit','get_storage_limit']){
     const body=source('20260215170000_fix_subscription_type_dependency.sql').match(new RegExp(`CREATE OR REPLACE FUNCTION ${name}\\([\\s\\S]*?\\$\\$ LANGUAGE plpgsql SECURITY DEFINER;`))?.[0];assert.ok(body);sql(body);sql(`ALTER FUNCTION ${name}(uuid) SET search_path=public`);
@@ -118,6 +122,17 @@ try{
   apply('20260908230000_account_storage_closing.sql');
   apply('20260909010000_billing_account_lifecycle.sql');
   const recoveryMigration='20260909020000_billing_operation_recovery.sql';apply(recoveryMigration);
+  // Pre-reuse-migration history: the first exact customer was once bound and
+  // cleared while a creation remained pending. The second creation succeeded
+  // without a recorded bind. Neither history proves a never-bound customer.
+  const legacyReuseScope={mode:'test',account:'platform',api_version:'2026-02-25.clover'};
+  const legacyReuseSpec={email:'fixture@example.invalid'};
+  for(const n of [801,802]){
+    const user=actor(n);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
+    asRole(null,`SELECT public.begin_billing_operation('${uuid(18000+n)}','${user}','customer_create',${json(legacyReuseScope)},${json(legacyReuseSpec)},NULL)`);
+    if(n===802)asRole(null,`SELECT public.settle_billing_operation('${uuid(18000+n)}','${user}','customer_create',${json(legacyReuseScope)},${json(legacyReuseSpec)},NULL,${json({outcome:'succeeded',customer_id:'cus_Untracked802',data:{id:'cus_Untracked802'}})})`);
+  }
+  const reuseMigration='20260909030000_billing_customer_reuse.sql';apply(reuseMigration);
   const atomicTables=[...fullTables,'survey_private.project_quota_guards','survey_private.document_quota_guards','survey_private.storage_quota_guards'];
   const a=actor(1,{projects:3,documents:7}),b=actor(2,{projects:2,documents:6});
   sql(`UPDATE projects SET user_archived_at='2025-01-01' WHERE id='${uuid(101)}'; UPDATE documents SET user_archived_at='2025-01-02' WHERE id='${uuid(1001)}';
@@ -341,6 +356,9 @@ try{
   const ack=(user,customer,providerScope=scope)=>JSON.parse(asRole(null,ackSql(user,customer,providerScope)).stdout);
   const readClosure=user=>JSON.parse(asRole(null,`SELECT public.read_billing_account_closure(${quote(user)})`).stdout);
   const succeeded=customer=>({outcome:'succeeded',customer_id:customer,data:{id:'synthetic-provider-result'}});
+  // Historic successful but unbound creations predate reuse disposition. Seed
+  // only their exact saved metadata for cleanup pagination, not new admission.
+  const seedSettledCustomerHistory=(o,customer)=>sql(`INSERT INTO survey_private.billing_operations(operation_id,user_id,kind,provider_scope,request_spec,expected_customer_id,state,result) VALUES(${operationArgs(o)},'settled',${json(succeeded(customer))});SELECT survey_private.register_billing_customer_owner('${o.user}',${quote(customer)});INSERT INTO survey_private.billing_customer_cleanup(user_id,provider_scope,customer_id) VALUES('${o.user}',${json(o.scope)},${quote(customer)})`);
   const failed={outcome:'failed',customer_id:null,data:{code:'synthetic-confirmed-no-create'}};
   const rejects=command=>assert.notEqual(asRole(null,command,'service_role',false).status,0,command);
   let lifecycleChecks=0;
@@ -510,7 +528,7 @@ try{
     const user=actor(72);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
     for(let n=0;n<6;n++){
       const o=operation(720+n,user,'customer_create',null,{scope:{...scope,mode:n%2?'live':'test'}});
-      begin(o);settle(o,succeeded(`cus_Page${n}`));
+      seedSettledCustomerHistory(o,`cus_Page${n}`);
     }
     closeBilling(user);const seen=new Set();
     for(let page=0;page<3;page++){
@@ -531,7 +549,7 @@ try{
   });
   await lifecycleCheck('failed and lost cleanup pages advance fairly and recur in a later cycle',()=>{
     const user=actor(74);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);
-    for(let n=0;n<6;n++){const o=operation(740+n,user);begin(o);settle(o,succeeded(`cus_Fair${n}`));}
+    for(let n=0;n<6;n++){const o=operation(740+n,user);seedSettledCustomerHistory(o,`cus_Fair${n}`);}
     closeBilling(user);const pages=[];
     for(let n=0;n<4;n++){
       const value=cleanup(user,2);assert.equal(value.complete,false);assert.equal(value.has_pending_operations,false);
@@ -577,7 +595,7 @@ try{
     const tables=['survey_private.billing_operations','survey_private.billing_customer_cleanup','survey_private.billing_account_lifecycles','survey_private.billing_customer_owners'];
     // Digests avoid materializing the synthetic history as tool output.
     const compactSnapshot=()=>tables.map(table=>scalar(`SELECT md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) FROM ${table} t`));
-    const before=compactSnapshot();apply('20260909010000_billing_account_lifecycle.sql');apply(recoveryMigration);assert.deepEqual(compactSnapshot(),before);
+    const before=compactSnapshot();apply('20260909010000_billing_account_lifecycle.sql');apply(recoveryMigration);apply(reuseMigration);assert.deepEqual(compactSnapshot(),before);
     assert.equal(scalar(`SELECT count(*) FROM pg_constraint WHERE contype='f' AND conrelid IN (${tables.map(t=>`${quote(t)}::regclass`).join(',')})`),'0');
   });
   await lifecycleCheck('conflicting historic customer ownership aborts migration replay atomically',()=>{
@@ -670,7 +688,7 @@ try{
   });
   await recoveryCheck('recovery migration replay preserves prior function contracts and exact ledger and cursor bytes',()=>{
     const tables=['survey_private.billing_operations','survey_private.billing_customer_cleanup','survey_private.billing_account_lifecycles','survey_private.billing_customer_owners'];const compact=()=>tables.map(table=>scalar(`SELECT md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) FROM ${table} t`));
-    const before=compact(),policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');apply(recoveryMigration);apply(recoveryMigration);assert.deepEqual(compact(),before);assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
+    const before=compact(),policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');apply(recoveryMigration);apply(recoveryMigration);apply(reuseMigration);assert.deepEqual(compact(),before);assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
   });
   await recoveryCheck('per-operation recovery cursor uses exact CAS and never settles missing provider results',()=>{
     const user=actor(101),other=actor(102),o=operation(10100,user,'checkout_create','cus_101'),portal=operation(10101,user,'portal_create','cus_101'),unknown=operation(10102,user);begin(o);begin(portal);startCreate(unknown);
@@ -698,6 +716,77 @@ try{
     settle(first,succeeded('cus_103'));assert.equal(begin(first).outcome,'settled');assert.equal(begin(second).outcome,'admitted');assert.equal(scan(user).length,2);
     const creator=actor(104),unknown=operation(15003,creator),otherUnknown=operation(15004,creator);startCreate(unknown);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${creator}'`);errorState(asRole(null,beginSql(otherUnknown),'service_role',false),'40001');settle(unknown,failed);assert.equal(begin(otherUnknown).outcome,'admitted');
   });
+  const reuseSql=(user,providerScope=scope)=>`SELECT public.read_reusable_billing_customer(${quote(user)},${json(providerScope)})`;
+  const reusable=(user,providerScope=scope)=>JSON.parse(asRole(null,reuseSql(user,providerScope)).stdout);
+  const retireReuseSql=(user,id,customer,providerScope=scope)=>`SELECT public.retire_reusable_billing_customer(${quote(user)},${json(providerScope)},${quote(id)},${quote(customer)})`;
+  const retireReuse=(user,id,customer,providerScope=scope)=>JSON.parse(asRole(null,retireReuseSql(user,id,customer,providerScope)).stdout);
+  const freshCreation=(n,finish=true)=>{const user=actor(n);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);const o=operation(30000+n,user),customer=`cus_Reusable${n}`;begin(o);if(finish)settle(o,succeeded(customer));return{user,o,customer};};
+  let reuseChecks=0;const reuseCheck=async(label,work)=>{await check('REUSE '+label,work);reuseChecks++;};
+  await reuseCheck('settled creation survives crash before binding and blocks another creation indefinitely',()=>{
+    const {user,o,customer}=freshCreation(200),candidate=reusable(user);assert.deepEqual(Object.keys(candidate).sort(),['customer_id','operation','outcome']);assert.equal(candidate.outcome,'candidate');assert.equal(candidate.customer_id,null);assert.equal(candidate.operation.operation_id,o.id);assert.equal(candidate.operation.customer_binding_state,'available');assert.equal(candidate.operation.result.customer_id,customer);assert.equal(scalar(`SELECT ever_bound FROM survey_private.billing_customer_owners WHERE customer_id='${customer}'`),'f');
+    const before=operationsFor(user);assert.deepEqual(reusable(user),candidate);assert.equal(operationsFor(user),before);errorState(asRole(null,beginSql(operation(40000,user)),'service_role',false),'40001');assert.equal(begin(o).outcome,'settled');
+    sql(`UPDATE survey_private.billing_operations SET admitted_at='2000-01-01' WHERE operation_id='${o.id}'`);assert.equal(reusable(user).outcome,'candidate');errorState(asRole(null,beginSql(operation(40001,user)),'service_role',false),'40001');
+  });
+  await reuseCheck('rotation atomically binds disposition and a lost reply cannot repeat customer creation',()=>{
+    const {user,o,customer}=freshCreation(201);assert.equal(rotate(user,null,o.id).outcome,'applied');assert.equal(readOperation(user,o.id).customer_binding_state,'bound');assert.equal(scalar(`SELECT ever_bound FROM survey_private.billing_customer_owners WHERE customer_id='${customer}'`),'t');
+    assert.deepEqual(reusable(user),{outcome:'bound',operation:null,customer_id:customer});assert.deepEqual(rotate(user,null,o.id),{outcome:'stale',customer_id:customer});const before=expected(user);assert.equal(rotate(user,customer,o.id).outcome,'applied');assert.deepEqual(expected(user),before);assert.equal(begin(o).outcome,'settled');
+    assert.equal(rotate(user,customer).outcome,'applied');assert.deepEqual(reusable(user),{outcome:'none',operation:null,customer_id:null});errorState(asRole(null,rotateSql(user,null,o.id),'service_role',false),'23514');assert.equal(readOperation(user,o.id).customer_binding_state,'bound');
+  });
+  await reuseCheck('direct subscription bind and clear also make the creation permanently ineligible',()=>{
+    const {user,o,customer}=freshCreation(202);sql(`UPDATE user_subscriptions SET stripe_customer_id='${customer}' WHERE user_id='${user}'`);assert.equal(readOperation(user,o.id).customer_binding_state,'bound');sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${user}'`);assert.equal(reusable(user).outcome,'none');errorState(asRole(null,rotateSql(user,null,o.id),'service_role',false),'23514');settle(o,succeeded(customer));assert.equal(readOperation(user,o.id).customer_binding_state,'bound');
+  });
+  await reuseCheck('historical owner facts and old pending results never become automatically reusable',()=>{
+    const user=uuid(801),o=operation(8801,user,'customer_create',null,{requestSpec:legacyReuseSpec});o.id=uuid(18801);
+    assert.equal(scalar("SELECT ever_bound FROM survey_private.billing_customer_owners WHERE customer_id='cus_801'"),'t');settle(o,succeeded('cus_801'));assert.equal(readOperation(user,o.id).customer_binding_state,'untracked');assert.equal(reusable(user).outcome,'review');errorState(asRole(null,rotateSql(user,null,o.id),'service_role',false),'23514');
+    const old=uuid(802),value=reusable(old);assert.equal(value.outcome,'review');assert.equal(value.operation.customer_binding_state,'untracked');errorState(asRole(null,beginSql(operation(40002,old)),'service_role',false),'40001');
+  });
+  await reuseCheck('scope mismatch and missing provenance require review without scanning past the first candidate',()=>{
+    const {user,o,customer}=freshCreation(203);assert.equal(reusable(user,{...scope,mode:'live'}).outcome,'review');assert.equal(reusable(actor(204)).outcome,'bound');
+    sql(`DELETE FROM survey_private.billing_customer_cleanup WHERE user_id='${user}' AND customer_id='${customer}'`);assert.equal(reusable(user).outcome,'review');errorState(asRole(null,retireReuseSql(user,o.id,customer),'service_role',false),'23514');
+    sql(`INSERT INTO survey_private.billing_customer_cleanup(user_id,provider_scope,customer_id) VALUES('${user}',${json(scope)},'${customer}');UPDATE survey_private.billing_customer_owners SET ever_bound=true WHERE customer_id='${customer}'`);assert.equal(reusable(user).outcome,'review');
+  });
+  await reuseCheck('exact service-attested retirement is atomic idempotent and permits a later new creation',()=>{
+    const {user,o,customer}=freshCreation(205);const before=operationsFor(user);for(const [id,key,providerScope] of [[uuid(49999),customer,scope],[o.id,'cus_Wrong',scope],[o.id,customer,{...scope,mode:'live'}]])errorState(asRole(null,retireReuseSql(user,id,key,providerScope),'service_role',false),'22023');assert.equal(operationsFor(user),before);
+    assert.deepEqual(retireReuse(user,o.id,customer),{outcome:'retired',customer_id:customer});assert.equal(readOperation(user,o.id).customer_binding_state,'retired');assert.equal(scalar(`SELECT removed FROM survey_private.billing_customer_cleanup WHERE user_id='${user}' AND customer_id='${customer}'`),'t');assert.equal(retireReuse(user,o.id,customer).outcome,'retired');assert.equal(reusable(user).outcome,'none');errorState(sql(`UPDATE user_subscriptions SET stripe_customer_id='${customer}' WHERE user_id='${user}'`,false),'23514');assert.equal(begin(operation(40005,user)).outcome,'admitted');
+    const bound=freshCreation(206);rotate(bound.user,null,bound.o.id);assert.equal(retireReuse(bound.user,bound.o.id,bound.customer).outcome,'stale');assert.equal(readOperation(bound.user,bound.o.id).customer_binding_state,'bound');assert.equal(scalar(`SELECT removed FROM survey_private.billing_customer_cleanup WHERE user_id='${bound.user}' AND customer_id='${bound.customer}'`),'f');
+    // Existing removed-link fixture: clearing is allowed, reattachment is not.
+    sql(`UPDATE survey_private.billing_customer_cleanup SET removed=true WHERE user_id='${bound.user}' AND customer_id='${bound.customer}';UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${bound.user}'`);assert.equal(reusable(bound.user).outcome,'none');errorState(sql(`UPDATE user_subscriptions SET stripe_customer_id='${bound.customer}' WHERE user_id='${bound.user}'`,false),'23514');
+  });
+  await reuseCheck('closure and auth deletion reject reuse while preserving every exact customer receipt',()=>{
+    const {user,o,customer}=freshCreation(207);closeBilling(user);assert.equal(reusable(user).outcome,'closing');assert.equal(retireReuse(user,o.id,customer).outcome,'closing');assert.equal(rotate(user,null,o.id).outcome,'closing');assert.equal(readOperation(user,o.id).customer_binding_state,'available');sql(`DELETE FROM auth.users WHERE id='${user}'`);assert.equal(reusable(user).outcome,'closing');assert.equal(retireReuse(user,o.id,customer).outcome,'closing');assert.equal(readOperation(user,o.id).result.customer_id,customer);
+  });
+  await reuseCheck('reuse read serializes with rotation admission and closure then rejects stale decisions',async()=>{
+    const {user,o,customer}=freshCreation(208),tx=session('reuse-read-held');tx.send(`${reuseSql(user)};SELECT 'reuse-held';`);await tx.wait('reuse-held');for(const command of [rotateSql(user,null,o.id),beginSql(operation(40008,user)),closeSql(user)])errorState(asRole(null,command,'service_role',false),'55P03');assert.equal((await tx.finish()).status,0);errorState(asRole(null,beginSql(operation(40008,user)),'service_role',false),'40001');assert.equal(rotate(user,null,o.id).customer_id,customer);
+    const closed=freshCreation(209),closer=session('reuse-close-held');closer.send(`${closeSql(closed.user)};SELECT 'closed-held';`);await closer.wait('closed-held');errorState(asRole(null,reuseSql(closed.user),'service_role',false),'55P03');assert.equal((await closer.finish()).status,0);assert.equal(reusable(closed.user).outcome,'closing');
+  });
+  await reuseCheck('direct binding and reuse locks fail safely in both orders without stale candidates',async()=>{
+    const {user,o,customer}=freshCreation(210),writer=session('reuse-direct-first','postgres');writer.send(`UPDATE user_subscriptions SET stripe_customer_id='${customer}' WHERE user_id='${user}';SELECT 'binding-held';`);await writer.wait('binding-held');errorState(asRole(null,reuseSql(user),'service_role',false),'55P03');assert.equal((await writer.finish()).status,0);assert.equal(reusable(user).outcome,'bound');assert.equal(readOperation(user,o.id).customer_binding_state,'bound');
+    const second=freshCreation(211),reader=session('reuse-read-first');reader.send(`${reuseSql(second.user)};SELECT 'candidate-held';`);await reader.wait('candidate-held');const update=session('reuse-direct-second','postgres');update.send(`UPDATE user_subscriptions SET stripe_customer_id='${second.customer}' WHERE user_id='${second.user}';`);await blocked(update.name);assert.equal((await reader.finish()).status,0);assert.equal((await update.finish()).status,0);assert.equal(reusable(second.user).outcome,'bound');
+  });
+  await reuseCheck('suppressed binding and retirement updates roll back subscription owner fact and cleanup together',()=>{
+    const {user,o,customer}=freshCreation(212);sql(`CREATE FUNCTION fixture_suppress_binding_state() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.user_id='${user}' THEN RETURN NULL;END IF;RETURN NEW;END $$;CREATE TRIGGER fixture_suppress_binding_state BEFORE UPDATE ON survey_private.billing_operations FOR EACH ROW EXECUTE FUNCTION fixture_suppress_binding_state()`);const before=operationsFor(user);
+    errorState(asRole(null,rotateSql(user,null,o.id),'service_role',false),'40001');assert.equal(operationsFor(user),before);assert.equal(scalar(`SELECT stripe_customer_id IS NULL FROM user_subscriptions WHERE user_id='${user}'`),'t');assert.equal(scalar(`SELECT ever_bound FROM survey_private.billing_customer_owners WHERE customer_id='${customer}'`),'f');errorState(asRole(null,retireReuseSql(user,o.id,customer),'service_role',false),'40001');assert.equal(scalar(`SELECT removed FROM survey_private.billing_customer_cleanup WHERE user_id='${user}' AND customer_id='${customer}'`),'f');sql('DROP TRIGGER fixture_suppress_binding_state ON survey_private.billing_operations;DROP FUNCTION fixture_suppress_binding_state()');
+  });
+  await reuseCheck('reuse role input row and isolation guards reject malformed or foreign authority',()=>{
+    const {user,o,customer}=freshCreation(213),other=actor(214),commands=[reuseSql(user),retireReuseSql(user,o.id,customer)];for(const role of ['anon','authenticated'])for(const command of commands)errorState(asRole(user,command,role,false),'42501');const args=[...psqlArgs];args[args.indexOf('-U')+1]='billing_direct_member';for(const command of commands)errorState(run('psql',[...args,'-c',command],false),'42501');
+    for(const [signature,command] of [['read_reusable_billing_customer(uuid,jsonb)',commands[0]],['retire_reusable_billing_customer(uuid,jsonb,uuid,text)',commands[1]]]){sql(`GRANT EXECUTE ON FUNCTION public.${signature} TO authenticated`);errorState(sql(`${actorContext(user,'authenticated')} SET request.jwt.claim.role='service_role';${command}`,false),'42501');sql(`REVOKE EXECUTE ON FUNCTION public.${signature} FROM authenticated`);}
+    errorState(asRole(null,retireReuseSql(other,o.id,customer),'service_role',false),'22023');errorState(asRole(null,reuseSql(user,{}),'service_role',false),'22023');for(const isolation of ['REPEATABLE READ','SERIALIZABLE'])for(const command of commands)errorState(asRole(null,`BEGIN ISOLATION LEVEL ${isolation};${command};COMMIT`,'service_role',false),'25001');errorState(sql(`UPDATE survey_private.billing_operations SET customer_binding_state='invalid' WHERE operation_id='${o.id}'`,false),'23514');
+  });
+  await reuseCheck('raw candidate lookup is indexed and bounded through fifty thousand retired successes',()=>{
+    const {user,o}=freshCreation(215);sql(`INSERT INTO survey_private.billing_operations(operation_id,user_id,kind,provider_scope,request_spec,state,result,customer_binding_state) SELECT md5('retired-reuse-'||n)::uuid,'${user}','customer_create',${json(scope)},'{}','settled',jsonb_build_object('outcome','succeeded','customer_id','cus_Retired'||n,'data','{}'::jsonb),'retired' FROM generate_series(1,50000)n;ANALYZE survey_private.billing_operations`);
+    const query=source(reuseMigration).match(/SELECT \* INTO candidate FROM survey_private\.billing_operations WHERE user_id=p_user_id[\s\S]*?LIMIT 1 FOR SHARE NOWAIT;/)?.[0];assert.ok(query);const exact=query.replace('INTO candidate ','').replace('p_user_id',quote(user));const plan=JSON.parse(scalar(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${exact}`))[0].Plan,flatten=node=>[node,...(node.Plans||[]).flatMap(flatten)],nodes=flatten(plan),access=nodes.find(n=>n['Index Name']==='billing_customer_reuse_candidates');assert.ok(access,JSON.stringify(plan));assert.equal(access['Actual Rows'],1);assert.ok(nodes.every(n=>!(n['Rows Removed by Filter']>0)),JSON.stringify(plan));assert.equal(reusable(user).operation.operation_id,o.id);console.log('PLAN reusable customer: billing_customer_reuse_candidates; one raw row; 50000 retired successes excluded');
+  });
+  await reuseCheck('migration replay preserves every disposition permanent fence and prior policy',()=>{
+    const tables=['survey_private.billing_operations','survey_private.billing_customer_owners','survey_private.billing_customer_cleanup'];const compact=()=>tables.map(table=>scalar(`SELECT md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) FROM ${table} t`));const before=compact(),policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');apply(reuseMigration);apply(reuseMigration);assert.deepEqual(compact(),before);assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
+  });
+  await reuseCheck('current subscription RLS blocks own client binding writes without touching private facts',()=>{
+    const {user,o,customer}=freshCreation(216);const protectedState=()=>['public.user_subscriptions','survey_private.billing_customer_owners','survey_private.billing_operations'].map(table=>scalar(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]') FROM ${table} t WHERE user_id='${user}'`));const before=protectedState();
+    const updated=asRole(user,`WITH changed AS (UPDATE user_subscriptions SET stripe_customer_id='cus_ClientUpdate216' WHERE user_id='${user}' RETURNING id) SELECT count(*) FROM changed`,'authenticated');assert.equal(updated.stdout,'0');assert.deepEqual(protectedState(),before);
+    errorState(asRole(user,`INSERT INTO user_subscriptions(user_id,stripe_customer_id) VALUES('${user}','cus_ClientInsert216')`,'authenticated',false),'42501');assert.deepEqual(protectedState(),before);
+    assert.equal(scalar("SELECT count(*) FROM survey_private.billing_customer_owners WHERE customer_id IN ('cus_ClientUpdate216','cus_ClientInsert216')"),'0');
+    assert.equal(rotate(user,null,o.id).outcome,'applied');assert.equal(reusable(user).customer_id,customer);assert.equal(readOperation(user,o.id).customer_binding_state,'bound');
+  });
+  console.log(`Billing reuse PostgreSQL checks passed: ${reuseChecks}`);
   console.log(`Billing recovery PostgreSQL checks passed: ${recoveryChecks}`);
   console.log(`Billing lifecycle PostgreSQL checks passed: ${lifecycleChecks}`);
   console.log(`Billing reconciliation PostgreSQL checks passed: ${checks}`);

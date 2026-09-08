@@ -22,7 +22,7 @@ test('actual cleanup Edge handlers and pinned SDK pass offline endpoint checks',
  });
  assert.equal(result.error,undefined);assert.equal(result.status,0,result.stderr+result.stdout);
  assert.match(result.stdout,/PASS 22 actual Storage cleanup Edge endpoint checks/);
- assert.match(result.stdout,/PASS 43 actual billing Edge endpoint checks; pinned SDK synthetic HTTP only/);
+ assert.match(result.stdout,/PASS 74 actual billing Edge endpoint checks; pinned SDK synthetic HTTP only/);
 });
 test('all billing endpoint SDKs bound each request to fifteen seconds and disable automatic retries',()=>{
  for(const name of ['create-checkout-session','create-portal-session','delete-account']){

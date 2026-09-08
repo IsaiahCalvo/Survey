@@ -96,13 +96,14 @@ Deno.serve(async (req) => {
         const returnUrl = resolveBillingReturnUrl(body?.returnUrl, req.headers.get('origin'));
         const existing = await stripe.customers.retrieve(subscription.stripe_customer_id);
         if (existing.object !== 'customer' || existing.id !== subscription.stripe_customer_id) throw new BillingPendingError();
-        if (existing.deleted) {
+        const deletionMarker: unknown = Reflect.get(existing, 'deleted');
+        if (existing.deleted === true) {
             await rotateBillingCustomer({ db: admin, scope, userId: user.id,
                 expectedCustomerId: subscription.stripe_customer_id });
             return new Response(JSON.stringify({ error: 'No active billing customer found. Please start a subscription first.' }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
-        if (existing.livemode !== (scope.mode === 'live')) throw new BillingPendingError();
+        if ((deletionMarker !== undefined && deletionMarker !== false) || existing.livemode !== (scope.mode === 'live')) throw new BillingPendingError();
         const sessionParams = {
                 customer: subscription.stripe_customer_id,
                 return_url: returnUrl,

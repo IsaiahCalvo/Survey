@@ -3,7 +3,8 @@ import Stripe from "npm:stripe@20.4.1";
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 import { resolveBillingReturnUrl, withBillingResult } from '../_shared/billingReturn.ts';
 import { BILLING_API_VERSION, BillingPendingError, BillingClosedError, resolveBillingProviderScope,
-    recoverBillingOperations, recoveredBillingSession, executeBillingOperation, rotateBillingCustomer } from '../_shared/billingLifecycle.ts';
+    recoverBillingOperations, recoveredBillingSession, executeBillingOperation, rotateBillingCustomer, reuseBillingCustomer,
+    verifyBoundBillingCustomer } from '../_shared/billingLifecycle.ts';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -108,19 +109,27 @@ Deno.serve(async (req) => {
                 throw new BillingPendingError('The saved billing customer needs review before starting new billing.');
             }
             if (existing.object !== 'customer' || existing.id !== storedCustomerId) throw new BillingPendingError();
-            if (existing.deleted) {
+            if (existing.deleted === true) {
                 storedCustomerId = await rotateBillingCustomer({ db: supabase, scope, userId: user.id,
                     expectedCustomerId: storedCustomerId });
-            } else if (existing.livemode !== (scope.mode === 'live')) {
+                if (storedCustomerId) await verifyBoundBillingCustomer({ stripe, scope, customerId: storedCustomerId });
+            } else if ((existing.deleted !== undefined && existing.deleted !== false) || existing.livemode !== (scope.mode === 'live')) {
                 throw new BillingPendingError();
             }
         }
         if (!storedCustomerId) {
-            const recovered = recovery.recoveredCustomers[0];
-            const created = recovered || await executeBillingOperation({ db: supabase, stripe, scope,
+            // Pending recovery alone misses a successful creation whose binding
+            // never committed. The ledger also tracks never-bound successes.
+            storedCustomerId = (await reuseBillingCustomer({ db: supabase, stripe, scope, userId: user.id })).customerId;
+        }
+        if (!storedCustomerId) {
+            const created = await executeBillingOperation({ db: supabase, stripe, scope,
                 userId: user.id, kind: 'customer_create', spec: { email: user.email } });
             storedCustomerId = await rotateBillingCustomer({ db: supabase, scope, userId: user.id,
                 expectedCustomerId: null, operationId: created.operationId });
+            if (storedCustomerId && storedCustomerId !== created.result.customer_id) {
+                await verifyBoundBillingCustomer({ stripe, scope, customerId: storedCustomerId });
+            }
         }
         if (!storedCustomerId) throw new BillingPendingError();
         const customerId = storedCustomerId;
