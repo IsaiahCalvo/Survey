@@ -1185,6 +1185,73 @@ shared PDF paths, and explicit local-to-cloud publication of all saved state.
 Microsoft account/trial/live workbook testing remains deferred. Do not call
 the overall data architecture complete based on this upload slice.
 
+## Project quota repair: local migration, not deployed
+
+`20260908130000_project_quota_guard.sql` replaces only the project's recursive
+INSERT quota expression with a self-scoped, no-argument SECURITY DEFINER helper.
+It retains the owner check and does not change SELECT, UPDATE, DELETE, or
+collaborator policies. The helper rejects a missing actor, uses an empty search
+path, and grants execution only to the authenticated API role.
+
+A private per-owner guard row serializes active project allocations. The trigger
+updates that row before its separate count query. This handles competing
+READ COMMITTED writes and makes stale REPEATABLE READ/SERIALIZABLE writers fail
+instead of accepting an old count. Multi-row inserts and archive restores also
+use the guard. Renames, system archives, deletes, and unchanged active ownership
+do not write it. An account-delete cascade removes its guard row.
+
+The SQL caller's actual role privileges, not JWT role claims, determine the
+existing service/admin quota exemption. Exempt allocations still update the
+guard so that authenticated transactions cannot miss them. The private table and
+trigger function have no API grants. The migration does not raise tier limits or
+count `user_archived_at` as released capacity; the existing rule remains
+`archived = false`.
+
+Boundaries: a full-cap INSERT ON CONFLICT can still fail before conflict
+resolution, so upload retry must retain its read-before-create path. Concurrent
+deletion can cause a conservative quota rejection that succeeds on a fresh
+request. Opposite-order multi-owner transactions can deadlock and must retry the
+whole transaction. Plan changes and downgrade archiving are currently separate
+requests and do not yet join the guard protocol; this is not an atomic downgrade
+fix. The documents INSERT policy also retains an inline self-table count plus
+storage checks. A separate local PostgreSQL fixture confirmed the same `42P17`
+for plain INSERT and INSERT RETURNING, and a count-only definer helper repaired
+both while preserving the storage clause. Its 15 checks also prove that the
+helper alone still admits an over-limit bulk insert and an archive restore.
+The next repair needs document allocation serialization, not just a helper.
+Storage is a different boundary: its existing object trigger meters actual
+bytes even for storage-service writes, so the project quota's service-role
+exemption must not be copied into that trigger. No production
+schema, policy, grant, data, or deployment was changed by this local batch.
+
+The trigger's separate reads and same-statement row checks follow PostgreSQL's
+[trigger visibility](https://www.postgresql.org/docs/current/trigger-datachanges.html)
+and [function snapshot rules](https://www.postgresql.org/docs/current/xfunc-volatility.html).
+
+The disposable PostgreSQL 16.14 harness passes 28 behavioral checks. It first
+reproduces both original recursion failures, applies the actual migration twice,
+then checks quotas, bulk rollback including trigger side effects, archive/null
+transitions, owner transfers, role grants, collaboration and inactive-project
+rules, independent-account locks, committed/rolled-back competitors, and stale
+REPEATABLE READ/SERIALIZABLE writers. It also proves the separate downgrade gap
+rather than hiding it. Independent review accepted the final migration and
+confirmed that forged owners get the same error regardless of target capacity
+and never wait on the target's guard.
+
+Run the real database checks with
+`SURVEY_POSTGRES_INTEGRATION=1 node --test tests/projectQuotaMigration.test.mjs`.
+All three opt-in tests pass, including a root rerun with deliberately invalid
+inherited PostgreSQL connection settings. The harness scrubs those settings,
+uses only its own Unix socket, stops its local server, and removes its exact
+temporary cluster. The regular suite keeps this installed-PostgreSQL check as
+an explicit opt-in skip; its two source/safety checks still run offline.
+
+Frozen app regression suite: 5,005 tests total, 4,950 passed, 55 skipped, zero
+failures or cancellations, exit 0 (prior baseline: 5,002 total). The three added
+tests account for two passes and the explicit database opt-in skip; that database
+test was also run separately and passed. Production build passes. This is a
+local migration/test result, not a live application or production-policy proof.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
