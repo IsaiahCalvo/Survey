@@ -95,6 +95,7 @@ test('reopening a document while the previous handle is still tearing down must 
   });
   await new Promise((r) => setTimeout(r, 0)); // let subscribe() reach 'joined'
 
+  handleA.setMeta('before-close', true); // unchanged readers no longer checkpoint on close
   const destroyA = handleA.destroy(); // NOT awaited — the reopen races it
   const docB = new Y.Doc();
   const handleB = await openAnnotationDoc({ actorUserId: 'test-actor',

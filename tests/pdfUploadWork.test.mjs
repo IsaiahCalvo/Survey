@@ -70,6 +70,47 @@ test('empty batches do not start workers', async () => {
   assert.deepEqual(await mapUploadsBounded([], () => { throw new Error('unexpected'); }), []);
 });
 
+for (const [mode, marker] of [
+  ['desktop', '// Background: store the bytes (content-addressed, idempotent —'],
+  ['browser', '// Background: store the bytes (content-addressed, idempotent)'],
+]) {
+  for (const fail of [false, true]) {
+    test(`${mode} retry writes the resolved legacy path and ${fail ? 'retains replacement on failure' : 'archives only after upload'}`, async () => {
+      const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
+      const start = source.indexOf('(async () => {', source.indexOf(marker));
+      const end = source.indexOf('})();', start) + 5;
+      assert.ok(start > 0 && end > start);
+      const events = [];
+      const errors = [];
+      let active = 0;
+      const dependencies = {
+        file: new File(['pdf'], 'same.pdf'), projectId: 'project', contentSha: 'content-hash',
+        resolvedDoc: { id: 'existing', file_path: 'owner/legacy/original.pdf', page_count: 2 },
+        replaceStorageDocument: async (file, path) => {
+          events.push(['upload', path]);
+          if (fail) throw new Error('offline');
+          return path;
+        },
+        uploadToStorage: async () => { events.push(['upload', 'owner/content-hash.pdf']); },
+        readPdfPageCount: async () => 2, readBlobAsArrayBuffer: () => {}, loadPdfjs: () => {},
+        setActiveUploads: updater => { active = updater(active); },
+        archiveReplacedDocument: async id => events.push(['archive', id]),
+        duplicateGate: { archiveDocId: 'old-version' },
+        updateSupabaseDocument: async () => {}, refetchAllDocuments: () => events.push(['refresh']),
+        setDashboardError: message => errors.push(message),
+        perfUpload: { mark() {}, end() {} }, console: { error() {} },
+      };
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+      await AsyncFunction(...Object.keys(dependencies), `await ${source.slice(start, end)}`)(...Object.values(dependencies));
+      assert.deepEqual(events[0], ['upload', 'owner/legacy/original.pdf']);
+      assert.equal(events.some(([event]) => event === 'archive'), !fail);
+      assert.equal(events.some(([event]) => event === 'refresh'), !fail);
+      assert.equal(errors.length, fail ? 1 : 0);
+      assert.equal(active, 0);
+    });
+  }
+}
+
 test('all dashboard page-count paths use resource cleanup and batch awaits outstanding parsers', async () => {
   const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
   assert.equal((source.match(/readPdfPageCount\(file,/g) || []).length, 3);

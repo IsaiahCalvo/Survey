@@ -65,6 +65,10 @@ test('closing registry handle never writes a new owner edit while its final snap
   const supabase = backend({ blockFirstSnapshot: true });
   const options = args(t, supabase);
   const first = await openAnnotationDoc(options);
+  // Closing an unchanged reader no longer checkpoints. Give the old writer
+  // real pending work so its final save still exercises the teardown race.
+  first.setMeta('initial-owner', true);
+  await first.drain();
   const closing = first.destroy();
   await supabase.snapshotEntered.promise;
   const second = await openAnnotationDoc(options);
@@ -79,10 +83,11 @@ test('closing registry handle never writes a new owner edit while its final snap
     assert.throws(() => first.repairStackedInkDuplicates(), { code: 'ANNOTATION_HANDLE_CLOSED' });
     await assert.rejects(first.commitEraseIntent({ mutationId: 'stale' }), { code: 'ANNOTATION_HANDLE_CLOSED' });
     await assert.rejects(first.flushSnapshot(), { code: 'ANNOTATION_HANDLE_CLOSED' });
+    const writesBeforeEdit = supabase.updates.length;
     second.applyByPage(shape('new-owner'));
     await second.drain();
-    assert.equal(supabase.updates.length, 1, 'one edit must produce one WAL write');
-    assert.equal(supabase.updates[0].client_id, second.writerId);
+    assert.equal(supabase.updates.length, writesBeforeEdit + 1, 'one edit must produce one WAL write');
+    assert.equal(supabase.updates.at(-1).client_id, second.writerId);
   } finally {
     supabase.snapshotGate.resolve();
     await closing;
@@ -116,6 +121,7 @@ test('close drains edits queued before teardown and captures them in its final s
 test('repeated destroy requests share one close and one final snapshot', async (t) => {
   const supabase = backend({ blockFirstSnapshot: true });
   const handle = await openAnnotationDoc(args(t, supabase));
+  handle.setMeta('before-close', true);
   const first = handle.destroy();
   await supabase.snapshotEntered.promise;
   const second = handle.destroy();

@@ -774,6 +774,11 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Authentication state
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const documentOpenScopeRef = useRef(null);
+  if (documentOpenScopeRef.current?.actorUserId !== (user?.id || null)) {
+    documentOpenScopeRef.current = { actorUserId: user?.id || null };
+  }
+  const documentOpenScope = documentOpenScopeRef.current;
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
   // Template refetch for PDFViewer
@@ -803,7 +808,24 @@ export default function App({ devPreviewReturnTab = null }) {
   // Generate unique tab ID
   const generateTabId = () => `tab-${randomUUID()}`;
 
+  const handleActivateOpenDocument = (doc) => {
+    if (!doc?.id || !documentOpenScope.actorUserId
+      || documentOpenScopeRef.current !== documentOpenScope) return false;
+    if (!documents.some((entry) => String(entry?.id) === String(doc.id))) return false;
+    const existingTab = tabs.find((tab) => (
+      tab.actorUserId === documentOpenScope.actorUserId && isSameDocumentTab(tab, doc)
+    ));
+    if (!existingTab || existingTab.file.__pdfLoadFailed === true
+      || existingTab.file.__rewrittenForParse === true) return false;
+    // This is the existing tab-click path, not a new access grant or download.
+    setSelectedPDF(existingTab.file);
+    setActiveTabId(existingTab.id);
+    setCurrentView('viewer');
+    return true;
+  };
+
   const handleDocumentSelect = (file, filePath = null) => {
+    if (documentOpenScopeRef.current !== documentOpenScope) return;
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
@@ -817,7 +839,10 @@ export default function App({ devPreviewReturnTab = null }) {
     }
 
     // Check if this file is already open in a tab (excluding home tab)
-    const existingTab = tabs.find(tab => isSameDocumentTab(tab, file, filePath));
+    const existingTab = tabs.find(tab => (
+      (!file.id || tab.actorUserId === documentOpenScope.actorUserId)
+      && isSameDocumentTab(tab, file, filePath)
+    ));
 
     if (existingTab) {
       // Clear the opening flag in case it was set (shouldn't happen, but just in case)
@@ -856,6 +881,7 @@ export default function App({ devPreviewReturnTab = null }) {
       name: file.name,
       file: file,
       filePath: filePath, // Store file path in tab
+      actorUserId: documentOpenScope.actorUserId,
       isHome: false,
       viewState: null // Initialize view state
     };
@@ -1025,8 +1051,8 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handler = (event) => {
-      const activeTab = tabs.find((t) => t.id === activeTabId);
-      if (!shouldWarnBeforeUnloadForTab(activeTab)) return undefined;
+      // Closing the window also closes inactive tabs, including local edits.
+      if (!tabs.some(shouldWarnBeforeUnloadForTab)) return undefined;
       // Modern browsers ignore the returned string and show their own
       // generic message; the truthy returnValue is what triggers the
       // confirm dialog.
@@ -1036,7 +1062,7 @@ export default function App({ devPreviewReturnTab = null }) {
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [tabs, activeTabId]);
+  }, [tabs]);
 
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
@@ -2869,6 +2895,7 @@ export default function App({ devPreviewReturnTab = null }) {
             <Dashboard
               ref={dashboardRef}
               onDocumentSelect={handleDocumentSelect}
+              onActivateOpenDocument={handleActivateOpenDocument}
               onBack={handleBack}
               documents={documents}
               setDocuments={setDocuments}

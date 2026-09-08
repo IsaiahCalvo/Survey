@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
-import React, { act, useRef, useState } from 'react';
+import React, { act, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { saveAnnotationsByPage } from '../src/viewerShared.js';
 
@@ -18,6 +18,58 @@ const quitStart = viewerSource.indexOf('const handleBeforeQuit = async (');
 const quitEnd = viewerSource.indexOf('\n\n    const removeListener', quitStart);
 assert.ok(quitStart >= 0 && quitEnd > quitStart, 'test the real viewer quit handler');
 const quitSource = viewerSource.slice(quitStart + 'const handleBeforeQuit = '.length, quitEnd).replace(/;\s*$/, '');
+
+const dirtyMarker = viewerSource.indexOf('// Mark annotations as dirty when they change');
+const dirtyStart = viewerSource.indexOf('useEffect(', dirtyMarker);
+const dirtyEnd = viewerSource.indexOf('\n  }, [pdfId, annotationsByPage', dirtyStart);
+assert.ok(dirtyMarker >= 0 && dirtyStart > dirtyMarker && dirtyEnd > dirtyStart);
+const dirtyEffectSource = viewerSource.slice(dirtyStart + 'useEffect('.length, dirtyEnd + '\n  }'.length);
+
+test('mounted dirty tracking preserves last-object deletions and clears an undo to the saved snapshot', async (t) => {
+  const dom = new JSDOM('<div id="root"></div>', { url: 'https://survey.test' });
+  const originals = new Map();
+  for (const [key, value] of Object.entries({
+    window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true,
+  })) {
+    originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const saved = { 1: { objects: [{ id: 'last-object' }] } };
+  const notifications = [];
+  const onUnsavedAnnotationsChange = (...args) => notifications.push(args);
+  let updatePages;
+  function DirtyProbe() {
+    const [pages, setPages] = useState(saved);
+    const [dirty, setDirty] = useState(false);
+    const savedRef = useRef(saved);
+    updatePages = setPages;
+    const scope = {
+      pdfId: 'local-pdf', tabId: 'inactive-local-tab', annotationsByPage: pages,
+      savedAnnotationsByPageRef: savedRef, setHasUnsavedAnnotations: setDirty,
+      onUnsavedAnnotationsChange,
+    };
+    const effect = new Function(...Object.keys(scope), `return (${dirtyEffectSource});`)(...Object.values(scope));
+    useEffect(effect, [pages]);
+    return React.createElement('output', null, String(dirty));
+  }
+  const root = createRoot(document.getElementById('root'));
+  t.after(async () => {
+    await act(async () => root.unmount());
+    dom.window.close();
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+  await act(async () => root.render(React.createElement(DirtyProbe)));
+  assert.equal(document.querySelector('output').textContent, 'false', 'hydrated saved annotations start clean');
+  await act(async () => updatePages({}));
+  assert.equal(document.querySelector('output').textContent, 'true', 'removing the last page is an unsaved edit');
+  assert.deepEqual(notifications.at(-1), [true, 'inactive-local-tab'], 'dirty state belongs to this tab, not the active tab');
+  await act(async () => updatePages(saved));
+  assert.equal(document.querySelector('output').textContent, 'false', 'undoing to saved content clears dirty');
+  assert.deepEqual(notifications.at(-1), [false, 'inactive-local-tab']);
+});
 
 function storageHarness(t, error = null) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');

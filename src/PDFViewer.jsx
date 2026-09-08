@@ -7650,7 +7650,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     toolPreferences,
     updateToolPreference,
     getToolPreference,
+    saveError: toolPreferencesSaveError,
   } = useDocumentToolPreferences(pdfId, pdfFile?.id);
+
+  // Surface failed tool settings saves without repeating on unrelated renders.
+  useEffect(() => {
+    if (toolPreferencesSaveError) showToast(toolPreferencesSaveError, 'error');
+  }, [toolPreferencesSaveError]);
 
   // Input field state for stroke width (fixes "Sticky 1" bug)
   // Separate state allows input to be empty while typing
@@ -21166,19 +21172,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const currentJson = JSON.stringify(annotationsByPage);
     const savedJson = JSON.stringify(savedAnnotationsByPageRef.current);
 
-    if (currentJson !== savedJson && Object.keys(annotationsByPage).length > 0) {
-      setHasUnsavedAnnotations(true);
-      // Notify parent component
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(true);
-      }
-    } else {
-      // Notify parent component when there are no unsaved changes
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(false);
-      }
-    }
-  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange]);
+    // An empty snapshot can be a deletion, and undo can restore the saved
+    // snapshot. Keep this viewer and its own tab's dirty state in agreement.
+    const isDirty = currentJson !== savedJson;
+    setHasUnsavedAnnotations(isDirty);
+    onUnsavedAnnotationsChange?.(isDirty, tabId);
+  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, tabId]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
   // whenever this PDFViewer's annotation count flips between empty and
@@ -21278,8 +21277,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc) => {
-    if (!doc || !doc.projectId) return;
+  const legacySidecarScopeRef = useRef(null);
+  if (legacySidecarScopeRef.current?.file !== pdfFile
+    || legacySidecarScopeRef.current?.actorUserId !== (user?.id || null)
+    || legacySidecarScopeRef.current?.documentId !== (pdfFile?.id || null)
+    || legacySidecarScopeRef.current?.projectId !== (pdfFile?.projectId || null)) {
+    legacySidecarScopeRef.current = {
+      file: pdfFile, actorUserId: user?.id || null,
+      documentId: pdfFile?.id || null, projectId: pdfFile?.projectId || null,
+    };
+  }
+  const legacySidecarScope = legacySidecarScopeRef.current;
+  const loadSurveyDataFromSupabase = useCallback(async (doc, isCancelled = () => false) => {
+    const isCurrentLoad = () => legacySidecarScopeRef.current === legacySidecarScope
+      && doc === legacySidecarScope.file && !isCancelled();
+    if (!doc || !doc.projectId || !isCurrentLoad()) return;
 
     try {
       const filePath = `${doc.projectId}/${doc.id}_data.json`;
@@ -21287,9 +21299,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Check if file exists by trying to get URL (or just try download and catch error)
       // We'll just try to download
       const dataBlob = await downloadFromStorage(filePath);
-      if (!dataBlob) return;
+      if (!dataBlob || !isCurrentLoad()) return;
 
       const text = await dataBlob.text();
+      if (!isCurrentLoad()) return;
       const data = JSON.parse(text);
 
 
@@ -21341,6 +21354,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
       if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
         setSpaces((prev) => {
+          if (!isCurrentLoad()) return prev;
           const safeSpacesSnapshot = resolveSafeSnapshot({
             current: prev || [],
             incoming: Array.isArray(data.spaces) ? data.spaces : [],
@@ -21371,7 +21385,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (error) {
       // It's normal for new documents to not have data yet
     }
-  }, [downloadFromStorage, pdfFile, numPages]);
+  }, [downloadFromStorage, pdfFile, numPages, legacySidecarScope]);
 
   // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
@@ -22061,7 +22075,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Load project data from Supabase if available
         if (pdfFile.projectId) {
-          await loadSurveyDataFromSupabase(pdfFile);
+          await loadSurveyDataFromSupabase(pdfFile, () => isCancelled);
         }
         if (isCancelled) return;
 

@@ -3659,7 +3659,13 @@ function makeHandle(state) {
       // An effect that was already running can acknowledge after the first
       // drain. Include that exact receipt before taking the final checkpoint.
       await drainStateQueues(state);
-      if (state.supabase) {
+      // A save already in flight may cover every accepted local edit. Wait for
+      // its result before deciding: read-only visits and already-saved edits
+      // must not upload another full snapshot just because the viewer closed.
+      await state.snapshotChain.catch(() => {});
+      if (state.supabase && (
+        state.durabilityGap || state.acceptedEditEpoch > state.snapshottedEpoch
+      )) {
         try {
           const result = await writeSnapshot(state, captureSnapshotOptions(state));
           await finalizeSnapshotResult(state, result);

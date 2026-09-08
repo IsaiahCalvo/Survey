@@ -101,7 +101,7 @@ const hasNameConflict = (
 };
 
 
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOpenDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -134,6 +134,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [askPrompt, promptDialogElement] = usePromptDialog();
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
+  const documentOpenScopeRef = useRef(null);
+  if (documentOpenScopeRef.current?.actorUserId !== (user?.id || null)) {
+    documentOpenScopeRef.current = { actorUserId: user?.id || null };
+  }
+  const documentOpenScope = documentOpenScopeRef.current;
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -220,7 +225,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     refetch: refetchTemplates
   } = useTemplates();
 
-  const { uploadDocument: uploadToStorage, uploadDataFile, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage } = useStorage();
+  const { uploadDocument: uploadToStorage, replaceDocument: replaceStorageDocument, uploadDataFile, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage } = useStorage();
 
   // Subscription limits and usage tracking
   const {
@@ -698,7 +703,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           setActiveUploads((count) => count + 1);
           try {
             perfUpload.mark(file.name, 'Starting cloud upload');
-            const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+            // A resolved row may still use a legacy path. Retry its exact
+            // object, not a new hash path that this document would never read.
+            const uploadPromise = replaceStorageDocument(file, resolvedDoc.file_path);
             const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs });
 
             // A page-count parse failure must not reject the join — the archive
@@ -872,7 +879,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       (async () => {
         setActiveUploads((count) => count + 1);
         try {
-          const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+          // The resolved row owns the storage path, including legacy retries.
+          const uploadPromise = replaceStorageDocument(file, resolvedDoc.file_path);
           const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
             .catch((err) => {
               console.error('Error getting page count:', err);
@@ -1414,9 +1422,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       : templates.length > 0;
 
   const handleDocumentClick = async (doc) => {
+    const isCurrentOpen = () => documentOpenScopeRef.current === documentOpenScope;
+    if (!isCurrentOpen()) return;
     try {
       // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
       try { console.log('[OpenTiming] doc-click @ ' + Math.round(performance.now()) + 'ms', doc?.name || doc?.file?.name || doc?.id || ''); } catch (_e) { /* swallow */ }
+      if (doc?.id && onActivateOpenDocument?.(doc) === true) return;
       // 1. Check if we have a local file object (e.g. from optimistic upload)
       if (doc.file) {
         // Attach Supabase metadata to the file for sync
@@ -1436,16 +1447,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       const filePath = doc.filePath || doc.file_path;
 
       if (filePath) {
-        // Download from Supabase storage
-        // Note: onDocumentSelect will handle tab switching if file is already open
-        // We need to reconstruct the File object to match what onDocumentSelect expects
-
-        // First check if this document is already open in a tab to avoid re-downloading
-        // We can't easily check tabs here without the file object, but onDocumentSelect does it.
-        // So we'll proceed with download. Optimization: Check tabs by name/size if possible?
-        // For now, let's download. The browser cache might help.
-
+        // New and failed-load tabs still need a fresh file from storage.
         const blob = await downloadFromStorage(filePath);
+        if (!isCurrentOpen()) return;
         const file = new File([blob], doc.name, { type: 'application/pdf' });
 
         // CRITICAL: Attach Supabase document metadata for real-time sync
@@ -1461,7 +1465,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
         const response = await fetch(doc.dataUrl);
+        if (!isCurrentOpen()) return;
         const blob = await response.blob();
+        if (!isCurrentOpen()) return;
         const file = new File([blob], doc.name, { type: 'application/pdf' });
 
         // Attach Supabase metadata
@@ -1476,6 +1482,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         throw new Error('Document has no filePath, file_path, or dataUrl');
       }
     } catch (error) {
+      if (!isCurrentOpen()) return;
       console.error('Error opening document:', error);
 
       // Check if file no longer exists in storage
