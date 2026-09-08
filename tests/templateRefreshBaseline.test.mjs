@@ -15,7 +15,8 @@ test('template refetch rejects instead of representing a failed read as an empty
 
 test('boot document/template loads consume rejection after preserving hook error state', () => {
   assert.match(hook, /void loadDocuments\(\{ coalesce: true, initialScopeKey: documentScopeKey \}\)\.catch\(\(\) => undefined\);/);
-  assert.match(hook, /void loadTemplates\(\{ coalesce: true, initialScopeKey: templateScopeKey \}\)\.catch\(\(\) => undefined\);/);
+  assert.match(hook, /void loadTemplates\(\{ coalesce: templateReadScope\.initialMount, initialScopeKey: templateScopeKey \}\)\.catch\(\(\) => undefined\);/);
+  assert.match(hook, /initialMount: templateReadScopeRef\.current === null/);
   assert.match(hook, /refetch: \(\) => loadDocuments\(\{ coalesce: false \}\)/);
   assert.match(hook, /refetch: \(\) => loadTemplates\(\{ coalesce: false \}\)/);
 });

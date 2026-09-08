@@ -798,7 +798,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
   // Template refetch for PDFViewer
-  const { refetch: refetchTemplates } = useTemplates();
+  const { refetch: refetchTemplates } = useTemplates({ autoLoad: false });
 
   // Clean up any old localStorage data that might be causing issues
   useEffect(() => {

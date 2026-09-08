@@ -302,9 +302,18 @@ test('the usage meter reads live storage, never the drifting counter', () => {
   doesNotMatch(code, /user_subscriptions/);
   // A failed RPC must surface, not silently fall back to a known-wrong number.
   match(code, /if \(storageRes\.error\) throw storageRes\.error;/);
-  // bigint-over-2^53 arrives as a string from PostgREST.
-  match(code, /storage: Number\(storageRes\.data\) \|\| 0/);
+  // Valid bigint strings are coerced, but null/malformed totals must not turn
+  // into a fabricated zero. The mounted tests exercise those payloads too.
+  match(code, /const rawStorage = storageRes\.data;/);
+  match(code, /Number\(rawStorage\)/);
+  match(code, /!Number\.isFinite\(storageBytes\)/);
+  match(code, /!Number\.isInteger\(storageBytes\)/);
+  match(code, /storageBytes < 0/);
+  match(code, /throw new Error\('Invalid storage usage total'\)/);
+  match(code, /storage: storageBytes/);
+  doesNotMatch(code, /storage:\s*Number\([^)]*\)\s*\|\|\s*0/);
   // The live scan must not be re-triggered by AuthContext re-emitting an equal
-  // user object — the fetch callback keys on the id.
-  match(code, /\}, \[userId\]\);/);
+  // user object — its scope changes only with the id, not the object itself.
+  match(code, /scopeRef\.current\.userId !== userId/);
+  match(code, /\}, \[scope, userId\]\);/);
 });

@@ -5424,7 +5424,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // past where handleUndo / handleRedo are declared — those are const arrow
   // useCallbacks defined much later in the function body, so referencing them
   // up here threw a temporal-dead-zone error when PDFViewer first rendered.
-  const { updateTemplate: updateSupabaseTemplate, createTemplate: createSupabaseTemplate } = useTemplates();
+  const { updateTemplate: updateSupabaseTemplate, createTemplate: createSupabaseTemplate } = useTemplates({ autoLoad: false });
   const hasSwitchedToSurveyMarkerRef = useRef(false);
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
   const [middleAreaBounds, setMiddleAreaBounds] = useState({ top: 56, height: 500 });

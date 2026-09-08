@@ -17,10 +17,10 @@
  * the bytes they are actually storing. See
  * supabase/migrations/20260819010000_kal390_usage_meter_ground_truth.sql.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
-import { coalesceRead } from './requestCoalescer.js';
+import { coalesceRead, invalidateCoalescedRead } from './requestCoalescer.js';
 
 /**
  * Subscription tier limits
@@ -68,16 +68,23 @@ const TIER_LIMITS = {
  * Hook for checking subscription limits and current usage
  * Provides real-time validation before performing operations
  */
+const EMPTY_USAGE = Object.freeze({ projects: 0, documents: 0, storage: 0 });
+
 export const useSubscriptionLimits = () => {
   const { user, tier: userTier } = useAuth();
-  const [usage, setUsage] = useState({
-    projects: 0,
-    documents: 0,
-    storage: 0,
-  });
+  const userId = user?.id ?? null;
+  const scopeRef = useRef(null);
+  if (!scopeRef.current || scopeRef.current.userId !== userId) {
+    scopeRef.current = { userId, generation: 0, active: true };
+  }
+  const scope = scopeRef.current;
+  const [snapshot, setSnapshot] = useState(null);
+  // Mask the old actor's state during render, before effect cleanup/setup runs.
+  const currentSnapshot = snapshot?.scope === scope ? snapshot : null;
+  const usage = currentSnapshot?.usage ?? EMPTY_USAGE;
+  const loading = currentSnapshot?.loading ?? Boolean(userId);
+  const error = currentSnapshot?.error ?? null;
   const limits = TIER_LIMITS[userTier] || TIER_LIMITS.free;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   // Fetch current usage from database. `coalesce:true` (boot) shares the
   // project-count + document-count + storage trio across the multiple live
@@ -93,23 +100,34 @@ export const useSubscriptionLimits = () => {
   // an equal user does not refire it), boot calls are coalesced across the
   // Dashboard and UsageIndicator consumers, and the only other caller is the
   // explicit refresh in Dashboard. Nothing polls it.
-  const userId = user?.id ?? null;
   const fetchUsage = useCallback(async ({ coalesce = false } = {}) => {
+    if (scopeRef.current !== scope || !scope.active) return;
+    const generation = ++scope.generation;
+    const isCurrent = () => scopeRef.current === scope && scope.active && scope.generation === generation;
+    const publish = (patch) => {
+      if (!isCurrent()) return;
+      setSnapshot(previous => {
+        if (!isCurrent()) return previous;
+        const base = previous?.scope === scope ? previous : { scope, usage: EMPTY_USAGE, error: null };
+        return { ...base, ...patch };
+      });
+    };
     if (!userId || !isSupabaseAvailable()) {
-      setLoading(false);
+      publish({ loading: false });
       return;
     }
 
     try {
-      setLoading(true);
+      publish({ loading: true });
 
       const runUsageQuery = async () => {
         // These three reads are independent — run them concurrently instead of
         // as a 3-round-trip waterfall. Supabase resolves (never rejects) with
         // {data,error}, so error checks below preserve the original throw order.
         const [projectRes, documentRes, storageRes] = await Promise.all([
-          supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-          supabase.from('documents').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+          // Match the insert policies: user_archived_at is a separate UI state.
+          supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('archived', false),
+          supabase.from('documents').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('archived', false),
           // Ground truth: real bytes in the user's storage folder. The RPC is
           // SECURITY DEFINER and self-scopes to auth.uid(), so p_user_id is
           // only a readability aid — a caller cannot read anyone else's total.
@@ -126,13 +144,26 @@ export const useSubscriptionLimits = () => {
 
         const projectCount = projectRes.count;
         const documentCount = documentRes.count;
+        if (!Number.isSafeInteger(projectCount) || projectCount < 0) {
+          throw new Error('Invalid project usage count');
+        }
+        if (!Number.isSafeInteger(documentCount) || documentCount < 0) {
+          throw new Error('Invalid document usage count');
+        }
+        const rawStorage = storageRes.data;
+        const storageBytes = typeof rawStorage === 'number'
+          ? rawStorage
+          : typeof rawStorage === 'string' && /^\d+$/.test(rawStorage) ? Number(rawStorage) : NaN;
+        if (!Number.isFinite(storageBytes) || !Number.isInteger(storageBytes) || storageBytes < 0) {
+          throw new Error('Invalid storage usage total');
+        }
 
         return {
-          projects: projectCount || 0,
-          documents: documentCount || 0,
+          projects: projectCount,
+          documents: documentCount,
           // The RPC returns a bigint, which PostgREST may serialize as a
           // string once it exceeds 2^53 — coerce before it reaches the meter.
-          storage: Number(storageRes.data) || 0,
+          storage: storageBytes,
         };
       };
 
@@ -140,19 +171,29 @@ export const useSubscriptionLimits = () => {
         ? await coalesceRead(`usage:${userId}`, runUsageQuery)
         : await runUsageQuery();
 
-      setUsage(next);
-      setError(null);
+      publish({ usage: next, error: null });
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Error fetching usage:', err);
-      setError(err.message);
+      publish({ error: err.message });
     } finally {
-      setLoading(false);
+      publish({ loading: false });
     }
-  }, [userId]);
+  }, [scope, userId]);
 
   useEffect(() => {
+    scope.active = true;
     fetchUsage({ coalesce: true });
-  }, [fetchUsage]);
+    return () => {
+      scope.active = false;
+      scope.generation += 1;
+      // An A -> B -> A switch must not rejoin a read begun for the old A
+      // scope. Same-actor Strict Mode replay still shares the boot request.
+      if (scopeRef.current !== scope && scope.userId) {
+        invalidateCoalescedRead(`usage:${scope.userId}`);
+      }
+    };
+  }, [fetchUsage, scope]);
 
   /**
    * Check if user can create a new project
@@ -241,7 +282,8 @@ export const useSubscriptionLimits = () => {
    * @returns {number} Percentage (0-100)
    */
   const getUsagePercentage = useCallback((metric) => {
-    if (!limits[metric] || limits[metric] >= 999999) return 0; // Unlimited
+    const unlimitedCount = (metric === 'projects' || metric === 'documents') && limits[metric] >= 999999;
+    if (!limits[metric] || unlimitedCount) return 0;
     return Math.min(100, (usage[metric] / limits[metric]) * 100);
   }, [usage, limits]);
 
@@ -264,7 +306,7 @@ export const useSubscriptionLimits = () => {
    * @returns {number}
    */
   const getRemainingQuota = useCallback((metric) => {
-    if (limits[metric] >= 999999) return 999999; // Unlimited
+    if ((metric === 'projects' || metric === 'documents') && limits[metric] >= 999999) return 999999;
     return Math.max(0, limits[metric] - usage[metric]);
   }, [usage, limits]);
 

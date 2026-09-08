@@ -4,7 +4,7 @@
  *
  * Default export UsageIndicator reads useSubscriptionLimits() and useAuth();
  * renders a tier badge plus MetricRow progress bars (purple→orange→red as
- * usage climbs), treating ≥999999 / ≥1TB limits as unlimited (∞). Free-tier
+ * usage climbs), treating the project/document sentinel as unlimited (∞). Free-tier
  * users at ≥75% on any metric see an upgrade-to-Pro nudge. Hidden when no user
  * or while loading.
  */
@@ -62,14 +62,22 @@ const MetricRow = ({ label, current, limit, unlimited, percentage, showBar = tru
 );
 
 const UsageIndicator = () => {
-  const { usage, limits, loading, formatBytes, getUsagePercentage, tier } = useSubscriptionLimits();
+  const { usage, limits, loading, error, refetch, formatBytes, getUsagePercentage, tier } = useSubscriptionLimits();
   const { user } = useAuth();
 
   if (!user || loading) return null;
 
+  if (error) return (
+    <div role="alert" style={{ padding: '16px', marginBottom: '16px', color: 'rgba(255, 255, 255, 0.9)' }}>
+      <p style={{ margin: '0 0 8px' }}>Could not load usage. Retry to get current totals.</p>
+      <button type="button" className="account-btn-secondary" onClick={() => { void refetch(); }}>Retry usage</button>
+    </div>
+  );
+
   const projectsUnlimited = limits.projects >= 999999;
   const documentsUnlimited = limits.documents >= 999999;
-  const storageUnlimited = limits.storage >= 1024 * 1024 * 1024 * 1024; // 1TB or more
+  // Every current storage plan has a finite byte cap, including enterprise.
+  const storageUnlimited = false;
 
   const storagePercentage = getUsagePercentage('storage');
   const projectsPercentage = getUsagePercentage('projects');

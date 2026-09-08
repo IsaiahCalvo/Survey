@@ -1017,6 +1017,74 @@ must continue to count archived objects. Mutation-only template reads remain a
 separate bounded reduction. The broader publication, upload recovery, large
 library and offline-access-policy work above is not declared complete.
 
+## Follow-up: usage accuracy and template read budgets
+
+Usage reads now belong to one hook lifetime, actor and request generation. The
+first render after account change masks the old totals before effects run.
+Late success, error, completion and retained refresh callbacks cannot change a
+new account's meter. An A-to-B-to-A transition cannot reuse the first A scope's
+pending read. Same-actor peer hooks, including Strict Mode replay, still share
+one boot trio; explicit refresh stays fresh and no polling was added.
+
+Project and document counts now use the server insertion policy's exact
+`archived=false` rule. User-initiated library archive status is a separate field
+and is not excluded. Storage still comes from the actual-object byte RPC, which
+counts archived objects too. Invalid or missing successful count/byte payloads
+produce an error, rather than a fabricated zero or the old subscription counter.
+The hook preserves same-actor last-good values, but the visible meter hides them
+on error and offers Retry. No backend error details are rendered.
+
+Finite storage caps no longer use the unlimited project/document sentinel.
+For a 100 MiB cap with 50 MiB used, the helpers now return 50 percent and 50 MiB
+remaining, rather than zero percent and 999,999 bytes. Enterprise still has its
+existing finite 1 TiB cap and the meter now shows that cap. Plan limits and
+server policies are unchanged. Client create/upload checks remain advisory and
+retain their prior last-good/empty behavior while usage is unknown; this is not
+a new fail-closed quota enforcement layer.
+
+PDFViewer and AppShell now opt out of automatic template reads because they
+consume only mutations or explicit refresh. Dashboard keeps normal library
+reads and event refreshes. With three open viewers, a library event goes from
+five full template sweeps to one in the mounted test. A later viewer mount goes
+from one sweep to zero. Equal-ID auth object updates trigger neither reads nor
+resubscriptions. Explicit refresh still reads fresh and rejects current errors;
+template writes and post-create caller behavior are unchanged.
+
+Template read scopes also retire on mode changes, actor changes and unmount.
+The first changed-scope render hides old rows/errors/loading, and a failed later
+refresh retains only the current scope's last complete rows. Mounted tests use
+held responses to verify disable/re-enable, A-to-B-to-A, retained callbacks,
+unmount and read-versus-mutation behavior. Independent review passed 66 focused
+tests across the usage, UI, coalescer, template and data-hook suites.
+
+The actual UsageIndicator and usage hook were rendered in an isolated browser
+fixture with a controlled local backend. Baseline code visibly let A's late
+reply overwrite B's totals and showed no failure alert. The candidate passed
+account isolation, finite storage math, failed-read presentation, mobile Retry
+and sign-out checks. Only the injected outage logged an expected error; there
+were no page exceptions. This test uses no real account or service request.
+The production build also passed seven local recovery and eleven cold-offline/
+cache-repair checks, including fresh-process PDF/form reopen and saved data
+preservation. Microsoft and live-service testing were not used in this batch.
+
+The next audit identified a higher-priority upload recovery flaw in
+`Dashboard.persistProject`: its failure counter can trigger project deletion
+after storage or a document insert commits but loses its response. The extracted
+real callback reproduced the deletion request with an in-memory transport; the
+repository's document/project foreign-key contract makes the document-row
+cascade a risk. No live deletion test was run. A lost project-create response
+also leaves no known ID for retry. Fix this before adding more read reductions:
+use stable operation identity, preserve uncertain outcomes, reconcile exact
+rows/objects and never infer "nothing committed" from a missing reply.
+
+Frozen verification for this batch: 4,911 total tests, 4,857 passed, 54 skipped,
+no failures or cancellations, exit 0 (prior baseline: 4,880 total). The build
+passed. Legacy source-string tests were updated to check the new scope and
+validated-byte paths, retaining their initial-load and error-propagation checks;
+the final full suite passed after those changes. Browser-tested usage source
+hashes and recovery/offline build hashes match the frozen files. No push,
+deployment, live schema change or production cost reduction is claimed.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

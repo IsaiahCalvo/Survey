@@ -12,6 +12,10 @@ const SKELETONS = read('../src/home/HubLoadingSkeletons.jsx');
 const CSS = read('../src/home/hub.css');
 const PREVIEW = read('../src/home/HubPreview.jsx');
 const DATABASE_HOOKS = read('../src/hooks/useDatabase.js');
+const TEMPLATE_HOOK = DATABASE_HOOKS.slice(
+  DATABASE_HOOKS.indexOf('export const useTemplates ='),
+  DATABASE_HOOKS.indexOf('// TEMPLATE UTILITY FUNCTIONS'),
+);
 
 test('home skeletons appear only during an empty first load, never a later refetch', () => {
   const cold = resolveHubInitialLoading({
@@ -37,9 +41,13 @@ test('home skeletons appear only during an empty first load, never a later refet
 
   assert.match(DATABASE_HOOKS, /loadedProjectScopeKey !== projectScopeKey/);
   assert.match(DATABASE_HOOKS, /loadedDocumentScopeKey !== documentScopeKey/);
-  assert.match(DATABASE_HOOKS, /loadedTemplateScopeKey !== templateScopeKey/);
+  assert.match(TEMPLATE_HOOK, /const initialLoading = autoLoad && loadedTemplateReadScope !== templateReadScope;/);
+  // A new actor or a disable/enable cycle owns a distinct initial-load scope;
+  // a later refetch within that scope must not restore the initial skeleton.
+  assert.match(TEMPLATE_HOOK, /templateReadScopeRef\.current\?\.key !== templateScopeKey\s*\|\| templateReadScopeRef\.current\?\.autoLoad !== autoLoad/);
   assert.match(DATABASE_HOOKS, /loadDocuments\(\{ coalesce: true, initialScopeKey: documentScopeKey \}\)/);
-  assert.match(DATABASE_HOOKS, /loadTemplates\(\{ coalesce: true, initialScopeKey: templateScopeKey \}\)/);
+  assert.match(TEMPLATE_HOOK, /loadTemplates\(\{ coalesce: templateReadScope\.initialMount, initialScopeKey: templateScopeKey \}\)/);
+  assert.match(TEMPLATE_HOOK, /initialMount: templateReadScopeRef\.current === null/);
   assert.match(DATABASE_HOOKS, /refetch: \(\) => loadDocuments\(\{ coalesce: false \}\)/);
   assert.match(DATABASE_HOOKS, /refetch: \(\) => loadTemplates\(\{ coalesce: false \}\)/);
   assert.match(DASHBOARD, /const hubInitialLoading = resolveHubInitialLoading/);
@@ -100,7 +108,9 @@ test('a late request from an old user or project cannot replace the current scop
   assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];[\s\S]*?setTemplates\(rows\)/);
   assert.match(DATABASE_HOOKS, /setLoadedProjectScopeKey\(requestScopeKey\)/);
   assert.match(DATABASE_HOOKS, /setLoadedDocumentScopeKey\(requestScopeKey\)/);
-  assert.match(DATABASE_HOOKS, /setLoadedTemplateScopeKey\(requestScopeKey\)/);
+  assert.match(TEMPLATE_HOOK, /const isCurrentScope = \(\) => templateMountedRef\.current && templateReadScopeRef\.current === templateReadScope;/);
+  assert.match(TEMPLATE_HOOK, /const isCurrentRequest = \(\) => isCurrentScope\(\) && isScopedRequestCurrent\(\{/);
+  assert.match(TEMPLATE_HOOK, /finally \{\s*if \(isCurrentRequest\(\)\) \{\s*setLoading\(false\);\s*setLoadedTemplateReadScope\(templateReadScope\);/);
 });
 
 test('primary tab navigation never waits on a first-visit code split', () => {

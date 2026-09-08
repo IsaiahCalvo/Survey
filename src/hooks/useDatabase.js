@@ -516,43 +516,66 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
 // TEMPLATES HOOKS
 // ============================================
 
-export const useTemplates = () => {
+// Mutation/refetch-only consumers can opt out of automatic library reads.
+// Explicit refetch always reads fresh, even when autoLoad is false.
+export const useTemplates = ({ autoLoad = true } = {}) => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(autoLoad);
   const templateScopeKey = user?.id || 'anonymous';
-  const [loadedTemplateScopeKey, setLoadedTemplateScopeKey] = useState(null);
-  const initialLoading = loadedTemplateScopeKey !== templateScopeKey;
+  const [loadedTemplateReadScope, setLoadedTemplateReadScope] = useState(null);
   const templateScopeKeyRef = useRef(templateScopeKey);
   const templateRequestRef = useRef(0);
+  const templateMountedRef = useRef(true);
+  const templateReadScopeRef = useRef(null);
+  if (templateReadScopeRef.current?.key !== templateScopeKey
+    || templateReadScopeRef.current?.autoLoad !== autoLoad) {
+    templateReadScopeRef.current = {
+      key: templateScopeKey, autoLoad, initialMount: templateReadScopeRef.current === null,
+    };
+  }
+  const templateReadScope = templateReadScopeRef.current;
+  const [templateStateScope, setTemplateStateScope] = useState(templateReadScope);
+  const templateStateScopeRef = useRef(templateStateScope);
+  templateStateScopeRef.current = templateStateScope;
+  const initialLoading = autoLoad && loadedTemplateReadScope !== templateReadScope;
   templateScopeKeyRef.current = templateScopeKey;
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!user || !isSupabaseAvailable()) {
+    templateMountedRef.current = true;
+    return () => {
+      templateMountedRef.current = false;
       templateRequestRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoLoad || !user || !isSupabaseAvailable()) {
+      templateRequestRef.current += 1;
+      setTemplateStateScope(templateReadScope);
       setTemplates([]);
       setError(null);
       setLoading(false);
-      setLoadedTemplateScopeKey(templateScopeKey);
+      setLoadedTemplateReadScope(templateReadScope);
       return;
     }
 
-    // Coalesced so the always-mounted Dashboard + AppShell (+ per-tab) template
-    // consumers share one boot read. See KAL-251.
+    // Default consumers still share their initial boot read. Reactivation and
+    // account changes must not rejoin a retired scope's in-flight snapshot.
     // Preserve loadTemplates' rejecting refetch contract while consuming the
     // boot-only rejection after it has populated the hook's error state.
-    void loadTemplates({ coalesce: true, initialScopeKey: templateScopeKey }).catch(() => undefined);
-  }, [user]);
+    void loadTemplates({ coalesce: templateReadScope.initialMount, initialScopeKey: templateScopeKey }).catch(() => undefined);
+  }, [templateScopeKey, autoLoad]);
 
   // KAL-280 — a template restored from (or permanently deleted in) Archive has
   // to leave/rejoin this list without a reload, same as documents and projects.
   useEffect(() => {
-    if (!user || !isSupabaseAvailable()) return undefined;
+    if (!autoLoad || !user || !isSupabaseAvailable()) return undefined;
     return subscribeLibraryChange(() => {
       void loadTemplates({ initialScopeKey: templateScopeKeyRef.current }).catch(() => undefined);
     });
-  }, [user]);
+  }, [templateScopeKey, autoLoad]);
 
   const runTemplatesQuery = async () => {
     const { data, error } = await readLibraryRows(() => supabase
@@ -566,16 +589,21 @@ export const useTemplates = () => {
   };
 
   const loadTemplates = async ({ coalesce = false, initialScopeKey = null } = {}) => {
-    if (!user || !isSupabaseAvailable()) return [];
+    const isCurrentScope = () => templateMountedRef.current && templateReadScopeRef.current === templateReadScope;
+    if (!isCurrentScope() || !user || !isSupabaseAvailable()) return [];
     const requestScopeKey = initialScopeKey || templateScopeKey;
     const requestId = ++templateRequestRef.current;
-    const isCurrentRequest = () => isScopedRequestCurrent({
+    const isCurrentRequest = () => isCurrentScope() && isScopedRequestCurrent({
       requestId,
       latestRequestId: templateRequestRef.current,
       requestScopeKey,
       currentScopeKey: templateScopeKeyRef.current,
     });
     try {
+      if (templateStateScopeRef.current !== templateReadScope) {
+        setTemplateStateScope(templateReadScope);
+        setTemplates([]);
+      }
       setLoading(true);
       setError(null);
       const key = `templates:${user.id}`;
@@ -592,7 +620,7 @@ export const useTemplates = () => {
     } finally {
       if (isCurrentRequest()) {
         setLoading(false);
-        setLoadedTemplateScopeKey(requestScopeKey);
+        setLoadedTemplateReadScope(templateReadScope);
       }
     }
   };
@@ -666,11 +694,15 @@ export const useTemplates = () => {
     }
   };
 
+  // Hide retired state in the render that changes actor/mode, before effects
+  // start the new read or clear the prior state. Explicit disabled reads still
+  // publish their own loading/error/rows normally within the same scope.
+  const hasCurrentTemplateState = templateStateScope === templateReadScope;
   return {
-    templates,
-    loading,
+    templates: hasCurrentTemplateState ? templates : [],
+    loading: hasCurrentTemplateState ? loading : !!(autoLoad && user && isSupabaseAvailable()),
     initialLoading,
-    error,
+    error: hasCurrentTemplateState ? error : null,
     createTemplate,
     updateTemplate,
     deleteTemplate,

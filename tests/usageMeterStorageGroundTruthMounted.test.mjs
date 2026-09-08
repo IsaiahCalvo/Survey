@@ -59,8 +59,9 @@ async function loadHook({ userId, tier = 'pro', rpcResult, counts = { projects: 
   const harnessKey = `__kal390Harness${harnessCounter += 1}__`;
 
   // Everything the fake Supabase records, read back by the assertions.
-  const recorded = { fromTables: [], rpcCalls: [] };
-  globalThis[harnessKey] = { userId, tier, rpcResult, counts, recorded };
+  const recorded = { fromTables: [], rpcCalls: [], filters: [] };
+  const config = { userId, tier, rpcResult, counts, recorded };
+  globalThis[harnessKey] = config;
 
   const reactUrl = pathToFileURL(require.resolve('react')).href;
   const coalescerUrl = pathToFileURL(path.join(repoRoot, 'src/hooks/requestCoalescer.js')).href;
@@ -74,7 +75,7 @@ const h = globalThis[${JSON.stringify(harnessKey)}];
 
 export const isSupabaseAvailable = () => true;
 
-export const useAuth = () => ({ user: { id: h.userId }, tier: h.tier });
+export const useAuth = () => ({ user: h.userId ? { id: h.userId } : null, tier: h.tier });
 
 // Anything that is NOT get_actual_storage_usage resolves a DELIBERATELY WRONG
 // storage figure, so a regression that reads the counter shows 999 not the RPC.
@@ -90,10 +91,11 @@ function tableResult(table) {
 export const supabase = {
   from(table) {
     h.recorded.fromTables.push(table);
-    const settle = () => Promise.resolve(tableResult(table));
+    const result = tableResult(table);
+    const settle = () => Promise.resolve(result);
     const builder = {
       select: () => builder,
-      eq: () => builder,
+      eq: (key, value) => { h.recorded.filters.push({ table, key, value }); return builder; },
       maybeSingle: settle,
       single: settle,
       then: (onFulfilled, onRejected) => settle().then(onFulfilled, onRejected),
@@ -126,8 +128,8 @@ export const supabase = {
   );
   source = replaceOrThrow(
     source,
-    "import { coalesceRead } from './requestCoalescer.js';",
-    `import { coalesceRead } from ${JSON.stringify(coalescerUrl)};`,
+    "from './requestCoalescer.js';",
+    `from ${JSON.stringify(coalescerUrl)};`,
   );
 
   const modulePath = path.join(tempDir, 'useSubscriptionLimits.mjs');
@@ -137,6 +139,7 @@ export const supabase = {
   return {
     useSubscriptionLimits: mod.useSubscriptionLimits,
     recorded,
+    config,
     cleanup: async () => {
       delete globalThis[harnessKey];
       await rm(tempDir, { recursive: true, force: true });
@@ -156,7 +159,7 @@ async function mountHook(t, options) {
   globalThis.Node = dom.window.Node;
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-  const { useSubscriptionLimits, recorded, cleanup } = await loadHook(options);
+  const { useSubscriptionLimits, recorded, config, cleanup } = await loadHook(options);
 
   const renders = [];
   const Probe = () => {
@@ -165,13 +168,20 @@ async function mountHook(t, options) {
   };
 
   const root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(Probe)));
+  const tree = () => React.createElement(options.strict ? React.StrictMode : React.Fragment, null,
+    Array.from({ length: options.consumers ?? 1 }, (_, index) => React.createElement(Probe, { key: index })));
+  let unmounted = false;
+  const unmount = async () => {
+    if (!unmounted) await act(async () => root.unmount());
+    unmounted = true;
+  };
+  await act(async () => root.render(tree()));
   // Second empty act flushes the async fetchUsage continuations (the awaited
   // Promise.all settles after the initial effect returns).
   await act(async () => {});
 
   t.after(async () => {
-    await act(async () => root.unmount());
+    await unmount();
     await cleanup();
     dom.window.close();
     delete globalThis.window;
@@ -181,7 +191,19 @@ async function mountHook(t, options) {
     delete globalThis.IS_REACT_ACT_ENVIRONMENT;
   });
 
-  return { latest: () => renders[renders.length - 1], renders, recorded };
+  return {
+    latest: () => renders[renders.length - 1], renders, recorded, config, unmount,
+    rerender: async (changes = {}) => {
+      Object.assign(config, changes);
+      await act(async () => root.render(tree()));
+    },
+  };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 test('the mounted usage meter takes storage from the get_actual_storage_usage RPC, not the counter column', async (t) => {
@@ -252,4 +274,173 @@ test('an RPC failure surfaces an error instead of silently falling back to the c
     !recorded.fromTables.includes('user_subscriptions'),
     'a failed RPC must not trigger a counter-column fallback read',
   );
+});
+
+test('switching accounts masks old usage immediately and ignores the retired account request', async (t) => {
+  const h = await mountHook(t, { userId: 'race-a', rpcResult: { data: 100, error: null } });
+  const oldRefetch = h.latest().refetch;
+  const oldRequest = deferred();
+  h.config.rpcResult = oldRequest.promise;
+  let pending;
+  await act(async () => { pending = h.latest().refetch(); });
+  const nextRequest = deferred();
+  const renderStart = h.renders.length;
+  await h.rerender({ userId: 'race-b', rpcResult: nextRequest.promise, counts: { projects: 7, documents: 8 } });
+  assert.deepEqual(h.renders[renderStart].usage, { projects: 0, documents: 0, storage: 0 });
+  assert.equal(h.renders[renderStart].loading, true);
+  await act(async () => { nextRequest.resolve({ data: 200, error: null }); });
+  await act(async () => { oldRequest.resolve({ data: 900, error: null }); await pending; });
+  assert.deepEqual(h.latest().usage, { projects: 7, documents: 8, storage: 200 });
+  const before = h.recorded.rpcCalls.length;
+  await act(async () => { await oldRefetch(); });
+  assert.equal(h.recorded.rpcCalls.length, before, 'retired callbacks must not issue requests');
+  const signoutStart = h.renders.length;
+  await h.rerender({ userId: null });
+  assert.deepEqual(h.renders[signoutStart].usage, { projects: 0, documents: 0, storage: 0 });
+  assert.equal(h.renders[signoutStart].loading, false);
+});
+
+test('finite storage quota reports half used and half remaining on the free tier', async (t) => {
+  const h = await mountHook(t, { userId: 'free-storage', tier: 'free', rpcResult: { data: 50 * 1024 * 1024, error: null } });
+  assert.equal(h.latest().getUsagePercentage('storage'), 50);
+  assert.equal(h.latest().getRemainingQuota('storage'), 50 * 1024 * 1024);
+});
+
+test('count queries match archived=false insert quotas without hiding user-archived rows or stored bytes', async (t) => {
+  const h = await mountHook(t, { userId: 'archive-rules', rpcResult: { data: 123, error: null } });
+  assert.deepEqual(h.recorded.filters, [
+    { table: 'projects', key: 'user_id', value: 'archive-rules' },
+    { table: 'projects', key: 'archived', value: false },
+    { table: 'documents', key: 'user_id', value: 'archive-rules' },
+    { table: 'documents', key: 'archived', value: false },
+  ]);
+  assert.equal(h.latest().usage.storage, 123, 'storage remains the entire live RPC total');
+});
+
+test('a malformed successful usage payload is an error, not an invented zero', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const h = await mountHook(t, { userId: 'bad-payload', rpcResult: { data: null, error: null } });
+  assert.match(h.latest().error, /storage/i);
+  assert.equal(h.latest().loading, false);
+});
+
+test('overlapping refreshes publish only the latest request, including loading and errors', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
+  const h = await mountHook(t, { userId: 'overlap', rpcResult: { data: 10, error: null } });
+  const older = deferred();
+  const newer = deferred();
+  let p1, p2;
+  h.config.rpcResult = older.promise;
+  await act(async () => { p1 = h.latest().refetch(); });
+  h.config.rpcResult = newer.promise;
+  await act(async () => { p2 = h.latest().refetch(); });
+  await act(async () => { older.resolve({ data: null, error: { message: 'stale failure' } }); await p1; });
+  assert.equal(h.latest().loading, true, 'old finally must not settle a newer request');
+  assert.equal(h.latest().error, null);
+  assert.equal(log.mock.callCount(), 0, 'stale failures must not be logged as current failures');
+  await act(async () => { newer.resolve({ data: 30, error: null }); await p2; });
+  assert.equal(h.latest().usage.storage, 30);
+  assert.equal(h.latest().loading, false);
+  assert.equal(h.recorded.rpcCalls.length, 3, 'each explicit refresh still bypasses boot sharing');
+
+  const successOld = deferred();
+  h.config.rpcResult = successOld.promise;
+  await act(async () => { p1 = h.latest().refetch(); });
+  h.config.rpcResult = { data: null, error: { message: 'latest failure' } };
+  await act(async () => { await h.latest().refetch(); });
+  await act(async () => { successOld.resolve({ data: 90, error: null }); await p1; });
+  assert.equal(h.latest().usage.storage, 30, 'current failures retain same-actor last good usage');
+  assert.equal(h.latest().error, 'latest failure', 'old success must not clear the latest error');
+});
+
+test('A to B to A does not rejoin the retired A boot request', async (t) => {
+  const retired = deferred();
+  const h = await mountHook(t, { userId: 'aba-a', rpcResult: retired.promise });
+  const oldRefetch = h.latest().refetch;
+  await h.rerender({ userId: 'aba-b', rpcResult: { data: 20, error: null } });
+  await h.rerender({ userId: 'aba-a', rpcResult: { data: 30, error: null } });
+  assert.equal(h.latest().usage.storage, 30);
+  await act(async () => { retired.resolve({ data: 10, error: null }); });
+  assert.equal(h.latest().usage.storage, 30);
+  const before = h.recorded.rpcCalls.length;
+  await act(async () => { await oldRefetch(); });
+  assert.equal(h.recorded.rpcCalls.length, before);
+  assert.equal(before, 3);
+});
+
+test('signout masks errors before effects and blocks late requests and callbacks', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
+  const h = await mountHook(t, { userId: 'signout', rpcResult: { data: null, error: { message: 'old error' } } });
+  const delayed = deferred();
+  const oldRefetch = h.latest().refetch;
+  let pending;
+  h.config.rpcResult = delayed.promise;
+  await act(async () => { pending = h.latest().refetch(); });
+  const beforeRender = h.renders.length;
+  await h.rerender({ userId: null });
+  assert.equal(h.renders[beforeRender].error, null);
+  assert.equal(h.renders[beforeRender].loading, false);
+  await act(async () => { delayed.resolve({ data: null, error: { message: 'late error' } }); await pending; await oldRefetch(); });
+  assert.equal(h.latest().error, null);
+  assert.deepEqual(h.latest().usage, { projects: 0, documents: 0, storage: 0 });
+  assert.equal(h.recorded.rpcCalls.length, 2);
+  assert.equal(log.mock.callCount(), 1);
+});
+
+test('unmount retires requests and retained refresh callbacks', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
+  const delayed = deferred();
+  const h = await mountHook(t, { userId: 'unmount', rpcResult: delayed.promise });
+  const oldRefetch = h.latest().refetch;
+  await h.unmount();
+  const before = h.renders.length;
+  await act(async () => { delayed.resolve({ data: null, error: { message: 'late' } }); await oldRefetch(); });
+  assert.equal(h.renders.length, before);
+  assert.equal(h.recorded.rpcCalls.length, 1);
+  assert.equal(log.mock.callCount(), 0);
+});
+
+test('peer hooks and Strict Mode share one in-flight boot trio without refiring on equal actor renders', async (t) => {
+  const delayed = deferred();
+  const h = await mountHook(t, { userId: 'coalesce', rpcResult: delayed.promise, consumers: 2, strict: true });
+  assert.equal(h.recorded.rpcCalls.length, 1);
+  assert.deepEqual(h.recorded.fromTables, ['projects', 'documents']);
+  await act(async () => { delayed.resolve({ data: 100, error: null }); });
+  assert.equal(h.latest().usage.storage, 100);
+  await h.rerender({ tier: 'free' });
+  assert.equal(h.recorded.rpcCalls.length, 1);
+  assert.equal(h.latest().tier, 'free');
+});
+
+test('invalid counts or bytes preserve last good same-actor usage and report an error', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const h = await mountHook(t, { userId: 'invalid-values', rpcResult: { data: 10, error: null } });
+  for (const invalid of [null, undefined, NaN, -1, 1.5, '3', Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    for (const metric of ['projects', 'documents']) {
+      h.config.counts = { projects: 2, documents: 3, [metric]: invalid };
+      await act(async () => { await h.latest().refetch(); });
+      assert.match(h.latest().error, new RegExp(metric.slice(0, -1)));
+      assert.deepEqual(h.latest().usage, { projects: 2, documents: 3, storage: 10 });
+    }
+  }
+  h.config.counts = { projects: 2, documents: 3 };
+  for (const invalid of [null, undefined, NaN, -1, 0.5, Infinity, '', ' ', 'nope', {}, false, '1e999', '-1']) {
+    h.config.rpcResult = { data: invalid, error: null };
+    await act(async () => { await h.latest().refetch(); });
+    assert.match(h.latest().error, /storage/);
+    assert.equal(h.latest().usage.storage, 10);
+  }
+  h.config.counts = { projects: 0, documents: 0 };
+  h.config.rpcResult = { data: '0', error: null };
+  await act(async () => { await h.latest().refetch(); });
+  assert.deepEqual(h.latest().usage, { projects: 0, documents: 0, storage: 0 });
+  assert.equal(h.latest().error, null);
+});
+
+test('pro count sentinels remain unlimited while enterprise storage stays finite', async (t) => {
+  const h = await mountHook(t, { userId: 'finite-enterprise', tier: 'enterprise', rpcResult: { data: 512 * 1024 ** 3, error: null } });
+  assert.equal(h.latest().getUsagePercentage('projects'), 0);
+  assert.equal(h.latest().getRemainingQuota('documents'), 999999);
+  assert.equal(h.latest().getUsagePercentage('storage'), 50);
+  assert.equal(h.latest().getRemainingQuota('storage'), 512 * 1024 ** 3);
 });
