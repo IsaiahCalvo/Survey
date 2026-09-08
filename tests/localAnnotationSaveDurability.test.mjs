@@ -15,7 +15,7 @@ const callbackSource = viewerSource.slice(
   callbackEnd + '\n  }'.length,
 );
 const quitStart = viewerSource.indexOf('const saveLocalBeforeQuit = async (');
-const quitEnd = viewerSource.indexOf('\n  quitSaveHandlerRef.current =', quitStart);
+const quitEnd = viewerSource.indexOf('\n  const quitCloseChecksRef =', quitStart);
 assert.ok(quitStart >= 0 && quitEnd > quitStart, 'test the real viewer quit handler');
 const quitSource = viewerSource.slice(quitStart + 'const saveLocalBeforeQuit = '.length, quitEnd).replace(/;\s*$/, '');
 

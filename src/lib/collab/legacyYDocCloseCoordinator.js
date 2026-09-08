@@ -91,7 +91,7 @@ export function createLegacyYDocCloseCoordinator({
       isCurrent: () => current() && pending.has(request.id), timeoutMs: request.timeoutMs,
     }).then(() => finish(request), error => finish(request, error));
   }
-  function prepareLocalClose({ timeoutMs = DEFAULT_TIMEOUT_MS, signal } = {}) {
+  function prepareLocalClose({ timeoutMs = DEFAULT_TIMEOUT_MS, signal, readOnly = false } = {}) {
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
       return Promise.reject(new TypeError('timeoutMs must be a positive safe integer'));
     }
@@ -108,6 +108,16 @@ export function createLegacyYDocCloseCoordinator({
       pending.set(id, request);
       signal?.addEventListener('abort', request.onAbort, { once: true });
       if (signal?.aborted) { request.onAbort(); return; }
+      if (readOnly) {
+        // A locked document may prove existing storage, but must not append a
+        // snapshot or ask another tab to write on its behalf.
+        request.started = true;
+        Promise.resolve().then(() => verifySnapshot({ documentId, actorUserId, snapshot: new Uint8Array(snapshot),
+          timeoutMs, signal: request.controller.signal,
+          isCurrent: () => current() && pending.has(id) && ydoc.guid === scopeKey,
+        })).then(() => finish(request), error => finish(request, error));
+        return;
+      }
       digest(snapshot).then(hash => {
         if (!pending.has(id) || !current()) return;
         request.hash = hash;

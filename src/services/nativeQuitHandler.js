@@ -3,10 +3,14 @@
 export function createNativeQuitHandler({ registry, send, freeze, confirmedRef }) {
   let active = null;
   let release = null;
+  let confirming = null;
+  let preparation = null;
   const matches = (request) => active && active.quitAttemptId === request.quitAttemptId
     && active.generation === request.generation;
   const cancel = () => {
     active = null;
+    confirming = null;
+    preparation = null;
     confirmedRef.current = false;
     registry.cancel();
     release?.();
@@ -26,15 +30,26 @@ export function createNativeQuitHandler({ registry, send, freeze, confirmedRef }
           release = freeze();
           send({ ...attempt, phase: 'pending' });
           const result = await registry.prepare();
-          if (active === attempt) send({ ...attempt, phase: 'prepare', ...result });
+          if (active === attempt) {
+            preparation = result;
+            send({ ...attempt, phase: 'prepare', ...result });
+          }
         } catch (error) {
           if (active === attempt) send({ ...attempt, phase: 'prepare', saved: false, tabIds: [],
             reason: error?.message || 'Finish editing, then close again.' });
         }
       } else if (request.phase === 'confirm' && matches(request)) {
-        const result = registry.confirm();
+        const attempt = active;
+        if (confirming === attempt) return;
+        confirming = attempt;
+        let result;
+        try { result = await registry.confirm(preparation); }
+        catch (error) { result = { saved: false, tabIds: [], reason: error?.message || 'The local save could not be verified.' }; }
+        // Cancellation or a new main-process generation can arrive while the
+        // fresh storage checks run. Never reply using a newer active attempt.
+        if (active !== attempt) return;
         confirmedRef.current = result.saved === true;
-        send({ ...active, phase: 'confirm', ...result });
+        send({ ...attempt, phase: 'confirm', ...result });
       }
     },
   };

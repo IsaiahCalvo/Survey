@@ -206,8 +206,9 @@ function readStores(db, timeoutMs, { includeRecords = true, budget, visit, signa
  * an unknown schema. This reports only metadata, not a recoverable snapshot or
  * an ownership decision. A failed source remains explicit beside a present one.
  */
-export async function probeLegacyYDocRecovery(documentId, { indexedDB, timeoutMs = 5000 } = {}) {
+export async function probeLegacyYDocRecovery(documentId, { indexedDB, timeoutMs = 5000, signal } = {}) {
   if (typeof documentId !== 'string' || !documentId.trim()) throw new Error('documentId required');
+  checkAbort(signal);
   let registry;
   try { registry = summarizeRegisteredYDoc(documentId); }
   catch (error) { registry = { state: 'read-failed', documentId, error: errorInfo(error) }; }
@@ -218,12 +219,14 @@ export async function probeLegacyYDocRecovery(documentId, { indexedDB, timeoutMs
     // the source failure boundary so an available registry is still reported.
     const storage = indexedDB === undefined ? globalThis.indexedDB : indexedDB;
     if (!storage?.open) throw new Error('IndexedDB unavailable');
-    db = await openExisting(storage, documentId, timeoutMs);
+    db = await openExisting(storage, documentId, timeoutMs, signal);
     persisted = db ? { state: 'present', databaseName: documentId, version: db.version,
-      stores: await readStores(db, timeoutMs, { includeRecords: false }) } : { state: 'absent', databaseName: documentId };
+      stores: await readStores(db, timeoutMs, { includeRecords: false, signal }) } : { state: 'absent', databaseName: documentId };
   } catch (error) {
+    if (isControlError(error)) throw error;
     persisted = { state: 'read-failed', databaseName: documentId, error: errorInfo(error) };
   } finally { db?.close(); }
+  checkAbort(signal);
   const states = [registry.state, persisted.state];
   return {
     formatVersion: 1, kind: 'probe', contentRead: false, documentId, capturedAt: new Date().toISOString(),

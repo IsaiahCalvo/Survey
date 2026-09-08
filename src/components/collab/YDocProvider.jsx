@@ -30,12 +30,15 @@
 // invariant (Pitfall 5) is grep-asserted by tests/phase27/applyUpdateOnlyInvariant.test.mjs
 // — the only allowed Y.Doc constructor site is src/lib/collab/ydocRegistry.js.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { YDocContext } from './YDocContext.js';
 import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
+import { prepareLegacyRecoveryClose, isLegacyRecoveryReceiptCurrent, validateLegacyRecoveryReceipt } from '../../lib/collab/legacyYDocRecoveryArchive.js';
 import { resolveDocumentMetadata } from '../../services/documentMetadataResolver.js';
-import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
+import { attachLegacyYDocSession } from '../../lib/collab/legacyYDocSession.js';
+import { getLegacyYDocScopeKey } from '../../lib/collab/legacyYDocScope.js';
+import LegacyYDocRecoveryNotice from './LegacyYDocRecoveryNotice.jsx';
 import { isCRDTEnabled } from '../../lib/collab/crdtFeatureFlag.js';
 import StorageFailureBanner from './StorageFailureBanner.jsx';
 import ReSignInModal from './ReSignInModal.jsx';
@@ -52,11 +55,9 @@ const ydocProviderDebug = (...args) => {
 // agnostic — if v2.5+ ever flips to Hocuspocus, the change is one line here.
 import { createSupabaseYjsProvider as createTransportProvider } from '../../lib/collab/SupabaseYjsProvider.js';
 import {
-  createTransportProviderCoordinator,
   hasRemoteDocumentCollaborator,
   isTransportChannelJoined,
 } from '../../lib/collab/transportStatus.js';
-import { attachAuthSessionBridge } from '../../lib/collab/authSessionBridge.js';
 import { buildOrigin } from '../../lib/collab/originBuilder.js';
 import { getDeviceId } from '../../lib/collab/deviceId.js';
 import { getSupabaseSession, supabase } from '../../supabaseClient.js';
@@ -165,6 +166,8 @@ const NULL_CTX_DISABLED = Object.freeze({
   storageState: null,
   role: 'unknown',
   isCRDTEnabled: false,
+  localCloseRequired: false,
+  localCloseSession: null,
   dismissBanner: () => {},
   // Phase 28 additions — kept on the null-shape too so callers can safely
   // destructure even when CRDT is off.
@@ -187,17 +190,20 @@ const NULL_CTX_DISABLED = Object.freeze({
   getAwareness: () => null,
 });
 
-export function YDocProvider({ docId, children, closeDocument, isActive = true }) {
+export function YDocProvider({ docId, actorUserId, currentActorUserId = actorUserId, children, closeDocument, isActive = true }) {
   const enabled = isCRDTEnabled();
 
   // Null/empty docId or kill-switch active → provide a null context.
   // UX: the document still opens normally; the CRDT layer is simply off for this mount.
   // Hooks rule: keep this branch above the inner component so we don't call useEffect
   // conditionally — the inner component owns all the stateful hooks.
-  if (!docId || !enabled) {
+  if (!docId || !enabled || !actorUserId) {
     return (
-      <YDocContext.Provider value={NULL_CTX_DISABLED}>
+      <YDocContext.Provider value={!docId || !enabled ? NULL_CTX_DISABLED : {
+        ...NULL_CTX_DISABLED, accessRevoked: true, localCloseRequired: true,
+      }}>
         {children}
+        {docId && enabled && <ReadOnlyGate isActive={isActive} />}
       </YDocContext.Provider>
     );
   }
@@ -205,16 +211,18 @@ export function YDocProvider({ docId, children, closeDocument, isActive = true }
   // Keying on docId guarantees that switching PDFs gives us a fresh hooks tree
   // (state resets cleanly — no stale isHydrating / storageState bleeding across docs).
   return (
-    <YDocProviderInner key={docId} docId={docId} closeDocument={closeDocument} isActive={isActive}>
+    <YDocProviderInner key={getLegacyYDocScopeKey(docId, actorUserId)} docId={docId} actorUserId={actorUserId}
+      currentActorUserId={currentActorUserId} closeDocument={closeDocument} isActive={isActive}>
       {children}
     </YDocProviderInner>
   );
 }
 
-function YDocProviderInner({ docId, children, closeDocument, isActive }) {
+function YDocProviderInner({ docId, actorUserId, currentActorUserId, children, closeDocument, isActive }) {
   // Borrow the Y.Doc from the module-scoped registry. Stable across re-renders for
   // a given docId; HMR-safe because the registry survives module reloads.
-  const ydoc = useMemo(() => getOrCreateYDoc(docId), [docId]);
+  const scopeKey = getLegacyYDocScopeKey(docId, actorUserId);
+  const ydoc = useMemo(() => getOrCreateYDoc(scopeKey), [scopeKey]);
 
   // Phase 28 — sessionId is per-Y.Doc-mount and resets on document re-open
   // (fresh useMemo when docId changes). Used by getOriginContext below to
@@ -229,8 +237,13 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   }, [docId]);
 
   const lifecycleRef = useRef(null);
+  const actorMatchesRef = useRef(false);
+  actorMatchesRef.current = actorUserId === currentActorUserId;
+  const [localCloseSession, setLocalCloseSession] = useState(null);
+  const [sessionEpoch, setSessionEpoch] = useState(0);
+  const isScopeCurrent = useCallback(() => actorMatchesRef.current
+    && lifecycleRef.current?.isCurrent() === true, []);
   const providerRef = useRef(null);
-  const bridgeRef = useRef(null);
   const retryDualWriteQueueRef = useRef(null);
   const [storageState, setStorageState] = useState(null);
   const [role, setRole] = useState('unknown');
@@ -432,135 +445,116 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     setManualRetryExhausted(false);
     setDeletionsPending(false);
     setIsHydrating(true);
+    setAccessRevoked(false);
+    setLoginExpired(false);
+    setLocalCloseSession(null);
 
-    const handle = attachLifecycle(ydoc, docId, {
-      onStorageState: (state) => {
+    let handle;
+    try { handle = attachLegacyYDocSession({
+      ydoc, documentId: docId, actorUserId, supabase,
+      getSession: () => getSupabaseSession('YDocProvider.transport'),
+      createTransportProvider: options => {
+        const provider = createTransportProvider(options);
+        providerRef.current = provider;
+        return provider;
+      },
+      onStorageState: state => {
         storageStateRef.current = state;
         setStorageState(state);
-        // UX: 'ok' code fires when IndexeddbPersistence emits 'synced'. That's
-        // the moment hydration is complete — flip the fade-in class to 'hydrated'.
-        if (state.code === 'ok') {
-          setIsHydrating(false);
+        if (state.code === 'ok') setIsHydrating(false);
+      },
+      onRoleChange: setRole,
+      onTransportState: state => {
+        setTransportState(state);
+        if (state === 'offline') scheduleTransportOfflineBanner();
+        else if (state === 'online') {
+          transportOfflineGenerationRef.current += 1;
+          clearTransportOfflineBannerTimer();
+          markTransportOnline();
         }
       },
-    });
-    lifecycleRef.current = handle;
-
-    // Phase 28 — mount the locked transport provider against the borrowed Y.Doc.
-    // The provider operates on the SAME ydoc that ydocLifecycle just attached to;
-    // remote updates land via Y.applyUpdate (the applyUpdate-only invariant —
-    // Pitfall 5 — never replace the doc wholesale).
-    //
-    // The factory is sync on the Supabase path (returns a handle directly); the
-    // Hocuspocus fallback wrapper would return a Promise. Wrap in Promise.resolve
-    // so the wiring works regardless of which path 28-BENCHMARK.md locks.
-    let cancelled = false;
-    const transportCoordinator = createTransportProviderCoordinator({
-      getCurrentProvider: () => providerRef.current,
-      setCurrentProvider: (provider) => {
-        providerRef.current = provider;
+      onUpdateRejected: reason => {
+        if (reason === 'permission_revoked' || /^authentication_failed/.test(reason || '')) {
+          setAccessRevoked(true);
+          setStorageState({ code: 'permission_revoked', role: 'unknown' });
+        }
       },
-      createProvider: ({ isCurrent }) => Promise.resolve(createTransportProvider({
-        documentId: docId,
-        ydoc,
-        supabase,
-        onTransportState: (state) => {
-          if (!isCurrent()) return;
-          // UX: setTransportState is the always-on side; the banner gate fires
-          // only on 'offline' so steady-state 'online' is invisible to the user.
-          setTransportState(state);
-          if (state === 'offline') {
-            // UX: brief realtime reconnect blips are common and recoverable.
-            // Keep the status state accurate immediately, but only show the
-            // user-facing banner if the offline state persists past the grace
-            // window. This prevents the red banner from flashing while the
-            // bottom-left cloud-save chip remains healthy.
-            ydocTransportDebug('[YDocProvider] transport offline; delaying banner');
-            scheduleTransportOfflineBanner();
-          } else if (state === 'online') {
-            transportOfflineGenerationRef.current += 1;
-            clearTransportOfflineBannerTimer();
-            // UX: only clear if the current state is the transport-side banner.
-            // Don't stomp on persistence-side codes (quota / blocked / etc.) —
-            // those are independent failure modes.
-            ydocTransportDebug('[YDocProvider] transport online; reconciling banner');
-            markTransportOnline();
-          }
-        },
-        onUpdateRejected: (reason) => {
-          if (!isCurrent()) return;
-          // UX per CONTEXT.md: in-flight edit dropped with explicit reason;
-          // document stays open in read-only mode (NOT auto-bounced to dashboard).
-          // The 'authentication_failed*' reasons cover Plan 28-05's RLS-violation
-          // path (Postgres 42501); 'permission_revoked' covers the proactive
-          // postgres_changes DELETE on document_collaborators.
-          if (
-            reason === 'permission_revoked' ||
-            /^authentication_failed/.test(reason || '')
-          ) {
-            setAccessRevoked(true);
-            setStorageState({ code: 'permission_revoked', role: 'unknown' });
-          }
-        },
-      })),
-    });
-    const installTransportProvider = () => transportCoordinator.restart();
-    restartTransportProviderRef.current = installTransportProvider;
-    installTransportProvider().catch((err) => {
-      // Provider construction failed (network down at boot, missing env, etc.).
-      // Surface via the storage state channel as transport_offline so the user
-      // sees the offline banner rather than a silent freeze.
-      if (cancelled) return;
-      // eslint-disable-next-line no-console
-      console.warn('[YDocProvider] transport provider failed to construct', err?.message);
-      const offlineState = { code: 'transport_offline', role: 'unknown' };
-      storageStateRef.current = offlineState;
-      setStorageState(offlineState);
-    });
-
-    // Phase 28 — mount the auth session bridge inside this useEffect (Pitfall 1
-    // defense). On TOKEN_REFRESHED → forward the new JWT to realtime.setAuth so
-    // the live channel survives JWT expiry (silent refresh). On SIGNED_OUT →
-    // set loginExpired=true and surface the login_expiry_failure banner so the
-    // user gets the inline re-sign-in modal entry point.
-    //
-    // Mounting here (rather than App.jsx) keeps the 28-CONTEXT.md narrow waiver
-    // unexercised — App.jsx ends Phase 28 with only the existing Plan 27-05
-    // <YDocProvider> mount line.
-    let bridge = null;
-    try {
-      bridge = attachAuthSessionBridge({
-        supabase,
-        onSignedOut: () => {
-          // UX: silent refresh failed (password changed, account locked, refresh
-          // token revoked). The user sees the login_expiry_failure banner; clicking
-          // its action opens the inline ReSignInModal. Per CONTEXT.md "don't make
-          // them lose their place" — the user stays on this document page.
-          setLoginExpired(true);
-          setStorageState({ code: 'login_expiry_failure', role: 'unknown' });
-        },
-      });
-      bridgeRef.current = bridge;
-    } catch (err) {
-      // Auth client unavailable (SSR, test env, supabase client not configured).
-      // The CRDT-layer kill-switch in src/lib/collab/crdtFeatureFlag.js typically
-      // catches this earlier; the try/catch here is a defensive belt for any
-      // edge case where isCRDTEnabled() returns true but the bridge setup throws.
-      // eslint-disable-next-line no-console
-      console.warn('[YDocProvider] authSessionBridge unavailable', err?.message);
+      onRetired: () => {
+        providerRef.current = null;
+        setUndoState(null);
+        setAccessRevoked(true);
+        setLoginExpired(true);
+        setBannerDismissed(false);
+        setStorageState({ code: 'login_expiry_failure', role: 'unknown' });
+      },
+    }); } catch (error) {
+      setAccessRevoked(true);
+      setIsHydrating(false);
+      const state = { code: 'invalid_state', role: 'unknown', error };
+      storageStateRef.current = state;
+      setStorageState(state);
+      return undefined;
     }
-
-    // Web Locks election resolves async. Poll the role for the first few seconds
-    // so consumers can render leader/loser-aware UI without re-attaching listeners.
-    // UX: 100ms tick is fast enough that "leader" usually appears within 1-2 frames
-    // on a fresh mount; clears as soon as a definitive role is known.
-    const roleInterval = setInterval(() => {
-      const currentRole = handle.role();
-      setRole(currentRole);
-      if (currentRole !== 'unknown') {
-        clearInterval(roleInterval);
+    lifecycleRef.current = handle;
+    // Preserve older volatile bytes in an unattributed archive, never this
+    // actor's document. Both copies need a fresh disk check before close.
+    const closeReceipts = new WeakSet();
+    const receiptCurrent = receipt => !!receipt && closeReceipts.has(receipt)
+      && handle.isCurrent() && isScopeCurrent()
+      && handle.isLocalCloseReceiptCurrent(receipt.scoped)
+      && isLegacyRecoveryReceiptCurrent(receipt.recovery);
+    const runCloseCheck = async (run, options = {}) => {
+      const attempt = new AbortController();
+      const cancel = () => attempt.abort();
+      handle.signal.addEventListener('abort', cancel, { once: true });
+      options.signal?.addEventListener('abort', cancel, { once: true });
+      try {
+        if (handle.signal.aborted || options.signal?.aborted) cancel();
+        if (attempt.signal.aborted || !handle.isCurrent() || !isScopeCurrent()) throw new Error('The document account changed during close');
+        return await run({ ...options, signal: attempt.signal });
+      } finally {
+        cancel();
+        handle.signal.removeEventListener('abort', cancel);
+        options.signal?.removeEventListener('abort', cancel);
       }
-    }, 100);
+    };
+    const closeSession = Object.freeze({
+      scopeKey,
+      prepareLocalClose: options => runCloseCheck(async closeOptions => {
+        const [scoped, recovery] = await Promise.all([
+          handle.prepareLocalClose(closeOptions), prepareLegacyRecoveryClose(docId, closeOptions),
+        ]);
+        const receipt = Object.freeze({ scoped, recovery });
+        closeReceipts.add(receipt);
+        if (!receiptCurrent(receipt)) throw new Error('The local document changed during close');
+        return receipt;
+      }, options),
+      isLocalCloseReceiptCurrent: receiptCurrent,
+      validateLocalCloseReceipt: (receipt, options) => runCloseCheck(async closeOptions => {
+        if (!receiptCurrent(receipt)) throw new Error('The local document changed during close');
+        const valid = await Promise.all([
+          handle.validateLocalCloseReceipt(receipt.scoped, closeOptions),
+          validateLegacyRecoveryReceipt(receipt.recovery, closeOptions),
+        ]);
+        if (!valid.every(result => result === true) || !receiptCurrent(receipt)) throw new Error('The local document changed during close');
+        return true;
+      }, options),
+    });
+    setLocalCloseSession(closeSession);
+    const installTransportProvider = () => handle.restartTransport();
+    restartTransportProviderRef.current = installTransportProvider;
+    if (actorMatchesRef.current) {
+      installTransportProvider().catch(err => {
+        if (!handle.isCurrent()) return;
+        console.warn('[YDocProvider] transport provider failed to construct', err?.message);
+        const state = { code: 'transport_offline', role: 'unknown' };
+        storageStateRef.current = state;
+        setStorageState(state);
+      });
+    } else {
+      void handle.detach();
+      setAccessRevoked(true);
+    }
 
     // Hydration timeout fallback per 27-UI-SPEC.md — annotations must reach
     // opacity:1 within 500ms even if IndexeddbPersistence 'synced' never fires
@@ -568,11 +562,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     const hydrationFallback = setTimeout(() => setIsHydrating(false), 500);
 
     return () => {
-      cancelled = true;
       if (restartTransportProviderRef.current === installTransportProvider) {
         restartTransportProviderRef.current = null;
       }
-      clearInterval(roleInterval);
       clearTimeout(hydrationFallback);
       transportOfflineGenerationRef.current += 1;
       transportRetryGenerationRef.current += 1;
@@ -580,22 +572,36 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       clearTransportOfflineBannerTimer();
       clearTransportRetryResultTimer();
       try { handle.detach(); } catch { /* swallow — handle may already be torn down */ }
-      transportCoordinator.dispose();
-      try { bridge?.detach?.(); } catch { /* swallow */ }
-      try { bridgeRef.current?.detach?.(); } catch { /* swallow */ }
       providerRef.current = null;
-      bridgeRef.current = null;
-      releaseYDoc(docId);
       lifecycleRef.current = null;
     };
   }, [
     clearTransportOfflineBannerTimer,
     clearTransportRetryResultTimer,
-    docId,
+    docId, actorUserId, scopeKey, isScopeCurrent, sessionEpoch,
     markTransportOnline,
     scheduleTransportOfflineBanner,
     ydoc,
   ]);
+
+  useEffect(() => () => releaseYDoc(scopeKey), [scopeKey]);
+
+  useLayoutEffect(() => {
+    const runtime = lifecycleRef.current;
+    if (actorUserId === currentActorUserId) {
+      // Returning to the same account starts a fresh runtime around retained
+      // bytes without remounting the PDF viewer or relabeling another account.
+      if (runtime && !runtime.isCurrent()) setSessionEpoch(value => value + 1);
+      return;
+    }
+    void runtime?.detach();
+    providerRef.current = null;
+    setUndoState(null);
+    setAccessRevoked(true);
+    setLoginExpired(true);
+    setBannerDismissed(false);
+    setStorageState({ code: 'login_expiry_failure', role: 'unknown' });
+  }, [actorUserId, currentActorUserId]);
 
   // Sleep/wake revive — when the display sleeps, the OS suspends the realtime
   // websocket and its sockets go stale; on a naive wake the channel can stay
@@ -608,7 +614,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // reviving the Y.Doc connection rather than leaving it dead.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
+    const runtime = lifecycleRef.current;
     const reviveTransport = () => {
+      if (!runtime?.isCurrent() || !actorMatchesRef.current) return;
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
         // supabase.realtime.connect() reconnects the underlying socket if it
@@ -622,12 +630,16 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     window.addEventListener('focus', reviveTransport);
     window.addEventListener('online', reviveTransport);
     document.addEventListener('visibilitychange', reviveTransport);
-    return () => {
+    const cleanup = () => {
       window.removeEventListener('focus', reviveTransport);
       window.removeEventListener('online', reviveTransport);
       document.removeEventListener('visibilitychange', reviveTransport);
+      runtime?.signal?.removeEventListener('abort', cleanup);
     };
-  }, []);
+    runtime?.signal?.addEventListener('abort', cleanup, { once: true });
+    if (!runtime?.isCurrent()) cleanup();
+    return cleanup;
+  }, [sessionEpoch]);
 
   // Phase 29 — Per-user UndoManager mount effect (additive — Plan 29-04 narrow waiver).
   //
@@ -643,6 +655,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       return undefined;
     }
     let cancelled = false;
+    const runtime = lifecycleRef.current;
+    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
     let dispose = null;
 
     (async () => {
@@ -654,8 +668,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         // eslint-disable-next-line no-console
         console.warn('[YDocProvider] Phase 29 undoManager: failed to read auth session', err?.message);
       }
-      if (cancelled) return;
-      if (!userId) {
+      if (!current()) return;
+      if (userId !== actorUserId) {
         setUndoState(null);
         return;
       }
@@ -675,18 +689,22 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       });
       dispose = result.dispose;
 
-      if (cancelled) {
+      if (!current()) {
         try { dispose(); } catch { /* swallow */ }
         return;
       }
       setUndoState({ undoManager: result.undoManager, origin: result.origin, undoCtx: ctx });
     })();
 
-    return () => {
+    const cleanup = () => {
       cancelled = true;
       try { if (dispose) dispose(); } catch { /* swallow */ }
+      runtime?.signal?.removeEventListener('abort', cleanup);
     };
-  }, [ydoc, sessionId]);
+    runtime?.signal?.addEventListener('abort', cleanup, { once: true });
+    if (!runtime?.isCurrent()) cleanup();
+    return cleanup;
+  }, [ydoc, sessionId, actorUserId, sessionEpoch]);
 
   // Phase 29 — Plan 29-06: Remote-delete toast queue.
   //
@@ -722,6 +740,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     const yMap = ydoc.getMap('annotations');
 
     const handler = (event, transaction) => {
+      if (!isScopeCurrent()) return;
       // Skip our own writes — local-fabric / local-undo / local-redo all originate
       // from this client and the user already saw the deletion happen on screen.
       const src = transaction?.origin?.source;
@@ -796,7 +815,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // form inside this callback; the synchronous form is simpler, type-safe, and
   // avoids a microtask hop on every Restore click.
   const handleRestore = useCallback((toast) => {
-    if (!ydoc || !undoState?.undoCtx || !toast?.snapshotJSON) return;
+    if (!isScopeCurrent() || !ydoc || !undoState?.undoCtx || !toast?.snapshotJSON) return;
     const yMap = ydoc.getMap('annotations');
     const ctx = undoState.undoCtx;
     const originPayload = getLocalFabricOrigin(ctx);
@@ -896,12 +915,12 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       docId: docId || null,
       userId: userId || null,
       alreadyRanFor: backfillRanRef.current,
-      willRun: !!(ydoc && docId && userId && backfillRanRef.current !== `${docId}::${userId}`),
+      willRun: !!(ydoc && docId && userId && backfillRanRef.current !== `${docId}::${userId}::${sessionEpoch}`),
     }));
     if (!ydoc || !docId || !userId) return undefined;
     // Per-mount run-once gate. Track the (docId, userId) pair so a user-switch
     // (rare in this app but possible via re-auth) re-runs the backfill check.
-    const runKey = `${docId}::${userId}`;
+    const runKey = `${docId}::${userId}::${sessionEpoch}`;
     if (backfillRanRef.current === runKey) return undefined;
     backfillRanRef.current = runKey;
 
@@ -938,11 +957,13 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // until the Y.Doc has data — the read path is "render whichever side
     // has data; flip atomically when the Y.Doc populates").
     let cancelled = false;
+    const runtime = lifecycleRef.current;
+    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
     const kickoff = async () => {
       if (delayMs > 0) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
-      if (cancelled) return;
+      if (!current()) return;
       try {
         // DB-sync audit #6 — reuse the hydrate keyset rows for backfill.
         // The hydrate read is single-flighted per documentId (inFlightHydrateReads
@@ -971,11 +992,11 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           // runBackfill's own silent fall-through to the full flow).
           sealedSkip = false;
         }
-        if (cancelled) return;
+        if (!current()) return;
         if (!sealedSkip) {
           try {
             const hydrate = await loadAllNonSurveyMarkerAnnotations(docId);
-            if (!cancelled && hydrate && !hydrate.error && Array.isArray(hydrate.rawRows)) {
+            if (current() && hydrate && !hydrate.error && Array.isArray(hydrate.rawRows)) {
               existingHydrateRows = hydrate.rawRows;
             }
           } catch (hydrateErr) {
@@ -984,7 +1005,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             console.warn('[YDocProvider] backfill hydrate-row reuse read failed', hydrateErr?.message);
           }
         }
-        if (cancelled) return;
+        if (!current()) return;
         await runBackfill({
           ydoc,
           supabase,
@@ -993,6 +1014,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           sessionId,
           clientID: ydoc.clientID,
           originPayloadFactory,
+          isCurrent: current, signal: runtime.signal,
           existingHydrateRows,
           // Phase 31 Plan 04 — request the cutover seal. After the legacy
           // SELECT + import loop completes, crdtBackfill writes
@@ -1015,7 +1037,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         // multiple times, leaving 2-4 visually-identical strokes stacked on
         // top of each other. Always-run (idempotent) so re-imported
         // duplicates from a recovery loop also get trimmed.
-        if (!cancelled) {
+        if (current()) {
           try {
             dedupePdfImports(ydoc);
             // 2026-07-17 (dead-code pass 2): the 'crdt:dedupe-resync' window
@@ -1034,7 +1056,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         // eslint-disable-next-line no-console
         console.warn('[YDocProvider] backfill kickoff failed', err?.message);
       } finally {
-        if (!cancelled && typeof window !== 'undefined') {
+        if (current() && typeof window !== 'undefined') {
           window.__crdtBackfillDone = true;
         }
       }
@@ -1044,7 +1066,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     return () => {
       cancelled = true;
     };
-  }, [ydoc, docId, undoState?.undoCtx?.userId, sessionId]);
+  }, [ydoc, docId, undoState?.undoCtx?.userId, sessionId, sessionEpoch]);
 
   // Phase 30 — drainQueue tick (1Hz).
   //
@@ -1059,12 +1081,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     const userId = undoState?.undoCtx?.userId;
     if (!ydoc || !userId) return undefined;
     let cancelled = false;
+    const runtime = lifecycleRef.current;
+    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
     const handlers = createQueueRetryHandlers({
       documentId: docId, userId, ydoc,
       upsertAnnotation: upsertFabricAnnotation,
       deleteAnnotation,
       beforeRetry: (_payload, side, annoId) => {
-        if (cancelled) throw new Error('Sync queue document was closed');
+        if (!current()) throw new Error('Sync queue document was closed');
         if (side === 'legacy' && typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
           throw new Error('test-seam: __crdtForceLegacyFail');
         }
@@ -1074,26 +1098,30 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       },
     });
     const onStorageFailure = (event) => {
-      if (cancelled || event.detail?.userId !== userId) return;
+      if (!current() || event.detail?.userId !== userId) return;
       const state = { code: event.detail.code, error: event.detail.error };
       storageStateRef.current = state;
       setStorageState(state);
       setBannerDismissed(false);
     };
     window.addEventListener(STORAGE_FAILURE_EVENT, onStorageFailure);
-    const retry = () => drainQueue({
-      userId, documentId: docId, ...handlers, shouldContinue: () => !cancelled,
-    }).catch(() => { /* storage failure event shows the banner; pending work stays queued */ });
+    const retry = () => current() ? drainQueue({
+      userId, documentId: docId, ...handlers, shouldContinue: current,
+    }).catch(() => { /* storage failure event shows the banner; pending work stays queued */ }) : Promise.resolve();
     retryDualWriteQueueRef.current = retry;
     const handle = setInterval(retry, 1_000);
 
-    return () => {
+    const cleanup = () => {
       cancelled = true;
       clearInterval(handle);
       window.removeEventListener(STORAGE_FAILURE_EVENT, onStorageFailure);
       if (retryDualWriteQueueRef.current === retry) retryDualWriteQueueRef.current = null;
+      runtime?.signal?.removeEventListener('abort', cleanup);
     };
-  }, [ydoc, docId, undoState?.undoCtx?.userId]);
+    runtime?.signal?.addEventListener('abort', cleanup, { once: true });
+    if (!runtime?.isCurrent()) cleanup();
+    return cleanup;
+  }, [ydoc, docId, undoState?.undoCtx?.userId, sessionEpoch]);
 
   // Phase 30 — UI hook for banner gate + overlay.
   // Polls localStorage queue state on a 1s tick (Plan 30-05 hook).
@@ -1148,6 +1176,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   useEffect(() => {
     if (!ydoc || !docId) return undefined;
     let cancelled = false;
+    const runtime = lifecycleRef.current;
+    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
     (async () => {
       // Resolve viewer identity. Audit silently skips when no session.
       let viewerId = null;
@@ -1158,8 +1188,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         // eslint-disable-next-line no-console
         console.warn('[Phase35][cleanup] auth session lookup failed', err?.message);
       }
-      if (cancelled) return;
-      if (!viewerId) {
+      if (!current()) return;
+      if (viewerId !== actorUserId) {
         setCleanupResidueIds([]);
         return;
       }
@@ -1178,7 +1208,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         // eslint-disable-next-line no-console
         console.warn('[Phase35][cleanup] documents owner lookup threw', err?.message);
       }
-      if (cancelled) return;
+      if (!current()) return;
 
       // Per CONTEXT.md: collaborators never see the banner.
       if (!isOwner(viewerId, documentOwnerId)) {
@@ -1239,7 +1269,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         setCleanupResidueIds([]);
         return;
       }
-      if (cancelled) return;
+      if (!current()) return;
       if (result.error) {
         // eslint-disable-next-line no-console
         console.warn('[Phase35][cleanup] loadAllNonSurveyMarkerAnnotations failed', result.error?.message);
@@ -1287,23 +1317,26 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
         documentId: docId,
         localUserDeletedSet,
       });
-      if (cancelled) return;
+      if (!current()) return;
       setCleanupResidueIds(auditResult.residueIds);
     })();
     return () => { cancelled = true; };
-  }, [ydoc, docId]);
+  }, [ydoc, docId, actorUserId, sessionEpoch]);
 
   // Phase 35 Plan 05 — banner action handlers.
 
+  const cleanupRuntime = lifecycleRef.current;
   const handleCleanupBannerAction = useCallback(async () => {
     // UX: 'Clean up now' (or 'Clean up all N' from the Review panel).
     // Fires deleteAnnotations on the audited residueIds. On success, mark
     // the document as dismissed (so the banner doesn't re-fire on next
     // open if a new audit somehow finds the same ids), clear local state,
     // close any open Review panel.
-    if (!cleanupResidueIds || cleanupResidueIds.length === 0) return;
+    const runtime = cleanupRuntime;
+    if (runtime !== lifecycleRef.current || !runtime?.isCurrent() || !isScopeCurrent() || !cleanupResidueIds || cleanupResidueIds.length === 0) return;
     try {
       const result = await deleteAnnotations(docId, cleanupResidueIds);
+      if (runtime !== lifecycleRef.current || !runtime.isCurrent() || !isScopeCurrent()) return;
       if (result?.success) {
         const dismissed = readDismissedDocIds();
         dismissed.add(docId);
@@ -1318,7 +1351,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       // eslint-disable-next-line no-console
       console.warn('[Phase35][cleanup] deleteAnnotations threw', err?.message || String(err));
     }
-  }, [cleanupResidueIds, docId]);
+  }, [cleanupResidueIds, docId, cleanupRuntime, isScopeCurrent]);
 
   const handleCleanupBannerReview = useCallback(() => {
     // UX per checker W5: open the actual Review surface
@@ -1360,7 +1393,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // Phase 28 additions — exposed via the same context surface so consumers
     // (ReadOnlyGate, future sync-chip in Phase 33, etc.) can read without
     // additional providers.
-    accessRevoked,
+    accessRevoked: accessRevoked || !actorMatchesRef.current,
+    localCloseRequired: true,
+    localCloseSession,
     // 2026-07-01 — effective document role ('owner'|'editor'|'viewer'|null).
     // ReadOnlyGate reads this to engage the view-only presentation for
     // role === 'viewer'; null fails open to read-write.
@@ -1371,15 +1406,9 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     reSignInModalOpen,
     setReSignInModalOpen,
     setLoginExpired,
-    // UX: closeDocument is caller-provided so the consumer (App.jsx-level
-    // wrapper) decides what "close this document" means in its own routing
-    // context. Default falls back to history.back() — the closest thing to
-    // "go back where I came from" without coupling to a specific routing lib.
-    closeDocument: closeDocument || (() => {
-      if (typeof window !== 'undefined') {
-        try { window.history.back(); } catch { /* swallow */ }
-      }
-    }),
+    // Closing must use the shell's save checks. Never navigate away when a
+    // caller has not supplied a checked close path.
+    closeDocument: closeDocument || (() => ({ saved: false, reason: 'A checked document close is unavailable.' })),
     // Phase 28 — getOriginContext is the canonical factory Phase 29's
     // Fabric ↔ Y.Map binding will call inside ydoc.transact(fn, origin).
     // Returns a frozen origin payload with userId from the current Supabase
@@ -1399,10 +1428,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // (boot before auth resolved); that path is non-undoable but
     // preserves the previous defensive shape.
     getOriginContext: () => {
-      const userIdResolved = undoState?.undoCtx?.userId
-        ?? supabase?.auth?.session?.()?.data?.session?.user?.id
-        ?? supabase?.auth?.user?.()?.id
-        ?? null;
+      const userIdResolved = isScopeCurrent() ? actorUserId : null;
       const deviceIdResolved = undoState?.undoCtx?.deviceId ?? getDeviceId();
       const clientIDResolved = undoState?.undoCtx?.clientID ?? ydoc?.clientID;
       if (userIdResolved) {
@@ -1440,7 +1466,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     isHydrating,
     storageState,
     role,
-    accessRevoked,
+    accessRevoked, currentActorUserId, actorUserId, localCloseSession, isScopeCurrent,
     docRole,
     transportState,
     isDocShared,
@@ -1463,7 +1489,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   useEffect(() => {
     if (!docId) { setIsDocShared(false); return undefined; }
     let cancelled = false;
+    const runtime = lifecycleRef.current;
+    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
     const refreshSharedState = async () => {
+      if (!current()) return;
       try {
         // "Shared" = an explicit active row for another user, or my own
         // collaborator row when I am not the owner. The latter matters because
@@ -1475,14 +1504,14 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           const session = await getSupabaseSession('YDocProvider.isDocShared');
           myId = session?.user?.id ?? null;
         } catch { myId = null; }
-        if (!myId) { if (!cancelled) setIsDocShared(null); return; }
+        if (!current() || myId !== actorUserId) { if (current()) setIsDocShared(null); return; }
         const { data, error } = await supabase
           .from('document_collaborators')
           .select('user_id')
           .eq('document_id', docId)
           .eq('status', 'active');
         if (error) {
-          if (!cancelled) setIsDocShared(null);
+          if (current()) setIsDocShared(null);
           return;
         }
         const activeCollaboratorUserIds = (data || [])
@@ -1494,22 +1523,23 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           currentRole: null,
         });
         if (hasExplicitRemote) {
-          if (!cancelled) setIsDocShared(true);
+          if (current()) setIsDocShared(true);
           return;
         }
         // Owners are not guaranteed to have a document_collaborators row. If
         // my row is the only row, an editor/viewer still has the row-less owner
         // to sync with; an owner with only their own row does not.
         const currentRole = await fetchMyDocumentRole(supabase, docId);
-        if (!cancelled) {
+        if (current()) {
           setIsDocShared(hasRemoteDocumentCollaborator({
             activeCollaboratorUserIds,
             currentUserId: myId,
             currentRole,
           }));
         }
-      } catch { if (!cancelled) setIsDocShared(null); }
+      } catch { if (current()) setIsDocShared(null); }
     };
+    if (!current()) return undefined;
     void refreshSharedState();
 
     const channelSuffix = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -1528,12 +1558,16 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       .subscribe();
     const refreshTimer = setInterval(refreshSharedState, 30_000);
 
-    return () => {
+    const cleanup = () => {
       cancelled = true;
       clearInterval(refreshTimer);
       try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
+      runtime?.signal?.removeEventListener('abort', cleanup);
     };
-  }, [docId]);
+    runtime?.signal?.addEventListener('abort', cleanup, { once: true });
+    if (!runtime?.isCurrent()) cleanup();
+    return cleanup;
+  }, [docId, actorUserId, sessionEpoch]);
 
   // 2026-07-01 — resolve the caller's effective role once per document open.
   // Fail-open: any error → null → the read-write presentation stands (the
@@ -1542,12 +1576,15 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   useEffect(() => {
     if (!docId) { setDocRole(null); return undefined; }
     let cancelled = false;
+    const runtime = lifecycleRef.current;
+    const current = () => !cancelled && actorMatchesRef.current && runtime?.isCurrent() === true;
     (async () => {
+      if (!current()) return;
       const resolved = await fetchMyDocumentRole(supabase, docId);
-      if (!cancelled) setDocRole(resolved);
+      if (current()) setDocRole(resolved);
     })();
     return () => { cancelled = true; };
-  }, [docId]);
+  }, [docId, actorUserId, sessionEpoch]);
 
   // Banner gates: must have a non-ok storage state AND the user has not dismissed it this session.
   // CONTEXT.md forbids silent fallback — every non-ok code surfaces, NB: the banner component itself
@@ -1559,6 +1596,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
 
   return (
     <YDocContext.Provider value={value}>
+      <LegacyYDocRecoveryNotice key={`${scopeKey}:${sessionEpoch}`} documentId={docId}
+        isActive={isActive && currentActorUserId === actorUserId} />
       {showBanner && (
         <StorageFailureBanner
           code={storageState.code}

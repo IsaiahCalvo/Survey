@@ -650,6 +650,24 @@ test('startup probe reads only schema metadata, never cursor/value/count/write A
   assert.equal(full.indexedDB.stores.find(store => store.name === 'updates').records.length, 2);
 });
 
+test('startup metadata probe honors cancellation without creating or changing a source', async () => {
+  const indexedDB = new IDBFactory();
+  const id = crypto.randomUUID();
+  const before = new AbortController(); before.abort();
+  await assert.rejects(probeLegacyYDocRecovery(id, { indexedDB, signal: before.signal }), { name: 'AbortError' });
+  assert.deepEqual(await indexedDB.databases(), []);
+  await seed(indexedDB, id);
+  const original = await inspectLegacyYDocRecovery(id, { indexedDB });
+  const during = new AbortController();
+  const delayed = { open: (...args) => {
+    const request = indexedDB.open(...args);
+    request.addEventListener('success', () => during.abort());
+    return request;
+  } };
+  await assert.rejects(probeLegacyYDocRecovery(id, { indexedDB: delayed, signal: during.signal }), { name: 'AbortError' });
+  assert.deepEqual((await inspectLegacyYDocRecovery(id, { indexedDB })).indexedDB, original.indexedDB);
+});
+
 test('startup probe preserves failed-source status beside present registry or database state', async t => {
   const id = crypto.randomUUID();
   const doc = getOrCreateYDoc(id);

@@ -10357,6 +10357,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     transportState: yjsTransportState,
     isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
+    localCloseRequired: yjsLocalCloseRequired = false,
+    localCloseSession: yjsLocalCloseSession = null,
   } = useYDoc();
   const [devAccessRevoked, setDevAccessRevoked] = useState(false);
   useEffect(() => {
@@ -21845,13 +21847,55 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return { saved: true, revision };
     } catch { return { saved: false }; }
   };
+  const quitCloseChecksRef = useRef(new Set());
+  useLayoutEffect(() => () => {
+    // A remote lock or session change can arrive while the UI is inert.
+    // Stop pending close writes; already committed bytes cannot be undone.
+    for (const controller of quitCloseChecksRef.current) controller.abort();
+    quitCloseChecksRef.current.clear();
+  }, [documentLocked, yjsLocalCloseSession, yjsLocalCloseRequired]);
+  const runQuitCloseCheck = async (run, options = {}) => {
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    quitCloseChecksRef.current.add(controller);
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      if (options.signal?.aborted) cancel();
+      if (controller.signal.aborted) throw new Error('The document close check was canceled. Keep it open and retry.');
+      const result = await run({ ...options, signal: controller.signal });
+      if (controller.signal.aborted) throw new Error('The document close check was canceled. Keep it open and retry.');
+      return result;
+    } finally {
+      options.signal?.removeEventListener('abort', cancel);
+      quitCloseChecksRef.current.delete(controller);
+    }
+  };
   quitSaveHandlerRef.current = { saveLocal: saveLocalBeforeQuit,
+    prepareClose: async options => {
+      if (!yjsLocalCloseRequired) return null;
+      const session = yjsLocalCloseSession;
+      if (!session) throw new Error('The local collaboration store is still loading. Keep this document open and retry.');
+      const readOnly = documentLocked;
+      const receipt = await runQuitCloseCheck(closeOptions => session.prepareLocalClose({ ...closeOptions, readOnly }), options);
+      return { session, receipt, readOnly };
+    },
+    isCloseCurrent: proof => !yjsLocalCloseRequired ? proof === null
+      : !!proof && proof.session === yjsLocalCloseSession && proof.readOnly === documentLocked
+        && proof.session.isLocalCloseReceiptCurrent(proof.receipt),
+    validateClose: async (proof, options) => {
+      if (!yjsLocalCloseRequired) return proof === null;
+      if (!proof || proof.session !== yjsLocalCloseSession || proof.readOnly !== documentLocked) return false;
+      return runQuitCloseCheck(closeOptions => proof.session.validateLocalCloseReceipt(proof.receipt, closeOptions), options);
+    },
     getRevision: () => getQuitSaveBlockReason() ? null : getQuitSaveRevision() };
   useEffect(() => {
     if (!onRegisterQuitSave || !tabId) return;
     return onRegisterQuitSave(tabId, {
       saveLocal: () => quitSaveHandlerRef.current.saveLocal(),
       getRevision: () => quitSaveHandlerRef.current.getRevision(),
+      prepareClose: options => quitSaveHandlerRef.current.prepareClose(options),
+      isCloseCurrent: proof => quitSaveHandlerRef.current.isCloseCurrent(proof),
+      validateClose: (proof, options) => quitSaveHandlerRef.current.validateClose(proof, options),
     });
   }, [onRegisterQuitSave, tabId]);
 

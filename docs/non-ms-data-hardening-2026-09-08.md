@@ -617,6 +617,65 @@ wiring, all-tab close integration, and post-integration multi-user/offline tests
 remain required. No Microsoft work, live schema change, account creation,
 deployment, or push occurred in this slice.
 
+## Provider and close integration (local work in progress, September 8)
+
+The implementation worktree now mounts the actor-scoped legacy session from
+AppShell. This supersedes the unwired-helper status above, but is not a release
+claim. The main annotation store remains separately actor-scoped; cloud IDs and
+Microsoft paths are unchanged.
+
+- Account retirement seals old callbacks and transport. Returning to the same
+  actor retries canceled backfill without replacing the retained document. A
+  retained cleanup callback cannot adopt the new session. Mounted tests caught
+  and now cover both faults.
+- Tab X, native quit, and the re-sign-in close action use the same local-save
+  checks. Optional extra close proofs must provide the complete contract.
+  Fresh checks cover the exact participant, tab, file, actor and revision.
+  Pointer/text-edit vetoes, focused-input blur and overlapping freeze ownership
+  apply to tab and native close. Remote lock/session changes abort pending proof
+  checks; already committed writes cannot be undone.
+- The actual viewer now requires both the scoped Yjs proof and a separate old
+  raw-registry recovery proof. Locked documents use read-only checks. An absent
+  raw registry needs no archive write. Present unattributed data is saved in
+  `survey-legacy-recovery-v1/rawRegistrySnapshots`, outside all actor databases.
+  Content-addressed immutable records avoid repeated identical copies. Close
+  requires transaction completion and a fresh read, not a download or cached
+  receipt. Changes, replacement, quota, missing storage or cancellation veto it.
+- The recovery notice reads metadata on open. Explicit export includes raw
+  sources and saved archives, with partial failures labeled. The owner remains
+  unknown; there is no auto-import, actor assignment, raw-source deletion or
+  cloud-sync claim. Archive list reads default to 20 records and 128 MiB; a
+  larger history needs a later paged export path. No archive purge was added.
+
+Final frozen verification: `npm test` exited 0 with 4,512 tests (4,458 pass,
+54 skip, zero fail/cancel). All 128 focused provider/recovery/close checks and
+32 lock/local-save checks passed. Build, graph update and diff check passed.
+Actual Electron passed all seven save/quit checks
+again, including quota veto and focused-field process restart.
+
+Rendered Playwright checks: the real no-auth PDF form route at port 5218 retained
+the typed value after tab close and reopen. Injected local-storage quota failure
+kept the tab/value and showed a save error. A synthetic recovery archive mounted
+in the real viewer remained discoverable after removal of its test-owned memory
+copy and exported successfully. Its notice fit 1440x1000 and 390x844 viewports,
+with zero page errors in that isolated check. An earlier UI harness attempt used
+a second React instance; importing the app's actual Vite runtime resolved that
+test setup fault. This is not live authenticated provider proof.
+
+Private evidence: `/tmp/survey-scoped-provider-tabclose-20260908.png`,
+`/tmp/survey-recovery-archive-desktop-20260908.png`,
+`/tmp/survey-recovery-archive-mobile-20260908.png`; frozen verification logs use
+`/tmp/survey-provider-archive-frozen-` plus `tests`, `build`, or `graph`, and
+`-20260908.log`. Native log:
+`/tmp/survey-scoped-archive-final-electron-20260908.log`.
+
+Required next: real leased two-user collaboration/offline and account-transition
+checks against this integrated source, plus review of recovery/history retention
+and browser shutdown limits. The earlier FIX20 run predates this wiring. No new
+live schema change, account creation, Microsoft testing, push or deploy occurred.
+Do not claim all optimization opportunities exhausted or all regressions ruled
+out. The active goal remains open.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

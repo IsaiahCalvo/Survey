@@ -58,6 +58,32 @@ export function snapshotRegisteredYDoc(documentId) {
   };
 }
 
+/** Capture without acquiring a ref. The private baseline cannot be changed by
+ * a caller editing the returned snapshot. A replacement doc never inherits it. */
+export function captureRegisteredYDoc(documentId) {
+  const entry = REGISTRY.get(documentId);
+  const doc = entry?.doc;
+  const snapshot = snapshotRegisteredYDoc(documentId);
+  const baseline = snapshotRegisteredYDoc(documentId);
+  const bytesEqual = (a, b) => a === null || b === null ? a === b
+    : a.length === b.length && a.every((value, index) => value === b[index]);
+  return Object.freeze({ snapshot, isCurrent: () => {
+    try {
+      if (REGISTRY.get(documentId) !== entry || entry?.doc !== doc || doc?.isDestroyed) return false;
+      if (!entry) return true;
+      const live = snapshotRegisteredYDoc(documentId);
+      return live.metadata.guid === baseline.metadata.guid
+        && live.metadata.clientId === baseline.metadata.clientId
+        && live.metadata.createdAt === baseline.metadata.createdAt
+        && JSON.stringify(live.metadata.rootNames) === JSON.stringify(baseline.metadata.rootNames)
+        && bytesEqual(live.update, baseline.update)
+        && bytesEqual(live.pending.structs, baseline.pending.structs)
+        && bytesEqual(live.pending.deleteSet, baseline.pending.deleteSet)
+        && JSON.stringify(live.pending.missing) === JSON.stringify(baseline.pending.missing);
+    } catch { return false; }
+  } });
+}
+
 /**
  * Get or create the Y.Doc for a given documentId.
  * Returns the SAME instance on subsequent calls — Y.Doc is long-lived, never destroyed on PDF switch.

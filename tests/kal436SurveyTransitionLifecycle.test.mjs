@@ -15,6 +15,10 @@ const YDOC_PROVIDER_SOURCE = readFileSync(
   new URL('../src/components/collab/YDocProvider.jsx', import.meta.url),
   'utf8',
 );
+const YDOC_SESSION_SOURCE = readFileSync(
+  new URL('../src/lib/collab/legacyYDocSession.js', import.meta.url),
+  'utf8',
+);
 
 test('KAL-436: mode, template, and category transitions do not reset the open PDF', () => {
   const templateHandler = PDF_VIEWER_SOURCE.match(
@@ -73,7 +77,21 @@ test('KAL-436: joined-channel reconciliation rejects stale offline status', () =
   );
   assert.match(
     YDOC_PROVIDER_SOURCE,
-    /createTransportProviderCoordinator\(\{[\s\S]*?getCurrentProvider: \(\) => providerRef\.current,[\s\S]*?createProvider:/,
+    /attachLegacyYDocSession\(\{\s*ydoc, documentId: docId, actorUserId, supabase,/,
+  );
+  assert.match(
+    YDOC_PROVIDER_SOURCE,
+    /const installTransportProvider = \(\) => handle\.restartTransport\(\);/,
+  );
+  // Retry still uses the same provider coordinator; ownership moved into the
+  // actor-bound session so an old account cannot restart a channel.
+  assert.match(
+    YDOC_SESSION_SOURCE,
+    /createTransportProviderCoordinator\(\{\s*getCurrentProvider: \(\) => provider,\s*setCurrentProvider: \(next\) => \{ provider = next; \},\s*createProvider:/,
+  );
+  assert.match(
+    YDOC_SESSION_SOURCE,
+    /restartTransport: \(\) => isCurrent\(\) \? coordinator\.restart\(\) : Promise\.resolve\(null\)/,
   );
   assert.match(
     YDOC_PROVIDER_SOURCE,

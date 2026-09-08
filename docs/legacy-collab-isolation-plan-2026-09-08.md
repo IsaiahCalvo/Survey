@@ -347,3 +347,12 @@ Required new proof before close integration:
 
 This close contract is proposed, not implemented. Recovery read/export limits,
 the explicit recovery UI and full provider callback wiring also remain required.
+
+## September 8 integration update
+
+The prior paragraphs describe earlier checkpoints. The implementation worktree
+now wires the scoped session, combined scoped/recovery close proof, recovery UI,
+and tab/native close gates. See the Provider and close integration section in
+`non-ms-data-hardening-2026-09-08.md` for actual evidence and remaining gates.
+Local mounted and rendered checks do not replace the required new leased
+two-user collaboration/offline run. Nothing in this update claims a release.

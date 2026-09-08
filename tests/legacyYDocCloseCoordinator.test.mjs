@@ -292,3 +292,32 @@ test('invalid validation deadlines reject before invoking storage verification',
   }
   assert.equal(reads, 0);
 });
+
+test('locked close prepares by reading existing storage without local or peer writes', async t => {
+  let reads = 0;
+  const h = setup(t, { verifySnapshot: async () => { reads++; } });
+  h.open('leader', 'leader');
+  const follower = h.open('follower', 'follower');
+  const receipt = await follower.coordinator.prepareLocalClose({ readOnly: true });
+  assert.equal(follower.coordinator.isLocalCloseReceiptCurrent(receipt), true);
+  assert.equal(await follower.coordinator.validateLocalCloseReceipt(receipt), true);
+  assert.equal(reads, 2);
+  assert.equal(h.appends.length, 0);
+  assert.equal(h.frames.length, 0);
+});
+
+test('locked close does not repair missing data with a write and rejects late edits', async t => {
+  const missing = Object.assign(new Error('missing'), { code: 'LEGACY_CLOSE_INCOMPLETE' });
+  const pending = deferred();
+  let reads = 0;
+  const h = setup(t, { verifySnapshot: () => { if (++reads === 1) throw missing; return pending.promise; } });
+  const leader = h.open('leader', 'leader');
+  await assert.rejects(leader.coordinator.prepareLocalClose({ readOnly: true }), error => error === missing);
+  const preparing = leader.coordinator.prepareLocalClose({ readOnly: true });
+  const rejected = assert.rejects(preparing, { code: 'LOCAL_CLOSE_STALE' });
+  leader.ydoc.getMap('annotations').set('later', 1);
+  pending.resolve();
+  await rejected;
+  assert.equal(h.appends.length, 0);
+  assert.equal(h.frames.some(frame => frame.type === 'close-request'), false);
+});

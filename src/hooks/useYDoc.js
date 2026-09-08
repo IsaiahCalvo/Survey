@@ -15,6 +15,8 @@ const NULL_VALUE = Object.freeze({
   storageState: null,
   role: 'unknown',
   isCRDTEnabled: false,
+  localCloseRequired: false,
+  localCloseSession: null,
   dismissBanner: () => {},
   // Phase 28 fields (kept on the null shape so callers can safely destructure
   // without branching on "is the provider mounted").

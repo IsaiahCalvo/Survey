@@ -37,7 +37,7 @@ import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
@@ -743,8 +743,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
-  const { register: registerQuitSave, confirmedRef: nativeExitConfirmedRef } = useNativeQuitSave(tabs);
+  const { register: registerQuitSave, prepareTabClose, confirmedRef: nativeExitConfirmedRef } = useNativeQuitSave(tabs);
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
+  const closeViewRef = useRef(null);
+  closeViewRef.current = { tabs, activeTabId };
+  const pendingTabClosesRef = useRef(new Set());
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
@@ -1103,18 +1106,33 @@ export default function App({ devPreviewReturnTab = null }) {
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
-  const handleTabClose = (tabId) => {
+  const handleTabClose = async (tabId) => {
     // Prevent closing the home tab
     if (tabId === HOME_TAB_ID) return;
 
-    const tabIndex = tabs.findIndex(t => t.id === tabId);
+    if (pendingTabClosesRef.current.has(tabId)) return;
+    const requested = closeViewRef.current.tabs.find(tab => tab.id === tabId);
+    if (!requested) return;
+    pendingTabClosesRef.current.add(tabId);
+    let result;
+    try { result = await prepareTabClose(tabId); }
+    catch (error) { result = { saved: false, reason: error?.message }; }
+    finally { pendingTabClosesRef.current.delete(tabId); }
+    if (result?.saved !== true) {
+      showToast(result?.reason || 'This document could not be saved locally. Keep it open and retry Save.', 'error');
+      return;
+    }
+    const latest = closeViewRef.current;
+    const tabIndex = latest.tabs.findIndex(tab => tab.id === tabId
+      && tab.file === requested.file && tab.actorUserId === requested.actorUserId);
     if (tabIndex === -1) return;
-
-    const newTabs = tabs.filter(t => t.id !== tabId);
-    setTabs(newTabs);
+    const newTabs = latest.tabs.filter(tab => tab.id !== tabId);
+    flushSync(() => {
+    setTabs(previous => previous.filter(tab => tab.id !== tabId
+      || tab.file !== requested.file || tab.actorUserId !== requested.actorUserId));
 
     // If closing the active tab, switch to another tab or go back to home
-    if (tabId === activeTabId) {
+    if (tabId === latest.activeTabId) {
       if (newTabs.length > 1) { // More than just home tab
         // Switch to the tab that was at the same position, or the last tab (excluding home)
         const pdfTabs = newTabs.filter(t => !t.isHome);
@@ -1137,6 +1155,7 @@ export default function App({ devPreviewReturnTab = null }) {
         setCurrentView('dashboard');
       }
     }
+    });
   };
 
   const handleTabReorder = (reorderedTabs) => {
@@ -2925,7 +2944,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     display: isVisible ? 'block' : 'none'
                   }}
                 >
-                  <YDocProvider docId={tab.file?.id} isActive={isVisible}>
+                  <YDocProvider docId={tab.file?.id} actorUserId={tab.actorUserId}
+                    currentActorUserId={user?.id || null} isActive={isVisible}
+                    closeDocument={() => handleTabClose(tab.id)}>
                     {/* KAL-49 — document lock banner. Mounted as a sibling
                         inside YDocProvider so it sees the same per-tab Y.Doc
                         scope (the lock state is a document-level concept and
