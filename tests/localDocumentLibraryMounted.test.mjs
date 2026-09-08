@@ -70,6 +70,8 @@ async function mount(t, { user = null, rows = [], listOverride = null, isActive 
     } },
   });
   const cloudWrite = () => { state.cloudWrites++; throw new Error('cloud write forbidden'); };
+  const documentRecovery = { busy: false, rows: empty, isCurrent: () => !!state.user && state.isActive,
+    start: cloudWrite, retry: cloudWrite, discard: cloudWrite, refresh: noop };
   const projectHooks = { projects: empty, templates: empty, initialLoading: false, refetch: noop };
   const Dashboard = await load('Dashboard.jsx', {
     react: React, SurveyHub: { default: SurveyHub }, localDocumentStore: store,
@@ -85,6 +87,7 @@ async function mount(t, { user = null, rows = [], listOverride = null, isActive 
     },
     useSubscriptionLimits: { useSubscriptionLimits: () => ({}) },
     useProjectUploadRecovery: { useProjectUploadRecovery: () => ({ busy: false, rows: [] }) },
+    useDocumentUploadRecovery: { useDocumentUploadRecovery: () => documentRecovery },
     dialogPrompts: { useConfirmDialog: () => [noop, null], usePromptDialog: () => [noop, null] },
     hubInitialLoadingState: { resolveHubInitialLoading: () => ({}) },
     supabaseClient: { supabase: { from: cloudWrite } },
@@ -179,7 +182,16 @@ test('native local picker saves a managed copy and never forwards the original p
 
 test('cloud Upload remains separate and still requires sign-in', async t => {
   const h = await mount(t);
+  const input = document.querySelector('input[type="file"]:not([data-local-pdf-input]):not([multiple])');
+  let pickerOpens = 0; input.click = () => { pickerOpens++; };
   await h.click('Cloud'); await h.click('Cloud Upload');
+  assert.equal(h.state.auth, 1); assert.equal(h.state.imports.length, 0);
+  assert.equal(pickerOpens, 0, 'signed-out upload asks for auth before opening the picker');
+  assert.equal(h.state.cloudWrites, 0); assert.deepEqual(h.state.selected, []);
+});
+
+test('direct signed-out cloud file-change still cannot enter local import or cloud writes', async t => {
+  const h = await mount(t);
   const input = document.querySelector('input[type="file"]:not([data-local-pdf-input]):not([multiple])');
   Object.defineProperty(input, 'files', { value: [new File(['%PDF'], 'cloud.pdf', { type: 'application/pdf' })] });
   await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })));

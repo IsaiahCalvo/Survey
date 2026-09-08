@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { preparePdfUpload, readPdfPageCount, mapUploadsBounded } from '../src/home/pdfUploadWork.js';
+import { resolveIncomingUpload } from '../src/utils/incomingFileResolver.js';
 
 test('upload snapshot is owned before hashing and retains metadata before the read await', async () => {
   const source = new File(['original source bytes'], 'source.pdf', { type: 'application/pdf', lastModified: 1234 });
@@ -54,67 +55,239 @@ test('upload preparation stops on read/size/hash failure without returning a usa
   await assert.rejects(preparePdfUpload(file, { readBlobAsArrayBuffer: blob => blob.arrayBuffer(), computeContentSha256: async () => { throw new Error('hash failed'); } }), /hash failed/);
 });
 
-for (const alias of [false, true]) {
-  test(`actual browser upload binds ${alias ? 'alias healing' : 'preview, upload and parser'} to the bytes read before hashing`, async () => {
-    const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
-    const start = source.indexOf('const handleFileUpload = async');
-    const end = source.indexOf('// Create Project flow', start);
-    assert.ok(start > 0 && end > start);
-    const original = new File(['old physical bytes'], 'picked.pdf', { type: 'application/pdf', lastModified: 1234 });
-    const event = { target: { files: [original], value: 'selected' } };
-    const files = []; const events = []; const errors = []; let active = 0; let reads = 0;
-    const dependencies = {
-      preparePdfUpload, user: { id: 'actor-a' }, uploadTargetProjectRef: { current: null }, selectedProjectId: null, activeSection: 'documents',
-      readBlobAsArrayBuffer: async blob => { reads++; return blob.arrayBuffer(); },
-      computeContentSha256: async bytes => {
-        assert.equal(new TextDecoder().decode(bytes), 'old physical bytes');
-        bytes.fill(0);
-        original.arrayBuffer = async () => new TextEncoder().encode('new physical bytes').buffer;
-        Object.defineProperty(original, 'name', { value: 'changed.pdf' });
-        await Promise.resolve(); return 'old-hash';
-      },
-      confirmSameNameDifferentContent: async input => { assert.equal(input.fileName, 'picked.pdf'); return { proceed: true }; },
-      createSupabaseDocument: async input => {
-        assert.equal(input.content_sha256, 'old-hash'); assert.equal(input.file_size, 18);
-        return { ...input, id: 'resolved', name: alias ? 'existing-name.pdf' : input.name, file_path: 'actor-a/legacy.pdf', page_count: 2 };
-      },
-      replaceStorageDocument: async (file, path) => { files.push(['upload', file]); events.push(['replace', path]); return path; },
-      readPdfPageCount: async file => { files.push(['parser', file]); return 2; },
-      loadPdfjs: () => assert.fail('parser is stubbed'),
-      onDocumentSelect: file => files.push(['viewer', file]),
-      setDocuments: update => { const rows = update([]); files.push(['list', rows[0].file]); },
-      setActiveUploads: update => { active = update(active); },
-      archiveReplacedDocument: async () => events.push(['archive']),
-      maybeOfferAlias: async () => events.push(['alias']), handleDocumentClick: async () => events.push(['open-existing']),
-      refetchAllDocuments: () => events.push(['refresh']), updateSupabaseDocument: async () => {},
-      setDashboardError: error => errors.push(error), onShowAuthModal: () => assert.fail('already signed in'),
-      console: { error() {} }, perfUpload: { mark() {}, end() {} },
-    };
-    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-    await AsyncFunction(...Object.keys(dependencies), 'event', `${source.slice(start, end)}\nawait handleFileUpload(event);`)(...Object.values(dependencies), event);
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(reads, 1); assert.equal(active, 0); assert.deepEqual(errors, []); assert.equal(event.target.value, '');
-    assert.deepEqual(files.map(([kind]) => kind).sort(), alias ? ['upload'] : ['list', 'parser', 'upload', 'viewer']);
-    for (const [, file] of files) {
-      assert.notEqual(file, original); assert.equal(file, files[0][1]);
-      assert.equal(await file.text(), 'old physical bytes'); assert.equal(file.name, 'picked.pdf');
-      assert.equal(file.user_id, 'actor-a'); assert.equal(file.lastModified, 1234);
-      if (!alias) assert.equal(file.id, 'resolved');
-    }
-    assert.deepEqual(events[0], ['replace', 'actor-a/legacy.pdf']);
-    if (alias) assert.deepEqual(events.map(([kind]) => kind), ['replace', 'archive', 'alias', 'open-existing', 'refresh']);
+const dashboardSource = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
+const tick = () => new Promise(setImmediate);
+function deferred() {
+  let resolve; let reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+function singleUploadHarness(options = {}) {
+  const calls = [];
+  const state = { current: true, activeSection: options.activeSection || 'documents' };
+  const original = new File(['old physical bytes'], 'picked.pdf', { type: 'application/pdf', lastModified: 1234 });
+  const nativeBytes = new TextEncoder().encode('old physical bytes');
+  const result = options.result || { document: { id: 'resolved', user_id: 'actor-a', project_id: null,
+    name: 'published.pdf', file_path: 'actor-a/published.pdf' }, file: new Blob(['confirmed current bytes']), reused: !!options.reused };
+  const cloud = { findDocumentsByName: async (...args) => {
+    calls.push(['lookup', ...args]);
+    if (options.lookup) return options.lookup(...args);
+    return options.candidates || [];
+  } };
+  const current = () => state.current;
+  const dependencies = {
+    preparePdfUpload, resolveIncomingUpload, user: options.guest ? null : { id: 'actor-a' }, subscriptionTier: 'pro',
+    activeSection: state.activeSection, selectedProjectId: options.selectedProjectId || null,
+    uploadTargetProjectRef: { current: null }, singleUploadEntryRef: { current: null },
+    singleUploadHandlerRef: { current: null }, fileInputRef: { current: { click: () => calls.push(['picker']) } },
+    setSingleUploadWork: value => calls.push(['work', !!value]),
+    readBlobAsArrayBuffer: async blob => {
+      calls.push(['read', blob]);
+      if (options.read) await options.read();
+      return blob.arrayBuffer();
+    },
+    computeContentSha256: async bytes => {
+      calls.push(['hash', new TextDecoder().decode(bytes)]);
+      bytes.fill(0);
+      nativeBytes.fill(0);
+      original.arrayBuffer = () => assert.fail('mutable original must not be read');
+      Object.defineProperty(original, 'name', { value: 'changed.pdf' });
+      return 'old-hash';
+    },
+    supabase: {},
+    createDocumentUploadCloud: async input => {
+      calls.push(['cloud', input]);
+      if (options.cloud) await options.cloud();
+      return cloud;
+    },
+    documentUploadRecovery: { busy: !!options.busy, isCurrent: current, start: async input => {
+      calls.push(['start', input]);
+      if (options.start) return options.start(input);
+      return result;
+    } },
+    askDuplicateUpload: async (...args) => {
+      calls.push(['choice', ...args]);
+      return options.choice ? options.choice() : 'new-version';
+    },
+    handleDocumentClick: async row => calls.push(['open-existing', row]),
+    onActivateOpenDocument: row => { calls.push(['activate', row]); return !!options.alreadyOpen; },
+    onDocumentSelect: (...args) => calls.push(['viewer', ...args]),
+    setDashboardError: message => calls.push(['error', message]),
+    showToast: message => calls.push(['toast', message]),
+    onShowAuthModal: () => calls.push(['auth']),
+    console: { error() {} },
+    window: { electronAPI: options.native ? { openFile: async input => {
+      calls.push(['native-picker', input]);
+      if (options.picker) return options.picker();
+      return { canceled: false, data: nativeBytes, fileName: 'picked.pdf', filePath: '/picked/current.pdf' };
+    } } : undefined },
+  };
+  const gateStart = dashboardSource.indexOf('  const confirmSameNameDifferentContent = async');
+  const gateEnd = dashboardSource.indexOf('  const navIconWrapperStyle =', gateStart);
+  const start = dashboardSource.indexOf('  const uploadProjectId =');
+  const end = dashboardSource.indexOf('  // Create Project flow', start);
+  assert.ok(gateStart > 0 && gateEnd > gateStart && start > gateEnd && end > start);
+  const handlers = Function(...Object.keys(dependencies),
+    dashboardSource.slice(gateStart, gateEnd) + dashboardSource.slice(start, end) +
+    '\nreturn { handleUploadClick, handleFileUpload, performSingleUpload };')(...Object.values(dependencies));
+  const event = { target: { files: [original], value: 'selected' } };
+  const run = async ({ projectId, open = true } = {}) => {
+    await handlers.handleUploadClick(projectId, { open });
+    if (!options.native) await handlers.handleFileUpload(event);
+  };
+  return { ...handlers, calls, state, original, event, run, dependencies, result };
+}
+
+for (const native of [false, true]) for (const reused of [false, true]) {
+  test(`actual ${native ? 'Electron' : 'browser'} entry stages immutable bytes and opens only confirmed ${reused ? 'existing' : 'new'} bytes`, async () => {
+    const gate = deferred();
+    const h = singleUploadHarness({ native, reused, start: () => gate.promise });
+    const pending = h.run();
+    await tick();
+    assert.equal(h.calls.filter(([kind]) => kind === 'start').length, 1);
+    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'open-existing'), false);
+    const staged = h.calls.find(([kind]) => kind === 'start')[1];
+    assert.equal(staged.file, staged.prepared.file);
+    assert.notEqual(staged.file, h.original);
+    assert.equal(await staged.file.text(), 'old physical bytes');
+    assert.equal(staged.file.name, 'picked.pdf');
+    assert.equal(staged.prepared.contentSha, 'old-hash');
+    assert.equal(staged.projectId, null);
+    assert.deepEqual(h.calls.filter(([kind]) => kind === 'hash').map(call => call[1]), ['old physical bytes']);
+    assert.deepEqual(h.calls.find(([kind]) => kind === 'lookup'), ['lookup', null, 'picked.pdf']);
+    gate.resolve(h.result); await pending;
+    const opened = h.calls.find(([kind]) => kind === 'viewer');
+    assert.equal(await opened[1].text(), 'confirmed current bytes');
+    assert.equal(opened[1].name, 'published.pdf');
+    assert.equal(opened[1].id, 'resolved');
+    assert.equal(opened[1].user_id, 'actor-a');
+    assert.equal(opened[1].supabaseFilePath, 'actor-a/published.pdf');
+    assert.equal(opened[2], native && !reused ? '/picked/current.pdf' : undefined);
+    assert.deepEqual(h.calls.at(-1), ['work', false]);
+    if (!native) assert.equal(h.event.target.value, '');
   });
 }
 
-test('desktop and browser alias repair both use storage replacement and its cache invalidation path', async () => {
-  const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
-  const aliasBranches = source.split('if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {').slice(1);
-  assert.equal(aliasBranches.length, 2);
-  for (const branch of aliasBranches) {
-    const repair = branch.slice(0, branch.indexOf('await archiveReplacedDocument'));
-    assert.match(repair, /await replaceStorageDocument\(file, resolvedDoc\.file_path\)/);
-    assert.doesNotMatch(repair, /supabase\.storage|\.upload\(/);
-    assert.match(repair, /catch \(upErr\)[\s\S]*return;/, 'failed healing cannot archive or open');
+for (const phase of ['read', 'cloud', 'lookup', 'start']) {
+  test(`account retirement during ${phase} stops later upload work and stale UI`, async () => {
+    const gate = deferred();
+    const h = singleUploadHarness({ [phase]: () => gate.promise });
+    const pending = h.run(); await tick();
+    h.state.current = false;
+    const count = h.calls.length;
+    gate.resolve(phase === 'lookup' ? [] : phase === 'start' ? h.result : undefined);
+    await pending;
+    assert.deepEqual(h.calls.slice(count).filter(([kind]) => kind !== 'hash'), [], 'local hashing may settle, but no later dispatch, open, error or stale busy reset');
+    assert.equal(h.calls.some(([kind]) => kind === 'viewer'), false);
+  });
+}
+
+test('a retired browser picker selection cannot enter the new account flow', async () => {
+  const h = singleUploadHarness();
+  await h.handleUploadClick('chosen-project');
+  h.state.current = false;
+  await h.handleFileUpload(h.event);
+  assert.deepEqual(h.calls, [['picker']]);
+  assert.equal(h.event.target.value, '');
+});
+
+test('native picker retirement and cancellation never start hashing or durable work', async () => {
+  const gate = deferred(); const h = singleUploadHarness({ native: true, picker: () => gate.promise });
+  const pending = h.run(); await tick(); h.state.current = false;
+  const count = h.calls.length;
+  gate.resolve({ canceled: false, data: new Uint8Array([1]), fileName: 'picked.pdf' });
+  await pending; assert.equal(h.calls.length, count);
+  const canceled = singleUploadHarness({ native: true, picker: async () => ({ canceled: true }) });
+  await canceled.run();
+  assert.equal(canceled.calls.some(([kind]) => kind === 'read' || kind === 'start'), false);
+  assert.deepEqual(canceled.calls.at(-1), ['work', false]);
+});
+
+for (const saved of [false, true]) {
+  test(`durable ${saved ? 'saved-attempt' : 'pre-stage'} failure never opens and shows a safe retry message`, async () => {
+    const h = singleUploadHarness({ start: async () => { throw Object.assign(new Error('RAW_SECRET_SERVICE_ERROR'), saved ? { attemptId: 'saved' } : {}); } });
+    await h.run();
+    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'open-existing'), false);
+    const error = h.calls.find(([kind]) => kind === 'error')[1];
+    assert.match(error, saved ? /saved retry copy/ : /Keep the original/);
+    assert.equal(error.includes('RAW_SECRET'), false);
+    assert.deepEqual(h.calls.at(-1), ['work', false]);
+  });
+}
+
+test('allocated attempt ID with failed local staging tells the user to keep the original, not a saved retry copy', async () => {
+  const h = singleUploadHarness({ start: async () => {
+    throw Object.assign(new Error('Local storage full'), { attemptId: 'allocated', recoveryCreated: false });
+  } });
+  await h.run();
+  const error = h.calls.find(([kind]) => kind === 'error')[1];
+  assert.match(error, /Keep the original/);
+  assert.doesNotMatch(error, /saved retry copy|File upload recovery/);
+  assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'open-existing'), false);
+  assert.deepEqual(h.calls.at(-1), ['work', false]);
+});
+
+test('duplicate replacement carries the chosen full snapshot into durable start without archiving directly', async () => {
+  const selected = { id: 'old', user_id: 'actor-a', project_id: 'project', name: 'picked.pdf',
+    file_path: 'actor-a/old.pdf', file_size: 5, content_sha256: 'different-hash', updated_at: 'before',
+    archived: false, user_archived_at: null };
+  const h = singleUploadHarness({ candidates: [selected] });
+  await h.run({ projectId: 'project', open: false });
+  const staged = h.calls.find(([kind]) => kind === 'start')[1];
+  assert.deepEqual(staged.archiveDocument, selected);
+  assert.equal(staged.projectId, 'project');
+  assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate'), false);
+});
+
+test('duplicate lookup failure cancels safely; cancellation and stale modal cannot stage a retry', async () => {
+  const failed = singleUploadHarness({ lookup: async () => { throw new Error('offline'); } });
+  await failed.run();
+  assert.equal(failed.calls.some(([kind]) => kind === 'start'), false);
+  assert.equal(failed.calls.filter(([kind]) => kind === 'toast').length, 1);
+  const selected = { id: 'old', name: 'picked.pdf', project_id: null, content_sha256: 'different' };
+  for (const choice of ['cancel', 'open-existing']) {
+    const h = singleUploadHarness({ candidates: [selected], choice: async () => choice });
+    await h.run();
+    assert.equal(h.calls.some(([kind]) => kind === 'start' || kind === 'viewer'), false);
+    assert.equal(h.calls.some(([kind]) => kind === 'open-existing'), choice === 'open-existing');
+  }
+  const gate = deferred(); const h = singleUploadHarness({ candidates: [selected], choice: () => gate.promise });
+  const pending = h.run(); await tick(); h.state.current = false; const count = h.calls.length;
+  gate.resolve('new-version'); await pending; assert.equal(h.calls.length, count);
+});
+
+test('shared entry lock rejects a second submit while the first upload is pending', async () => {
+  const gate = deferred(); const h = singleUploadHarness({ start: () => gate.promise });
+  const pending = h.handleFileUpload(h.event); await tick();
+  await h.handleFileUpload({ target: { files: [new File(['second'], 'second.pdf', { type: 'application/pdf' })], value: 'second' } });
+  assert.equal(h.calls.filter(([kind]) => kind === 'start').length, 1);
+  gate.resolve(h.result); await pending;
+});
+
+test('already-open documents activate only after recovery confirms bytes; projects retain durable recovery', async () => {
+  const h = singleUploadHarness({ alreadyOpen: true });
+  await h.run();
+  assert.equal(h.calls.filter(([kind]) => kind === 'activate').length, 1);
+  assert.equal(h.calls.some(([kind]) => kind === 'viewer'), false);
+  assert.ok(h.calls.findIndex(([kind]) => kind === 'start') < h.calls.findIndex(([kind]) => kind === 'activate'));
+  assert.match(dashboardSource, /return projectUploadRecovery\.start\(trimmedName, files\)/);
+  assert.doesNotMatch(dashboardSource, /deleteSupabaseProject\(newProject\.id\)/);
+});
+
+test('confirmed local retry discard clears its stale upload error only in the current account', async () => {
+  const source = dashboardSource.slice(dashboardSource.indexOf('  const discardDocumentUpload ='), dashboardSource.indexOf('  // Same name + different'));
+  for (const mode of ['success', 'cancel', 'retired', 'failed']) {
+    let current = true; const calls = [];
+    const recovery = { isCurrent: () => current, discard: async id => {
+      calls.push(['discard', id]);
+      if (mode === 'failed') throw new Error('local storage unavailable');
+      if (mode === 'retired') current = false;
+    } };
+    const discard = new Function('documentUploadRecovery', 'user', 'askConfirm', 'setDashboardError',
+      `${source}; return discardDocumentUpload;`)(recovery, { id: 'actor' }, async () => mode !== 'cancel', value => calls.push(['error', value]));
+    await discard({ actorId: 'actor', id: 'attempt', name: 'picked.pdf' });
+    assert.equal(calls.some(([kind]) => kind === 'error'), mode === 'success');
+    assert.equal(calls.some(([kind]) => kind === 'discard'), mode !== 'cancel');
   }
 });
 
@@ -183,55 +356,6 @@ test('batch workers never exceed three and preserve input order despite failures
 
 test('empty batches do not start workers', async () => {
   assert.deepEqual(await mapUploadsBounded([], () => { throw new Error('unexpected'); }), []);
-});
-
-for (const [mode, marker] of [
-  ['desktop', '// Background: store the bytes (content-addressed, idempotent —'],
-  ['browser', '// Background: store the bytes (content-addressed, idempotent)'],
-]) {
-  for (const fail of [false, true]) {
-    test(`${mode} retry writes the resolved legacy path and ${fail ? 'retains replacement on failure' : 'archives only after upload'}`, async () => {
-      const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
-      const start = source.indexOf('(async () => {', source.indexOf(marker));
-      const end = source.indexOf('})();', start) + 5;
-      assert.ok(start > 0 && end > start);
-      const events = [];
-      const errors = [];
-      let active = 0;
-      const dependencies = {
-        file: new File(['pdf'], 'same.pdf'), projectId: 'project', contentSha: 'content-hash',
-        resolvedDoc: { id: 'existing', file_path: 'owner/legacy/original.pdf', page_count: 2 },
-        replaceStorageDocument: async (file, path) => {
-          events.push(['upload', path]);
-          if (fail) throw new Error('offline');
-          return path;
-        },
-        uploadToStorage: async () => { events.push(['upload', 'owner/content-hash.pdf']); },
-        readPdfPageCount: async () => 2, readBlobAsArrayBuffer: () => {}, loadPdfjs: () => {},
-        setActiveUploads: updater => { active = updater(active); },
-        archiveReplacedDocument: async id => events.push(['archive', id]),
-        duplicateGate: { archiveDocId: 'old-version' },
-        updateSupabaseDocument: async () => {}, refetchAllDocuments: () => events.push(['refresh']),
-        setDashboardError: message => errors.push(message),
-        perfUpload: { mark() {}, end() {} }, console: { error() {} },
-      };
-      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-      await AsyncFunction(...Object.keys(dependencies), `await ${source.slice(start, end)}`)(...Object.values(dependencies));
-      assert.deepEqual(events[0], ['upload', 'owner/legacy/original.pdf']);
-      assert.equal(events.some(([event]) => event === 'archive'), !fail);
-      assert.equal(events.some(([event]) => event === 'refresh'), !fail);
-      assert.equal(errors.length, fail ? 1 : 0);
-      assert.equal(active, 0);
-    });
-  }
-}
-
-test('single-file parser paths keep resource cleanup while project batches use durable recovery', async () => {
-  const source = await readFile(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
-  assert.equal((source.match(/readPdfPageCount\(file,/g) || []).length, 2);
-  assert.equal(source.includes('pdfjsLib.getDocument('), false);
-  assert.match(source, /return projectUploadRecovery\.start\(trimmedName, files\)/);
-  assert.doesNotMatch(source, /deleteSupabaseProject\(newProject\.id\)/);
 });
 
 test('real project handlers submit once, retire stale accounts, and retain failed durable attempts', async t => {

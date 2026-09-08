@@ -1509,6 +1509,108 @@ archive intent. Test restart at each write boundary, lost replies, offline/quota
 failure, unavailable local storage/locks, account changes, competing tabs,
 dedup/aliases, missing or changed source files, and newer published bytes.
 
+## Follow-up: durable single-file upload recovery
+
+Standalone uploads and files added to existing projects now use a separate
+single-file journal, runner and scoped cloud adapter. Dashboard's browser and
+desktop entry points share this path. The existing new-project upload journal
+and its path rules stay unchanged.
+
+The single-file journal commits owned PDF bytes and replacement consent in one
+IndexedDB transaction before cloud writes. Each attempt keeps a stable document
+ID and an account/document/hash object path. Metadata-only recovery scans do not
+read PDF blobs or start cloud work. Retry and local-only discard share a lock;
+same-content attempts also serialize across tabs in the same browser profile.
+Account/view generations retire old work, including A-to-B-to-A transitions.
+
+Uploads create objects without overwrite. Reused rows open the current stored
+PDF, not the picked original that may predate shared edits. An exact missing
+object may be repaired only from matching original bytes after a fresh row read;
+a competing repair is read back, never overwritten. Alias changes merge against
+a fresh row with compare-and-set checks. A replacement archives the selected old
+row only after the new PDF is confirmed, checks the retained consent snapshot,
+and keeps unfinished intent for retry. Confirmed deleted targets are not recreated.
+
+Cloud files now open after confirmation rather than while a background upload
+is still pending. Local-only document opening is unchanged. The recovery panel
+lists failed attempts, supports explicit retry, and asks before discarding a
+local retry copy. Discard does not delete cloud rows or storage objects. A known
+failed local stage tells the user to retain the original instead of claiming a
+saved retry copy exists. Microsoft sync and account testing remain deferred.
+
+Known bounds: IndexedDB is profile-local and clearing browser/app data can erase
+pending copies. The current Storage SDK cannot physically abort an upload;
+timeouts stop later actions but leave the remote result unknown. A cross-device
+same-content insert winner with another ID leaves the losing receipt for review;
+there is no automatic object cleanup or retarget. A lost insert reply followed
+by hard deletion before any local confirmation still needs a server receipt or
+tombstone to distinguish deletion from an insert that never committed. Existing
+mutable PDF paths elsewhere in the app have not been migrated to copy-on-write.
+No production rollout or full cross-device correctness claim follows from this
+local change.
+
+Review also caught compatibility and UI issues before handoff: known aliases
+must not prompt again; unknown legacy size/hash must still reach the version
+choice without authorizing byte repair; success/discard must clear a stale error;
+and busy controls must stay disabled until the final metadata refresh settles.
+Shared-project editor/co-owner uploads now use an exact RLS-visible project read
+plus the server's `user_can_access_project(proj_id, 'editor')` check. Viewers and
+missing/malformed helper replies fail closed. New documents and object paths
+remain owned by the uploading actor; host-owned documents are not rewritten.
+This verifies the repo helper contract, not the currently deployed helper or
+atomic permission revocation during a concurrent upload.
+
+A prompt can outlast a shared PDF edit. The runner now refreshes the published
+PDF after an alias prompt, a replacement archive step, or an observed row-version
+change. It reads the row again after that download and retains the attempt if
+the version changes during the fetch. Ordinary new uploads without those changes
+still make one published-byte check, not an unconditional second full download.
+Mutable-path edits that do not change row metadata remain a broader storage
+versioning limitation; these checks do not replace immutable generations.
+
+Actual-browser QA used the real Dashboard, hook, runner, journal, adapter and
+installed Supabase SDK against a localhost-only mock service and synthetic auth.
+No existing account, credential, live cloud write, or Microsoft connection was
+used. The in-app browser was unavailable because the Mac was locked; a headless
+Chromium fallback exercised desktop 1365x900 and mobile 390x844. The temporary
+fixture's auth/library/subscription hooks do not prove live RLS, provider auth,
+full viewer rendering, or deployed multi-user integration. It did use the real
+PDF.js page-count parser and compared the actual viewer-open File's SHA-256.
+
+Twelve workflow checks passed: Home identity/nonblank/overlay checks, lost Storage
+reply, mobile recovery controls, full browser-process restart with the same
+profile and no automatic writes, manual retry with the same ID, edits during an
+alias prompt, known-alias reuse, lost insert reply, failed/retried replacement
+archive, and confirmed/canceled local discard. A separate Projects -> Add files
+check confirmed the exact project ID, actor-owned document, no automatic viewer
+open and persistence after reload. Final mobile discard QA confirmed no stale
+error, no retry row, and unchanged mock cloud rows/objects. Page errors were zero;
+console errors were the deliberately injected 503 failures and create-only 409
+conflict, with the expected handled upload errors. Screenshot review caught and
+fixed a temporary fixture toolbar/mobile CSS conflict before the final run.
+
+Next bounded latency/reliability issue: the optional PDF page-count probe can
+wait forever on a nonsettling loader, parse or task cleanup. Local reproductions
+showed the upload retaining its bytes but holding its locks and busy state after
+Storage confirmation and before document creation. Add bounded cancellation and
+fallback to unknown page count without weakening durable-byte or stale-account
+checks. That fix is not included in this batch.
+
+Another conservative compatibility case needs a focused follow-up: an existing
+matching-hash document whose legacy `file_size` is null is accepted by transport
+reads but rejected by the runner's document check. Source review suggests safe
+read-only reuse could proceed when published bytes exist, while missing-object
+repair must still reject unknown size. Do not loosen byte-repair validation to
+resolve that case; first reproduce it with the composed runner and transport.
+
+Final frozen verification: 5,152 tests total, 5,092 passed, 60 skipped, zero
+failures/cancellations, exit 0. Prior baseline was 5,020 total, 4,960 passed and
+60 skipped. The focused upload and existing local-library regression run passed
+183/183. Production build, AST-only graph update and diff checks passed. No
+high-risk viewer file, production schema, live account or Microsoft code changed.
+The 14 checked browser assertions are controlled local evidence, not deployed
+auth, production collaboration, or all-platform no-regression proof.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

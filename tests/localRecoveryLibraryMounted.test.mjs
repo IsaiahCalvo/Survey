@@ -76,6 +76,8 @@ async function mount(t, { listOverride = null, isActive = true, initialTab = nul
     DocumentsLedger: { default: props => React.createElement('div', null, props.storageSwitch, 'Cloud list') },
   });
   const forbidden = () => { state.cloudCalls++; throw new Error('Cloud forbidden'); };
+  const documentRecovery = { busy: false, rows: empty, isCurrent: () => !!state.user && state.isActive,
+    start: forbidden, retry: forbidden, discard: forbidden, refresh: noop };
   const hooks = { projects: empty, templates: empty, initialLoading: false, refetch: noop };
   const Dashboard = await load('Dashboard.jsx', { react: React, SurveyHub: { default: SurveyHub },
     localDocumentStore: store, localDocumentDraftStore: draftStore,
@@ -91,6 +93,7 @@ async function mount(t, { listOverride = null, isActive = true, initialTab = nul
       useProjects: () => hooks, useTemplates: () => hooks, useStorage: () => ({ uploadDocument: forbidden, downloadDocument: forbidden }) },
     useSubscriptionLimits: { useSubscriptionLimits: () => ({}) },
     useProjectUploadRecovery: { useProjectUploadRecovery: () => ({ busy: false, rows: [] }) },
+    useDocumentUploadRecovery: { useDocumentUploadRecovery: () => documentRecovery },
     dialogPrompts: { useConfirmDialog: () => [async options => { state.confirmations.push(options); return state.confirmAnswer; }, null], usePromptDialog: () => [noop, null] },
     hubInitialLoadingState: { resolveHubInitialLoading: () => ({}) }, supabaseClient: { supabase: { from: forbidden } },
   });
