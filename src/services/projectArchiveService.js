@@ -80,14 +80,6 @@ export async function restoreProject(projectId) {
 export async function deleteProjectForever(projectId) {
   if (!projectId) return { success: false, error: 'No project selected.' };
 
-  // Captured BEFORE the purge: once the rows are gone we can no longer discover
-  // which documents need their local durable copy cleared.
-  const { data: childRows } = await supabase
-    .from('documents')
-    .select('id')
-    .eq('project_id', projectId);
-  const childIds = (childRows || []).map((row) => row.id);
-
   const result = await callArchiveRpc('purge_archived_project', { p_project_id: projectId });
   if (!result.success) return result;
 
@@ -101,17 +93,26 @@ export async function deleteProjectForever(projectId) {
     }
   }
 
-  // Best-effort, same as the single-document path: the rows are already gone, so
-  // a local-cache hiccup must not report the delete as failed.
+  // The transaction can detach surviving foreign-owned documents. Only its
+  // DELETE RETURNING receipt authorizes clearing their local durable state.
+  // Old servers or malformed receipts must keep local copies, not infer IDs.
+  const deletedIds = result.data?.deleted_document_ids;
+  const validReceipt = Array.isArray(deletedIds) && deletedIds.every(id => typeof id === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+  let localCleanupDeferred = !validReceipt;
+  if (!validReceipt) console.warn('[KAL-429] local durable copies kept: missing or invalid deletion receipt');
+  const childIds = validReceipt ? [...new Set(deletedIds)] : [];
+  // A local-cache hiccup must not report the committed project delete as failed.
   for (const childId of childIds) {
     try {
       await purgeAnnotationDoc(childId);
     } catch (err) {
+      localCleanupDeferred = true;
       console.warn('[KAL-429] local durable copy not purged:', childId, err);
     }
   }
 
-  return { success: true, data: result.data };
+  return { success: true, data: result.data, ...(localCleanupDeferred ? { localCleanupDeferred: true } : {}) };
 }
 
 /**

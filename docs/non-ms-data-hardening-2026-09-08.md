@@ -1926,6 +1926,85 @@ must coordinate physical cleanup with publication/storage writes; adding another
 reference lookup alone does not close the race. Deferring physical removal is a
 safe interim option but retains billable bytes and must be explicit.
 
+## Project purge receipts preserve collaborator drafts
+
+The project archive service previously listed every child ID before purging the
+project, then cleared local Yjs state for every listed ID. The server deliberately
+detaches live collaborator-owned documents instead of deleting them. The old
+client therefore cleared a surviving document's pending local work. The actual
+service regression failed before the fix.
+
+Migration `20260908210000` adds `deleted_document_ids` from the actual SQL
+`DELETE RETURNING` result. IDs, count and candidate paths now describe the same
+deleted rows. The service removes its child-list query and purges local state
+only for a valid receipt. Old servers or malformed receipts keep local copies;
+an additive `localCleanupDeferred` flag reports incomplete local cleanup without
+calling an already committed server deletion a failure. A lost response followed
+by an idempotent empty receipt can leave deleted local caches; no unrelated cache
+is guessed or removed. A durable cleanup-receipt replay remains future work.
+
+The RPC locks child rows before splitting live-detach and archived-delete work.
+A concurrent restore cannot make a child live between those steps and then lose
+it to the project cascade. Lock contention fails promptly and rolls back the
+whole purge. The copied owner check is now NULL-safe, anonymous/public execution
+is revoked, and authenticated callers retain access. This does not assert that
+all other archive RPC grants have been hardened or audited live.
+
+The focused tests exercise actual service code, actual Yjs cleanup, installed
+y-indexeddb and fresh persistence reopening. Browser QA additionally used native
+IndexedDB: save two drafts, invoke the actual project service with a synthetic
+server receipt, delete, reload and cold-read. The deleted draft database was gone;
+the collaborator's exact unsent drawing text remained. Page identity, rendering,
+interaction and console checks passed with screenshots. The in-app browser was
+unavailable, so this used a separate Chrome tab, since closed; the owned fixture
+server was stopped. No live-auth or full Archive-screen QA is claimed.
+
+The focused local service/archive/persistence run passed 31 tests. The expanded
+disposable PostgreSQL fixture passed 33 checks, including exact deletion receipts,
+shared-path preservation, both restore/purge orderings, atomic lock-failure
+rollback, anonymous/missing-user refusal, and the privileged nested caller using
+the scheduled sweep's exact owner-claim setup. That last check covers the caller
+contract, not cron scheduling or the whole retention job.
+
+Full regression run: 5,288 tests, 5,223 passed, 65 skipped, zero failures or
+cancellations, exit 0 (previous baseline 5,274 / 5,209 / 65). The final opt-in
+PostgreSQL wrapper passed 5/5 after the added caller/race cases. Production build,
+AST graph update and staged whitespace checks passed. No scoped source/test
+changes were made in the original worktree; no push, deployment or live mutation.
+
+Apply the additive receipt migration before expecting local cache reclamation.
+Do not roll the client back to clearing a pre-read child list. Physical Storage
+deletion is unchanged in this batch and its known race remains open.
+
+## Storage cleanup: verified provider boundary for the next change
+
+Official Storage source at commit
+`b41d14fa15547284b351ea024f8c83a201cdc83a` establishes why a stronger protocol is
+needed. This is source evidence, not the deployed project's version:
+
+- `deleteObjects` runs metadata DELETE/RETURNING, then physical version-key
+  deletion, then commits the database transaction. A later commit failure can
+  roll back metadata/trigger state but cannot restore bytes. Therefore retirement
+  must commit in a separate checked RPC BEFORE a Storage deletion request; a
+  DELETE trigger cannot safely establish the first retirement inside that call.
+- Upload permissions are tested in a rolled-back transaction, then bytes upload,
+  then an elevated final metadata upsert commits. Initial RLS checks alone cannot
+  fence late upload completion. Final role-independent metadata checks and
+  document-publication checks must share permanent path state.
+- Rejecting final publication can still leave bytes awaiting provider cleanup.
+  Missing metadata does not trigger row deletion. Lost delete replies and
+  backend partial failures must not be described as verified byte removal.
+
+Next implementation requirements: exact bucket/path retirement, all surviving
+references checked atomically, short guarded transactions, a durable physical
+cleanup queue, service-role/final-upload enforcement, move/rename handling, fresh
+paths for new uploads, and account-closing protection for previously unseen
+paths. Retired paths must never reopen, including after account deletion. Physical
+cleanup continues through the Storage API, never direct metadata deletion.
+Supabase discourages Storage schema changes; custom final-write guards require
+version-pinned provider integration tests and an explicit rollout compatibility
+gate. No such Storage migration is implemented or deployed by this receipt batch.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
@@ -1935,6 +2014,10 @@ safe interim option but retains billable bytes and must be explicit.
 - [Stripe immutable event data and delivery-count fields](https://docs.stripe.com/api/events/object)
 - [Stripe subscription statuses](https://docs.stripe.com/api/subscriptions/object)
 - [Brevo idempotency keys and 30-minute lifetime](https://developers.brevo.com/docs/heterogenous-versions-batch-emails)
+- [Supabase Storage schema and API-only mutation guidance](https://supabase.com/docs/guides/storage/schema/design)
+- [Pinned Storage deletion ordering](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/object.ts#L191-L257)
+- [Pinned upload permission and elevated completion ordering](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/uploader.ts#L72-L295)
+- [Pinned version cleanup worker](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/events/objects/object-admin-delete.ts#L29-L55)
 
 ## Rollback
 

@@ -5,6 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const identity=new URL('../supabase/migrations/20260908200000_document_identity_tombstones.sql',import.meta.url);
 const authorization=new URL('../supabase/migrations/20260908201000_document_publication_authorization.sql',import.meta.url);
+const purgeReceipt=new URL('../supabase/migrations/20260908210000_project_purge_deleted_document_receipt.sql',import.meta.url);
 const script=fileURLToPath(new URL('../scripts/test-document-publication-postgres.mjs',import.meta.url));
 
 test('identity migration retires opaque IDs on every delete without lifecycle cascade or client grants',()=>{
@@ -32,11 +33,24 @@ test('publication fixture uses installed isolated PostgreSQL and actual tracked 
   const source=readFileSync(script,'utf8');
   for(const name of ['20260908200000_document_identity_tombstones.sql','20260908201000_document_publication_authorization.sql',
     '20260802000000_kal426_user_archive_foundation.sql','20260701120000_project_template_sharing.sql',
-    '20260908160000_document_quota_guard.sql','20260513003000_allow_collaborators_to_read_document_storage.sql'])assert.ok(source.includes(name),name);
+    '20260908160000_document_quota_guard.sql','20260513003000_allow_collaborators_to_read_document_storage.sql',
+    '20260908210000_project_purge_deleted_document_receipt.sql'])assert.ok(source.includes(name),name);
   assert.match(source,/process\.getuid\?\.\(\)===0/);assert.match(source,/filter\(\(\[key\]\)=>!\/\^PG\/i\.test\(key\)\)/);
   assert.match(source,/listen_addresses=''/);assert.match(source,/\['-X','-h',socket,'-p',port,'-U','postgres','-d','postgres'/);
   assert.match(source,/owned local server stopped before cleanup/);assert.match(source,/rmSync\(temp,\{recursive:true,force:true\}\)/);
   assert.doesNotMatch(source,/SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|npm install|brew install/);
+});
+
+test('project purge receipt comes from deleted rows after child archive state is locked',()=>{
+  const sql=readFileSync(purgeReceipt,'utf8').replace(/--[^\n]*/g,'');
+  assert.match(sql,/ORDER BY id FOR UPDATE NOWAIT/);
+  assert.ok(sql.indexOf('ORDER BY id FOR UPDATE NOWAIT')<sql.indexOf('SET project_id=NULL'));
+  assert.match(sql,/DELETE FROM public\.documents[\s\S]*?RETURNING id,file_path/);
+  assert.match(sql,/'deleted_document_ids',v_deleted_ids/);
+  assert.match(sql,/'document_count',cardinality\(v_deleted_ids\)/);
+  assert.match(sql,/v_owner IS DISTINCT FROM auth\.uid\(\)/);
+  assert.match(sql,/REVOKE ALL ON FUNCTION public\.purge_archived_project\(UUID\) FROM PUBLIC,\s*anon/i);
+  assert.doesNotMatch(sql,/(?:UPDATE|DELETE FROM)\s+storage\.objects/i);
 });
 
 test('document publication passes actual PostgreSQL authorization, delete/retry and concurrency cases',{

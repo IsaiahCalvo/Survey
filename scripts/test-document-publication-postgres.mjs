@@ -57,7 +57,7 @@ try{
     GRANT SELECT ON storage.objects TO authenticated;GRANT ALL ON storage.objects TO service_role;
     CREATE POLICY "Users can upload documents within limits" ON documents FOR INSERT TO authenticated WITH CHECK(user_id=auth.uid());
     CREATE POLICY fixture_document_read ON documents FOR SELECT TO authenticated USING(user_id=auth.uid());
-    ALTER TABLE documents ADD COLUMN archive_group_id uuid;ALTER TABLE projects ADD COLUMN archive_group_id uuid;`);
+    ALTER TABLE documents ADD COLUMN archive_group_id uuid,ADD COLUMN user_archive_expires_at timestamptz,ADD COLUMN user_archived_by uuid;ALTER TABLE projects ADD COLUMN archive_group_id uuid;`);
   apply('20241223000001_create_user_subscriptions.sql');
   for(const name of ['get_user_tier','get_document_limit','get_storage_limit']){
     const body=source('20260215170000_fix_subscription_type_dependency.sql').match(new RegExp(`CREATE OR REPLACE FUNCTION ${name}\\([\\s\\S]*?\\$\\$ LANGUAGE plpgsql SECURITY DEFINER;`))?.[0];assert.ok(body);sql(body);sql(`ALTER FUNCTION ${name}(uuid) SET search_path=public`);
@@ -78,6 +78,8 @@ try{
   apply('20260703020000_documents_file_path_immutable.sql');
   apply('20260908160000_document_quota_guard.sql');
   const purgeBody=source('20260802000000_kal426_user_archive_foundation.sql').match(/CREATE OR REPLACE FUNCTION public\.purge_archived_project\([\s\S]*?\n\$\$;/)?.[0];assert.ok(purgeBody);sql(purgeBody);
+  const purgeReceiptMigration='20260908210000_project_purge_deleted_document_receipt.sql';apply(purgeReceiptMigration);
+  const restoreBody=source('20260802000000_kal426_user_archive_foundation.sql').match(/CREATE OR REPLACE FUNCTION public\.restore_document\([\s\S]*?\n\$\$;/)?.[0];assert.ok(restoreBody);sql(restoreBody);
   const hashIndex=source('20260606120000_rebuild_yjs_source_of_truth.sql').match(/CREATE UNIQUE INDEX IF NOT EXISTS documents_user_project_sha_uidx[\s\S]*?;/)?.[0];assert.ok(hashIndex);sql(hashIndex);
   const owner=uuid(1),editor=uuid(2),viewer=uuid(3),other=uuid(4),project=uuid(100);
   sql(`INSERT INTO auth.users VALUES('${owner}'),('${editor}'),('${viewer}'),('${other}');UPDATE user_subscriptions SET tier='pro';
@@ -188,8 +190,61 @@ try{
     const proj=uuid(330),live=uuid(331),removed=uuid(332);sql(`INSERT INTO projects(id,user_id,name) VALUES('${proj}','${owner}','purge fixture');INSERT INTO project_collaborators VALUES('${proj}','${editor}','editor','active')`);
     asRole(editor,insert(live,editor,proj));asRole(owner,insert(removed,owner,proj));sql(`UPDATE projects SET user_archived_at='2026-01-01' WHERE id='${proj}';UPDATE documents SET user_archived_at='2026-01-01' WHERE id='${removed}'`);
     const answer=JSON.parse(asRole(owner,`SELECT public.purge_archived_project('${proj}')`).stdout);assert.equal(answer.ok,true);
+    assert.deepEqual(answer.deleted_document_ids,[removed]);assert.equal(answer.document_count,1);
     assert.equal(scalar(`SELECT project_id IS NULL FROM documents WHERE id='${live}'`),'t');assert.equal(scalar(`SELECT user_id FROM documents WHERE id='${live}'`),editor);
     assert.equal(scalar(`SELECT deleted FROM ${identities} WHERE document_id='${live}'`),'f');assert.equal(scalar(`SELECT deleted FROM ${identities} WHERE document_id='${removed}'`),'t');
+    const retry=JSON.parse(asRole(owner,`SELECT public.purge_archived_project('${proj}')`).stdout);assert.equal(retry.already,true);assert.deepEqual(retry.deleted_document_ids,[]);assert.deepEqual(retry.orphaned_paths,[]);
+  });
+  await check('purge receipt includes only archived deleted IDs, keeps shared paths and preserves live pending state',()=>{
+    const proj=uuid(380),live=uuid(381),shared=uuid(382),unique=uuid(383),outside=uuid(384),sharedPath=`${owner}/shared-purge.pdf`,uniquePath=`${owner}/unique-purge.pdf`;
+    sql(`INSERT INTO projects(id,user_id,name) VALUES('${proj}','${owner}','shared paths fixture');INSERT INTO project_collaborators VALUES('${proj}','${editor}','editor','active')`);
+    asRole(editor,insert(live,editor,proj));asRole(owner,insert(shared,owner,proj,sharedPath));asRole(owner,insert(unique,owner,proj,uniquePath));asRole(owner,insert(outside,owner,null,sharedPath));
+    sql(`UPDATE documents SET annotations='{"pending":"unsynced fixture edit"}' WHERE id='${live}';UPDATE documents SET user_archived_at='2026-01-01' WHERE id IN ('${shared}','${unique}');UPDATE projects SET user_archived_at='2026-01-01' WHERE id='${proj}'`);
+    const liveBefore=scalar(`SELECT to_jsonb(d)-'project_id' FROM documents d WHERE id='${live}'`),outsideBefore=scalar(`SELECT to_jsonb(d) FROM documents d WHERE id='${outside}'`);
+    const answer=JSON.parse(asRole(owner,`SELECT public.purge_archived_project('${proj}')`).stdout);assert.equal(answer.ok,true);assert.equal(answer.document_count,2);assert.deepEqual(answer.deleted_document_ids,[shared,unique]);assert.deepEqual(answer.orphaned_paths,[uniquePath]);
+    assert.equal(scalar(`SELECT to_jsonb(d)-'project_id' FROM documents d WHERE id='${live}'`),liveBefore);assert.equal(scalar(`SELECT project_id IS NULL FROM documents WHERE id='${live}'`),'t');assert.equal(scalar(`SELECT to_jsonb(d) FROM documents d WHERE id='${outside}'`),outsideBefore);
+    assert.equal(scalar(`SELECT deleted FROM ${identities} WHERE document_id='${live}'`),'f');
+  });
+  await check('restore holding a child lock makes purge fail atomically; fresh purge preserves the restored child',async()=>{
+    const proj=uuid(390),restored=uuid(391),removed=uuid(392),live=uuid(393);
+    sql(`INSERT INTO projects(id,user_id,name) VALUES('${proj}','${owner}','restore race fixture');INSERT INTO project_collaborators VALUES('${proj}','${editor}','editor','active')`);
+    asRole(owner,insert(restored,owner,proj));asRole(owner,insert(removed,owner,proj));asRole(editor,insert(live,editor,proj));
+    sql(`UPDATE documents SET user_archived_at='2026-01-01',annotations='{"keep":"restore fixture"}' WHERE id IN ('${restored}','${removed}');UPDATE projects SET user_archived_at='2026-01-01' WHERE id='${proj}'`);
+    const first=session('restore-before-purge','authenticated',owner);first.send(`SELECT public.restore_document('${restored}');SELECT 'RESTORED';`);await first.wait('RESTORED');
+    const before=snapshot(['projects','documents',identities,'project_collaborators','document_collaborators','storage.objects']);
+    errorState(asRole(owner,`SELECT public.purge_archived_project('${proj}')`,'authenticated',false),'55P03');assert.deepEqual(snapshot(['projects','documents',identities,'project_collaborators','document_collaborators','storage.objects']),before);
+    assert.equal((await first.finish()).status,0);
+    const answer=JSON.parse(asRole(owner,`SELECT public.purge_archived_project('${proj}')`).stdout);assert.equal(answer.ok,true);assert.deepEqual(answer.deleted_document_ids,[removed]);assert.equal(answer.document_count,1);
+    for(const id of [restored,live]){assert.equal(scalar(`SELECT project_id IS NULL AND user_archived_at IS NULL FROM documents WHERE id='${id}'`),'t');assert.equal(scalar(`SELECT deleted FROM ${identities} WHERE document_id='${id}'`),'f');}
+    assert.equal(scalar(`SELECT annotations->>'keep' FROM documents WHERE id='${restored}'`),'restore fixture');
+  });
+  await check('project purge denies anon execution and missing caller identity without mutating archived data',()=>{
+    const proj=uuid(394),child=uuid(395);sql(`INSERT INTO projects(id,user_id,name) VALUES('${proj}','${owner}','authorization fixture')`);asRole(owner,insert(child,owner,proj));sql(`UPDATE projects SET user_archived_at='2026-01-01' WHERE id='${proj}';UPDATE documents SET user_archived_at='2026-01-01' WHERE id='${child}'`);
+    const before=snapshot(['projects','documents',identities,'project_collaborators','document_collaborators','storage.objects']);
+    errorState(asRole(null,`SELECT public.purge_archived_project('${proj}')`,'anon',false),'42501');
+    const refused=JSON.parse(asRole(null,`SELECT public.purge_archived_project('${proj}')`).stdout);assert.equal(refused.ok,false);assert.equal(refused.reason,'not_owner');assert.deepEqual(snapshot(['projects','documents',identities,'project_collaborators','document_collaborators','storage.objects']),before);
+  });
+  await check('scheduled privileged caller retains owner-claim access after public RPC execution is revoked',()=>{
+    const sweep=source('20260811000000_kal431_archive_purge_sweep.sql');
+    const claims=sweep.match(/PERFORM set_config\('request\.jwt\.claim\.sub', v_rec\.owner_id::TEXT, true\);\s*PERFORM set_config\('request\.jwt\.claims',[\s\S]*?json_build_object\('sub', v_rec\.owner_id::TEXT\)::TEXT, true\);/)?.[0];
+    const call=sweep.match(/v_result := public\.purge_archived_project\(v_rec\.item_id\);/)?.[0];assert.ok(claims);assert.ok(call);
+    // Only the tracked sweep's owner-claims and nested RPC call run here. This
+    // synthetic postgres-owned wrapper does not model cron, candidate expiry,
+    // logging, or scheduling, and is not callable by application clients.
+    sql(`CREATE FUNCTION public.fixture_scheduled_project_purge(p_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$ DECLARE v_rec record;v_result jsonb;BEGIN SELECT id AS item_id,user_id AS owner_id INTO v_rec FROM public.projects WHERE id=p_id;${claims}${call}RETURN v_result;END $$;REVOKE ALL ON FUNCTION public.fixture_scheduled_project_purge(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION public.fixture_scheduled_project_purge(uuid) TO service_role`);
+    const proj=uuid(396),child=uuid(397);sql(`INSERT INTO projects(id,user_id,name) VALUES('${proj}','${owner}','scheduled fixture')`);asRole(owner,insert(child,owner,proj));sql(`UPDATE projects SET user_archived_at='2026-01-01' WHERE id='${proj}';UPDATE documents SET user_archived_at='2026-01-01' WHERE id='${child}'`);
+    errorState(asRole(null,`SELECT public.purge_archived_project('${proj}')`,'anon',false),'42501');
+    assert.equal(scalar("SELECT proowner='postgres'::regrole AND prosecdef FROM pg_proc WHERE oid='public.fixture_scheduled_project_purge(uuid)'::regprocedure"),'t');
+    const result=JSON.parse(asRole(null,`SELECT public.fixture_scheduled_project_purge('${proj}')`,'service_role').stdout);assert.equal(result.ok,true);assert.deepEqual(result.deleted_document_ids,[child]);assert.equal(scalar(`SELECT count(*) FROM documents WHERE id='${child}'`),'0');assert.equal(scalar(`SELECT deleted FROM ${identities} WHERE document_id='${child}'`),'t');
+    sql('DROP FUNCTION public.fixture_scheduled_project_purge(uuid)');
+  });
+  await check('purge first makes a concurrent restore wait then report not_found without resurrecting the child',async()=>{
+    const proj=uuid(398),child=uuid(399);sql(`INSERT INTO projects(id,user_id,name) VALUES('${proj}','${owner}','purge first fixture')`);asRole(owner,insert(child,owner,proj));sql(`UPDATE projects SET user_archived_at='2026-01-01' WHERE id='${proj}';UPDATE documents SET user_archived_at='2026-01-01' WHERE id='${child}'`);
+    const first=session('purge-before-restore','authenticated',owner);first.send(`SELECT public.purge_archived_project('${proj}');SELECT 'PURGED';`);await first.wait('PURGED');
+    const second=session('restore-after-purge','authenticated',owner);second.send(`SELECT public.restore_document('${child}');`);await blocked(second.name);
+    const purged=await first.finish();assert.equal(purged.status,0);const receipt=JSON.parse(purged.stdout.split('\n').find(line=>line.startsWith('{')));assert.deepEqual(receipt.deleted_document_ids,[child]);
+    const restored=await second.finish();assert.equal(restored.status,0);assert.deepEqual(JSON.parse(restored.stdout.trim()),{ok:false,reason:'not_found'});
+    assert.equal(scalar(`SELECT count(*) FROM documents WHERE id='${child}'`),'0');assert.equal(scalar(`SELECT deleted FROM ${identities} WHERE document_id='${child}'`),'t');
   });
   await check('document quota still rejects the sixth active free document with no stray identity row',()=>{
     const actor=uuid(6);sql(`INSERT INTO auth.users VALUES('${actor}')`);for(let n=0;n<5;n++)asRole(actor,insert(uuid(340+n),actor,null));const before=snapshot(['documents',identities]);
@@ -229,7 +284,7 @@ try{
     sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
   });
   await check('migration replay keeps documents, identities, policies and shared data unchanged',()=>{
-    const before=snapshot(['documents',identities,'projects','project_collaborators','storage.objects']);apply(identityMigration);apply(authorizationMigration);assert.deepEqual(snapshot(['documents',identities,'projects','project_collaborators','storage.objects']),before);
+    const before=snapshot(['documents',identities,'projects','project_collaborators','storage.objects']);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);assert.deepEqual(snapshot(['documents',identities,'projects','project_collaborators','storage.objects']),before);
     assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
   });
   console.log(`Document publication PostgreSQL checks passed: ${checks}`);
