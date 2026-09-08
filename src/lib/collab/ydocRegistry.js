@@ -19,6 +19,45 @@ export function createDetachedYDoc(guid) {
   return new Y.Doc({ guid, autoLoad: false });
 }
 
+/** Startup presence check only: no creation, ref acquisition or Yjs encoding. */
+export function summarizeRegisteredYDoc(documentId) {
+  if (typeof documentId !== 'string' || !documentId.trim()) throw new Error('documentId required');
+  const entry = REGISTRY.get(documentId);
+  if (!entry) return { state: 'absent', documentId };
+  const doc = entry.doc;
+  return {
+    state: 'present', documentId,
+    metadata: {
+      guid: doc.guid, clientId: doc.clientID, createdAt: entry.createdAt,
+      refCount: entry.refCount, rootCount: doc.share.size,
+      hasPendingStructs: Boolean(doc.store.pendingStructs),
+      hasPendingDeleteSet: Boolean(doc.store.pendingDs),
+    },
+  };
+}
+
+/** Read the exact old registry key without creating a doc or acquiring a ref. */
+export function snapshotRegisteredYDoc(documentId) {
+  if (!documentId || typeof documentId !== 'string') throw new Error('documentId required');
+  const entry = REGISTRY.get(documentId);
+  if (!entry) return { state: 'absent', documentId };
+  const doc = entry.doc;
+  // Yjs full-state encoding includes pending structs and pending delete sets.
+  // Keep their raw v2 form too: recovery must not drop unresolved evidence.
+  return {
+    state: 'present', documentId, encoding: 'yjs-update-v1',
+    update: new Uint8Array(Y.encodeStateAsUpdate(doc)),
+    metadata: { guid: doc.guid, clientId: doc.clientID, createdAt: entry.createdAt,
+      refCount: entry.refCount, rootNames: [...doc.share.keys()] },
+    pending: {
+      encoding: 'yjs-update-v2',
+      structs: doc.store.pendingStructs ? new Uint8Array(doc.store.pendingStructs.update) : null,
+      missing: doc.store.pendingStructs ? [...doc.store.pendingStructs.missing.entries()] : [],
+      deleteSet: doc.store.pendingDs ? new Uint8Array(doc.store.pendingDs) : null,
+    },
+  };
+}
+
 /**
  * Get or create the Y.Doc for a given documentId.
  * Returns the SAME instance on subsequent calls — Y.Doc is long-lived, never destroyed on PDF switch.

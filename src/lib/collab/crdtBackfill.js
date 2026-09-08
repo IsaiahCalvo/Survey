@@ -76,6 +76,27 @@ const LEGACY_DEVICE_ID = 'before-v2.4';
 // "Document migrated to collaborative version" row per migrated document.
 const BACKFILL_ORIGIN_SOURCE = 'crdt-backfill';
 
+class BackfillCancelled extends Error {}
+
+function assertBackfillCurrent(args) {
+  let current = !args?.signal?.aborted;
+  if (current && typeof args?.isCurrent === 'function') {
+    try { current = !!args.isCurrent(); } catch { current = false; }
+  }
+  if (!current) throw new BackfillCancelled('The backfill document or account retired.');
+}
+
+function rethrowBackfillCancellation(error, args) {
+  if (error instanceof BackfillCancelled) throw error;
+  assertBackfillCurrent(args);
+}
+
+function withBackfillSignal(query, args) {
+  return args?.signal && typeof query?.abortSignal === 'function'
+    ? query.abortSignal(args.signal)
+    : query;
+}
+
 /**
  * Defensive deserialization of a legacy annotation row into the Fabric JSON
  * the bridge expects. Two row shapes are supported:
@@ -186,6 +207,8 @@ function buildBackfillOrigin({ originPayloadFactory, userId, deviceId, sessionId
  * @param {string} [args.sessionId] - per-mount session UUID
  * @param {number} [args.clientID] - per-mount Yjs clientID
  * @param {function} [args.originPayloadFactory] - optional; takes ({source, userId, deviceId, sessionId, clientID}), returns frozen origin object
+ * @param {function} [args.isCurrent] - optional synchronous document/account scope predicate
+ * @param {AbortSignal} [args.signal] - aborts a queued Web Lock and supported query transports
  * @param {Array<object>} [args.existingHydrateRows] - DB-sync audit #6. Raw legacy
  *   rows already read by the YDocProvider hydrate (annotationCloudSync
  *   loadAllNonSurveyMarkerAnnotations.rawRows). When present, the independent
@@ -195,6 +218,25 @@ function buildBackfillOrigin({ originPayloadFactory, userId, deviceId, sessionId
  * @returns {Promise<{ranAs: string, count?: number, imported?: number, skipped?: number, error?: any}>}
  */
 export async function runBackfill(args) {
+  try {
+    assertBackfillCurrent(args);
+    const result = await runBackfillCurrent(args);
+    assertBackfillCurrent(args);
+    return result;
+  } catch (error) {
+    // Lock rejection is also an await boundary, including predicate-only
+    // callers whose transport does not accept AbortSignal.
+    try { assertBackfillCurrent(args); } catch (retired) { error = retired; }
+    if (error instanceof BackfillCancelled) {
+      // Previously committed batches or a cloud request already sent are not
+      // undone. A retired caller must never mistake their completion for a seal.
+      return { ranAs: 'cancelled', cancelled: true, cutoverCompleted: false };
+    }
+    throw error;
+  }
+}
+
+async function runBackfillCurrent(args) {
   const {
     ydoc,
     supabase,
@@ -240,6 +282,7 @@ export async function runBackfill(args) {
   if (args.markCutoverComplete) {
     try {
       const meta = await resolveDocumentMetadata(documentId, { supabase });
+      assertBackfillCurrent(args);
       const docRow = meta.cutoverCompletedAt ? { cutover_completed_at: meta.cutoverCompletedAt } : null;
       if (docRow?.cutover_completed_at) {
         // Phase 31 hotfix (2026-05-03 second iteration) — Y.Map degeneracy
@@ -271,6 +314,7 @@ export async function runBackfill(args) {
           for (let waitedMs = 0; waitedMs < 1500 && probedSize === 0; waitedMs += 100) {
             // eslint-disable-next-line no-await-in-loop
             await new Promise((r) => setTimeout(r, 100));
+            assertBackfillCurrent(args);
             probedSize = (yMapForProbe && typeof yMapForProbe.size === 'number') ? yMapForProbe.size : 0;
           }
         }
@@ -338,16 +382,19 @@ export async function runBackfill(args) {
         let legacyCount = null;
         let probeOk = false;
         try {
-          const { count, error: countErr } = await supabase
+          assertBackfillCurrent(args);
+          const { count, error: countErr } = await withBackfillSignal(supabase
             .from('document_annotations')
             .select('*', { count: 'exact', head: true })
             .eq('document_id', documentId)
-            .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL);
+            .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL), args);
+          assertBackfillCurrent(args);
           if (!countErr && typeof count === 'number') {
             legacyCount = count;
             probeOk = true;
           }
         } catch (_e) {
+          rethrowBackfillCancellation(_e, args);
           // Probe failed — be conservative: fall through to the loop so we
           // don't trust a potentially-empty Y.Map.
         }
@@ -411,12 +458,14 @@ export async function runBackfill(args) {
         } // end else (count-probe path)
       }
     } catch (err) {
+      rethrowBackfillCancellation(err, args);
       // Silent fall-through. eslint-disable to allow the diagnostic warn.
       // eslint-disable-next-line no-console
       console.warn('[crdtBackfill] cutover_completed_at lookup failed', err?.message);
     }
   }
 
+  assertBackfillCurrent(args);
   if (typeof navigator === 'undefined' || !navigator.locks || typeof navigator.locks.request !== 'function') {
     // SSR / Node-test fallback: run inline without lock. Tests inject a fake
     // navigator.locks; production browsers always have it. Without this branch
@@ -434,12 +483,16 @@ export async function runBackfill(args) {
   // mode: 'exclusive' - two simultaneous backfills of the same (user,
   // document) emit duplicate Yjs updates with no benefit (idempotency catches
   // them, but it's wasted work).
-  return navigator.locks.request(lockName, { mode: 'exclusive' }, async () => {
+  return navigator.locks.request(lockName, {
+    mode: 'exclusive', ...(args.signal ? { signal: args.signal } : {}),
+  }, async () => {
+    assertBackfillCurrent(args);
     return runBackfillUnlocked(args);
   });
 }
 
 async function runBackfillUnlocked(args) {
+  assertBackfillCurrent(args);
   const {
     ydoc,
     supabase,
@@ -554,15 +607,17 @@ async function runBackfillUnlocked(args) {
   }));
   try {
     for (let from = 0; ; from += BACKFILL_PAGE_SIZE) {
+      assertBackfillCurrent(args);
       const to = from + BACKFILL_PAGE_SIZE - 1;
       const pageStartedAt = Date.now();
-      const result = await supabase
+      const result = await withBackfillSignal(supabase
         .from('document_annotations')
         .select('*')
         .eq('document_id', documentId)
         .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL)
         .order('page_number', { ascending: true })
-        .range(from, to);
+        .range(from, to), args);
+      assertBackfillCurrent(args);
       const pageElapsedMs = Date.now() - pageStartedAt;
       if (result?.error) {
         queryError = result.error;
@@ -583,6 +638,7 @@ async function runBackfillUnlocked(args) {
       if (pageRows.length < BACKFILL_PAGE_SIZE) break;
     }
   } catch (err) {
+    rethrowBackfillCancellation(err, args);
     queryError = err;
     console.warn('[Phase31 UAT] backfill:select-loop THREW ' + JSON.stringify({
       documentId, pagesFetched, message: err?.message || String(err),
@@ -625,6 +681,7 @@ async function runBackfillUnlocked(args) {
   // Per-row meta.authorId attribution still flows through ctx.userId on
   // the bridge call (separate from the transaction-tag origin).
   const BACKFILL_BATCH_SIZE = 100;
+  assertBackfillCurrent(args);
   const batchOrigin = buildBackfillOrigin({
     originPayloadFactory,
     userId,
@@ -634,8 +691,10 @@ async function runBackfillUnlocked(args) {
   });
   for (let batchStart = 0; batchStart < rows.length; batchStart += BACKFILL_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BACKFILL_BATCH_SIZE, rows.length);
+    assertBackfillCurrent(args);
     ydoc.transact(() => {
       for (let i = batchStart; i < batchEnd; i++) {
+        assertBackfillCurrent(args);
         const row = rows[i];
         const __rowType = row?.annotation_type || 'unknown';
         try {
@@ -662,6 +721,7 @@ async function runBackfillUnlocked(args) {
             clientID,
           };
 
+          assertBackfillCurrent(args);
           applyFabricCreate(ydoc, yMapAnnotations, fabricObject, originPayload, ctx);
 
           // Inline createdAt override (no inner transact — coalesced into
@@ -672,6 +732,7 @@ async function runBackfillUnlocked(args) {
           if (annoYMap) {
             const metaYMap = annoYMap.get('meta');
             if (metaYMap) {
+              assertBackfillCurrent(args);
               metaYMap.set('createdAt', legacyCreatedAtMs);
             }
           }
@@ -679,6 +740,7 @@ async function runBackfillUnlocked(args) {
           imported++;
           importedByType[__rowType] = (importedByType[__rowType] || 0) + 1;
         } catch (err) {
+          rethrowBackfillCancellation(err, args);
           // eslint-disable-next-line no-console
           console.warn('[crdtBackfill] skipping row', row?.annotation_id, err?.message);
           skipped++;
@@ -692,6 +754,7 @@ async function runBackfillUnlocked(args) {
   // device opening after the first finished sees the marker and short-circuits.
   // Wrapped in a transact tagged with the backfill origin so Phase 33 sees a
   // clean closing event (single attribution surface for the whole migration).
+  assertBackfillCurrent(args);
   const closingOrigin = buildBackfillOrigin({
     originPayloadFactory,
     userId,
@@ -699,7 +762,9 @@ async function runBackfillUnlocked(args) {
     sessionId,
     clientID,
   });
+  assertBackfillCurrent(args);
   ydoc.transact(() => {
+    assertBackfillCurrent(args);
     yMapMeta.set(doneKey, Date.now());
   }, closingOrigin);
 
@@ -721,6 +786,7 @@ async function runBackfillUnlocked(args) {
   // sealing — they were unrenderable in v2.3 and would never be renderable in
   // v2.4 either. Sealing without them is correct.
   let cutoverCompleted = false;
+  assertBackfillCurrent(args);
   if (args.markCutoverComplete) {
     // Verified-count match: yMapSize >= imported gates the cutover_completed_at
     // write. CONTEXT.md AC bullet 1 + Risk-and-Rollback mitigation #1.
@@ -730,10 +796,12 @@ async function runBackfillUnlocked(args) {
       try {
         // Count match passed (yMapSize >= imported); seal cutover_completed_at.
         const nowIso = new Date().toISOString();
-        const { error: updateError } = await supabase
+        assertBackfillCurrent(args);
+        const { error: updateError } = await withBackfillSignal(supabase
           .from('documents')
           .update({ cutover_completed_at: nowIso })
-          .eq('id', documentId);
+          .eq('id', documentId), args);
+        assertBackfillCurrent(args);
         if (updateError) {
           // eslint-disable-next-line no-console
           console.warn('[crdtBackfill] cutover_completed_at write failed', updateError?.message);
@@ -744,6 +812,7 @@ async function runBackfillUnlocked(args) {
           invalidateDocumentMetadata(documentId);
         }
       } catch (err) {
+        rethrowBackfillCancellation(err, args);
         // eslint-disable-next-line no-console
         console.warn('[crdtBackfill] cutover_completed_at write threw', err?.message);
       }
@@ -774,4 +843,3 @@ async function runBackfillUnlocked(args) {
   }));
   return { ranAs: 'leader', imported, skipped, cutoverCompleted };
 }
-

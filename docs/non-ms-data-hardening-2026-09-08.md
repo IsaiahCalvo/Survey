@@ -425,9 +425,10 @@ safe public handoff artifacts.
 
 This closes the live **baseline** gap for those existing checks only. It does not
 prove offline reconnect, access revocation during offline work, the old provider's
-account switch, or any Microsoft flow. New tests for those boundaries remain
-pending confirmation under the selected test-first workflow. The legacy raw-data
-recovery design has not been migrated or enabled.
+account switch, or any Microsoft flow. The standing optimization request
+authorizes routine regression tests; those tests need no further approval. The
+separate product choice about account-free local files remains unchanged. The
+legacy raw-data recovery design has not been migrated or enabled.
 
 After the final test-login changes, the full offline suite passed again: 4,299
 tests, 4,245 passed, 54 skipped, zero failed or canceled, exit 0. The existing
@@ -435,6 +436,71 @@ tests, 4,245 passed, 54 skipped, zero failed or canceled, exit 0. The existing
 regression test was added in this slice. Independent review found no remaining
 blocker in the two-file login-setup diff. Product source is unchanged from the
 already built and native-tested `9109b5e2` revision.
+
+## Actor-scoped legacy sync helpers — local checkpoint
+
+The next slice adds opt-in helpers, not an enabled storage migration.
+`YDocProvider` and its AppShell mount are unchanged. The current provider still
+uses its old namespace; do not describe account isolation as shipped.
+
+- One strict encoded document/actor key now supports registry, IndexedDB,
+  Web Locks and BroadcastChannel. Scoped startup exchanges state both ways,
+  including edits made before the follower attaches. Retry bursts are bounded;
+  role callbacks replace the need for role polling when the provider is wired.
+- Recovery has a metadata-only startup probe, separate full read-only
+  inspection, and a JSON-safe raw export. Unknown ownership stays unknown.
+  Missing databases stay absent. Registry snapshots preserve unresolved Yjs
+  structs and delete sets. Export tests caught and fixed loss of binary view
+  offsets and shared backing buffers. Nothing is imported or deleted by recovery.
+- The actor-bound runtime retires old work before a new actor's token can reach
+  it. It waits for exact session identity before transport construction, rejects
+  wrong-scope/destroyed documents, and closes late provider candidates. These
+  APIs are not yet connected to production provider callbacks.
+- Backfill accepts a captured current-generation check and abort signal. It
+  stops at async/write boundaries and returns cancellation without claiming a
+  completed cloud seal. Already committed batches and already-sent requests
+  are not rolled back.
+- Existing explicit document purge now matches the exact new document prefix,
+  including all actors, without matching sibling IDs. Scoped document destroy
+  stops local channels, retries and lock election. Missing database enumeration
+  reports incomplete cleanup instead of claiming that undiscovered stores were
+  removed; existing archive callers still handle purge errors best-effort.
+
+First frozen verification: `npm test` exited 0 with 4,367 tests, 4,313 passed,
+54 skipped, zero failed/canceled. `npx vite build` passed. The actual Electron
+save/quit fixture passed all seven checks. Logs are private temporary files:
+`/tmp/survey-scoped-helpers-{tests,build,electron}-20260908.log`.
+
+After adding six permanent session-race checks and two more recovery-error
+regressions, the final frozen run also exited 0: 4,375 tests, 4,321 passed,
+54 skipped, zero failed/canceled. The final build passed. Logs:
+`/tmp/survey-scoped-helpers-final-{tests,build}-20260908.log`.
+
+Actual Chromium tabs, with invented data and isolated browser storage, also
+passed five module checks: a late same-actor follower received old history;
+pre-attach follower bytes reached the leader; another actor received neither
+history nor later local edits; the follower became leader after normal detach;
+and cold reopen restored all three delivered edits. Two exact actor database
+names were observed and there were zero page errors. This is real browser
+storage/lock/channel proof, not a rendered provider rollout or live-account test.
+
+Remaining rollout gates:
+
+1. The known-gap diagnostic `debug/legacy-ydoc-lifecycle-known-gaps.mjs` pins
+   baseline `ff15dfa70a8d472b4277f5b5b7a29af55e774827`. Both baseline and scoped
+   helpers can leave a follower's last edit only in memory when both tabs detach
+   before message delivery. Both can hold the writer lock while IndexedDB open
+   never resolves. Retained registry bytes are not a disk-save receipt.
+2. Bound full recovery read/export resource use and add explicit recovery UI.
+   A partial-source read or unsupported export must not be shown as a complete
+   backup. No automatic ownership assignment or opaque replay is allowed.
+3. Wire reactive actor scope, synchronous retirement, captured async guards,
+   new role callbacks and recovery state into the provider as one tested change.
+   Recheck actual multi-user flows after that integration. The earlier live
+   FIX20 pass remains a baseline, not proof for these unused helper APIs.
+
+Microsoft 365 work is still deferred. No new account, trial, cloud migration,
+production data deletion or Supabase configuration change was made in this slice.
 
 ## Sources
 

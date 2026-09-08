@@ -295,5 +295,55 @@ release, and cancellation of a waiting lock. They do not cover actor isolation
 or late-follower initial state. The read-only reproductions above demonstrate
 those missing cases without changing the test or product files.
 
-No product change, namespace change, migration, commit, or live test is included
-in this report.
+The original audit above included no product change or migration. The following
+checkpoint records later local implementation; it does not enable the new path.
+
+## Helper checkpoint and next close-safety contract
+
+Opt-in scoped lifecycle, read-only recovery, actor-bound runtime and backfill
+cancellation helpers now exist. See `non-ms-data-hardening-2026-09-08.md` for
+verification and limits. The AppShell/YDocProvider mount is still unchanged.
+Routine tests are authorized by the user's standing request; do not wait for
+another test-coverage approval.
+
+Review reproduced two close faults in both `ff15dfa7` and the scoped helper:
+simultaneous detach before follower-message delivery can leave the final edit
+only in memory, and an unresolved IndexedDB open can leave cleanup and the next
+writer waiting. The checked-in diagnostic prints those failures; it is not a
+passing acceptance suite.
+
+The next proposed fix is a distinct `prepareLocalClose()` proof, not a claim
+that `detach()` saves data. Keep each required lifecycle attached until every
+close proof succeeds. Bind the proof to exact document, actor, mount generation,
+request ID and copied full Yjs update. A follower sends that update to the
+leader; the leader validates scope, applies it, appends the full update to the
+scoped store and acknowledges only after transaction `oncomplete`. Before close,
+recheck identity and exact current bytes, including pending/deletion-only data.
+Neither an update event counter nor a matching annotation count is sufficient.
+
+The installed y-indexeddb `synced` event precedes transaction completion;
+`storeState()` does not return its nested append/delete chain; `destroy()` seals
+listeners but waits on its open promise. None supplies this save proof. Existing
+annotation receipts depend on accepted/pending provenance and annotation-specific
+maps, so reuse only their low-level transaction patterns, not their authority or
+receipt identity for arbitrary legacy roots.
+
+If a leader disappears, storage aborts or a deadline expires, report close
+failure in bounded time and retain data. Do not race the writer-lock callback
+against a timeout: the old persistence writer may still finish later. A new
+per-writer recovery journal is a larger alternative requiring restore, delete
+fencing, and compaction, not a safe write-only fallback.
+
+Required new proof before close integration:
+
+- Last follower edit then simultaneous close survives a fresh disk reopen.
+- Leader loss, transaction abort, quota and blocked open never report success.
+- Deletion-only and unresolved pending bytes survive later predecessor delivery.
+- Running compaction cannot erase the acknowledged snapshot.
+- Edit, actor change, detach, destroy or explicit purge invalidates an old proof.
+- Duplicate, wrong-scope and old-generation acknowledgments are rejected.
+- Timeout does not release the old lock; late open cannot revive stale writes.
+- A fresh retry succeeds once storage is available.
+
+This close contract is proposed, not implemented. Recovery read/export limits,
+the explicit recovery UI and full provider callback wiring also remain required.

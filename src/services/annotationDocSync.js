@@ -17,6 +17,7 @@
 // durable path is proved before the viewer is wired to it.
 
 import * as Y from 'yjs';
+import { getLegacyYDocDocumentPrefix } from '../lib/collab/legacyYDocScope.js';
 import {
   createDetachedYDoc,
   getOrCreateYDoc,
@@ -3934,6 +3935,7 @@ function makeHandle(state) {
  */
 export async function purgeAnnotationDoc(documentId) {
   if (!documentId) return;
+  const legacyScopePrefix = getLegacyYDocDocumentPrefix(documentId);
   LOCAL_RECEIPT_PURGE_EPOCHS.set(documentId, (LOCAL_RECEIPT_PURGE_EPOCHS.get(documentId) || 0) + 1);
   const purgeError = deletedDocumentError(documentId);
   const activeStates = [...(ACTIVE_STATES.get(documentId) || [])];
@@ -3983,6 +3985,7 @@ export async function purgeAnnotationDoc(documentId) {
   purgeYDoc(documentId);
   purgeYDoc(`${REGISTRY_PREFIX}${documentId}`);
   purgeYDocsByPrefix(`${REGISTRY_PREFIX}${documentId}:`);
+  purgeYDocsByPrefix(legacyScopePrefix);
 
   const generationPrefix = `annotationPersistenceGeneration:${documentId}:`;
   const actorsKey = persistenceActorsKey(documentId);
@@ -4022,8 +4025,15 @@ export async function purgeAnnotationDoc(documentId) {
             entry?.name === documentId
             || entry?.name === `anno-${documentId}`
             || entry?.name?.startsWith(`anno-${documentId}-actor-`)
+            || entry?.name?.startsWith(legacyScopePrefix)
           ) databaseNames.add(entry.name);
         }
+      } else {
+        // Scoped legacy stores have no all-actor inventory. Delete the known
+        // old stores, but never claim that unlisted actor stores were purged.
+        const error = new Error('Cannot enumerate actor-scoped legacy document storage');
+        error.code = 'LEGACY_YDOC_PURGE_DISCOVERY_UNAVAILABLE';
+        purgeErrors.push(error);
       }
       const { clearDocument } = await import('y-indexeddb');
       const results = await Promise.allSettled(

@@ -33,6 +33,7 @@
 import { IndexeddbPersistence } from 'y-indexeddb';
 import * as Y from 'yjs';
 import { attachStorageFailureDetector } from './storageFailureDetector.js';
+import { getLegacyYDocScopeKey } from './legacyYDocScope.js';
 
 // Origin tag for BroadcastChannel-applied updates.
 // Locked by 27-RESEARCH.md Pattern 2: Phase 29 observers can short-circuit echo loops
@@ -46,12 +47,19 @@ const REMOTE_BC_ORIGIN = Object.freeze({ source: 'remote-bc' });
  * @param {Y.Doc} ydoc - Y.Doc from ydocRegistry.getOrCreateYDoc(documentId)
  * @param {string} documentId
  * @param {object} options
- * @param {(state: {code: string, role: 'leader'|'loser', error?: Error}) => void} options.onStorageState
- * @returns {{ detach: () => void, role: () => 'leader'|'loser'|'unknown' }}
+ * @param {(state: {code: string, role: 'leader'|'loser'|'follower'|'unknown', error?: Error}) => void} options.onStorageState
+ * @param {string} [options.actorUserId] - Opt in to actor-isolated storage and local state exchange.
+ * @param {(role: 'follower'|'leader') => void} [options.onRoleChange] - Scoped election changes, without polling.
+ * @returns {{ detach: () => (Promise<void>|void), role: () => 'leader'|'loser'|'follower'|'unknown' }}
  */
 export function attachLifecycle(ydoc, documentId, options) {
   if (!ydoc) throw new Error('[ydocLifecycle] ydoc is required');
   if (!documentId) throw new Error('[ydocLifecycle] documentId is required');
+  // Explicit opt-in only. Never expose unscoped history through a new handshake
+  // while the old store's actor is unknown. Recovery/rollout belongs to callers.
+  if (Object.hasOwn(options || {}, 'actorUserId')) {
+    return attachScopedLifecycle(ydoc, documentId, options);
+  }
   const onStorageState = options?.onStorageState ?? (() => {});
 
   // SSR / non-browser env: bail out with a no-op handle.
@@ -165,4 +173,236 @@ export function attachLifecycle(ydoc, documentId, options) {
     },
     role: () => role,
   };
+}
+
+const SCOPED_PROTOCOL = 'legacy-yjs';
+const SCOPED_PROTOCOL_VERSION = 1;
+const SYNC_RETRY_DELAYS_MS = [0, 250, 1000];
+const MAX_RECENT_MESSAGES = 512;
+const MAX_WAITING_PEERS = 128;
+
+function isNonemptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function updateBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  return null;
+}
+
+function hasUpdate(bytes) {
+  // The canonical empty Yjs v1 update. Deletion-only updates must still travel.
+  return !(bytes.length === 2 && bytes[0] === 0 && bytes[1] === 0);
+}
+
+/**
+ * Actor-scoped, single-writer persistence with a local state-vector handshake.
+ * No network authority is implied by BroadcastChannel: isolation is by exact
+ * actor/document namespace and caller lifecycle, not by message secrecy.
+ */
+function attachScopedLifecycle(ydoc, documentId, options) {
+  const actorUserId = options.actorUserId;
+  const scopeKey = getLegacyYDocScopeKey(documentId, actorUserId);
+  if (ydoc.isDestroyed) return { detach: () => {}, role: () => 'unknown' };
+  if (
+    typeof window === 'undefined' || typeof navigator === 'undefined'
+    || !navigator.locks || typeof BroadcastChannel === 'undefined'
+  ) return { detach: () => {}, role: () => 'unknown' };
+
+  const onStorageState = options.onStorageState || (() => {});
+  const onRoleChange = options.onRoleChange || (() => {});
+  const senderId = globalThis.crypto?.randomUUID?.()
+    || `peer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const bc = new BroadcastChannel(`y-doc-bc-${scopeKey}`);
+  const electionAbort = new AbortController();
+  const waitingPeers = new Map();
+  const seenMessages = new Set();
+  const ownRequests = new Set();
+  const retryTimers = new Set();
+  let sequence = 0;
+  let detached = false;
+  let role = 'unknown';
+  let hydrated = false;
+  let persistence = null;
+  let storageDetector = null;
+  let releaseLock;
+  const lifetime = new Promise((resolve) => { releaseLock = resolve; });
+  let election;
+
+  function setRole(next) {
+    if (detached || role === next) return;
+    role = next;
+    onRoleChange(next);
+  }
+  function post(type, fields = {}) {
+    if (detached) return null;
+    const message = {
+      ...fields, protocol: SCOPED_PROTOCOL, version: SCOPED_PROTOCOL_VERSION,
+      documentId, actorUserId, senderId, sequence: ++sequence, type,
+    };
+    try { bc.postMessage(message); } catch (error) {
+      if (!detached) onStorageState({ code: 'invalid_state', role, error });
+      return null;
+    }
+    return message.sequence;
+  }
+  function remember(set, value, limit) {
+    set.add(value);
+    if (set.size > limit) set.delete(set.values().next().value);
+  }
+  function clearRetries() {
+    for (const timer of retryTimers) clearTimeout(timer);
+    retryTimers.clear();
+  }
+  function requestSync() {
+    if (detached) return;
+    // Register before posting: synchronous test buses may answer immediately.
+    const requestSequence = sequence + 1;
+    remember(ownRequests, requestSequence, SYNC_RETRY_DELAYS_MS.length * 2);
+    post('sync-request', { stateVector: Y.encodeStateVector(ydoc) });
+  }
+  function retrySync(force = false) {
+    if (detached || (!force && retryTimers.size > 0)) return;
+    clearRetries();
+    for (const delay of SYNC_RETRY_DELAYS_MS) {
+      if (delay === 0) { requestSync(); continue; }
+      const timer = setTimeout(() => {
+        retryTimers.delete(timer);
+        requestSync();
+      }, delay);
+      retryTimers.add(timer);
+    }
+  }
+  function replyTo(request) {
+    if (detached) return;
+    // A leader may have older history only on disk. Never answer from its
+    // pre-hydration state; keep one latest request per waiting peer instead.
+    if (role === 'leader' && !hydrated) {
+      waitingPeers.set(request.senderId, request);
+      if (waitingPeers.size > MAX_WAITING_PEERS) waitingPeers.delete(waitingPeers.keys().next().value);
+      return;
+    }
+    post('sync-response', {
+      recipientId: request.senderId, requestSequence: request.sequence,
+      update: Y.encodeStateAsUpdate(ydoc, request.stateVector),
+      stateVector: Y.encodeStateVector(ydoc),
+    });
+  }
+  function receive(event) {
+    if (detached) return;
+    const message = event?.data;
+    if (!message || message.protocol !== SCOPED_PROTOCOL || message.version !== SCOPED_PROTOCOL_VERSION
+      || message.documentId !== documentId || message.actorUserId !== actorUserId
+      || !isNonemptyString(message.senderId) || message.senderId === senderId
+      || !Number.isSafeInteger(message.sequence) || message.sequence <= 0
+      || (message.recipientId !== undefined && message.recipientId !== senderId)
+      || !['sync-request', 'sync-response', 'update'].includes(message.type)) return;
+    if (message.type === 'sync-response' && (
+      message.recipientId !== senderId || !ownRequests.has(message.requestSequence)
+    )) return;
+    const identity = JSON.stringify([message.senderId, message.sequence]);
+    if (seenMessages.has(identity)) return;
+    try {
+      let stateVector;
+      let update;
+      if (message.type !== 'update') {
+        stateVector = updateBytes(message.stateVector);
+        if (!stateVector) return;
+        Y.decodeStateVector(stateVector);
+      }
+      if (message.type !== 'sync-request') {
+        update = updateBytes(message.update);
+        if (!update) return;
+        // Decode before mutating the doc, so malformed frames do not reach the
+        // persistence observer. Repeated valid Yjs updates are idempotent too.
+        Y.decodeUpdate(update);
+      }
+      remember(seenMessages, identity, MAX_RECENT_MESSAGES);
+      if (message.type === 'sync-request') {
+        replyTo({ ...message, stateVector });
+        return;
+      }
+      Y.applyUpdate(ydoc, update, REMOTE_BC_ORIGIN);
+      if (message.type === 'sync-response') {
+        // The request only advertised a state vector. Send our missing bytes
+        // back now, including edits made before this follower was attached.
+        const missing = Y.encodeStateAsUpdate(ydoc, stateVector);
+        if (hasUpdate(missing)) post('update', { recipientId: message.senderId, update: missing });
+      }
+    } catch { /* malformed input cannot end the local persistence lifecycle */ }
+  }
+  bc.onmessage = receive;
+  const onLocalUpdate = (update, origin) => {
+    if (detached || origin === REMOTE_BC_ORIGIN) return;
+    post('update', { update });
+  };
+  ydoc.on('update', onLocalUpdate);
+  const onWake = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    retrySync();
+  };
+  window.addEventListener('focus', onWake);
+  window.addEventListener('online', onWake);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onWake);
+  // Permanent registry purge must retire channels, retries and lock ownership,
+  // even if its provider has not yet received the React unmount cleanup.
+  ydoc.on('destroy', detach);
+
+  // A waiter is a follower, not an indefinitely unknown role. The lock promise
+  // promotes it after the previous leader has closed its persistence handle.
+  setRole('follower');
+  election = navigator.locks.request(`y-doc-${scopeKey}`, {
+    mode: 'exclusive', signal: electionAbort.signal,
+  }, async () => {
+    if (detached) return;
+    setRole('leader');
+    if (detached) return;
+    hydrated = false;
+    try {
+      persistence = new IndexeddbPersistence(scopeKey, ydoc);
+      persistence.on('synced', () => {
+        if (detached) return;
+        hydrated = true;
+        onStorageState({ code: 'ok', role });
+        for (const request of waitingPeers.values()) replyTo(request);
+        waitingPeers.clear();
+        retrySync(true);
+      });
+      storageDetector = attachStorageFailureDetector({
+        onState: (state) => {
+          if (!detached) onStorageState({ ...state, role });
+        },
+      });
+      await lifetime;
+    } finally {
+      try { await persistence?.destroy(); } catch { /* preserve disk and memory */ }
+      try { storageDetector?.detach(); } catch { /* best effort */ }
+    }
+  }).catch((error) => {
+    if (!detached) onStorageState({ code: 'invalid_state', role, error });
+  });
+  retrySync();
+
+  function detach() {
+    if (detached) return election;
+    detached = true;
+    clearRetries();
+    waitingPeers.clear();
+    seenMessages.clear();
+    ownRequests.clear();
+    ydoc.off('update', onLocalUpdate);
+    ydoc.off('destroy', detach);
+    bc.onmessage = null;
+    bc.close();
+    window.removeEventListener('focus', onWake);
+    window.removeEventListener('online', onWake);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onWake);
+    storageDetector?.detach();
+    electionAbort.abort();
+    releaseLock();
+    return election;
+  }
+
+  return { detach, role: () => role };
 }
