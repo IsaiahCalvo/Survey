@@ -1,83 +1,31 @@
+// Actual WAL SQL/locking proof; access checks remain deliberately stubbed.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { withDisposablePostgres } from './helpers/disposablePostgres.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const migration = join(root, 'supabase/migrations/20260727131230_annotation_wal_concurrency.sql');
-const temp = mkdtempSync(join(tmpdir(), 'survey-annotation-wal-'));
-const data = join(temp, 'data');
-const socket = join(temp, 'socket');
-const port = 56000 + Math.floor(Math.random() * 3000);
-const psqlArgs = ['-h', socket, '-p', String(port), '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atq'];
 const OWNER = '10000000-0000-0000-0000-000000000001';
+if (process.argv.length !== 2) throw new Error('This local fixture accepts no arguments.');
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: root,
-    encoding: 'utf8',
-    ...options,
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} failed (${result.status})\n${result.stdout || ''}\n${result.stderr || ''}`);
-  }
-  return String(result.stdout || '').trim();
-}
-
-function sql(source, extraArgs = []) {
-  return run('psql', [...psqlArgs, ...extraArgs, '-c', `
+await withDisposablePostgres(async pg => {
+  const sql = source => pg.sql(`
     DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
     ${source}
-  `]);
-}
-
-function spawnSql(source) {
-  return spawn('psql', [...psqlArgs, '-c', `
-    DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
-    ${source}
-  `], {
-    cwd: root,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-}
-
-function completion(child) {
-  return new Promise((resolvePromise) => {
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('close', (status) => resolvePromise({ status, stdout, stderr }));
-  });
-}
-
-async function waitForAdvisoryLock(timeoutMs = 1000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (Number(sql(`
-      SELECT count(*)
-      FROM pg_locks
-      WHERE locktype = 'advisory'
-        AND mode = 'ExclusiveLock'
-        AND granted
-    `)) > 0) return;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
-  }
-  throw new Error('timed out waiting for the test advisory lock');
-}
-
-try {
-  run('mkdir', ['-p', socket]);
-  run('initdb', ['-D', data, '--auth=trust', '--no-locale', '-E', 'UTF8']);
-  const started = spawnSync(
-    'pg_ctl',
-    ['-D', data, '-o', `-F -p ${port} -k ${socket}`, '-w', 'start'],
-    { stdio: 'ignore', timeout: 10000 },
-  );
-  assert.equal(started.status, 0, 'disposable Postgres starts');
-
+  `).stdout;
+  const startSession = (name, source) => {
+    // Preserve the original postgres-owned fixture context; real authorization
+    // remains outside this harness, except explicit SET ROLE assertions below.
+    const session = pg.session(name, { role: 'postgres', actorId: OWNER });
+    session.send(source + ';');
+    return session;
+  };
+  const hold = async (name, source) => {
+    const session = startSession(name, source);
+    session.send("SELECT 'FIXTURE_HELD';");
+    await session.wait('FIXTURE_HELD');
+    return session;
+  };
   sql(`
     CREATE ROLE authenticated;
     CREATE ROLE service_role;
@@ -161,7 +109,7 @@ try {
       (1, '00000000-0000-0000-0000-000000000009', 'historic', 1, '\\x91'),
       (3, '00000000-0000-0000-0000-000000000009', 'historic', 2, '\\x93');
   `);
-  run('psql', [...psqlArgs, '-f', migration]);
+  pg.applyMigration(migration);
 
   assert.equal(sql(`
     SELECT concat_ws(',',
@@ -194,12 +142,12 @@ try {
   `), 'f,t,t,f,t,t,f,f,f,t,t,f,f,f',
   'Supabase default grants are explicitly narrowed for RPC, triggers, and immutable WAL rows');
   for (const mutation of ['UPDATE', 'DELETE']) {
-    const attemptedWalMutation = spawnSync('psql', [...psqlArgs, '-c', `
+    const attemptedWalMutation = pg.sql(`
       SET ROLE authenticated;
       ${mutation === 'UPDATE'
         ? "UPDATE public.annotation_updates SET actor_user_id = NULL"
         : 'DELETE FROM public.annotation_updates'}
-    `], { encoding: 'utf8' });
+    `, false);
     assert.notEqual(attemptedWalMutation.status, 0);
     assert.match(attemptedWalMutation.stderr, /permission denied for table annotation_updates/);
   }
@@ -235,12 +183,12 @@ try {
       '00000000-0000-0000-0000-000000000001', 'writer-a', 3, '\\x05'
     )
   `), '3', 'exact idempotent replay returns its original sequence');
-  const collision = spawnSync('psql', [...psqlArgs, '-c', `
+  const collision = pg.sql(`
     DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000001', 'writer-a', 3, '\\xff'
     )
-  `], { encoding: 'utf8' });
+  `, false);
   assert.notEqual(collision.status, 0);
   assert.match(collision.stderr, /client sequence collision/);
 
@@ -280,7 +228,7 @@ try {
       AND client_id = 'legacy-receipt'
       AND client_seq = 1
   `), 't', 'legacy retry never claims unknowable actor provenance');
-  const revokedLegacyRetry = spawnSync('psql', [...psqlArgs, '-c', `
+  const revokedLegacyRetry = pg.sql(`
     DO $$ BEGIN
       PERFORM set_config(
         'request.jwt.claim.sub',
@@ -292,7 +240,7 @@ try {
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000011', 'legacy-receipt', 1, '\\x11'
     )
-  `], { encoding: 'utf8' });
+  `, false);
   assert.notEqual(revokedLegacyRetry.status, 0);
   assert.match(revokedLegacyRetry.stderr, /annotation write is not permitted/);
 
@@ -308,7 +256,7 @@ try {
     )
   `).split('\n').at(-1), '1',
   'the same actor can confirm an exact immutable receipt after access is revoked');
-  const crossActorReceipt = spawnSync('psql', [...psqlArgs, '-c', `
+  const crossActorReceipt = pg.sql(`
     DO $$ BEGIN
       PERFORM set_config(
         'request.jwt.claim.sub',
@@ -320,7 +268,7 @@ try {
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000012', 'actor-receipt', 1, '\\x12'
     )
-  `], { encoding: 'utf8' });
+  `, false);
   assert.notEqual(crossActorReceipt.status, 0);
   assert.match(crossActorReceipt.stderr, /annotation write is not permitted/);
 
@@ -452,7 +400,7 @@ try {
     WHERE document_id = '00000000-0000-0000-0000-000000000010'
   `).split('\n').at(-1), '90,t,t,0,t',
   'direct exact upsert is a full-row no-op, including base metadata and updated_at');
-  const directAba = spawnSync('psql', [...psqlArgs, '-c', `
+  const directAba = pg.sql(`
     DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
     INSERT INTO public.annotation_snapshots (
       document_id, at_seq, snapshot, encoding_version,
@@ -470,7 +418,7 @@ try {
       base_at_seq = EXCLUDED.base_at_seq,
       base_writer_id = EXCLUDED.base_writer_id,
       base_writer_epoch = EXCLUDED.base_writer_epoch
-  `], { encoding: 'utf8' });
+  `, false);
   assert.notEqual(directAba.status, 0);
   assert.match(directAba.stderr, /stale annotation snapshot replacement/);
   assert.equal(sql(`
@@ -512,7 +460,7 @@ try {
     )
   `), 'f', 'snapshot generation regression is rejected even at an advanced frontier');
 
-  const directMissingBase = spawnSync('psql', [...psqlArgs, '-c', `
+  const directMissingBase = pg.sql(`
     DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
     INSERT INTO public.annotation_snapshots (
       document_id, at_seq, snapshot, encoding_version,
@@ -521,7 +469,7 @@ try {
       '00000000-0000-0000-0000-000000000014', 0, '\\x14', 1,
       'direct-first', 1, 0, NULL, 0
     )
-  `], { encoding: 'utf8' });
+  `, false);
   assert.notEqual(directMissingBase.status, 0);
   assert.match(directMissingBase.stderr, /stale annotation snapshot absent base/);
   assert.equal(sql(`
@@ -566,12 +514,12 @@ try {
       'move-source', 1, NULL, NULL, 0
     )
   `), 't');
-  const movedDocumentId = spawnSync('psql', [...psqlArgs, '-c', `
+  const movedDocumentId = pg.sql(`
     DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
     UPDATE public.annotation_snapshots
        SET document_id = '00000000-0000-0000-0000-000000000016'
      WHERE document_id = '00000000-0000-0000-0000-000000000015'
-  `], { encoding: 'utf8' });
+  `, false);
   assert.notEqual(movedDocumentId.status, 0);
   assert.match(movedDocumentId.stderr, /snapshot document identity cannot change/);
   assert.equal(sql(`
@@ -586,50 +534,38 @@ try {
     FROM public.annotation_snapshots
   `), '1,0', 'direct UPDATE cannot move a snapshot across document lock domains');
 
-  const heldSnapshotAdvisory = spawnSql(`
-    BEGIN;
+  const heldSnapshotAdvisory = await hold('heldSnapshotAdvisory', `
     SELECT pg_advisory_xact_lock(
       hashtextextended('00000000-0000-0000-0000-000000000015', 0)
     );
-    SELECT pg_sleep(0.8);
-    COMMIT;
   `);
-  const heldSnapshotAdvisoryDone = completion(heldSnapshotAdvisory);
-  await waitForAdvisoryLock();
   const directUpdateStartedAt = Date.now();
-  const contendedDirectUpdate = spawnSync('psql', [...psqlArgs, '-c', `
+  const contendedDirectUpdate = pg.sql(`
     DO $$ BEGIN PERFORM set_config('request.jwt.claim.sub', '${OWNER}', false); END $$;
     UPDATE public.annotation_snapshots
        SET updated_at = now()
      WHERE document_id = '00000000-0000-0000-0000-000000000015'
-  `], { encoding: 'utf8' });
+  `, false);
   const directUpdateMs = Date.now() - directUpdateStartedAt;
   assert.notEqual(contendedDirectUpdate.status, 0);
   assert.match(contendedDirectUpdate.stderr, /annotation snapshot write contention/);
   assert.ok(directUpdateMs < 500,
     `direct UPDATE must fail instead of inverting the RPC lock order (${directUpdateMs}ms)`);
-  assert.equal((await heldSnapshotAdvisoryDone).status, 0);
+  assert.equal((await heldSnapshotAdvisory.finish()).status, 0);
 
   const owner = OWNER;
-  const appendFirst = spawnSql(`
-    BEGIN;
+  const appendFirst = await hold('appendFirst', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000003', 'append-first', 1, '\\x31'
     );
-    SELECT pg_sleep(0.6);
-    COMMIT;
   `);
-  const appendFirstDone = completion(appendFirst);
-  await waitForAdvisoryLock();
-  const appendSecond = spawnSql(`
+  const appendSecond = startSession('appendSecond', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000003', 'append-second', 1, '\\x32'
     )
   `);
-  const [appendFirstResult, appendSecondResult] = await Promise.all([
-    appendFirstDone,
-    completion(appendSecond),
-  ]);
+  await pg.blocked(appendSecond.name);
+  const [appendFirstResult, appendSecondResult] = await Promise.all([appendFirst.finish(), appendSecond.finish()]);
   assert.equal(appendFirstResult.status, 0);
   assert.equal(appendSecondResult.status, 0);
   assert.match(appendFirstResult.stdout, /(^|\n)1(\n|$)/);
@@ -640,25 +576,18 @@ try {
     WHERE document_id = '00000000-0000-0000-0000-000000000003'
   `), '1:append-first,2:append-second', 'same-document appends serialize in commit order');
 
-  const idemFirst = spawnSql(`
-    BEGIN;
+  const idemFirst = await hold('idemFirst', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000004', 'idem-writer', 1, '\\x41'
     );
-    SELECT pg_sleep(0.6);
-    COMMIT;
   `);
-  const idemFirstDone = completion(idemFirst);
-  await waitForAdvisoryLock();
-  const idemSecond = spawnSql(`
+  const idemSecond = startSession('idemSecond', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000004', 'idem-writer', 1, '\\x41'
     )
   `);
-  const [idemFirstResult, idemSecondResult] = await Promise.all([
-    idemFirstDone,
-    completion(idemSecond),
-  ]);
+  await pg.blocked(idemSecond.name);
+  const [idemFirstResult, idemSecondResult] = await Promise.all([idemFirst.finish(), idemSecond.finish()]);
   assert.equal(idemFirstResult.status, 0);
   assert.equal(idemSecondResult.status, 0);
   assert.match(idemFirstResult.stdout, /(^|\n)1(\n|$)/);
@@ -668,26 +597,19 @@ try {
     WHERE document_id = '00000000-0000-0000-0000-000000000004'
   `), '1', 'same idempotency-key race stores one row');
 
-  const appendBeforeSnapshot = spawnSql(`
-    BEGIN;
+  const appendBeforeSnapshot = await hold('appendBeforeSnapshot', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000005', 'frontier-writer', 1, '\\x51'
     );
-    SELECT pg_sleep(0.6);
-    COMMIT;
   `);
-  const appendBeforeSnapshotDone = completion(appendBeforeSnapshot);
-  await waitForAdvisoryLock();
-  const staleSnapshot = spawnSql(`
+  const staleSnapshot = startSession('staleSnapshot', `
     SELECT public.store_annotation_snapshot(
       '00000000-0000-0000-0000-000000000005', 0, '\\x50', 1,
       'snapshot-writer', 1, NULL, NULL, 0
     )
   `);
-  const [appendBeforeSnapshotResult, staleSnapshotResult] = await Promise.all([
-    appendBeforeSnapshotDone,
-    completion(staleSnapshot),
-  ]);
+  await pg.blocked(staleSnapshot.name);
+  const [appendBeforeSnapshotResult, staleSnapshotResult] = await Promise.all([appendBeforeSnapshot.finish(), staleSnapshot.finish()]);
   assert.equal(appendBeforeSnapshotResult.status, 0);
   assert.equal(staleSnapshotResult.status, 0);
   assert.equal(staleSnapshotResult.stdout.trim(), 'f');
@@ -696,27 +618,20 @@ try {
     WHERE document_id = '00000000-0000-0000-0000-000000000005'
   `), '0', 'stale-frontier snapshot loses to a committed append');
 
-  const finalizingSnapshotDoc = spawnSql(`
-    BEGIN;
+  const finalizingSnapshotDoc = await hold('finalizingSnapshotDoc', `
     SELECT set_config('request.jwt.claim.sub', '${owner}', false);
     SELECT (public.kal49_lock_document(
       '00000000-0000-0000-0000-000000000006', 'final'
     )).locked_at IS NOT NULL;
-    SELECT pg_sleep(0.6);
-    COMMIT;
   `);
-  const finalizingSnapshotDocDone = completion(finalizingSnapshotDoc);
-  await waitForAdvisoryLock();
-  const snapshotDuringFinalization = spawnSql(`
+  const snapshotDuringFinalization = startSession('snapshotDuringFinalization', `
     SELECT public.store_annotation_snapshot(
       '00000000-0000-0000-0000-000000000006', 0, '\\x61', 1,
       'snapshot-writer', 1, NULL, NULL, 0
     )
   `);
-  const [finalizationSnapshotResult, snapshotFinalizationResult] = await Promise.all([
-    finalizingSnapshotDocDone,
-    completion(snapshotDuringFinalization),
-  ]);
+  await pg.blocked(snapshotDuringFinalization.name);
+  const [finalizationSnapshotResult, snapshotFinalizationResult] = await Promise.all([finalizingSnapshotDoc.finish(), snapshotDuringFinalization.finish()]);
   assert.equal(finalizationSnapshotResult.status, 0);
   assert.notEqual(snapshotFinalizationResult.status, 0);
   assert.match(snapshotFinalizationResult.stderr, /annotation snapshot write is not permitted/);
@@ -725,73 +640,57 @@ try {
     WHERE document_id = '00000000-0000-0000-0000-000000000006'
   `), '0', 'snapshot cannot commit after finalization');
 
-  const heldDocument = spawnSql(`
-    BEGIN;
+  const heldDocument = await hold('heldDocument', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000007', 'held-writer', 1, '\\x71'
     );
-    SELECT pg_sleep(1);
-    COMMIT;
   `);
-  const heldDocumentDone = completion(heldDocument);
-  await waitForAdvisoryLock();
   const differentDocumentStartedAt = Date.now();
-  const differentDocument = await completion(spawnSql(`
+  const independentSession = startSession('differentDocument', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000008', 'free-writer', 1, '\\x81'
     )
-  `));
+  `);
+  const differentDocument = await independentSession.finish();
   const differentDocumentMs = Date.now() - differentDocumentStartedAt;
   assert.equal(differentDocument.status, 0);
   assert.equal(differentDocument.stdout.trim(), '1');
   assert.ok(differentDocumentMs < 700, `different document must not block (${differentDocumentMs}ms)`);
-  assert.equal((await heldDocumentDone).status, 0);
+  assert.equal((await heldDocument.finish()).status, 0);
 
-  const receiptBeforeFinalization = spawnSql(`
-    BEGIN;
+  const receiptBeforeFinalization = await hold('receiptBeforeFinalization', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000013', 'accepted-before-lock', 1, '\\xd1'
     );
     UPDATE public.documents
        SET locked_at = now(), locked_by = '${OWNER}'
      WHERE id = '00000000-0000-0000-0000-000000000013';
-    SELECT pg_sleep(0.6);
-    COMMIT;
   `);
-  const receiptBeforeFinalizationDone = completion(receiptBeforeFinalization);
-  await waitForAdvisoryLock();
-  const waitingExactRetry = spawnSql(`
+  const waitingExactRetry = startSession('waitingExactRetry', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000013', 'accepted-before-lock', 1, '\\xd1'
     )
   `);
-  const [receiptCommit, exactAfterFinalization] = await Promise.all([
-    receiptBeforeFinalizationDone,
-    completion(waitingExactRetry),
-  ]);
+  await pg.blocked(waitingExactRetry.name);
+  const [receiptCommit, exactAfterFinalization] = await Promise.all([receiptBeforeFinalization.finish(), waitingExactRetry.finish()]);
   assert.equal(receiptCommit.status, 0);
   assert.equal(exactAfterFinalization.status, 0);
   assert.equal(exactAfterFinalization.stdout.trim(), '1',
     'under-lock re-read recognizes the same-actor receipt accepted before finalization');
 
-  const locking = spawnSql(`
-    BEGIN;
+  const locking = await hold('locking', `
     SELECT set_config('request.jwt.claim.sub', '${owner}', false);
     SELECT (public.kal49_lock_document(
       '00000000-0000-0000-0000-000000000002', 'final'
     )).locked_at IS NOT NULL;
-    SELECT pg_sleep(1);
-    COMMIT;
   `);
-  const lockingDone = completion(locking);
-  await waitForAdvisoryLock();
-  const racedWrite = spawnSql(`
+  const racedWrite = startSession('racedWrite', `
     SELECT seq FROM public.append_annotation_update(
       '00000000-0000-0000-0000-000000000002', 'late-writer', 1, '\\xdd'
     )
   `);
-  const racedWriteDone = completion(racedWrite);
-  const [lockResult, writeResult] = await Promise.all([lockingDone, racedWriteDone]);
+  await pg.blocked(racedWrite.name);
+  const [lockResult, writeResult] = await Promise.all([locking.finish(), racedWrite.finish()]);
   assert.equal(lockResult.status, 0);
   assert.notEqual(writeResult.status, 0, 'write waiting behind finalization is rejected');
   assert.match(writeResult.stderr, /annotation write is not permitted/);
@@ -801,16 +700,11 @@ try {
       AND client_id = 'late-writer'
   `), '0');
 
-  const heldUnauthorizedDoc = spawnSql(`
-    BEGIN;
+  const heldUnauthorizedDoc = await hold('heldUnauthorizedDoc', `
     SELECT pg_advisory_xact_lock(
       hashtextextended('00000000-0000-0000-0000-000000000010', 0)
     );
-    SELECT pg_sleep(1.5);
-    COMMIT;
   `);
-  const heldUnauthorizedDocDone = completion(heldUnauthorizedDoc);
-  await waitForAdvisoryLock();
   const deniedCalls = [
     `
       SELECT seq FROM public.append_annotation_update(
@@ -846,15 +740,13 @@ try {
   ];
   for (const deniedSource of deniedCalls) {
     const startedAt = Date.now();
-    const denied = spawnSync('psql', [...psqlArgs, '-c', deniedSource], {
-      encoding: 'utf8',
-    });
+    const denied = pg.sql(deniedSource, false);
     const elapsed = Date.now() - startedAt;
     assert.notEqual(denied.status, 0);
     assert.match(denied.stderr, /not permitted/);
     assert.ok(elapsed < 700, `unauthorized call must fail before advisory lock (${elapsed}ms)`);
   }
-  assert.equal((await heldUnauthorizedDocDone).status, 0);
+  assert.equal((await heldUnauthorizedDoc.finish()).status, 0);
 
   console.log(JSON.stringify({
     postgres: 'pass',
@@ -871,10 +763,5 @@ try {
     unauthorizedPreLock: 'pass',
     accessControl: 'stubbed-locking-proof-only',
   }));
-} finally {
-  spawnSync('pg_ctl', ['-D', data, '-m', 'immediate', '-w', 'stop'], {
-    stdio: 'ignore',
-    timeout: 5000,
-  });
-  rmSync(temp, { recursive: true, force: true });
-}
+}, { name: 'annotation-wal' });
+console.log('Disposable annotation WAL PostgreSQL stopped; exact temporary cluster removed.');

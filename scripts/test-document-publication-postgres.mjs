@@ -58,7 +58,9 @@ try{
     GRANT SELECT ON storage.objects TO authenticated;GRANT ALL ON storage.objects TO service_role;
     CREATE POLICY "Users can upload documents within limits" ON documents FOR INSERT TO authenticated WITH CHECK(user_id=auth.uid());
     CREATE POLICY fixture_document_read ON documents FOR SELECT TO authenticated USING(user_id=auth.uid());
-    ALTER TABLE documents ADD COLUMN archive_group_id uuid,ADD COLUMN user_archive_expires_at timestamptz,ADD COLUMN user_archived_by uuid;ALTER TABLE projects ADD COLUMN archive_group_id uuid;`);
+    ALTER TABLE documents ADD COLUMN archive_group_id uuid,ADD COLUMN user_archive_expires_at timestamptz,ADD COLUMN user_archived_by uuid,
+      ADD COLUMN locked_at timestamptz,ADD COLUMN locked_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,ADD COLUMN locked_label text;
+    ALTER TABLE projects ADD COLUMN archive_group_id uuid;`);
   apply('20241223000001_create_user_subscriptions.sql');
   for(const name of ['get_user_tier','get_document_limit','get_storage_limit']){
     const body=source('20260215170000_fix_subscription_type_dependency.sql').match(new RegExp(`CREATE OR REPLACE FUNCTION ${name}\\([\\s\\S]*?\\$\\$ LANGUAGE plpgsql SECURITY DEFINER;`))?.[0];assert.ok(body);sql(body);sql(`ALTER FUNCTION ${name}(uuid) SET search_path=public`);
@@ -81,7 +83,16 @@ try{
   const purgeBody=source('20260802000000_kal426_user_archive_foundation.sql').match(/CREATE OR REPLACE FUNCTION public\.purge_archived_project\([\s\S]*?\n\$\$;/)?.[0];assert.ok(purgeBody);sql(purgeBody);
   const purgeReceiptMigration='20260908210000_project_purge_deleted_document_receipt.sql';apply(purgeReceiptMigration);
   const restoreBody=source('20260802000000_kal426_user_archive_foundation.sql').match(/CREATE OR REPLACE FUNCTION public\.restore_document\([\s\S]*?\n\$\$;/)?.[0];assert.ok(restoreBody);sql(restoreBody);
-  const hashIndex=source('20260606120000_rebuild_yjs_source_of_truth.sql').match(/CREATE UNIQUE INDEX IF NOT EXISTS documents_user_project_sha_uidx[\s\S]*?;/)?.[0];assert.ok(hashIndex);sql(hashIndex);
+  // Install real WAL tables, policies and write guards, not just their document
+  // hash index. The older lock migration also refers to a retired annotation
+  // table; use its exact current lock helper with the tracked columns above.
+  const lockBody=source('20260522000000_kal49_document_lock_state.sql').match(/CREATE OR REPLACE FUNCTION public\.kal49_document_is_locked\([\s\S]*?\n\$\$;/)?.[0];assert.ok(lockBody);sql(lockBody);
+  apply('20260606120000_rebuild_yjs_source_of_truth.sql');
+  // Model Supabase's default table grants before the concurrency migration
+  // narrows them. This fixture still stubs project entitlement status only.
+  sql('GRANT ALL ON public.annotation_updates,public.annotation_snapshots TO anon,authenticated,service_role');
+  apply('20260701140000_lock_gate_annotation_updates.sql');
+  apply('20260727131230_annotation_wal_concurrency.sql');
   const owner=uuid(1),editor=uuid(2),viewer=uuid(3),other=uuid(4),project=uuid(100);
   sql(`INSERT INTO auth.users VALUES('${owner}'),('${editor}'),('${viewer}'),('${other}');UPDATE user_subscriptions SET tier='pro';
     INSERT INTO projects(id,user_id,name) VALUES('${project}','${owner}','Shared fixture');
@@ -96,13 +107,13 @@ try{
     asRole(viewer,insert(uuid(201),viewer));asRole(other,insert(uuid(202),other,null,`${owner}/private.pdf`));
     assert.equal(asRole(other,`SELECT encode(bytes,'hex') FROM storage.objects WHERE name='${owner}/private.pdf'`).stdout,'25504446');sql(`DELETE FROM documents WHERE id IN ('${uuid(201)}','${uuid(202)}')`);
   });
-  const identityMigration='20260908200000_document_identity_tombstones.sql',authorizationMigration='20260908201000_document_publication_authorization.sql',storageMigration='20260908220000_document_storage_retirement.sql',accountMigration='20260908230000_account_storage_closing.sql';
+  const identityMigration='20260908200000_document_identity_tombstones.sql',authorizationMigration='20260908201000_document_publication_authorization.sql',storageMigration='20260908220000_document_storage_retirement.sql',accountMigration='20260908230000_account_storage_closing.sql',annotationAuthorityMigration='20260909040000_annotation_write_authorization.sql';
   // Synthetic permissive baseline: prove the migration removes table grants
   // that would bypass row DELETE triggers, including inherited PUBLIC access.
   sql('GRANT TRUNCATE ON public.documents TO PUBLIC,anon,authenticated,service_role');
   assert.equal(scalar("SELECT bool_and(has_table_privilege(role_name,'public.documents','TRUNCATE')) FROM unnest(ARRAY['anon','authenticated','service_role','publication_member']) role_name"),'t');
   const policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');
-  const before=snapshot();apply(identityMigration);apply(authorizationMigration);apply(storageMigration);apply(accountMigration);assert.deepEqual(snapshot(),before);
+  const before=snapshot();apply(identityMigration);apply(authorizationMigration);apply(storageMigration);apply(accountMigration);apply(annotationAuthorityMigration);assert.deepEqual(snapshot(),before);
   const identities='survey_private.document_identity_guards';
   await check('application roles cannot TRUNCATE documents and bypass row tombstones',()=>{
     const before=snapshot(['documents',identities]);
@@ -176,9 +187,19 @@ try{
     errorState(asRole(editor,insert(uuid(300)),'authenticated',false),'55P03');assert.equal((await first.finish()).status,0);errorState(asRole(editor,insert(uuid(300)),'authenticated',false),'42501');
     sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
   });
-  await check('publication first holds membership until commit; later revoked publication is denied',async()=>{
-    const first=session('publish-first','authenticated',editor);first.send(insert(uuid(301))+";SELECT 'INSERTED';");await first.wait('INSERTED');const second=session('revoke-second');second.send(`UPDATE project_collaborators SET role='viewer' WHERE project_id='${project}' AND user_id='${editor}';`);await blocked(second.name);
-    assert.equal((await first.finish()).status,0);assert.equal((await second.finish()).status,0);errorState(asRole(editor,insert(uuid(302)),'authenticated',false),'42501');
+  await check('publication first refuses revocation atomically; revoke retry after commit denies later publication',async()=>{
+    const first=session('publish-first','authenticated',editor);first.send(insert(uuid(301))+";SELECT 'INSERTED';");await first.wait('INSERTED');
+    const before=snapshot(['documents',identities,'project_collaborators']);
+    const revoke=`UPDATE project_collaborators SET role='viewer' WHERE project_id='${project}' AND user_id='${editor}'`;
+    // Publication also holds the existing membership tuple FOR SHARE. UPDATE
+    // can wait there before its BEFORE trigger reaches the parent's NOWAIT
+    // lock, so prove that wait and bound it explicitly in this caller.
+    const second=session('revoke-second');second.send(`SET LOCAL lock_timeout='2s';${revoke};`);await blocked(second.name);
+    errorState(await second.finish(),'55P03');
+    assert.deepEqual(snapshot(['documents',identities,'project_collaborators']),before);
+    assert.equal((await first.finish()).status,0);assert.equal(scalar(`SELECT count(*) FROM documents WHERE id='${uuid(301)}'`),'1');
+    asRole(null,revoke,'service_role');assert.equal(scalar(`SELECT role FROM project_collaborators WHERE project_id='${project}' AND user_id='${editor}'`),'viewer');
+    errorState(asRole(editor,insert(uuid(302)),'authenticated',false),'42501');
     sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
   });
   await check('a failed delete transaction leaves the document and identity usable',()=>{
@@ -289,8 +310,8 @@ try{
     sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
   });
   await check('migration replay keeps documents, identities, policies and shared data unchanged',()=>{
-    const tables=['documents',identities,'projects','project_collaborators','storage.objects','survey_private.document_storage_path_guards','survey_private.document_storage_cleanup','survey_private.account_write_guards'];
-    const before=snapshot(tables);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);apply(storageMigration);apply(accountMigration);assert.deepEqual(snapshot(tables),before);
+    const tables=['documents',identities,'projects','project_collaborators','storage.objects','survey_private.document_storage_path_guards','survey_private.document_storage_cleanup','survey_private.account_write_guards','annotation_updates','annotation_snapshots'];
+    const before=snapshot(tables);apply(identityMigration);apply(authorizationMigration);apply(purgeReceiptMigration);apply(storageMigration);apply(accountMigration);apply(annotationAuthorityMigration);assert.deepEqual(snapshot(tables),before);
     assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
   });
   console.log(`Document publication PostgreSQL checks passed: ${checks}`);

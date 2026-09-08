@@ -2779,6 +2779,79 @@ Logs: `/tmp/survey-copied-form-release-tests.log`,
 fixed the radio and nested-field cases; only the frozen-source run is the final
 pass. Generated graph files and unrelated owner work remain outside the commit.
 
+## Annotation write authority held through commit
+
+The cloud PDF generation audit found a separate, current race: the main annotation
+WAL checked access but did not hold the membership that granted it. A role change
+could commit while an accepted annotation transaction remained open. A direct
+document `locked_at` update also bypassed the official finalization advisory lock.
+
+`20260909040000_annotation_write_authorization.sql` adds shared authority locks
+to WAL INSERT and snapshot INSERT/UPDATE, including raw table writes. The same
+document advisory lock is taken first; tuple locks use NOWAIT to avoid reverse
+waits. Membership INSERT/UPDATE/DELETE takes exclusive parent locks, including
+both parents for a move. Locking parents covers an absent direct membership
+becoming a viewer and overriding an inherited editor. Metadata-only membership
+updates skip that lock. Delete cascades tolerate a parent already gone within the
+same transaction; private triggers do not replace RLS or grant new access.
+
+The current role helper still decides access. Owners and direct editors do not
+lock the project; only inherited access needs that shared project lock. Edits to
+different files can proceed together, including within one project. A conflicting
+membership change fails with `55P03` and must be retried; it cannot report a
+committed revocation while the earlier write remains open. Existing UI callers
+display mutation errors and do not send success notices from a failed result.
+Existing sync clients retain/retry transient failures instead of treating these
+lock errors as a permission rejection.
+
+New writes require READ COMMITTED. An older repeatable-read snapshot can miss a
+new membership even after acquiring an unchanged parent tuple lock, so those
+non-default writes fail with `25001`. Immutable receipt-only RPC retries remain
+unchanged; a direct snapshot no-op under non-default isolation may now fail.
+The separate project-status/tier policy and account-closing policy are not added
+to the current annotation access rules by this migration.
+Before a live rollout, verify the deployed API roles use READ COMMITTED and run
+the leased real-auth collaboration checks. Local PostgreSQL tests do not prove
+the hosted provider, deployed schema, or browser-to-provider route.
+
+The new shared disposable-Postgres helper uses installed local binaries, a private
+Unix socket with TCP off, scrubbed libpq environment, no user psql startup file,
+tracked bounded sessions, and confirmed shutdown before exact-directory cleanup.
+The older WAL fixture now uses explicit session barriers instead of nine sleeps.
+Its access helper remains deliberately stubbed; the separate new access fixture
+uses the tracked role helper and real SQL roles/RLS for its permission proofs.
+
+Frozen-source verification: `npm test` exits 0 with 5,738 total, 5,666 pass,
+72 skip, and 0 fail/cancel across 595 files. Baseline was 5,731 total,
+5,662 pass and 69 skip. The three added skips are local-Postgres opt-in checks;
+all seven helper/access wrapper tests pass with that opt-in enabled. The access
+fixture passes 39 checks (8 baseline, 31 after the migration); the combined
+publication/retirement/quota/cascade fixture passes all 33 existing checks with
+the new triggers installed. The older WAL race fixture also passes after its
+runner change. Every owned temporary PostgreSQL cluster was stopped and removed.
+`npx vite build` and `git diff --check` pass. Logs:
+`/tmp/survey-annotation-authority-final-tests.log`,
+`/tmp/survey-annotation-authority-final-build.log`,
+`/tmp/survey-annotation-authority-postgres.log`, and
+`/tmp/survey-annotation-authority-publication.log`.
+
+### Shared PDF generation remains a separate open protocol change
+
+This authority fix does not make byte replacement atomic with annotation state.
+Current cloud replacement still overwrites a stable PDF path. Both the Yjs WAL
+and `document_annotations` can write, and the latter has only a timestamp change
+signal. A generation commit must compare both sources, not just the WAL head.
+It also needs an immutable staged object, a stable operation receipt, coherent
+generation-bound reads, and server rejection of all old-generation writes.
+
+Normal sync-handle destruction drains pending writes and can write a final
+snapshot. Its local recovery generation is not a shared PDF generation. Opening
+a new File or adding a generation flag alone is unsafe: old-generation edits
+must stay in durable recovery without replay into reordered pages. Current
+Storage policy only allows an actor's own namespace, so collaborator staging
+must not silently gain owner-path write rights. No new generation schema or
+client adoption is activated by this slice, and no live migration was applied.
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions
