@@ -2381,6 +2381,91 @@ that bypass. A rollback must preserve these receipts and the permanent owner
 records, never turn unresolved work into success or restore unsafe customer reuse.
 Microsoft remains deferred; nothing was pushed or deployed.
 
+## Billing endpoints: durable admission, positive recovery and closure
+
+The checkout, portal and delete-account handlers now use the durable lifecycle
+ledger. Deploy both lifecycle migrations before these callers. Provider identity
+uses the actual Stripe account, key mode and pinned API version; a generic 404 or
+an empty search never proves that an old customer or unknown request is absent.
+
+Each creation commits its exact actor, kind, provider scope, customer and bounded
+request spec before one provider POST. The SQL actor lock permits only one pending
+request per kind, including two callers that both passed a preflight read. A lost
+admission reply grants no POST permission. Lost settlement replies use an exact
+read or repeat SQL settlement, never another provider POST. Provider SDK retries
+are disabled and each SDK request has a 15-second timeout. Recovery and cleanup
+have bounded pages and a 45-second per-helper time budget, not a whole-endpoint
+deadline. Unresolved work never ages into success or permission for a new POST.
+
+Customer recovery requires an exact metadata/spec digest match. Checkout recovery
+uses customer-scoped session pages; portal recovery uses exact creation-event
+idempotency keys. Fair persisted cursors prevent one page from blocking all later
+work. Matching recovered checkout URLs are reused only when the fresh list says
+the session is open and supplies a future expiry. Both kinds retain their reuse
+deadline and check it again immediately before selection. Portal reuse uses an event from the past
+60 seconds (a conservative local policy, not a promise of provider URL validity).
+Different request specs, completed/expired checkouts and older portal events settle
+the old request but do not reuse its URL. Search and event retention limits may
+leave requests pending for support review; they cannot establish non-creation.
+
+Closure commits before provider deletion, row purge or Storage cleanup. Exact
+confirmed customer deletion revokes only pending checkout/portal calls for that
+same provider scope and customer. A late reply cannot replace the removal receipt
+or return its URL. Unknown customer creation stays pending and may later reveal a
+new cleanup candidate. Auth deletion requires a fresh independent complete billing
+receipt after Storage cleanup. Missing Stripe configuration now blocks deletion
+even for a nominally free account, rather than assuming there was no billing work.
+Legacy missing-customer responses require review; exact deleted-customer receipts
+still permit guarded link clearing and rotation. The account deletion UI remains
+disabled; no live deletion flow has been enabled or exercised.
+
+Verification for this slice:
+
+- 112 runner cases cover admission races, lost replies, recovery, bounded work,
+  malformed receipts, scope mismatch, late calls and exact-spec session reuse.
+- 61 actual isolated PostgreSQL cases pass: 23 existing reconciliation cases,
+  25 lifecycle cases and 13 recovery cases. These include a separate-session
+  admission race, permanent ownership, known-only revocation, cursor fairness,
+  role checks and indexed pending probes against retired history.
+- 22 retained Storage and 43 billing cases load the actual Deno handlers with
+  the pinned SDK and synthetic HTTP. No network permission or live account is
+  used. A lost session reply followed by recovery returns the first matching URL
+  with the provider-create count still one. Four endpoint wrappers pass.
+- Deno type checking, production build and AST graph update pass. The release
+  check now validates the pinned version through the shared constant and includes
+  delete-account. Initial full-suite checks exposed stale source-shape assertions;
+  those were updated to verify the new seams without relaxing the version gate.
+- Final `npm test` passed: 5,563 total, 5,494 passed, 69 skipped, zero failures
+  or cancellations, 586 files, exit 0. The committed baseline was 5,448 total,
+  5,379 passed and 69 skipped across 585 files. Opt-in SQL and Deno checks were
+  also run directly; their skipped default wrappers are not counted as live proof.
+- Local browser fixture at `http://127.0.0.1:5240/` rendered the real checkout
+  component and destination helper at 1200x732. Pending reply showed its inline
+  error, kept the button usable and opened no destination. Success cleared the
+  error and passed the exact recovered URL to a synthetic Electron destination.
+  Page identity, nonblank content, no framework overlay and both interactions
+  passed. Console contained only the deliberately injected pending error after
+  the fixture favicon was fixed. Screenshots were inspected locally. In-app
+  browser failed with `Browser is not available: iab`; Playwright was used.
+  This proves the component reply contract, not authenticated billing, popup
+  behavior, the real Electron shell or live Stripe effects.
+
+Remaining work: a settled customer whose binding fails before commit stays in the
+cleanup ledger but is not found by the pending-only recovery scan; retries can
+still create extra unbound customers. Add a guarded reuse/retirement protocol,
+not immediate deletion of a possible concurrent binding winner. Also add a shared
+whole-endpoint deadline, reviewed receipt retention/redaction, and scoped support
+tools for unresolved legacy requests. Settled session reuse across a later lost
+HTTP response is not yet a persistent request-intent protocol. These are known
+limits, not proof that optimization is finished. Deployment needs migration/lock
+checks and leased authenticated tests; live provider effects remain unverified.
+No pushes, deployment, customer mutations or Microsoft testing in this slice.
+
+Provider references: [customer deletion](https://docs.stripe.com/api/customers/delete),
+[search consistency](https://docs.stripe.com/api/customers/search),
+[idempotency retention](https://docs.stripe.com/api/idempotent_requests),
+[event listing](https://docs.stripe.com/api/events/list).
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions

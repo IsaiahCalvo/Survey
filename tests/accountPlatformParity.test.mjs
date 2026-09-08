@@ -93,7 +93,8 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   const source = read('supabase/functions/delete-account/index.ts');
   assert.match(source, /body\?\.confirmation !== 'DELETE'/);
   assert.match(source, /caller\.auth\.getUser\(\)/);
-  assert.match(source, /deleteStripeCustomer\(stripe, subscription\?\.stripe_customer_id\)/);
+  assert.match(source, /cleanupAccountBilling\(\{/);
+  assert.match(source, /assertBillingClosureReady\(admin, user\.id\)[\s\S]*admin\.auth\.admin\.deleteUser\(user\.id\)/);
   assert.match(source, /cleanupAccountStorage\(admin, userId\)/);
   assert.match(source, /if \(!cleanup\.complete\)/);
   assert.doesNotMatch(source, /listOwnedStorage|\.list\(/);

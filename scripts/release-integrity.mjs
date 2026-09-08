@@ -164,10 +164,16 @@ export function assertStaticReleaseContract(root = process.cwd()) {
     }
   }
 
-  for (const name of ['create-checkout-session', 'create-portal-session', 'stripe-webhook']) {
+  for (const name of ['create-checkout-session', 'create-portal-session', 'delete-account', 'stripe-webhook']) {
     const source = readFileSync(join(root, 'supabase', 'functions', name, 'index.ts'), 'utf8');
     assert.match(source, new RegExp(`npm:stripe@${STRIPE_SDK_VERSION.replaceAll('.', '\\.')}`));
-    assert.match(source, new RegExp(`apiVersion:\\s*['"]${STRIPE_API_VERSION.replaceAll('.', '\\.')}['"]`));
+    if (source.includes('apiVersion: BILLING_API_VERSION')) {
+      assert.match(source, /import\s*\{[^}]*\bBILLING_API_VERSION\b[^}]*\}\s*from\s*['"]\.\.\/_shared\/billingLifecycle\.ts['"]/);
+      const lifecycle = readFileSync(join(root, 'supabase', 'functions', '_shared', 'billingLifecycle.ts'), 'utf8');
+      assert.match(lifecycle, new RegExp(`export const BILLING_API_VERSION\\s*=\\s*['"]${STRIPE_API_VERSION.replaceAll('.', '\\.')}['"]`));
+    } else {
+      assert.match(source, new RegExp(`apiVersion:\\s*['"]${STRIPE_API_VERSION.replaceAll('.', '\\.')}['"]`));
+    }
   }
 
   const deployWorkflow = readFileSync(join(root, '.github', 'workflows', 'deploy-production.yml'), 'utf8');

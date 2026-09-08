@@ -2,8 +2,8 @@
 import Stripe from "npm:stripe@20.4.1";
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 import { resolveBillingReturnUrl, withBillingResult } from '../_shared/billingReturn.ts';
-import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
-import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
+import { BILLING_API_VERSION, BillingPendingError, BillingClosedError, resolveBillingProviderScope,
+    recoverBillingOperations, recoveredBillingSession, executeBillingOperation, rotateBillingCustomer } from '../_shared/billingLifecycle.ts';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -34,8 +34,10 @@ Deno.serve(async (req) => {
         }
 
         const stripe = new Stripe(secretKey, {
-            apiVersion: '2026-02-25.clover',
+            apiVersion: BILLING_API_VERSION,
             httpClient: Stripe.createFetchHttpClient(),
+        maxNetworkRetries: 0,
+        timeout: 15000,
         })
 
         // Initialize Supabase client
@@ -82,7 +84,14 @@ Deno.serve(async (req) => {
             throw new Error('Invalid tier');
         }
 
-        // Check if user already has a Stripe customer ID
+        const scope = await resolveBillingProviderScope(stripe, secretKey);
+        const recovery = await recoverBillingOperations({ db: supabase, stripe, scope, userId: user.id });
+        if (recovery.closing) throw new BillingClosedError();
+        if (recovery.pending || recovery.errors) throw new BillingPendingError();
+
+        // The scope is verified against the actual Stripe account. A generic
+        // missing-customer response cannot prove a legacy customer was canceled
+        // in a different mode/account, so it must not silently create new billing.
         const { data: subscription, error: subscriptionError } = await supabase
             .from('user_subscriptions')
             .select('stripe_customer_id')
@@ -90,61 +99,31 @@ Deno.serve(async (req) => {
             .maybeSingle();
         if (subscriptionError) throw subscriptionError;
 
-        // A stored customer id can be stale: ids persisted while the account ran
-        // on TEST keys do not exist in live mode (seen 2026-08-20: "No such
-        // customer ... a similar object exists in test mode"), and a customer
-        // deleted in the Stripe dashboard leaves the same dangling reference.
-        // Validate before trusting; on resource_missing, clear the stored id so
-        // a fresh live customer is created instead of failing the checkout.
         let storedCustomerId = subscription?.stripe_customer_id ?? null;
         if (storedCustomerId) {
+            let existing;
             try {
-                const existing = await stripe.customers.retrieve(storedCustomerId);
-                if ((existing as { deleted?: boolean }).deleted) storedCustomerId = null;
-            } catch (err) {
-                if ((err as { code?: string })?.code === 'resource_missing') {
-                    storedCustomerId = null;
-                } else {
-                    throw err;
-                }
+                existing = await stripe.customers.retrieve(storedCustomerId);
+            } catch {
+                throw new BillingPendingError('The saved billing customer needs review before starting new billing.');
             }
-            if (!storedCustomerId) {
-                const { error: clearError } = await supabase
-                    .from('user_subscriptions')
-                    .update({ stripe_customer_id: null })
-                    .eq('user_id', user.id)
-                    .eq('stripe_customer_id', subscription!.stripe_customer_id);
-                if (clearError) throw clearError;
+            if (existing.object !== 'customer' || existing.id !== storedCustomerId) throw new BillingPendingError();
+            if (existing.deleted) {
+                storedCustomerId = await rotateBillingCustomer({ db: supabase, scope, userId: user.id,
+                    expectedCustomerId: storedCustomerId });
+            } else if (existing.livemode !== (scope.mode === 'live')) {
+                throw new BillingPendingError();
             }
         }
-
-        const customerId = await ensurePersistedStripeCustomer({
-            existingCustomerId: storedCustomerId,
-            createCustomer: () => stripe.customers.create({
-                email: user.email,
-                metadata: {
-                    supabase_user_id: user.id,
-                },
-            }),
-            persistCandidate: async (candidateId) => {
-                const { error } = await supabase
-                    .from('user_subscriptions')
-                    .update({ stripe_customer_id: candidateId })
-                    .eq('user_id', user.id)
-                    .is('stripe_customer_id', null);
-                if (error) throw error;
-            },
-            readAuthoritative: async () => {
-                const { data, error } = await supabase
-                    .from('user_subscriptions')
-                    .select('stripe_customer_id')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
-                if (error) throw error;
-                return data?.stripe_customer_id || null;
-            },
-            removeCustomer: (candidateId) => deleteStripeCustomer(stripe, candidateId),
-        });
+        if (!storedCustomerId) {
+            const recovered = recovery.recoveredCustomers[0];
+            const created = recovered || await executeBillingOperation({ db: supabase, stripe, scope,
+                userId: user.id, kind: 'customer_create', spec: { email: user.email } });
+            storedCustomerId = await rotateBillingCustomer({ db: supabase, scope, userId: user.id,
+                expectedCustomerId: null, operationId: created.operationId });
+        }
+        if (!storedCustomerId) throw new BillingPendingError();
+        const customerId = storedCustomerId;
 
         const billingReturnUrl = resolveBillingReturnUrl(returnUrl, req.headers.get('origin'));
 
@@ -182,10 +161,13 @@ Deno.serve(async (req) => {
             };
         }
 
-        const session = await stripe.checkout.sessions.create(sessionParams);
+        const checkout = recoveredBillingSession(recovery, 'checkout_create', sessionParams)
+            ?? (await executeBillingOperation({ db: supabase, stripe, scope, userId: user.id,
+                kind: 'checkout_create', customerId, spec: sessionParams })).result;
+        if (!checkout.data.url) throw new BillingPendingError();
 
         return new Response(
-            JSON.stringify({ url: session.url }),
+            JSON.stringify({ url: checkout.data.url }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,
@@ -193,9 +175,10 @@ Deno.serve(async (req) => {
         )
     } catch (error) {
         console.error('Error creating checkout session:', error);
-        const message = error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : 'Billing could not finish.';
         return new Response(
-            JSON.stringify({ error: message }),
+            JSON.stringify({ error: message, pending: error instanceof BillingPendingError,
+                code: error instanceof BillingPendingError || error instanceof BillingClosedError ? error.code : 'billing-error' }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,

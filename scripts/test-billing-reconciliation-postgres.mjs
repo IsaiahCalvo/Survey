@@ -117,6 +117,7 @@ try{
   sql('CREATE TABLE templates(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id),name text)');
   apply('20260908230000_account_storage_closing.sql');
   apply('20260909010000_billing_account_lifecycle.sql');
+  const recoveryMigration='20260909020000_billing_operation_recovery.sql';apply(recoveryMigration);
   const atomicTables=[...fullTables,'survey_private.project_quota_guards','survey_private.document_quota_guards','survey_private.storage_quota_guards'];
   const a=actor(1,{projects:3,documents:7}),b=actor(2,{projects:2,documents:6});
   sql(`UPDATE projects SET user_archived_at='2025-01-01' WHERE id='${uuid(101)}'; UPDATE documents SET user_archived_at='2025-01-02' WHERE id='${uuid(1001)}';
@@ -357,11 +358,11 @@ try{
   });
   await lifecycleCheck('closure preserves pending creation and late success becomes separate cleanup work',()=>{
     const user=actor(51),o=operation(51,user);startCreate(o);closeBilling(user);
-    assert.equal(cleanup(user).complete,false);assert.deepEqual(cleanup(user).customers,[]);
-    rejects(ackSql(user,'cus_51'));rejects(beginSql(operation(510,user)));
+    assert.equal(cleanup(user).complete,false);assert.deepEqual(cleanup(user).customers.map(c=>c.customer_id),['cus_51']);
+    assert.equal(ack(user,'cus_51').complete,false);assert.equal(begin(o).state,'pending');rejects(beginSql(operation(510,user)));
     settle(o,succeeded('cus_Late51'));
     const page=cleanup(user);assert.equal(page.complete,false);
-    assert.deepEqual(page.customers.map(c=>c.customer_id).sort(),['cus_51','cus_Late51']);
+    assert.deepEqual(page.customers.map(c=>c.customer_id),['cus_Late51']);
     ack(user,'cus_51');assert.equal(readClosure(user).complete,false);
     ack(user,'cus_Late51');assert.equal(readClosure(user).complete,true);
     // Replaying a committed settlement cannot reopen a removed customer's job.
@@ -441,7 +442,7 @@ try{
     const first=session('lifecycle-admit-before-close');first.send(`${beginSql(o)}; SELECT 'admission-held';`);await first.wait('admission-held');
     errorState(asRole(null,closeSql(user),'service_role',false),'55P03');
     const done=await first.finish();assert.equal(done.status,0,done.stderr);
-    assert.equal(closeBilling(user).complete,false);assert.deepEqual(cleanup(user).customers,[]);
+    assert.equal(closeBilling(user).complete,false);assert.deepEqual(cleanup(user).customers.map(c=>c.customer_id),['cus_60']);
     settle(o,succeeded('cus_60'));ack(user,'cus_60');assert.equal(readClosure(user).complete,true);
   });
   await lifecycleCheck('committing closure defeats both concurrent and later new admission',async()=>{
@@ -566,16 +567,17 @@ try{
     const flatten=node=>[node,...(node.Plans||[]).flatMap(flatten)];
     for(const [query,index] of queries){
       const plan=JSON.parse(scalar(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${query}`))[0].Plan;
-      const nodes=flatten(plan);assert.ok(nodes.some(n=>n['Index Name']===index),JSON.stringify(plan));
+      const nodes=flatten(plan),allowed=index==='billing_operations_unresolved'?[index,'billing_operations_pending_kind']:[index];const access=nodes.find(n=>allowed.includes(n['Index Name']));assert.ok(access,JSON.stringify(plan));
+      assert.ok(access['Index Cond'].includes(user),JSON.stringify(plan));assert.ok(access['Actual Rows']<=1);
       assert.ok(nodes.every(n=>!(n['Rows Removed by Filter']>0)),JSON.stringify(plan));
-      console.log(`PLAN lifecycle pending: ${index}; 50000 retired receipts excluded`);
+      console.log(`PLAN lifecycle pending: ${access['Index Name']}; 50000 retired receipts excluded`);
     }
   });
   await lifecycleCheck('migration replay preserves all exact admitted and removed receipts',()=>{
     const tables=['survey_private.billing_operations','survey_private.billing_customer_cleanup','survey_private.billing_account_lifecycles','survey_private.billing_customer_owners'];
     // Digests avoid materializing the synthetic history as tool output.
     const compactSnapshot=()=>tables.map(table=>scalar(`SELECT md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) FROM ${table} t`));
-    const before=compactSnapshot();apply('20260909010000_billing_account_lifecycle.sql');assert.deepEqual(compactSnapshot(),before);
+    const before=compactSnapshot();apply('20260909010000_billing_account_lifecycle.sql');apply(recoveryMigration);assert.deepEqual(compactSnapshot(),before);
     assert.equal(scalar(`SELECT count(*) FROM pg_constraint WHERE contype='f' AND conrelid IN (${tables.map(t=>`${quote(t)}::regclass`).join(',')})`),'0');
   });
   await lifecycleCheck('conflicting historic customer ownership aborts migration replay atomically',()=>{
@@ -588,6 +590,115 @@ try{
     assert.equal(scalar(`SELECT user_id FROM survey_private.billing_customer_owners WHERE customer_id='cus_77'`),user);
     sql(`DELETE FROM survey_private.billing_customer_cleanup WHERE user_id='${other}' AND provider_scope=${json(scope)} AND customer_id='cus_77'`);
   });
+  const readOperationSql=(user,id)=>`SELECT public.read_billing_operation(${quote(user)},${quote(id)})`;
+  const readOperation=(user,id)=>JSON.parse(asRole(null,readOperationSql(user,id)).stdout||'null');
+  const scanSql=(user,limit=20)=>`SELECT public.scan_pending_billing_operations(${quote(user)},${limit})`;
+  const scan=(user,limit=20)=>JSON.parse(asRole(null,scanSql(user,limit)).stdout).operations;
+  const rotateSql=(user,customer,id=null,providerScope=scope)=>`SELECT public.rotate_billing_customer(${quote(user)},${json(providerScope)},${quote(customer)},${quote(id)})`;
+  const rotate=(user,customer,id=null,providerScope=scope)=>JSON.parse(asRole(null,rotateSql(user,customer,id,providerScope)).stdout);
+  const operationsFor=user=>scalar(`SELECT coalesce(jsonb_agg(to_jsonb(o) ORDER BY operation_id),'[]') FROM survey_private.billing_operations o WHERE user_id='${user}'`);
+  // Pre-cap pending history is synthetic fixture input. New admission is now
+  // limited per kind; recovery still must handle every older unresolved row.
+  const seedPendingHistory=ops=>sql(ops.map(o=>`INSERT INTO survey_private.billing_operations(operation_id,user_id,kind,provider_scope,request_spec,expected_customer_id) VALUES(${operationArgs(o)});${o.customer?`SELECT survey_private.register_billing_customer_owner(${quote(o.user)},${quote(o.customer)});INSERT INTO survey_private.billing_customer_cleanup(user_id,provider_scope,customer_id) VALUES(${quote(o.user)},${json(o.scope)},${quote(o.customer)}) ON CONFLICT DO NOTHING;`:''}`).join('\n'));
+  const advanceSql=(user,id,previous,next)=>`SELECT public.advance_billing_operation_recovery_cursor(${quote(user)},${quote(id)},${quote(previous)},${quote(next)})`;
+  const advance=(user,id,previous,next)=>JSON.parse(asRole(null,advanceSql(user,id,previous,next)).stdout);
+  let recoveryChecks=0;
+  const recoveryCheck=async(label,work)=>{await check('RECOVERY '+label,work);recoveryChecks++;};
+  await recoveryCheck('exact actor operation read retains full scope and never creates or admits work',()=>{
+    const user=actor(90),other=actor(91),o=operation(9000,user,'checkout_create','cus_90',{scope:{...scope,account:'acct_Fixture'}});begin(o);
+    const before=operationsFor(user),value=readOperation(user,o.id);assert.equal(value.operation_id,o.id);assert.equal(value.user_id,user);assert.deepEqual(value.provider_scope,o.scope);assert.deepEqual(value.request_spec,o.requestSpec);assert.equal(value.state,'pending');assert.equal(value.customer_removed,false);
+    assert.equal(readOperation(other,o.id),null);assert.equal(readOperation(user,uuid(999999)),null);assert.equal(operationsFor(user),before);assert.equal(begin(o).outcome,'pending');
+  });
+  await recoveryCheck('pending pages advance on lost replies and preserve all unresolved receipts through wraparound',()=>{
+    const user=actor(92),ops=Array.from({length:45},(_,n)=>operation(9200+n,user,'checkout_create','cus_92'));seedPendingHistory(ops);
+    const before=operationsFor(user),pages=Array.from({length:4},()=>scan(user));assert.deepEqual(pages.map(p=>p.length),[20,20,5,20]);assert.deepEqual(pages[3],pages[0]);assert.equal(new Set(pages.slice(0,3).flat().map(o=>o.operation_id)).size,45);assert.equal(operationsFor(user),before);
+    const cursor=scalar(`SELECT pending_operation_cursor FROM survey_private.billing_account_lifecycles WHERE user_id='${user}'`);
+    errorState(asRole(null,`BEGIN;${scanSql(user)};SELECT 1/0;COMMIT`,'service_role',false),'22012');assert.equal(scalar(`SELECT pending_operation_cursor FROM survey_private.billing_account_lifecycles WHERE user_id='${user}'`),cursor);
+  });
+  await recoveryCheck('customer rotation uses exact CAS and a settled scoped creation while retaining the old customer',()=>{
+    const user=actor(93),o=operation(9300,user);startCreate(o);settle(o,succeeded('cus_Rotated93'));const before=expected(user);
+    assert.equal(rotate(user,'cus_stale',o.id).outcome,'stale');assert.deepEqual(expected(user),before);
+    errorState(asRole(null,rotateSql(user,'cus_93',o.id,{...scope,mode:'live'}),'service_role',false),'22023');assert.deepEqual(expected(user),before);
+    assert.deepEqual(rotate(user,'cus_93',o.id),{outcome:'applied',customer_id:'cus_Rotated93'});assert.equal(expected(user).stripe_customer_id,'cus_Rotated93');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.billing_customer_cleanup WHERE user_id='${user}' AND provider_scope=${json(scope)} AND customer_id IN ('cus_93','cus_Rotated93')`),'2');
+    assert.equal(scalar(`SELECT user_id FROM survey_private.billing_customer_owners WHERE customer_id='cus_93'`),user);
+    assert.equal(rotate(user,'cus_93',o.id).outcome,'stale');const unchanged=expected(user);assert.equal(rotate(user,'cus_Rotated93',o.id).outcome,'applied');assert.deepEqual(expected(user),unchanged);
+    assert.deepEqual(rotate(user,'cus_Rotated93'),{outcome:'applied',customer_id:null});assert.equal(scalar(`SELECT stripe_customer_id IS NULL FROM user_subscriptions WHERE user_id='${user}'`),'t');
+  });
+  await recoveryCheck('rotation refuses foreign pending wrong-kind removed and closed candidates without changing bindings',()=>{
+    const user=actor(94),other=actor(95),foreign=operation(9500,other),pending=operation(9400,user),known=operation(9401,user,'portal_create','cus_94');startCreate(foreign);settle(foreign,succeeded('cus_Foreign95'));startCreate(pending);begin(known);settle(known,succeeded('cus_94'));
+    const before=expected(user);for(const id of [foreign.id,pending.id,known.id,uuid(999991)])errorState(asRole(null,rotateSql(user,'cus_94',id),'service_role',false),'22023');assert.deepEqual(expected(user),before);
+    settle(pending,succeeded('cus_Removed94'));sql(`UPDATE survey_private.billing_customer_cleanup SET removed=true WHERE user_id='${user}' AND customer_id='cus_Removed94'`);errorState(asRole(null,rotateSql(user,'cus_94',pending.id),'service_role',false),'23514');assert.deepEqual(expected(user),before);
+    closeBilling(user);assert.equal(rotate(user,'cus_94').outcome,'closing');assert.deepEqual(expected(user),before);sql(`DELETE FROM auth.users WHERE id='${user}'`);assert.equal(rotate(user,'cus_94').outcome,'stale');
+  });
+  await recoveryCheck('known deletion revokes only exact scope and customer while unknown creation remains pending',()=>{
+    const user=actor(96),known=operation(9600,user,'checkout_create','cus_96'),portal=operation(9601,user,'portal_create','cus_96'),otherMode=operation(9602,user,'portal_create','cus_96',{scope:{...scope,mode:'live'}}),unknown=operation(9603,user);
+    begin(known);begin(portal);seedPendingHistory([otherMode]);startCreate(unknown);closeBilling(user);
+    const page=cleanup(user);assert.equal(page.has_pending_operations,true);assert.equal(page.customers.length,2);
+    const status=ack(user,'cus_96');assert.equal(status.complete,false);assert.equal(status.has_pending_operations,true);assert.equal(status.has_pending_customer_operations,false);
+    for(const o of [known,portal]){assert.equal(readOperation(user,o.id).result.outcome,'customer_removed');assert.equal(settle(o,succeeded('cus_96')).result.outcome,'customer_removed');assert.equal(begin(o).outcome,'settled');}
+    assert.equal(readOperation(user,otherMode.id).state,'pending');assert.equal(readOperation(user,otherMode.id).customer_removed,false);assert.equal(readOperation(user,unknown.id).state,'pending');assert.equal(readOperation(user,unknown.id).customer_removed,false);
+    ack(user,'cus_96',otherMode.scope);assert.equal(readClosure(user).complete,false);assert.deepEqual(cleanup(user).customers,[]);settle(unknown,failed);assert.equal(readClosure(user).complete,true);
+  });
+  await recoveryCheck('more than 100 known operations drain by bounded ACK and removed flags fence late results',()=>{
+    const user=actor(97),ops=Array.from({length:205},(_,n)=>operation(9700+n,user,n%2?'portal_create':'checkout_create','cus_97')),unknown=operation(9990,user);seedPendingHistory(ops);startCreate(unknown);closeBilling(user);
+    let status=ack(user,'cus_97');assert.equal(status.has_pending_customer_operations,true);assert.equal(status.complete,false);
+    const settledCount=()=>Number(scalar(`SELECT count(*) FROM survey_private.billing_operations WHERE user_id='${user}' AND result->>'outcome'='customer_removed'`));assert.equal(settledCount(),100);
+    const late=ops.at(-1);assert.equal(readOperation(user,late.id).state,'pending');assert.equal(readOperation(user,late.id).customer_removed,true);assert.ok(scan(user).filter(o=>o.kind!=='customer_create').every(o=>o.customer_removed));
+    assert.equal(settle(late,succeeded('cus_97')).result.outcome,'customer_removed');assert.equal(settledCount(),101);
+    status=ack(user,'cus_97');assert.equal(status.has_pending_customer_operations,true);assert.equal(settledCount(),201);status=ack(user,'cus_97');assert.equal(status.has_pending_customer_operations,false);assert.equal(settledCount(),205);
+    assert.equal(status.complete,false);assert.equal(readOperation(user,unknown.id).state,'pending');assert.equal(ack(user,'cus_97').complete,false);settle(unknown,failed);assert.equal(readClosure(user).complete,true);
+  });
+  await recoveryCheck('recovery service ACL body checks input and isolation guards reject unauthorized calls',()=>{
+    const user=actor(98),o=operation(14000,user,'checkout_create','cus_98');begin(o);
+    const commands=[readOperationSql(user,o.id),scanSql(user),rotateSql(user,'cus_98')];for(const role of ['anon','authenticated'])for(const command of commands)errorState(asRole(user,command,role,false),'42501');
+    const args=[...psqlArgs];args[args.indexOf('-U')+1]='billing_direct_member';for(const command of commands)errorState(run('psql',[...args,'-c',command],false),'42501');
+    for(const [name,command] of [['read_billing_operation(uuid,uuid)',commands[0]],['scan_pending_billing_operations(uuid,integer)',commands[1]],['rotate_billing_customer(uuid,jsonb,text,uuid)',commands[2]]]){
+      sql(`GRANT EXECUTE ON FUNCTION public.${name} TO authenticated`);errorState(sql(`${actorContext(user,'authenticated')} SET request.jwt.claim.role='service_role';${command}`,false),'42501');sql(`REVOKE EXECUTE ON FUNCTION public.${name} FROM authenticated`);
+    }
+    for(const limit of ['NULL',0,21,-1])errorState(asRole(null,scanSql(user,limit),'service_role',false),'22023');errorState(asRole(null,readOperationSql(user,null),'service_role',false),'22023');
+    for(const isolation of ['REPEATABLE READ','SERIALIZABLE'])for(const command of commands)errorState(asRole(null,`BEGIN ISOLATION LEVEL ${isolation};${command};COMMIT`,'service_role',false),'25001');
+  });
+  await recoveryCheck('concurrent recovery scan and rotation respect lifecycle lock and rollback unchanged',async()=>{
+    const user=actor(99),o=operation(14100,user,'checkout_create','cus_99');begin(o);const tx=session('recovery-cursor-held');tx.send(`${scanSql(user)};SELECT 'scan-held';`);await tx.wait('scan-held');
+    errorState(asRole(null,scanSql(user),'service_role',false),'55P03');errorState(asRole(null,rotateSql(user,'cus_99'),'service_role',false),'55P03');await tx.finish(false);assert.equal(scalar(`SELECT pending_operation_cursor IS NULL FROM survey_private.billing_account_lifecycles WHERE user_id='${user}'`),'t');assert.equal(expected(user).stripe_customer_id,'cus_99');
+  });
+  await recoveryCheck('revocation failure rolls back customer removal and every selected operation',()=>{
+    const user=actor(100),o=operation(10000,user,'checkout_create','cus_100');begin(o);closeBilling(user);
+    sql(`CREATE FUNCTION fixture_suppress_revocation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.user_id='${user}' THEN RETURN NULL;END IF;RETURN NEW;END $$;CREATE TRIGGER fixture_suppress_revocation BEFORE UPDATE ON survey_private.billing_operations FOR EACH ROW EXECUTE FUNCTION fixture_suppress_revocation()`);
+    const before=operationsFor(user);errorState(asRole(null,ackSql(user,'cus_100'),'service_role',false),'40001');assert.equal(operationsFor(user),before);assert.equal(scalar(`SELECT removed FROM survey_private.billing_customer_cleanup WHERE user_id='${user}' AND customer_id='cus_100'`),'f');sql('DROP TRIGGER fixture_suppress_revocation ON survey_private.billing_operations;DROP FUNCTION fixture_suppress_revocation()');ack(user,'cus_100');assert.equal(readClosure(user).complete,true);
+  });
+  await recoveryCheck('recovery migration replay preserves prior function contracts and exact ledger and cursor bytes',()=>{
+    const tables=['survey_private.billing_operations','survey_private.billing_customer_cleanup','survey_private.billing_account_lifecycles','survey_private.billing_customer_owners'];const compact=()=>tables.map(table=>scalar(`SELECT md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) FROM ${table} t`));
+    const before=compact(),policies=scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p');apply(recoveryMigration);apply(recoveryMigration);assert.deepEqual(compact(),before);assert.equal(scalar('SELECT jsonb_agg(to_jsonb(p) ORDER BY schemaname,tablename,policyname) FROM pg_policies p'),policies);
+  });
+  await recoveryCheck('per-operation recovery cursor uses exact CAS and never settles missing provider results',()=>{
+    const user=actor(101),other=actor(102),o=operation(10100,user,'checkout_create','cus_101'),portal=operation(10101,user,'portal_create','cus_101'),unknown=operation(10102,user);begin(o);begin(portal);startCreate(unknown);
+    assert.equal(advance(user,o.id,null,'cs_test_Page1').outcome,'advanced');assert.equal(readOperation(user,o.id).recovery_cursor,'cs_test_Page1');assert.equal(scan(user).find(v=>v.operation_id===o.id).recovery_cursor,'cs_test_Page1');
+    assert.deepEqual(advance(user,o.id,null,'cs_test_Stale'),{outcome:'stale',state:'pending',recovery_cursor:'cs_test_Page1'});
+    for(const args of [[other,o.id,null,'cs_test_Other'],[user,unknown.id,null,'cs_test_Page'],[user,o.id,'cs_test_Page1','evt_WrongKind'],[user,portal.id,null,'cs_test_WrongKind'],[user,o.id,'cs_test_Page1','arbitrary/path']])errorState(asRole(null,advanceSql(...args),'service_role',false),'22023');
+    assert.equal(advance(user,o.id,'cs_test_Page1',null).outcome,'advanced');assert.equal(readOperation(user,o.id).state,'pending');assert.equal(begin(o).outcome,'pending');assert.equal(advance(user,portal.id,null,'evt_Page1').outcome,'advanced');
+    const before=readOperation(user,o.id);errorState(asRole(null,`BEGIN;${advanceSql(user,o.id,null,'cs_test_Rollback')};SELECT 1/0;COMMIT`,'service_role',false),'22012');assert.deepEqual(readOperation(user,o.id),before);
+    settle(o,succeeded('cus_101'));const settled=readOperation(user,o.id);assert.equal(advance(user,o.id,null,'cs_test_AfterSettled').outcome,'settled');assert.deepEqual(readOperation(user,o.id),settled);
+    const command=advanceSql(user,portal.id,'evt_Page1',null),sig='public.advance_billing_operation_recovery_cursor(uuid,uuid,text,text)';for(const role of ['anon','authenticated'])errorState(asRole(user,command,role,false),'42501');sql(`GRANT EXECUTE ON FUNCTION ${sig} TO authenticated`);errorState(sql(`${actorContext(user,'authenticated')} SET request.jwt.claim.role='service_role';${command}`,false),'42501');sql(`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`);
+  });
+  await recoveryCheck('pending page and known customer revocation queries seek partial indexes through retired history',()=>{
+    const user=uuid(76);seedPendingHistory(Array.from({length:30},(_,n)=>operation(12000+n,user,'checkout_create','cus_76')));sql('ANALYZE survey_private.billing_operations');
+    const queries=[
+      [`SELECT * FROM survey_private.billing_operations WHERE user_id='${user}' AND state='pending' AND operation_id>'${uuid(22000)}' ORDER BY operation_id LIMIT 20`,'billing_operations_unresolved',20],
+      [`SELECT operation_id FROM survey_private.billing_operations WHERE user_id='${user}' AND provider_scope=${json(scope)} AND expected_customer_id='cus_76' AND state='pending' AND kind IN ('checkout_create','portal_create') ORDER BY operation_id LIMIT 100 FOR UPDATE NOWAIT`,'billing_operations_pending_customer',100],
+    ];const flatten=node=>[node,...(node.Plans||[]).flatMap(flatten)];
+    for(const [query,index,limit] of queries){const plan=JSON.parse(scalar(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${query}`))[0].Plan,nodes=flatten(plan),access=nodes.find(n=>n['Index Name']===index);assert.ok(access,JSON.stringify(plan));assert.ok(access['Actual Rows']<=limit);assert.ok(nodes.every(n=>!(n['Rows Removed by Filter']>0)),JSON.stringify(plan));console.log(`PLAN recovery pending: ${index}; rows=${access['Actual Rows']}; 50000 retired receipts excluded`);}
+  });
+  await recoveryCheck('distinct operation IDs race through one pending-per-kind admission and exact retry stays read-only',async()=>{
+    const user=actor(103),first=operation(15000,user,'checkout_create','cus_103'),second=operation(15001,user,'checkout_create','cus_103'),portal=operation(15002,user,'portal_create','cus_103');
+    const tx=session('recovery-distinct-admission');tx.send(`${beginSql(first)};SELECT 'first-admitted';`);await tx.wait('first-admitted');errorState(asRole(null,beginSql(second),'service_role',false),'55P03');assert.equal((await tx.finish()).status,0);
+    const denied=asRole(null,beginSql(second),'service_role',false);errorState(denied,'40001');assert.match(denied.stderr,/BILLING_OPERATION_PENDING/);assert.equal(readOperation(user,second.id),null);assert.equal(begin(first).outcome,'pending');assert.equal(begin(portal).outcome,'admitted');
+    sql(`UPDATE survey_private.billing_operations SET admitted_at='2000-01-01' WHERE operation_id='${first.id}'`);errorState(asRole(null,beginSql(second),'service_role',false),'40001');
+    settle(first,succeeded('cus_103'));assert.equal(begin(first).outcome,'settled');assert.equal(begin(second).outcome,'admitted');assert.equal(scan(user).length,2);
+    const creator=actor(104),unknown=operation(15003,creator),otherUnknown=operation(15004,creator);startCreate(unknown);sql(`UPDATE user_subscriptions SET stripe_customer_id=NULL WHERE user_id='${creator}'`);errorState(asRole(null,beginSql(otherUnknown),'service_role',false),'40001');settle(unknown,failed);assert.equal(begin(otherUnknown).outcome,'admitted');
+  });
+  console.log(`Billing recovery PostgreSQL checks passed: ${recoveryChecks}`);
   console.log(`Billing lifecycle PostgreSQL checks passed: ${lifecycleChecks}`);
   console.log(`Billing reconciliation PostgreSQL checks passed: ${checks}`);
 }finally{

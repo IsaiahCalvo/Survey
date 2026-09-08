@@ -286,6 +286,9 @@ test('owned UI and Edge code route through the tested account and billing seams'
   assert.match(read('src/components/AccountSettings.jsx'), /create-portal-session[\s\S]*buildBillingReturnUrl\(\)/);
   assert.match(read('src/components/StripeCheckout.jsx'), /create-checkout-session[\s\S]*buildBillingReturnUrl\(\)/);
   assert.match(read('supabase/functions/create-checkout-session/index.ts'), /withBillingResult\(billingReturnUrl, 'cancelled'\)/);
-  assert.match(read('supabase/functions/create-checkout-session/index.ts'), /ensurePersistedStripeCustomer\(\{/);
+  const checkoutEndpoint = read('supabase/functions/create-checkout-session/index.ts');
+  assert.match(checkoutEndpoint, /recoverBillingOperations\(\{/);
+  assert.match(checkoutEndpoint, /executeBillingOperation\(\{/);
+  assert.match(checkoutEndpoint, /rotateBillingCustomer\(\{/);
   assert.match(read('supabase/functions/create-portal-session/index.ts'), /resolveBillingReturnUrl\(body\?\.returnUrl/);
 });

@@ -22,4 +22,20 @@ test('actual cleanup Edge handlers and pinned SDK pass offline endpoint checks',
  });
  assert.equal(result.error,undefined);assert.equal(result.status,0,result.stderr+result.stdout);
  assert.match(result.stdout,/PASS 22 actual Storage cleanup Edge endpoint checks/);
+ assert.match(result.stdout,/PASS 43 actual billing Edge endpoint checks; pinned SDK synthetic HTTP only/);
+});
+test('all billing endpoint SDKs bound each request to fifteen seconds and disable automatic retries',()=>{
+ for(const name of ['create-checkout-session','create-portal-session','delete-account']){
+  const source=read(`supabase/functions/${name}/index.ts`),constructors=[...source.matchAll(/new Stripe\([^,]+,\s*\{([\s\S]*?)\}\)/g)];
+  assert.equal(constructors.length,1,name);assert.match(constructors[0][1],/timeout:\s*15000\b/,name);assert.match(constructors[0][1],/maxNetworkRetries:\s*0\b/,name);
+ }
+});
+test('endpoint fixture loads real billing handlers and asserts durable admission before provider POST',()=>{
+ const source=read('scripts/test-storage-cleanup-endpoints-deno.ts');
+ for(const name of ['create-checkout-session','create-portal-session','delete-account'])assert.ok(source.includes(`../supabase/functions/${name}/index.ts`));
+ assert.match(source,/A durable exact operation must precede every provider POST/);
+ assert.match(source,/Closing receipt must commit before provider DELETE/);
+ assert.match(source,/assert\.equal\(headers\.get\('stripe-version'\),providerScope\.api_version\)/);
+ assert.match(source,/No external destination may be contacted/);
+ assert.match(source,/late customer creation stays recorded/);assert.match(source,/fresh pending billing receipt after Storage cleanup/);
 });

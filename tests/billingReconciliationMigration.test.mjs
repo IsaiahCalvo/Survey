@@ -27,7 +27,8 @@ test('billing reconciliation fixture uses installed private-socket PostgreSQL an
     '20260818010000_kal390_storage_quota_trigger.sql','20260908130000_project_quota_guard.sql',
     '20260908160000_document_quota_guard.sql','20260908161000_storage_quota_guard.sql',
     '20260908190000_atomic_billing_subscription_transition.sql','20260908191000_billing_reconciliation_outbox.sql',
-    '20260908230000_account_storage_closing.sql','20260909010000_billing_account_lifecycle.sql'])assert.ok(source.includes(name),name);
+    '20260908230000_account_storage_closing.sql','20260909010000_billing_account_lifecycle.sql',
+    '20260909020000_billing_operation_recovery.sql'])assert.ok(source.includes(name),name);
   assert.match(source,/process\.getuid\?\.\(\)===0/);
   assert.match(source,/filter\(\(\[key\]\)=>!\/\^PG\/i\.test\(key\)\)/);
   assert.match(source,/listen_addresses=''/);
@@ -42,9 +43,29 @@ test('billing reconciliation and notification outbox pass actual isolated Postgr
 },()=>{
   const result=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:120_000});
   assert.equal(result.status,0,`${result.stdout}\n${result.stderr}\n${result.error?.message||''}`);
-  assert.match(result.stdout,/Billing reconciliation PostgreSQL checks passed: 48/);
+  assert.match(result.stdout,/Billing reconciliation PostgreSQL checks passed: 61/);
   assert.match(result.stdout,/Billing lifecycle PostgreSQL checks passed: 25/);
+  assert.match(result.stdout,/Billing recovery PostgreSQL checks passed: 13/);
   assert.match(result.stdout,/Disposable local PostgreSQL stopped; exact temporary cluster removed/);
+});
+
+test('billing recovery reads cannot admit provider work and confirmed deletion revokes only known-customer calls',()=>{
+  const sql=readFileSync(new URL('../supabase/migrations/20260909020000_billing_operation_recovery.sql',import.meta.url),'utf8').replace(/--[^\n]*/g,'');
+  for(const name of ['read_billing_operation','scan_pending_billing_operations','rotate_billing_customer','advance_billing_operation_recovery_cursor','claim_billing_customer_cleanup','ack_billing_customer_cleanup','settle_billing_operation'])assert.match(sql,new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\(`));
+  assert.match(sql,/PERFORM survey_private\.require_billing_lifecycle_call\(p_user_id\)/);
+  assert.match(sql,/FROM PUBLIC,anon,authenticated,service_role/);assert.match(sql,/TO service_role/);
+  assert.doesNotMatch(sql,/auth\.role\(|request\.jwt\.claim\.role|\bhttp_(?:get|post)\b/);
+  const scan=sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.scan_pending_billing_operations'),sql.indexOf('CREATE OR REPLACE FUNCTION public.rotate_billing_customer'));
+  assert.match(scan,/operation_id>cursor_id ORDER BY operation_id LIMIT p_limit/);assert.match(scan,/p_limit NOT BETWEEN 1 AND 20/);
+  assert.doesNotMatch(scan,/INSERT INTO survey_private\.billing_operations|SET state=|SET removed=/);
+  const ack=sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.ack_billing_customer_cleanup'),sql.indexOf('CREATE OR REPLACE FUNCTION public.settle_billing_operation'));
+  assert.match(ack,/kind IN \('checkout_create','portal_create'\)/);assert.match(ack,/LIMIT 100 FOR UPDATE NOWAIT/);
+  assert.match(ack,/revoked<>cardinality\(selected_ids\)/);assert.match(ack,/closing_xid=pg_current_xact_id\(\)/);
+  assert.match(sql,/operation\.recovery_cursor IS DISTINCT FROM p_expected_cursor/);
+  assert.match(sql,/stripe_customer_id IS NOT DISTINCT FROM p_expected_customer_id/);
+  assert.match(sql,/saved\.result->>'outcome'='customer_removed'/);
+  assert.match(sql,/WHERE user_id=p_user_id AND kind=p_kind AND state='pending'/);
+  assert.match(sql,/BILLING_OPERATION_PENDING/);
 });
 
 test('billing lifecycle exposes only service RPCs and keeps receipts outside auth cascades',()=>{

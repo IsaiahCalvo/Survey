@@ -1,7 +1,9 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
-import { deleteStripeCustomer, runAccountDeletionStages } from '../_shared/accountDeletion.ts';
+import { runAccountDeletionStages } from '../_shared/accountDeletion.ts';
 import { cleanupAccountStorage } from '../_shared/accountStorageCleanup.js';
+import { BILLING_API_VERSION, BillingPendingError, resolveBillingProviderScope,
+  cleanupAccountBilling, assertBillingClosureReady } from '../_shared/billingLifecycle.ts';
 
 type AdminClient = ReturnType<typeof createClient<any>>;
 
@@ -62,31 +64,29 @@ Deno.serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: subscription, error: subscriptionError } = await admin
-      .from('user_subscriptions')
-      .select('stripe_customer_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (subscriptionError) throw subscriptionError;
-
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (subscription?.stripe_customer_id && !stripeKey) {
+    if (!stripeKey) {
       return json(503, { error: 'Account deletion cannot safely cancel billing right now. Please try again later.' });
     }
-    const stripe = stripeKey ? new Stripe(stripeKey, {
-      apiVersion: '2026-02-25.clover',
+    const stripe = new Stripe(stripeKey, {
+      apiVersion: BILLING_API_VERSION,
       httpClient: Stripe.createFetchHttpClient(),
-    }) : null;
+      maxNetworkRetries: 0,
+      timeout: 15000,
+    });
+    const scope = await resolveBillingProviderScope(stripe, stripeKey);
 
     await runAccountDeletionStages({
-      // Billing remains first so no account can be removed while still billable.
-      // Missing Stripe customers are accepted for safe retries.
+      // Commit closure before cancellations. Unknown customer creation stays
+      // pending; verified deletion covers only this exact known customer.
       cancelBilling: async () => {
-        if (stripe) await deleteStripeCustomer(stripe, subscription?.stripe_customer_id);
+        const billing = await cleanupAccountBilling({ db: admin, stripe, scope, userId: user.id });
+        if (!billing.complete) throw new BillingPendingError();
       },
       deleteDatabaseRows: () => deleteOwnedRows(admin, user.id),
       removeStorage: () => removeOwnedStorage(admin, user.id),
       deleteAuthUser: async () => {
+        await assertBillingClosureReady(admin, user.id);
         const { error } = await admin.auth.admin.deleteUser(user.id);
         if (error) throw error;
       },
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
 
     return json(200, { deleted: true });
   } catch (error) {
-    if (error instanceof AccountCleanupPending) {
+    if (error instanceof AccountCleanupPending || error instanceof BillingPendingError) {
       return json(202, { deleted: false, pending: true, code: 'account-cleanup-pending', error: error.message });
     }
     console.error('delete-account failed', error instanceof Error ? error.message : String(error));

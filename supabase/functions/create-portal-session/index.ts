@@ -1,10 +1,14 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { resolveBillingReturnUrl } from '../_shared/billingReturn.ts';
+import { BILLING_API_VERSION, BillingPendingError, BillingClosedError, resolveBillingProviderScope,
+    recoverBillingOperations, recoveredBillingSession, executeBillingOperation, rotateBillingCustomer } from '../_shared/billingLifecycle.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
-    apiVersion: '2026-02-25.clover',
+    apiVersion: BILLING_API_VERSION,
     httpClient: Stripe.createFetchHttpClient(),
+    maxNetworkRetries: 0,
+    timeout: 15000,
 });
 
 const corsHeaders = {
@@ -58,6 +62,15 @@ Deno.serve(async (req) => {
             );
         }
 
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+        if (!serviceKey || !stripeKey) throw new BillingPendingError('Billing is not fully configured.');
+        const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+        const scope = await resolveBillingProviderScope(stripe, stripeKey);
+        const recovery = await recoverBillingOperations({ db: admin, stripe, scope, userId: user.id });
+        if (recovery.closing) throw new BillingClosedError();
+        if (recovery.pending || recovery.errors) throw new BillingPendingError();
+
         console.log('Creating portal session for user:', user.id);
 
         // Get user's Stripe customer ID
@@ -81,34 +94,26 @@ Deno.serve(async (req) => {
 
         const body = await req.json().catch(() => ({}));
         const returnUrl = resolveBillingReturnUrl(body?.returnUrl, req.headers.get('origin'));
-        let session;
-        try {
-            session = await stripe.billingPortal.sessions.create({
+        const existing = await stripe.customers.retrieve(subscription.stripe_customer_id);
+        if (existing.object !== 'customer' || existing.id !== subscription.stripe_customer_id) throw new BillingPendingError();
+        if (existing.deleted) {
+            await rotateBillingCustomer({ db: admin, scope, userId: user.id,
+                expectedCustomerId: subscription.stripe_customer_id });
+            return new Response(JSON.stringify({ error: 'No active billing customer found. Please start a subscription first.' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        if (existing.livemode !== (scope.mode === 'live')) throw new BillingPendingError();
+        const sessionParams = {
                 customer: subscription.stripe_customer_id,
                 return_url: returnUrl,
-            });
-        } catch (err) {
-            // Same stale-id class as checkout (test-era or dashboard-deleted
-            // customer). Clear it and tell the user to subscribe rather than
-            // surfacing a raw Stripe error.
-            if ((err as { code?: string })?.code === 'resource_missing') {
-                await supabase
-                    .from('user_subscriptions')
-                    .update({ stripe_customer_id: null })
-                    .eq('user_id', user.id)
-                    .eq('stripe_customer_id', subscription.stripe_customer_id);
-                return new Response(
-                    JSON.stringify({ error: 'No Stripe customer found. Please start a subscription first.' }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                );
-            }
-            throw err;
-        }
-
-        console.log('Portal session created:', session.id);
+            };
+        const operation = recoveredBillingSession(recovery, 'portal_create', sessionParams)
+            ?? (await executeBillingOperation({ db: admin, stripe, scope, userId: user.id,
+                kind: 'portal_create', customerId: subscription.stripe_customer_id, spec: sessionParams })).result;
+        if (!operation.data.url) throw new BillingPendingError();
 
         return new Response(
-            JSON.stringify({ url: session.url }),
+            JSON.stringify({ url: operation.data.url }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 200,
@@ -118,7 +123,8 @@ Deno.serve(async (req) => {
         console.error('Error creating portal session:', error);
         const message = error instanceof Error ? error.message : String(error);
         return new Response(
-            JSON.stringify({ error: message }),
+            JSON.stringify({ error: message, pending: error instanceof BillingPendingError,
+                code: error instanceof BillingPendingError || error instanceof BillingClosedError ? error.code : 'billing-error' }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 500,
