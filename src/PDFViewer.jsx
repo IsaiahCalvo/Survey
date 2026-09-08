@@ -10451,6 +10451,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const lastCheckpointHashRef = useRef(null);
   const objectModifiedInteractionCheckpointRef = useRef(new Map());
   const previewBaselineByPageRef = useRef(new Map());
+  const {
+    toast: undoToast,
+    enqueue: enqueueUndoToast,
+    dismiss: dismissUndoToast,
+  } = useUndoToast();
+  const resetPageStructureHistory = useCallback(() => {
+    // Page-addressed undo entries cannot be applied to a different page order.
+    // This runs only after the new bytes/state have passed persistence.
+    dismissUndoToast();
+    undoHistoryRef.current = [];
+    redoHistoryRef.current = [];
+    undoHistoryMetaRef.current = [];
+    redoHistoryMetaRef.current = [];
+    localAnnotationUndoRef.current = [];
+    localAnnotationRedoRef.current = [];
+    suppressBatchCheckpointsRef.current = 0;
+    objectModifiedInteractionCheckpointRef.current.clear();
+    previewBaselineByPageRef.current.clear();
+    lastCheckpointHashRef.current = null;
+    setErasePreviewPages(new Set());
+    setUndoHistory([]);
+    setRedoHistory([]);
+    setLocalAnnotationHistoryVersion(version => version + 1);
+    yjsUndoManager?.stopCapturing?.();
+    yjsUndoManager?.clear?.();
+  }, [dismissUndoToast, yjsUndoManager]);
   // R2.2 Slice 3: calloutLiveHistoryBaselineRef (per-callout whole-document
   // drag baselines) was retired — callout drags now use the shared
   // previewBaselineByPageRef contract via checkpointPolicy 'skip'.
@@ -12625,9 +12651,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
   const managedLocalPageMutationRef = useRef(false);
-  const withPageMutation = useCallback(run => isManagedLocalDocument(pdfFile)
-    ? guardLocalPageMutation({ document, pendingRef: managedLocalPageMutationRef, flush: flushSync, run })
-    : run(), [pdfFile]);
+  const flushPendingFormFieldsRef = useRef(null);
+  const withPageMutation = useCallback(run => {
+    const prepare = () => flushPendingFormFieldsRef.current?.();
+    if (isManagedLocalDocument(pdfFile)) {
+      return guardLocalPageMutation({
+        document, pendingRef: managedLocalPageMutationRef, flush: flushSync, prepare, run,
+      });
+    }
+    // Include every queued native form value in the page-state capture. This
+    // local flush is not a cloud publication or a collaboration version fence.
+    flushSync(prepare);
+    return run();
+  }, [pdfFile]);
   const persistPageMutationFile = useCallback((file, next) => {
     if (isManagedLocalDocument(file)) {
       if (!next) throw new Error('Local page state is required before replacing PDF bytes');
@@ -12651,8 +12687,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
-    setUndoHistory([]);
-    setRedoHistory([]);
+    resetPageStructureHistory();
     clearAnnotationSelectionForContextChange('page-structure-change');
 
     // Persist synchronously at the commit boundary. React effects retain their
@@ -12692,6 +12727,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     numPages,
     pdfId,
     pdfFile,
+    resetPageStructureHistory,
     setRegionOverlayDisabled,
   ]);
 
@@ -18901,11 +18937,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Single-delete toast is layered separately in handleSaveAnnotations
   // below — every delete that goes through this save pipeline with
   // saveContext.deletedCount===1 enqueues the 'single' toast.
-  const {
-    toast: undoToast,
-    enqueue: enqueueUndoToast,
-    dismiss: dismissUndoToast,
-  } = useUndoToast();
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
   const pendingDeleteCancelRef = useRef(null);
@@ -21706,7 +21737,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
-  const flushPendingFormFieldsRef = useRef(null);
   const saveDocumentScopeRef = useRef(null);
   saveDocumentScopeRef.current = { pdfId, pdfFile, actorUserId: user?.id,
     managedLocalReady: managedLocalSaveTracking.ready };
@@ -24625,7 +24655,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }), [scrollMode]);
 
   const pushLocalAnnotationHistoryAction = useCallback((action) => {
-    if (!action || isUndoingRef.current) return;
+    if (!action || isUndoingRef.current) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
     const scopedAction = filterAnnotationHistoryActionByOwner(
       action,
@@ -24638,7 +24668,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         requestedAction: summarizeHistoryActionForLog(action),
         viewerId,
       });
-      return;
+      return false;
     }
     const checkpointId = historyCheckpointSeqRef.current + 1;
     historyCheckpointSeqRef.current = checkpointId;
@@ -24729,6 +24759,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
+    return true;
   }, [documentOwnerId, managedLocalEditingContext, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
@@ -25034,8 +25065,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!shouldRenumberCounters) {
       logCounterRenumberSkip();
     }
+    let localHistoryRecorded = false;
     if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
-      pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
+      localHistoryRecorded = pushLocalAnnotationHistoryAction(finalLocalHistoryAction) === true;
     }
     if (!shouldSkipCheckpointByPolicy) {
       previewBaselineByPageRef.current.delete(interactionPageKey);
@@ -25094,6 +25126,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length,
         saveContext: normalizedSaveContext
+      });
+    } else if (source === 'form-field' && localHistoryRecorded === true) {
+      // Native form edits already have one owner-scoped local delta. Keep the
+      // legacy fallback when that recorder declined the action.
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_local_form_history', {
+        reason: 'annotations:save', source, pageNumber,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
       });
     } else if (isEraserCommit) {
       // The precise local action above already stores exactly the changed/deleted
@@ -26983,6 +27023,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const { handlePdfjsFormFieldChange, handlePdfjsFormFieldBlur, flushPendingFormFields } = usePdfjsFormFieldPersistence({
     documentId: pdfId,
+    documentGeneration: pdfFile,
     handleSaveAnnotations,
     userId: user?.id,
     annotationsByPageRef,

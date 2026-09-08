@@ -2543,6 +2543,127 @@ reopens. Versioned cloud-byte publication must precede a durable cache. Offline
 access to shared cached files needs a defined revocation policy; fresh permission
 checks must not be bypassed. No changes to these paths were made in this slice.
 
+## Page-structure consistency: prerequisites, not atomic cloud publication
+
+The next pass traced `usePageOperations` through `PDFViewer`, `AppShell`, Storage,
+both Yjs document stores, forms, history and the SQL append/snapshot guards.
+Cloud page changes currently overwrite the published PDF, then commit the moved
+page state through separate writes. No PDF-generation token binds those writes.
+This is a source-proven race, not a claim that a live customer lost data.
+
+The local fixes in this pass preserve pending form edits before page-state capture,
+retire old form callbacks when the exact File changes, reject stale page rewrites
+before persistence for every storage mode, and remap surviving form carrier IDs.
+Native widget IDs, values and authors stay unchanged for page moves/inserts/deletes.
+Successful page changes clear all page-addressed undo stacks and preview baselines;
+failed persistence leaves them intact. Flat Yjs remap capture remains enabled: it
+must still write the new state and uses a different document/origin from the legacy
+UndoManager. These checks do not close a later upload-versus-peer-edit race.
+
+Two extra costs were reproduced and fixed in the real no-auth viewer: native form
+edits recorded both a precise local delta and a whole-document history checkpoint,
+and focusing then leaving an untouched blank field created a new app record.
+The recorder now returns an explicit success receipt; only a native form edit with
+that receipt skips the legacy checkpoint. Rejected recording and other sources
+keep the prior fallback. The form layer marks blur unchanged only after observed
+focus, no input/change event and an equal current DOM value. The hook skips a new
+record but still retries an existing pending field. Empty is not a no-op heuristic:
+explicit clears, unchecking, quick edits and failed-save retries remain valid.
+
+Rendered verification used the real viewer and page controls at
+`http://127.0.0.1:5229/?testPdf=kal441-form-fields.pdf&previewName=page-mutation-final.pdf`,
+with 430×932 and 1200×800 viewports. Codex's in-app browser returned
+`Browser is not available: iab`; Playwright used a new tab and no real account.
+Untouched blank focus/blur kept zero history and zero form records. Add blank page
+then move page 1 down preserved the name value on page 2 with canonical
+`form-field:2:11R`, one carrier and the original author. All history depths were
+zero after the page move. A new edit produced one local delta and zero legacy
+checkpoints; one Undo restored the prior value and one Redo restored the new value,
+without moving the page. Desktop untouched nonempty focus/blur kept history depths
+and event count unchanged; clearing that value and Undo restored it. Screenshots
+show the blank first page and form-bearing second page. No framework overlay or
+console error appeared; the sole warning reported deliberate offline mode.
+No Supabase, Stripe or Microsoft network request appeared in that test tab.
+
+Regression tests execute the actual hooks, real PDF rewriting and PDF.js widget
+parsing, actual extracted viewer callbacks, and real Yjs helpers. The whole form
+layer's event wiring/hydration is mounted with only the PDF renderer synthetic.
+Tests cover failed capture/persistence, exact form identity, retired callbacks,
+Strict Mode, failed form retries, history receipt rejection, local signed-out
+ownership, and subsequent one-step undo. The first full run exposed a missing
+reset callback in the existing managed-local test harness; its hydration checks
+were retained and the callback binding was supplied. It was not a runtime error.
+
+A separate real managed-local flow imported the fixture through Home → On this
+device → local file picker, edited a field, added a blank page and moved the form
+page down. The actual device store committed revision 3, 8,839 PDF bytes and the
+matching page-2 form graph. After a full app reload, Home → On this device → Open
+loaded that stored copy: the viewer rendered two pages and the exact saved value
+inside page 2. This proves local cold reopen, not cloud persistence. The mock dev
+actor also exposed unrelated upload-recovery read warnings on Home (it has no valid
+cloud identity); those warnings are not a passed cloud-recovery test.
+
+Final verification: full `npm test` exited 0 with 5,690 tests, 5,621 passed,
+69 skipped, zero failures/cancellations across 590 files. Baseline at `96d9bfb0`
+was 5,636 tests, 5,567 passed and the same 69 skips. Production build, diff check
+and AST graph update passed. An independent review ran 32 focused checks and found
+no new blocker in form retirement/draining or history reset. No live migration,
+provider test, deployment, push or Microsoft test is claimed by this local slice.
+
+### Remaining atomic publication contract
+
+1. Stage bytes under an owner-scoped, server-enforced write-once path, with one
+   stable operation ID and exact object/version/hash/size identity. Never overwrite
+   or remove the old file to free quota before a new publication commits. The old
+   and staged file consume quota together.
+2. Use the annotation advisory lock already shared by append and snapshot writes.
+   Lock the document and relevant project/membership/account rows; reject locked,
+   deleted, archived, closing and revoked states. Compare both the expected PDF
+   generation and the exact annotation head/checkpoint used for the remap.
+3. Commit pointer, current byte metadata, matching remapped checkpoint/sidebar
+   state, generation and retry receipt together. Keep `documents.id`, ownership,
+   shares and original import identity. Do not repurpose the deduplication field
+   `content_sha256` as the current generation hash. Suppressed or failed writes must
+   roll back the whole publication. Lost replies reconcile the exact receipt.
+4. Enforce expected generation on every append, snapshot and legacy write path,
+   including direct SQL inserts. Current `append_annotation_update` has no such
+   argument. Old clients must fail visibly once a document adopts this protocol;
+   a client-only check or remount cannot fence an offline peer.
+5. Read matching bytes and state before applying either. Scope outboxes, caches,
+   handles and history by generation; retain old unsent edits for recovery rather
+   than purging or relabelling opaque Yjs updates. Separate metadata and state reads
+   can straddle publication, so cold reopen needs a coherent read receipt too.
+6. Retire old Storage objects only after publication. Existing cleanup and shared
+   read rules recognize the current pointer only; retained historical generations
+   need explicit references and access rules before they can be kept safely.
+
+Both tracked document path guards inspect the actual SQL caller role, so a plain
+SECURITY DEFINER function cannot authorize the new pointer update. The replacement
+needs narrow database-owned authorization, not a client-set flag. A unique path
+alone is also insufficient: existing guards allow version changes on non-retired
+objects. Keep all physical Storage operations behind its API; SQL metadata removal
+does not remove provider bytes.
+
+Required tests include two publishers; publication against WAL append, role revoke,
+account close and hard delete in both orders; stale-generation offline append;
+Storage overwrite; quota rejection; suppressed writes; lost replies; and cold reads
+spanning publication. Actual multi-user/provider tests still need leased accounts.
+The stock no-auth fixture bypasses cloud replacement and reloads the original PDF;
+it can prove rendered remapping but not a durable cloud reopen.
+
+Physical duplicate/copy has another open form boundary: pdf-lib gives copied
+widgets new native IDs. The current state-transform API has no writer-produced
+old-to-new widget map. Tests expose this mismatch without inventing an ID or dropping
+the copied value. That map must join the publication receipt before claiming copied
+forms are correct.
+
+The legacy sidecar loader already excludes authoritative cloud annotations, markers,
+callouts and spaces; it is not a fallback overwrite of those stores. It still loads
+entities/view state from a stable JSON path without a matching PDF generation. Its
+swallowed save failures, full-blob upload and first-open wait remain separate work.
+Versioned download caching and shared offline access/revocation policy remain open.
+No cloud mutation or Microsoft live testing was performed in this pass.
+
 ## Historical cleanup backfill: evidence is insufficient for automatic deletion
 
 `archive_purge_runs` retains exact candidate paths with completed sweep transactions

@@ -32,3 +32,43 @@ test('a native close freeze or live text edit cannot be replaced by a local page
     assert.equal(document.documentElement.inert,true);assert.equal(pendingRef.current,false);
   } finally {dom.window.close();}
 });
+
+test('local page capture follows blur, pending-form drain and synchronous render', async () => {
+  const dom = new JSDOM('<!doctype html><input>');
+  try {
+    const document = dom.window.document, pendingRef = { current: false };
+    const order = [];
+    const input = document.querySelector('input');
+    input.focus();
+    input.addEventListener('blur', () => order.push('blur'));
+    const result = await guardLocalPageMutation({
+      document, pendingRef,
+      flush: fn => { fn(); order.push('render'); },
+      prepare: () => order.push('drain'),
+      run: () => {
+        assert.equal(document.documentElement.inert, true);
+        order.push('capture');
+        return 'saved';
+      },
+    });
+    assert.equal(result, 'saved');
+    assert.deepEqual(order, ['blur', 'drain', 'render', 'capture']);
+  } finally { dom.window.close(); }
+});
+
+test('failed pending-form drain keeps the document editable and never rewrites bytes', async () => {
+  const dom = new JSDOM('<!doctype html><input>');
+  try {
+    const document = dom.window.document, pendingRef = { current: false };
+    let ran = false;
+    await assert.rejects(guardLocalPageMutation({
+      document, pendingRef, flush: fn => fn(),
+      prepare: () => { throw new Error('form save failed'); },
+      run: () => { ran = true; },
+    }), /form save failed/);
+    assert.equal(ran, false);
+    assert.equal(pendingRef.current, false);
+    assert.notEqual(document.documentElement.inert, true);
+    assert.equal(document.documentElement.hasAttribute('aria-busy'), false);
+  } finally { dom.window.close(); }
+});

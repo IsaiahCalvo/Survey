@@ -131,7 +131,82 @@ for (const savedDuringRewrite of [true, false]) {
   });
 }
 
-test('rapid queued page operations chain both PDF bytes and page-addressed state', async () => {
+for (const fileKind of ['cloud', 'guest']) {
+  for (const change of ['state', 'file', 'none']) {
+    test(`${fileKind} page action ${change === 'none' ? 'persists unchanged capture' : `rejects changed ${change}`} after delayed PDF read`, async t => {
+      const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
+      const restores = [];
+      for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
+        HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
+        const before = Object.getOwnPropertyDescriptor(globalThis, key);
+        Object.defineProperty(globalThis, key, { configurable: true, value });
+        restores.push(() => before ? Object.defineProperty(globalThis, key, before) : delete globalThis[key]);
+      }
+      const { usePageOperations, cleanup } = await loadUsePageOperations();
+      let file = await pdfFixture();
+      if (fileKind === 'cloud') Object.assign(file, {
+        id: crypto.randomUUID(), user_id: crypto.randomUUID(), storageMode: 'cloud',
+      });
+      const original = file;
+      const bytes = await file.arrayBuffer();
+      let enterRead, releaseRead;
+      const entered = new Promise(resolve => { enterRead = resolve; });
+      const released = new Promise(resolve => { releaseRead = resolve; });
+      file.arrayBuffer = async () => { enterRead(); await released; return bytes; };
+      let state = { annotationsByPage: {}, surveyMarkers: {}, annotations: {},
+        pageNames: { 1: 'A', 2: 'B', 3: 'C' }, pageTransformations: {},
+        bookmarks: [], spaces: [], regionOverlayDisabled: new Map() };
+      const persisted = [], committed = [];
+      let api;
+      function Harness() {
+        api = usePageOperations({ pdfFile: file,
+          onUpdatePDFFile: async (...args) => persisted.push(args), getPageState: () => state,
+          commitPageState: (...args) => committed.push(args),
+          setPageNames() {}, setPageTransformations() {}, setClipboardPage() {}, setClipboardType() {},
+        });
+        return null;
+      }
+      const root = createRoot(document.getElementById('root'));
+      t.after(async () => {
+        releaseRead(); await act(async () => root.unmount()); await cleanup();
+        dom.window.close(); restores.reverse().forEach(restore => restore());
+      });
+      await act(async () => root.render(React.createElement(Harness)));
+      let pending;
+      await act(async () => { pending = api.handleDeletePage(1); await entered; });
+      if (change === 'state') {
+        state = { ...state, annotationsByPage: { 2: { objects: [{ type: 'rect', id: 'incoming-mark' }] } } };
+        await act(async () => root.render(React.createElement(Harness)));
+      } else if (change === 'file') {
+        file = await pdfFixture();
+        // A new File with the SAME document identity is still a newer byte capture.
+        Object.assign(file, { id: original.id, user_id: original.user_id, storageMode: original.storageMode });
+        await act(async () => root.render(React.createElement(Harness)));
+      } else {
+        // The local revision check must not apply to cloud/guest metadata.
+        original.localRevision = 99;
+      }
+      let result;
+      await act(async () => { releaseRead(); result = await pending; });
+      assert.equal(result, change === 'none');
+      if (change !== 'none') {
+        assert.deepEqual(persisted, [], 'stale capture never reaches byte persistence');
+        assert.deepEqual(committed, [], 'stale remap never replaces live page state');
+        if (change === 'state') assert.equal(state.annotationsByPage[2].objects[0].id, 'incoming-mark');
+        else assert.deepEqual(await pageWidths(file), [100, 200, 300]);
+      } else {
+        assert.equal(persisted.length, 1);
+        assert.deepEqual(await pageWidths(persisted[0][0]), [200, 300]);
+        assert.equal(committed.length, 1);
+        assert.deepEqual(committed[0][0].pageNames, { 1: 'B', 2: 'C' });
+        assert.equal(persisted[0][0].id, original.id);
+      }
+    });
+  }
+}
+
+for (const fileKind of ['cloud', 'guest']) {
+test(`${fileKind} rapid queued page operations chain both PDF bytes and page-addressed state`, async () => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
     pretendToBeVisual: true,
     url: 'http://localhost/',
@@ -176,6 +251,9 @@ test('rapid queued page operations chain both PDF bytes and page-addressed state
     return null;
   }
   Harness.pdfFile = await pdfFixture();
+  if (fileKind === 'cloud') Object.assign(Harness.pdfFile, {
+    id: crypto.randomUUID(), user_id: crypto.randomUUID(), storageMode: 'cloud',
+  });
 
   try {
     await act(async () => root.render(React.createElement(Harness)));
@@ -207,3 +285,4 @@ test('rapid queued page operations chain both PDF bytes and page-addressed state
     delete globalThis.IS_REACT_ACT_ENVIRONMENT;
   }
 });
+}

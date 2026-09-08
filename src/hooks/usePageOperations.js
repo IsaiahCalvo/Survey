@@ -47,7 +47,7 @@ export function usePageOperations({
       const stateFingerprint = () => JSON.stringify(getPageState?.(), (_key, value) => (
         value instanceof Map ? Object.fromEntries(value) : value
       ));
-      const observedLocalState = managedLocal ? stateFingerprint() : null;
+      const observedState = stateFingerprint();
       const sourceState = pageStateRef.current
         || (typeof getPageState === 'function' ? getPageState() : null);
       const nextState = sourceState ? transformPageState(sourceState, operation) : null;
@@ -60,10 +60,10 @@ export function usePageOperations({
         : operation;
       const { mutatePdfPages } = await import('../utils/pdfPageMutation.js');
       const pdfBytes = await mutatePdfPages(await currentPdfFile.arrayBuffer(), pdfOperation);
-      if (managedLocal && (pdfFileRef.current !== currentPdfFile
-        || currentPdfFile.localRevision !== expectedLocalRevision
-        || stateFingerprint() !== observedLocalState)) {
-        throw new Error('The local document changed during this page action. Your latest edits were kept. Retry the page action.');
+      if (pdfFileRef.current !== currentPdfFile
+        || (managedLocal && currentPdfFile.localRevision !== expectedLocalRevision)
+        || stateFingerprint() !== observedState) {
+        throw new Error('The document changed during this page action. Your latest edits were kept. Retry the page action.');
       }
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation

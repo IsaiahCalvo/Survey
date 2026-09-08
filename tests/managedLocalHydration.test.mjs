@@ -113,6 +113,7 @@ test('actual page publication updates the view but never changes managed legacy 
     saveAnnotationsByPage: noLegacy, saveSurveyMarkers: noLegacy, localStorage: { setItem: noLegacy },
     setAnnotationsByPage() {}, setSurveyMarkers() {}, setAnnotations() {}, setPageNames() {}, setPageTransformations() {},
     setBookmarks() {}, setSpaces() {}, setRegionOverlayDisabled() {}, setUndoHistory() {}, setRedoHistory() {},
+    resetPageStructureHistory() {},
     clearAnnotationSelectionForContextChange() {}, setPageNum: run => run(1), numPages: 2, pageNumberAfterOperation: () => 1,
   };
   const next = { annotationsByPage: { 1: { objects: [{ id: 'remapped' }] } }, surveyMarkers: {}, spaces: [],

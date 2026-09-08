@@ -245,6 +245,12 @@ export default function PdfjsFormLayer({
             if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
             return el.value;
           };
+          // A focus/blur alone is not an edit. Capture the rendered value on
+          // focus, after PDF/app hydration, without adding React render state.
+          // Missing focus or any input/change remains conservative: save it.
+          let focusBaseline;
+          let observedFocus = false;
+          let editedSinceFocus = false;
           const emit = (value) => ({
             fieldId,
             value,
@@ -259,10 +265,12 @@ export default function PdfjsFormLayer({
             return value;
           };
           const onInput = () => {
+            editedSinceFocus = true;
             const value = recordLocalValue();
             cbRef.current.onFieldChange?.(emit(value));
           };
           const onChange = () => {
+            editedSinceFocus = true;
             // React can echo the input event's persisted snapshot before the
             // browser dispatches checkbox change. Reuse the value captured by
             // input so that intermediate render cannot flip the DOM back.
@@ -273,8 +281,18 @@ export default function PdfjsFormLayer({
             if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!value;
             cbRef.current.onFieldChange?.(emit(value));
           };
-          const onFocus = () => cbRef.current.onFieldFocus?.({ fieldId, element: el });
-          const onBlur = () => cbRef.current.onFieldBlur?.(emit(readValue()));
+          const onFocus = () => {
+            focusBaseline = readValue();
+            observedFocus = true;
+            editedSinceFocus = false;
+            cbRef.current.onFieldFocus?.({ fieldId, element: el });
+          };
+          const onBlur = () => {
+            const value = readValue();
+            const unchanged = observedFocus && !editedSinceFocus && Object.is(value, focusBaseline);
+            observedFocus = false;
+            cbRef.current.onFieldBlur?.({ ...emit(value), ...(unchanged ? { unchanged: true } : {}) });
+          };
           el.addEventListener('input', onInput);
           el.addEventListener('change', onChange);
           el.addEventListener('focus', onFocus);

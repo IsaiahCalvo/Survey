@@ -26,6 +26,16 @@ const remapPageFields = (value, mapPage) => {
     if (page == null) continue;
     next[key] = mapPage(page);
   }
+  // The app's form carrier includes its page, but a surviving PDF widget keeps
+  // its native fieldId when pages move. Only rewrite the exact canonical ID;
+  // copied widgets need a proven native-ID map from the PDF writer, not a guess.
+  const oldFormPage = asPage(value.pageNumber);
+  const newFormPage = asPage(next.pageNumber);
+  if (next.type === 'form-field' && next.fieldId != null
+      && oldFormPage != null && newFormPage != null
+      && next.id === `form-field:${oldFormPage}:${next.fieldId}`) {
+    next.id = `form-field:${newFormPage}:${next.fieldId}`;
+  }
   if (next.data && typeof next.data === 'object' && !Array.isArray(next.data)) {
     next.data = remapPageFields(next.data, mapPage);
   }

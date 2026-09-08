@@ -29,11 +29,15 @@ export function buildFormFieldObject(pageNumber, payload, existingAuthorId, user
   };
 }
 
-export function usePdfjsFormFieldPersistence({ handleSaveAnnotations, userId, documentId, annotationsByPageRef }) {
+// documentGeneration is an optional opaque page-structure identity (for example
+// the exact PDF File). Flush pending fields before replacing it. Each change,
+// including A -> B -> A, retires old callbacks even within the same document.
+export function usePdfjsFormFieldPersistence({ handleSaveAnnotations, userId, documentId, documentGeneration, annotationsByPageRef }) {
   const scopeRef = useRef(null);
   const scopeKey = JSON.stringify([documentId || null, userId || null]);
-  if (scopeRef.current?.key !== scopeKey) {
-    scopeRef.current = { key: scopeKey, pending: new Map(), mounted: false };
+  if (scopeRef.current?.key !== scopeKey
+    || !Object.is(scopeRef.current?.generation, documentGeneration)) {
+    scopeRef.current = { key: scopeKey, generation: documentGeneration, pending: new Map(), mounted: false };
   }
   const scope = scopeRef.current;
   const isCurrent = () => scopeRef.current === scope && scope.mounted;
@@ -86,8 +90,17 @@ export function usePdfjsFormFieldPersistence({ handleSaveAnnotations, userId, do
   }, [queueField]);
 
   const handlePdfjsFormFieldBlur = useCallback((pageNumber, payload) => {
+    if (payload?.unchanged === true) {
+      // The layer proved this focus/blur did not edit the hydrated value. Do
+      // not create a carrier/history entry, but preserve retry of a prior
+      // failed commit that is still pending for this exact field and scope.
+      if (pageNumber != null && payload.fieldId != null) {
+        commitPendingField(`${pageNumber}:${payload.fieldId}`);
+      }
+      return;
+    }
     queueField(pageNumber, payload, true);
-  }, [queueField]);
+  }, [queueField, commitPendingField]);
 
   const flushPendingFormFields = useCallback(() => {
     if (!isCurrent()) return 0;
