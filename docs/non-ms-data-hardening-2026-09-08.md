@@ -1852,6 +1852,80 @@ Cross-device upload receipts/tombstones, immutable old PDF generations, remainin
 publish/revocation paths and the approved live rollout remain in scope. Microsoft
 365 trials and live Microsoft sync tests remain deferred.
 
+## Document publication and deleted-upload recovery
+
+The actual client journal, upload runner, cloud adapter and installed Supabase
+SDK reproduced an insert that committed, lost its reply, then was deleted by
+another device before the follow-up read. The pending client still held the same
+UUID and could recreate it on retry. This was an offline transport reproduction,
+not a write to a live account.
+
+Migration `20260908200000` records opaque document IDs and a deleted flag in a
+private table. INSERT and DELETE update this record in the same transaction as
+the document. A retired ID cannot be reused, including by service callers.
+Account/project cascades retire IDs too; account deletion does not remove the
+guard. Actual guard writes protect older repeatable-read/serializable snapshots.
+Nonblocking identity locks avoid reverse lock-order waits; normal metadata saves
+do not write guards. Client roles lose TRUNCATE permission because it skips row
+DELETE triggers. Trusted administrators can still disable triggers or truncate;
+those maintenance actions are outside this guarantee.
+
+Migration `20260908201000` checks destination-project editor access at publication
+and project moves. Project/member row locks order publication against revocation.
+Initial document paths must belong to the permanent owner, so an own document row
+cannot grant Storage access to another owner's object through the existing
+collaborator-read policy. The tracked SQL fixture reproduced that prior gap; live
+policies have not been audited by this test. Existing read/edit RLS stays intact,
+and the real project-purge RPC still detaches other users' live documents rather
+than deleting them. Administrative import authority depends on the SQL role, not
+a caller-controlled JWT role string.
+
+The upload runner treats only the exact server retirement error as terminal.
+It keeps the same local attempt, document ID and saved bytes, does not adopt a
+different hash match, and shows a clear deletion message. The recovery panel reads
+the saved error after reload, escapes it as plain text, and ignores nonstring
+values. Retry and Discard do not change their existing meaning.
+
+Verification:
+
+- 28 checks in disposable installed PostgreSQL cover the prior defects, roles,
+  cascades, rollback, quota, shared project purge, revocation in both orders,
+  reverse delete/insert contention, stale identity/membership snapshots,
+  TRUNCATE denial and migration replay. The four opt-in tests passed separately.
+- 121 focused client/mounted tests pass, including the real journal/SDK retry
+  path and visible persisted errors. Remote HTTP boundaries remain simulated.
+- Browser QA used the actual hook/panel and native IndexedDB with a local PDF and
+  synthetic server replies. Retry and reload retained all 23,183 bytes and the
+  exact attempt/document IDs, with the saved deletion alert visible. No browser
+  warnings/errors appeared. The in-app browser was unavailable; a separate Chrome
+  tab was used and closed, and the owned local server was stopped. This is not a
+  live-auth, full-app or deployed collaboration end-to-end claim.
+
+Frozen full regression run: 5,274 tests, 5,209 passed, 65 skipped, zero failures
+or cancellations, exit 0. Prior baseline: 5,263 / 5,199 / 64. The added opt-in
+PostgreSQL suite passed separately; the production build, AST graph update and
+whitespace checks passed. The original worktree's scoped source/test files remain
+untouched.
+
+Rollout remains gated on current-schema/grant review and applying both migrations
+after their prerequisites. The client alone cannot prevent recreation on an old
+server. IDs deleted before the migration cannot be reconstructed. Preserve the
+identity table and triggers on rollback; never purge retired identities. This
+adds one small private record per published/deleted identity, not per edit.
+It does not solve object cleanup/publication atomicity or provide a cross-device
+upload-request winner receipt. An uploaded candidate object can remain after a
+retired row is refused. Those paths remain open work, as does authorized live
+rollout. No Microsoft, deployment or live account action was performed.
+
+Next confirmed local reproduction: the archive service consumes an RPC's
+`orphaned_paths` after commit, then deletes those object names. If a fresh document
+UUID publishes the same owner/path in between, delayed cleanup can remove its
+PDF. The actual archive service reproduced this with simulated remote boundaries.
+Retiring the old document UUID does not retire its storage path. The next slice
+must coordinate physical cleanup with publication/storage writes; adding another
+reference lookup alone does not close the race. Deferring physical removal is a
+safe interim option but retains billable bytes and must be explicit.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

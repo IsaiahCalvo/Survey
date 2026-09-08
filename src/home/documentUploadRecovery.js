@@ -152,6 +152,11 @@ async function runUnlocked({ actorId, attemptId, journal, cloud, isCurrent, choo
         page_count: pageCount, archived: false }));
     } catch (error) {
       current(isCurrent, attempt);
+      // Only the server's exact retirement fence proves this identity was
+      // deleted. Do not reconcile it as an uncertain insert or adopt a winner.
+      if (error?.code === '23514' && error?.message === 'DOCUMENT_ID_RETIRED') {
+        throw fail('cloud-document-deleted', 'This cloud document was deleted. It was not recreated. The saved upload was kept on this device.', attempt, error);
+      }
       row = await wait(() => cloud.readDocument(attempt.documentId));
       if (row === null) {
         const winner = await wait(() => cloud.findDocumentByHash(attempt.projectId, attempt.contentSha));

@@ -86,7 +86,8 @@ export function useDocumentUploadRecovery({ actorId, tier, client, active = true
       setWork({ scope, notice: action === 'discard' ? 'Local retry copy removed. Cloud files were not changed.' : 'File saved to the cloud.' });
       return result;
     } catch (error) {
-      if (current()) setWork({ scope, action, error: error.attemptId && error.recoveryCreated !== false
+      if (current()) setWork({ scope, action, error: error.code === 'cloud-document-deleted' && typeof error.message === 'string' && error.message.trim()
+        ? error.message : error.attemptId && error.recoveryCreated !== false
         ? 'This file upload needs attention. Its saved bytes and unfinished steps are kept for retry. Cloud work may already be saved.'
         : 'Could not start this file upload. Keep the original file and check device storage. No retry copies were removed.' });
       throw error;

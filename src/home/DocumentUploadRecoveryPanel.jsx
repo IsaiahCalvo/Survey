@@ -17,6 +17,7 @@ export default function DocumentUploadRecoveryPanel({ recovery, onDiscard }) {
             ? 'Cloud save confirmed. Retry clears only this local retry copy.'
             : row.phase === 'document-confirmed' ? 'File saved. A name or previous-version step still needs confirmation.'
               : 'Retry bytes are saved here. Cloud work may already be saved.'}</p>
+          {typeof row.error === 'string' && row.error.trim() ? <p role="alert" style={{ overflowWrap: 'anywhere' }}>{row.error}</p> : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn" style={button} disabled={busy} aria-label={`Retry file ${row.name}`}
               onClick={() => { void retry(row.id).catch(() => {}); }}>Retry upload</button>

@@ -157,6 +157,43 @@ test('offline Retry preserves bytes and metadata; panel shows plain error and al
   assert.match(f.node.textContent, /File saved to the cloud/); assert.equal(await f.journal.get(actorA, pending.id), null);
 });
 
+test('retired document Retry shows the deletion message and cold journal metadata keeps it visible', async t => {
+  const f = await mount(t); const pending = await f.seed(); await act(async () => f.state.api.refresh());
+  f.state.cloud.createDocument = async () => { throw Object.assign(new Error('DOCUMENT_ID_RETIRED'), { code: '23514' }); };
+  await act(async () => { f.node.querySelector('button[aria-label="Retry file Pending.pdf"]').click(); await f.state.pendingClick.catch(() => {}); });
+  await settle(() => !f.state.api.busy);
+  const message = 'This cloud document was deleted. It was not recreated. The saved upload was kept on this device.';
+  assert.equal(f.state.api.error, message);
+  assert.equal(f.node.querySelector('li [role="alert"]').textContent, message);
+  assert.equal((await f.journal.get(actorA, pending.id)).documentId, pending.documentId);
+  assert.equal(await (await f.journal.readFile(actorA, pending.id)).text(), '%PDF original');
+  assert.equal(f.state.saved.length, 0); assert.deepEqual(f.state.discarded, []);
+  assert.equal(f.node.querySelector('button[aria-label="Retry file Pending.pdf"]').disabled, false);
+  // Retire the current hook scope, then read the same persisted record afresh.
+  f.state.actorId = actorB; await f.render(); f.state.actorId = actorA; await f.render(); await f.reopen();
+  assert.equal(f.state.api.error, '', 'the prior in-memory alert is no longer present');
+  assert.equal(f.node.querySelector('li [role="alert"]').textContent, message, 'persisted row error remains visible');
+  assert.equal(await (await f.journal.readFile(actorA, pending.id)).text(), '%PDF original');
+});
+
+test('panel ignores nonstring or blank row errors and renders error strings as text', async t => {
+  const f = await mount(t);
+  f.state.list = async () => [null, undefined, 42, false, {}, ['bad'], '', '   '].map((error, index) => ({ id: uuid(index + 1), name: `Pending ${index}.pdf`, phase: 'running', error }));
+  await act(async () => f.state.api.refresh()); assert.equal(f.node.querySelectorAll('li [role="alert"]').length, 0);
+  f.state.list = async () => [{ id: uuid(1), name: 'Safe.pdf', phase: 'running', error: '<img src=x onerror=alert(1)>' }];
+  await act(async () => f.state.api.refresh());
+  assert.equal(f.node.querySelector('li [role="alert"]').textContent, '<img src=x onerror=alert(1)>');
+  assert.equal(f.node.querySelector('img'), null);
+});
+
+test('a nonstring deleted-error message uses the safe generic hook alert', async t => {
+  const f = await mount(t); const pending = await f.seed(); await act(async () => f.state.api.refresh());
+  f.state.makeCloud = async () => { throw { code: 'cloud-document-deleted', message: { private: 'not renderable' } }; };
+  await act(async () => assert.rejects(f.state.api.retry(pending.id)));
+  assert.equal(typeof f.state.api.error, 'string'); assert.match(f.state.api.error, /saved bytes and unfinished steps are kept/);
+  assert.doesNotMatch(f.node.textContent, /not renderable/); assert.ok(await f.journal.readFile(actorA, pending.id));
+});
+
 test('same-render duplicate Retry is refused and busy panel disables every action', async t => {
   const f = await mount(t); const pending = await f.seed(); const held = defer();
   let reading = false;
