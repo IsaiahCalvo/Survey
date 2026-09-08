@@ -68,7 +68,7 @@ async function mount(t, { user = null, rows = [], listOverride = null } = {}) {
   const projectHooks = { projects: empty, templates: empty, initialLoading: false, refetch: noop };
   const Dashboard = await load('Dashboard.jsx', {
     react: React, SurveyHub: { default: SurveyHub }, localDocumentStore: store,
-    localDocumentState: { restoreLocalDocumentState: file => {
+    localDocumentState: { createLocalDocumentStateReader: file => {
       if (state.restoreError) throw state.restoreError; state.restored.push(file);
     } },
     AuthContext: { useAuth: () => ({ user: state.user, isAuthenticated: !!state.user, features: {} }) },

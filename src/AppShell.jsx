@@ -41,6 +41,7 @@ import { createPortal, flushSync } from 'react-dom';
 import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { showToast } from './utils/toast';
+import { registerPreloadRecoveryGuard } from './utils/preloadRecovery.js';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
@@ -50,7 +51,7 @@ import { getNextSelectModeMenuOpen, getSelectFamilyIconName, getSelectFamilyLabe
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
@@ -749,6 +750,14 @@ export default function App({ devPreviewReturnTab = null }) {
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
   const closeViewRef = useRef(null);
   closeViewRef.current = { tabs, activeTabId };
+  useLayoutEffect(() => registerPreloadRecoveryGuard(
+    // Even a clean dirty-bit can hide debounced form/page work or cloud writes.
+    // Read the latest view directly; include inactive local and cloud tabs.
+    () => Array.isArray(closeViewRef.current?.tabs) && !closeViewRef.current.tabs.some(tab => !!tab?.file),
+    reason => showToast(reason === 'offline'
+      ? 'An app file could not load offline. Reconnect, save your documents, then reload manually.'
+      : 'An app file could not load. Save and close your documents, then reload to retry.', 'error'),
+  ), []);
   const pendingTabClosesRef = useRef(new Set());
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens

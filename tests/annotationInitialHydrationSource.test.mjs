@@ -15,7 +15,7 @@ test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the leg
   // Cloud docs start highlights empty (or the same-pdf-reload snapshot); the
   // durable Y.Doc (useAnnotationDoc) then paints them. They are NO LONGER read
   // from the legacy document_annotations table on open.
-  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*loadSurveyMarkers\(id\);/);
+  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*managedLocalStateReader\s*\?\s*JSON\.parse\(managedLocalStateReader\.getItem\(`surveyMarkers_\$\{id\}`\) \|\| '\{\}'\)\s*:\s*loadSurveyMarkers\(id\);/);
   // useAnnotationDoc now owns highlight hydrate + capture + realtime.
   assert.match(APP_SOURCE, /useAnnotationDoc\(\{[\s\S]*?surveyMarkers,\s*setSurveyMarkers,/);
   // The legacy survey-marker SELECT is retired (no document_annotations read).
@@ -41,7 +41,7 @@ test('same-document reload preserves cloud-owned layers instead of blanking them
   assert.match(APP_SOURCE, /const previousSpacesForSamePdf = spacesRef\.current \|\| \[\];/);
   assert.match(APP_SOURCE, /spacesRef\.current = isSamePdfReload \? previousSpacesForSamePdf : \[\];/);
   assert.match(APP_SOURCE, /setSpaces\(isSamePdfReload \? previousSpacesForSamePdf : \[\]\);/);
-  assert.match(APP_SOURCE, /const loadedCallouts = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousCalloutsForSamePdf : \[\]\)\s*:\s*loadCallouts\(id\);/);
+  assert.match(APP_SOURCE, /const loadedCallouts = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousCalloutsForSamePdf : \[\]\)\s*:\s*managedLocalStateReader\s*\?\s*JSON\.parse\(managedLocalStateReader\.getItem\(`callouts_\$\{id\}`\) \|\| '\[\]'\)\s*:\s*loadCallouts\(id\);/);
 });
 
 test('annotation persistence is owned by the durable Yjs store, not the legacy hook', () => {

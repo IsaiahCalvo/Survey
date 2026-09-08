@@ -5,7 +5,8 @@ import { JSDOM } from 'jsdom';
 import React, { act, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { saveAnnotationsByPage } from '../src/viewerShared.js';
-import { isManagedLocalDocument } from '../src/services/localDocumentState.js';
+import { buildLocalDocumentState, isManagedLocalDocument } from '../src/services/localDocumentState.js';
+import { useManagedLocalSaveTracking } from '../src/hooks/useManagedLocalSaveTracking.js';
 
 const viewerSource = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const callbackStart = viewerSource.indexOf('const handleSaveDocument = useCallback(');
@@ -19,6 +20,10 @@ const quitStart = viewerSource.indexOf('const saveLocalBeforeQuit = async (');
 const quitEnd = viewerSource.indexOf('\n  const quitCloseChecksRef =', quitStart);
 assert.ok(quitStart >= 0 && quitEnd > quitStart, 'test the real viewer quit handler');
 const quitSource = viewerSource.slice(quitStart + 'const saveLocalBeforeQuit = '.length, quitEnd).replace(/;\s*$/, '');
+const quitGateStart = viewerSource.indexOf('const getQuitSaveBlockReason = ');
+const quitGateEnd = viewerSource.indexOf('  const saveLocalBeforeQuit = ', quitGateStart);
+assert.ok(quitGateStart > 0 && quitGateEnd > quitGateStart);
+const quitGateSource = viewerSource.slice(quitGateStart + 'const getQuitSaveBlockReason = '.length, quitGateEnd).replace(/;\s*$/, '');
 
 const dirtyMarker = viewerSource.indexOf('// Mark annotations as dirty when they change');
 const dirtyStart = viewerSource.indexOf('useEffect(', dirtyMarker);
@@ -46,6 +51,7 @@ test('mounted dirty tracking preserves last-object deletions and clears an undo 
     updatePages = setPages;
     const scope = {
       pdfId: 'local-pdf', tabId: 'inactive-local-tab', annotationsByPage: pages,
+      pdfFile: {}, isManagedLocalDocument,
       savedAnnotationsByPageRef: savedRef, setHasUnsavedAnnotations: setDirty,
       onUnsavedAnnotationsChange,
     };
@@ -182,6 +188,189 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
   };
 }
 
+function managedLocalHelpers(file, write) {
+  const stateRef = { current: { pageNames: { 1: 'First' } } };
+  const start = viewerSource.indexOf('const captureManagedLocalSnapshot = ');
+  const end = viewerSource.indexOf('  const handleSaveDocument = ', start);
+  assert.ok(start > 0 && end > start, 'use the real full-state capture and persistence helpers');
+  const scope = { managedLocalStateRef: stateRef, buildLocalDocumentState,
+    managedLocalWritesRef: { current: new WeakMap() },
+    managedLocalPageMutationRef: { current: false },
+    saveDocumentScopeRef: { current: { pdfFile: file, pdfId: file.localId, actorUserId: 'owner', managedLocalReady: true } },
+    surveyMarkersRef: { current: {} }, spacesRef: { current: [] }, saveLocalDocumentState: write };
+  const helpers = new Function(...Object.keys(scope), `${viewerSource.slice(start, end)}
+    return { captureManagedLocalSnapshot, persistManagedLocalSnapshot };`)(...Object.values(scope));
+  return { ...helpers, stateRef, saveDocumentScopeRef: scope.saveDocumentScopeRef,
+    managedLocalPageMutationRef: scope.managedLocalPageMutationRef };
+}
+
+test('real local persistence shares identical overlapping saves and queues changed full snapshots with fresh owned revision', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, localRevision: 1 };
+  const writes = [], releases = [];
+  const helpers = managedLocalHelpers(file, async (_id, state, { expectedRevision }) => {
+    writes.push({ state, expectedRevision });
+    await new Promise(resolve => releases.push(resolve));
+    return { revision: expectedRevision + 1 };
+  });
+  const first = helpers.persistManagedLocalSnapshot(file, {});
+  const duplicate = helpers.persistManagedLocalSnapshot(file, {});
+  assert.equal(first, duplicate, 'one actual transaction for two equivalent Save routes');
+  helpers.stateRef.current = { pageNames: { 1: 'Newer' } };
+  const changed = helpers.persistManagedLocalSnapshot(file, {});
+  assert.equal(writes.length, 1);
+  releases.shift()(); await first;
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].expectedRevision, 2);
+  assert.equal(JSON.parse(writes[1].state.entries[`pdfSidebar_${localId}`]).pageNames[1], 'Newer');
+  releases.shift()(); await changed;
+  assert.equal(file.localRevision, 3);
+});
+
+test('queued local persistence rejects retired file scope before a second transaction', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, localRevision: 1 };
+  let release, count = 0;
+  const helpers = managedLocalHelpers(file, async () => {
+    count++; await new Promise(resolve => { release = resolve; }); return { revision: 2 };
+  });
+  const first = helpers.persistManagedLocalSnapshot(file, {});
+  helpers.stateRef.current = { pageNames: { 1: 'Newer' } };
+  const queued = helpers.persistManagedLocalSnapshot(file, {});
+  const rejection = assert.rejects(queued, /document changed before saving/);
+  helpers.saveDocumentScopeRef.current = { ...helpers.saveDocumentScopeRef.current, pdfFile: { ...file } };
+  release(); await first; await rejection;
+  assert.equal(count, 1);
+});
+
+test('an external CAS conflict never advances local revision or turns a queued retry into a successful overwrite', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, localRevision: 1 };
+  const expected = [];
+  const helpers = managedLocalHelpers(file, async (_id, _state, options) => {
+    expected.push(options.expectedRevision); throw new Error('revision-conflict');
+  });
+  const first = helpers.persistManagedLocalSnapshot(file, {});
+  const firstRejection = assert.rejects(first, /revision-conflict/);
+  helpers.stateRef.current = { pageNames: { 1: 'Newer' } };
+  const queued = helpers.persistManagedLocalSnapshot(file, {});
+  await Promise.all([firstRejection, assert.rejects(queued, /revision-conflict/)]);
+  assert.deepEqual(expected, [1, 1]);
+  assert.equal(file.localRevision, 1);
+  assert.equal(file._localDocumentState, undefined);
+});
+
+test('a queued local save waits for a page action to finish before it can be retried', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, localRevision: 1 };
+  let release, count = 0;
+  const helpers = managedLocalHelpers(file, async () => {
+    count++; await new Promise(resolve => { release = resolve; }); return { revision: 2 };
+  });
+  const first = helpers.persistManagedLocalSnapshot(file, {});
+  helpers.stateRef.current = { pageNames: { 1: 'Newer' } };
+  const queued = helpers.persistManagedLocalSnapshot(file, {});
+  const rejected = assert.rejects(queued, /page action is still saving/);
+  helpers.managedLocalPageMutationRef.current = true;
+  release(); await first; await rejected;
+  assert.equal(count, 1);
+});
+
+test('queued local persistence cannot start after PDF hydration becomes incomplete', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, localRevision: 1 };
+  let release, count = 0;
+  const helpers = managedLocalHelpers(file, async () => {
+    count++;
+    if (count === 1) await new Promise(resolve => { release = resolve; });
+    return { revision: 2 };
+  });
+  const first = helpers.persistManagedLocalSnapshot(file, {});
+  helpers.stateRef.current = { pageNames: { 1: 'Newer' } };
+  const queued = helpers.persistManagedLocalSnapshot(file, {});
+  const rejection = assert.rejects(queued, /still loading/);
+  helpers.saveDocumentScopeRef.current.managedLocalReady = false;
+  release(); await first; await rejection;
+  assert.equal(count, 1);
+});
+
+test('mounted managed Save stays clean when a focused form flush commits React state after capture', async t => {
+  const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
+  const originals = new Map(['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+  }
+  const root = createRoot(document.getElementById('root'));
+  t.after(async () => {
+    await act(async () => root.unmount()); dom.window.close();
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
+  });
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, _surveyPdfId: localId, storageMode: 'local', localRevision: 1 };
+  const helpers = managedLocalHelpers(file, async () => ({ revision: 2 }));
+  helpers.stateRef.current = {};
+  const latest = { 1: { objects: [{ type: 'form-field', data: { value: 'just typed' } }] } };
+  let api, h;
+  function Harness() {
+    const [pages, setPages] = useState({});
+    const pagesRef = useRef(pages); pagesRef.current = pages;
+    api = useManagedLocalSaveTracking({ file, pdfId: localId,
+      snapshot: buildLocalDocumentState({ pdfId: localId, annotationsByPage: pages }) });
+    h = saveCallbackHarness({ overrides: { ...helpers, pdfId: localId, pdfFile: file,
+      annotationsByPageRef: pagesRef, managedLocalSaveTracking: api, managedLocalPageMutationRef: { current: false },
+      flushPendingFormFieldsRef: { current: () => { pagesRef.current = latest; setPages(latest); } },
+    } });
+    return null;
+  }
+  await act(async () => root.render(React.createElement(Harness)));
+  let saved;
+  await act(async () => { saved = await h.save(); });
+  assert.equal(saved, true);
+  assert.equal(api.dirty, false, 'the next React render matches the exact committed full-state snapshot');
+  assert.deepEqual(JSON.parse(file._localDocumentState.entries[`annotationsByPage_${localId}`]), latest);
+});
+
+for (const failed of [false, true]) {
+  test(`managed Save ${failed ? 'keeps failed metadata dirty and visible' : 'does not clear metadata edited while the real write waits'}`, async () => {
+    const localId = 'local:00000000-0000-4000-8000-000000000001';
+    const file = { localId, _surveyPdfId: localId, storageMode: 'local', localRevision: 1 };
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let written;
+    const helpers = managedLocalHelpers(file, async (_id, state) => {
+      written = state; await gate;
+      if (failed) throw new Error('Device quota exceeded');
+      return { revision: 2 };
+    });
+    const acknowledgements = [];
+    const h = saveCallbackHarness({ overrides: { pdfId: localId, pdfFile: file,
+      ...helpers, managedLocalPageMutationRef: { current: false },
+      managedLocalSaveTracking: { ready: true, markSaved: (_file, saved, current) => {
+        acknowledgements.push([saved, current]); return JSON.stringify(saved) === JSON.stringify(current);
+      } },
+    } });
+    const save = h.save(true);
+    assert.ok(written, 'the real helper has captured the full metadata before waiting');
+    helpers.stateRef.current = { pageNames: { 1: 'Newer edit' } };
+    release();
+    assert.equal(await save, false);
+    assert.equal(h.state.dirty, true);
+    assert.ok(h.state.notifications.every(([dirty]) => dirty));
+    assert.equal(h.state.toasts.length, 1, 'auto-save cannot hide a failed or stale save');
+    if (!failed) {
+      assert.equal(file.localRevision, 2);
+      assert.equal(JSON.parse(acknowledgements[0][0].entries[`pdfSidebar_${localId}`]).pageNames[1], 'First');
+      assert.equal(JSON.parse(acknowledgements[0][1].entries[`pdfSidebar_${localId}`]).pageNames[1], 'Newer edit');
+    } else {
+      assert.equal(file.localRevision, 1);
+      assert.equal(acknowledgements.length, 0);
+    }
+  });
+}
+
 test('manual Save flushes pending form input before reading its latest snapshot', async () => {
   const latest = { 1: { objects: [{ type: 'form-field', data: { value: 'just typed' } }] } };
   const pagesRef = { current: {} };
@@ -266,7 +455,7 @@ test('successful local backup still clears dirty state if cloud flush fails', as
 });
 
 function quitHarness({ dirty = true, locked = false, cloud = false, save = async () => true,
-  reason = null, ensure = async () => ({ locallyDurable: true }), proofCurrent = true } = {}) {
+  reason = null, ensure = async () => ({ locallyDurable: true }), proofCurrent = true, overrides = {} } = {}) {
   const state = { dirty, revision: 'initial', writes: [], notifications: [], receiptCalls: 0, gates: [], proofCurrent };
   const snapshot = {};
   const savedRef = { current: { 1: { objects: [{ id: 'deleted' }] } } };
@@ -283,10 +472,52 @@ function quitHarness({ dirty = true, locked = false, cloud = false, save = async
     saveAnnotationsByPage: async (...args) => { state.writes.push(args); return save(...args); },
     savedAnnotationsByPageRef: savedRef, setHasUnsavedAnnotations: value => { state.dirty = value; },
     onUnsavedAnnotationsChange: (...args) => state.notifications.push(args), showToast() {},
+    ...overrides,
   };
   const quit = new Function(...Object.keys(scope), `return (${quitSource});`)(...Object.values(scope));
   return { quit, state, savedRef, snapshot };
 }
+
+test('the real native quit preflight vetoes a managed PDF still importing before any snapshot write', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, _surveyPdfId: localId, storageMode: 'local', localRevision: 1 };
+  const scope = { pdfFile: file, isManagedLocalDocument,
+    managedLocalPageMutationRef: { current: false }, managedLocalSaveTracking: { ready: false } };
+  const getQuitSaveBlockReason = new Function(...Object.keys(scope), `return (${quitGateSource});`)(...Object.values(scope));
+  let writes = 0;
+  const q = quitHarness({ overrides: { pdfId: localId, pdfFile: file, getQuitSaveBlockReason,
+    persistManagedLocalSnapshot: async () => { writes++; return true; },
+  } });
+  const result = await q.quit();
+  assert.equal(result.saved, false);
+  assert.match(result.reason, /still loading/);
+  assert.equal(writes, 0);
+  assert.equal(file.localRevision, 1);
+  assert.deepEqual(q.state.notifications, []);
+});
+
+test('native managed save vetoes a metadata edit during persistence even when the older quit revision misses it', async () => {
+  const localId = 'local:00000000-0000-4000-8000-000000000001';
+  const file = { localId, _surveyPdfId: localId, storageMode: 'local', localRevision: 1 };
+  let release;
+  const helpers = managedLocalHelpers(file, async () => {
+    await new Promise(resolve => { release = resolve; }); return { revision: 2 };
+  });
+  const acknowledgements = [];
+  const q = quitHarness({ overrides: { ...helpers, pdfId: localId, pdfFile: file,
+    managedLocalSaveTracking: { markSaved: (_file, saved, current) => {
+      acknowledgements.push([saved, current]); return JSON.stringify(saved) === JSON.stringify(current);
+    } },
+  } });
+  const pending = q.quit();
+  helpers.stateRef.current = { callouts: [{ id: 'new-callout', text: 'Newer' }] };
+  release();
+  assert.deepEqual(await pending, { saved: false });
+  assert.equal(q.state.revision, 'initial', 'the full-state check is independent of the older quit fingerprint');
+  assert.equal(q.state.dirty, true);
+  assert.deepEqual(q.state.notifications, []);
+  assert.equal(acknowledgements.length, 1);
+});
 
 test('native local save awaits acknowledgment and persists last-object deletion without a cloud dependency', async () => {
   let finish;

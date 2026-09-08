@@ -14,7 +14,8 @@
 
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createManagedLocalEditingContext } from './utils/managedLocalEditingContext.js';
-import { buildLocalDocumentState, isManagedLocalDocument } from './services/localDocumentState.js';
+import { buildLocalDocumentState, createLocalDocumentStateReader, isManagedLocalDocument } from './services/localDocumentState.js';
+import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from './hooks/useManagedLocalSaveTracking.js';
 import { saveLocalDocumentState } from './services/localDocumentStore.js';
 import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
@@ -7629,6 +7630,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
+  const managedLocalStateReader = useMemo(
+    () => isManagedLocalDocument(pdfFile) ? createLocalDocumentStateReader(pdfFile) : null,
+    [pdfFile],
+  );
   const pdfSearchDocumentKey = useMemo(
     () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}`,
     [pdfFile?.id, pdfFile?.name, pdfId, numPages]
@@ -10283,7 +10288,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [showRegionSelection, activeTool]);
 
   // Per-document region visibility, persisted in localStorage.
-  const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId);
+  const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId, managedLocalStateReader);
 
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);
@@ -10312,7 +10317,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
     try {
-      const sidebarData = JSON.parse(localStorage.getItem(`pdfSidebar_${pdfId}`) || '{}');
+      const sidebarData = JSON.parse((managedLocalStateReader || localStorage).getItem(`pdfSidebar_${pdfId}`) || '{}');
       const loaded = migrateSidebarData(sidebarData);
       setPageNames(loaded.pageNames);
       setBookmarks(loaded.bookmarks);
@@ -10324,11 +10329,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (e) {
       console.error('Error loading sidebar data:', e);
     }
-  }, [pdfId]);
+  }, [pdfId, managedLocalStateReader]);
 
   // Save sidebar data to localStorage
   useEffect(() => {
-    if (!pdfId) return;
+    if (!pdfId || managedLocalStateReader) return;
     try {
       localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
         pageNames,
@@ -10340,7 +10345,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (e) {
       console.error('Error saving sidebar data:', e);
     }
-  }, [pdfId, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations]);
+  }, [pdfId, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, managedLocalStateReader]);
 
   // Phase 29 — read the per-user Y.UndoManager + ctx from the YDocProvider context.
   // Y.Doc here is the per-document Y.Doc the SupabaseYjsProvider streams updates
@@ -12651,7 +12656,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Persist synchronously at the commit boundary. React effects retain their
     // normal backup writes, but a hard reopen immediately after the action sees
     // the transformed graph rather than racing a later effect.
-    if (pdfId) {
+    if (pdfId && !isManagedLocalDocument(pdfFile)) {
       saveAnnotationsByPage(pdfId, next.annotationsByPage);
       saveSurveyMarkers(pdfId, next.surveyMarkers);
       try {
@@ -12684,6 +12689,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clearAnnotationSelectionForContextChange,
     numPages,
     pdfId,
+    pdfFile,
     setRegionOverlayDisabled,
   ]);
 
@@ -20974,9 +20980,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     activePdfIdentityRef.current = nextPdfIdentity;
     activeCloudDocumentIdRef.current = pdfFile?.id || null;
     setPdfId(id);
-    const data = loadPDFData(id);
-    setItems(data.items);
-    setAnnotations(data.annotations);
+    const data = managedLocalStateReader
+      ? JSON.parse(managedLocalStateReader.getItem(`pdfData_${id}`) || '{}')
+      : loadPDFData(id);
+    setItems(data.items || {});
+    setAnnotations(data.annotations || {});
     const isCloudBackedDoc = !!pdfFile?.id;
     setSurveyAnnotationHydration(isCloudBackedDoc ? {
       ...ANNOTATION_HYDRATION_PENDING,
@@ -20990,7 +20998,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // below returns.
     const loadedSurveyMarkers = isCloudBackedDoc
       ? (isSamePdfReload ? previousSurveyMarkersForSamePdf : {})
-      : loadSurveyMarkers(id);
+      : managedLocalStateReader
+        ? JSON.parse(managedLocalStateReader.getItem(`surveyMarkers_${id}`) || '{}')
+        : loadSurveyMarkers(id);
     setSurveyMarkers(loadedSurveyMarkers);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
@@ -21011,7 +21021,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         })
       : null;
     const loadedAnnotationsByPage = cloudRenderCache
-      || (shouldUseLocalAnnotationCache ? loadAnnotationsByPage(id) : {});
+      || (managedLocalStateReader
+        ? JSON.parse(managedLocalStateReader.getItem(`annotationsByPage_${id}`) || '{}')
+        : (shouldUseLocalAnnotationCache ? loadAnnotationsByPage(id) : {}));
     if (isCloudBackedDoc && cloudRenderCache) {
       appDebug(`[Cloud render cache] doc=${id} painting verified cloud snapshot immediately — count=${countAnnotationPageObjects(cloudRenderCache)}.`);
     } else if (isCloudBackedDoc && !shouldUseLocalAnnotationCache) {
@@ -21056,7 +21068,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (didMutate) {
         migratedAnnotationsByPage = cleanedPages;
         try {
-          saveAnnotationsByPage(id, migratedAnnotationsByPage);
+          if (!managedLocalStateReader) saveAnnotationsByPage(id, migratedAnnotationsByPage);
         } catch (err) {
           console.error('[CSeries wipe] failed to persist legacy wipe', err);
         }
@@ -21088,7 +21100,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Load callouts from localStorage (or carry forward on a same-PDF reload).
     const loadedCallouts = isCloudBackedDoc
       ? (isSamePdfReload ? previousCalloutsForSamePdf : [])
-      : loadCallouts(id);
+      : managedLocalStateReader
+        ? JSON.parse(managedLocalStateReader.getItem(`callouts_${id}`) || '[]')
+        : loadCallouts(id);
 
     // Callout-unification keystone (Phase 5, point A) — when the shared store is
     // ON, project each loaded callout through calloutToAnnotationObject(callout,
@@ -21139,7 +21153,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (identityNormalization.changed) {
       initialAnnotationsByPage = identityNormalization.byPage;
       try {
-        saveAnnotationsByPage(id, initialAnnotationsByPage);
+        if (!managedLocalStateReader) saveAnnotationsByPage(id, initialAnnotationsByPage);
       } catch (error) {
         console.error('[Annotation identity] failed to persist canonical ids', error);
       }
@@ -21189,24 +21203,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Save items and annotations to localStorage when they change
   useEffect(() => {
-    if (!pdfId) return;
+    if (!pdfId || managedLocalStateReader) return;
     savePDFData(pdfId, items, annotations);
-  }, [pdfId, items, annotations]);
+  }, [pdfId, items, annotations, managedLocalStateReader]);
 
   // Save surveyMarkers to localStorage when they change
   useEffect(() => {
-    if (!pdfId) {
+    if (!pdfId || managedLocalStateReader) {
       return;
     }
     saveSurveyMarkers(pdfId, surveyMarkers);
-  }, [pdfId, surveyMarkers]);
+  }, [pdfId, surveyMarkers, managedLocalStateReader]);
 
   // Track unsaved annotation changes
   const savedAnnotationsByPageRef = useRef({});
+  const managedLocalSnapshot = useMemo(() => isManagedLocalDocument(pdfFile) && pdfId === pdfFile.localId
+    ? buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, surveyMarkers, callouts,
+      pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled })
+    : null, [pdfFile, pdfId, annotationsByPage, items, annotations, surveyMarkers, callouts,
+    pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled]);
+  const managedLocalSaveTracking = useManagedLocalSaveTracking({ file: pdfFile, pdfId, snapshot: managedLocalSnapshot,
+    hydrated: !!pdfDoc && !isLoadingPDF && !pdfLoadError });
 
   // Mark annotations as dirty when they change
   useEffect(() => {
     if (!pdfId) return;
+    if (isManagedLocalDocument(pdfFile)) {
+      if (!managedLocalSaveTracking.ready) return;
+      setHasUnsavedAnnotations(managedLocalSaveTracking.dirty);
+      onUnsavedAnnotationsChange?.(managedLocalSaveTracking.dirty, tabId);
+      return;
+    }
 
     // Compare current with saved to detect changes
     const currentJson = JSON.stringify(annotationsByPage);
@@ -21217,7 +21244,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const isDirty = currentJson !== savedJson;
     setHasUnsavedAnnotations(isDirty);
     onUnsavedAnnotationsChange?.(isDirty, tabId);
-  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, tabId]);
+  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, tabId, pdfFile,
+    managedLocalSaveTracking.ready, managedLocalSaveTracking.dirty]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
   // whenever this PDFViewer's annotation count flips between empty and
@@ -21236,13 +21264,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Save callouts to localStorage when they change
   useEffect(() => {
-    if (!pdfId) return;
+    if (!pdfId || managedLocalStateReader) return;
     if (pdfFile?.id) return;
     const fingerprint = getCalloutSyncFingerprint(callouts);
     if (fingerprint === lastSavedCalloutsFingerprintRef.current) return;
     lastSavedCalloutsFingerprintRef.current = fingerprint;
     saveCallouts(pdfId, callouts);
-  }, [pdfId, pdfFile?.id, callouts]);
+  }, [pdfId, pdfFile?.id, callouts, managedLocalStateReader]);
 
   // 2026-04-25 — Mirror annotationsByPage to localStorage on every change.
   // Without this auto-save, localStorage only got rewritten on manual
@@ -21253,10 +21281,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // hydrate replaced it. Mirroring on every change keeps localStorage
   // in lock-step with the live state, matching how callouts already work.
   useEffect(() => {
-    if (!pdfId) return;
+    if (!pdfId || managedLocalStateReader) return;
     if (pdfFile?.id) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
-  }, [pdfId, pdfFile?.id, annotationsByPage]);
+  }, [pdfId, pdfFile?.id, annotationsByPage, managedLocalStateReader]);
 
   // Cloud docs still need an instant first paint on refresh. This cache is
   // display-only: Y.Doc/Supabase remains authoritative and replaces it after
@@ -21671,23 +21699,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // silent=true skips alerts (for auto-save)
   const flushPendingFormFieldsRef = useRef(null);
   const saveDocumentScopeRef = useRef(null);
-  saveDocumentScopeRef.current = { pdfId, pdfFile, actorUserId: user?.id };
+  saveDocumentScopeRef.current = { pdfId, pdfFile, actorUserId: user?.id,
+    managedLocalReady: managedLocalSaveTracking.ready };
   const managedLocalStateRef = useRef(null);
+  const managedLocalWritesRef = useRef(new WeakMap());
   managedLocalStateRef.current = { items, annotations, callouts, pageNames, bookmarks,
     activeSpaceId, pageTransformations, regionOverlayDisabled };
-  const persistManagedLocalSnapshot = async (file, snapshot) => {
-    const state = buildLocalDocumentState({ ...managedLocalStateRef.current,
+  const captureManagedLocalSnapshot = (file, snapshot) => buildLocalDocumentState({ ...managedLocalStateRef.current,
       pdfId: file.localId, annotationsByPage: snapshot,
       surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current });
-    const stored = await saveLocalDocumentState(file.localId, state, { expectedRevision: file.localRevision });
-    file.localRevision = stored.revision;
-    file._localDocumentState = state;
-    return true;
+  const persistManagedLocalSnapshot = (file, snapshot, state = captureManagedLocalSnapshot(file, snapshot)) => {
+    const writes = managedLocalWritesRef.current;
+    const previous = writes.get(file);
+    const signature = JSON.stringify(state.entries);
+    if (previous?.signature === signature) return previous.promise;
+    const scope = saveDocumentScopeRef.current;
+    const write = async () => {
+      const current = saveDocumentScopeRef.current;
+      if (current?.pdfFile !== file || current.pdfId !== file.localId
+        || current.actorUserId !== scope?.actorUserId) {
+        throw new Error('The local document changed before saving. Retry Save in its current tab.');
+      }
+      if (managedLocalPageMutationRef.current) {
+        throw new Error('A local page action is still saving. Retry Save after it finishes.');
+      }
+      if (current.managedLocalReady !== true) {
+        throw new Error('The local document is still loading. Retry Save after it finishes.');
+      }
+      const stored = await saveLocalDocumentState(file.localId, state, { expectedRevision: file.localRevision });
+      file.localRevision = stored.revision;
+      file._localDocumentState = state;
+      return true;
+    };
+    const record = { signature, promise: null };
+    record.promise = (previous ? previous.promise.catch(() => {}).then(write) : write()).finally(() => {
+      if (writes.get(file) === record) writes.delete(file);
+    });
+    writes.set(file, record);
+    return record.promise;
   };
   const handleSaveDocument = useCallback(async (silent = false, onLocalBackupResult = null) => {
     // Feature Gate: Cloud Sync - still save locally regardless of plan
     if (!pdfId || !pdfFile) return false;
     if (isManagedLocalDocument(pdfFile) && managedLocalPageMutationRef.current) return false;
+    if (isManagedLocalDocument(pdfFile) && !managedLocalSaveTracking.ready) return false;
     const scope = saveDocumentScopeRef.current;
     if (scope?.pdfId !== pdfId || scope.pdfFile !== pdfFile || scope.actorUserId !== user?.id) return false;
 
@@ -21729,13 +21784,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         silent
       }));
       const managedLocal = isManagedLocalDocument(pdfFile);
+      const localSnapshot = managedLocal ? captureManagedLocalSnapshot(pdfFile, snapshot) : null;
       const localBackupSaved = managedLocal
-        ? await persistManagedLocalSnapshot(pdfFile, snapshot)
+        ? await persistManagedLocalSnapshot(pdfFile, snapshot, localSnapshot)
         : saveAnnotationsByPage(pdfId, snapshot);
-      const localSaveStillCurrent = !managedLocal || (saveDocumentScopeRef.current?.pdfFile === scope.pdfFile
+      const localScopeStillCurrent = saveDocumentScopeRef.current?.pdfFile === scope.pdfFile
         && saveDocumentScopeRef.current?.pdfId === scope.pdfId
-        && saveDocumentScopeRef.current?.actorUserId === scope.actorUserId
-        && annotationsByPageRef.current === snapshot);
+        && saveDocumentScopeRef.current?.actorUserId === scope.actorUserId;
+      if (managedLocal && !localScopeStillCurrent) return false;
+      const localSaveStillCurrent = !managedLocal || (localBackupSaved && managedLocalSaveTracking.markSaved(
+        pdfFile, localSnapshot, captureManagedLocalSnapshot(pdfFile, annotationsByPageRef.current),
+      ));
       if (localBackupSaved && localSaveStillCurrent) {
         savedAnnotationsByPageRef.current = { ...snapshot };
         setHasUnsavedAnnotations(false);
@@ -21816,17 +21875,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return localBackupSaved && localSaveStillCurrent;
     } catch (error) {
       console.error('Error saving document:', error);
-      if (!silent) {
+      const failedCurrentLocal = isManagedLocalDocument(pdfFile)
+        && saveDocumentScopeRef.current?.pdfFile === scope.pdfFile
+        && saveDocumentScopeRef.current?.pdfId === scope.pdfId
+        && saveDocumentScopeRef.current?.actorUserId === scope.actorUserId;
+      if (failedCurrentLocal) {
+        setHasUnsavedAnnotations(true);
+        onUnsavedAnnotationsChange?.(true, tabId);
+      }
+      if (!silent || failedCurrentLocal) {
         showToast('Error saving annotations: ' + error.message, 'error');
       }
       return false;
     }
-  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush]);
+  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush,
+    managedLocalSaveTracking.ready, managedLocalSaveTracking.markSaved]);
 
+  useManagedLocalAutoSave({ file: pdfFile,
+    enabled: isManagedLocalDocument(pdfFile) && managedLocalSaveTracking.ready && hasUnsavedAnnotations,
+    save: handleSaveDocument });
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
     // Only enable auto-save if we have a file path (local file) and unsaved changes
-    if ((!pdfFilePath && !isManagedLocalDocument(pdfFile)) || !hasUnsavedAnnotations) {
+    if (isManagedLocalDocument(pdfFile) || !pdfFilePath || !hasUnsavedAnnotations) {
       return;
     }
 
@@ -21848,6 +21919,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     Object.fromEntries(regionOverlayDisabled || new Map()),
   ]);
   const getQuitSaveBlockReason = ({ requireLocalReceipt = true } = {}) => {
+    if (isManagedLocalDocument(pdfFile) && !managedLocalSaveTracking.ready) {
+      return 'The local document is still loading. Wait for it to finish, then close again.';
+    }
     if (managedLocalPageMutationRef.current) return 'A local page action is still saving. Wait for it to finish, then close again.';
     if (editingAnnotation || richTextEditor || showRegionSelection || pendingSurveyMarker
       || textToolDragRef.current || counterDragRef.current?.active
@@ -21860,7 +21934,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       || (requireLocalReceipt && !isAnnotationLocalReceiptCurrent(quitAnnotationReceiptRef.current)))) {
       return 'The local document copy could not be verified. Keep it open and retry Save.';
     }
-    if (!documentLocked && !verifyLegacyQuitBackups({
+    if (!documentLocked && !isManagedLocalDocument(pdfFile) && !verifyLegacyQuitBackups({
       storage: localStorage, pdfId, cloudBacked: !!pdfFile?.id, items, annotations,
       surveyMarkers: surveyMarkersRef.current, callouts, pageNames, bookmarks,
       spaces: spacesRef.current, activeSpaceId, pageTransformations,
@@ -21899,6 +21973,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
         return { saved: false };
       }
+      if (isManagedLocalDocument(pdfFile) && !managedLocalSaveTracking.markSaved(
+        pdfFile, pdfFile._localDocumentState, captureManagedLocalSnapshot(pdfFile, annotationsByPageRef.current),
+      )) return { saved: false };
       savedAnnotationsByPageRef.current = snapshot;
       setHasUnsavedAnnotations(false);
       onUnsavedAnnotationsChange?.(false, tabId);
@@ -36711,7 +36788,7 @@ ${pageBlocks}
 
                           // Save to localStorage immediately
                           if (pdfId) {
-                            saveSurveyMarkers(pdfId, updated);
+                            if (!managedLocalStateReader) saveSurveyMarkers(pdfId, updated);
                           } else {
                             console.warn('Cannot save to localStorage: pdfId is null');
                           }

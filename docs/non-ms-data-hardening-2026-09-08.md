@@ -790,6 +790,78 @@ local-to-cloud publishing, browser offline assets, per-edit recovery and install
 native lifecycle proof remain open. This is a tested local checkpoint, not a
 claim that all possible optimizations or regressions are resolved.
 
+## Direct hydration, complete save state and native restart (September 8, 08:03 UTC)
+
+Managed-local loads now read a private, validated snapshot directly. They no
+longer replace or write the six shared legacy keys. This includes sidebar load,
+page-change publication, note saves and region visibility. Existing raw values
+remain untouched, with unknown provenance; they are not automatically merged
+into a possibly different PDF layout. Cloud and unmanaged loaders keep their
+prior paths. Region visibility now binds its load/write state and retained
+setters to one document/open, preventing an empty initial map from erasing a
+saved setting.
+
+Managed dirty tracking covers the complete saved state, not just annotations.
+Late writes cannot mark newer metadata clean. Identical overlapping saves share
+a promise; changed snapshots queue under the exact File and recheck current
+scope, readiness and revision before writing. CAS conflicts are not ignored.
+The 30-second autosave deadline no longer restarts on every edit. Native close
+checks complete state and rejects initial/incomplete PDF loads.
+
+Actual desktop testing found a further false-dirty issue: PDF import reordered
+and normalized native marks after the initial state load. The clean baseline
+now waits for the explicit PDF-import completion signal, not a delay. It does
+not reset after later user edits or load transitions. Mounted tests reproduce
+the observed form/rect/path order change and preserve later dirty state.
+
+The new isolated Electron harness passed six lifecycle checks across three real
+processes, using production `file://` assets and blocked Chromium/Node network
+access. Native picker selection alone is supplied by the test; real IPC, Save,
+IndexedDB and `app.quit()` run normally. Manual focused Save becomes clean;
+same-profile cold reopen retains the exact value even after the fixture's legacy
+mirrors are removed. Immediate focused edit then native quit/restart retains the
+new value. Both cold-open checks stay clean for the observed interval. Root and
+worker inspected both screenshots. No renderer exception or save-failure dialog
+occurred; blocked font/Turnstile requests are expected. This is real Electron
+main with production assets, not a signed/distributed package, power-loss test
+or a deterministic native initial-load-close test.
+
+Private evidence: `/var/folders/r_/yk6_hpnj2mgbf03dcdd15w900000gn/T/survey-managed-local-evidence-zxneTv/`
+(`result.json`, `manual-save.png`, `cold-reopen-focused-quit.png`). The harnesses
+are `debug/managed-local-electron.mjs` and its isolated entry. Test profiles were
+removed after process exit. Production viewer SHA256:
+`6cc298f49d87d1d963793ff4c08444a4542a90d7dd2b3d7f2372fe8fea24000a`.
+
+Preload failure no longer triggers an automatic reload while offline or while
+any local/cloud document is open, even an inactive one. An existing toast gives
+manual recovery steps. Root's real browser checks passed: online open file
+stays mounted; offline open file stays mounted; clean online Home reloads once;
+the retry cooldown prevents another reload. No synthetic unload events are used.
+This guard is not an offline browser asset cache; that gap remains open.
+
+The current full source also passed the leased two-user cloud, ownership,
+offline/reconnect, tab-close/reopen and durable-row harness at 08:00 UTC.
+Evidence: `Logs/2026-09-08_08-00-30_fix20-multi-user-collab/evidence.json`.
+There were zero page errors and 65 recorded network abort/disconnect failures.
+SQL confirmed exact document/object/collaborator/invite cleanup, no new survey
+sessions and both accounts free/active. Root attested and released at 08:02 UTC,
+then stopped the owned auth server. No account creation, push, deploy or
+Microsoft testing occurred.
+
+Per-session crash drafts that retain matching PDF bytes and an explicit recovery
+choice remain the next slice. The current save/close proof must not be presented
+as durable per-edit or forced-shutdown recovery.
+
+Final frozen suite: **4,627 tests; 4,573 passed; 54 skipped; zero failed/canceled**.
+Build, graph update and diff check passed. Logs:
+`/tmp/survey-local-direct-complete-tests-20260908.log`,
+`/tmp/survey-local-direct-frozen-build-20260908.log`, and
+`/tmp/survey-local-direct-frozen-graph-20260908.log`.
+Earlier full runs caught two old source-shape assertions and one missing
+test-harness scope variable after adding the readiness gate. Those tests now
+require all cloud/managed/unmanaged branches and supply the new readiness input;
+no product guard or old oracle was removed to get a pass.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

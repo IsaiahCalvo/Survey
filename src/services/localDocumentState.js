@@ -10,7 +10,8 @@ export function isManagedLocalDocument(file) {
 }
 
 // Store exactly the formats existing loaders consume. The durable IndexedDB
-// snapshot, not this localStorage mirror, owns a managed document's saved state.
+// snapshot owns a managed document's saved state; old shared keys are recovery
+// data with unknown provenance, not a managed file's hydration transport.
 export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations,
   surveyMarkers, callouts, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations,
   regionOverlayDisabled }) {
@@ -24,25 +25,34 @@ export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annot
   return { version: 1, pdfId, entries };
 }
 
-export function restoreLocalDocumentState(file, storage = globalThis.localStorage) {
+export function createLocalDocumentStateReader(file) {
   if (!isManagedLocalDocument(file)) throw new Error('Invalid managed local document');
   const state = file._localDocumentState;
-  if (state == null) return;
   const keys = prefixes.map(prefix => prefix + file.localId);
-  if (state.version !== 1 || state.pdfId !== file.localId || !state.entries
+  const entries = Object.create(null);
+  if (state != null) {
+    if (state.version !== 1 || state.pdfId !== file.localId || !state.entries
     || Object.keys(state.entries).length !== keys.length
     || keys.some(key => typeof state.entries[key] !== 'string')) {
-    throw new Error('The saved local document state is invalid. Its copy was kept.');
+      throw new Error('The saved local document state is invalid. Its copy was kept.');
+    }
+    for (const key of keys) {
+      const raw = state.entries[key];
+      const parsed = JSON.parse(raw);
+      const isCallouts = key === `callouts_${file.localId}`;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) !== isCallouts) {
+        throw new Error('The saved local document state has an invalid entry. Its copy was kept.');
+      }
+      entries[key] = raw;
+    }
   }
-  for (const key of keys) JSON.parse(state.entries[key]);
-  const before = keys.map(key => storage.getItem(key));
-  try {
-    keys.forEach(key => storage.setItem(key, state.entries[key]));
-    if (keys.some(key => storage.getItem(key) !== state.entries[key])) throw new Error('Local state readback failed');
-  } catch (error) {
-    keys.forEach((key, i) => {
-      try { if (before[i] === null) storage.removeItem(key); else storage.setItem(key, before[i]); } catch { /* Canonical snapshot remains intact. */ }
-    });
-    throw new Error('Could not load the saved local state. Free device storage and retry; the saved copy was kept.', { cause: error });
-  }
+  Object.freeze(entries);
+  return Object.freeze({
+    pdfId: file.localId,
+    getItem: key => Object.hasOwn(entries, key) ? entries[key] : null,
+  });
 }
+
+// Compatibility for callers of the old restore helper: return a private reader
+// and never overwrite shared legacy keys, even if a storage argument is passed.
+export const restoreLocalDocumentState = file => createLocalDocumentStateReader(file);

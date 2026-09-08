@@ -39,7 +39,7 @@ import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 import { importLocalDocument, listLocalDocuments, openLocalDocument } from './services/localDocumentStore.js';
-import { restoreLocalDocumentState } from './services/localDocumentState.js';
+import { createLocalDocumentStateReader } from './services/localDocumentState.js';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
 //     hasNameConflict also live in App.jsx for the viewer) ---
@@ -152,7 +152,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
       throw new Error('The saved local PDF has an invalid identity');
     }
     if (!localMountedRef.current) return;
-    restoreLocalDocumentState(file);
+    // Validate before opening, without overwriting unversioned recovery keys.
+    createLocalDocumentStateReader(file);
     // This is the managed copy, never the picker File or its original/native
     // path. Local identity is device-owned and never stamped with a cloud id.
     if (localMountedRef.current) await localOpenCallbackRef.current?.(file, null);

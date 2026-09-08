@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { JSDOM } from 'jsdom';
 import { useNativeQuitSave } from '../src/hooks/useNativeQuitSave.js';
 import { verifyLegacyQuitBackups } from '../src/services/legacyQuitBackups.js';
+import { isManagedLocalDocument } from '../src/services/localDocumentState.js';
 import { trackPendingEraseCommit, deferUntilEraseCommitsFinish } from '../src/utils/pendingEraseCommits.js';
 
 test('mounted native hook commits focused field blur before reading the snapshot and cancels inert state', async t => {
@@ -61,12 +62,12 @@ function viewerGate(overrides = {}) {
   const end = source.indexOf('\n  const saveLocalBeforeQuit', start);
   const block = source.slice(start + 'const getQuitSaveBlockReason = '.length, end).replace(/;\s*$/, '');
   const scope = { editingAnnotation: null, richTextEditor: null, showRegionSelection: false, pendingSurveyMarker: null,
-    managedLocalPageMutationRef: { current: false },
+    managedLocalPageMutationRef: { current: false }, managedLocalSaveTracking: { ready: true },
     textToolDragRef: { current: null }, counterDragRef: { current: null }, activeTool: 'pan', deferUntilEraseCommitsFinish,
     toolPreferencesSaveError: null, pdfFile: {}, documentLocked: true,
     pendingSurveyMarkerSyncRef: { current: false }, quitAnnotationReceiptRef: { current: { locallyDurable: true } },
     isAnnotationLocalReceiptCurrent: receipt => receipt?.locallyDurable === true,
-    verifyLegacyQuitBackups: () => true, localStorage: {}, pdfId: 'local', items: [], annotations: [],
+    isManagedLocalDocument, verifyLegacyQuitBackups: () => true, localStorage: {}, pdfId: 'local', items: [], annotations: [],
     surveyMarkersRef: { current: {} }, callouts: [], pageNames: {}, bookmarks: [], spacesRef: { current: [] },
     activeSpaceId: null, pageTransformations: {}, ...overrides };
   return new Function(...Object.keys(scope), `return (${block});`)(...Object.values(scope));
@@ -98,6 +99,16 @@ test('cloud readiness uses current local proof rather than network status or que
 
 test('a pending managed local page transaction vetoes close before any receipt check', () => {
   assert.match(viewerGate({ managedLocalPageMutationRef: { current: true } })(), /page action is still saving/);
+});
+
+test('managed quit does not require or touch unversioned legacy backup keys', () => {
+  const localId = 'local:8ad364a5-786f-470f-858d-253c52bff3bd';
+  const gate = viewerGate({ documentLocked: false,
+    pdfFile: { localId, _surveyPdfId: localId, storageMode: 'local' },
+    verifyLegacyQuitBackups: () => assert.fail('canonical save, not legacy keys, owns managed close'),
+  });
+  assert.equal(gate(), null);
+  assert.ok(viewerGate({ documentLocked: false, pdfFile: {}, verifyLegacyQuitBackups: () => false })());
 });
 
 test('pending survey marker propagation still vetoes cloud close before local capture', () => {
