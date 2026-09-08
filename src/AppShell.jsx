@@ -54,6 +54,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
+import { replaceLocalDocument } from './services/localDocumentStore.js';
+import { isManagedLocalDocument } from './services/localDocumentState.js';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
@@ -1073,7 +1075,13 @@ export default function App({ devPreviewReturnTab = null }) {
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
-    if (newFile?.id && durablePath) {
+    if (isManagedLocalDocument(newFile)) {
+      const stored = await replaceLocalDocument(newFile.localId, newFile, {
+        expectedRevision: newFile.localRevision,
+        ...(newFile._localDocumentState ? { state: newFile._localDocumentState } : {}),
+      });
+      newFile.localRevision = stored.revision;
+    } else if (newFile?.id && durablePath) {
       await replaceDocument(newFile, durablePath);
     }
     setTabs(prev => {

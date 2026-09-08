@@ -21,6 +21,45 @@ const mobileChromeSource = () => readFileSync(
   'utf8',
 );
 
+test('managed local files show device-only status without claiming every edit is saved', () => {
+  const status = combineCollaborationSyncStatus({
+    annotationStatus: { stage: 'error', error: 'cloud unavailable' },
+    transportState: 'offline',
+    isSharedDocument: null,
+    managedLocal: true,
+    hasUnsavedChanges: false,
+  });
+  assert.deepEqual(getSyncStatusViewModel(status, 9), {
+    state: 'synced',
+    label: 'Local file',
+    detail: 'Stored on this device. Use Save to keep your edits. Not uploaded or shared.',
+    retryLabel: '',
+  });
+  assert.equal(getCompactSyncStatusMessage(status, 9),
+    'Stored on this device. Use Save to keep your edits. Not uploaded or shared.');
+});
+
+test('managed local edits remain unsaved until the caller clears dirty state', () => {
+  const status = combineCollaborationSyncStatus({
+    managedLocal: true, hasUnsavedChanges: true, isSharedDocument: null,
+  });
+  assert.deepEqual(getSyncStatusViewModel(status), {
+    state: 'offline',
+    label: 'Unsaved local edits',
+    detail: 'Keep this document open and use Save to keep your edits on this device.',
+    retryLabel: '',
+  });
+  assert.equal(getCompactSyncStatusMessage(status),
+    'Keep this document open and use Save to keep your edits on this device.');
+  assert.deepEqual(getSyncStatusViewModel(status, 0, true), {
+    state: 'syncing',
+    label: 'Saving locally...',
+    detail: 'Keep this document open while Survey saves to this device.',
+    retryLabel: '',
+  });
+  assert.equal(getSyncStatusViewModel(status).label, 'Unsaved local edits');
+});
+
 test('sync status view model exposes pending debounce as visible saving state', () => {
   assert.deepEqual(
     getSyncStatusViewModel({ stage: 'pending' }, 0),

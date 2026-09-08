@@ -161,6 +161,7 @@ export function useSVGInteraction({
   // mount sites byte-identical until App.jsx threads the new props.
   viewerId,
   documentOwnerId,
+  localDocumentContext,
   // Phase 35 Plan 04 — page number for the bulk-delete interceptor's
   // snapshot (so App.jsx's onUndo can restore on the right page). Optional;
   // when missing, deleteSelected still fires the existing onSaveAnnotations
@@ -547,9 +548,9 @@ export function useSVGInteraction({
   const canSelectAnnotationByIndex = useCallback((index) => {
     const a = annotations?.objects?.[index];
     if (!a) return false;
-    if (!viewerId || !documentOwnerId) return true;
-    return canDelete({ annotation: a, viewerId, documentOwnerId });
-  }, [annotations, viewerId, documentOwnerId]);
+    if ((!viewerId || !documentOwnerId) && localDocumentContext == null) return true;
+    return canDelete({ annotation: a, viewerId, documentOwnerId, localDocumentContext });
+  }, [annotations, viewerId, documentOwnerId, localDocumentContext]);
 
   // ---------------------------------------------------------------------------
   // Pointer event handlers
@@ -2986,6 +2987,7 @@ export function useSVGInteraction({
         annotations,
         viewerId,
         documentOwnerId,
+        localDocumentContext,
       );
       if (lasso.altHeld) {
         if (annotationIndices.length) {
@@ -3093,6 +3095,7 @@ export function useSVGInteraction({
         annotations,
         viewerId,
         documentOwnerId,
+        localDocumentContext,
       );
       const calloutIds = rawHits.calloutIds;
 
@@ -4018,7 +4021,7 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, localDocumentContext, pageNumber, getSelectableAnnotationIndices, inverseScale]);
 
   const handlePointerCancel = useCallback((e) => {
     const ds = dragStateRef.current;
@@ -4783,12 +4786,12 @@ export function useSVGInteraction({
         // behavior during the brief window where viewerId / documentOwnerId
         // aren't resolved yet. Once both populate, the strict partition
         // below engages and is the single source of truth.
-        if (!viewerId || !documentOwnerId) return true;
-        if (canModify({ annotation: obj, viewerId, documentOwnerId })) return true;
+        if ((!viewerId || !documentOwnerId) && localDocumentContext == null) return true;
+        if (canModify({ annotation: obj, viewerId, documentOwnerId, localDocumentContext })) return true;
         // Foreign-author: only deletable behind the planner's confirm modal.
         return plannerAvailable
           && obj.id != null
-          && canDelete({ annotation: obj, viewerId, documentOwnerId });
+          && canDelete({ annotation: obj, viewerId, documentOwnerId, localDocumentContext });
       })
       .sort((a, b) => b - a);
 
@@ -4861,7 +4864,7 @@ export function useSVGInteraction({
       pageNumber,
       runDelete,
     });
-  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId]);
+  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId, localDocumentContext]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint

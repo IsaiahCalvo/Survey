@@ -38,6 +38,8 @@ import { archiveItems } from './services/archiveService';
 import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
+import { importLocalDocument, listLocalDocuments, openLocalDocument } from './services/localDocumentStore.js';
+import { restoreLocalDocumentState } from './services/localDocumentState.js';
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
 //     hasNameConflict also live in App.jsx for the viewer) ---
@@ -104,6 +106,98 @@ const hasNameConflict = (
 const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOpenDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
+  const localFileInputRef = useRef(null);
+  const [localDocuments, setLocalDocuments] = useState([]);
+  const [localDocumentsLoading, setLocalDocumentsLoading] = useState(true);
+  const [localDocumentsError, setLocalDocumentsError] = useState('');
+  const [localListError, setLocalListError] = useState('');
+  const [localDocumentBusy, setLocalDocumentBusy] = useState(false);
+  const localBusyRef = useRef(false);
+  const localListGenerationRef = useRef(0);
+  const localMountedRef = useRef(false);
+  const localOpenCallbackRef = useRef(onDocumentSelect);
+  localOpenCallbackRef.current = onDocumentSelect;
+  const refreshLocalDocuments = useCallback(async () => {
+    const generation = ++localListGenerationRef.current;
+    try {
+      const rows = await listLocalDocuments();
+      if (localMountedRef.current && generation === localListGenerationRef.current) {
+        setLocalDocuments(rows);
+        setLocalListError('');
+      }
+    } catch (error) {
+      if (localMountedRef.current && generation === localListGenerationRef.current) {
+        setLocalListError(`Could not read files on this device: ${error.message || 'Storage unavailable'}`);
+      }
+    } finally {
+      if (localMountedRef.current && generation === localListGenerationRef.current) setLocalDocumentsLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    localMountedRef.current = true;
+    void refreshLocalDocuments();
+    window.addEventListener('focus', refreshLocalDocuments);
+    window.addEventListener('local-document-store-changed', refreshLocalDocuments);
+    return () => {
+      localMountedRef.current = false;
+      localListGenerationRef.current++;
+      window.removeEventListener('focus', refreshLocalDocuments);
+      window.removeEventListener('local-document-store-changed', refreshLocalDocuments);
+    };
+  }, [refreshLocalDocuments]);
+
+  const openManagedLocalDocument = async localId => {
+    const file = await openLocalDocument(localId);
+    if (!file || file.storageMode !== 'local' || file.localId !== localId || file.id != null) {
+      throw new Error('The saved local PDF has an invalid identity');
+    }
+    if (!localMountedRef.current) return;
+    restoreLocalDocumentState(file);
+    // This is the managed copy, never the picker File or its original/native
+    // path. Local identity is device-owned and never stamped with a cloud id.
+    if (localMountedRef.current) await localOpenCallbackRef.current?.(file, null);
+  };
+  const importAndOpenLocalDocument = async file => {
+    const manifest = await importLocalDocument(file);
+    if (!localMountedRef.current) return;
+    // Invalidate older listings so a delayed startup read cannot hide a newly
+    // committed import. Cloud refresh never owns this independent list.
+    localListGenerationRef.current++;
+    setLocalDocuments(rows => [manifest, ...rows.filter(row => row.localId !== manifest.localId)]);
+    setLocalDocumentsLoading(false);
+    await openManagedLocalDocument(manifest.localId);
+  };
+  const runLocalDocumentAction = async action => {
+    if (localBusyRef.current) return;
+    localBusyRef.current = true;
+    setLocalDocumentBusy(true);
+    setLocalDocumentsError('');
+    try { await action(); }
+    catch (error) {
+      if (localMountedRef.current) setLocalDocumentsError(`Could not open the local PDF: ${error.message || 'Storage unavailable'}`);
+    } finally {
+      localBusyRef.current = false;
+      if (localMountedRef.current) setLocalDocumentBusy(false);
+    }
+  };
+  const handleOpenLocalClick = () => {
+    if (localBusyRef.current) return;
+    if (!window.electronAPI?.openFile) { localFileInputRef.current?.click(); return; }
+    void runLocalDocumentAction(async () => {
+      const result = await window.electronAPI.openFile({
+        title: 'Open local PDF — save a copy on this device',
+        filters: [{ name: 'PDF files', extensions: ['pdf'] }],
+      });
+      if (result.canceled || !localMountedRef.current) return;
+      const file = new File([new Uint8Array(result.data)], result.fileName, { type: 'application/pdf' });
+      await importAndOpenLocalDocument(file);
+    });
+  };
+  const handleLocalFileSelected = event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) void runLocalDocumentAction(() => importAndOpenLocalDocument(file));
+  };
   // Destination project for the next browser-input upload. The browser file
   // picker fires `handleFileUpload` separately, so the project id chosen in
   // the Projects tab is stashed here for that handler to read.
@@ -2260,6 +2354,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
         onDismiss={() => setIsViewDropdownOpen(false)}
       />
       <input
+        ref={localFileInputRef}
+        data-local-pdf-input
+        type="file"
+        accept="application/pdf,.pdf"
+        onChange={handleLocalFileSelected}
+        style={{ display: 'none' }}
+      />
+      <input
         ref={fileInputRef}
         type="file"
         accept="application/pdf"
@@ -2275,6 +2377,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onActivateOp
         style={{ display: 'none' }}
       />
       <SurveyHub
+        localDocuments={localDocuments}
+        localDocumentsLoading={localDocumentsLoading}
+        localDocumentsError={localDocumentsError || localListError}
+        localDocumentBusy={localDocumentBusy}
+        onImportLocalDocument={handleOpenLocalClick}
+        onOpenLocalDocument={row => { void runLocalDocumentAction(() => openManagedLocalDocument(row.localId)); }}
+        onRetryLocalDocuments={refreshLocalDocuments}
         documents={documents}
         projects={projects}
         templates={templates}

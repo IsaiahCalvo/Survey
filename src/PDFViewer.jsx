@@ -13,6 +13,10 @@
 // HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { createManagedLocalEditingContext } from './utils/managedLocalEditingContext.js';
+import { buildLocalDocumentState, isManagedLocalDocument } from './services/localDocumentState.js';
+import { saveLocalDocumentState } from './services/localDocumentStore.js';
+import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
@@ -436,6 +440,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }
   const pdfjsViewerElementId = `pdfjs-pdf-viewer-${tabId || 'default'}`;
   const containerRef = useRef();
+  const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState(false);
   const contentRef = useRef();
   const pageContainersRef = useRef({});
   const pdfjsViewerRef = useRef(null);
@@ -11280,6 +11285,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // viewer as a non-owner. 'owner' returns the viewer's own user.id so
   // canModify treats them as owner.
   const documentOwnerId = useMemo(() => {
+    // Managed local files belong to this device profile, not an auth account.
+    // Their separate file-bound context is the only local permission grant.
+    if (pdfFile?.storageMode === 'local' && !pdfFile?.id) return null;
     if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
       const override = window.__phase35TestRoleOverride;
       if (override === 'collaborator') {
@@ -11294,7 +11302,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       documentOwnerId: pdfFile?.user_id,
       viewerId: user?.id,
     });
-  }, [pdfFile?.id, pdfFile?.user_id, user?.id]);
+  }, [pdfFile?.id, pdfFile?.user_id, pdfFile?.storageMode, user?.id]);
+
+  const managedLocalEditingContext = useMemo(
+    // false means a managed file failed validation: renderer boot fallbacks
+    // must not turn that denial into guest edit authority.
+    () => createManagedLocalEditingContext(pdfFile) ?? (pdfFile?.storageMode === 'local' ? false : null),
+    [pdfFile],
+  );
 
   // Registered documents must never manufacture delete authority from the
   // current viewer. Local-only files use their own explicit fallback lane.
@@ -11362,11 +11377,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotations: callouts,
         viewerId,
         documentOwnerId,
+        localDocumentContext: managedLocalEditingContext,
       })
       : calloutIdsToDelete.filter((id) => {
         const callout = callouts.find((c) => c.id === id);
         if (!callout) return false;
-        return canDelete({ annotation: callout, viewerId, documentOwnerId });
+        return canDelete({ annotation: callout, viewerId, documentOwnerId, localDocumentContext: managedLocalEditingContext });
       });
     if (permittedIds.length === 0) {
       settleEraseRequest(false);
@@ -11456,7 +11472,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
     if (!requestedDelete) settleEraseRequest(false);
-  }, [callouts, documentOwnerId, user, commitCalloutMutation, resolveCalloutPageNumber]);
+  }, [callouts, documentOwnerId, managedLocalEditingContext, user, commitCalloutMutation, resolveCalloutPageNumber]);
 
   // UX 2026-04-21 / R2.2 Slice 4: opener for marquee delete of a mixed
   // shape+callout selection. The SVGAnnotationLayer delete handler calls this
@@ -11485,12 +11501,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const permittedIds = scopedCalloutIds.filter((id) => {
       const callout = callouts.find((c) => c.id === id);
       if (!callout) return false;
-      return canDelete({ annotation: callout, viewerId, documentOwnerId });
+      return canDelete({ annotation: callout, viewerId, documentOwnerId, localDocumentContext: managedLocalEditingContext });
     });
     mixedDeleteBatchRef.current = permittedIds.length > 0
       ? { calloutIds: permittedIds, claimed: new Set(), armedAt: Date.now() }
       : null;
-  }, [callouts, documentOwnerId, user?.id]);
+  }, [callouts, documentOwnerId, managedLocalEditingContext, user?.id]);
 
   // UX: when a freshly-created callout lands in state, auto-open its text
   // in edit mode so the user can start typing immediately (matches
@@ -11789,6 +11805,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       action,
       viewerId,
       documentOwnerId,
+      managedLocalEditingContext,
     );
     if (!scopedAction) {
       pushHistoryDebugEvent('local_annotation_history_owner_scope_noop', {
@@ -11844,7 +11861,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         viewerId,
 	    });
     return true;
-  }, [documentOwnerId, pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
+  }, [documentOwnerId, managedLocalEditingContext, pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
 
   const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
     if (!yjsDoc || !target?.id) return false;
@@ -12600,9 +12617,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
-  const persistPageMutationFile = useCallback((file) => (
-    onUpdatePDFFile?.(file, tabId)
-  ), [onUpdatePDFFile, tabId]);
+  const managedLocalPageMutationRef = useRef(false);
+  const withPageMutation = useCallback(run => isManagedLocalDocument(pdfFile)
+    ? guardLocalPageMutation({ document, pendingRef: managedLocalPageMutationRef, flush: flushSync, run })
+    : run(), [pdfFile]);
+  const persistPageMutationFile = useCallback((file, next) => {
+    if (isManagedLocalDocument(file)) {
+      if (!next) throw new Error('Local page state is required before replacing PDF bytes');
+      file._localDocumentState = buildLocalDocumentState({
+        ...next, pdfId: file.localId, items, activeSpaceId,
+        callouts: deriveCalloutsFromByPage(next.annotationsByPage),
+      });
+    }
+    return onUpdatePDFFile?.(file, tabId);
+  }, [onUpdatePDFFile, tabId, items, activeSpaceId]);
   const commitPageStructureState = useCallback((next, operation) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
@@ -12681,6 +12709,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = usePageOperations({
     pdfFile,
     onUpdatePDFFile: persistPageMutationFile,
+    withMutation: withPageMutation,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
     setPageNames,
@@ -19008,6 +19037,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         annotations: pageAnnotations,
         viewerId: user?.id ?? null,
         documentOwnerId,
+        localDocumentContext: managedLocalEditingContext,
         resolveAuthorName,
       });
 
@@ -19148,7 +19178,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pendingDeleteRunnerRef.current = wrappedRunDelete;
       setPendingDeletePlan(plan);
     },
-    [annotationsByPage, user, documentOwnerId, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
+    [annotationsByPage, user, documentOwnerId, managedLocalEditingContext, enqueueUndoToast, pdfFile?.id, registerBulkJournaledAnnotationIds],
   );
   // R2.2 Slice 4: keep the TDZ ref bridge current so handleDeleteSelectedCallouts
   // (declared ~7k lines above) always routes through this render's bulk-delete
@@ -19190,6 +19220,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotations: pageAnnotations,
       viewerId: user?.id ?? null,
       documentOwnerId: eraseDocumentOwnerId,
+      localDocumentContext: managedLocalEditingContext,
       resolveAuthorName: (authorId) => rosterNameByUserId.get(authorId) ?? null,
     });
     if (plan.mode === 'no-op') {
@@ -19215,7 +19246,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pendingDeleteCancelRef.current = () => settle(false);
       setPendingDeletePlan(plan);
     });
-  }, [eraseDocumentOwnerId, pdfFile?.id, user?.id]);
+  }, [eraseDocumentOwnerId, managedLocalEditingContext, pdfFile?.id, user?.id]);
 
   // Core geometry and recoverable external side effects have separate failure
   // boundaries. The Y.Doc transaction commits first; this durable outbox
@@ -19457,6 +19488,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ], annotationsByPage), [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations, annotationsByPage]);
 
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
+    managedLocal: isManagedLocalDocument(pdfFile),
+    hasUnsavedChanges: hasUnsavedAnnotations,
     annotationStatus: cloudSyncStatus,
     transportState: yjsTransportState,
     isSharedDocument: yjsIsDocShared === true || (
@@ -19465,6 +19498,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       && documentOwnerId !== user?.id
     ) ? true : yjsIsDocShared,
   }), [
+    pdfFile,
+    hasUnsavedAnnotations,
     cloudSyncStatus,
     documentOwnerId,
     user?.id,
@@ -21167,7 +21202,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [pdfId, surveyMarkers]);
 
   // Track unsaved annotation changes
-  const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState(false);
   const savedAnnotationsByPageRef = useRef({});
 
   // Mark annotations as dirty when they change
@@ -21638,9 +21672,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const flushPendingFormFieldsRef = useRef(null);
   const saveDocumentScopeRef = useRef(null);
   saveDocumentScopeRef.current = { pdfId, pdfFile, actorUserId: user?.id };
+  const managedLocalStateRef = useRef(null);
+  managedLocalStateRef.current = { items, annotations, callouts, pageNames, bookmarks,
+    activeSpaceId, pageTransformations, regionOverlayDisabled };
+  const persistManagedLocalSnapshot = async (file, snapshot) => {
+    const state = buildLocalDocumentState({ ...managedLocalStateRef.current,
+      pdfId: file.localId, annotationsByPage: snapshot,
+      surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current });
+    const stored = await saveLocalDocumentState(file.localId, state, { expectedRevision: file.localRevision });
+    file.localRevision = stored.revision;
+    file._localDocumentState = state;
+    return true;
+  };
   const handleSaveDocument = useCallback(async (silent = false, onLocalBackupResult = null) => {
     // Feature Gate: Cloud Sync - still save locally regardless of plan
     if (!pdfId || !pdfFile) return false;
+    if (isManagedLocalDocument(pdfFile) && managedLocalPageMutationRef.current) return false;
     const scope = saveDocumentScopeRef.current;
     if (scope?.pdfId !== pdfId || scope.pdfFile !== pdfFile || scope.actorUserId !== user?.id) return false;
 
@@ -21681,8 +21728,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
         silent
       }));
-      const localBackupSaved = saveAnnotationsByPage(pdfId, snapshot);
-      if (localBackupSaved) {
+      const managedLocal = isManagedLocalDocument(pdfFile);
+      const localBackupSaved = managedLocal
+        ? await persistManagedLocalSnapshot(pdfFile, snapshot)
+        : saveAnnotationsByPage(pdfId, snapshot);
+      const localSaveStillCurrent = !managedLocal || (saveDocumentScopeRef.current?.pdfFile === scope.pdfFile
+        && saveDocumentScopeRef.current?.pdfId === scope.pdfId
+        && saveDocumentScopeRef.current?.actorUserId === scope.actorUserId
+        && annotationsByPageRef.current === snapshot);
+      if (localBackupSaved && localSaveStillCurrent) {
         savedAnnotationsByPageRef.current = { ...snapshot };
         setHasUnsavedAnnotations(false);
         if (onUnsavedAnnotationsChange) {
@@ -21698,7 +21752,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Report a failed local write before any network wait can outlast the
       // desktop quit grace period. Other save callers need no callback.
       onLocalBackupResult?.(localBackupSaved);
-      if (features?.cloudSync) {
+      if (features?.cloudSync && !managedLocal) {
         await saveSurveyDataToSupabase(surveyMarkers, spaces, selectedTemplate);
         if (pdfFile?.id && user?.id && typeof cloudSyncForceFlush === 'function') {
           try {
@@ -21759,7 +21813,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           setShowExcelSyncConfirmModal(true);
         }
       }
-      return localBackupSaved;
+      return localBackupSaved && localSaveStillCurrent;
     } catch (error) {
       console.error('Error saving document:', error);
       if (!silent) {
@@ -21772,7 +21826,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
     // Only enable auto-save if we have a file path (local file) and unsaved changes
-    if (!pdfFilePath || !hasUnsavedAnnotations) {
+    if ((!pdfFilePath && !isManagedLocalDocument(pdfFile)) || !hasUnsavedAnnotations) {
       return;
     }
 
@@ -21781,7 +21835,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 30000); // 30 seconds
 
     return () => clearInterval(autoSaveInterval);
-  }, [pdfFilePath, hasUnsavedAnnotations, handleSaveDocument]);
+  }, [pdfFilePath, pdfFile, hasUnsavedAnnotations, handleSaveDocument]);
 
   // Native exit saves local snapshots only. Cloud requests may outlive the
   // handshake; they must not be mistaken for an unfinished local write.
@@ -21791,8 +21845,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfId, pdfFile?.id || null, user?.id || null, annotationsByPageRef.current,
     surveyMarkersRef.current, spacesRef.current, items, annotations,
     pageNames, bookmarks, activeSpaceId, pageTransformations, entities,
+    Object.fromEntries(regionOverlayDisabled || new Map()),
   ]);
   const getQuitSaveBlockReason = ({ requireLocalReceipt = true } = {}) => {
+    if (managedLocalPageMutationRef.current) return 'A local page action is still saving. Wait for it to finish, then close again.';
     if (editingAnnotation || richTextEditor || showRegionSelection || pendingSurveyMarker
       || textToolDragRef.current || counterDragRef.current?.active
       || !['pan', 'select', 'text-select'].includes(activeTool)
@@ -21832,7 +21888,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         if (quitSaveHandlerRef.current?.getRevision() !== revision) return { saved: false };
       }
-      const saved = await saveAnnotationsByPage(pdfId, snapshot);
+      const saved = isManagedLocalDocument(pdfFile)
+        ? await persistManagedLocalSnapshot(pdfFile, snapshot)
+        : await saveAnnotationsByPage(pdfId, snapshot);
       // A late save must not clear a newer edit or a different document/account.
       if (quitSaveHandlerRef.current?.getRevision() !== revision) return { saved: false };
       if (saved !== true) {
@@ -22572,6 +22630,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               supabaseFilePath: pdfFile.supabaseFilePath,
               user_id: pdfFile.user_id || null,
               id: pdfFile.id,
+              localId: pdfFile.localId,
+              storageMode: pdfFile.storageMode,
+              localRevision: pdfFile.localRevision,
+              _surveyPdfId: pdfFile._surveyPdfId,
               __rewrittenForParse: true,
             });
             await onUpdatePDFFile(rewrittenFile, tabId);
@@ -24462,6 +24524,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       action,
       viewerId,
       documentOwnerId,
+      managedLocalEditingContext,
     );
     if (!scopedAction) {
       pushHistoryDebugEvent('local_annotation_history_skipped_owner_scope', {
@@ -24559,7 +24622,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
-  }, [documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
+  }, [documentOwnerId, managedLocalEditingContext, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     // R2.2 Slice 4 — mixed marquee co-delete: the combined bulk-delete runner
@@ -25144,6 +25207,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       transaction.action,
       viewerId,
       documentOwnerId,
+      managedLocalEditingContext,
     );
     if (!scopedAction) return false;
     pushLocalAnnotationHistoryAction(scopedAction);
@@ -25174,6 +25238,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return true;
   }, [
     documentOwnerId,
+    managedLocalEditingContext,
     pushHistoryDebugEvent,
     pushLocalAnnotationHistoryAction,
     user?.id,
@@ -26433,6 +26498,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       annotations: requestedPins.map((entry) => entry.annotation),
       viewerId,
       documentOwnerId,
+      localDocumentContext: managedLocalEditingContext,
       resolveAuthorName: (authorId) => rosterNameByUserId.get(authorId) ?? null,
     });
     if (permissionPlan.mode === 'no-op' || permissionPlan.count !== requestedPins.length) {
@@ -26479,6 +26545,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         documentAction,
         viewerId,
         documentOwnerId,
+        managedLocalEditingContext,
       );
       if (!scopedDocumentAction || scopedDocumentAction.actions?.length !== updates.length) {
         showToast('This count could not be deleted. Check your permission and try again.', 'error');
@@ -26569,6 +26636,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [
     counterSeriesList,
     documentOwnerId,
+    managedLocalEditingContext,
     handleSaveAnnotations,
     pdfFile?.id,
     pushLocalAnnotationHistoryAction,
@@ -27499,9 +27567,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (existingSurveyMarker) {
       const viewerId = user?.id ?? null;
       if (
-        viewerId &&
-        documentOwnerId &&
-        !canModifySurveyMarker({ surveyMarker: existingSurveyMarker, viewerId, documentOwnerId })
+        (managedLocalEditingContext != null || (viewerId && documentOwnerId)) &&
+        !canModifySurveyMarker({ surveyMarker: existingSurveyMarker, viewerId, documentOwnerId, localDocumentContext: managedLocalEditingContext })
       ) {
         console.warn('[App] handleSurveyMarkerBoundsChange blocked by ownership gate', {
           pageNumber,
@@ -27574,7 +27641,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         )),
       };
     });
-  }, [addHistoryCheckpoint, user?.id, documentOwnerId]);
+  }, [addHistoryCheckpoint, user?.id, documentOwnerId, managedLocalEditingContext]);
 
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
@@ -27640,6 +27707,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             surveyMarker,
             viewerId,
             documentOwnerId,
+            localDocumentContext: managedLocalEditingContext,
           });
         });
 
@@ -27842,7 +27910,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }, 100);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentOwnerId, documentSyncEnabled]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentOwnerId, managedLocalEditingContext, documentSyncEnabled]);
 
   // After a Survey Marker delete commits to surveyMarkers, re-export the
   // linked Excel so the deleted marker's row is removed there too. The
@@ -27982,8 +28050,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       surveyMarker: savedSurveyMarker,
       viewerId,
       documentOwnerId: eraseDocumentOwnerId,
+      localDocumentContext: managedLocalEditingContext,
     });
-  }, [eraseDocumentOwnerId, newSurveyMarkersByPage, user?.id]);
+  }, [eraseDocumentOwnerId, managedLocalEditingContext, newSurveyMarkersByPage, user?.id]);
 
   const handleDeleteSurveyMarker = useCallback((annotationId) => {
     if (!annotationId) return;
@@ -31085,7 +31154,7 @@ ${pageBlocks}
       cloudSyncStatus: displayedCloudSyncStatus,
       cloudSyncQueueSize,
       cloudSyncEnabled,
-      cloudSyncOnRetry: cloudSyncForceFlush,
+      cloudSyncOnRetry: isManagedLocalDocument(pdfFile) ? null : cloudSyncForceFlush,
       presence: documentPresenceList,
       currentUserId: user?.id || null,
       currentUserEmail: user?.email || null,
@@ -31687,6 +31756,7 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         viewerId: user?.id ?? null,
         documentOwnerId,
+        localDocumentContext: managedLocalEditingContext,
       })}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
@@ -32477,6 +32547,7 @@ ${pageBlocks}
                                 canEraseSurveyMarker={canEraseSurveyMarker}
                                 viewerId={user?.id ?? null}
                                 documentOwnerId={documentOwnerId}
+                                localDocumentContext={managedLocalEditingContext}
                                 clipboardCallout={clipboardCallout}
                                 clipboardCalloutType={clipboardCalloutType}
                                 onCutCallout={handleCutCallout}
@@ -32532,7 +32603,8 @@ ${pageBlocks}
                                 zoomGeneration={zoomGeneration}
                                 viewerId={user?.id ?? null}
                                 documentOwnerId={eraseDocumentOwnerId}
-                                isLocalOnlyDocument={!pdfFile?.id}
+                                localDocumentContext={managedLocalEditingContext}
+                                isLocalOnlyDocument={!pdfFile?.id && pdfFile?.storageMode !== 'local'}
                               />
                             )}
                             {/* SVGAnnotationLayer moved outside this div — see sibling below */}
@@ -33017,6 +33089,7 @@ ${pageBlocks}
                                   // click hit-test gate inside useSVGInteraction.
                                   viewerId={user?.id ?? null}
                                   documentOwnerId={documentOwnerId}
+                                  localDocumentContext={managedLocalEditingContext}
                                   // Phase 35 Plan 04 — bulk-delete interceptor. Routes
                                   // deleteSelected through buildBulkDeletePlan so the
                                   // ConfirmDeleteModal/UndoToast layer can confirm and
@@ -33095,7 +33168,8 @@ ${pageBlocks}
                                   // Phase 35 Plan 03 — per-user delete authority gate.
                                   viewerId={user?.id ?? null}
                                   documentOwnerId={eraseDocumentOwnerId}
-                                  isLocalOnlyDocument={!pdfFile?.id}
+                                  localDocumentContext={managedLocalEditingContext}
+                                  isLocalOnlyDocument={!pdfFile?.id && pdfFile?.storageMode !== 'local'}
                                 />
                               )}
 

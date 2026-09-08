@@ -2755,6 +2755,7 @@ const PageAnnotationLayer = memo(({
   canEraseSurveyMarker = null,
   viewerId = null,
   documentOwnerId = null,
+  localDocumentContext = null,
   // Properties panel positioning props
   middleAreaBounds = { top: 0, height: 500 }, // Bounds of the middle area ({top, height})
   surveyPanelWidth = 0, // Width of survey panel (0 when closed, 320 when open, 48 when collapsed)
@@ -2832,6 +2833,7 @@ const PageAnnotationLayer = memo(({
   const knownSurveyMarkerIdsRef = useRef(new Set());
   const viewerIdRef = useRef(viewerId);
   const documentOwnerIdRef = useRef(documentOwnerId);
+  const localDocumentContextRef = useRef(localDocumentContext);
   onDeleteSelectedCalloutsRef.current = onDeleteSelectedCallouts;
   canEraseSurveyMarkerRef.current = canEraseSurveyMarker;
   knownSurveyMarkerIdsRef.current = new Set(
@@ -2841,6 +2843,7 @@ const PageAnnotationLayer = memo(({
   );
   viewerIdRef.current = viewerId;
   documentOwnerIdRef.current = documentOwnerId;
+  localDocumentContextRef.current = localDocumentContext;
 
   const cancelPendingPaintCommit = useCallback(() => {
     paintCommitTokenRef.current += 1;
@@ -6510,6 +6513,7 @@ const PageAnnotationLayer = memo(({
               canEraseSurveyMarker: canEraseSurveyMarkerRef.current,
               viewerId: currentViewerId,
               documentOwnerId: currentOwnerId,
+              localDocumentContext: localDocumentContextRef.current,
             });
             if (!canEraseObject) continue;
 
@@ -6675,6 +6679,7 @@ const PageAnnotationLayer = memo(({
                 annotation: callout,
                 viewerId: currentViewerId,
                 documentOwnerId: currentOwnerId,
+                localDocumentContext: localDocumentContextRef.current,
               })) continue;
 
               // Convert callout positions from percentages to canvas pixels
@@ -9658,6 +9663,10 @@ const PageAnnotationLayer = memo(({
   // Only re-render if actually relevant props changed
   return (
     prevProps.pageNumber === nextProps.pageNumber &&
+    prevProps.localDocumentContext === nextProps.localDocumentContext &&
+    prevProps.viewerId === nextProps.viewerId &&
+    prevProps.documentOwnerId === nextProps.documentOwnerId &&
+    prevProps.canEraseSurveyMarker === nextProps.canEraseSurveyMarker &&
     prevProps.width === nextProps.width &&
     prevProps.height === nextProps.height &&
     (nextProps.isInteracting || Math.abs(prevProps.scale - nextProps.scale) < 0.01) && // Skip scale re-render during interaction; otherwise only on significant change

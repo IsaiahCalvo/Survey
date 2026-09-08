@@ -16,6 +16,7 @@ export function usePageOperations({
   onUpdatePDFFile,
   getPageState,
   commitPageState,
+  withMutation,
   setPageNames,
   setPageTransformations,
   clipboardPage,
@@ -41,6 +42,12 @@ export function usePageOperations({
     }
 
     try {
+      const managedLocal = currentPdfFile.storageMode === 'local' && !!currentPdfFile.localId && !currentPdfFile.id;
+      const expectedLocalRevision = currentPdfFile.localRevision;
+      const stateFingerprint = () => JSON.stringify(getPageState?.(), (_key, value) => (
+        value instanceof Map ? Object.fromEntries(value) : value
+      ));
+      const observedLocalState = managedLocal ? stateFingerprint() : null;
       const sourceState = pageStateRef.current
         || (typeof getPageState === 'function' ? getPageState() : null);
       const nextState = sourceState ? transformPageState(sourceState, operation) : null;
@@ -53,6 +60,11 @@ export function usePageOperations({
         : operation;
       const { mutatePdfPages } = await import('../utils/pdfPageMutation.js');
       const pdfBytes = await mutatePdfPages(await currentPdfFile.arrayBuffer(), pdfOperation);
+      if (managedLocal && (pdfFileRef.current !== currentPdfFile
+        || currentPdfFile.localRevision !== expectedLocalRevision
+        || stateFingerprint() !== observedLocalState)) {
+        throw new Error('The local document changed during this page action. Your latest edits were kept. Retry the page action.');
+      }
       const newFile = createPageMutationFile(pdfBytes, currentPdfFile);
       // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
       // round-trips so the per-user delete authority gate keeps resolving
@@ -88,10 +100,19 @@ export function usePageOperations({
   }, [commitPageState, getPageState, onUpdatePDFFile]);
 
   const runMutation = useCallback((operation, errorVerb) => {
-    const result = mutationQueueRef.current.then(() => executeMutation(operation, errorVerb));
+    const result = mutationQueueRef.current.then(async () => {
+      try {
+        return typeof withMutation === 'function'
+          ? await withMutation(() => executeMutation(operation, errorVerb))
+          : await executeMutation(operation, errorVerb);
+      } catch (error) {
+        showToast(error.message || 'This page action could not finish. Your document was kept.', 'error');
+        return false;
+      }
+    });
     mutationQueueRef.current = result.catch(() => false);
     return result;
-  }, [executeMutation]);
+  }, [executeMutation, withMutation]);
 
   const handleDuplicatePage = useCallback((pageNumber) => (
     runMutation({ type: 'duplicate', page: pageNumber }, 'duplicating')

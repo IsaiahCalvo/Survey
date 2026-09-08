@@ -8,6 +8,7 @@
  * (explicit changed/created/deleted ids) and full-diff builders.
  */
 import { deepClone } from './deepClone.js';
+import { isManagedLocalEditingContext } from './managedLocalEditingContext.js';
 
 export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
@@ -438,8 +439,11 @@ export function invertAnnotationHistoryAction(action) {
   return null;
 }
 
-export function filterAnnotationHistoryActionByOwner(action, userId, documentOwnerId = null) {
+export function filterAnnotationHistoryActionByOwner(action, userId, documentOwnerId = null, localDocumentContext = null) {
   if (!action || typeof action !== 'object') return null;
+  // Device-local history has no cloud owner. As with cloud owner history,
+  // Undo can restore a prior lock state; normal edit gates enforce locks.
+  if (isManagedLocalEditingContext(localDocumentContext)) return action;
   if (typeof userId !== 'string' || userId.length === 0) return null;
   if (
     typeof documentOwnerId === 'string'

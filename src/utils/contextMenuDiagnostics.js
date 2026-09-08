@@ -136,6 +136,10 @@ function diag(line) {
     diag(`[CTXDIAG enter ${CTX_DIAG_BUILD}] type=${e.type} button=${e.button} clientX=${e.clientX} clientY=${e.clientY} target=${shortTag(e.target)}`);
     logEvent('capture', e);
 
+    // A zoomed page can extend behind the sidebar. Geometry hit-testing must
+    // not steal the thumbnail's own Duplicate/Delete menu from the real target.
+    if (e.target?.closest?.('[data-pdf-sidebar="true"]')) return;
+
     // PDF text owns its native copy menu while a real range is selected.
     // Do not replace it with the annotation/page menu.
     if (selectionUsesPdfTextLayer(window.getSelection?.())) {

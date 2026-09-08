@@ -61,6 +61,7 @@ function viewerGate(overrides = {}) {
   const end = source.indexOf('\n  const saveLocalBeforeQuit', start);
   const block = source.slice(start + 'const getQuitSaveBlockReason = '.length, end).replace(/;\s*$/, '');
   const scope = { editingAnnotation: null, richTextEditor: null, showRegionSelection: false, pendingSurveyMarker: null,
+    managedLocalPageMutationRef: { current: false },
     textToolDragRef: { current: null }, counterDragRef: { current: null }, activeTool: 'pan', deferUntilEraseCommitsFinish,
     toolPreferencesSaveError: null, pdfFile: {}, documentLocked: true,
     pendingSurveyMarkerSyncRef: { current: false }, quitAnnotationReceiptRef: { current: { locallyDurable: true } },
@@ -93,6 +94,10 @@ test('cloud readiness uses current local proof rather than network status or que
   assert.ok(stale(), 'confirm needs a current proof');
   assert.equal(viewerGate({ pdfFile: { id: 'cloud' }, documentLocked: true,
     isAnnotationLocalReceiptCurrent: () => { throw new Error('locked path must not request a proof'); } })(), null);
+});
+
+test('a pending managed local page transaction vetoes close before any receipt check', () => {
+  assert.match(viewerGate({ managedLocalPageMutationRef: { current: true } })(), /page action is still saving/);
 });
 
 test('pending survey marker propagation still vetoes cloud close before local capture', () => {

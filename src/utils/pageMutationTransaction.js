@@ -6,7 +6,7 @@ export async function persistThenCommitPageMutation({
   commit,
 }) {
   if (typeof persist !== 'function') throw new TypeError('persist callback is required');
-  await persist(file);
+  await persist(file, state, operation);
   if (state && typeof commit === 'function') commit(state, operation);
   return file;
 }

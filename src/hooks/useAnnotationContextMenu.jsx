@@ -174,14 +174,15 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // either is missing (boot window) the legacy permissive behavior applies.
     viewerId = null,
     documentOwnerId = null,
+    localDocumentContext = null,
   } = actions;
 
   // Own-mark check (author or document owner; boot window is permissive to
   // match canSelectAnnotationByIndex / deleteSelected in useSVGInteraction).
   const canModifyObj = (obj) => {
     if (!obj) return false;
-    if (!viewerId || !documentOwnerId) return true;
-    return canModify({ annotation: obj, viewerId, documentOwnerId });
+    if ((!viewerId || !documentOwnerId) && localDocumentContext == null) return true;
+    return canModify({ annotation: obj, viewerId, documentOwnerId, localDocumentContext });
   };
   // Foreign-mark deletability: only through the planner's confirm modal, and
   // only when the object carries the stable id the planner is keyed by.
@@ -189,7 +190,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     if (!obj || typeof requestBulkDelete !== 'function') return false;
     if (!viewerId || !documentOwnerId) return false;
     if (obj.id == null) return false;
-    return canDelete({ annotation: obj, viewerId, documentOwnerId });
+    return canDelete({ annotation: obj, viewerId, documentOwnerId, localDocumentContext });
   };
 
   return createPortal((() => {

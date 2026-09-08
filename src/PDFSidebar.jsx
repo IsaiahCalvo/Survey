@@ -296,7 +296,7 @@ const PDFSidebar = React.forwardRef(({
         onClick={requestSheetClose}
       />
     )}
-    <div className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
+    <div data-pdf-sidebar="true" className={`${mobileMode ? 'mobile-pdf-sheet ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       '--mobile-sheet-height': mobileMode
         ? `calc(${mobilePanelBaseHeight}px + var(--mobile-bottom-inset))`
         : undefined,

@@ -19,6 +19,7 @@
 // @ts-check
 
 import { isOwner, getAnnotationAuthorId, canDelete } from './permissionScope.js';
+import { isManagedLocalEditingContext } from '../../utils/managedLocalEditingContext.js';
 
 /**
  * @typedef {object} ByAuthorEntry
@@ -107,6 +108,7 @@ export function buildBulkDeletePlan({
   annotations,
   viewerId,
   documentOwnerId,
+  localDocumentContext,
   resolveAuthorName = null,
 }) {
   const safeCandidates = Array.isArray(candidateIds) ? candidateIds : [];
@@ -131,7 +133,7 @@ export function buildBulkDeletePlan({
   for (const id of safeCandidates) {
     const a = byId.get(id);
     if (!a) continue;
-    if (canDelete({ annotation: a, viewerId, documentOwnerId })) {
+    if (canDelete({ annotation: a, viewerId, documentOwnerId, localDocumentContext })) {
       eligible.push({ id, annotation: a });
     }
   }
@@ -139,6 +141,12 @@ export function buildBulkDeletePlan({
   // Step 3: empty selection → no-op.
   if (eligible.length === 0) {
     return { mode: 'no-op', count: 0, ownIds: [], foreignIds: [] };
+  }
+  if (isManagedLocalEditingContext(localDocumentContext)) {
+    // This profile owns the local file, not the annotations' cloud authors.
+    // Reuse the direct-delete mode without changing any author metadata.
+    return { mode: 'owner-own-only', count: eligible.length,
+      ownIds: eligible.map(entry => entry.id), foreignIds: [] };
   }
 
   // Step 4: partition by authorship.

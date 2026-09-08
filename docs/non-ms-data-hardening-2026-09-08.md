@@ -735,6 +735,61 @@ Build and graph update passed. The first full run caught an offline unit
 source assertion being misclassified as a live harness; only that assertion
 construction changed, not the lease policy or live harness. No push/deploy.
 
+## Managed local library checkpoint (September 8, 07:34 UTC)
+
+The home view now separates **On this device** from **Cloud**. A signed-out
+user can import and reopen a managed PDF copy without a cloud row or upload.
+The device list reads metadata only. Local files have their own identity and
+editing scope; that scope does not grant cloud ownership or bypass locked marks.
+Cloud upload, roles, authors and sharing remain separate.
+
+IndexedDB stores PDF bytes, metadata and saved annotation/sidebar state.
+Page changes commit bytes and remapped state in one transaction. Revision checks
+reject stale writes, and the viewer blocks edits during that short operation.
+State-only saves do not load or copy PDF bytes. Storage failure keeps the prior
+revision; successful saves wait for transaction completion. These checks do not
+promise protection from browser eviction, power loss or all forced-shutdown cases.
+
+Real signed-out browser checks passed: import; draw; save; delete/undo/redo;
+page duplication and confirmed deletion; tab close and cold reopen with matching
+PDF hash and saved marks. An injected IndexedDB quota error left the exact prior
+bytes, state and revision intact. Retrying after removing the fault succeeded.
+Desktop and 390px mobile library views were inspected. At high zoom, the page
+context-menu capture had stolen thumbnail events; the sidebar now keeps its own
+menu, with a mounted regression and a real browser retest.
+
+One explicit limit remains: setting the entire Vite browser context offline can
+block an uncached lazy module or a new PDF worker. The page transaction remains
+durable, but the view can fail to load. Cold reopen and page operations passed
+with local app assets available and all remote requests blocked. This is not
+proof of a fully offline browser app shell or an installed Electron cold start.
+Managed-local edits also need stronger recovery between checkpoints; the current
+saved snapshot must not be called a durable per-edit journal.
+
+All current source passed the real leased two-user cloud/offline/reconnect and
+tab-close/reopen harness at 07:27 UTC. Ownership, foreign-edit denial, exactly-once
+convergence and backend persistence passed. There were zero page or console
+errors; 66 aborted/disconnected requests were recorded, not hidden.
+Exact SQL checks confirmed the test document, object, collaborators and invites
+removed, no new survey sessions, and both exact accounts restored to free/active.
+Root attested cleanup and released the lease at 07:33 UTC.
+
+Final full suite: **4,597 tests; 4,543 passed; 54 skipped; zero failed/canceled**.
+The production build and diff check passed. Graph refresh was run after the last
+product edit. Private evidence: implementation worktree
+`Logs/2026-09-08_07-27-32_fix20-multi-user-collab/evidence.json`,
+`/tmp/survey-local-fully-frozen-tests-20260908.log`,
+`/tmp/survey-local-fully-frozen-build-20260908.log`, and screenshots
+`/tmp/survey-local-cold-reopen-20260908.png`,
+`/tmp/survey-local-quota-preserved-20260908.png`,
+`/tmp/survey-local-library-desktop-20260908.png`,
+`/tmp/survey-local-library-mobile-20260908.png`.
+
+No push, deploy, paid service change or Microsoft testing occurred. Explicit
+local-to-cloud publishing, browser offline assets, per-edit recovery and installed
+native lifecycle proof remain open. This is a tested local checkpoint, not a
+claim that all possible optimizations or regressions are resolved.
+
 ## Sources
 
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)

@@ -351,6 +351,7 @@ const FabricEraserCanvas = memo(({
   interruptionPolicyRef: parentInterruptionPolicyRef,
   viewerId,
   documentOwnerId,
+  localDocumentContext,
   isLocalOnlyDocument = false,
 }) => {
   const containerRef = useRef(null);
@@ -421,6 +422,7 @@ const FabricEraserCanvas = memo(({
   const selectedModuleIdRef = useRef(selectedModuleId);
   const viewerIdRef = useRef(viewerId);
   const documentOwnerIdRef = useRef(documentOwnerId);
+  const localDocumentContextRef = useRef(localDocumentContext);
   const isLocalOnlyDocumentRef = useRef(isLocalOnlyDocument);
 
   // This flag belongs to the component lifetime, not to the teardown
@@ -581,6 +583,7 @@ const FabricEraserCanvas = memo(({
   selectedModuleIdRef.current = selectedModuleId;
   viewerIdRef.current = viewerId;
   documentOwnerIdRef.current = documentOwnerId;
+  localDocumentContextRef.current = localDocumentContext;
   isLocalOnlyDocumentRef.current = isLocalOnlyDocument;
 
   const getPageRadius = useCallback(
@@ -1258,9 +1261,10 @@ const FabricEraserCanvas = memo(({
         showSurveyPanel: showSurveyPanelRef.current,
         selectedModuleId: selectedModuleIdRef.current,
       })) return false;
-      if (!viewerId || !ownerId) return isLocalOnlyDocumentRef.current;
+      if ((!viewerId || !ownerId) && localDocumentContextRef.current == null) return isLocalOnlyDocumentRef.current;
       if (callout?.locked === true) return false;
-      return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
+      return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId,
+        localDocumentContext: localDocumentContextRef.current });
     });
   }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, pageHeight, pageNumber, pageWidth]);
 
@@ -1754,7 +1758,7 @@ const FabricEraserCanvas = memo(({
     // short-circuits true).
     const currentViewerId = viewerIdRef.current;
     const currentOwnerId = documentOwnerIdRef.current;
-    if (!isLocalOnlyDocumentRef.current) {
+    if (!isLocalOnlyDocumentRef.current || localDocumentContextRef.current) {
       // Registered documents fail closed through canModify itself when either
       // identity is unresolved. Local-only documents have no durable owner
       // metadata and intentionally stay on their explicit opener-owned lane.
@@ -1762,6 +1766,7 @@ const FabricEraserCanvas = memo(({
         annotation: object,
         viewerId: currentViewerId,
         documentOwnerId: currentOwnerId,
+        localDocumentContext: localDocumentContextRef.current,
       })) return 'permission';
     }
 

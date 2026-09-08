@@ -117,6 +117,7 @@ const formatSize = (bytes) => {
 };
 
 export default function DocumentsLedger({
+  storageSwitch = null,
   documents = [],
   projects = [],
   user = null,
@@ -431,6 +432,7 @@ export default function DocumentsLedger({
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
     >
+      {storageSwitch}
       <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
         <div className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div className="slim-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>

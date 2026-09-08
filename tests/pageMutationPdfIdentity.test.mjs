@@ -5,6 +5,17 @@ import { PDFDocument } from 'pdf-lib';
 import { createPageMutationFile } from '../src/utils/pageMutationFile.js';
 import { getPDFId } from '../src/viewerShared.js';
 
+test('managed local replacement keeps its revision and never gains cloud authority', () => {
+  const source = new File(['%PDF-first'], 'plan.pdf', { type: 'application/pdf' });
+  Object.assign(source, { localId: 'local:first', storageMode: 'local', localRevision: 7, _surveyPdfId: 'local:first' });
+  const result = createPageMutationFile(new Uint8Array([1, 2, 3]), source);
+  assert.equal(result.localId, source.localId);
+  assert.equal(result.localRevision, 7);
+  assert.equal(result.storageMode, 'local');
+  assert.equal(getPDFId(result), 'local:first');
+  assert.equal(Object.hasOwn(result, 'id'), false);
+});
+
 test('direct page mutation preserves bookmark and annotation storage identity', async () => {
   const sourceBytes = fs.readFileSync(new URL('../debug/fixtures/text-search-glyph-lab.pdf', import.meta.url));
   const source = new File([sourceBytes], 'identity.pdf', { type: 'application/pdf' });

@@ -115,7 +115,7 @@ test('useSVGInteraction: click hit-test gate runs canDelete (contributors select
   const gate = SVG_INTERACTION_SOURCE.slice(
     SVG_INTERACTION_SOURCE.indexOf('const canSelectAnnotationByIndex'),
   );
-  match(gate.slice(0, 400), /return canDelete\(\{ annotation: a, viewerId, documentOwnerId \}\)/);
+  match(gate.slice(0, 500), /return canDelete\(\{ annotation: a, viewerId, documentOwnerId, localDocumentContext \}\)/);
 });
 
 test('useSVGInteraction: deleteSelected admits foreign ids ONLY through the planner (modal path), never the direct-fire fallbacks', () => {
@@ -123,10 +123,10 @@ test('useSVGInteraction: deleteSelected admits foreign ids ONLY through the plan
   ok(start > -1, 'deleteSelected present');
   const body = SVG_INTERACTION_SOURCE.slice(start, start + 8000);
   // Own marks stay eligible everywhere.
-  match(body, /if \(canModify\(\{ annotation: obj, viewerId, documentOwnerId \}\)\) return true;/);
+  match(body, /if \(canModify\(\{ annotation: obj, viewerId, documentOwnerId, localDocumentContext \}\)\) return true;/);
   // Foreign marks require the planner AND a stable id, then pass canDelete —
   // guaranteeing the collaborator-cross-author confirm modal is unavoidable.
-  match(body, /return plannerAvailable\s*&& obj\.id != null\s*&& canDelete\(\{ annotation: obj, viewerId, documentOwnerId \}\);/);
+  match(body, /return plannerAvailable\s*&& obj\.id != null\s*&& canDelete\(\{ annotation: obj, viewerId, documentOwnerId, localDocumentContext \}\);/);
   // The planner routing itself must still exist.
   match(body, /onRequestBulkDelete\(\{\s*candidateIds,\s*snapshotObjects,\s*pageNumber,\s*runDelete,\s*\}\)/);
 });

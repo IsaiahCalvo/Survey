@@ -10,6 +10,31 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
 
+  if (status?.managedLocal) {
+    if (manualSyncing) {
+      return {
+        state: 'syncing',
+        label: 'Saving locally...',
+        detail: 'Keep this document open while Survey saves to this device.',
+        retryLabel: '',
+      };
+    }
+    if (stage === 'pending' || stage === 'error') {
+      return {
+        state: 'offline',
+        label: 'Unsaved local edits',
+        detail: 'Keep this document open and use Save to keep your edits on this device.',
+        retryLabel: '',
+      };
+    }
+    return {
+      state: 'synced',
+      label: 'Local file',
+      detail: 'Stored on this device. Use Save to keep your edits. Not uploaded or shared.',
+      retryLabel: '',
+    };
+  }
+
   if (manualSyncing) {
     return {
       state: 'syncing',
@@ -78,6 +103,7 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
 }
 
 export function getCompactSyncStatusMessage(status, queueSize = 0) {
+  if (status?.managedLocal) return getSyncStatusViewModel(status).detail;
   const stage = status?.stage || 'idle';
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();

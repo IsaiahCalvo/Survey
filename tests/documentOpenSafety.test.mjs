@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { getDocumentOpenKey, isSameDocumentTab } from '../src/utils/documentTabIdentity.js';
+
+test('managed local identities ignore picked paths and cannot match a cloud row', () => {
+  const local = { name: 'plan.pdf', size: 3, storageMode: 'local', localId: 'local:one', _surveyPdfId: 'local:one' };
+  const tab = { file: local, filePath: '/original/plan.pdf' };
+  assert.equal(getDocumentOpenKey(local, '/original/plan.pdf'), getDocumentOpenKey(local));
+  assert.equal(isSameDocumentTab(tab, { ...local }, '/different/plan.pdf'), true);
+  assert.equal(isSameDocumentTab(tab, { ...local, localId: 'local:two' }, tab.filePath), false);
+  assert.equal(isSameDocumentTab(tab, { id: 'local:one', name: 'plan.pdf' }), false);
+  assert.equal(isSameDocumentTab(tab, { name: 'plan.pdf', size: 3, _surveyPdfId: 'local:one' }), false);
+});
 import { isStorageFileNotFoundError } from '../src/utils/storageErrors.js';
 
 const shellSource = await readFile(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');

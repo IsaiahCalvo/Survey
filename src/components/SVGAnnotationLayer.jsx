@@ -415,6 +415,7 @@ const SVGAnnotationLayer = memo(({
   // pattern (CONTEXT.md DO NOT CHANGE) — no render-logic touch in this layer.
   viewerId,
   documentOwnerId,
+  localDocumentContext,
   // Phase 35 Plan 04 — bulk-delete interceptor. Optional callback forwarded
   // into useSVGInteraction so deleteSelected can route through App.jsx's
   // modal/toast layer. Single-line additive prop pass-through; no render-
@@ -545,6 +546,7 @@ const SVGAnnotationLayer = memo(({
     // hook's marquee post-filter + click hit-test gate.
     viewerId,
     documentOwnerId,
+    localDocumentContext,
     getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current
       .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
       .map((entry) => entry.index),

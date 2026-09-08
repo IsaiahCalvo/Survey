@@ -79,6 +79,58 @@ async function pageWidths(file) {
   return pdf.getPages().map((page) => page.getWidth());
 }
 
+for (const savedDuringRewrite of [true, false]) {
+  test(`managed page action rejects ${savedDuringRewrite ? 'a newer saved revision' : 'unsaved live edits'} during byte rewrite`, async t => {
+    const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
+    const restores = [];
+    for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
+      HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
+      const before = Object.getOwnPropertyDescriptor(globalThis, key);
+      Object.defineProperty(globalThis, key, { configurable: true, value });
+      restores.push(() => before ? Object.defineProperty(globalThis, key, before) : delete globalThis[key]);
+    }
+    const { usePageOperations, cleanup } = await loadUsePageOperations();
+    const file = await pdfFixture();
+    Object.assign(file, { localId: `local:${crypto.randomUUID()}`, storageMode: 'local', localRevision: 1 });
+    file._surveyPdfId = file.localId;
+    const bytes = await file.arrayBuffer();
+    let enterRead, releaseRead;
+    const entered = new Promise(resolve => { enterRead = resolve; });
+    const released = new Promise(resolve => { releaseRead = resolve; });
+    file.arrayBuffer = async () => { enterRead(); await released; return bytes; };
+    let state = { annotationsByPage: {}, surveyMarkers: {}, annotations: {},
+      pageNames: { 1: 'A', 2: 'B', 3: 'C' }, pageTransformations: {},
+      bookmarks: [], spaces: [], regionOverlayDisabled: new Map() };
+    const persisted = [], committed = [];
+    let api;
+    function Harness() {
+      api = usePageOperations({ pdfFile: file,
+        onUpdatePDFFile: async (...args) => persisted.push(args), getPageState: () => state,
+        commitPageState: (...args) => committed.push(args),
+        setPageNames() {}, setPageTransformations() {}, setClipboardPage() {}, setClipboardType() {},
+      });
+      return null;
+    }
+    const root = createRoot(document.getElementById('root'));
+    t.after(async () => {
+      releaseRead(); await act(async () => root.unmount()); await cleanup();
+      dom.window.close(); restores.reverse().forEach(restore => restore());
+    });
+    await act(async () => root.render(React.createElement(Harness)));
+    let pending;
+    await act(async () => { pending = api.handleDeletePage(1); await entered; });
+    state = { ...state, annotationsByPage: { 2: { objects: [{ type: 'rect', id: 'newer-edit' }] } } };
+    if (savedDuringRewrite) file.localRevision = 2;
+    let result;
+    await act(async () => { releaseRead(); result = await pending; });
+    assert.equal(result, false);
+    assert.deepEqual(persisted, [], 'cannot overwrite the newer canonical state');
+    assert.deepEqual(committed, [], 'cannot replace newer UI annotations with a stale remap');
+    assert.equal(state.annotationsByPage[2].objects[0].id, 'newer-edit');
+    assert.equal(file.localRevision, savedDuringRewrite ? 2 : 1);
+  });
+}
+
 test('rapid queued page operations chain both PDF bytes and page-addressed state', async () => {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
     pretendToBeVisual: true,

@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import React, { act, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { saveAnnotationsByPage } from '../src/viewerShared.js';
+import { isManagedLocalDocument } from '../src/services/localDocumentState.js';
 
 const viewerSource = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const callbackStart = viewerSource.indexOf('const handleSaveDocument = useCallback(');
@@ -162,6 +163,7 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     document: { body: { getAttribute: () => null } },
     summarizeAnnotationCountsForSaveExport: () => ({ byType: {} }),
     saveAnnotationsByPage: () => localSaved,
+    isManagedLocalDocument,
     savedAnnotationsByPageRef: savedRef,
     setHasUnsavedAnnotations: (dirty) => { state.dirty = dirty; },
     onUnsavedAnnotationsChange: (...args) => state.notifications.push(args),
@@ -270,6 +272,7 @@ function quitHarness({ dirty = true, locked = false, cloud = false, save = async
   const savedRef = { current: { 1: { objects: [{ id: 'deleted' }] } } };
   const scope = {
     pdfId: 'local', pdfFile: cloud ? { id: 'cloud-document' } : {}, tabId: 'inactive-tab', documentLocked: locked,
+    isManagedLocalDocument,
     hasUnsavedAnnotations: dirty, annotationsByPageRef: { current: snapshot },
     getQuitSaveBlockReason: options => { state.gates.push(options); return reason; }, getQuitSaveRevision: () => state.revision,
     quitSaveHandlerRef: { current: { getRevision: () => cloud && !locked && !state.proofCurrent ? null : state.revision } },

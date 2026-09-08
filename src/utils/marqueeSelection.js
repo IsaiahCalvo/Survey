@@ -308,7 +308,7 @@ export function resolveMarqueeHits({
  * @param {string|null|undefined} documentOwnerId
  * @returns {Array<number>}  owner-mode: same reference; collab-mode: filtered new array
  */
-export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwnerId) {
+export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwnerId, localDocumentContext) {
   if (!Array.isArray(hitIndices) || hitIndices.length === 0) {
     // Phase 35 UAT diag — empty marquee result. Common when drag is below
     // MIN_DRAG_PX or hits no geometry; helpful to see ownership props anyway.
@@ -323,7 +323,7 @@ export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwn
   }
   // Boot guard — props not yet resolved at the mount site. Return same ref so
   // legacy behavior is byte-identical.
-  if (!viewerId || !documentOwnerId) {
+  if ((!viewerId || !documentOwnerId) && localDocumentContext == null) {
     phase35Diag('marquee.filter', {
       stage: 'boot-guard-passthrough',
       viewerId,
@@ -347,7 +347,7 @@ export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwn
     }
     // Locked model 2026-07-17: canDelete (authenticated pair ⇒ allow, any
     // author) replaces canModify so contributors marquee foreign shapes too.
-    const ok = canDelete({ annotation: a, viewerId, documentOwnerId });
+    const ok = canDelete({ annotation: a, viewerId, documentOwnerId, localDocumentContext });
     if (!ok) allOwn = false;
     perAnnotation.push({
       index: i,

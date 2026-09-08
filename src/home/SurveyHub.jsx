@@ -29,6 +29,13 @@ import './hub.css';
 const TAB_KEY = 'survey-hub-tab';
 
 export default function SurveyHub({
+  localDocuments = [],
+  localDocumentsLoading = false,
+  localDocumentsError = '',
+  localDocumentBusy = false,
+  onImportLocalDocument,
+  onOpenLocalDocument,
+  onRetryLocalDocuments,
   documents = [],
   projects = [],
   templates = [],
@@ -78,6 +85,8 @@ export default function SurveyHub({
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
+  const [documentStorage, setDocumentStorage] = useState(() => user ? 'cloud' : 'local');
+  useEffect(() => { if (!user) setDocumentStorage('local'); }, [user?.id]);
 
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
@@ -114,6 +123,14 @@ export default function SurveyHub({
   };
 
   const common = { onNav: navigateToTab, user, templatesLocked: false };
+  const storageSwitch = onImportLocalDocument ? (
+    <div role="group" aria-label="Document storage" style={{ display: 'flex', gap: 8, padding: '0 8px 12px', flexWrap: 'wrap' }}>
+      <button type="button" className={`btn${documentStorage === 'local' ? ' primary' : ''}`}
+        aria-pressed={documentStorage === 'local'} onClick={() => setDocumentStorage('local')}>On this device</button>
+      <button type="button" className={`btn${documentStorage === 'cloud' ? ' primary' : ''}`}
+        aria-pressed={documentStorage === 'cloud'} onClick={() => setDocumentStorage('cloud')}>Cloud</button>
+    </div>
+  ) : null;
 
   /* Clicking "Settings" in the profile menu opens the settings page as a
      full-screen view over the hub. We still forward to the parent's
@@ -131,6 +148,7 @@ export default function SurveyHub({
       title={tabName === 'projects' ? 'Projects' : tabName === 'templates' ? 'Templates' : 'Documents'}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
     >
+      {tabName === 'documents' ? storageSwitch : null}
       <div role="alert" style={{ display: 'grid', placeItems: 'center', minHeight: 220, padding: 24, textAlign: 'center' }}>
         <div>
           <p style={{ margin: '0 0 12px', color: 'var(--ink-100)' }}>
@@ -150,12 +168,49 @@ export default function SurveyHub({
   return (
     <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
       {tab === 'documents' && (
-        documentsInitialLoading ? (
+        onImportLocalDocument && documentStorage === 'local' ? (
+          <HubShell {...common} tab="documents" title="Documents" subtitle="On this device"
+            actions={<button type="button" className="btn primary" disabled={localDocumentBusy}
+              onClick={onImportLocalDocument}>{localDocumentBusy ? 'Opening…' : 'Open local PDF'}</button>}>
+            {storageSwitch}
+            <section aria-label="Files on this device" className="card slim-scroll"
+              style={{ margin: '0 8px 8px', padding: 16, overflow: 'auto', minHeight: 0, flex: 1 }}>
+              <p style={{ margin: '0 0 16px', color: 'var(--ink-200)', fontSize: 13 }}>
+                PDFs are copied into this browser or app profile. They are not uploaded or shared.
+                Keep the original as a backup; clearing app or browser data removes this copy.
+              </p>
+              {localDocumentsError ? <div role="alert" style={{ marginBottom: 16 }}>
+                <p>{localDocumentsError}</p>
+                <button type="button" className="btn" onClick={onRetryLocalDocuments}>Refresh local files</button>
+              </div> : null}
+              {localDocumentsLoading ? <p role="status">Loading local files…</p> : null}
+              {!localDocumentsLoading && localDocuments.length === 0 ? <p>No local PDFs yet. Choose Open local PDF to save a copy here.</p> : null}
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {localDocuments.map(row => (
+                  <li key={row.localId} style={{ borderTop: '1px solid var(--ink-500)', padding: '12px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ overflowWrap: 'anywhere', color: 'var(--ink-100)' }}>{row.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-200)', marginTop: 4 }}>
+                        On this device · {Math.ceil((Number(row.size) || 0) / 1024).toLocaleString()} KB
+                      </div>
+                    </div>
+                    <button type="button" className="btn" disabled={localDocumentBusy}
+                      aria-label={`Open ${row.name}`} onClick={() => onOpenLocalDocument?.(row)}>Open</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </HubShell>
+        ) : documentsInitialLoading ? (
+          onImportLocalDocument ? <HubShell {...common} tab="documents" title="Documents">
+            {storageSwitch}<p role="status" style={{ padding: 16 }}>Loading cloud documents…</p>
+          </HubShell> :
           <HubLoadingSkeletons {...common} tab="documents" />
         ) : documentsLoadError && documents.length === 0 ? (
           <HubLoadError tabName="documents" error={documentsLoadError} onRetry={onRetryDocuments} />
         ) : (
           <DocumentsLedger
+          storageSwitch={storageSwitch}
           {...common}
           documents={documents}
           projects={projects}

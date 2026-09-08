@@ -7,9 +7,9 @@ const VIEWER_SOURCE = readFileSync(
   'utf8',
 );
 
-test('viewer preserves document-owner authority when recording and replaying local history', () => {
+test('viewer preserves cloud owner authority and threads explicit local context when recording and replaying history', () => {
   const ownerScopedCalls = VIEWER_SOURCE.match(
-    /filterAnnotationHistoryActionByOwner\(\s*action,\s*viewerId,\s*documentOwnerId,\s*\)/g,
+    /filterAnnotationHistoryActionByOwner\(\s*action,\s*viewerId,\s*documentOwnerId,\s*managedLocalEditingContext,\s*\)/g,
   ) || [];
   assert.equal(ownerScopedCalls.length, 2);
 });

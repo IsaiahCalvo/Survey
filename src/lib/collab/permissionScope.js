@@ -27,6 +27,7 @@
 // matching the Phase 14 buildCalloutRenderSpec / Phase 15 lineDragMath precedent.
 
 // @ts-check
+import { isManagedLocalEditingContext } from '../../utils/managedLocalEditingContext.js';
 
 /**
  * @param {string|null|undefined} userId
@@ -98,7 +99,8 @@ export function getAnnotationAuthorId(annotation) {
  * @param {{ annotation: object, viewerId: string|null|undefined, documentOwnerId: string|null|undefined }} args
  * @returns {boolean}
  */
-export function canModify({ annotation, viewerId, documentOwnerId }) {
+export function canModify({ annotation, viewerId, documentOwnerId, localDocumentContext }) {
+  if (isManagedLocalEditingContext(localDocumentContext)) return annotation != null && annotation.locked !== true;
   // Owner can modify anything — short-circuit before reading the annotation.
   if (isOwner(viewerId, documentOwnerId)) return true;
   // Non-owner: must be the author of this specific annotation.
@@ -128,6 +130,7 @@ export function canEraseCanvasAnnotation({
   canEraseSurveyMarker,
   viewerId,
   documentOwnerId,
+  localDocumentContext,
 }) {
   if (annotation == null || annotation.locked === true) return false;
   const annotationId = annotation.annotationId;
@@ -152,7 +155,7 @@ export function canEraseCanvasAnnotation({
   ) {
     return false;
   }
-  return canModify({ annotation, viewerId, documentOwnerId });
+  return canModify({ annotation, viewerId, documentOwnerId, localDocumentContext });
 }
 
 /**
@@ -165,14 +168,15 @@ export function filterEraserCommitIds({
   annotations,
   viewerId,
   documentOwnerId,
+  localDocumentContext,
 }) {
   if (
     !Array.isArray(annotationIds)
     || !Array.isArray(annotations)
-    || typeof viewerId !== 'string'
-    || viewerId.length === 0
-    || typeof documentOwnerId !== 'string'
-    || documentOwnerId.length === 0
+    || (!isManagedLocalEditingContext(localDocumentContext) && (
+      typeof viewerId !== 'string' || viewerId.length === 0
+      || typeof documentOwnerId !== 'string' || documentOwnerId.length === 0
+    ))
   ) {
     return [];
   }
@@ -187,6 +191,7 @@ export function filterEraserCommitIds({
       annotation,
       viewerId,
       documentOwnerId,
+      localDocumentContext,
     });
   });
 }
@@ -200,8 +205,9 @@ export function filterEraserCommitIds({
  * @param {{ annotation: object, viewerId: string|null|undefined, documentOwnerId: string|null|undefined }} args
  * @returns {boolean}
  */
-export function canDelete({ annotation, viewerId, documentOwnerId }) {
+export function canDelete({ annotation, viewerId, documentOwnerId, localDocumentContext }) {
   if (annotation == null) return false;
+  if (isManagedLocalEditingContext(localDocumentContext)) return annotation.locked !== true;
   return (
     typeof viewerId === 'string' &&
     viewerId.length > 0 &&
@@ -246,7 +252,8 @@ export function getSurveyMarkerAuthorId(surveyMarker) {
  * @param {{ surveyMarker: object, viewerId: string|null|undefined, documentOwnerId: string|null|undefined }} args
  * @returns {boolean}
  */
-export function canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId }) {
+export function canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId, localDocumentContext }) {
+  if (isManagedLocalEditingContext(localDocumentContext)) return surveyMarker != null && surveyMarker.locked !== true;
   // Owner can modify anything — same short-circuit as canModify.
   if (isOwner(viewerId, documentOwnerId)) return true;
   // Non-owner: must be the author of this specific marker; unresolvable
@@ -260,7 +267,11 @@ export function canCommitSurveyMarkerErase({
   surveyMarker,
   viewerId,
   documentOwnerId,
+  localDocumentContext,
 }) {
+  if (isManagedLocalEditingContext(localDocumentContext)) {
+    return canModifySurveyMarker({ surveyMarker, viewerId, documentOwnerId, localDocumentContext });
+  }
   if (
     typeof viewerId !== 'string'
     || viewerId.length === 0
@@ -288,12 +299,12 @@ export function canCommitSurveyMarkerErase({
  * @param {{ annotations: Array<object>, viewerId: string|null|undefined, documentOwnerId: string|null|undefined }} args
  * @returns {Array<object>}  // owner-role: same reference; collaborator-role: filtered new array
  */
-export function filterByAuthor({ annotations, viewerId, documentOwnerId }) {
+export function filterByAuthor({ annotations, viewerId, documentOwnerId, localDocumentContext }) {
   if (!Array.isArray(annotations)) return [];
   // Owner hot path — identity return preserves React memoization downstream.
   if (isOwner(viewerId, documentOwnerId)) return annotations;
   // Collaborator path — keep only the viewer's own marks.
   return annotations.filter((a) =>
-    canModify({ annotation: a, viewerId, documentOwnerId }),
+    canModify({ annotation: a, viewerId, documentOwnerId, localDocumentContext }),
   );
 }
