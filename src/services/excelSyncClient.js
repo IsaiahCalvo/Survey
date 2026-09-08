@@ -538,8 +538,11 @@ async function mergeOneMarkerLocked({ op, getMarkers, writeMarker }, attempt = 0
   // under the lock (F9 retry guard). Capped to avoid a livelock.
   const after = getMarkers() || {};
   const stillSame = stableStringify(after[markerId] ?? null) === stableStringify(current);
-  if (!stillSame && attempt < 2) {
-    return mergeOneMarkerLocked({ op, getMarkers, writeMarker }, attempt + 1);
+  if (!stillSame) {
+    if (attempt < 2) return mergeOneMarkerLocked({ op, getMarkers, writeMarker }, attempt + 1);
+    // The retry cap bounds work; it is never permission to overwrite a newer
+    // local edit with a stale clone. Keep the frontier pinned for review.
+    return { conflict: true };
   }
 
   writeMarker(markerId, next);

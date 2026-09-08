@@ -156,10 +156,10 @@ import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoR
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
-import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
+import { stampExportAck, mergeExportAck, excelExportScope, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
 import { computeRowFingerprints } from './services/rowFingerprint';
-import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
+import { loadBaseline, saveBaseline, clearBaseline, excelBaselineScope } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { fetchOrCreateSigningSecret, fetchSigningSecret } from './services/rowIdServerSecretClient';
@@ -207,7 +207,8 @@ import {
   setRegistrationSigningId,
 } from './services/excelSyncClient';
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
-import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
+import { readPendingChangeset, writePendingChangeset, clearPendingChangeset, fingerprintPendingWorksheets } from './services/excelSyncPendingChangeset';
+import { withExcelSyncLock } from './services/excelSyncLock.js';
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
@@ -8190,6 +8191,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const excelSessionRef = useRef({ sessionId: null, expiresAt: null });
   const liveSyncPollRef = useRef(null);
   const lastPollDataRef = useRef(null);
+  const excelPollScopeRef = useRef(null);
   const lastKnownETagRef = useRef(null); // Store ETag for change detection in fallback mode
   // Live Sync capability gate (Amendment 2026-06-08(b)): the toggle only turns
   // ON for a PROVEN business/work setup. null = not evaluated yet; otherwise
@@ -8213,6 +8215,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [showExportLocationModal, setShowExportLocationModal] = useState(false);
   const [showMSLoginModal, setShowMSLoginModal] = useState(false);
   const [exportPendingData, setExportPendingData] = useState(null); // Store Excel data while waiting for user choice
+  const exportPendingDataRef = useRef(null);
+  exportPendingDataRef.current = exportPendingData;
   const [pendingOneDriveExport, setPendingOneDriveExport] = useState(false); // Flag to auto-resume export after MS login
   const [isExportingToOneDrive, setIsExportingToOneDrive] = useState(false); // Loading state for export
   const [isExporting, setIsExporting] = useState(false); // Loading state for main export button
@@ -10506,8 +10510,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Refs mirror pdfId / selectedTemplate so clearExcelSyncCheckpoint can stay
   // IDENTITY-STABLE (see below).
-  const pdfIdRef = useRef(pdfId);
-  useEffect(() => { pdfIdRef.current = pdfId; }, [pdfId]);
+  const excelBaselineId = excelBaselineScope(pdfFile?.id, pdfId, user?.id);
+  const excelExportScopeRef = useRef(null);
+  excelExportScopeRef.current = excelExportScope(excelBaselineId, selectedTemplate);
+  const pdfIdRef = useRef(excelBaselineId);
+  useEffect(() => { pdfIdRef.current = excelBaselineId; }, [excelBaselineId]);
   const selectedTemplateRef = useRef(selectedTemplate);
   useEffect(() => { selectedTemplateRef.current = selectedTemplate; }, [selectedTemplate]);
 
@@ -10538,18 +10545,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setHasPendingExcelSyncChanges(false);
     // Persist the baseline so the synced/not-synced signal survives a reload
     // (instead of fail-closing to "not synced" every reopen).
-    saveBaseline(pdfId, templateForSync.supabaseId || templateForSync.id, fingerprint.hash);
+    saveBaseline(excelBaselineId, templateForSync.supabaseId || templateForSync.id, fingerprint.hash);
     return fingerprint.hash;
-  }, [clearExcelSyncCheckpoint, selectedTemplate, pdfId]);
+  }, [clearExcelSyncCheckpoint, selectedTemplate, excelBaselineId]);
 
   // Called only on a successful export to the linked Excel workbook. Stamps every
   // exported marker with an `exportedAt` acknowledgment (the durable "this reached
   // Excel" record that the received-only delete rule will rely on) and records the
   // sync checkpoint from the stamped markers. The ack fields are excluded from the
   // dirty fingerprint, so this does NOT make the just-synced survey look dirty.
-  const markExcelExportSynced = useCallback((templateOverride = null, identityRecordsByMarkerId = null) => {
+  const markExcelExportSynced = useCallback((templateOverride = null, identityRecordsByMarkerId = null, exportedMarkers = surveyMarkers, sourceScope = excelExportScope(excelBaselineId, selectedTemplate)) => {
+    // A finished export may belong to a document/account that is no longer open.
+    if (pdfIdRef.current !== excelBaselineId) return null;
+    if (excelExportScopeRef.current !== sourceScope &&
+        excelExportScopeRef.current !== excelExportScope(excelBaselineId, templateOverride || selectedTemplate)) return null;
     const exportedAt = new Date().toISOString();
-    let stamped = stampExportAck(surveyMarkersRef.current || {}, { exportedAt });
+    let stamped = stampExportAck(exportedMarkers || {}, { exportedAt });
     // Stamp the durable per-marker identity record (fingerprints + last-export id)
     // onto every marker actually written as a row, so the next import's matcher can
     // recover lost Row IDs by content and detect what changed. Stripped from the
@@ -10557,9 +10568,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (identityRecordsByMarkerId && typeof identityRecordsByMarkerId === 'object') {
       stamped = applyMarkerIdentityRecords(stamped, identityRecordsByMarkerId);
     }
-    setSurveyMarkers(stamped);
-    return markExcelSyncCheckpoint(templateOverride, stamped);
-  }, [markExcelSyncCheckpoint]);
+    const baseline = markExcelSyncCheckpoint(templateOverride, stamped);
+    setSurveyMarkers(current => mergeExportAck(current, exportedMarkers, {
+      exportedAt, identityRecords: identityRecordsByMarkerId
+    }));
+    setHasPendingExcelSyncChanges(computeHasPendingExcelSyncChanges({
+      template: templateOverride || selectedTemplate,
+      surveyMarkers: surveyMarkersRef.current || {},
+      baselineHash: baseline
+    }));
+    return baseline;
+  }, [markExcelSyncCheckpoint, surveyMarkers, selectedTemplate, excelBaselineId]);
 
   // Stage 2: restore a deleted Survey Marker from the 30-day trash, reinstating
   // it with its original geometry. (Wired to the Trash UI in a follow-up slice.)
@@ -10607,11 +10626,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
   }, [pdfFile?.id, user?.id, user?.email]);
 
+  const excelBaselinePairRef = useRef(null);
   useEffect(() => {
+    const pair = JSON.stringify([excelBaselineId, selectedTemplate?.supabaseId || selectedTemplate?.id]);
+    if (excelBaselinePairRef.current !== pair) {
+      excelBaselinePairRef.current = pair;
+      lastExcelSyncFingerprintRef.current = null;
+    }
     // After a reload the in-memory baseline is null; rehydrate it from durable
     // storage so a survey that was genuinely synced doesn't read as not-synced.
     if (!lastExcelSyncFingerprintRef.current && selectedTemplate?.linkedExcelPath) {
-      const stored = loadBaseline(pdfId, selectedTemplate?.supabaseId || selectedTemplate?.id);
+      const stored = loadBaseline(excelBaselineId, selectedTemplate?.supabaseId || selectedTemplate?.id);
       if (stored) lastExcelSyncFingerprintRef.current = stored;
     }
     const pending = computeHasPendingExcelSyncChanges({
@@ -10621,7 +10646,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     setHasPendingExcelSyncChanges(pending);
   }, [
-    pdfId,
+    excelBaselineId,
     selectedTemplate?.id,
     selectedTemplate?.supabaseId,
     selectedTemplate?.linkedExcelPath,
@@ -13536,15 +13561,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
     const { silent = false } = options;
+    const sourceScope = excelExportScope(excelBaselineId, selectedTemplate);
+    const assertCurrentExport = () => {
+      if (excelExportScopeRef.current !== sourceScope) {
+        throw new Error('The linked document changed. Export again from the current document.');
+      }
+    };
     if (!features?.excelExport) {
       if (!silent) showToast('Excel export is a Pro feature. Please upgrade to use this tool.', 'warn');
-      return;
+      return false;
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
     if (!selectedTemplate) {
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
-      return;
+      return false;
     }
 
     // Stage 0 safety switch: block all AUTOMATIC (silent) whole-workbook writeback
@@ -13556,7 +13587,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setHasPendingExcelSyncChanges(true);
       }
       debugLog('Excel automatic writeback disabled (Stage 0 safety switch) — survey marked not-synced; skipping silent whole-file upload.');
-      return;
+      return false;
     }
 
     // Set loading state (only for non-silent exports)
@@ -14174,6 +14205,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // Write workbook to buffer
       const workbookBuffer = await workbook.xlsx.writeBuffer();
+      assertCurrentExport();
 
       if (window.electronAPI) {
         if (targetPath) {
@@ -14184,7 +14216,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Use OneDrive API to upload
               if (!graphClient) {
                 showToast('Please sign in to Microsoft to sync with OneDrive.', 'warn');
-                return;
+                return false;
               }
 
               // Check if Live Sync is enabled with active session - use cell-level updates
@@ -14192,6 +14224,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
                 // Update each worksheet via session API
                 for (const ws of workbook.worksheets) {
+                  assertCurrentExport();
                   const sheetName = ws.name;
                   const rowCount = ws.rowCount || 1;
                   const colCount = ws.columnCount || 1;
@@ -14222,12 +14255,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
                     const range = `A1:${colLetter(colCount)}${rowCount}`;
 
-                    try {
-                      await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values, selectedTemplate?.sharePointDriveId || undefined);
-                    } catch (sheetErr) {
-                      console.warn(`Failed to update sheet "${sheetName}":`, sheetErr);
-                      // Continue with other sheets
-                    }
+                    // A partial workbook write is not a successful export. Keep
+                    // the old checkpoint and surface the error for review/retry.
+                    await updateCellRange(graphClient, oneDriveFileId, excelSessionId, sheetName, range, values, selectedTemplate?.sharePointDriveId || undefined);
                   }
                 }
               } else {
@@ -14236,7 +14266,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 // the cloud version directly, not the local synced copy
                 if (oneDriveFileId) {
                   // Prefer upload by file ID (more reliable, tracks file across moves/renames)
-                  await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer);
+                  await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer, selectedTemplate?.sharePointDriveId || undefined);
                 } else {
                   // Fall back to upload by path
                   await uploadExcelFile(graphClient, targetPath, workbookBuffer);
@@ -14263,12 +14293,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               if (excelIsOpen) {
                 setIsExporting(false);
                 showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
-                return;
+                return false;
               }
               // Use local filesystem
               await window.electronAPI.writeFile(targetPath, workbookBuffer);
             }
 
+            assertCurrentExport();
             const updatedTemplate = {
               ...selectedTemplate,
               linkedExcelPath: targetPath,
@@ -14289,6 +14320,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               }
             }
 
+            if (excelExportScopeRef.current !== sourceScope &&
+                excelExportScopeRef.current !== excelExportScope(excelBaselineId, updatedTemplate)) return false;
+
             // Update local templates array to propagate linkedExcelPath to parent
             if (handleTemplatesChange && appTemplates) {
               const updatedTemplates = appTemplates.map(t =>
@@ -14301,7 +14335,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
-            markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId);
+            markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId, surveyMarkers, sourceScope);
 
             // Local-file export just rewrote the workbook (with every marker's
             // token) through the safe path — drain the local Row ID queue now;
@@ -14314,6 +14348,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               setIsExporting(false);
               showToast('Sync to Excel successful!', 'success');
             }
+            return true;
           } catch (err) {
             console.error('Failed to write file:', err);
             // Check for OneDrive locked file error
@@ -14336,11 +14371,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
-            identityRecords: identityRecordsByMarkerId
+            identityRecords: identityRecordsByMarkerId,
+            exportedMarkers: surveyMarkers,
+            sourceScope,
+            templateSnapshot: selectedTemplate
           });
           // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
-          return; // Exit - modal will handle the actual save
+            return false; // The modal has not written a linked workbook yet.
         }
       } else {
         const blob = new Blob([workbookBuffer], {
@@ -14366,7 +14404,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelExportSynced, excelBaselineId]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -14374,10 +14412,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
-    if (window.electronAPI) {
+    if (selectedTemplate.isOneDrive && selectedTemplate.oneDriveFileId) {
+      const scope = excelExportScopeRef.current;
+      try {
+        const file = await getFileById(graphClient, selectedTemplate.oneDriveFileId, selectedTemplate.sharePointDriveId || undefined);
+        if (scope !== excelExportScopeRef.current) return;
+        if (!file?.webUrl) throw new Error('The linked Excel file is not available.');
+        await openExternalDestination(file.webUrl);
+      } catch (error) {
+        showToast(error.message || 'Could not open the linked Excel file.', 'error');
+      }
+    } else if (window.electronAPI) {
       await window.electronAPI.openPath(selectedTemplate.linkedExcelPath);
     }
-  }, [selectedTemplate]);
+  }, [selectedTemplate, graphClient]);
 
   // Check if linked Excel file exists when template changes
   // Uses file ID for OneDrive to track files across moves/renames
@@ -14502,7 +14550,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           // For OneDrive files, check by file ID first (tracks moves/renames)
           if (graphClient && fileId) {
-            const fileInfo = await getFileById(graphClient, fileId);
+            const fileInfo = await getFileById(graphClient, fileId, selectedTemplate?.sharePointDriveId || undefined);
 
             if (fileInfo) {
               // File exists! Check if it was moved
@@ -14543,7 +14591,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Legacy: No file ID stored, try to get it by path
             const apiPath = selectedTemplate?.oneDriveApiPath || excelPath;
             try {
-              const fileInfo = await getFileMetadata(graphClient, apiPath);
+              const fileInfo = await getFileMetadata(graphClient, apiPath, selectedTemplate?.sharePointDriveId || undefined);
               if (fileInfo?.id) {
                 // Store the file ID for future tracking
                 setSelectedTemplate(prev => ({
@@ -14675,7 +14723,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (selectedTemplate.isOneDrive && selectedTemplate.oneDriveFileId && graphClient) {
         // Get OneDrive file metadata
         try {
-          const metadata = await getFileById(graphClient, selectedTemplate.oneDriveFileId);
+          const metadata = await getFileById(graphClient, selectedTemplate.oneDriveFileId, selectedTemplate?.sharePointDriveId || undefined);
           if (metadata?.lastModifiedDateTime) {
             excelTimestamp = new Date(metadata.lastModifiedDateTime);
           }
@@ -14758,7 +14806,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!selectedTemplate?.linkedExcelPath) return;
 
     try {
-      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
+      const written = await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
+      if (written !== true) {
+        const error = new Error('Excel was not updated. Your changes are still pending.');
+        error.code = 'EXCEL_SYNC_NOT_WRITTEN';
+        throw error;
+      }
       // Show success message (especially important after retry)
       if (isRetry) {
         showToast('Excel file updated successfully!', 'success');
@@ -14828,12 +14881,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setIsExportingToOneDrive(true);
 
     try {
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+        throw new Error('The linked document changed. Export again from the current document.');
+      }
       // Ensure we have a fresh token before making the API call
       if (ensureFreshToken) {
         const tokenValid = await ensureFreshToken();
         if (!tokenValid) {
           throw new Error('Microsoft session expired. Please reconnect your account.');
         }
+      }
+
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+        throw new Error('The linked document changed. Export again from the current document.');
       }
 
       let uploadResult;
@@ -14870,35 +14930,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const oneDriveFileId = uploadResult?.id;
-
-      // Also save a local copy to the OneDrive sync folder so it's available immediately
-      // (only for personal OneDrive, not SharePoint)
-      let localOneDrivePath = null;
-      if (window.electronAPI && (!selection?.folder?.type || selection.folder.type === 'myDrive')) {
-        try {
-          const homeDir = await window.electronAPI.getHomeDir();
-          const cloudStoragePath = `${homeDir}/Library/CloudStorage`;
-          const cloudStorageContents = await window.electronAPI.listDir(cloudStoragePath);
-          const oneDriveFolders = cloudStorageContents.filter(name =>
-            name.startsWith('OneDrive') || name.includes('OneDrive')
-          );
-
-          if (oneDriveFolders.length > 0) {
-            // Use the first OneDrive folder found
-            localOneDrivePath = `${cloudStoragePath}/${oneDriveFolders[0]}${oneDriveApiPath}`;
-            // Write the file locally
-            await window.electronAPI.writeFile(localOneDrivePath, exportPendingData.buffer);
-          }
-        } catch (localErr) {
-          console.warn('Failed to save local copy to OneDrive sync folder:', localErr);
-          // Continue anyway - the file is still in OneDrive cloud
-        }
+      if (!oneDriveFileId) throw new Error('Microsoft did not confirm the exported file. Please check OneDrive before retrying.');
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+        throw new Error('The file was exported, but the open document changed. Its sync state was not changed.');
       }
 
+      // Graph wrote the selected account's cloud file. Do not also write to the
+      // first local OneDrive folder: it may belong to a different account.
       const updatedTemplate = {
         ...selectedTemplate,
-        // Store the local path if available, otherwise fall back to OneDrive API path
-        linkedExcelPath: localOneDrivePath || oneDriveApiPath,
+        linkedExcelPath: oneDriveApiPath,
         oneDriveApiPath: oneDriveApiPath, // Keep the API path for reference
         oneDriveFileId: oneDriveFileId, // Unique file ID for tracking (persists across moves)
         isOneDrive: true,
@@ -14915,7 +14956,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // Mark that linked Excel file exists (enables dropdown menu)
       setLinkedExcelExists(true);
-      markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null);
+      markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null, exportPendingData.exportedMarkers, exportPendingData.sourceScope);
 
       // Persist to Supabase
       const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
@@ -14927,6 +14968,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           console.warn('Failed to persist Excel link to Supabase:', err);
         }
       }
+
+      if (excelExportScopeRef.current !== exportPendingData.sourceScope &&
+          excelExportScopeRef.current !== excelExportScope(excelBaselineId, updatedTemplate)) return false;
 
       // Update local templates array
       if (handleTemplatesChange && appTemplates) {
@@ -14946,17 +14990,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return false;
     } finally {
       isExportInProgressRef.current = false;
-      setIsExportingToOneDrive(false);
-      setIsExporting(false);
-      setExportPendingData(null);
-      setPendingOneDriveExport(false);
-      setOneDriveSaveSelection(null);
+      if (exportPendingDataRef.current === exportPendingData) {
+        setIsExportingToOneDrive(false);
+        setIsExporting(false);
+        setExportPendingData(null);
+        setPendingOneDriveExport(false);
+        setOneDriveSaveSelection(null);
+      }
     }
-  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
+  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelExportSynced, excelBaselineId]);
 
   // Handler for OneDrive save modal - checks for duplicates before saving
   const handleOneDriveSave = useCallback(async (selection) => {
     if (!selection || !selection.folder || !graphClient) return;
+    const sourceScope = excelExportScopeRef.current;
 
     setShowOneDriveSaveModal(false);
     setIsExportingToOneDrive(true);
@@ -14980,16 +15027,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         existingFileInfo = await checkFileExists(graphClient, folder.folderPath, fileName);
       }
 
+      if (excelExportScopeRef.current !== sourceScope) return;
+      if (existingFileInfo?.exists && !existingFileInfo.fileId) {
+        throw new Error('The existing file could not be identified. Choose another name or try again.');
+      }
       if (existingFileInfo?.exists && existingFileInfo?.fileId) {
         // File exists - check template ID
-        const existingMeta = await getTemplateIdFromExcel(graphClient, existingFileInfo.fileId);
+        const existingMeta = await getTemplateIdFromExcel(graphClient, existingFileInfo.fileId,
+          folder.type === 'sharepoint' ? folder.driveId : undefined);
+        if (excelExportScopeRef.current !== sourceScope) return;
         const currentTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || '';
 
-        if (existingMeta?.templateId && existingMeta.templateId !== currentTemplateId) {
-          // Different template detected - show warning modal
+        if (!existingMeta?.templateId || existingMeta.templateId !== currentTemplateId) {
+          // An unread or unknown workbook also needs an explicit overwrite
+          // decision; a failed metadata download must never imply a match.
           setTemplateOverwriteData({
             fileName: fileName,
-            existingTemplateName: existingMeta.templateName || 'Unknown template',
+            existingTemplateName: existingMeta?.templateName || 'Unknown template',
             currentTemplateName: selectedTemplate?.name || 'Current template',
             folder: folder,
             selection: selection
@@ -15003,9 +15057,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // No conflict or same template - proceed with export
       await performOneDriveExport(selection);
     } catch (error) {
+      if (excelExportScopeRef.current !== sourceScope) return;
       console.error('Error checking for duplicate file:', error);
-      // Proceed with export anyway if check fails
-      await performOneDriveExport(selection);
+      showToast('Could not check the existing file. Nothing was overwritten. Please try again.', 'error');
+      setIsExportingToOneDrive(false);
+      setShowOneDriveSaveModal(true);
     }
   }, [graphClient, selectedTemplate, performOneDriveExport]);
 
@@ -15207,6 +15263,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const runServerExcelSync = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
     const documentId = pdfFile?.id || null;
     if (!documentId) return false; // local-only / unregistered → inline path (unchanged).
+    const sourceScope = excelExportScope(excelBaselineId, templateToUse);
+    const isSourceCurrent = () => excelExportScopeRef.current === sourceScope;
+    const assertSourceCurrent = () => {
+      if (!isSourceCurrent()) throw new Error('Excel sync source changed');
+    };
+    if (!isSourceCurrent()) return true;
 
     // The registration handle the client is allowed to send (F16): workbook_id +
     // sync_token, read from the imported workbook's _SurveyMetadata B5/B6. Without a
@@ -15221,6 +15283,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!templateId) return false;
 
     try {
+      return await withExcelSyncLock({ documentId, templateId, workbookId }, async () => {
+      // Another tab may have held this lock while the active source changed.
+      if (!isSourceCurrent()) return true;
       const currentMarkers = surveyMarkersRef.current || surveyMarkers || {};
       const ingestSeq = Date.now();
       // One client_change_set_id PER import; a retry REUSES it so the Edge replays
@@ -15231,11 +15296,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Edge replays (F7) and completes the pending token persist — instead of minting a NEW id
       // (a fresh change-set that would never finish the prior one). The descriptor is matched on
       // (documentId, templateId, workbookId), so a re-export (new workbook) never reuses a stale id.
+      const worksheetFingerprint = await fingerprintPendingWorksheets(worksheetDataList);
+      if (!isSourceCurrent()) return true;
       const pendingPrior = readPendingChangeset({ documentId, templateId, workbookId });
+      if (pendingPrior && pendingPrior.worksheetFingerprint !== worksheetFingerprint) {
+        showToast(pendingPrior.worksheetFingerprint
+          ? 'This workbook changed during an unfinished sync. Restore the earlier workbook or review the pending sync before continuing.'
+          : 'An older unfinished Excel sync needs review before row IDs can be written safely.', 'warn');
+        return true;
+      }
       const clientChangeSetId =
         pendingPrior?.clientChangeSetId
         ?? ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID()
           : `ccs-${crypto.randomUUID()}`);
+      const pendingDescriptor = { documentId, templateId, workbookId, clientChangeSetId, worksheetFingerprint };
+      // Persist BEFORE the request: a lost response may follow a committed
+      // change-set. The next attempt must replay its ID, never create another.
+      if (!writePendingChangeset(pendingDescriptor)) {
+        showToast('Excel sync could not save its retry record. Free some device storage and try again.', 'error');
+        return true;
+      }
       const submitArgs = {
         supabaseClient: supabase,
         documentId,
@@ -15254,6 +15334,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
 
       let result = await submitChangeSet(submitArgs);
+      if (!isSourceCurrent()) return true;
       // tokenWritebackIncomplete (F20): the Edge applied + committed but could not durably
       // persist every created-row token, so it withheld the writeback jobs and did NOT
       // broadcast. Retry the SAME clientChangeSetId — the idempotent replay re-runs the
@@ -15262,6 +15343,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       while (!result.error && result.tokenWritebackIncomplete && retries < 3) {
         retries += 1;
         result = await submitChangeSet(submitArgs); // same clientChangeSetId → replay
+        if (!isSourceCurrent()) return true;
       }
 
       if (result.error) {
@@ -15293,14 +15375,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Codex round-3 finding #2: persist this clientChangeSetId so the NEXT sync of this
         // same workbook REUSES it (idempotent replay) and completes the pending token persist,
         // instead of minting a fresh id. Keyed on (documentId, templateId, workbookId).
-        writePendingChangeset({ documentId, templateId, workbookId, clientChangeSetId });
         showToast('Excel sync incomplete — some new rows are still finalizing. Please sync again in a moment.', 'warn');
         return true;
       }
-      // Writeback is complete (every created-row token is durable) → clear any prior pending
-      // descriptor for this document so the next sync mints a fresh change-set normally.
-      clearPendingChangeset(documentId);
-
       // Materialize accepted/create ops via the per-marker field-level reducer. The
       // Edge `outcomes` carry only routing metadata (opUuid / outcome / writeback) —
       // the field-level patch_payload (changedFieldKeys / fields / baseFingerprints)
@@ -15312,18 +15389,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const sinceRevision = readFrontier({ getMeta: excelSyncMetaGetStable, templateId });
       const { ops: committedOps, error: fetchErr } =
         await fetchSince({ supabaseClient: supabase, documentId, templateId, sinceRevision });
+      if (!isSourceCurrent()) return true;
+      if (fetchErr) {
+        showToast('Excel changes were received, but could not be loaded into this document. Please sync again.', 'warn');
+        return true;
+      }
       if (!fetchErr && Array.isArray(committedOps) && committedOps.length > 0) {
         const { getMarkers, writeMarker } = makeMaterializeAccessors();
         await materializeAcceptedOps({
           ops: committedOps,
           templateId,
-          getMarkers,
-          writeMarker,
-          getMeta: excelSyncMetaGetStable,
-          setMeta: excelSyncMetaSetStable,
-          ack: ({ opUuid, status }) =>
-            ackMaterialization({ supabaseClient: supabase, documentId, templateId, opUuid, status }),
+          getMarkers: () => { assertSourceCurrent(); return getMarkers(); },
+          writeMarker: (...args) => { assertSourceCurrent(); return writeMarker(...args); },
+          getMeta: (...args) => { assertSourceCurrent(); return excelSyncMetaGetStable(...args); },
+          setMeta: (...args) => { assertSourceCurrent(); return excelSyncMetaSetStable(...args); },
+          ack: ({ opUuid, status }) => {
+            assertSourceCurrent();
+            return ackMaterialization({ supabaseClient: supabase, documentId, templateId, opUuid, status });
+          },
         });
+        if (!isSourceCurrent()) return true;
       }
 
       // KAL-292 — resolve the Excel sheet + row behind a server outcome so a held row that
@@ -15431,14 +15516,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const reviewNote = reviewItems.length > 0 ? ` ${reviewItems.length} row(s) need your choice.` : '';
+      clearPendingChangeset(pendingDescriptor);
       showToast(`Excel sync complete.${reviewNote}`, reviewItems.length > 0 ? 'info' : 'success');
       return true;
+      });
     } catch (err) {
+      if (!isSourceCurrent()) return true;
       console.error('[KAL-309] server Excel sync failed:', err);
-      showToast('Excel sync failed. Please try again.', 'error');
+      showToast(err?.code === 'EXCEL_SYNC_LOCK_UNAVAILABLE' ? err.message : 'Excel sync failed. Please try again.', 'error');
       return true; // handled (error surfaced) — do not double-apply via the inline path.
     }
-  }, [pdfFile, surveyMarkers, buildAppValuesByMarkerId, excelSyncMetaGetStable, excelSyncMetaSetStable, makeMaterializeAccessors]);
+  }, [pdfFile, excelBaselineId, surveyMarkers, buildAppValuesByMarkerId, excelSyncMetaGetStable, excelSyncMetaSetStable, makeMaterializeAccessors]);
 
   // Helper: Execute the actual Excel import after new columns are handled
   const executeExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
@@ -17154,10 +17242,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // file for OneDrive/SharePoint links. Path is the fallback for real roots.
           if (oneDriveFileId || selectedTemplate.oneDriveFileId) {
             const fileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
-            fileData = await downloadExcelFile(graphClient, fileId);
+            fileData = await downloadExcelFile(graphClient, fileId, selectedTemplate?.sharePointDriveId || undefined);
           } else {
             const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
-            fileData = await downloadExcelFileByPath(graphClient, apiPath);
+            fileData = await downloadExcelFileByPath(graphClient, apiPath, selectedTemplate?.sharePointDriveId || undefined);
           }
         } else {
           // Use local filesystem
@@ -17387,10 +17475,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
           if (oneDriveFileId || selectedTemplate.oneDriveFileId) {
             const fileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
-            fileData = await downloadExcelFile(graphClient, fileId);
+            fileData = await downloadExcelFile(graphClient, fileId, selectedTemplate?.sharePointDriveId || undefined);
           } else {
             const apiPath = selectedTemplate.oneDriveApiPath || selectedTemplate.linkedExcelPath;
-            fileData = await downloadExcelFileByPath(graphClient, apiPath);
+            fileData = await downloadExcelFileByPath(graphClient, apiPath, selectedTemplate?.sharePointDriveId || undefined);
           }
         } else {
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
@@ -17811,7 +17899,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           // Get initial ETag for change detection
           try {
-            const metadata = await getFileETag(graphClient, fileId);
+            const metadata = await getFileETag(graphClient, fileId, sharePointDriveId);
             if (!isMounted) return;
             lastKnownETagRef.current = metadata?.eTag || null;
           } catch (etagErr) {
@@ -17915,17 +18003,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
+    let pollInFlight = false;
+    let pollCancelled = false;
+    const pollScopeKey = JSON.stringify([
+      selectedTemplate?.sharePointDriveId || null,
+      oneDriveFileId,
+      excelSessionId || null,
+      Boolean(useFallbackSync)
+    ]);
+    // Callback changes restart this effect during normal editing. Keep the
+    // prior read for the same workbook so that restart cannot hide an edit.
+    // A different client also means a different account/transport scope.
+    if (excelPollScopeRef.current?.graphClient !== graphClient ||
+        excelPollScopeRef.current?.key !== pollScopeKey) {
+      excelPollScopeRef.current = { graphClient, key: pollScopeKey };
+      lastPollDataRef.current = {};
+    }
     const pollExcelChanges = async () => {
+      if (pollCancelled || pollInFlight) return;
       if (isInteractionPerfWindowActive()) {
         emitPdfDebugEvent('sync_gate_live_poll_skipped');
         return;
       }
 
+      pollInFlight = true;
       try {
         if (useFallbackSync) {
           // ETag-based polling for personal accounts
           // Only check metadata - efficient because we don't download the file unless it changed
-          const metadata = await getFileETag(graphClient, oneDriveFileId);
+          const metadata = await getFileETag(graphClient, oneDriveFileId, selectedTemplate?.sharePointDriveId || undefined);
+          if (pollCancelled) return;
           if (!metadata) {
             console.warn('[LiveSync] File not found');
             return;
@@ -17946,11 +18053,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Session-based polling for business accounts
           const pollDriveId = selectedTemplate?.sharePointDriveId || undefined;
           const worksheets = await getWorksheets(graphClient, oneDriveFileId, excelSessionId, pollDriveId);
+          if (pollCancelled) return;
 
           // Read data from each worksheet and compare with last poll
           for (const sheet of worksheets) {
             try {
               const usedRange = await getUsedRange(graphClient, oneDriveFileId, excelSessionId, sheet.name, pollDriveId);
+              if (pollCancelled) return;
 
               const key = sheet.name;
               const lastData = lastPollDataRef.current?.[key];
@@ -17971,6 +18080,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       } catch (error) {
         console.error('Poll for Excel changes failed:', error);
+      } finally {
+        pollInFlight = false;
       }
     };
 
@@ -17981,12 +18092,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     liveSyncPollRef.current = setInterval(pollExcelChanges, 5000);
 
     return () => {
+      pollCancelled = true;
       if (liveSyncPollRef.current) {
         clearInterval(liveSyncPollRef.current);
         liveSyncPollRef.current = null;
       }
     };
-  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel, isInteractionPerfWindowActive]);
+  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, handleAutoSyncFromExcel, isInteractionPerfWindowActive, selectedTemplate?.sharePointDriveId]);
 
   // Live sync push to Excel
   // Supports both session-based (cell-level updates) and fallback (full file upload via Graph API)
@@ -18014,7 +18126,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Update ETag after push to avoid detecting our own changes
         if (useFallbackSync) {
           try {
-            const metadata = await getFileETag(graphClient, oneDriveFileId);
+            const metadata = await getFileETag(graphClient, oneDriveFileId, selectedTemplate?.sharePointDriveId || undefined);
             if (metadata?.eTag) {
               lastKnownETagRef.current = metadata.eTag;
             }
@@ -37254,6 +37366,9 @@ ${pageBlocks}
                   setShowExportLocationModal(false);
                   // Export to computer (local file)
                   try {
+                    if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+                      throw new Error('The linked document changed. Export again from the current document.');
+                    }
                     const defaultName = `${exportPendingData.fileName}_export.xlsx`;
                     const result = await window.electronAPI.saveFile({
                       title: 'Save survey export',
@@ -37263,6 +37378,9 @@ ${pageBlocks}
                     });
 
                     if (result && !result.canceled && result.filePath) {
+                      if (excelExportScopeRef.current !== exportPendingData.sourceScope) {
+                        throw new Error('The file was exported, but the open document changed. Its sync state was not changed.');
+                      }
                       const updatedTemplate = {
                         ...selectedTemplate,
                         linkedExcelPath: result.filePath,
@@ -37284,6 +37402,9 @@ ${pageBlocks}
                         }
                       }
 
+                      if (excelExportScopeRef.current !== exportPendingData.sourceScope &&
+                          excelExportScopeRef.current !== excelExportScope(excelBaselineId, updatedTemplate)) return;
+
                       // Update local templates array to propagate linkedExcelPath to parent
                       if (handleTemplatesChange && appTemplates) {
                         const updatedTemplates = appTemplates.map(t =>
@@ -37295,7 +37416,7 @@ ${pageBlocks}
                       }
 
                       setLinkedExcelExists(true);
-                      markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null);
+                      markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null, exportPendingData.exportedMarkers, exportPendingData.sourceScope);
                       // A brand-new LOCAL link written through the safe path —
                       // drain the local Row ID queue (read-back-verified).
                       localRowIdFlushRef.current?.({ filePath: result.filePath });
@@ -37305,8 +37426,10 @@ ${pageBlocks}
                     console.error('Failed to export to computer:', error);
                     showToast('Failed to export to computer.', 'error');
                   }
-                  setExportPendingData(null);
-                  setIsExporting(false);
+                  if (exportPendingDataRef.current === exportPendingData) {
+                    setExportPendingData(null);
+                    setIsExporting(false);
+                  }
                 }}
                 style={{
                   width: '100%',

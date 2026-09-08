@@ -52,7 +52,7 @@ test('read returns null for a different template', () => {
 test('clear removes the descriptor', () => {
   const s = memStorage();
   writePendingChangeset({ documentId: 'doc-1', templateId: 'tpl-1', workbookId: 'wb_a', clientChangeSetId: 'ccs-1' }, s);
-  assert.equal(clearPendingChangeset('doc-1', s), true);
+  assert.equal(clearPendingChangeset({ documentId: 'doc-1', templateId: 'tpl-1', workbookId: 'wb_a', clientChangeSetId: 'ccs-1' }, s), true);
   assert.equal(readPendingChangeset({ documentId: 'doc-1', templateId: 'tpl-1', workbookId: 'wb_a' }, s), null);
 });
 
@@ -85,6 +85,29 @@ test('round-trip: incomplete → persist → reuse → complete → clear', () =
   const reuse = readPendingChangeset(doc, s);
   assert.equal(reuse.clientChangeSetId, 'ccs-persist');
   // That sync completes → clear.
-  clearPendingChangeset('doc-9', s);
+  clearPendingChangeset({ ...doc, clientChangeSetId: 'ccs-persist' }, s);
   assert.equal(readPendingChangeset(doc, s), null);
+});
+
+test('pending descriptors from separate templates/workbooks coexist and late clear preserves newer attempt', () => {
+  const s = memStorage();
+  const a = { documentId: 'doc', templateId: 'a', workbookId: 'workbook-a', clientChangeSetId: 'first' };
+  const b = { documentId: 'doc', templateId: 'b', workbookId: 'workbook-b', clientChangeSetId: 'other' };
+  writePendingChangeset(a, s);
+  writePendingChangeset(b, s);
+  writePendingChangeset({ ...a, clientChangeSetId: 'newer' }, s);
+  clearPendingChangeset(a, s);
+  assert.equal(readPendingChangeset(a, s).clientChangeSetId, 'newer');
+  assert.equal(readPendingChangeset(b, s).clientChangeSetId, 'other');
+});
+
+test('legacy descriptor remains readable and is cleared only by its exact completed attempt', () => {
+  const s = memStorage();
+  const descriptor = { documentId: 'doc', templateId: 'tpl', workbookId: 'wb', clientChangeSetId: 'old' };
+  s.setItem(pendingKey('doc'), JSON.stringify(descriptor));
+  assert.equal(readPendingChangeset(descriptor, s).clientChangeSetId, 'old');
+  clearPendingChangeset({ ...descriptor, workbookId: 'different' }, s);
+  assert.equal(readPendingChangeset(descriptor, s).clientChangeSetId, 'old');
+  clearPendingChangeset(descriptor, s);
+  assert.equal(readPendingChangeset(descriptor, s), null);
 });

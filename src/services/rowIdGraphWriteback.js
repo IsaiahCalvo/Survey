@@ -34,6 +34,9 @@
 import { LIVE_WRITEBACK_ENABLED } from './excelCapability.js';
 import {
   workbookItemBase,
+  encodeGraphString,
+  withWorkbookWrite,
+  withoutGraphWriteRetry,
   createWorkbookSession,
   closeWorkbookSession
 } from './excelSessionService.js';
@@ -63,7 +66,7 @@ const normalizeCellValue = (value) => (value === null || value === undefined ? '
 
 /** Graph path for one column-A cell of one sheet, drive-scoped. */
 const cellRangePath = (fileId, driveId, sheetName, address) =>
-  `${workbookItemBase(fileId, driveId)}/workbook/worksheets('${encodeURIComponent(sheetName)}')/range(address='${address}')`;
+  `${workbookItemBase(fileId, driveId)}/workbook/worksheets('${encodeGraphString(sheetName)}')/range(address='${address}')`;
 
 /**
  * Classify a Graph error for drain flow control.
@@ -97,9 +100,11 @@ export async function readRowIdCell(graphClient, { fileId, driveId, sessionId, s
   const requestBuilder = graphClient.api(cellRangePath(fileId, driveId, sheetName, address));
   if (sessionId) requestBuilder.header('workbook-session-id', sessionId);
   const response = await requestBuilder.select('values').get();
-  const rows = Array.isArray(response?.values) ? response.values : [];
-  const first = Array.isArray(rows[0]) ? rows[0] : [];
-  return normalizeCellValue(first[0]);
+  const rows = response?.values;
+  if (!Array.isArray(rows) || rows.length !== 1 || !Array.isArray(rows[0]) || rows[0].length !== 1) {
+    throw new Error('Invalid Row ID cell values; refusing to treat an unread cell as blank');
+  }
+  return normalizeCellValue(rows[0][0]);
 }
 
 /**
@@ -117,8 +122,15 @@ export async function readRowIdCell(graphClient, { fileId, driveId, sessionId, s
  * @returns {Promise<{outcome:string, wrote:boolean, cellValue:string}>}
  */
 export async function writeRowIdCellVerified(
+  graphClient, options
+) {
+  if (!graphClient) throw new Error('writeRowIdCellVerified: missing graphClient');
+  return withWorkbookWrite(graphClient, options?.fileId, options?.driveId, () => writeRowIdCellVerifiedNow(graphClient, options));
+}
+
+async function writeRowIdCellVerifiedNow(
   graphClient,
-  { fileId, driveId, sessionId, sheetName, rowNumber, token, expectedOldCellValue = '' }
+  { fileId, driveId, sessionId, sheetName, rowNumber, token, expectedOldCellValue = '', isCurrent = () => true }
 ) {
   const address = rowIdCellAddress(rowNumber);
   const newToken = normalizeCellValue(token);
@@ -126,8 +138,12 @@ export async function writeRowIdCellVerified(
     throw new Error('writeRowIdCellVerified: missing graphClient/fileId/sheetName/rowNumber/token');
   }
 
+  // Recheck inside the workbook lock: a queued entry can be replaced while a
+  // prior workbook request runs, or while our pre-check is in flight.
+  if (!isCurrent()) return { outcome: 'superseded', wrote: false, cellValue: null };
   // PRE-CHECK — never write a cell we cannot account for.
   const before = await readRowIdCell(graphClient, { fileId, driveId, sessionId, sheetName, rowNumber });
+  if (!isCurrent()) return { outcome: 'superseded', wrote: false, cellValue: before };
   if (before === newToken) {
     return { outcome: 'verified', wrote: false, cellValue: before }; // already landed (re-drain)
   }
@@ -138,7 +154,7 @@ export async function writeRowIdCellVerified(
   // The single-cell PATCH (a 1x1 range), under the workbook session when given.
   const requestBuilder = graphClient.api(cellRangePath(fileId, driveId, sheetName, address));
   if (sessionId) requestBuilder.header('workbook-session-id', sessionId);
-  await requestBuilder.patch({ values: [[newToken]] });
+  await withoutGraphWriteRetry(requestBuilder).patch({ values: [[newToken]] });
 
   // READ-BACK — the only thing that may clear pendingRowIdWriteback (Codex R1).
   const after = await readRowIdCell(graphClient, { fileId, driveId, sessionId, sheetName, rowNumber });
@@ -260,6 +276,11 @@ export async function drainRowIdWritebackQueue({
   try {
     const batch = entries.slice(0, maxPerPass);
     for (const entry of batch) {
+      const isCurrentEntry = () => {
+        const current = listWriteback(documentId, storage).find((row) => row?.markerId === entry?.markerId);
+        return current && JSON.stringify(current) === JSON.stringify(entry);
+      };
+      if (!isCurrentEntry()) { result.skipped += 1; continue; }
       const rowNumber = resolveEntryRowNumber(entry);
       const token = normalizeCellValue(entry?.newToken);
       if (!entry?.markerId || !entry?.sheetName || !rowNumber || !token) {
@@ -278,12 +299,19 @@ export async function drainRowIdWritebackQueue({
           sheetName: entry.sheetName,
           rowNumber,
           token,
-          expectedOldCellValue: entry.expectedOldCellValue
+          expectedOldCellValue: entry.expectedOldCellValue,
+          isCurrent: isCurrentEntry
         });
+
+        // Import/relink may replace this entry while Graph is in flight. An
+        // older verification must neither clear nor overwrite that newer work.
+        if (!isCurrentEntry()) { result.skipped += 1; continue; }
 
         if (write.outcome === 'verified') {
           // READ-BACK confirmed — the one condition that clears the entry.
-          clearWriteback(documentId, entry.markerId, storage);
+          if (!clearWriteback(documentId, entry.markerId, storage)) {
+            return finish('stopped-error', { errorMessage: 'Could not persist verified Row ID queue acknowledgement' });
+          }
           result.verified += 1;
           result.markerUpdates.push({
             markerId: entry.markerId,
@@ -307,6 +335,7 @@ export async function drainRowIdWritebackQueue({
         result.requeued += 1;
         return finish('stopped-verify-mismatch');
       } catch (err) {
+        if (!isCurrentEntry()) { result.skipped += 1; continue; }
         const kind = classifyGraphWritebackError(err);
         if (kind === 'auth-expired') {
           // Token died mid-pass: surface reconnect, leave the entry EXACTLY as

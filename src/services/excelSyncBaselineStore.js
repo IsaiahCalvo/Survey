@@ -13,6 +13,11 @@
 
 const KEY_PREFIX = 'excelSyncBaseline:';
 
+export function excelBaselineScope(documentId, localId, userId) {
+  const id = documentId || localId;
+  return id ? JSON.stringify([userId || null, documentId ? 'cloud' : 'local', id]) : null;
+}
+
 function getStorage(injected) {
   if (injected) return injected;
   try {
