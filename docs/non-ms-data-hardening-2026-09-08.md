@@ -4664,6 +4664,81 @@ large-chunk warning (`/tmp/survey-library-mutation-build-verified.log`); graph
 refresh completed with 28,023 nodes and 45,673 edges. Generated graph/cache files
 remain outside the commit. No live service was changed by this verification.
 
+## Prepare exact page replacements privately — September 9 follow-up
+
+`prepareDocumentGenerationReplacement` now composes the existing real PDF and
+complete-state transforms behind one private preparation interface. It accepts
+only the trusted transform-source envelope and its exact, verified source object.
+Actor, document, source, generation, annotation frontier, SQL digest bindings,
+object ID/version, byte length and current-byte SHA-256 must agree. Input JSON and
+PDF bytes are owned before the first await. Expired proof, sidecars, nonempty
+legacy document annotations and incomplete or unsupported state fail closed.
+The original-import `documents.content_sha256` stays unchanged.
+
+The module captures source page count/dimensions before mutating the owned PDF.
+It uses the same copied operation and copied-widget map for the PDF and all state
+projections, returning candidate bytes/hash/size/count and the exact deeply frozen
+publication plan. The loaded-PDF internal entry point avoids parsing a second
+whole document. Existing byte-only/identity callers keep their return contract.
+The codebase-design skill guided this composition; it adds no mock persistence
+or new transport interface. Candidate bytes are caller-owned output, not an
+immutable remote receipt; staging must still verify their hash and size.
+
+Limits are explicit: source JSON 16 MiB/depth 64, source/candidate PDF 256 MiB,
+10,000 pages, plan 64 MiB and combined checkpoint bytes 16 MiB. Source expiry is
+checked before and after awaited stages. These bounds do not create a CPU/heap
+sandbox for malformed PDFs, and the module does not cancel synchronous parsing.
+A deployed worker still needs bounded concurrency and process/resource limits.
+
+The disposable PostgreSQL publication harness now uses this actual preparation
+module before reserving/uploading a candidate; a rejected source avoids that
+candidate work. All original 39 publication/open/download/collaboration groups
+remain. Four added groups prove import-hash preservation and unchanged aliases
+sharing a legacy Storage object, rejection of a competing prepared replacement,
+preservation of later accepted annotation WAL, and no recreation after deletion.
+The fixture uses the tracked import-identity DDL and unique index. Losing an exact
+publication reply still replays the same receipt; a historical receipt does not
+authorize rewinding the current generation. Preserve the exact plan/IDs/bytes
+through any uncertain outcome, not a recomputed Yjs plan.
+
+Verification and limits:
+
+- Baseline PostgreSQL: 39 groups passed before the change. The composed path also
+  passed those 39, and the final extended harness passed all 43 with exact failure
+  SQLSTATEs. Earlier assertion-only runs stopped on old group counts and an
+  expected deletion code; deletion correctly retires the source byte proof and
+  returns 23514. Final log: `/tmp/survey-replacement-pg-final-verified.log`.
+- Each run used a newly owned Unix-socket PostgreSQL cluster, then stopped it and
+  removed that exact temporary cluster. Storage metadata/byte receipts remain
+  synthetic fixtures; this is real SQL/PDF/Yjs/loopback testing, not hosted
+  provider verification, measured production latency or live egress proof.
+- 16 new module tests pass using real PDF/Yjs computation. They cover seven page
+  operations with exact saved page sizes/order/rotations, current generation and
+  large annotation frontier, input ownership, wrong identities/proofs/bytes,
+  unsupported/private state, expiry, bounds and safe errors. A delegated real
+  `PDFDocument.load` counter proves preparation parses exactly once. The existing
+  page mutation/history/forms/local replacement/dedup/recovery group passes 228
+  tests. Independent review found no blocking defect.
+- The complete private plan includes foreign survey data and must never enter
+  browser bundles/responses. Its imports are confined to tests and the local
+  PostgreSQL harness. No UI activation, endpoint, live grant, schema deployment,
+  account, provider upload or Microsoft testing was added. The publisher remains
+  denied to both browser and service roles; a trusted worker/authority entry point
+  and verified provider flow are still required. This is a tested prerequisite,
+  not a claim that the app's legacy cloud replacement path is now atomic.
+
+Final verification for this slice: `npm test` completed with 6,658 tests,
+6,563 passed, 95 skipped, zero failed/canceled (`/tmp/survey-replacement-full.log`,
+exit 0), against the unchanged final production source. The final parse-count
+test and stronger physical-page assertions were added to the test file after
+that file had run; all 16 final preparation tests then passed independently
+(`/tmp/survey-replacement-new-focused-final.log`). The full-run baseline was
+6,643 tests, 6,548 passed, 95 skipped. Vite build passed with the existing large
+bundle warning (`/tmp/survey-replacement-build.log`). A fresh no-auth in-app
+browser fixture duplicated one page into two with zero error logs; the prior
+78% to 187% zoom change remains observed, not viewport acceptance. The owned
+browser tab was closed. No live cloud save was attempted.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

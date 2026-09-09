@@ -22,6 +22,13 @@ function reorderPages(pdf, from, to) {
 
 export async function mutatePdfPagesWithIdentity(inputBytes, operation) {
   const pdf = await PDFDocument.load(inputBytes);
+  return mutateLoadedPdfPagesWithIdentity(pdf, operation);
+}
+
+// The private replacement worker already owns a parsed PDF for source checks.
+// Reuse it instead of parsing and retaining a second complete PDF. This mutates
+// the supplied document; callers must own it and capture source metadata first.
+export async function mutateLoadedPdfPagesWithIdentity(pdf, operation) {
   const count = pdf.getPageCount();
   const type = operation?.type;
   if (type !== 'rotate') assertStablePageWidgetIdentities(pdf);

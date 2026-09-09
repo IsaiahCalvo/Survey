@@ -13,8 +13,7 @@ import { PDFDocument } from 'pdf-lib';
 import { withDisposablePostgres } from './helpers/disposablePostgres.mjs';
 import { syncByPageToDoc, syncSurveyMarkersToDoc } from '../src/services/annotationDocStore.js';
 import { mapSurveyMarkerRowToLocalAnnotation } from '../src/services/documentSurveyMarkerMapper.js';
-import { transformDocumentGenerationSource } from '../src/services/documentGenerationTransform.js';
-import { mutatePdfPagesWithIdentity } from '../src/utils/pdfPageMutation.js';
+import { prepareDocumentGenerationReplacement } from '../src/services/documentGenerationReplacement.js';
 import { createDocumentGenerationReader } from '../src/services/documentGenerationReader.js';
 import { createDocumentGenerationDownload } from '../src/services/documentGenerationDownload.js';
 import { handleDocumentGenerationDownload } from '../supabase/functions/document-generation-download/handler.js';
@@ -89,6 +88,13 @@ await withDisposablePostgres(async pg => {
   const roleDefinition = fn('20260802000000_kal426_user_archive_foundation.sql', 'get_my_document_role');
   sql(roleDefinition);
   applyMigration(migrationPath('20260909100000_document_generation_collaboration.sql'));
+  // Exercise the actual import-identity columns and uniqueness rule, not a
+  // fixture-only hash column. Do not apply unrelated legacy rebuild changes.
+  const identityMigration = source('20260606120000_rebuild_yjs_source_of_truth.sql');
+  const identityStart = identityMigration.indexOf('ALTER TABLE public.documents\n  ADD COLUMN IF NOT EXISTS content_sha256');
+  const identityEnd = identityMigration.indexOf(';', identityMigration.indexOf('WHERE content_sha256 IS NOT NULL', identityStart)) + 1;
+  assert.ok(identityStart >= 0 && identityEnd > identityStart);
+  sql(identityMigration.slice(identityStart, identityEnd));
   let serial = 100, groups = 0;
   const fresh = () => id(serial++), bytea = v => `decode('${Buffer.from(v).toString('hex')}','hex')`;
   const call = (name, args) => `SELECT public.${name}(${args.map(quote).join(',')})`;
@@ -119,21 +125,23 @@ await withDisposablePostgres(async pg => {
     const claim = fresh(), proof = service('claim_document_generation_source_bytes', [actor, s, claim]);
     service('record_document_generation_source_bytes', [actor, s, claim, JSON.stringify(proof.objects.map(o => ({ ...o, content_sha256: sha(x.pdf) })))]);
     const envelope = service('read_document_generation_transform_source', [actor, s]);
-    const mutation = await mutatePdfPagesWithIdentity(x.pdf, operation), nextPdf = mutation.bytes;
+    const operationId = fresh();
+    const prepared = await prepareDocumentGenerationReplacement({
+      actorUserId: actor, documentId: x.d, sourceId: s, operationId, operation, envelope,
+      objects: proof.objects.map(o => ({ id: o.id, version: o.version, bytes: x.pdf })),
+    });
+    const { candidate, plan } = prepared, nextPdf = candidate.bytes;
+    assert.equal(candidate.contentSha256, sha(nextPdf));
+    assert.equal(candidate.byteLength, String(nextPdf.length));
+    assert.equal(candidate.pageCount, (await PDFDocument.load(nextPdf)).getPageCount());
     const verify = u => {
       asRole(null, `INSERT INTO storage.objects(bucket_id,name,version,metadata) VALUES('documents',${quote(u.path)},'${version}',jsonb_build_object('size',${u.byte_length}))`, 'service_role');
       const claimId = fresh(), p = service('claim_document_generation_upload_verification', [actor, u.operation_id, claimId]);
       service('record_document_generation_upload_verification', [actor, u.operation_id, p.object.id, p.object.version, u.content_sha256, u.byte_length, claimId]); return u;
     };
-    const u = verify(JSON.parse(asRole(actor, call('begin_document_generation_upload_v2', [s, fresh(), 'candidate-pdf', sha(nextPdf), String(nextPdf.length)])).stdout));
+    const u = verify(JSON.parse(asRole(actor, call('begin_document_generation_upload_v2', [s, operationId, 'candidate-pdf', candidate.contentSha256, candidate.byteLength])).stdout));
     const archives = proof.objects.map(o => verify(JSON.parse(asRole(actor, call('begin_document_generation_source_archive', [s, fresh(), o.id])).stdout)));
-    const current = await PDFDocument.load(x.pdf);
-    const result = await transformDocumentGenerationSource({ sourcePayload: envelope.payload, sidecars: [], operationId: u.operation_id, operation,
-      pageCount: current.getPageCount(), pageSizes: current.getPages().map(p => p.getSize()), copiedWidgets: mutation.copiedWidgets });
-    const c = result.legacyCheckpoint;
-    const plan = { version: 1, operationId: result.operationId, source: result.source, operation, projection: result.projection,
-      baseline_base64: b64(result.baselineUpdate), legacy: { documentId: c.documentId, encodingVersion: c.encodingVersion, throughSeq: c.throughSeq,
-        state_base64: b64(c.state), state_vector_base64: b64(c.stateVector) } };
+    const result = { baselineUpdate: Buffer.from(plan.baseline_base64, 'base64'), source: plan.source };
     return { ...x, actor, s, envelope, u, archives, result, plan, nextPdf };
   };
   const publishSql = (x, plan = x.plan) => `SELECT survey_private.publish_document_generation('${x.actor}','${x.s}','${x.u.operation_id}',ARRAY[${x.archives.map(a => quote(a.operation_id)).join(',')}]::uuid[],${quote(JSON.stringify(plan))}::jsonb)`;
@@ -181,6 +189,55 @@ await withDisposablePostgres(async pg => {
     for (const role of ['authenticated', 'service_role']) errorState(asRole(owner, `UPDATE document_annotations SET page_number=3 WHERE document_id='${x.d}'`, role, false), 'SG001');
     errorState(asRole(null, `UPDATE survey_items SET page_number=3 WHERE session_id='${x.sid}'`, 'service_role', false), 'SG001');
     errorState(asRole(null, `UPDATE doc_yjs_state SET through_seq=999 WHERE document_id='${x.d}'`, 'service_role', false), 'SG001');
+  });
+  await check('prepared replacement preserves import hash and other documents sharing the legacy object', async () => {
+    const x = seed(), alias = fresh(), secondProject = fresh(), importHash = sha(originalPdf);
+    sql(`INSERT INTO projects(id,user_id) VALUES('${secondProject}','${owner}');
+      UPDATE documents SET content_sha256='${importHash}' WHERE id='${x.d}';
+      INSERT INTO documents(id,user_id,project_id,name,file_path,file_size,page_count,content_sha256)
+      VALUES('${alias}','${owner}','${secondProject}','Same import in another project',${quote(x.path)},${originalPdf.length},3,'${importHash}')`);
+    const originalObject = scalar(`SELECT to_jsonb(o) FROM storage.objects o WHERE bucket_id='documents' AND name=${quote(x.path)}`);
+    const aliasBefore = scalar(`SELECT to_jsonb(d) FROM documents d WHERE id='${alias}'`);
+    const prepared = await prepare(x, { type: 'duplicate', page: 2 });
+    assert.equal(prepared.plan.projection.document.content_sha256, importHash);
+    assert.notEqual(prepared.u.content_sha256, importHash, 'current-byte identity differs from original import');
+    publish(prepared);
+    assert.equal(scalar(`SELECT content_sha256 FROM documents WHERE id='${x.d}'`), importHash);
+    assert.equal(scalar(`SELECT file_size FROM documents WHERE id='${x.d}'`), String(prepared.nextPdf.length));
+    assert.equal(scalar(`SELECT page_count FROM documents WHERE id='${x.d}'`), '4');
+    assert.equal(scalar(`SELECT to_jsonb(d) FROM documents d WHERE id='${alias}'`), aliasBefore);
+    assert.equal(scalar(`SELECT to_jsonb(o) FROM storage.objects o WHERE bucket_id='documents' AND name=${quote(x.path)}`), originalObject);
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.annotation_generation_heads WHERE document_id='${alias}'`), '0');
+  });
+  await check('two prepared replacements cannot publish from the same source after one wins', async () => {
+    const sourceDocument = seed();
+    const first = await prepare(sourceDocument, { type: 'move', from: 2, to: 1 });
+    const second = await prepare(sourceDocument, { type: 'duplicate', page: 2 });
+    const receipt = publish(first), before = snapshot(first);
+    errorState(sql(publishSql(second), false), 'SG001');
+    assert.equal(snapshot(first), before, 'loser cannot replace winner bytes or annotations');
+    assert.deepEqual(publish(first), receipt, 'exact lost-success replay remains safe');
+    assert.equal(scalar(`SELECT generation_id FROM survey_private.annotation_generation_heads WHERE document_id='${first.d}'`), first.u.generation_id);
+  });
+  await check('annotation edits accepted after preparation survive rejected replacement', async () => {
+    const x = await prepare(seed()), late = new Y.Doc();
+    late.getMap('annoMeta').set('late-collaborator', { note: 'must survive' });
+    const bytes = Y.encodeStateAsUpdate(late); late.destroy();
+    asRole(owner, `SELECT public.append_annotation_update('${x.d}','late-replacement-check',1,${bytea(bytes)})`);
+    const before = snapshot(x);
+    const wal = scalar(`SELECT jsonb_agg(to_jsonb(u) ORDER BY seq) FROM annotation_updates u WHERE document_id='${x.d}'`);
+    errorState(sql(publishSql(x), false), '40001');
+    assert.equal(snapshot(x), before);
+    assert.equal(scalar(`SELECT jsonb_agg(to_jsonb(u) ORDER BY seq) FROM annotation_updates u WHERE document_id='${x.d}'`), wal);
+  });
+  await check('a prepared replacement cannot recreate a deleted document', async () => {
+    const x = await prepare(seed());
+    sql(`DELETE FROM documents WHERE id='${x.d}'`);
+    // Deletion retires the source receipt; its byte proof is no longer live.
+    errorState(sql(publishSql(x), false), '23514');
+    assert.equal(scalar(`SELECT count(*) FROM documents WHERE id='${x.d}'`), '0');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.annotation_generation_heads WHERE document_id='${x.d}'`), '0');
+    assert.equal(scalar(`SELECT count(*) FROM survey_private.document_generation_publications WHERE document_id='${x.d}'`), '0');
   });
   await check('stale SQL state rejects before any row, head or retention change', async () => {
     const x = await prepare(seed()); sql(`UPDATE survey_items SET notes='New collaborator edit' WHERE session_id='${x.sid}'`);
@@ -329,7 +386,7 @@ await withDisposablePostgres(async pg => {
     assert.equal(scalar('SELECT count(*) FROM survey_private.generation_publication_context'), '0');
     assert.equal(scalar('SELECT count(*) FROM survey_private.generation_publication_tickets'), '0');
   });
-  assert.equal(groups, 15, 'Preserve all original publication groups');
+  assert.equal(groups, 19, 'Preserve original publication groups plus four composed replacement checks');
   const readFixture = await prepare(seed()); publish(readFixture);
   sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES
     ('${readFixture.d}','${viewer}','viewer','active'),('${readFixture.d}','${editor}','editor','active')`);
@@ -517,7 +574,7 @@ await withDisposablePostgres(async pg => {
     assert.deepEqual(restored.toJSON(), baseline.toJSON()); restored.destroy(); baseline.destroy();
     assert.deepEqual(Buffer.from(await gzipResult.pdfBlob.arrayBuffer()), Buffer.from(x.nextPdf));
   });
-  assert.equal(groups, 26, 'Preserve all original publication and open groups');
+  assert.equal(groups, 30, 'Preserve all publication, replacement and open groups');
   const until = async (predicate, label, timeout = 4000) => {
     const deadline = performance.now() + timeout;
     while (!predicate()) { assert.ok(performance.now() < deadline, label); await new Promise(resolve => setTimeout(resolve, 10)); }
@@ -663,7 +720,7 @@ await withDisposablePostgres(async pg => {
     });
     assert.equal(snapshot(x), before);
   });
-  assert.equal(groups, 31, 'Preserve all publication, open and HTTP groups');
+  assert.equal(groups, 35, 'Preserve all publication, replacement, open and HTTP groups');
   const collaborationSql = (x, generation = x.u?.generation_id) =>
     `SELECT public.read_document_generation_collaboration('${x.d}',${quote(generation)})`;
   const collaboration = (x, actor = owner) => JSON.parse(asRole(actor, collaborationSql(x)).stdout);
@@ -810,7 +867,7 @@ await withDisposablePostgres(async pg => {
     assert.equal(result.generation_id, next.u.generation_id); assert.equal(result.pdf.path, next.u.path);
     assert.equal(result.publication.operation_id, next.u.operation_id); assert.equal(result.role, 'owner');
   });
-  assert.equal(groups, 39);
+  assert.equal(groups, 43);
   console.log(`Document generation publication PostgreSQL groups passed: ${groups}`);
 }, { name: 'generation-publication', commandTimeoutMs: 60000 });
 console.log('Disposable local PostgreSQL stopped; exact temporary cluster removed');
