@@ -115,23 +115,26 @@ export function createGenerationCollaborationSession({
     if (!authorityCurrent()) return Promise.resolve(false);
     if (pendingAuthority) return pendingAuthority;
     const task = Promise.resolve().then(async () => {
-      const opened = await request(() => client.rpc('read_document_generation_open', {
-        p_document_id: documentId, p_generation_id: pdfGenerationId, p_include_snapshot: false,
+      const opened = await request(() => client.rpc('read_document_generation_collaboration', {
+        p_document_id: documentId, p_generation_id: pdfGenerationId,
       }));
       if (opened.error) {
         if (['42501', 'SG001', 'SG002'].includes(opened.error.code)) seal('access-revoked');
         throw fail();
       }
       const value = opened.data;
+      if (!value || value.version !== 1
+        || !keys(value, ['version', 'actor_user_id', 'document_id', 'generation_id', 'pdf', 'publication', 'role'])
+        || !value.pdf || !keys(value.pdf, Object.keys(pdf))
+        || !value.publication || !keys(value.publication, Object.keys(publication))) throw fail();
       if (value?.actor_user_id !== actorUserId || value.document_id !== documentId || value.generation_id !== pdfGenerationId
         || !Object.keys(pdf).every(k => value.pdf?.[k] === pdf[k])
         || !Object.keys(publication).every(k => value.publication?.[k] === publication[k])) {
         seal('generation-retired'); throw fail();
       }
-      const role = await request(() => client.rpc('get_my_document_role', { doc_id: documentId }));
-      if (role.error || (role.data !== null && !roles.has(role.data))) throw fail();
-      if (role.data === null) { seal('access-revoked'); return false; }
-      publish({ docRole: role.data, authorityStatus: 'confirmed' });
+      if (value.role === null) { seal('access-revoked'); return false; }
+      if (!roles.has(value.role)) throw fail();
+      publish({ docRole: value.role, authorityStatus: 'confirmed' });
       return true;
     }).catch(() => {
       if (authorityCurrent()) publish({ docRole: 'viewer', authorityStatus: 'unavailable' });

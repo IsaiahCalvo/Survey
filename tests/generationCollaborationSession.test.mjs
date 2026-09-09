@@ -22,9 +22,10 @@ function fixture(t, options={}) {
       const u=new URL(url);assert.equal(u.origin,'https://generation-authority.example.test');
       const name=u.pathname.split('/').at(-1),body=request.body?JSON.parse(request.body):null;
       const call={name,body,headers:new Headers(request.headers),method:request.method};calls.push(call);
-      let response=name==='read_document_generation_open'?{actor_user_id:actor,document_id:documentId,generation_id:generation,
-        pdf:{...bundle.pdf},publication:{...bundle.publication}}:name==='get_my_document_role'?role:[];
+      let response=name==='read_document_generation_collaboration'?{version:1,actor_user_id:actor,document_id:documentId,generation_id:generation,
+        pdf:{...bundle.pdf},publication:{...bundle.publication},role}:[];
       if(interceptor)response=await interceptor(call,response);
+      if(response instanceof Response)return response;
       return new Response(JSON.stringify(response),{status:200,headers:{'Content-Type':'application/json'}});
     }},
   });
@@ -55,15 +56,15 @@ function fixture(t, options={}) {
     retire(){generationBlocked=true;for(const fn of syncListeners)fn({healthy:false});}};
 }
 
-test('authority starts read-only and checks generation before role through captured SDK JWTs',async t=>{
+test('authority starts read-only and checks generation with role in one captured SDK JWT request',async t=>{
   const f=fixture(t),r=f.start();assert.equal(r.getState().docRole,'viewer');
   await until(()=>r.getState().authorityStatus==='confirmed');
   assert.equal(r.getState().docRole,'editor');
-  assert.equal(f.calls.filter(c=>c.name==='read_document_generation_open').length,1);
+  assert.equal(f.calls.filter(c=>c.name==='read_document_generation_collaboration').length,1);
   for(const c of f.calls){assert.equal(c.headers.get('Authorization'),`Bearer synthetic-${actor}`);
-    assert.ok(['read_document_generation_open','get_my_document_role','document_collaborators'].includes(c.name));}
-  const open=f.calls.find(c=>c.name==='read_document_generation_open');
-  assert.deepEqual(open.body,{p_document_id:documentId,p_generation_id:generation,p_include_snapshot:false});
+    assert.ok(['read_document_generation_collaboration','document_collaborators'].includes(c.name));}
+  const open=f.calls.find(c=>c.name==='read_document_generation_collaboration');
+  assert.deepEqual(open.body,{p_document_id:documentId,p_generation_id:generation});
   assert.equal(f.presences[0].opts.pdfGenerationId,generation);
   assert.equal(await f.presences[0].opts.authorize(),true);
 });
@@ -75,6 +76,41 @@ test('viewer and denied role stay restricted; null denial permanently retires on
   assert.equal(r.getState().accessRevoked,true);assert.equal(r.getAwareness(),null);
   assert.equal(f.presences[0].disposed,true);assert.ok(f.channels.every(c=>c.removed));
   const count=f.calls.length;f.setRole('owner');assert.equal(await r.authorize(),false);assert.equal(f.calls.length,count);
+});
+
+test('authority rejects unknown contract fields and incomplete or version-mismatched responses',async t=>{
+  const mutations=[v=>({...v,version:2}),v=>({...v,private_snapshot:'SECRET'}),
+    v=>{const {role,...rest}=v;return rest;},v=>({...v,pdf:{...v.pdf,download_url:'SECRET'}}),
+    v=>({...v,publication:null}),()=>null,()=>[]];
+  for(const mutate of mutations){
+    const f=fixture(t),r=f.start();await until(()=>r.getState().authorityStatus==='confirmed');
+    f.intercept((call,value)=>call.name==='read_document_generation_collaboration'?mutate(value):value);
+    assert.equal(await r.authorize(),false);assert.equal(r.getState().docRole,'viewer');
+    assert.equal(r.getState().authorityStatus,'unavailable');
+    assert.ok(!JSON.stringify(r.getState()).includes('SECRET'));r.dispose();
+  }
+});
+
+test('missing combined RPC fails closed without fallback; access errors retire the open',async t=>{
+  for(const code of ['PGRST202','42501','SG001','SG002']){
+    const f=fixture(t),r=f.start();await until(()=>r.getState().authorityStatus==='confirmed');
+    const count=f.calls.length;
+    f.intercept(call=>new Response(JSON.stringify({code,message:'SECRET provider detail'}),{
+      status:code==='PGRST202'?404:403,headers:{'Content-Type':'application/json'}}));
+    assert.equal(await r.authorize(),false);assert.equal(r.getState().docRole,'viewer');
+    assert.equal(r.getState().accessRevoked,code!=='PGRST202');
+    assert.deepEqual(f.calls.slice(count).map(c=>c.name),['read_document_generation_collaboration']);
+    assert.ok(!JSON.stringify(r.getState()).includes('SECRET'));r.dispose();
+  }
+});
+
+test('concurrent authority refreshes share one request and never refetch the checkpoint',async t=>{
+  const f=fixture(t),r=f.start();await until(()=>r.getState().authorityStatus==='confirmed');
+  const gate=deferred(),entered=deferred(),count=f.calls.length;
+  f.intercept(async(call,value)=>{if(call.name==='read_document_generation_collaboration'){entered.resolve();await gate.promise;}return value;});
+  const first=r.authorize(),second=r.authorize();assert.equal(first,second);await entered.promise;
+  assert.equal(f.calls.length,count+1);gate.resolve();assert.equal(await first,true);
+  assert.deepEqual(f.calls.at(-1).body,{p_document_id:documentId,p_generation_id:generation});
 });
 
 test('invalid role and transient errors never promote authority or expose private diagnostics',async t=>{
@@ -95,7 +131,7 @@ test('wrong-actor auth event blocks immediately and later same-actor login canno
 
 test('late role response after actor switch never unlocks the retired provider',async t=>{
   const gate=deferred(),entered=deferred();
-  const f=fixture(t,{interceptor:async(call,value)=>{if(call.name==='get_my_document_role'){entered.resolve();await gate.promise;}return value;}});
+  const f=fixture(t,{interceptor:async(call,value)=>{if(call.name==='read_document_generation_collaboration'){entered.resolve();await gate.promise;}return value;}});
   const r=f.start();await entered.promise;f.setActor(id(99));f.auth('SIGNED_IN');gate.resolve();
   await tick();assert.equal(r.getState().docRole,'viewer');assert.equal(r.getState().accessRevoked,true);
   assert.ok(f.calls.every(c=>c.headers.get('Authorization')===`Bearer synthetic-${actor}`));
@@ -103,7 +139,7 @@ test('late role response after actor switch never unlocks the retired provider',
 
 test('changed physical PDF or publication cannot yield role authority for the old checked open',async t=>{
   for(const changed of ['pdf','publication']){
-    const f=fixture(t,{interceptor:(call,value)=>call.name==='read_document_generation_open'
+    const f=fixture(t,{interceptor:(call,value)=>call.name==='read_document_generation_collaboration'
       ?{...value,[changed]:{...value[changed],...(changed==='pdf'?{version:id(99)}:{operation_id:id(99)})}}:value});
     const r=f.start();await until(()=>r.getState().accessRevoked);
     assert.ok(!f.calls.some(c=>c.name==='get_my_document_role'));assert.equal(r.getState().docRole,'viewer');

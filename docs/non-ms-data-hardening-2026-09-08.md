@@ -3986,12 +3986,65 @@ modern hook hydration/generation scope, retained queue inventory/recovery, and
 accepted modern remote-delete events with a guarded single-object restore.
 No existing cloud database, Storage object, account or Microsoft service changed.
 
+## Combined generation and role authority — September 9 follow-up
+
+The dormant generated collaboration session now uses
+`read_document_generation_collaboration` instead of separate generation-open
+and role RPCs. Migration `20260909100000` calls the existing checked open in
+metadata-only mode, then resolves the effective role within that same
+transaction. It keeps the existing shared publication, document, inherited
+project, account and PDF identity locks through return. Membership triggers
+already lock parent rows, including for an inserted direct viewer that would
+override inherited edit access. The Postgres skill informed this reuse of the
+existing lock order and authenticated-only execution grant.
+
+The response contains only the contract version, actor, document, generation,
+PDF identity, publication identity and role. It returns no document row,
+checkpoint bytes, source history or download URL. The client checks the exact
+response shape and captured identities before accepting the role. Concurrent
+refreshes share one request. A missing RPC or malformed response stays read-only;
+there is no fallback to separate reads. An explicit access or generation denial
+retires the open. This cuts each authority refresh from two RPCs to one;
+it does not claim a measured hosted latency or egress reduction.
+
+The earlier separate-RPC activation gap is addressed in local code, not deployed.
+Private Realtime policies, checked-bundle viewer/hook integration, old persistent
+queue recovery and real two-user browser checks remain required. Server write
+authorization still applies to every edit; a prior read is not a lasting write
+grant. Microsoft testing remains deferred.
+
+Local verification: 38 focused SDK, mounted-provider and remote-editor hook
+tests passed. All 39 disposable PostgreSQL/publication/HTTP groups passed,
+including eight new combined-authority groups, and the opt-in Node wrapper
+passed without a skip. These use the current shipped role function and real
+membership, account and publication locks. They cover both transaction orders,
+direct and inherited roles, absent direct-role insertion, account closure,
+generation change, minimal grants, migration replay and snapshot-free reads.
+The owned temporary clusters were stopped and removed. Vite build passed with
+the existing large-chunk warning; no hosted provider or live UI test occurred.
+The full `npm test` run passed across 642 files: 6,295 tests, 6,202 passed,
+93 skipped, zero failures or cancellations. Baseline `c1d7d54b` had 6,199
+passes and the same 93 skips. Final-code AST refresh passed with 27,738 nodes
+and 45,180 edges. `git diff --check` passed.
+
+The next checked-open integration must preserve two distinct annotation
+positions: the accepted tail frontier and the original checkpoint's compare-
+and-swap metadata (`at_seq`, writer ID and writer epoch). The reader currently
+returns only `throughSeq`, so passing its bytes straight into sync would lose
+the checkpoint write precondition. Extend that bundle contract first. Then
+consume it at `openAnnotationDoc`'s backend-hydration step, before outbox replay
+and local reconciliation. Also fence the hook's render-time scope by generation
+and checked-open identity, replace empty projected state rather than seeding it
+from the prior view, and avoid the first Realtime join re-fetching the same full
+checkpoint. Retained local work must still be reconciled, not discarded.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
 - [PostgreSQL transition-table trigger rules](https://www.postgresql.org/docs/current/sql-createtrigger.html)
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
 - [Postgres index guidance](https://supabase.com/docs/guides/database/postgres/indexes)
+- [PostgreSQL row and transaction lock rules](https://www.postgresql.org/docs/current/explicit-locking.html)
 - [Electron app lifecycle](https://www.electronjs.org/docs/latest/api/app)
 - [Stripe webhook retries, event ordering and duplicate handling](https://docs.stripe.com/webhooks)
 - [Stripe immutable event data and delivery-count fields](https://docs.stripe.com/api/events/object)

@@ -84,6 +84,11 @@ await withDisposablePostgres(async pg => {
   sql(`INSERT INTO templates(id,user_id) VALUES('${id(10)}','${owner}')`);
   applyMigration(migrationPath(target));
   applyMigration(migrationPath('20260909099000_document_generation_open.sql'));
+  // Use the current shipped role implementation, including archive policy and
+  // direct-role precedence. The inherited fixture otherwise has no role RPC.
+  const roleDefinition = fn('20260802000000_kal426_user_archive_foundation.sql', 'get_my_document_role');
+  sql(roleDefinition);
+  applyMigration(migrationPath('20260909100000_document_generation_collaboration.sql'));
   let serial = 100, groups = 0;
   const fresh = () => id(serial++), bytea = v => `decode('${Buffer.from(v).toString('hex')}','hex')`;
   const call = (name, args) => `SELECT public.${name}(${args.map(quote).join(',')})`;
@@ -658,6 +663,154 @@ await withDisposablePostgres(async pg => {
     });
     assert.equal(snapshot(x), before);
   });
+  assert.equal(groups, 31, 'Preserve all publication, open and HTTP groups');
+  const collaborationSql = (x, generation = x.u?.generation_id) =>
+    `SELECT public.read_document_generation_collaboration('${x.d}',${quote(generation)})`;
+  const collaboration = (x, actor = owner) => JSON.parse(asRole(actor, collaborationSql(x)).stdout);
+  await check('collaboration read has exact bounded fields and authenticated-only grants', async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES
+      ('${x.d}','${editor}','editor','active'),('${x.d}','${viewer}','viewer','active')`);
+    for (const role of ['anon', 'service_role']) errorState(asRole(owner, collaborationSql(x), role, false), '42501');
+    const signature = 'public.read_document_generation_collaboration(uuid,uuid)';
+    assert.equal(scalar(`SELECT count(*) FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a
+      WHERE p.oid='${signature}'::regprocedure AND a.grantee=0`), '0');
+    assert.equal(scalar(`SELECT prosecdef AND provolatile='v' AND proowner='postgres'::regrole
+      FROM pg_proc WHERE oid='${signature}'::regprocedure`), 't');
+    for (const [actor, role] of [[owner, 'owner'], [editor, 'editor'], [viewer, 'viewer']]) {
+      const result = collaboration(x, actor), expected = open(x, actor, { includeSnapshot: false });
+      assert.deepEqual(Object.keys(result).sort(), ['version','actor_user_id','document_id','generation_id','pdf','publication','role'].sort());
+      assert.deepEqual(result, { version: 1, actor_user_id: actor, document_id: x.d,
+        generation_id: x.u.generation_id, pdf: expected.pdf, publication: expected.publication, role });
+      assert.ok(!JSON.stringify(result).includes('Private foreign note'));
+      assert.ok(JSON.stringify(result).length < 2048);
+    }
+    const before = collaboration(x);
+    applyMigration(migrationPath('20260909100000_document_generation_collaboration.sql'));
+    assert.deepEqual(collaboration(x), before, 'Replay retains the same checked contract');
+  });
+  await check('collaboration role follows direct precedence inherited roles and project ownership', async () => {
+    const x = await prepare(seed()); publish(x);
+    assert.equal(collaboration(x, editor).role, 'editor', 'Inherited project editor');
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${editor}','viewer','active')`);
+    assert.equal(collaboration(x, editor).role, 'viewer', 'Direct viewer overrides inherited editor');
+    sql(`UPDATE document_collaborators SET role='owner' WHERE document_id='${x.d}' AND user_id='${editor}'`);
+    assert.equal(collaboration(x, editor).role, 'owner', 'Promoted direct owner');
+    sql(`UPDATE document_collaborators SET status='pending' WHERE document_id='${x.d}' AND user_id='${editor}'`);
+    assert.equal(collaboration(x, editor).role, 'editor', 'Inactive direct role does not override project role');
+    sql(`INSERT INTO project_collaborators(project_id,user_id,role,status) VALUES('${project}','${viewer}','viewer','active')`);
+    try {
+      assert.equal(collaboration(x, viewer).role, 'viewer');
+      sql(`UPDATE project_collaborators SET role='owner' WHERE project_id='${project}' AND user_id='${viewer}'`);
+      assert.equal(collaboration(x, viewer).role, 'owner', 'Promoted project owner');
+    } finally { sql(`DELETE FROM project_collaborators WHERE project_id='${project}' AND user_id='${viewer}'`); }
+    const p = fresh();
+    sql(`INSERT INTO projects(id,user_id,name) VALUES('${p}','${other}','Owned collaborator fixture');
+      UPDATE documents SET project_id='${p}' WHERE id='${x.d}'`);
+    assert.equal(collaboration(x, other).role, 'owner', 'Permanent project owner inherits access');
+  });
+  await check('collaboration denies missing wrong archived and unknown authority without fallback', async () => {
+    const x = await prepare(seed()); publish(x);
+    errorState(asRole(owner, collaborationSql(x, null), 'authenticated', false), '22023');
+    errorState(asRole(owner, collaborationSql(x, fresh()), 'authenticated', false), 'SG002');
+    errorState(asRole(other, collaborationSql(x), 'authenticated', false), '42501');
+    errorState(asRole(null, collaborationSql(x), 'authenticated', false), '42501');
+    errorState(asRole(owner, collaborationSql({ d: fresh(), u: x.u }), 'authenticated', false), '42501');
+    const legacy = seed();
+    errorState(asRole(owner, collaborationSql(legacy, fresh()), 'authenticated', false), 'SG002');
+    sql(`UPDATE documents SET user_archived_at=now() WHERE id='${x.d}'`);
+    assert.equal(collaboration(x).role, 'owner');
+    errorState(asRole(editor, collaborationSql(x), 'authenticated', false), '42501');
+    sql(`UPDATE documents SET user_archived_at=NULL WHERE id='${x.d}'`);
+    try {
+      for (const result of ['NULL', "'unexpected-role'"]) {
+        sql(`CREATE OR REPLACE FUNCTION public.get_my_document_role(doc_id uuid) RETURNS text
+          LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$SELECT ${result}::text$$`);
+        errorState(asRole(owner, collaborationSql(x), 'authenticated', false), '42501');
+      }
+    } finally { sql(roleDefinition); }
+  });
+  await check('collaboration does not read or hash the annotation checkpoint', async () => {
+    const x = await prepare(seed()); publish(x);
+    // A deliberately invalid checkpoint rejects a full open, while the role/
+    // immutable-PDF proof remains independent of the potentially large bytes.
+    sql(`INSERT INTO survey_private.annotation_generation_snapshots(document_id,generation_id,at_seq,snapshot,encoding_version,writer_id,writer_epoch)
+      VALUES('${x.d}','${x.u.generation_id}',0,decode('','hex'),1,'owned-empty-checkpoint',1)`);
+    errorState(asRole(owner, openSql(x), 'authenticated', false), '54000');
+    assert.equal(collaboration(x).role, 'owner');
+  });
+  await check('collaboration fences account closure and rejects old transaction snapshots', async () => {
+    const x = await prepare(seed()); publish(x);
+    for (const actor of [owner, editor]) {
+      collaboration(x, actor); // Ensure the exact existing guard is present.
+      errorState(sql(`BEGIN;UPDATE survey_private.account_write_guards SET closing=true WHERE user_id='${actor}';
+        ${readAs(editor)}${collaborationSql(x)};COMMIT`, false), '23514');
+    }
+    errorState(sql(`BEGIN ISOLATION LEVEL REPEATABLE READ;${readAs(owner)}${collaborationSql(x)};COMMIT`, false), '25001');
+    const held = session('collaboration_account', { role: 'authenticated', actorId: editor });
+    held.send(`${collaborationSql(x)};SELECT 'account-held';`); await held.wait('account-held');
+    for (const actor of [owner, editor]) errorState(asRole(null, `SELECT public.delete_account_owned_rows('${actor}')`, 'service_role', false), '55P03');
+    assert.equal((await held.finish(false)).status, 0);
+  });
+  await check('collaboration direct-role changes are fenced in both transaction orders', async () => {
+    const x = await prepare(seed()); publish(x);
+    sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${viewer}','editor','active')`);
+    const held = session('collaboration_direct', { role: 'authenticated', actorId: viewer });
+    held.send(`${collaborationSql(x)};SELECT 'direct-held';`); await held.wait('direct-held');
+    assert.equal(collaboration(x, viewer).role, 'editor', 'Readers can coexist');
+    for (const mutation of ["SET role='viewer'", "SET status='pending'"])
+      errorState(sql(`UPDATE document_collaborators ${mutation} WHERE document_id='${x.d}' AND user_id='${viewer}'`, false), '55P03');
+    errorState(sql(`DELETE FROM document_collaborators WHERE document_id='${x.d}' AND user_id='${viewer}'`, false), '55P03');
+    assert.equal((await held.finish(false)).status, 0);
+    const change = session('collaboration_direct_change', { role: 'postgres' });
+    change.send(`UPDATE document_collaborators SET role='viewer' WHERE document_id='${x.d}' AND user_id='${viewer}';SELECT 'change-held';`);
+    await change.wait('change-held');
+    errorState(asRole(viewer, collaborationSql(x), 'authenticated', false), '55P03');
+    assert.equal((await change.finish()).status, 0);
+    assert.equal(collaboration(x, viewer).role, 'viewer');
+    sql(`DELETE FROM document_collaborators WHERE document_id='${x.d}' AND user_id='${viewer}'`);
+    errorState(asRole(viewer, collaborationSql(x), 'authenticated', false), '42501');
+  });
+  await check('collaboration inherited-role locks fence project changes and absent direct overrides', async () => {
+    const x = await prepare(seed()); publish(x);
+    const held = session('collaboration_inherited', { role: 'authenticated', actorId: editor });
+    held.send(`${collaborationSql(x)};SELECT 'inherited-held';`); await held.wait('inherited-held');
+    errorState(sql(`UPDATE project_collaborators SET role='viewer' WHERE project_id='${project}' AND user_id='${editor}'`, false), '55P03');
+    errorState(sql(`DELETE FROM project_collaborators WHERE project_id='${project}' AND user_id='${editor}'`, false), '55P03');
+    errorState(sql(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${editor}','viewer','active')`, false), '55P03');
+    assert.equal((await held.finish(false)).status, 0);
+    const change = session('collaboration_inherited_change', { role: 'postgres' });
+    change.send(`UPDATE project_collaborators SET role='viewer' WHERE project_id='${project}' AND user_id='${editor}';SELECT 'project-change-held';`);
+    await change.wait('project-change-held');
+    errorState(asRole(editor, collaborationSql(x), 'authenticated', false), '55P03');
+    assert.equal((await change.finish()).status, 0);
+    assert.equal(collaboration(x, editor).role, 'viewer');
+    sql(`UPDATE project_collaborators SET role='editor' WHERE project_id='${project}' AND user_id='${editor}'`);
+    const insert = session('collaboration_override_insert', { role: 'postgres' });
+    insert.send(`INSERT INTO document_collaborators(document_id,user_id,role,status) VALUES('${x.d}','${editor}','viewer','active');SELECT 'override-held';`);
+    await insert.wait('override-held');
+    errorState(asRole(editor, collaborationSql(x), 'authenticated', false), '55P03');
+    assert.equal((await insert.finish()).status, 0);
+    assert.equal(collaboration(x, editor).role, 'viewer');
+  });
+  await check('collaboration proof and publication serialize and reject the previous generation', async () => {
+    const x = await prepare(seed()); publish(x);
+    const next = await prepare({ ...x, pdf: x.nextPdf, generation: x.u.generation_id }, { type: 'duplicate', page: 1 });
+    const held = session('collaboration_publication', { role: 'authenticated', actorId: owner });
+    held.send(`${collaborationSql(x)};SELECT 'publication-reader-held';`); await held.wait('publication-reader-held');
+    errorState(sql(publishSql(next), false), '40001');
+    assert.equal(collaboration(x).generation_id, x.u.generation_id);
+    assert.equal((await held.finish(false)).status, 0);
+    const writer = session('collaboration_publisher', { role: 'postgres' });
+    writer.send(`${publishSql(next)};SELECT 'publisher-held';`); await writer.wait('publisher-held');
+    errorState(asRole(owner, collaborationSql(x), 'authenticated', false), '40001');
+    assert.equal((await writer.finish()).status, 0);
+    errorState(asRole(owner, collaborationSql(x), 'authenticated', false), 'SG002');
+    const result = collaboration(next);
+    assert.equal(result.generation_id, next.u.generation_id); assert.equal(result.pdf.path, next.u.path);
+    assert.equal(result.publication.operation_id, next.u.operation_id); assert.equal(result.role, 'owner');
+  });
+  assert.equal(groups, 39);
   console.log(`Document generation publication PostgreSQL groups passed: ${groups}`);
 }, { name: 'generation-publication', commandTimeoutMs: 60000 });
 console.log('Disposable local PostgreSQL stopped; exact temporary cluster removed');

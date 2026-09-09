@@ -90,10 +90,10 @@ async function mount(t, { role = 'owner', strict = false, ...options } = {}) {
       },
       realtime: { setAuth: async () => {} },
       rpc(name, params) { calls.rpc.push({ name, params });
-        assert.ok(['read_document_generation_open', 'get_my_document_role'].includes(name), 'No legacy RPC/write');
-        return query(async () => name === 'get_my_document_role'
-          ? { data: typeof roleResult === 'function' ? await roleResult() : roleResult, error: null }
-          : { data: { actor_user_id: actor, document_id: docId, generation_id: generation, pdf: bundle.pdf, publication: bundle.publication }, error: null });
+        assert.equal(name, 'read_document_generation_collaboration', 'No legacy RPC/write');
+        return query(async () => ({ data: { version: 1, actor_user_id: actor, document_id: docId, generation_id: generation,
+          pdf: bundle.pdf, publication: bundle.publication,
+          role: typeof roleResult === 'function' ? await roleResult() : roleResult }, error: null }));
       },
       from(table) { calls.table.push(table); assert.equal(table, 'document_collaborators');
         const q = query(() => ({ data: [], error: null })); q.select = () => q; q.eq = () => q; return q; },
@@ -259,7 +259,7 @@ test('checked close callback is used and missing callback never pretends success
   const h = await mount(t); assert.equal(h.value.closeDocument().saved, false);
   let called = 0; await h.render({ closeDocument: async () => { called++; return { saved: false }; } });
   assert.equal((await h.value.closeDocument()).saved, false); assert.equal(called, 1);
-  assert.ok(h.calls.rpc.every(c => ['read_document_generation_open', 'get_my_document_role'].includes(c.name)));
+  assert.ok(h.calls.rpc.every(c => c.name === 'read_document_generation_collaboration'));
   assert.ok(h.calls.table.every(table => table === 'document_collaborators'));
 });
 

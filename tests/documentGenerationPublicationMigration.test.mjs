@@ -8,6 +8,6 @@ test('private publication and checked generation open preserve exact state in di
   const r = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/test-document-generation-publication-postgres.mjs', import.meta.url))],
     { encoding: 'utf8', timeout: 180000, maxBuffer: 4 * 1024 * 1024 });
   assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}\n${r.error?.message || ''}`);
-  assert.match(r.stdout, /Document generation publication PostgreSQL groups passed: 31/);
+  assert.match(r.stdout, /Document generation publication PostgreSQL groups passed: 39/);
   assert.match(r.stdout, /Disposable local PostgreSQL stopped; exact temporary cluster removed/);
 });
