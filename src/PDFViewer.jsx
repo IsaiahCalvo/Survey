@@ -4675,6 +4675,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     isCurrent: isEntityCatalogScopeCurrent,
   });
   const documentEntityChoices = entityCatalog.entities;
+  const documentEntityChoiceScope = useMemo(() => Object.freeze({
+    actorUserId: user?.id || null, tabId: tabId || null, file: pdfFile,
+    choices: documentEntityChoices,
+  }), [documentEntityChoices, pdfFile, tabId, user?.id]);
   const pendingManagedEntityCatalog = pendingManagedEntityCatalogRef.current?.file === pdfFile
     && pendingManagedEntityCatalogRef.current?.localId === pdfFile?.localId
     ? pendingManagedEntityCatalogRef.current : null;
@@ -31688,6 +31692,8 @@ ${pageBlocks}
       DEFAULT_SURVEY_MARKER_OPACITY,
       deleteAnnotations,
       deleteCategory: handleDeleteSurveyCategoryDefinition,
+      documentEntityChoiceScope,
+      documentEntityChoices,
       documentSyncEnabled,
       expandedCategories,
       expandedSurveyMarkers,
@@ -31828,6 +31834,8 @@ ${pageBlocks}
     DEFAULT_SURVEY_MARKER_OPACITY,
     deleteAnnotations,
     handleDeleteSurveyCategoryDefinition,
+    documentEntityChoiceScope,
+    documentEntityChoices,
     documentSyncEnabled,
     expandedCategories,
     expandedSurveyMarkers,

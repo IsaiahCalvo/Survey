@@ -306,6 +306,8 @@ const SurveyMarkerReviewIndicator = ({
   );
 };
 
+const EMPTY_ENTITY_CHOICES = Object.freeze([]);
+
 const SurveySpacesRail = ({
   activeSpaceId,
   addCategoryAsNewTemplate,
@@ -318,7 +320,9 @@ const SurveySpacesRail = ({
   DEFAULT_SURVEY_MARKER_OPACITY,
   deleteAnnotations,
   deleteCategory = () => {},
+  documentEntityChoiceScope = null,
   documentSyncEnabled,
+  documentEntityChoices,
   expandedCategories,
   expandedSurveyMarkers,
   exportMenuRef,
@@ -437,6 +441,30 @@ const SurveySpacesRail = ({
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(true);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
+  const availableEntityChoices = documentEntityChoices === undefined
+    ? (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES)
+    : (Array.isArray(documentEntityChoices) ? documentEntityChoices : EMPTY_ENTITY_CHOICES);
+  const fallbackEntityChoiceScope = useMemo(() => Object.freeze({
+    actorUserId: user?.id || null, file: pdfFile,
+  }), [pdfFile, user?.id]);
+  const upstreamEntityChoiceScope = documentEntityChoiceScope || fallbackEntityChoiceScope;
+  const activeEntityChoiceScope = useMemo(() => Object.freeze({
+    upstream: upstreamEntityChoiceScope, choices: availableEntityChoices,
+  }), [availableEntityChoices, upstreamEntityChoiceScope]);
+  const entityChoiceScopeRef = useRef(activeEntityChoiceScope);
+  entityChoiceScopeRef.current = activeEntityChoiceScope;
+  const entityChoiceScopeIsCurrent = () => entityChoiceScopeRef.current === activeEntityChoiceScope;
+  useEffect(() => {
+    if (entityChoiceScopeRef.current === null
+      || entityChoiceScopeRef.current === activeEntityChoiceScope) {
+      entityChoiceScopeRef.current = activeEntityChoiceScope;
+    }
+    setOpenEntityDropdownId(null);
+    const capturedScope = activeEntityChoiceScope;
+    return () => {
+      if (entityChoiceScopeRef.current === capturedScope) entityChoiceScopeRef.current = null;
+    };
+  }, [activeEntityChoiceScope]);
   const [isModuleSelectorOpen, setIsModuleSelectorOpen] = useState(false);
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState(false);
   // Mobile-only export menu in the sheet header (demo SurveySheet.tsx:324-348);
@@ -447,6 +475,9 @@ const SurveySpacesRail = ({
   // notes editor takeover with its local drafts (committed only on Save,
   // mirroring the desktop Note dialog's draft-then-save behavior).
   const [mobileDetailDropdown, setMobileDetailDropdown] = useState(null); // 'entity' | 'markerItem' | null
+  useEffect(() => {
+    setMobileDetailDropdown(previous => previous === 'entity' ? null : previous);
+  }, [activeEntityChoiceScope]);
   const [mobileNotesEditorOpen, setMobileNotesEditorOpen] = useState(false);
   const [mobileNoteDraft, setMobileNoteDraft] = useState({ text: '', photos: [], videos: [] });
   // Desktop-only Create Category flow: the plus button in the "Categories"
@@ -693,10 +724,9 @@ const SurveySpacesRail = ({
 
   // O(1) entity-by-id lookup for the per-marker render loop below (entity ids are
   // unique, so a Map.get matches the old entities.find first-and-only result).
-  const entitiesMap = useMemo(() => {
-    const entities = selectedTemplate?.entities || [];
-    return new Map(entities.map((e) => [e.id, e]));
-  }, [selectedTemplate?.entities]);
+  const legacyDisplayEntitiesMap = useMemo(() => new Map(
+    (selectedTemplate?.entities || EMPTY_ENTITY_CHOICES).map((entity) => [entity.id, entity]),
+  ), [selectedTemplate?.entities]);
 
   // O(1) item-by-name+type lookup for the per-marker render loop below.
   // Replaces repeated O(|items|) Object.values(items).find(name && itemType)
@@ -765,13 +795,16 @@ const SurveySpacesRail = ({
 
   // Same writes as the desktop expanded-row entity dropdown (handleEntitySelection
   // below): patch the marker annotation, then mirror onto the linked item's
-  // module-specific data and its annotations. entityId '' / null clears.
+  // module-specific data and its annotations. Only the explicit None option
+  // clears; a stale nonempty id must keep its assignment-time snapshot.
   const applyEntitySelectionForMarker = (annotationId, markerModuleId, category, entityId) => {
+    if (!entityChoiceScopeIsCurrent()) return false;
     const { matchingItem, moduleData, dataKey } = findMarkerMatchingItem(annotationId, markerModuleId, category);
-    const entities = selectedTemplate?.entities || [];
-    const entity = entityId ? entities.find(e => e.id === entityId) : null;
+    const clear = entityId === '';
+    const entity = clear ? null : availableEntityChoices.find(candidate => candidate.id === entityId);
+    if (!clear && !entity) return false;
 
-    setSurveyMarkers(prev => ({
+    setSurveyMarkers(prev => !entityChoiceScopeIsCurrent() ? prev : ({
       ...prev,
       [annotationId]: {
         ...prev[annotationId],
@@ -791,11 +824,12 @@ const SurveySpacesRail = ({
           entityColor: entity ? entity.color : undefined
         }
       };
-      setItems(prev => ({
+      setItems(prev => !entityChoiceScopeIsCurrent() ? prev : ({
         ...prev,
         [matchingItem.itemId]: updatedItem
       }));
       setAnnotations(prev => {
+        if (!entityChoiceScopeIsCurrent()) return prev;
         const updated = { ...prev };
         Object.values(updated).forEach(ann => {
           if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
@@ -810,6 +844,7 @@ const SurveySpacesRail = ({
         return updated;
       });
     }
+    return true;
   };
 
   // Verbatim re-housing of the desktop checklist Y/N/N-A click handler
@@ -817,7 +852,9 @@ const SurveySpacesRail = ({
   // and the desktop row share one implementation, including the KAL-44
   // auto-"Complete"-entity behavior when every active item is Y or N/A.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
+    if (!entityChoiceScopeIsCurrent()) return false;
     setSurveyMarkers(prev => {
+      if (!entityChoiceScopeIsCurrent()) return prev;
       const updated = {
         ...prev,
         [annotationId]: {
@@ -858,8 +895,7 @@ const SurveySpacesRail = ({
         // If all items are Y or N/A, automatically set entity to "Complete"
         if (allItemsComplete) {
           // Find the "Complete" entity
-          const entities = selectedTemplate.entities || [];
-          const completeEntity = entities.find(e =>
+          const completeEntity = availableEntityChoices.find(e =>
             e.name.toLowerCase().includes('complete')
           );
 
@@ -877,13 +913,14 @@ const SurveySpacesRail = ({
                 }
               };
 
-              setItems(prev2 => ({
+              setItems(prev2 => !entityChoiceScopeIsCurrent() ? prev2 : ({
                 ...prev2,
                 [matchingItem.itemId]: updatedItem
               }));
 
               // Update all annotations for this item in this module with the new color
               setAnnotations(prev2 => {
+                if (!entityChoiceScopeIsCurrent()) return prev2;
                 const updatedAnns = { ...prev2 };
                 Object.values(updatedAnns).forEach(ann => {
                   const annModuleId = ann.moduleId || ann.spaceId; // Support legacy spaceId
@@ -902,6 +939,7 @@ const SurveySpacesRail = ({
               // Update surveyMarker color on PDF
               if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
                 setNewSurveyMarkersByPage(prev2 => {
+                  if (!entityChoiceScopeIsCurrent()) return prev2;
                   const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
                   // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
                   const filtered = pageSurveyMarkers.filter(h => {
@@ -950,13 +988,14 @@ const SurveySpacesRail = ({
               }
             };
 
-            setItems(prev2 => ({
+            setItems(prev2 => !entityChoiceScopeIsCurrent() ? prev2 : ({
               ...prev2,
               [matchingItem.itemId]: updatedItem
             }));
 
             // Update all annotations for this item in this space
             setAnnotations(prev2 => {
+              if (!entityChoiceScopeIsCurrent()) return prev2;
               const updatedAnns = { ...prev2 };
               Object.values(updatedAnns).forEach(ann => {
                 if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
@@ -974,6 +1013,7 @@ const SurveySpacesRail = ({
             // Update surveyMarker on PDF - revert to "needs entity" state (transparent with dashed outline)
             if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
               setNewSurveyMarkersByPage(prev2 => {
+                if (!entityChoiceScopeIsCurrent()) return prev2;
                 const pageSurveyMarkers = prev2[surveyMarkerData.pageNumber] || [];
                 // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
                 const filtered = pageSurveyMarkers.filter(h => {
@@ -1014,6 +1054,7 @@ const SurveySpacesRail = ({
 
       return updated;
     });
+    return true;
   };
 
   // ——— Mobile in-sheet notes editor (demo SurveySheet.tsx:191-283) ———
@@ -1740,12 +1781,12 @@ const SurveySpacesRail = ({
                     const detailModuleId = mobileDetailMarker.moduleId;
                     const { moduleData } = findMarkerMatchingItem(annotationId, detailModuleId, detailCategory);
                     const currentEntityId = moduleData.entityId || mobileDetailMarker.entityId;
-                    const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
-                    const detailEntityColor = currentEntity?.color || moduleData.entityColor || mobileDetailMarker.entityColor || null;
-                    const detailEntityName = currentEntity?.name || moduleData.entityName || mobileDetailMarker.entityName || 'None';
+                    const currentEntity = currentEntityId ? legacyDisplayEntitiesMap.get(currentEntityId) : null;
+                    const detailEntityColor = moduleData.entityColor || mobileDetailMarker.entityColor || currentEntity?.color || null;
+                    const detailEntityName = moduleData.entityName || mobileDetailMarker.entityName || currentEntity?.name || 'None';
                     const entityOptions = [
                       { id: '', name: 'None', color: null },
-                      ...((selectedTemplate?.entities || []).map(entity => ({ id: entity.id, name: entity.name, color: entity.color })))
+                      ...availableEntityChoices.map(entity => ({ id: entity.id, name: entity.name, color: entity.color }))
                     ];
                     // Sibling nav: every Survey Marker of this category in this
                     // module, in rail order (demo SurveySheet.tsx:459-491).
@@ -3421,9 +3462,9 @@ const SurveySpacesRail = ({
                                                 {mobileMode && (() => {
                                                   const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
                                                   const rowEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
-                                                  const dotColor = (rowEntityId ? entitiesMap.get(rowEntityId)?.color : null)
-                                                    || moduleData.entityColor
+                                                  const dotColor = moduleData.entityColor
                                                     || surveyMarkers[annotationId]?.entityColor
+                                                    || (rowEntityId ? legacyDisplayEntitiesMap.get(rowEntityId)?.color : null)
                                                     || null;
                                                   return (
                                                     <button
@@ -3487,10 +3528,11 @@ const SurveySpacesRail = ({
 
                                                           // Try to get entityId from item's module data first, then from surveyMarkerData
                                                           let entityId = null;
+                                                          let moduleData = {};
                                                           if (matchingItem) {
                                                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
                                                             const dataKey = getModuleDataKey(moduleName);
-                                                            const moduleData = matchingItem[dataKey] || {};
+                                                            moduleData = matchingItem[dataKey] || {};
                                                             entityId = moduleData.entityId;
                                                           }
                                                           // Fallback to surveyMarkerData if not found in item
@@ -3498,14 +3540,11 @@ const SurveySpacesRail = ({
                                                             entityId = surveyMarkerData.entityId;
                                                           }
 
-                                                          if (entityId) {
-                                                            const entity = entitiesMap.get(entityId);
-                                                            if (entity) {
-                                                              // Use the exact color from entity.color without transformation
-                                                              indicatorColor = entity.color;
-                                                              indicatorTooltip = entity.name;
-                                                            }
-                                                          }
+                                                          const entity = entityId ? legacyDisplayEntitiesMap.get(entityId) : null;
+                                                          indicatorColor = moduleData.entityColor
+                                                            || surveyMarkerData?.entityColor || entity?.color || null;
+                                                          indicatorTooltip = moduleData.entityName
+                                                            || surveyMarkerData?.entityName || entity?.name || null;
                                                         }
 
                                                         return (
@@ -3698,14 +3737,13 @@ const SurveySpacesRail = ({
 
                                                     // Get current entity status from item's module-specific data (preferred) or from survey marker annotation (legacy)
                                                     const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId;
-                                                    const entities = selectedTemplate?.entities || [];
-                                                    const currentEntity = currentEntityId ? entities.find(entity => entity.id === currentEntityId) : null;
-                                                    const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor;
-                                                    const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || 'None';
+                                                    const currentEntity = currentEntityId ? legacyDisplayEntitiesMap.get(currentEntityId) : null;
+                                                    const selectedEntityColor = moduleData.entityColor || surveyMarkerData?.entityColor || currentEntity?.color;
+                                                    const selectedEntityName = moduleData.entityName || surveyMarkerData?.entityName || currentEntity?.name || 'None';
                                                     const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
                                                     const entityOptions = [
                                                       { id: '', name: 'None', color: null },
-                                                      ...entities.map(entity => ({
+                                                      ...availableEntityChoices.map(entity => ({
                                                         id: entity.id,
                                                         name: entity.name,
                                                         color: entity.color

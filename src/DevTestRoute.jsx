@@ -96,6 +96,15 @@ const documentEntityCatalogE2ETemplates = [{
     borderColor: '#8b6422', borderOpacity: 0.8, matchFill: false },
   { id: 'subcontractor', name: 'Subcontractor', color: '#5ba1f0', opacity: 0.5,
     borderColor: null, borderOpacity: null, matchFill: true }],
+}, {
+  id: 'entity-catalog-changed-template', name: 'Changed Template (must not replace document list)',
+  updatedAt: '2026-09-09T13:00:00.000Z',
+  modules: [{ id: 'entity-module', name: 'Survey', categories: [{ id: 'entity-category',
+    name: 'Walls', color: '#d8a84e', checklist: [] }] }],
+  entities: [{ id: 'general-contractor', name: 'Renamed in template only', color: '#d85a5a', opacity: 0.4,
+    borderColor: '#7b2020', borderOpacity: 0.9, matchFill: false },
+  { id: 'template-only', name: 'Template-only choice', color: '#63c982', opacity: 0.6,
+    borderColor: null, borderOpacity: null, matchFill: false }],
 }];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';

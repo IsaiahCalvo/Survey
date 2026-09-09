@@ -5320,6 +5320,63 @@ This slice does not validate arbitrary entity IDs inside opaque annotation/Yjs
 writes on the server. It does not replace the still-gated generation-sidecar
 transport or prove lower production egress. Microsoft 365 remains deferred.
 
+## Document entity rail completion — September 9 follow-up
+
+The follow-up audit found five remaining rail consumers reading mutable template
+entities. Desktop and mobile choices, reassignment and checklist-driven Complete
+now use the exact active document list supplied by PDFViewer. An explicit empty
+list stays empty. Only the None option clears an assignment; an unknown nonempty
+ID cannot silently erase it. Existing saved names/colors still win, with the old
+template lookup retained only for historical records missing those snapshots.
+
+The rail owns a short-lived actor/tab/file/list lease. Retained handlers and
+queued state updates reject a retired lease, including mounted-tab A-to-B-to-A,
+same-file list replacement and unmount. React StrictMode replay still permits a
+current click. Scope changes close entity menus, without clearing note drafts or
+other mobile detail state. AppShell needs no new global entity state.
+
+Sol-medium handled source and independent review; Sol-low added a mounted real
+rail suite. All 14 rail tests pass, including explicit null and invalid lists.
+The root reran the final rail plus catalog client/adoption suites: 36/36 pass
+(`/tmp/rail-entity-final-combined-20260909.log`). Stale callback tests count calls
+at the parent setter entry, including after unmount; they do not rely on React
+silently dropping an unmounted update. The real in-app browser flow used the
+isolated managed-local fixture: adopt original list, draw/name/save a marker,
+reopen, then select a template with renamed/recolored same-ID entities and a new
+template-only entity. The saved assignment and original document choices stayed
+intact. Desktop and mobile reassignment saved, and mobile reopen retained the
+assignment. The mobile menu was checked at 390 by 844 through the browser's
+viewport control. No accounts, cloud objects or Microsoft services were used.
+The feature-off fixture still reaches marker naming without a new adoption
+dialog. Its pre-existing unmanaged-file Syncing notice is unchanged. The exact
+managed-local test database was removed through its fixture control after QA.
+Temporary viewport overrides were reset and both test tabs were closed. The
+first dev-server session had a module-fetch error; restarting that owned server
+resolved it, and the loaded test flows reported only the offline-credentials
+warning.
+
+The complete offline regression run passes: 6,798 tests, 6,703 passed, 95 skipped,
+zero failures or cancellations. Vite build also passes, with the existing
+large-chunk warning. Logs: `/tmp/rail-entity-full-tests-20260909.log` and
+`/tmp/rail-entity-final-build-20260909.log`. This is local verification; no cloud
+migration, feature enablement, push or deployment occurred.
+
+Live read-only Supabase sampling at 2026-09-09 21:48:54 UTC reported Survey as
+ACTIVE_HEALTHY. `document_annotations` used 202,776,576 bytes, unchanged from the
+earlier September 8 sample; `annotation_updates` used 24,436,736 bytes and
+`doc_yjs_state` used 18,554,880 bytes. These are relation sizes, not billed egress
+or proof that the quota warning is resolved. The new entity catalog tables were
+absent from the live relation sample: the local migration remains undeployed.
+
+The larger shared-definition gap remains: document collaborators do not gain
+access to the owner's private modules, categories or checklists. A later reviewed
+document-owned snapshot must contain only those definitions, not private Excel
+links, sync settings or view state. Do not infer an old document's definitions
+from today's mutable template. Checked-generation sidecar publication also needs
+a connected immutable upload/manifest/receipt/retention contract; do not drop
+legacy sidecar data or widen template access as a shortcut. Microsoft 365 testing
+and live rollout remain deferred.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
