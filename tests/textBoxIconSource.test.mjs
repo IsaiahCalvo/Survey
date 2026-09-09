@@ -20,15 +20,25 @@ test('Text tool uses the supplied text-box selection icon', async () => {
   assert.match(iconsSource, /import textBoxIconUrl from '\.\/assets\/icons\/text-box-selection\.svg';/);
   assert.match(iconsSource, /textBox:.*renderMaskIcon\(textBoxIconUrl,/);
   assert.match(iconsSource, /text: \(size, color, style, className\) => \([\s\S]*?points="4 7 4 4 20 4 20 7"/);
-  // 2026-09-07 polish pass: the Text GROUP button now shows the owner's
-  // text-box glyph too. It previously showed a serif "T" while the Text option
-  // inside its own sub-toolbar showed the text-box icon, so the group button
-  // and the tool it opens disagreed. The old assertion pinned that mismatch.
-  assert.match(appShell, /aria-label="Text"[\s\S]{0,900}<Icon name="textBox" size=\{18\}/);
+  assert.match(appShell, /aria-label="Text"[\s\S]{0,500}<Icon name="textGroup" size=\{18\}/);
   assert.match(viewer, /\{ id: 'text', label: 'Text', iconName: 'textBox' \}/);
-  // 2026-09-07 (A7): the phone's Text GROUP button showed the serif "T" while
-  // desktop's showed the text-box glyph. Same tool must mean the same glyph on
-  // both, so the old assertion on icon: 'text' is replaced.
-  assert.match(mobile, /review:\s*\{[\s\S]{0,180}icon: 'textBox',[\s\S]{0,180}\{ id: 'text', label: 'Text', icon: 'textBox' \}/);
+  assert.match(mobile, /review:\s*\{[\s\S]{0,180}icon: 'textGroup',[\s\S]{0,180}\{ id: 'text', label: 'Text', icon: 'textBox' \}/);
   assert.match(formTools, /id: 'form-textbox'[\s\S]{0,100}iconName: 'textBox'/);
+});
+
+test('Text group uses the exact Lucide Case Sensitive icon on desktop and mobile', async () => {
+  const [iconSource, iconsSource, appShell, mobile] = await Promise.all([
+    readFile(new URL('../src/assets/icons/case-sensitive.svg', import.meta.url), 'utf8'),
+    readFile(new URL('../src/Icons.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/AppShell.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(iconSource, /<path d="m2 16 4\.039-9\.69a\.5\.5 0 0 1 \.923 0L11 16" \/>/);
+  assert.match(iconSource, /<circle cx="18\.5" cy="12\.5" r="3\.5" \/>/);
+  assert.match(iconSource, /stroke-width="2"/);
+  assert.match(iconsSource, /import textGroupIconUrl from '\.\/assets\/icons\/case-sensitive\.svg';/);
+  assert.match(iconsSource, /textGroup:.*renderMaskIcon\(textGroupIconUrl,/);
+  assert.match(appShell, /aria-label="Text"[\s\S]{0,500}<Icon name="textGroup" size=\{18\}/);
+  assert.match(mobile, /review:\s*\{[\s\S]{0,180}icon: 'textGroup'/);
 });

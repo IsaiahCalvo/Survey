@@ -20,7 +20,7 @@ const renderer = (name) => {
 };
 
 test('top toolbar group glyphs carry no translateY optical nudge', () => {
-  for (const name of ['drawGroup', 'text', 'textBox', 'shapes']) {
+  for (const name of ['drawGroup', 'textGroup', 'shapes']) {
     assert.doesNotMatch(
       renderer(name),
       /translateY\(/,
