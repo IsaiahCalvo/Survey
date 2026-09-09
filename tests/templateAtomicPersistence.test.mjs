@@ -29,8 +29,9 @@ test('database hook forwards only explicit arrays and never normalizes malformed
   const start = hook.indexOf('const replaceTemplates =');
   const end = hook.indexOf('\n\n  return {', start);
   const replaceTemplates = hook.slice(start, end);
-  assert.match(replaceTemplates, /if \(!Array\.isArray\(templateRows\)\) \{\s*throw new TypeError/);
-  assert.match(replaceTemplates, /p_templates: templateRows/);
+  assert.match(replaceTemplates, /if \(!Array\.isArray\(templateRows\)\)\s*throw new TypeError/);
+  assert.match(replaceTemplates, /mutateTemplate\(templateRows, async \(capturedRows, \{ request \}\)/);
+  assert.match(replaceTemplates, /p_templates: capturedRows/);
   assert.doesNotMatch(replaceTemplates, /p_templates: Array\.isArray/);
 });
 

@@ -4575,6 +4575,95 @@ adds 47 tests. The 102-test focused group and all 210 tests referencing the hook
 also passed. Vite build passed with the existing large-chunk warning; graph
 refresh completed. Generated graph/cache files are not part of the commit.
 
+## Bind library writes to their issuing account — September 9 follow-up
+
+The active projects, documents and templates hooks now use an owned write
+transport. Before creating a lazy SDK builder, it checks the actual auth session
+against the issuing scope. All stages pin the initial JWT in the request header,
+disable SDK retry, share a 60-second deadline, and recheck auth after responses
+and before returning. A short-lived auth listener catches account A-B-A during
+an operation; it is removed on every exit. Retired callbacks reject before auth
+or query work. Current mutation-only document/template hooks still allow writes.
+
+This fixes wrong-intended-account execution, not an RLS bypass. RLS remains
+authoritative and shared-document writes still rely on server roles. A timeout,
+abort or account change after dispatch is an uncertain write outcome with
+`mayHaveCommitted:true`, never a rollback receipt or an instruction to retry.
+Project/mode retirement is checked at each await boundary; absent an auth event,
+a held HTTP request may last until response or deadline. This is not an immediate
+scope-change transport-abort guarantee.
+
+Document content dedup keeps lookup, revive, insert and confirmed-23505 winner
+lookup under one actor/token. Inputs are copied before auth awaits. Update replies
+must match the requested row ID. Invalid row/set replies preserve prior state and
+report uncertainty after dispatch. Local input exceptions and server exceptions
+expose only fixed safe error text/codes. `updateLastOpened`, which currently has
+no source caller, now rejects safe failures instead of silently ignoring SDK
+errors; future best-effort callers must consume that rejection explicitly.
+
+A pending list read owns a compact journal of acknowledged changes: one patch
+per row plus at most one replacement snapshot. It applies them in linear time
+over the returned rows before both state publication and the returned refetch
+value. This keeps unseen server rows without letting an older list erase a new
+create, undo an update, or revive a deleted row. The journal is per active read,
+not a global cache, a cross-hook invalidation bus, or a database transaction.
+It does not order concurrent server commits or settle multi-user conflicts.
+
+The codebase-design skill kept transport, publication and reconciliation behind
+small interfaces rather than repeating auth/session/error logic in each CRUD
+method. No new migrations, live account calls, storage writes, Microsoft tests,
+pushes or deployment are part of this slice.
+
+Evidence and remaining gates:
+
+- The old code reproduced a retained template callback dispatch after account
+  A-B-A, and all three lists losing acknowledged changes to an earlier read.
+- 42 new mounted tests run the actual hook bodies and real mutation helpers with
+  local external ports. They cover retained callbacks, unmount, actor/project/mode
+  changes, silent stored-session changes, each dedup stage, unknown rows, returned
+  refetch data, replacement composition, nested input ownership, malformed/wrong-ID
+  replies and safe local input exceptions.
+- 16 transport tests include the installed SDK against owned loopback HTTP:
+  captured Authorization, no automatic retry on 503, socket cancellation, silent
+  stored-session drift, auth A-B-A, whole-operation deadlines and listener cleanup.
+  Three journal tests compare compact state to sequential ACK replay, including
+  4,000 mixed changes. Focused group: 61 passed, zero failures.
+- All 252 tests referencing the database hooks pass. Existing static checks were
+  updated to assert guarded reconciled results and copied template payloads;
+  mounted tests preserve the real read/CRUD behavior checks.
+- Final-code browser checks narrowed six mock library rows to the MEP row and
+  duplicated the local PDF fixture from one page to two, with no error logs in
+  either fresh tab. The existing 78% to 187% zoom change remains observed, not
+  certified viewport behavior. An earlier tab hit a sign-in dialog and a reload
+  returned ERR_ABORTED during source updates; a clean tab completed the page flow.
+  All owned tabs were closed. These no-auth checks do not test live cloud writes.
+- Hosted RLS, two-user collaboration, measured egress, checked-open activation,
+  legacy PDF replacement size/hash consistency, provider retention/erasure and
+  Microsoft gates remain open. No production performance claim follows from
+  local tests. The active goal remains incomplete.
+
+Next replacement audit clarifies the earlier hash gate: `documents.content_sha256`
+is the original-import dedup key, while checked-generation assets carry the current
+byte hash. Recovery deliberately returns newer published bytes for that import.
+Do not overwrite the import hash to repair stale legacy size metadata. The only
+raw replacement caller is the page-operation path through PDFViewer and AppShell;
+AppShell changes size only in React after Storage upsert. Legacy hash paths may
+have references in several projects, and page annotations commit separately.
+A client-only upload-then-metadata-write cannot resolve those races. Next work
+should compose an isolated page-replacement adapter with the existing immutable
+generation publication transaction, preserving import identity and requiring an
+exact source version plus annotation frontier. Keep UI activation gated. Actual
+Storage sizes already drive quotas; this is not a newly proved quota source.
+
+Final verification: `npm test` passed with 6,643 tests, 6,548 passed, 95 skipped,
+zero failures/cancellations (`/tmp/survey-library-mutation-full-verified.log`,
+exit 0). This adds 61 tests to the prior 6,582-test checkpoint. The first full
+run also passed before the last six review checks were added. The final focused
+61-test group and 252 hook-consumer tests pass. Vite build passed with the existing
+large-chunk warning (`/tmp/survey-library-mutation-build-verified.log`); graph
+refresh completed with 28,023 nodes and 45,673 edges. Generated graph/cache files
+remain outside the commit. No live service was changed by this verification.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

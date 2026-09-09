@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client';
 
 const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../src/hooks/useDatabase.js', import.meta.url), 'utf8');
+const mutationImports = [...source.matchAll(/import\s+\{[^}]+\}\s+from\s+(['"])([^'"]*(?:actorBoundDatabaseMutation|libraryMutationState|libraryMutationRunner)\.js)\1;/g)]
+  .map(([statement, , path]) => statement.replace(path, new URL(path, new URL('../src/hooks/useDatabase.js', import.meta.url)).href)).join('\n');
 const section = (start, end) => source.slice(source.indexOf(start), end ? source.indexOf(end, source.indexOf(start)) : undefined);
 const hookSource = [
   section('export const useProjects =', '// DOCUMENTS HOOKS'),
@@ -30,11 +32,15 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     rows: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }],
     listeners: new Set(), reads: [], metadataReads: [], writes: [], invalidations: [],
     timers: new Map(), timerId: 0, readError: null, writeError: null, queryLog: [],
-    sessionReads: [], writeReplies: [],
+    sessionReads: [], writeReplies: [], authListeners: new Set(),
   };
   state.tables = tablesForUser?.(state.user.id);
   state.supabase = {
     auth: {
+      onAuthStateChange(callback) {
+        state.authListeners.add(callback);
+        return { data: { subscription: { unsubscribe: () => state.authListeners.delete(callback) } } };
+      },
       getSession() {
         const actor = state.authUser === undefined ? state.user : state.authUser;
         const result = { data: { session: actor ? { user: actor, access_token: `token-${actor.id}` } : null }, error: null };
@@ -69,6 +75,8 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
       };
       const builder = {
         setHeader: (name, value) => { headers[name] = value; return builder; },
+        abortSignal: () => builder,
+        retry: () => builder,
         select: () => builder,
         is: (column, value) => { filters.push((row) => row[column] === value); return builder; },
         order: (column) => { orderColumn = column; return builder; },
@@ -80,8 +88,8 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
         upsert: (row) => { operation = 'upsert'; data = row; return builder; },
         update: (row) => { operation = 'update'; data = row; return builder; },
         delete: () => { operation = 'delete'; return builder; },
-        single: settle,
-        maybeSingle: settle,
+        single: () => builder,
+        maybeSingle: () => builder,
         then: (resolve, reject) => settle().then(resolve, reject),
       };
       return builder;
@@ -90,6 +98,7 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
   const key = `__dataHookStateRace${sequence}`;
   globalThis[key] = state;
   const moduleSource = `
+    ${mutationImports}
     import { useState, useEffect, useCallback, useRef } from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
     import { coalesceRead } from ${JSON.stringify(new URL('../src/hooks/requestCoalescer.js', import.meta.url).href)};
     import { isScopedRequestCurrent } from ${JSON.stringify(new URL('../src/hooks/scopedRequestGuard.js', import.meta.url).href)};

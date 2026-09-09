@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client';
 
 const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../src/hooks/useDatabase.js', import.meta.url), 'utf8');
+const mutationImports = [...source.matchAll(/import\s+\{[^}]+\}\s+from\s+(['"])([^'"]*(?:actorBoundDatabaseMutation|libraryMutationState|libraryMutationRunner)\.js)\1;/g)]
+  .map(([statement, , path]) => statement.replace(path, new URL(path, new URL('../src/hooks/useDatabase.js', import.meta.url)).href)).join('\n');
 const start = source.indexOf('export const useDocuments =');
 const end = source.indexOf('// TEMPLATES HOOKS', start);
 assert.ok(start >= 0 && end > start, 'load the real document hook');
@@ -22,10 +24,14 @@ async function mount(t, { enabled, deferredRead = false } = {}) {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const state = {
     user: { id: `query-opt-out-${++counter}` },
-    reads: [], updates: [], listeners: new Set(), pendingReads: [],
+    reads: [], updates: [], listeners: new Set(), authListeners: new Set(), pendingReads: [],
     rows: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }],
   };
   state.supabase = {
+    auth: {
+      getSession: async () => ({ data: { session: state.user ? { user: state.user, access_token: `token-${state.user.id}` } : null }, error: null }),
+      onAuthStateChange(callback) { state.authListeners.add(callback); return { data: { subscription: { unsubscribe: () => state.authListeners.delete(callback) } } }; },
+    },
     from(table) {
       let updates = null;
       let id = null;
@@ -44,7 +50,8 @@ async function mount(t, { enabled, deferredRead = false } = {}) {
         eq: (column, value) => { if (column === 'id') id = value; return builder; },
         is: () => builder, order: () => builder, in: () => builder, limit: () => builder, gt: () => builder,
         update: (value) => { updates = value; return builder; },
-        single: settle,
+        single: () => builder, maybeSingle: () => builder,
+        setHeader: () => builder, abortSignal: () => builder, retry: () => builder,
         then: (resolve, reject) => settle().then(resolve, reject),
       };
       return builder;
@@ -53,6 +60,7 @@ async function mount(t, { enabled, deferredRead = false } = {}) {
   const key = `__documentQueryOptOut${counter}`;
   globalThis[key] = state;
   const moduleSource = `
+    ${mutationImports}
     import { useState, useEffect, useCallback, useRef } from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
     import { coalesceRead } from ${JSON.stringify(new URL('../src/hooks/requestCoalescer.js', import.meta.url).href)};
     import { isScopedRequestCurrent } from ${JSON.stringify(new URL('../src/hooks/scopedRequestGuard.js', import.meta.url).href)};

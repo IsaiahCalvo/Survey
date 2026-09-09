@@ -104,8 +104,8 @@ test('a late request from an old user or project cannot replace the current scop
     latestRequestId: 2,
     currentScopeKey: 'user-b:project-b',
   }), true);
-  assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];[\s\S]*?setDocuments\(merged\)/);
-  assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];[\s\S]*?setTemplates\(rows\)/);
+  assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];\s*const reconciled = reconciler\.apply\(merged\);\s*setDocuments\(reconciled\)/);
+  assert.match(DATABASE_HOOKS, /if \(!isCurrentRequest\(\)\) return \[\];\s*const reconciled = reconciler\.apply\(rows\);\s*setTemplates\(reconciled\)/);
   assert.match(DATABASE_HOOKS, /setLoadedProjectReadScope\(projectReadScope\)/);
   assert.match(DATABASE_HOOKS, /setLoadedDocumentReadScope\(documentReadScope\)/);
   assert.match(TEMPLATE_HOOK, /const isCurrentScope = \(\) => templateMountedRef\.current && templateReadScopeRef\.current === templateReadScope;/);

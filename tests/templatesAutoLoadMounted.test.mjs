@@ -9,6 +9,8 @@ import { readLibraryRows, sortLibraryRows } from '../src/hooks/libraryPagination
 import { isScopedRequestCurrent } from '../src/hooks/scopedRequestGuard.js';
 
 const source = await readFile(new URL('../src/hooks/useDatabase.js', import.meta.url), 'utf8');
+const mutationHelpers = Object.assign({}, ...await Promise.all([...source.matchAll(/import\s+\{[^}]+\}\s+from\s+(['"])([^'"]*(?:actorBoundDatabaseMutation|libraryMutationState|libraryMutationRunner)\.js)\1;/g)]
+  .map(([, , path]) => import(new URL(path, new URL('../src/hooks/useDatabase.js', import.meta.url)).href))));
 const hook = source.slice(source.indexOf('export const useTemplates ='), source.indexOf('// TEMPLATE UTILITY FUNCTIONS'))
   .replace('export const useTemplates =', 'const useTemplates =');
 const tick = () => new Promise(setImmediate);
@@ -18,7 +20,11 @@ async function mount(t, options = {}) {
   const prior = new Map(['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
   const state = { user: { id: `template-auto-${++sequence}` }, rows: [{ id: 'a', name: 'A' }], reads: [], writes: [], listeners: new Set(), subscriptions: 0, unsubscriptions: 0, renders: [], defer: !!options.defer, error: null };
-  const client = { from(table) {
+  state.authListeners = new Set();
+  const client = { auth: {
+    getSession: async () => ({ data: { session: state.user ? { user: state.user, access_token: `token-${state.user.id}` } : null }, error: null }),
+    onAuthStateChange(callback) { state.authListeners.add(callback); return { data: { subscription: { unsubscribe: () => state.authListeners.delete(callback) } } }; },
+  }, from(table) {
     const call = { table, filters: [], operation: 'read' };
     const finish = () => {
       if (call.operation !== 'read') { state.writes.push(call); return Promise.resolve({ data: { id: call.id || 'saved', ...call.data }, error: state.writeError }); }
@@ -31,10 +37,12 @@ async function mount(t, options = {}) {
       insert: data => { call.operation = 'insert'; call.data = data; return query; },
       update: data => { call.operation = 'update'; call.data = data; return query; },
       delete: () => { call.operation = 'delete'; return query; },
-      single: finish, then: (resolve, reject) => finish().then(resolve, reject) };
+      single: () => query, maybeSingle: () => query,
+      setHeader: () => query, abortSignal: () => query, retry: () => query,
+      then: (resolve, reject) => finish().then(resolve, reject) };
     return query;
   } };
-  const dependencies = { ...React, supabase: client, useAuth: () => ({ user: state.user }), isSupabaseAvailable: () => true,
+  const dependencies = { ...React, ...mutationHelpers, supabase: client, useAuth: () => ({ user: state.user }), isSupabaseAvailable: () => true,
     coalesceRead, readLibraryRows, sortLibraryRows, isScopedRequestCurrent,
     subscribeLibraryChange: fn => { state.subscriptions++; state.listeners.add(fn); return () => { state.unsubscriptions++; state.listeners.delete(fn); }; } };
   const useTemplates = new Function(...Object.keys(dependencies), `${hook}\nreturn useTemplates;`)(...Object.values(dependencies));
@@ -128,8 +136,8 @@ test('disabled mode preserves create/update/delete requests and mutation failure
   });
   assert.deepEqual(h.state.writes.map(write => write.operation), ['insert', 'update', 'delete']); assert.equal(h.state.reads.length, 0);
   h.state.writeError = new Error('write denied');
-  await act(async () => assert.rejects(h.latest[0].createTemplate({ name: 'Denied' }), /write denied/));
-  assert.equal(h.latest[0].error, 'write denied');
+  await act(async () => assert.rejects(h.latest[0].createTemplate({ name: 'Denied' }), { code: 'DATABASE_MUTATION_FAILED' }));
+  assert.equal(h.latest[0].error, 'The database change could not be confirmed.');
 });
 
 test('explicit refresh bypasses a held boot read and older completion cannot replace it', async t => {

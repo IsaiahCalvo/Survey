@@ -12,6 +12,8 @@ import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvaila
 import { useAuth } from '../contexts/AuthContext';
 import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
+import { createLibraryReadReconciler } from './libraryMutationState.js';
+import { createLibraryMutationRunner } from './libraryMutationRunner.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange } from './libraryChangeBus.js';
@@ -104,7 +106,8 @@ export const useProjects = () => {
     const requestId = ++projectRequestRef.current;
     projectReadRef.current?.controller.abort();
     const controller = new AbortController();
-    projectReadRef.current = { scope: projectReadScope, controller };
+    const reconciler = createLibraryReadReconciler();
+    projectReadRef.current = { scope: projectReadScope, controller, reconciler };
     const { signal } = controller;
     const isCurrentRequest = () => isCurrentScope() && !signal.aborted && isScopedRequestCurrent({
       requestId,
@@ -114,6 +117,7 @@ export const useProjects = () => {
     });
     try {
       if (projectStateScopeRef.current !== projectReadScope) {
+        projectStateScopeRef.current = projectReadScope;
         setProjectStateScope(projectReadScope);
         setProjects([]);
       }
@@ -168,8 +172,9 @@ export const useProjects = () => {
         [...ownedProjects, ...collaboratorProjects].map((project) => [project.id, project]),
       ).values()].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0));
       if (!isCurrentRequest()) return [];
-      setProjects(projectsData);
-      return projectsData; // Return the data so callers can use it immediately
+      const reconciled = reconciler.apply(projectsData);
+      setProjects(reconciled);
+      return reconciled;
     } catch (err) {
       if (!isCurrentRequest()) return [];
       setError(err.message);
@@ -184,54 +189,32 @@ export const useProjects = () => {
     }
   };
 
-  const createProject = async (projectData) => {
-    if (!user || !isSupabaseAvailable()) return;
+  const mutateProject = createLibraryMutationRunner({
+    client: supabase, scope: projectReadScope, scopeRef: projectReadScopeRef,
+    mountedRef: projectMountedRef, readRef: projectReadRef,
+    stateScopeRef: projectStateScopeRef, setStateScope: setProjectStateScope,
+    setRows: setProjects, setError, available: isSupabaseAvailable,
+  });
 
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({ user_id: user.id, ...projectData })
-        .select()
-        .single();
+  const createProject = (input) => mutateProject(input, async (values, { request }) => {
+    const { data, error } = await request(() => supabase.from('projects')
+      .insert({ user_id: projectReadScope.actorId, ...values }).select().single());
+    if (error) throw error;
+    return data;
+  }, row => ({ kind: 'upsert', row }));
 
-      if (error) throw error;
-      setProjects((current) => [data, ...current]);
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
+  const updateProject = (id, updates) => mutateProject({ id, updates }, async (values, { request }) => {
+    const { data, error } = await request(() => supabase.from('projects')
+      .update(values.updates).eq('id', values.id).select().single());
+    if (error) throw error;
+    if (data?.id !== values.id) throw new Error('Invalid update response.');
+    return data;
+  }, row => ({ kind: 'update', row }));
 
-  const updateProject = async (id, updates) => {
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      setProjects((current) => current.map((p) => (p.id === id ? data : p)));
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  const deleteProject = async (id) => {
-    try {
-      const { error } = await supabase.from('projects').delete().eq('id', id);
-
-      if (error) throw error;
-      setProjects((current) => current.filter((p) => p.id !== id));
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
+  const deleteProject = (id) => mutateProject({ id }, async (values, { request }) => {
+    const { error } = await request(() => supabase.from('projects').delete().eq('id', values.id));
+    if (error) throw error;
+  }, () => ({ kind: 'delete', id }));
 
   const hasCurrentProjectState = projectStateScope === projectReadScope;
   return {
@@ -403,7 +386,8 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     const requestId = ++documentRequestRef.current;
     documentReadRef.current?.controller.abort();
     const controller = new AbortController();
-    documentReadRef.current = { scope: documentReadScope, controller };
+    const reconciler = createLibraryReadReconciler();
+    documentReadRef.current = { scope: documentReadScope, controller, reconciler };
     const isCurrentRequest = () => isCurrentScope() && !controller.signal.aborted && isScopedRequestCurrent({
       requestId,
       latestRequestId: documentRequestRef.current,
@@ -412,6 +396,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     });
     try {
       if (documentStateScopeRef.current !== documentReadScope) {
+        documentStateScopeRef.current = documentReadScope;
         setDocumentStateScope(documentReadScope);
         setDocuments([]);
       }
@@ -422,8 +407,9 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
         ? await coalesceRead(key, runDocumentsQuery, { signal: controller.signal })
         : await runDocumentsQuery(controller.signal);
       if (!isCurrentRequest()) return [];
-      setDocuments(merged);
-      return merged;
+      const reconciled = reconciler.apply(merged);
+      setDocuments(reconciled);
+      return reconciled;
     } catch (err) {
       if (!isCurrentRequest()) return [];
       setError(err.message);
@@ -438,134 +424,66 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     }
   };
 
-  const createDocument = async (documentData) => {
-    if (!user || !isSupabaseAvailable()) return;
+  const mutateDocument = createLibraryMutationRunner({
+    client: supabase, scope: documentReadScope, scopeRef: documentReadScopeRef,
+    mountedRef: documentMountedRef, readRef: documentReadRef,
+    stateScopeRef: documentStateScopeRef, setStateScope: setDocumentStateScope,
+    setRows: setDocuments, setError, available: isSupabaseAvailable,
+  });
 
-    // 2026-04-30 — stamp provenance metadata into every new document row:
-    // device the upload happened on (mac / windows / web / dev / mobile),
-    // the user's tier at upload time (free / pro / enterprise), and the app
-    // version that produced this row. Columns added by the
-    // 20260430000001_add_document_provenance migration. Caller-supplied
-    // documentData keys WIN if they collide (rare; mostly used for tests).
+  const createDocument = (documentData) => mutateDocument(documentData, async (values, { request }) => {
+    // Keep caller provenance precedence and the same-project content dedup rule.
     const provenance = buildDocumentProvenance({ subscriptionTier: tier });
-
-    try {
-      // Content-addressed dedup: the same bytes in the same project are ONE
-      // document. If a matching row already exists (even archived), reuse it —
-      // un-archiving as needed — instead of spawning a duplicate/blank copy.
-      const sha = documentData.content_sha256;
-      if (sha) {
-        let lookup = supabase
-          .from('documents')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('content_sha256', sha)
-          .limit(1);
-        lookup = (documentData.project_id == null)
-          ? lookup.is('project_id', null)
-          : lookup.eq('project_id', documentData.project_id);
-        const { data: existing, error: lookupErr } = await lookup.maybeSingle();
-        if (lookupErr && !isSupabaseNotFoundError(lookupErr)) throw lookupErr;
-        if (existing) {
-          if (existing.archived) {
-            const { data: revived, error: reviveErr } = await supabase
-              .from('documents')
-              .update({ archived: false, updated_at: new Date().toISOString() })
-              .eq('id', existing.id)
-              .select()
-              .single();
-            if (reviveErr) throw reviveErr;
-            setDocuments((current) => [revived, ...current.filter((d) => d.id !== revived.id)]);
-            return revived;
-          }
-          setDocuments((current) => [existing, ...current.filter((d) => d.id !== existing.id)]);
-          return existing;
-        }
-      }
-
-      const { data, error } = await supabase
-        .from('documents')
-        .insert({
-          user_id: user.id,
-          ...provenance,
-          ...documentData,
-        })
-        .select()
-        .single();
-
-      // KAL-267: two near-simultaneous uploads of identical bytes can both pass
-      // the SELECT dedup check above; the loser's insert then trips the unique
-      // content-hash index (23505). That's a dedup HIT, not a failure — fetch
-      // and reuse the winner's row.
-      if (error && error.code === '23505' && sha) {
-        let retry = supabase
-          .from('documents')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('content_sha256', sha)
-          .limit(1);
-        retry = (documentData.project_id == null)
-          ? retry.is('project_id', null)
-          : retry.eq('project_id', documentData.project_id);
-        const { data: winner, error: retryErr } = await retry.maybeSingle();
-        if (!retryErr && winner) {
-          setDocuments((current) => [winner, ...current.filter((d) => d.id !== winner.id)]);
-          return winner;
-        }
-      }
-
-      if (error) throw error;
-      setDocuments((current) => [data, ...current]);
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  const updateDocument = async (id, updates) => {
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      setDocuments((current) => current.map((d) => (d.id === id ? data : d)));
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  const deleteDocument = async (id) => {
-    try {
-      const { error } = await supabase
-        .from('documents')
-        .update({ archived: true, updated_at: new Date().toISOString() })
-        .eq('id', id);
-
+    const sha = values.content_sha256;
+    const lookup = () => {
+      let query = supabase.from('documents').select('*')
+        .eq('user_id', documentReadScope.actorId).eq('content_sha256', sha).limit(1);
+      query = values.project_id == null ? query.is('project_id', null) : query.eq('project_id', values.project_id);
+      return query.maybeSingle();
+    };
+    if (sha) {
+      const { data: existing, error } = await request(lookup, { write: false });
       if (error && !isSupabaseNotFoundError(error)) throw error;
-      setDocuments((current) => current.filter((d) => d.id !== id));
-    } catch (err) {
-      setError(err.message);
-      throw err;
+      if (existing) {
+        if (!existing.archived) return existing;
+        const { data, error: reviveError } = await request(() => supabase.from('documents')
+          .update({ archived: false, updated_at: new Date().toISOString() })
+          .eq('id', existing.id).select().single());
+        if (reviveError) throw reviveError;
+        return data;
+      }
     }
-  };
+    const { data, error } = await request(() => supabase.from('documents')
+      .insert({ user_id: documentReadScope.actorId, ...provenance, ...values }).select().single());
+    // A confirmed unique violation is a dedup race, not an ambiguous transport
+    // failure. Read the winner; never retry an unconfirmed insert.
+    if (error?.code === '23505' && sha) {
+      const { data: winner, error: retryError } = await request(lookup, { write: false });
+      if (!retryError && winner) return winner;
+    }
+    if (error) throw error;
+    return data;
+  }, row => ({ kind: 'upsert', row }));
 
-  const updateLastOpened = async (id) => {
-    try {
-      await supabase
-        .from('documents')
-        .update({ last_opened_at: new Date().toISOString() })
-        .eq('id', id);
-    } catch (err) {
-      console.error('Error updating last opened:', err);
-    }
-  };
+  const updateDocument = (id, updates) => mutateDocument({ id, updates }, async (values, { request }) => {
+    const { data, error } = await request(() => supabase.from('documents')
+      .update(values.updates).eq('id', values.id).select().single());
+    if (error) throw error;
+    if (data?.id !== values.id) throw new Error('Invalid update response.');
+    return data;
+  }, row => ({ kind: 'update', row }));
+
+  const deleteDocument = (id) => mutateDocument({ id }, async (values, { request }) => {
+    const { error } = await request(() => supabase.from('documents')
+      .update({ archived: true, updated_at: new Date().toISOString() }).eq('id', values.id));
+    if (error && !isSupabaseNotFoundError(error)) throw error;
+  }, () => ({ kind: 'delete', id }));
+
+  const updateLastOpened = (id) => mutateDocument({ id }, async (values, { request }) => {
+    const { error } = await request(() => supabase.from('documents')
+      .update({ last_opened_at: new Date().toISOString() }).eq('id', values.id));
+    if (error) throw error;
+  });
 
   const hasCurrentDocumentState = documentStateScope === documentReadScope;
   return {
@@ -669,7 +587,8 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
     const requestId = ++templateRequestRef.current;
     templateReadRef.current?.controller.abort();
     const controller = new AbortController();
-    templateReadRef.current = { scope: templateReadScope, controller };
+    const reconciler = createLibraryReadReconciler();
+    templateReadRef.current = { scope: templateReadScope, controller, reconciler };
     const isCurrentRequest = () => isCurrentScope() && !controller.signal.aborted && isScopedRequestCurrent({
       requestId,
       latestRequestId: templateRequestRef.current,
@@ -678,6 +597,7 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
     });
     try {
       if (templateStateScopeRef.current !== templateReadScope) {
+        templateStateScopeRef.current = templateReadScope;
         setTemplateStateScope(templateReadScope);
         setTemplates([]);
       }
@@ -688,8 +608,9 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
         ? await coalesceRead(key, runTemplatesQuery, { signal: controller.signal })
         : await runTemplatesQuery(controller.signal);
       if (!isCurrentRequest()) return [];
-      setTemplates(rows);
-      return rows;
+      const reconciled = reconciler.apply(rows);
+      setTemplates(reconciled);
+      return reconciled;
     } catch (err) {
       if (!isCurrentRequest()) return [];
       setError(err.message);
@@ -704,73 +625,43 @@ export const useTemplates = ({ autoLoad = true } = {}) => {
     }
   };
 
-  const createTemplate = async (templateData) => {
-    if (!user || !isSupabaseAvailable()) return;
+  const mutateTemplate = createLibraryMutationRunner({
+    client: supabase, scope: templateReadScope, scopeRef: templateReadScopeRef,
+    mountedRef: templateMountedRef, readRef: templateReadRef,
+    stateScopeRef: templateStateScopeRef, setStateScope: setTemplateStateScope,
+    setRows: setTemplates, setError, available: isSupabaseAvailable,
+  });
 
-    try {
-      const { data, error } = await supabase
-        .from('templates')
-        .insert({ user_id: user.id, ...templateData })
-        .select()
-        .single();
+  const createTemplate = (input) => mutateTemplate(input, async (values, { request }) => {
+    const { data, error } = await request(() => supabase.from('templates')
+      .insert({ user_id: templateReadScope.actorId, ...values }).select().single());
+    if (error) throw error;
+    return data;
+  }, row => ({ kind: 'upsert', row }));
 
-      if (error) throw error;
-      setTemplates((current) => [data, ...current]);
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
+  const updateTemplate = (id, updates) => mutateTemplate({ id, updates }, async (values, { request }) => {
+    const { data, error } = await request(() => supabase.from('templates')
+      .update(values.updates).eq('id', values.id).select().single());
+    if (error) throw error;
+    if (data?.id !== values.id) throw new Error('Invalid update response.');
+    return data;
+  }, row => ({ kind: 'update', row }));
 
-  const updateTemplate = async (id, updates) => {
-    try {
-      const { data, error } = await supabase
-        .from('templates')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      setTemplates((current) => current.map((t) => (t.id === id ? data : t)));
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  const deleteTemplate = async (id) => {
-    try {
-      const { error } = await supabase.from('templates').delete().eq('id', id);
-
-      if (error) throw error;
-      setTemplates((current) => current.filter((t) => t.id !== id));
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
+  const deleteTemplate = (id) => mutateTemplate({ id }, async (values, { request }) => {
+    const { error } = await request(() => supabase.from('templates').delete().eq('id', values.id));
+    if (error) throw error;
+  }, () => ({ kind: 'delete', id }));
 
   const replaceTemplates = async (templateRows) => {
-    if (!user || !isSupabaseAvailable()) return [];
-    if (!Array.isArray(templateRows)) {
-      throw new TypeError('Template snapshot must be an array.');
-    }
-    try {
-      setError(null);
-      const { data, error } = await supabase.rpc('replace_my_templates', {
-        p_templates: templateRows,
-      });
+    if (!Array.isArray(templateRows)) throw new TypeError('Template snapshot must be an array.');
+    return mutateTemplate(templateRows, async (capturedRows, { request }) => {
+      const { data, error } = await request(() => supabase.rpc('replace_my_templates', {
+        p_templates: capturedRows,
+      }));
       if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      setTemplates(rows);
-      return rows;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
+      if (!Array.isArray(data)) throw new TypeError('Invalid template response.');
+      return data;
+    }, rows => ({ kind: 'replace', rows }));
   };
 
   // Hide retired state in the render that changes actor/mode, before effects

@@ -13,6 +13,8 @@ import { isScopedRequestCurrent } from '../src/hooks/scopedRequestGuard.js';
 // database transport and the event source are local external ports. No writes,
 // live accounts, cloud services or Microsoft integration are used.
 const source = await readFile(new URL('../src/hooks/useDatabase.js', import.meta.url), 'utf8');
+const mutationHelpers = Object.assign({}, ...await Promise.all([...source.matchAll(/import\s+\{[^}]+\}\s+from\s+(['"])([^'"]*(?:actorBoundDatabaseMutation|libraryMutationState|libraryMutationRunner)\.js)\1;/g)]
+  .map(([, , path]) => import(new URL(path, new URL('../src/hooks/useDatabase.js', import.meta.url)).href))));
 const tree = parse(source, { sourceType: 'module' });
 const names = { projects: 'useProjects', documents: 'useDocuments', templates: 'useTemplates' };
 const bodies = Object.fromEntries(Object.entries(names).map(([kind, name]) => {
@@ -37,7 +39,11 @@ async function mount(t, kind, options = {}) {
     rows: options.rows || [{ id: uuid(1), name: 'Complete A', created_at: '2026-09-01T00:00:00Z' }],
     reads: [], renders: [], listeners: new Set(), busRecords: [], hold: options.hold ?? false, error: null,
     memberships: options.memberships || [], onRead: null };
-  const client = { from(table) {
+  state.authListeners = new Set();
+  const client = { auth: {
+    getSession: async () => ({ data: { session: state.actor ? { user: state.actor, access_token: `token-${state.actor.id}` } : null }, error: null }),
+    onAuthStateChange(callback) { state.authListeners.add(callback); return { data: { subscription: { unsubscribe: () => state.authListeners.delete(callback) } } }; },
+  }, from(table) {
     const call = { table, filters: [], ids: null, signal: null, abortedBeforeSettle: false, settled: false };
     const builder = {
       select(fields) { call.fields = fields; return builder; },
@@ -48,6 +54,8 @@ async function mount(t, kind, options = {}) {
       limit(limit) { call.limit = limit; return builder; },
       gt(key, value) { call.after = value; assert.equal(key, call.cursorColumn); return builder; },
       abortSignal(signal) { call.signal = signal; return builder; },
+      single: () => builder, maybeSingle: () => builder,
+      setHeader: () => builder, retry: () => builder,
       then(resolve, reject) {
         assert.equal(call.started, undefined, 'Transport builder is consumed once'); call.started = true;
         state.reads.push(call);
@@ -72,7 +80,7 @@ async function mount(t, kind, options = {}) {
     };
     return builder;
   } };
-  const ports = { ...React, supabase: client, useAuth: () => ({ user: state.actor, tier: 'developer' }),
+  const ports = { ...React, ...mutationHelpers, supabase: client, useAuth: () => ({ user: state.actor, tier: 'developer' }),
     isSupabaseAvailable: () => true, coalesceRead, readLibraryRows, readLibraryIdChunks, sortLibraryRows, isScopedRequestCurrent,
     subscribeLibraryChange(callback) {
       const record = { callback, removed: false }; state.busRecords.push(record); state.listeners.add(callback);
