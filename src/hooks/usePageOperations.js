@@ -2,7 +2,7 @@
 // sidebar. PDF bytes are persisted first; the corresponding page-addressed
 // app state is committed only after that persistence succeeds.
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
 import { transformPageState } from '../utils/pageAnnotationReindex.js';
@@ -17,6 +17,7 @@ const fingerprintPageState = state => JSON.stringify(state, (_key, value) => (
 
 export function usePageOperations({
   pdfFile,
+  actorUserId = null,
   onUpdatePDFFile,
   getPageState,
   commitPageState,
@@ -32,6 +33,28 @@ export function usePageOperations({
   const renderedPdfFileRef = useRef(pdfFile);
   const pageStateRef = useRef(null);
   const pageStateObservedFingerprintRef = useRef(null);
+  const operationScopeRef = useRef({ actorUserId });
+  const pendingPageFileRef = useRef(null);
+  const mountRef = useRef(null);
+  useLayoutEffect(() => {
+    const mount = {};
+    mountRef.current = mount;
+    return () => { if (mountRef.current === mount) mountRef.current = null; };
+  }, []);
+  if (operationScopeRef.current.actorUserId !== actorUserId
+    || (renderedPdfFileRef.current !== pdfFile && pdfFileRef.current !== pdfFile
+      && !(pendingPageFileRef.current?.file === pdfFile
+        && pendingPageFileRef.current?.scope === operationScopeRef.current))) {
+    operationScopeRef.current = { actorUserId };
+    pageStateRef.current = null;
+    pageStateObservedFingerprintRef.current = null;
+  }
+  const operationScope = operationScopeRef.current;
+  const pendingPageFile = pendingPageFileRef.current;
+  if (pendingPageFile?.scope === operationScope && pdfFile === pendingPageFile.sourceFile
+    && fingerprintPageState(getPageState?.()) !== pendingPageFile.observedState) {
+    pendingPageFile.editsArrived = true;
+  }
   if (renderedPdfFileRef.current !== pdfFile) {
     renderedPdfFileRef.current = pdfFile;
     pdfFileRef.current = pdfFile;
@@ -41,6 +64,9 @@ export function usePageOperations({
   const mutationQueueRef = useRef(Promise.resolve());
 
   const executeMutation = useCallback(async (operation, errorVerb) => {
+    const mount = mountRef.current;
+    const isCurrent = () => mount && mountRef.current === mount && operationScopeRef.current === operationScope;
+    if (!isCurrent()) return false;
     const currentPdfFile = pdfFileRef.current;
     if (!currentPdfFile || !onUpdatePDFFile) {
       showToast('PDF file not available for manipulation', 'error');
@@ -73,7 +99,7 @@ export function usePageOperations({
       const { bytes: pdfBytes, copiedWidgets } = await mutatePdfPagesWithIdentity(
         await currentPdfFile.arrayBuffer(), pdfOperation,
       );
-      if (pdfFileRef.current !== currentPdfFile
+      if (!isCurrent() || pdfFileRef.current !== currentPdfFile
         || (managedLocal && currentPdfFile.localRevision !== expectedLocalRevision)
         || stateFingerprint() !== observedState) {
         throw new Error('The document changed during this page action. Your latest edits were kept. Retry the page action.');
@@ -95,41 +121,77 @@ export function usePageOperations({
 
       // This callback is the production storage boundary. Never publish the
       // remapped metadata before the new PDF bytes are durable.
-      await persistThenCommitPageMutation({
-        file: newFile,
-        state: nextState,
-        operation,
-        persist: onUpdatePDFFile,
-        commit: commitPageState,
-      });
+      const pendingFile = { file: newFile, sourceFile: currentPdfFile, scope: operationScope, observedState, editsArrived: false };
+      pendingPageFileRef.current = pendingFile;
+      try {
+        await persistThenCommitPageMutation({
+          file: newFile,
+          state: nextState,
+          operation,
+          persist: (...args) => {
+            if (!isCurrent() || pdfFileRef.current !== currentPdfFile) throw new Error('The document changed before this page action could save.');
+            return onUpdatePDFFile(...args);
+          },
+          commit: (...args) => {
+            if (!isCurrent() || (pdfFileRef.current !== currentPdfFile && pdfFileRef.current !== newFile)) {
+              throw new Error('The document changed while this page action was saving.');
+            }
+            // Only count edits rendered against the old source. Publishing the
+            // new File can itself flush pending view updates and hydration.
+            if (pendingFile.editsArrived) {
+              throw new Error('New edits arrived while this page action was saving. PDF bytes may have saved, but the new edits were not replaced. Review the document before another page action.');
+            }
+            return commitPageState?.(...args);
+          },
+        });
+      } finally {
+        if (pendingPageFileRef.current === pendingFile) pendingPageFileRef.current = null;
+      }
+      if (!isCurrent()) return false;
       // A second page action can arrive before React has rendered the new File
       // prop. Keep the serialized operation queue on the just-persisted bytes
       // so rapid taps cannot branch from a stale page count or overwrite work.
       pdfFileRef.current = newFile;
-      pageStateRef.current = nextState;
-      pageStateObservedFingerprintRef.current = observedState;
+      // A flushSync persistence callback may already have rendered newFile.
+      // In that case the live view owns later hydration/edits; reinstalling
+      // this temporary pre-render cache would reject every subsequent action.
+      const awaitingFileRender = renderedPdfFileRef.current !== newFile;
+      pageStateRef.current = awaitingFileRender ? nextState : null;
+      pageStateObservedFingerprintRef.current = awaitingFileRender ? observedState : null;
       return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       console.error(`Error ${errorVerb} page:`, error);
       showToast(`Error ${errorVerb} page: ${error.message}`, 'error');
       return false;
     }
-  }, [commitPageState, getPageState, onUpdatePDFFile]);
+  }, [commitPageState, getPageState, onUpdatePDFFile, operationScope]);
+
+  const executionRef = useRef(null);
+  executionRef.current = { executeMutation, withMutation, scope: operationScope };
 
   const runMutation = useCallback((operation, errorVerb) => {
+    const mount = mountRef.current;
     const result = mutationQueueRef.current.then(async () => {
       try {
-        return typeof withMutation === 'function'
-          ? await withMutation(() => executeMutation(operation, errorVerb))
-          : await executeMutation(operation, errorVerb);
+        const run = () => {
+          const latest = executionRef.current;
+          if (!mount || mountRef.current !== mount || operationScopeRef.current !== operationScope
+            || latest.scope !== operationScope) return false;
+          return latest.executeMutation(operation, errorVerb);
+        };
+        if (!mount || mountRef.current !== mount || operationScopeRef.current !== operationScope) return false;
+        const prepare = executionRef.current.withMutation;
+        return typeof prepare === 'function' ? await prepare(run) : await run();
       } catch (error) {
+        if (!mount || mountRef.current !== mount || operationScopeRef.current !== operationScope) return false;
         showToast(error.message || 'This page action could not finish. Your document was kept.', 'error');
         return false;
       }
     });
     mutationQueueRef.current = result.catch(() => false);
     return result;
-  }, [executeMutation, withMutation]);
+  }, [operationScope]);
 
   const handleDuplicatePage = useCallback((pageNumber) => (
     runMutation({ type: 'duplicate', page: pageNumber }, 'duplicating')

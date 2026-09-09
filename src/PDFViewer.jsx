@@ -12777,6 +12777,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     handleInsertBlankPage,
   } = usePageOperations({
     pdfFile,
+    actorUserId: user?.id || null,
     onUpdatePDFFile: persistPageMutationFile,
     withMutation: withPageMutation,
     getPageState: getPageStructureState,

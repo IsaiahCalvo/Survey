@@ -32,7 +32,8 @@ import {
   MobilePdfViewerHeader,
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
-import YDocProvider from './components/collab/YDocProvider.jsx';
+import DocumentTabProvider from './components/collab/DocumentTabProvider.jsx';
+import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
@@ -829,10 +830,12 @@ export default function App({ devPreviewReturnTab = null }) {
       || documentOpenScopeRef.current !== documentOpenScope) return false;
     if (!documents.some((entry) => String(entry?.id) === String(doc.id))) return false;
     const existingTab = tabs.find((tab) => (
-      tab.actorUserId === documentOpenScope.actorUserId && isSameDocumentTab(tab, doc)
+      tab.actorUserId === documentOpenScope.actorUserId && (tab.checkedBundle
+        ? String(tab.file?.id) === String(doc.id)
+        : isSameDocumentTab(tab, doc))
     ));
-    if (!existingTab || existingTab.file.__pdfLoadFailed === true
-      || existingTab.file.__rewrittenForParse === true) return false;
+    if (!existingTab || (!existingTab.checkedBundle && (existingTab.file.__pdfLoadFailed === true
+      || existingTab.file.__rewrittenForParse === true))) return false;
     // This is the existing tab-click path, not a new access grant or download.
     setSelectedPDF(existingTab.file);
     setActiveTabId(existingTab.id);
@@ -840,14 +843,20 @@ export default function App({ devPreviewReturnTab = null }) {
     return true;
   };
 
-  const handleDocumentSelect = (file, filePath = null) => {
+  const handleDocumentSelect = (file, filePath = null, checkedBundle = null) => {
     if (documentOpenScopeRef.current !== documentOpenScope) return;
+    if (checkedBundle !== null) {
+      // Never pair a checked annotation baseline with caller-supplied bytes.
+      const prepared = prepareCheckedDocumentOpen(checkedBundle, documentOpenScope.actorUserId);
+      file = prepared.file;
+      filePath = null;
+    }
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
       return;
     }
 
-    const pdfKey = getDocumentOpenKey(file, filePath);
+    const pdfKey = getDocumentOpenKey(file, filePath, checkedBundle);
 
     // Check if this PDF is already being opened (prevents duplicate opens when app is slow)
     if (openingPdfsRef.current.has(pdfKey)) {
@@ -855,9 +864,15 @@ export default function App({ devPreviewReturnTab = null }) {
     }
 
     // Check if this file is already open in a tab (excluding home tab)
-    const existingTab = tabs.find(tab => (
+    // An unversioned list/deep-link reply may activate an already checked tab,
+    // but must never replace it or start a second legacy writer for that file.
+    const checkedOpenTab = checkedBundle === null && file.id ? tabs.find(tab => (
+      tab.checkedBundle && tab.actorUserId === documentOpenScope.actorUserId
+      && String(tab.file?.id) === String(file.id)
+    )) : null;
+    const existingTab = checkedOpenTab || tabs.find(tab => (
       (!file.id || tab.actorUserId === documentOpenScope.actorUserId)
-      && isSameDocumentTab(tab, file, filePath)
+      && isSameDocumentTab(tab, file, filePath, checkedBundle)
     ));
 
     if (existingTab) {
@@ -875,7 +890,7 @@ export default function App({ devPreviewReturnTab = null }) {
       const previousFile = existingTab.file;
       const previousLoadFailed = previousFile?.__rewrittenForParse === true
         || previousFile?.__pdfLoadFailed === true;
-      if (previousLoadFailed) {
+      if (previousLoadFailed && !existingTab.checkedBundle) {
         setTabs(prev => prev.map(tab =>
           tab.id === existingTab.id ? { ...tab, file: file, filePath: filePath ?? tab.filePath } : tab
         ));
@@ -898,6 +913,7 @@ export default function App({ devPreviewReturnTab = null }) {
       file: file,
       filePath: filePath, // Store file path in tab
       actorUserId: documentOpenScope.actorUserId,
+      checkedBundle,
       isHome: false,
       viewState: null // Initialize view state
     };
@@ -1081,51 +1097,104 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [tabs]);
 
-  // Memoized callback to update PDF file
-  const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
-    const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
-    if (isManagedLocalDocument(newFile)) {
-      const stored = await replaceLocalDocument(newFile.localId, newFile, {
-        expectedRevision: newFile.localRevision,
-        ...(newFile._localDocumentState ? { state: newFile._localDocumentState } : {}),
-      });
-      newFile.localRevision = stored.revision;
-    } else if (newFile?.id && durablePath) {
-      await replaceDocument(newFile, durablePath);
-    }
-    setTabs(prev => {
-      if (targetTabId) {
-        return prev.map(tab =>
-          tab.id === targetTabId ? { ...tab, file: newFile } : tab
-        );
-      }
+  const pendingFileReplacementsRef = useRef(new Map());
+  const fileReplacementMountRef = useRef(null);
+  useLayoutEffect(() => {
+    const mount = {};
+    fileReplacementMountRef.current = mount;
+    return () => { if (fileReplacementMountRef.current === mount) fileReplacementMountRef.current = null; };
+  }, []);
 
-      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
-      if (!pdfTab) return prev;
-      return prev.map(tab =>
-        tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
-      );
-    });
-    // Only update selectedPDF if the updated tab is the active one
-    if (!targetTabId || targetTabId === activeTabId) {
-      setSelectedPDF(newFile);
+  // The caller binds the exact file used to build this replacement. A matching
+  // document ID alone cannot prove that a held page edit used current bytes.
+  const handleUpdatePDFFile = useCallback(async (newFile, targetTabId, expectedSourceFile) => {
+    const fail = (code = 'PDF_REPLACEMENT_STALE') => Object.assign(new Error(
+      code === 'PDF_REPLACEMENT_PENDING'
+        ? 'A PDF save or close is still running. Wait for it to finish, then retry.'
+        : code === 'PDF_REPLACEMENT_GENERATION'
+          ? 'This document needs a checked PDF publication. Its source file was not replaced.'
+          : 'The PDF or account changed. Its replacement could not be confirmed. Reopen it before retrying.'
+    ), { code });
+    const mount = fileReplacementMountRef.current;
+    const requested = closeViewRef.current?.tabs?.find(tab => targetTabId
+      ? tab.id === targetTabId : !tab.isHome && tab.file === expectedSourceFile);
+    if (!mount || !requested || requested.isHome || !expectedSourceFile || !newFile || typeof newFile !== 'object'
+      || requested.file !== expectedSourceFile || documentOpenScopeRef.current !== documentOpenScope) throw fail();
+    const tabId = requested.id;
+    const generated = value => value?.checkedBundle != null || value?.pdfGenerationId != null
+      || value?.pdf_generation_id != null;
+    if (generated(requested) || generated(expectedSourceFile) || generated(newFile)) throw fail('PDF_REPLACEMENT_GENERATION');
+    const local = isManagedLocalDocument(expectedSourceFile);
+    const cloudId = expectedSourceFile.id || null;
+    const localRevision = expectedSourceFile.localRevision;
+    const localId = expectedSourceFile.localId;
+    // Plain picked/dev Files have no marker until their first page mutation.
+    // Match getPDFId/createPageMutationFile's canonical name-size fallback.
+    const localPdfId = expectedSourceFile._surveyPdfId || `${expectedSourceFile.name}-${expectedSourceFile.size}`;
+    const path = expectedSourceFile.supabaseFilePath || expectedSourceFile.filePath
+      || expectedSourceFile.file_path || requested.filePath || null;
+    if (isManagedLocalDocument(newFile) !== local || (newFile.id || null) !== cloudId
+      || (local && (newFile.localId !== expectedSourceFile.localId
+        || newFile.localRevision !== expectedSourceFile.localRevision))
+      || (!cloudId && (newFile._surveyPdfId || `${newFile.name}-${newFile.size}`) !== localPdfId)) throw fail();
+    if (cloudId && (!documentOpenScope.actorUserId || requested.actorUserId !== documentOpenScope.actorUserId
+      || !path || (newFile.supabaseFilePath || newFile.filePath || newFile.file_path || requested.filePath || null) !== path
+      || [newFile.supabaseFilePath, newFile.filePath, newFile.file_path]
+        .some(value => value != null && value !== path))) throw fail();
+    if (pendingFileReplacementsRef.current.has(tabId) || pendingTabClosesRef.current.has(tabId)) throw fail('PDF_REPLACEMENT_PENDING');
+    const lease = {};
+    pendingFileReplacementsRef.current.set(tabId, lease);
+    const current = (allowPublished = false) => fileReplacementMountRef.current === mount
+      && documentOpenScopeRef.current === documentOpenScope
+      && pendingFileReplacementsRef.current.get(tabId) === lease
+      && closeViewRef.current?.tabs?.some(tab => tab.id === tabId && !tab.isHome
+        && tab.actorUserId === requested.actorUserId && !generated(tab)
+        && !generated(tab.file) && !generated(newFile)
+        && (tab.file === expectedSourceFile || (allowPublished && tab.file === newFile))
+        && (tab.file.id || null) === cloudId
+        && (!local || (tab.file.localId === localId
+          && (tab.file.localRevision === localRevision || (allowPublished && tab.file === newFile))))
+        && (!cloudId || (tab.file.supabaseFilePath || tab.file.filePath || tab.file.file_path || tab.filePath || null) === path));
+    try {
+      if (!current()) throw fail();
+      if (local) {
+        const stored = await replaceLocalDocument(newFile.localId, newFile, {
+          expectedRevision: localRevision,
+          ...(newFile._localDocumentState ? { state: newFile._localDocumentState } : {}),
+        });
+        if (!current()) throw fail();
+        newFile.localRevision = stored.revision;
+      } else if (cloudId) {
+        await replaceDocument(newFile, path);
+        if (!current()) throw fail();
+      }
+      if (!current()) throw fail();
+      // Commit the view before releasing the per-tab lease. Otherwise another
+      // same-tick replacement could still see the old source after this saves.
+      flushSync(() => {
+        setTabs(previous => !current(true) ? previous : previous.map(tab =>
+          tab.id === tabId && tab.file === expectedSourceFile && tab.actorUserId === requested.actorUserId
+            ? { ...tab, file: newFile } : tab));
+        setSelectedPDF(previous => current(true) && closeViewRef.current.activeTabId === tabId ? newFile : previous);
+        if (cloudId) setDocuments(previous => !current(true) ? previous : previous.map(document =>
+          document?.id === cloudId ? { ...document, size: newFile.size, file_size: newFile.size,
+            updated_at: new Date().toISOString() } : document));
+      });
+      if (!current(true)) throw fail();
+      return newFile;
+    } finally {
+      if (pendingFileReplacementsRef.current.get(tabId) === lease) pendingFileReplacementsRef.current.delete(tabId);
     }
-    setDocuments((prev) => prev.map((document) => (
-      document?.id === newFile?.id
-        ? {
-          ...document,
-          size: newFile.size,
-          file_size: newFile.size,
-          updated_at: new Date().toISOString(),
-        }
-        : document
-    )));
-    return newFile;
-  }, [selectedPDF, activeTabId, replaceDocument]);
+  }, [documentOpenScope, replaceDocument]);
 
   const handleTabClose = async (tabId) => {
     // Prevent closing the home tab
     if (tabId === HOME_TAB_ID) return;
+
+    if (pendingFileReplacementsRef.current.has(tabId)) {
+      showToast('The PDF is still being saved. Wait for it to finish, then close this tab.', 'error');
+      return;
+    }
 
     if (pendingTabClosesRef.current.has(tabId)) return;
     const requested = closeViewRef.current.tabs.find(tab => tab.id === tabId);
@@ -2962,13 +3031,12 @@ export default function App({ devPreviewReturnTab = null }) {
                     display: isVisible ? 'block' : 'none'
                   }}
                 >
-                  <YDocProvider docId={tab.file?.id} actorUserId={tab.actorUserId}
+                  <DocumentTabProvider tab={tab}
                     currentActorUserId={user?.id || null} isActive={isVisible}
                     closeDocument={() => handleTabClose(tab.id)}>
-                    {/* KAL-49 — document lock banner. Mounted as a sibling
-                        inside YDocProvider so it sees the same per-tab Y.Doc
-                        scope (the lock state is a document-level concept and
-                        keys on the same documentId). */}
+                    {({ checkedBundle, onGenerationSession }) => <>
+                    {/* The lock banner and viewer share the selected per-tab
+                        collaboration scope. */}
                     <DocumentLockBanner
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
@@ -2985,6 +3053,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
+                      checkedBundle={checkedBundle}
+                      onGenerationSession={onGenerationSession}
                       onBack={handleBack}
                       tabId={tab.id}
                       isActive={isVisible}
@@ -2995,7 +3065,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onLeftRailApiChange={setLeftRailApi}
                       onRightRailApiChange={setRightRailApi}
                       onPageDrop={handlePageDrop}
-                      onUpdatePDFFile={handleUpdatePDFFile}
+                      onUpdatePDFFile={(newFile) => handleUpdatePDFFile(newFile, tab.id, tab.file)}
                       onCloseAfterFailure={handleTabClose}
                       onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                       onAnnotationsExistChange={handleAnnotationsExistChange}
@@ -3018,7 +3088,8 @@ export default function App({ devPreviewReturnTab = null }) {
                       setEntities={setEntities}
                     />
                     </Suspense>
-                  </YDocProvider>
+                    </>}
+                  </DocumentTabProvider>
                 </div>
               );
             })}

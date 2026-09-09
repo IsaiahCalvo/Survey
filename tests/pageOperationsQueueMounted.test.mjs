@@ -103,8 +103,8 @@ async function loadUsePageOperations() {
   let source = await readFile(hookPath, 'utf8');
   source = source
     .replace(
-      "import { useCallback, useMemo, useRef } from 'react';",
-      `import { useCallback, useMemo, useRef } from ${JSON.stringify(reactUrl)};`,
+      "import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';",
+      `import { useCallback, useLayoutEffect, useMemo, useRef } from ${JSON.stringify(reactUrl)};`,
     )
     .replace(
       "import { showToast } from '../utils/toast';",

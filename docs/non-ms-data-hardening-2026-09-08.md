@@ -4166,6 +4166,65 @@ hosted malformed-file test. No cloud writes, deployment or Microsoft testing
 were performed. AppShell's checked-open route selection and its remaining
 generation-aware save/reuse guards are still pending.
 
+## Checked tab selection and scoped file replacement — September 9 follow-up
+
+AppShell now accepts a reader-issued checked bundle, builds its File from the
+verified PDF bytes, and selects the checked collaboration provider before the
+viewer mounts. The original bundle stays attached to the tab. Same-generation
+opens keep that tab's file and unsaved work; a different generation gets a
+separate tab. An unversioned document-list reply can activate an existing checked
+tab but cannot replace it or start a legacy writer. A generation-marked file
+without its checked bundle fails closed.
+
+Raw PDF replacement now binds the exact source File, tab, account scope, mount
+and storage path. Same-tab replacements are serialized, close waits for a
+replacement to finish, and stale completions cannot update another tab or report
+confirmed success. Managed-local writes retain their expected-revision check.
+Checked files reject raw overwrite until checked publication is connected.
+An already dispatched storage write cannot be undone by the UI scope guard; a
+lost scope therefore reports an unconfirmed replacement, not a rollback.
+
+Browser checks caught a first-edit regression that the initial unit fixtures
+missed: plain local Files receive their canonical name-size identity only during
+their first page mutation. The guard now accepts that exact identity transition;
+a test using the real file factory covers the first and second replacements.
+Repeated browser page edits also exposed a render/queued-state handoff: a
+temporary state cache could be installed after its expected file-render reset
+had already happened. The hook now uses live state once the replacement File
+has rendered. Queued actions select the latest callback only within their
+original file/account/mount scope. File/account changes, including switching
+away and back, retire pending work instead of moving it to the new scope.
+
+Edits rendered while the old source remains current during a held save are
+kept, with an explicit warning that PDF bytes may already have saved. This is
+not an atomic rollback or a replacement for the existing page-action UI lock:
+unrendered state changes during persistence still need that lock. New mounted
+tests use actual PDF byte mutations and synchronous React file publication,
+including two queued changes from one page to three.
+
+Browser evidence before the final pending-edit guard: annotation draw/undo/redo
+passed, and two successive page duplications grew the fixture to three pages.
+The delete action opened a native confirmation that blocked browser input and
+focus calls for its tab; the native UI fallback denied access to Codex. The
+delete check and final repeated-edit browser recheck therefore remain incomplete.
+The final fixture loaded without browser error logs, but input did not open the
+page panel while that native dialog remained. No live data was used or changed.
+
+Final local verification: the full offline suite passed across 651 files,
+with 6,458 tests, 6,365 passed, 93 skipped and zero failures or cancellations.
+All 99 selected route/replacement/queue checks passed in a separate run. The
+Vite build passed with the known large-chunk warning, and the AST graph refresh
+completed (27,856 nodes, 45,415 edges). Gmail showed no new matching service
+alerts since the prior checkpoint. These results do not close the browser
+recheck or the hosted activation gates.
+
+This is still local integration, not hosted activation. Dashboard clicks, deep
+links and upload completion do not yet acquire checked bundles. The next safe
+step is a disabled-by-default, actor-scoped acquisition service. A trusted
+legacy/checked discriminator and the existing publication/provider gates remain
+required. Do not fall back to a raw download after a checked-open error or infer
+generation adoption from a filename. Microsoft work remains deferred.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
