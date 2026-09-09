@@ -1,5 +1,6 @@
 import { createDocumentGenerationReader } from './documentGenerationReader.js';
 import { createDocumentGenerationDownload } from './documentGenerationDownload.js';
+import { createLegacyDocumentDownload } from './legacyDocumentDownload.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const validId = value => typeof value === 'string' && UUID.test(value);
@@ -12,9 +13,34 @@ const safeCodes = new Set(['42501', '40001', '55P03', '23514', '22023', '25001',
 const failure = (code = 'DOCUMENT_OPEN_PROTOCOL') => Object.assign(
   new Error('The complete document could not be opened. Your saved work was kept.'), { code });
 const check = (value, code = 'DOCUMENT_OPEN_INPUT') => { if (!value) throw failure(code); };
+const metadataFields = 'id,user_id,project_id,name,file_path,file_size,content_sha256,updated_at,archived,user_archived_at';
+const exactKeys = (value, fields) => value && typeof value === 'object' && !Array.isArray(value)
+  && Object.keys(value).sort().join(',') === fields.split(',').sort().join(',');
+function legacyMetadata(value, documentId, maxPdfBytes) {
+  check(exactKeys(value, metadataFields), 'DOCUMENT_OPEN_PROTOCOL');
+  // Capture primitives before the next await; the SDK response is not owned.
+  const row = { ...value };
+  check(row.id === documentId && validId(row.user_id) && (row.project_id === null || validId(row.project_id))
+    && typeof row.name === 'string' && typeof row.file_path === 'string' && row.file_path.length > 0
+    && row.file_path.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(row.file_path)
+    && row.archived === false && row.user_archived_at === null
+    && (row.updated_at === null || (typeof row.updated_at === 'string' && row.updated_at.length <= 64
+      && Number.isFinite(Date.parse(row.updated_at))))
+    && (row.content_sha256 === null || (typeof row.content_sha256 === 'string' && /^[0-9a-f]{64}$/.test(row.content_sha256))),
+  'DOCUMENT_OPEN_PROTOCOL');
+  // This is an acceptance bound, not a limit on the SDK's JSON allocation.
+  check(row.name.length <= 65536, 'DOCUMENT_OPEN_LIMIT');
+  check((Number.isSafeInteger(row.file_size) && row.file_size > 0)
+    || (typeof row.file_size === 'string' && /^[1-9][0-9]{0,18}$/.test(row.file_size)), 'DOCUMENT_OPEN_PROTOCOL');
+  row.file_size = String(row.file_size);
+  check(BigInt(row.file_size) <= BigInt(maxPdfBytes), 'DOCUMENT_OPEN_LIMIT');
+  return Object.freeze(row);
+}
 
-/** An explicit, default-off checked open. No legacy discovery/fallback or idle
- * subscription. The caller's opaque isCurrent guard must cover scope changes
+/** Explicit, default-off opens. open keeps its checked-only contract;
+ * openCurrent discovers authoritative mode and never falls back after failure.
+ * Legacy results are NOT generation-issued bundles or continuing access grants.
+ * No idle subscription. The caller's opaque isCurrent guard must cover scope changes
  * between opens; observed auth retirement is permanent for this instance.
  * Each open owns one immutable JWT, deadline and subscription. dispose stops
  * every pending open; neither it nor a failed open changes local/cloud data. */
@@ -28,13 +54,12 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
     retired = true;
     for (const abort of pending) abort(code);
   };
-  return Object.freeze({
-    dispose() { retire('DOCUMENT_OPEN_ABORTED'); },
-    async open(input = {}) {
+  async function run(input = {}, discover = false) {
       // Disabled means zero auth, subscriptions, RPCs and HTTP, even with no config.
       check(enabled === true, 'DOCUMENT_OPEN_DISABLED');
       check(input !== null && typeof input === 'object' && !Array.isArray(input));
       const { documentId, pdfGenerationId = null, signal: openSignal } = input;
+      check(!discover || (pdfGenerationId === null && typeof client?.from === 'function'));
       check(validId(actorUserId) && validId(documentId) && (pdfGenerationId === null || validId(pdfGenerationId))
         && typeof isCurrent === 'function' && typeof client?.auth?.getSession === 'function'
         && typeof client?.auth?.onAuthStateChange === 'function' && typeof client?.rpc === 'function'
@@ -96,21 +121,41 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         pending.add(abort);
         timer = setTimeout(() => abort('DOCUMENT_OPEN_ABORTED'), timeoutMs);
         let accessToken;
+        const request = async (name, params, context = { signal: controller.signal }) => {
+          await readSession(); alive();
+          const response = await wait(() => client.rpc(name, params)
+            .setHeader('Authorization', `Bearer ${accessToken}`).abortSignal(context.signal));
+          alive(); return response;
+        };
+        const readMode = async () => {
+          const response = await request('read_document_open_mode', { p_document_id: documentId });
+          if (response?.error) throw response.error;
+          const value = response?.data;
+          check(exactKeys(value, 'version,actor_user_id,document_id,mode,generation_id')
+            && value.version === 1 && value.actor_user_id === actorUserId && value.document_id === documentId
+            && ((value.mode === 'legacy' && value.generation_id === null)
+              || (value.mode === 'checked' && validId(value.generation_id))), 'DOCUMENT_OPEN_PROTOCOL');
+          return Object.freeze({ mode: value.mode, generationId: value.generation_id });
+        };
+        const readMetadata = async () => {
+          await readSession(); alive();
+          const response = await wait(() => client.from('documents').select(metadataFields).eq('id', documentId)
+            .eq('archived', false).is('user_archived_at', null)
+            .setHeader('Authorization', `Bearer ${accessToken}`).abortSignal(controller.signal).retry(false).maybeSingle());
+          if (response?.error) throw response.error;
+          alive(); return legacyMetadata(response?.data, documentId, maxPdfBytes);
+        };
+        const legacyDownload = discover ? createLegacyDocumentDownload({ supabaseUrl, publicKey, fetch: fetcher,
+          allowLoopback, timeoutMs, maxBytes: maxPdfBytes,
+          getActorUserId: () => { alive(); return actorUserId; },
+          getAccessToken: async () => { await readSession(); alive(); return accessToken; } }) : null;
         const download = createDocumentGenerationDownload({ supabaseUrl, publicKey, fetch: fetcher,
           allowLoopback, timeoutMs, maxBytes: maxPdfBytes,
           getActorUserId: () => { alive(); return actorUserId; },
           getAccessToken: async () => { await readSession(); alive(); return accessToken; } });
         const reader = createDocumentGenerationReader({ timeoutMs, maxPdfBytes, maxStateBytes, maxUpdatePages,
           getActorUserId: () => { alive(); return actorUserId; }, download,
-          request: async (name, params, context) => {
-            await readSession(); alive();
-            const response = await wait(() => {
-              alive();
-              return client.rpc(name, params).setHeader('Authorization', `Bearer ${accessToken}`)
-                .abortSignal(context.signal);
-            });
-            alive(); return response;
-          } });
+          request });
         // Subscribe before the first session await to catch actor A -> B -> A.
         const result = client.auth.onAuthStateChange((event, session) => {
           if (active && (event === 'SIGNED_OUT' || session?.user?.id !== actorUserId)) retire('DOCUMENT_OPEN_ACTOR_CHANGED');
@@ -119,8 +164,25 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         check(typeof subscription?.unsubscribe === 'function');
         alive();
         accessToken = await readSession(); alive();
-        const bundle = await wait(() => reader.open({ documentId, actorUserId, pdfGenerationId, signal: controller.signal }));
-        alive(); return bundle;
+        const mode = discover ? await readMode() : null;
+        if (mode?.mode === 'legacy') {
+          const document = await readMetadata();
+          const blob = await wait(() => legacyDownload({ path: document.file_path,
+            byte_length: document.file_size, content_sha256: document.content_sha256 },
+          { actorUserId, documentId, signal: controller.signal }));
+          const finalDocument = await readMetadata();
+          check(metadataFields.split(',').every(key => document[key] === finalDocument[key]), 'DOCUMENT_OPEN_BYTES');
+          const finalMode = await readMode();
+          check(finalMode.mode === 'legacy', 'SG001');
+          await readSession(); alive();
+          // Hashless mutable Storage objects cannot prove a physical version.
+          // No descriptor-only equality claim upgrades this to checked mode.
+          return Object.freeze({ mode: 'legacy', actorUserId, documentId, document, blob, checkedBundle: null });
+        }
+        const bundle = await wait(() => reader.open({ documentId, actorUserId,
+          pdfGenerationId: mode ? mode.generationId : pdfGenerationId, signal: controller.signal }));
+        if (discover) { await readSession(); alive(); }
+        alive(); return discover ? Object.freeze({ mode: 'checked', actorUserId, documentId, checkedBundle: bundle }) : bundle;
       } catch (error) {
         throw failure(reason?.code || (safeCodes.has(error?.code) ? error.code : undefined));
       } finally {
@@ -130,6 +192,10 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         for (const [source, listener] of listeners) source.removeEventListener('abort', listener);
         try { subscription?.unsubscribe(); } catch { /* cleanup must not expose SDK details */ }
       }
-    },
+  }
+  return Object.freeze({
+    dispose() { retire('DOCUMENT_OPEN_ABORTED'); },
+    open(input) { return run(input); },
+    openCurrent(input) { return run(input, true); },
   });
 }

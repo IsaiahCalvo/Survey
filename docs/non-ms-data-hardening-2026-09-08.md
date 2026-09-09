@@ -4425,6 +4425,77 @@ documents or Microsoft flows changed. The existing live-helper changes and the
 default-off catalog reader are distinct outcomes; passing these checks does not
 activate or deploy the catalog path.
 
+## Mode-aware acquisition and bounded legacy PDF reads — September 9 follow-up
+
+The existing checked acquisition now exposes `openCurrent({ documentId, signal })`
+behind the same exact, default-off enable flag. The original `.open()` stays
+checked-only. Discovery, metadata, PDF download and final checks share one captured
+JWT, actor scope, deadline and subscription. The codebase-design skill kept this
+lifecycle inside the existing opening module, not repeated across UI callers.
+
+The new path validates the five-field `read_document_open_mode` response. Checked
+mode must open the exact discovered generation through the real issued-bundle
+reader. Legacy mode performs a fresh, token-pinned metadata SELECT (including
+archive filters), downloads that path, repeats metadata, repeats mode, and checks
+the current actor again before returning. Denied, missing, changed or malformed
+results never cause a fallback, partial result, cache hit or retry. Owner filtering
+is deliberately absent: an authorized collaborator can open another user's file.
+Captured metadata primitives and the result are frozen; a hashless legacy result
+cannot pass the checked reader's private identity check.
+
+`legacyDocumentDownload` uses trusted-origin Storage GET with segment-encoded raw
+object names and round-trip URL identity checks. It rejects redirects, excludes
+cookies, pins Authorization, and avoids cached responses. It requires a successful
+PDF/octet-stream response, exact expected byte length and EOF. Fixed 64 KiB owned
+blocks bound retained chunk count. It checks SHA-256 when metadata has a hash and
+bounds token, fetch, body and hash waits; cancellation releases pending bodies and
+listeners. Error bodies are canceled without reading or exposing diagnostics.
+
+Limits and rollout gates:
+
+- This adds no UI caller and performs no hosted change. Default-off still means
+  zero auth, subscriptions, RPCs or HTTP. Existing local-file and open-tab paths
+  are unchanged. No live Microsoft or multi-user account testing took place.
+- Legacy success uses five HTTP requests (two mode, two metadata, one PDF), not a
+  bandwidth or latency win over an unchecked download. Checked immutable cache
+  integration remains separate work. There is no shared download cache here.
+- Metadata bounds apply after SDK JSON parsing. Hash validation also holds a full
+  PDF ArrayBuffer; maximum accepted PDF bytes is not a total process heap cap.
+- No final check is a continuing access grant. Hashless mutable files do not
+  prove a physical object version. Neither legacy result proves atomic PDF plus
+  annotation state. Checked publication and backend legacy-write fences remain
+  required when a document is adopted while a reader is in flight.
+- Confirmed in `useStorage.replaceDocument`: the legacy replacement only upserts
+  Storage bytes and invalidates the download pool. It does not update database
+  file size/hash. AppShell updates its local list only. Stricter reads may reject
+  these older replacements, so activation must wait for a guarded replacement
+  and recovery plan, not a size/hash fallback or a blanket metadata rewrite.
+- Dashboard cloud rows, reused upload results and deep links still need the shared
+  caller integration; retain existing-tab activation first and zero-cloud local
+  opening. Hosted mode migration, gateway/provider proof and two-user tests are
+  also still gates. No claim that the new cloud route is live.
+
+Verification for this slice:
+
+- 52 focused tests pass: 22 acquisition tests, 15 new legacy download tests and
+  15 existing checked download tests. The acquisition review found a MIME fixture
+  problem that let a race test fail for the wrong reason; fixed fixtures now
+  assert exact rejection codes and final metadata/mode call counts.
+- Actual installed Supabase SDK plus owned loopback HTTP verifies captured JWTs
+  on mode, metadata and PDF requests. Transport tests cover safe encoding, real
+  PDF hash, redirect-target refusal, socket abort, hung token/body/hash, short or
+  oversized bodies, empty/tiny chunks and cleanup. No hosted provider is implied.
+- The no-auth in-app browser fixture opened one page and Duplicate produced two
+  pages; no error logs. It still showed the previously observed 78% to 187% zoom
+  change after duplication. This is page-operation smoke evidence, not viewport,
+  hosted sync or multi-user acceptance. The test tab was closed.
+- Full Node suite: 6,535 tests, 6,440 passed, 95 skipped, zero failed/canceled
+  (`/tmp/survey-current-open-full.log`, exit 0). Baseline was 6,512 tests,
+  6,417 passed, 95 skipped, zero failed/canceled; this adds 23 tests.
+- Vite build passed with its existing large-chunk warning
+  (`/tmp/survey-current-open-build.log`). Graph refresh completed separately;
+  generated graph/cache files are not staged. No push, hosted SQL or deployment.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
