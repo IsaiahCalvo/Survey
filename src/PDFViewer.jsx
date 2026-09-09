@@ -255,6 +255,13 @@ import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
+import { captureCheckedPageStructure, saveCheckedPageStructure } from './services/checkedPageStructure.js';
+
+const EMPTY_CHECKED_PAGE_STRUCTURE = Object.freeze({
+  items: Object.freeze({}), annotations: Object.freeze({}), pageNames: Object.freeze({}),
+  bookmarks: Object.freeze([]), pageTransformations: Object.freeze({}), activeSpaceId: null,
+  regionOverlayDisabled: Object.freeze({}),
+});
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
 import { moveItemById } from './reorder/flatReorderUtils.js';
 
@@ -435,7 +442,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -10303,8 +10310,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
   }, [showRegionSelection, activeTool]);
 
-  // Per-document region visibility, persisted in localStorage.
-  const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId, managedLocalStateReader);
+  const checkedLocalPageState = checkedBundle !== null
+    ? (pdfFile?._checkedPageStructure || EMPTY_CHECKED_PAGE_STRUCTURE) : null;
+  const checkedPageStructureScopeKey = checkedBundle !== null && user?.id && pdfFile?.id
+    ? `${user.id}:${pdfFile.id}:${checkedBundle.pdfGenerationId}` : null;
+  const [checkedPageStructureHydration, setCheckedPageStructureHydration] = useState({ key: null, ready: false });
+  const checkedRegionStorageReader = useMemo(() => checkedLocalPageState ? ({
+    getItem: () => JSON.stringify(checkedLocalPageState.regionOverlayDisabled || {}),
+  }) : null, [checkedLocalPageState]);
+  // Checked generations use actor+document+generation state attached by
+  // AppShell. They never read or overwrite the old unversioned region key.
+  const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(
+    pdfId, checkedRegionStorageReader || managedLocalStateReader,
+  );
 
   // Clipboard state for cut/copy operations
   const [clipboardPage, setClipboardPage] = useState(null);
@@ -10333,23 +10351,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   useEffect(() => {
     if (!pdfId) return;
     try {
-      const sidebarData = JSON.parse((managedLocalStateReader || localStorage).getItem(`pdfSidebar_${pdfId}`) || '{}');
+      const sidebarData = checkedLocalPageState || JSON.parse(
+        (managedLocalStateReader || localStorage).getItem(`pdfSidebar_${pdfId}`) || '{}',
+      );
       const loaded = migrateSidebarData(sidebarData);
       setPageNames(loaded.pageNames);
       setBookmarks(loaded.bookmarks);
       setHasImportedPdfBookmarks(loaded.hasImportedPdfBookmarks);
       setSpaces(loaded.spaces);
       // Always start in regular mode when opening a PDF; do not restore an active space
-      setActiveSpaceId(null);
+      setActiveSpaceId(checkedLocalPageState?.activeSpaceId ?? null);
       setPageTransformations(loaded.pageTransformations);
+      if (checkedLocalPageState) setRegionOverlayDisabled(new Map(
+        Object.entries(checkedLocalPageState.regionOverlayDisabled || {}),
+      ));
     } catch (e) {
       console.error('Error loading sidebar data:', e);
     }
-  }, [pdfId, managedLocalStateReader]);
+  }, [pdfId, managedLocalStateReader, checkedLocalPageState, setRegionOverlayDisabled]);
 
   // Save sidebar data to localStorage
   useEffect(() => {
-    if (!pdfId || managedLocalStateReader) return;
+    if (!pdfId || managedLocalStateReader || checkedBundle !== null) return;
     try {
       localStorage.setItem(`pdfSidebar_${pdfId}`, JSON.stringify({
         pageNames,
@@ -10361,7 +10384,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     } catch (e) {
       console.error('Error saving sidebar data:', e);
     }
-  }, [pdfId, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, managedLocalStateReader]);
+  }, [pdfId, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations,
+    managedLocalStateReader, checkedBundle]);
+
+  useEffect(() => {
+    if (checkedBundle === null || !user?.id || !pdfFile?.id) return;
+    if (checkedPageStructureHydration.key !== checkedPageStructureScopeKey
+      || checkedPageStructureHydration.ready !== true) return;
+    try {
+      saveCheckedPageStructure({ actorUserId: user.id, documentId: pdfFile.id,
+        generationId: checkedBundle.pdfGenerationId,
+        state: { items, annotations, pageNames, bookmarks, pageTransformations,
+          activeSpaceId, regionOverlayDisabled } });
+    } catch (error) {
+      console.error('Error saving checked page view state:', error);
+    }
+  }, [checkedBundle, user?.id, pdfFile?.id, items, annotations, pageNames, bookmarks,
+    pageTransformations, activeSpaceId, regionOverlayDisabled, checkedPageStructureHydration,
+    checkedPageStructureScopeKey]);
 
   // Phase 29 — read the per-user Y.UndoManager + ctx from the YDocProvider context.
   // Y.Doc here is the per-document Y.Doc the SupabaseYjsProvider streams updates
@@ -12670,6 +12710,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     ...(isManagedLocalDocument(pdfFile)
       ? { deletedPdfAnnotations: deletedPdfAnnotationsRef.current } : {}),
   }), [pdfFile]);
+  const captureLocalPageStructure = useCallback(
+    () => captureCheckedPageStructure(getPageStructureState()),
+    [getPageStructureState],
+  );
   const managedLocalPageMutationRef = useRef(false);
   const flushPendingFormFieldsRef = useRef(null);
   const withPageMutation = useCallback(run => {
@@ -12694,6 +12738,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     }
     return onUpdatePDFFile?.(file, tabId);
   }, [onUpdatePDFFile, tabId]);
+  const checkedReplacementSessionRef = useRef(null);
+  const captureAcceptedState = useCallback(() => {
+    const session = checkedReplacementSessionRef.current;
+    if (!session || session.checkedBundle !== checkedBundle) throw new Error('Accepted annotation state is not ready.');
+    return session.capture();
+  }, [checkedBundle]);
+  const revalidateAcceptedState = useCallback((capture) => {
+    const session = checkedReplacementSessionRef.current;
+    return session?.checkedBundle === checkedBundle ? session.revalidate(capture) : false;
+  }, [checkedBundle]);
+  const retirePdfGeneration = useCallback((options) => {
+    const session = checkedReplacementSessionRef.current;
+    if (!session || session.checkedBundle !== checkedBundle) throw new Error('The checked document version is no longer current.');
+    return session.retire(options);
+  }, [checkedBundle]);
   const commitPageStructureState = useCallback((next, operation) => {
     pageStructureStateRef.current = next;
     annotationsByPageRef.current = next.annotationsByPage;
@@ -12779,6 +12838,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     pdfFile,
     actorUserId: user?.id || null,
     onUpdatePDFFile: persistPageMutationFile,
+    checkedDocument: checkedBundle !== null,
+    onReplaceCheckedPages,
+    captureAcceptedState,
+    revalidateAcceptedState,
+    retirePdfGeneration,
+    captureLocalPageState: captureLocalPageStructure,
     withMutation: withPageMutation,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
@@ -19513,6 +19578,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // KAL-309: durable Y.Doc META accessors for the excelSyncFrontier cursor + review set.
     metaGet: excelSyncMetaGet,
     metaSet: excelSyncMetaSet,
+    captureAcceptedState: generationCaptureAcceptedState,
+    revalidateAcceptedState: generationRevalidateAcceptedState,
+    retirePdfGeneration: generationRetirePdfGeneration,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -19546,6 +19614,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // callouts via the hook's zero-op read-only fallback.
     docRole: yjsDocRole,
   });
+  checkedReplacementSessionRef.current = checkedBundle === null ? null : {
+    checkedBundle,
+    capture: generationCaptureAcceptedState,
+    revalidate: generationRevalidateAcceptedState,
+    retire: generationRetirePdfGeneration,
+  };
+  useLayoutEffect(() => () => {
+    if (checkedReplacementSessionRef.current?.checkedBundle === checkedBundle) {
+      checkedReplacementSessionRef.current = null;
+    }
+  }, [checkedBundle]);
+  useEffect(() => {
+    if (checkedBundle === null || !isActive || normalAnnotationHydration.ready !== true
+      || typeof onReplaceCheckedPages !== 'function') return;
+    void onReplaceCheckedPages({ recoveryOnly: true, retireGeneration: retirePdfGeneration,
+      captureLocalPageState: captureLocalPageStructure })
+      .catch(error => {
+        console.error('Checked page change recovery failed:', error?.message);
+        showToast(error?.message || 'A prior page change still needs recovery.', 'error');
+      });
+    // The checked generation and accepted hydration gate own this one recovery
+    // attempt. Callback identity changes must not replay it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkedPageStructureScopeKey, isActive, normalAnnotationHydration.ready]);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
@@ -20906,20 +20998,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // effect (~24x/session observed) for the SAME open document — re-reading
   // localStorage, resetting hydration to pending, clearing the Excel sync
   // checkpoint, closing panels, and wiping render bookkeeping. It is now
-  // keyed on the same document identity isSamePdfReload compares
-  // (pdfFile.id for cloud docs, name+size via getPDFId otherwise), so it
-  // runs once per actual document change. Same-doc interaction cleanup is
+  // keyed on the same identity isSamePdfReload compares. Checked documents
+  // include actor, document, and generation; other documents keep the old
+  // cloud-id or name-size identity. Same-document interaction cleanup is
   // owned by the interaction machinery itself (markPdfjsInteraction /
   // finalize-idle call finishPdfjsInteractionWindow directly), and the
   // per-state setters below all have their real owners for mid-session
   // updates. The isSamePdfReload branches inside stay: they still guard
   // remounts and dev StrictMode double-fires, where the effect re-runs
   // without an identity change.
-  const activePdfChangeIdentity = pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null;
+  const activePdfChangeIdentity = pdfFile
+    ? (checkedBundle !== null
+        ? checkedPageStructureScopeKey
+        : (pdfFile.id || getPDFId(pdfFile)))
+    : null;
   useEffect(() => {
     // Reset to regular mode whenever the active PDF changes
     // Clear all PDF-specific state first to ensure clean transition
-    const nextPdfIdentity = pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null;
+    const nextPdfIdentity = activePdfChangeIdentity;
     const isSamePdfReload = activePdfIdentityRef.current === nextPdfIdentity;
     const previousSurveyMarkersForSamePdf = surveyMarkersRef.current || {};
     const previousCalloutsForSamePdf = calloutsRef.current || [];
@@ -20966,13 +21062,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     pageContainersRef.current = {};
     setRenderedPages(new Set());
     pdfjsZoomSourceRef.current = null;
-    setActiveSpaceId(null);
-    setBookmarks([]);
+    setActiveSpaceId(checkedLocalPageState?.activeSpaceId ?? null);
+    setBookmarks(checkedLocalPageState?.bookmarks || []);
     setPdfBookmarks([]);
     setHasImportedPdfBookmarks(false);
     setSpaces(isSamePdfReload ? previousSpacesForSamePdf : []);
-    setPageNames({});
-    setPageTransformations({});
+    setPageNames(checkedLocalPageState?.pageNames || {});
+    setPageTransformations(checkedLocalPageState?.pageTransformations || {});
+    if (checkedLocalPageState) {
+      setRegionOverlayDisabled(new Map(Object.entries(
+        checkedLocalPageState.regionOverlayDisabled || {},
+      )));
+    }
     setShowSurveyPanel(false);
     setSelectedTemplate(null);
     clearExcelSyncCheckpoint();
@@ -21032,6 +21133,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       setAnnotations({});
       setLocallyDeletedPdfAnnotations([]);
       setSurveyMarkers({});
+      setCheckedPageStructureHydration({ key: null, ready: false });
       setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
     }
@@ -21044,9 +21146,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     activePdfIdentityRef.current = nextPdfIdentity;
     activeCloudDocumentIdRef.current = pdfFile?.id || null;
     setPdfId(id);
-    const data = managedLocalStateReader
+    const data = checkedLocalPageState || (managedLocalStateReader
       ? JSON.parse(managedLocalStateReader.getItem(`pdfData_${id}`) || '{}')
-      : loadPDFData(id);
+      : loadPDFData(id));
     setItems(data.items || {});
     setAnnotations(data.annotations || {});
     if (!isSamePdfReload) {
@@ -21230,6 +21332,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
+    setCheckedPageStructureHydration(checkedLocalPageState && checkedPageStructureScopeKey
+      ? { key: checkedPageStructureScopeKey, ready: true }
+      : { key: null, ready: false });
     // Keyed on document identity ONLY (see comment above the effect).
     // pdfFile and the callbacks are read from the identity-change render's
     // closure, which is fresh at the only moment this effect runs. Do NOT

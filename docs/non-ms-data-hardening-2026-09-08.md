@@ -5014,6 +5014,92 @@ open. The existing publisher preserves the import hash and changes the current
 generation path only when a future host calls this checked flow; this slice does
 not change local-file routes.
 
+## Current status: checked viewer page replacement caller
+
+The viewer now has a checked-generation page replacement caller, but it remains
+off unless `VITE_SURVEY_CHECKED_PAGE_REPLACEMENT` is exactly `mode-v1`. This is
+separate from the checked-open flag. The app has no default transport URL or
+chosen host. AppShell accepts a host adapter that takes the body, access token
+and abort signal and returns a `Response`; a local test adapter may bridge that
+seam to the private Request handler. Normal builds do not mount or guess an
+endpoint.
+
+For a checked page action, the viewer first drains the current generation's
+write queues, then captures and rechecks the accepted actor, document,
+generation and WAL frontier. It sends the existing effective physical page
+operation. This keeps private display rotation local while preserving the old
+rotate result: source rotation 0 plus local display rotation 90 and a clockwise
+90 action requests 180; the matching counter-clockwise action requests 0. The
+checked path does not run the browser PDF rewrite or commit its old page graph.
+Managed-local files keep their prior byte and revision-CAS path.
+
+An IndexedDB row keyed by actor and document owns the exact seven-field request,
+three retry IDs, phase, immutable first local view snapshot and any publication
+receipt. Recovery reads this row before it captures a new action. An automatic
+attempt runs when the checked writer for that actor, document and generation is
+ready. A click may also settle a prior row, but it then reports that the click
+did not start a new change. Lost replies reuse the same IDs. A different action
+cannot replace an unresolved row. A newly reserved row may be removed only by
+exact revision CAS when its accepted frontier fails recheck before any remote
+step; a peer-dispatched row stays.
+
+After a published result, the caller opens the current checked generation. It
+retires the old generation before an exact same-tab swap, unless that generation
+is already installed. The current generation may be newer than the immutable
+receipt. The caller never installs the old local PDF result. It stores the
+latest private source-generation page view just before an exact-target swap,
+remaps that view, stores the target view, then swaps without an await between
+capture and install. A later current generation reads its own scoped state or
+empty defaults. Storage failure leaves the published intent and old-generation
+state for recovery.
+
+Page names, bookmarks, display transforms, region visibility, survey item data
+and the active space remain per-device data. They use actor, document and
+generation storage keys and are not added to shared annotation metadata. Old
+keys and bad entries remain as recovery evidence. The viewer loads each checked
+scope through a rendered-state gate, so the first render of generation B cannot
+write generation A state under B. The same scope key resets page history across
+actor or generation changes.
+
+This is still a gated client slice. Legacy cloud files have not been adopted to
+checked generations. The server's public conflict response does not yet split
+expired from untracked state, so both remain blocked; an authenticated terminal
+subtype and explicit refreshed-source/reset UI are still needed. Sidecars,
+host/provider choice, deployment and live auth/cloud or two-user proof remain
+open. Same-document generation reset keeps workbook registration and durable
+pending-change keys, but it clears the selected template and Excel baseline and
+closes the live workbook session. The in-memory Excel modal, import review and
+pending callbacks do not yet have mounted generation-scope proof, so this slice
+does not claim a safe new-generation Microsoft round trip. An earlier broad
+focused set passed 156/156. After the final checked-scope fixes, the frozen
+affected set passed 93/93
+(`/tmp/page-replacement-save-final-frozen-affected-20260909.log`), including
+actual mounted AppShell and viewer callback scopes, late private edits, quota
+retention, generation load and history gates, IndexedDB retry state, a real PDF
+rotate, accepted frontier/local routes, checked-to-checked swap success, and
+legacy-to-checked queued-work retirement. The final mode-transition subset also
+passed 26/26. This is local proof; it does not select a host or prove a live
+checked cloud write.
+
+The default local browser fixture loaded at 1280 by 720, duplicated page 1 to
+two pages, then rotated page 1 while page 2 stayed unchanged. The fresh run had
+no app errors and only the known offline credential warning. This does not test
+the gated checked route. The existing zoom jump from 78 to 187 percent,
+disabled Undo state and offline Syncing display were observed and were not
+changed.
+
+The frozen full test run stopped after 5,980 tests: 5,901 passed, 78 skipped and
+one unchanged timing test failed. `roundStrokeOutlinePerformance` measured its
+target case at 545.3 ms, over its release budget
+(`/tmp/page-replacement-save-full-npm-test-frozen-final-20260909.log`). Its test
+and both source files have no diff from `HEAD`; an isolated no-overlap rerun
+passed 15/15 with the target at 387.99 ms. No threshold was changed and this is
+not reported as a green full suite. The production build passed with 935 modules
+in 1.89 seconds (`/tmp/page-replacement-save-vite-build-20260909.log`). Earlier
+full runs were diagnostic and stopped on stale test-only source extraction
+scopes while the high-risk files were moving; those fixture ports now pass and
+are not production failures.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

@@ -13,15 +13,16 @@ import assert from 'node:assert/strict';
 const VIEWER_SOURCE = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 
 test('pdf-change effect is keyed on document identity, not callback identities', () => {
-  // The identity const uses the exact same identity isSamePdfReload compares:
+  // Checked documents add actor + document + generation so a published
+  // generation resets page-addressed history. Other documents retain the
   // cloud id first, name+size (getPDFId) fallback.
   assert.match(
     VIEWER_SOURCE,
-    /const activePdfChangeIdentity = pdfFile \? \(pdfFile\.id \|\| getPDFId\(pdfFile\)\) : null;/
+    /const activePdfChangeIdentity = pdfFile\s*\? \(checkedBundle !== null\s*\? checkedPageStructureScopeKey\s*:\s*\(pdfFile\.id \|\| getPDFId\(pdfFile\)\)\)\s*:\s*null;/
   );
   assert.match(
     VIEWER_SOURCE,
-    /const nextPdfIdentity = pdfFile \? \(pdfFile\.id \|\| getPDFId\(pdfFile\)\) : null;\s*\n\s*const isSamePdfReload = activePdfIdentityRef\.current === nextPdfIdentity;/
+    /const nextPdfIdentity = activePdfChangeIdentity;\s*\n\s*const isSamePdfReload = activePdfIdentityRef\.current === nextPdfIdentity;/
   );
   // The dep array is the identity alone.
   assert.match(VIEWER_SOURCE, /\}, \[activePdfChangeIdentity\]\);/);

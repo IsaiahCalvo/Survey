@@ -946,6 +946,32 @@ export function useAnnotationDoc({
     getScopedHandle()?.getHistoryQuarantineGeneration?.() ?? null
   ), [getScopedHandle]);
 
+  const captureAcceptedState = useCallback(async () => {
+    const handle = getScopedHandle();
+    if (!handle || !readyRef.current || typeof handle.captureAcceptedAnnotationState !== 'function') {
+      throw localReceiptError('ANNOTATION_CAPTURE_NOT_READY', 'Accepted annotation state is not ready.');
+    }
+    await handle.drain();
+    if (getScopedHandle() !== handle || !readyRef.current) {
+      throw localReceiptError('ANNOTATION_CAPTURE_NOT_READY', 'Accepted annotation state is no longer current.');
+    }
+    return handle.captureAcceptedAnnotationState();
+  }, [getScopedHandle]);
+
+  const revalidateAcceptedState = useCallback((capture) => {
+    const handle = getScopedHandle();
+    if (!handle || !readyRef.current || typeof handle.revalidateAcceptedAnnotationCapture !== 'function') return false;
+    return handle.revalidateAcceptedAnnotationCapture(capture);
+  }, [getScopedHandle]);
+
+  const retirePdfGeneration = useCallback((options) => {
+    const handle = getScopedHandle();
+    if (!handle || !readyRef.current || typeof handle.retireGeneration !== 'function') {
+      throw localReceiptError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'The checked document version is no longer current.');
+    }
+    return handle.retireGeneration(options);
+  }, [getScopedHandle]);
+
   return {
     initialHydration: renderedStateScopeRef.current === localScope ? initialHydration : { ready: false, source: 'pending', count: 0, documentId },
     deletedPdfAnnotations: renderedStateScopeRef.current === localScope ? deletedPdfAnnotations : [],
@@ -953,6 +979,9 @@ export function useAnnotationDoc({
     applyEraseHistoryTransition,
     restoreEraseDeletion,
     getHistoryQuarantineGeneration,
+    captureAcceptedState,
+    revalidateAcceptedState,
+    retirePdfGeneration,
     ensureLocalDurability,
     isLocalDurabilityCurrent,
     forceFlush,

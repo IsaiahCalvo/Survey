@@ -65,6 +65,7 @@ test('actual main hydration expressions use canonical entries and never adopt sh
     && node.arguments[1]?.elements?.some(entry => entry.name === 'activePdfChangeIdentity'));
   assert.ok(hydrate);
   const scope = { id: localId, managedLocalStateReader: reader, isCloudBackedDoc: false,
+    checkedLocalPageState: null,
     isSamePdfReload: false, shouldUseLocalAnnotationCache: true, cloudRenderCache: null,
     loadPDFData: noLegacy, loadSurveyMarkers: noLegacy, loadAnnotationsByPage: noLegacy, loadCallouts: noLegacy,
   };
@@ -84,6 +85,7 @@ test('actual cloud and unmanaged hydration expressions retain their original rea
   const variable = name => find(hydrate.arguments[0], node => node.type === 'VariableDeclarator' && node.id.name === name).init;
   const legacy = { legacy: true };
   const scope = { id: 'raw-local', managedLocalStateReader: null, isCloudBackedDoc: false,
+    checkedLocalPageState: null,
     isSamePdfReload: false, shouldUseLocalAnnotationCache: true, cloudRenderCache: null,
     loadPDFData: () => legacy, loadSurveyMarkers: () => legacy, loadAnnotationsByPage: () => legacy, loadCallouts: () => legacy,
   };
@@ -101,6 +103,7 @@ test('actual sidebar load uses canonical page names/bookmarks and keeps the deli
   const effect = find(tree, node => isCall(node, 'useEffect') && find(node.arguments[0], child => isCall(child, 'migrateSidebarData')));
   const values = {};
   const scope = { pdfId: localId, managedLocalStateReader: reader, localStorage: { getItem: noLegacy },
+    checkedLocalPageState: null,
     migrateSidebarData: data => data,
     setPageNames: value => { values.pageNames = value; }, setBookmarks: value => { values.bookmarks = value; },
     setHasImportedPdfBookmarks() {}, setSpaces() {}, setPageTransformations() {}, setActiveSpaceId: value => { values.activeSpaceId = value; },

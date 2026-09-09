@@ -1,0 +1,247 @@
+import { randomUUID } from '../utils/randomUUIDPolyfill.js';
+import { captureCheckedPageStructure } from './checkedPageStructure.js';
+
+export const DOCUMENT_PAGE_REPLACEMENT_DB_NAME = 'survey-document-page-replacements-v1';
+
+const STORE = 'intents';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SEQ = /^(0|[1-9][0-9]{0,18})$/;
+const PHASES = new Set(['pending', 'dispatched', 'published']);
+const fail = (code, message) => Object.assign(new Error(message), { code });
+const check = (value, code = 'DOCUMENT_PAGE_REPLACEMENT_STORE_INVALID') => {
+  if (!value) throw fail(code, code === 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED'
+    ? 'A prior page change must be resolved before another can start.'
+    : 'The saved page replacement intent is invalid.');
+};
+const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const exact = (value, keys) => object(value)
+  && Object.keys(value).sort().join('|') === [...keys].sort().join('|');
+const uuid = value => typeof value === 'string' && UUID.test(value);
+const seq = value => typeof value === 'string' && SEQ.test(value)
+  && BigInt(value) <= 9223372036854775807n;
+const stable = value => value && typeof value === 'object'
+  ? (Array.isArray(value)
+      ? `[${value.map(stable).join(',')}]`
+      : `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`)
+  : JSON.stringify(value);
+
+function operation(value) {
+  const fields = {
+    move: ['type', 'from', 'to'], reorder: ['type', 'from', 'to'],
+    insert: ['type', 'afterPage'], delete: ['type', 'page'],
+    rotate: ['type', 'page', 'delta'], copy: ['type', 'source', 'afterPage'],
+    duplicate: ['type', 'page'],
+  }[value?.type];
+  check(fields && exact(value, fields));
+  for (const field of fields) {
+    if (field === 'type') continue;
+    if (field === 'delta') check(Number.isSafeInteger(value[field]) && value[field] % 90 === 0);
+    else check(Number.isSafeInteger(value[field]) && value[field] > 0);
+  }
+  return structuredClone(value);
+}
+
+function published(value, body) {
+  check(exact(value, ['version', 'state', 'document_id', 'source_id', 'candidate_operation_id',
+    'archive_operation_ids', 'previous_generation_id', 'generation_id', 'wal_head', 'published_at']));
+  check(value.version === 1 && value.state === 'published' && value.document_id === body.document_id
+    && value.source_id === body.source_id && value.candidate_operation_id === body.candidate_operation_id
+    && stable(value.archive_operation_ids) === stable(body.archive_operation_ids)
+    && value.previous_generation_id === body.generation_id && uuid(value.generation_id)
+    && value.generation_id !== value.previous_generation_id && value.wal_head === body.wal_head
+    && typeof value.published_at === 'string' && Number.isFinite(Date.parse(value.published_at)));
+  return structuredClone(value);
+}
+
+function validate(row, actorUserId, documentId) {
+  check(exact(row, ['version', 'revision', 'actorUserId', 'documentId', 'phase', 'body',
+    'localPageState', 'publication', 'createdAt', 'updatedAt']));
+  check(row.version === 1 && Number.isSafeInteger(row.revision) && row.revision > 0
+    && row.actorUserId === actorUserId && row.documentId === documentId
+    && uuid(actorUserId) && uuid(documentId) && PHASES.has(row.phase));
+  const body = row.body;
+  check(exact(body, ['document_id', 'generation_id', 'wal_head', 'operation', 'source_id',
+    'candidate_operation_id', 'archive_operation_ids'])
+    && body.document_id === documentId && uuid(body.generation_id) && seq(body.wal_head)
+    && uuid(body.source_id) && uuid(body.candidate_operation_id)
+    && Array.isArray(body.archive_operation_ids) && body.archive_operation_ids.length === 1
+    && uuid(body.archive_operation_ids[0])
+    && new Set([body.source_id, body.candidate_operation_id, ...body.archive_operation_ids]).size === 3);
+  operation(body.operation);
+  captureCheckedPageStructure(row.localPageState);
+  check(typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))
+    && typeof row.updatedAt === 'string' && Number.isFinite(Date.parse(row.updatedAt)));
+  if (row.phase !== 'published') check(row.publication === null);
+  else published(row.publication, body);
+  return structuredClone(row);
+}
+
+export function createDocumentPageReplacementIntentStore({ indexedDB,
+  dbName = DOCUMENT_PAGE_REPLACEMENT_DB_NAME, timeoutMs = 10_000 } = {}) {
+  check(typeof dbName === 'string' && dbName.length > 0 && dbName.length <= 512
+    && Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 120_000);
+  let connection = null, opening = null, closed = false;
+  const active = () => check(!closed, 'DOCUMENT_PAGE_REPLACEMENT_STORE_CLOSED');
+  const database = () => {
+    active();
+    if (connection) return Promise.resolve(connection);
+    if (opening) return opening;
+    const factory = indexedDB === undefined ? globalThis.indexedDB : indexedDB;
+    check(factory?.open, 'DOCUMENT_PAGE_REPLACEMENT_STORE_UNAVAILABLE');
+    opening = new Promise((resolve, reject) => {
+      const request = factory.open(dbName, 1);
+      let settled = false;
+      const finish = (error, db) => {
+        if (settled) { db?.close(); return; }
+        settled = true; clearTimeout(timer);
+        if (error) reject(error); else resolve(db);
+      };
+      const timer = setTimeout(() => finish(fail('DOCUMENT_PAGE_REPLACEMENT_STORE_UNAVAILABLE',
+        'The saved page replacement intent timed out.')), timeoutMs);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: ['actorUserId', 'documentId'] });
+      };
+      request.onblocked = () => finish(fail('DOCUMENT_PAGE_REPLACEMENT_STORE_UNAVAILABLE', 'The saved page replacement intent is blocked.'));
+      request.onerror = () => finish(request.error || fail('DOCUMENT_PAGE_REPLACEMENT_STORE_UNAVAILABLE', 'The saved page replacement intent could not be opened.'));
+      request.onsuccess = () => {
+        const db = request.result;
+        if (settled) { db.close(); return; }
+        if (closed) { finish(fail('DOCUMENT_PAGE_REPLACEMENT_STORE_CLOSED', 'The saved page replacement intent is closed.'), db); return; }
+        connection = db;
+        db.onversionchange = () => { db.close(); if (connection === db) connection = null; };
+        db.onclose = () => { if (connection === db) connection = null; };
+        finish(null, db);
+      };
+    }).finally(() => { opening = null; });
+    return opening;
+  };
+  async function transact(mode, run) {
+    const db = await database(); active();
+    return new Promise((resolve, reject) => {
+      let tx, value, cause, settled = false;
+      const finish = error => {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        if (error) reject(error); else resolve(value);
+      };
+      try { tx = db.transaction(STORE, mode); } catch (error) { reject(error); return; }
+      const timer = setTimeout(() => {
+        cause = fail('DOCUMENT_PAGE_REPLACEMENT_STORE_UNAVAILABLE', 'The saved page replacement intent timed out.');
+        try { tx.abort(); } catch { finish(cause); }
+      }, timeoutMs);
+      tx.oncomplete = () => finish();
+      tx.onabort = () => finish(cause || tx.error || fail('DOCUMENT_PAGE_REPLACEMENT_STORE_UNAVAILABLE', 'The saved page replacement intent did not commit.'));
+      tx.onerror = event => { cause ||= event.target?.error || tx.error; };
+      try { run(tx.objectStore(STORE), next => { value = next; }, error => { cause = error; try { tx.abort(); } catch { finish(error); } }); }
+      catch (error) { cause = error; try { tx.abort(); } catch { finish(error); } }
+    });
+  }
+  return {
+    async reserve(actorUserId, documentId, input) {
+      check(uuid(actorUserId) && uuid(documentId)
+        && exact(input, ['operation', 'generationId', 'walHead', 'localPageState'])
+        && uuid(input.generationId) && seq(input.walHead));
+      const capturedOperation = operation(input.operation);
+      return transact('readwrite', (store, done, abort) => {
+        const request = store.get([actorUserId, documentId]);
+        request.onsuccess = () => {
+          try {
+            if (request.result) {
+              const current = validate(request.result, actorUserId, documentId);
+              check(current.body.generation_id === input.generationId
+                && current.body.wal_head === input.walHead
+                && stable(current.body.operation) === stable(capturedOperation),
+              'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
+              done({ row: current, created: false }); return;
+            }
+            const now = new Date().toISOString();
+            const row = validate({ version: 1, revision: 1, actorUserId, documentId,
+              phase: 'pending', publication: null, createdAt: now, updatedAt: now,
+              localPageState: captureCheckedPageStructure(input.localPageState),
+              body: { document_id: documentId, generation_id: input.generationId,
+                wal_head: input.walHead, operation: capturedOperation,
+                source_id: randomUUID(), candidate_operation_id: randomUUID(),
+                archive_operation_ids: [randomUUID()] } }, actorUserId, documentId);
+            store.add(row); done({ row, created: true });
+          } catch (error) { abort(error); }
+        };
+      });
+    },
+    async get(actorUserId, documentId) {
+      check(uuid(actorUserId) && uuid(documentId));
+      return transact('readonly', (store, done, abort) => {
+        const request = store.get([actorUserId, documentId]);
+        request.onsuccess = () => {
+          try { done(request.result ? validate(request.result, actorUserId, documentId) : null); }
+          catch (error) { abort(error); }
+        };
+      });
+    },
+    async markPublished(actorUserId, documentId, expectedRevision, publication) {
+      check(Number.isSafeInteger(expectedRevision) && expectedRevision > 0);
+      return transact('readwrite', (store, done, abort) => {
+        const request = store.get([actorUserId, documentId]);
+        request.onsuccess = () => {
+          try {
+            const row = validate(request.result, actorUserId, documentId);
+            const exactPublication = published(publication, row.body);
+            if (row.phase === 'published') {
+              check(stable(row.publication) === stable(exactPublication),
+                'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
+              done(row); return;
+            }
+            check(row.revision === expectedRevision, 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
+            row.phase = 'published'; row.publication = exactPublication;
+            row.revision += 1; row.updatedAt = new Date().toISOString();
+            validate(row, actorUserId, documentId); store.put(row); done(row);
+          } catch (error) { abort(error); }
+        };
+      });
+    },
+    async markDispatched(actorUserId, documentId, expectedRevision) {
+      check(Number.isSafeInteger(expectedRevision) && expectedRevision > 0);
+      return transact('readwrite', (store, done, abort) => {
+        const request = store.get([actorUserId, documentId]);
+        request.onsuccess = () => {
+          try {
+            const row = validate(request.result, actorUserId, documentId);
+            if (row.phase !== 'pending') { done(row); return; }
+            check(row.revision === expectedRevision, 'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
+            row.phase = 'dispatched'; row.revision += 1; row.updatedAt = new Date().toISOString();
+            validate(row, actorUserId, documentId); store.put(row); done(row);
+          } catch (error) { abort(error); }
+        };
+      });
+    },
+    async discardPending(actorUserId, documentId, expectedRevision) {
+      check(Number.isSafeInteger(expectedRevision) && expectedRevision > 0);
+      return transact('readwrite', (store, done, abort) => {
+        const request = store.get([actorUserId, documentId]);
+        request.onsuccess = () => {
+          try {
+            const row = validate(request.result, actorUserId, documentId);
+            check(row.phase === 'pending' && row.revision === expectedRevision,
+              'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
+            store.delete([actorUserId, documentId]); done(true);
+          } catch (error) { abort(error); }
+        };
+      });
+    },
+    async finish(actorUserId, documentId, expectedRevision) {
+      check(Number.isSafeInteger(expectedRevision) && expectedRevision > 0);
+      return transact('readwrite', (store, done, abort) => {
+        const request = store.get([actorUserId, documentId]);
+        request.onsuccess = () => {
+          try {
+            const row = validate(request.result, actorUserId, documentId);
+            check(row.phase === 'published' && row.revision === expectedRevision,
+              'DOCUMENT_PAGE_REPLACEMENT_UNRESOLVED');
+            store.delete([actorUserId, documentId]); done(true);
+          } catch (error) { abort(error); }
+        };
+      });
+    },
+    close() { closed = true; connection?.close(); connection = null; },
+  };
+}

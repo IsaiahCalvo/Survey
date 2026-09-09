@@ -19,6 +19,12 @@ export function usePageOperations({
   pdfFile,
   actorUserId = null,
   onUpdatePDFFile,
+  checkedDocument = false,
+  onReplaceCheckedPages = null,
+  captureAcceptedState = null,
+  revalidateAcceptedState = null,
+  retirePdfGeneration = null,
+  captureLocalPageState = null,
   getPageState,
   commitPageState,
   withMutation,
@@ -31,6 +37,7 @@ export function usePageOperations({
 }) {
   const pdfFileRef = useRef(pdfFile);
   const renderedPdfFileRef = useRef(pdfFile);
+  const renderedCheckedDocumentRef = useRef(checkedDocument);
   const pageStateRef = useRef(null);
   const pageStateObservedFingerprintRef = useRef(null);
   const operationScopeRef = useRef({ actorUserId });
@@ -41,14 +48,21 @@ export function usePageOperations({
     mountRef.current = mount;
     return () => { if (mountRef.current === mount) mountRef.current = null; };
   }, []);
+  const checkedModeChanged = renderedCheckedDocumentRef.current !== checkedDocument;
+  const sameCheckedDocumentSwap = checkedDocument && renderedCheckedDocumentRef.current === true
+    && renderedPdfFileRef.current?.id
+    && renderedPdfFileRef.current.id === pdfFile?.id;
   if (operationScopeRef.current.actorUserId !== actorUserId
+    || checkedModeChanged
     || (renderedPdfFileRef.current !== pdfFile && pdfFileRef.current !== pdfFile
+      && !sameCheckedDocumentSwap
       && !(pendingPageFileRef.current?.file === pdfFile
         && pendingPageFileRef.current?.scope === operationScopeRef.current))) {
     operationScopeRef.current = { actorUserId };
     pageStateRef.current = null;
     pageStateObservedFingerprintRef.current = null;
   }
+  renderedCheckedDocumentRef.current = checkedDocument;
   const operationScope = operationScopeRef.current;
   const pendingPageFile = pendingPageFileRef.current;
   if (pendingPageFile?.scope === operationScope && pdfFile === pendingPageFile.sourceFile
@@ -95,6 +109,33 @@ export function usePageOperations({
             + Number(sourceState?.pageTransformations?.[operation.page]?.rotation || 0),
         }
         : operation;
+      if (checkedDocument) {
+        if (typeof onReplaceCheckedPages !== 'function'
+          || typeof captureAcceptedState !== 'function'
+          || typeof revalidateAcceptedState !== 'function'
+          || typeof retirePdfGeneration !== 'function'
+          || typeof captureLocalPageState !== 'function') {
+          throw new Error('Checked page changes are not available. Your page change was kept.');
+        }
+        const replaced = await onReplaceCheckedPages({
+          operation: pdfOperation,
+          localPageState: sourceState,
+          captureAccepted: captureAcceptedState,
+          revalidateCapture: revalidateAcceptedState,
+          retireGeneration: retirePdfGeneration,
+          captureLocalPageState: () => {
+            if (!isCurrent() || pdfFileRef.current !== currentPdfFile) {
+              throw new Error('The checked document changed. Your page change was kept.');
+            }
+            return captureLocalPageState();
+          },
+          expectedSourceFile: currentPdfFile,
+        });
+        if (!isCurrent() || replaced !== true) {
+          throw new Error('The checked page change was not confirmed. Your document was kept.');
+        }
+        return true;
+      }
       const { mutatePdfPagesWithIdentity } = await import('../utils/pdfPageMutation.js');
       const { bytes: pdfBytes, copiedWidgets } = await mutatePdfPagesWithIdentity(
         await currentPdfFile.arrayBuffer(), pdfOperation,
@@ -165,7 +206,8 @@ export function usePageOperations({
       showToast(`Error ${errorVerb} page: ${error.message}`, 'error');
       return false;
     }
-  }, [commitPageState, getPageState, onUpdatePDFFile, operationScope]);
+  }, [captureAcceptedState, captureLocalPageState, checkedDocument, commitPageState, getPageState, onReplaceCheckedPages,
+    onUpdatePDFFile, operationScope, retirePdfGeneration, revalidateAcceptedState]);
 
   const executionRef = useRef(null);
   executionRef.current = { executeMutation, withMutation, scope: operationScope };

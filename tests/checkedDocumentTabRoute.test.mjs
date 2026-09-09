@@ -52,6 +52,9 @@ function handlerHarness(initial = []) {
   const ports = () => { closeViewRef.current = { tabs: state.tabs }; return ({ tabs: state.tabs, selectedPDF: state.selected, documentOpenScope: scope, documentOpenScopeRef: ref,
     closeViewRef,
     openingPdfsRef: opening, prepareCheckedDocumentOpen, getDocumentOpenKey, isSameDocumentTab,
+    checkedPageStructureStorage: null,
+    readLocalCheckedPageStructure: () => ({ items: {}, annotations: {}, pageNames: {}, bookmarks: [],
+      pageTransformations: {}, activeSpaceId: null, regionOverlayDisabled: {} }),
     setTabs: set('tabs'), setSelectedPDF: set('selected'), setActiveTabId: set('active'), setCurrentView: set('view'), setIsLoading: set('loading'),
     generateTabId: () => `tab-${++serial}`, setTimeout: callback => { timers.push(callback); } }); };
   return { state, changes, ref, opening,

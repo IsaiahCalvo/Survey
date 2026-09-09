@@ -35,6 +35,10 @@ import {
 import DocumentTabProvider from './components/collab/DocumentTabProvider.jsx';
 import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
+import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
+import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
+import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
+  transformCheckedPageStructure } from './services/checkedPageStructure.js';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
@@ -65,6 +69,19 @@ import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScroll
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 const CHECKED_DOCUMENT_OPEN_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_DOCUMENT_OPEN === 'mode-v1';
+const CHECKED_PAGE_REPLACEMENT_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_PAGE_REPLACEMENT === 'mode-v1';
+const readLocalCheckedPageStructure = (options, fallback = null) => {
+  try {
+    if (fallback && options.storage?.getItem?.(checkedPageStructureKey(
+      options.actorUserId, options.documentId, options.generationId,
+    )) == null) return fallback;
+    return readCheckedPageStructure(options);
+  }
+  catch {
+    console.error('Checked page view state could not be read; the saved entry was retained.');
+    return fallback || emptyCheckedPageStructure();
+  }
+};
 
 function RailLiveZoomText({ fallback, viewerId }) {
   const [livePercentage, setLivePercentage] = useState(null);
@@ -103,7 +120,9 @@ if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STA
   console.info(`[build] ${__BUILD_STAMP__}`);
 }
 
-export default function App({ devPreviewReturnTab = null }) {
+export default function App({ devPreviewReturnTab = null, documentReplacementTransport = null,
+  documentReplacementIntentStore = null, checkedPageStructureStorage = null,
+  checkedPageReplacementEnabled = CHECKED_PAGE_REPLACEMENT_ENABLED }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
   const { replaceDocument, downloadDocument: downloadFromStorage } = useStorage();
@@ -832,6 +851,41 @@ export default function App({ devPreviewReturnTab = null }) {
       if (checkedDocumentAcquisitionRef.current === entry) checkedDocumentAcquisitionRef.current = null;
     };
   }, [documentOpenScope]);
+  const pageReplacementStoreRef = useRef(null);
+  if (!pageReplacementStoreRef.current
+    || pageReplacementStoreRef.current.supplied !== documentReplacementIntentStore) {
+    pageReplacementStoreRef.current = {
+      supplied: documentReplacementIntentStore,
+      store: documentReplacementIntentStore || createDocumentPageReplacementIntentStore(),
+    };
+  }
+  const pageReplacementClientRef = useRef(null);
+  useEffect(() => {
+    pageReplacementClientRef.current = null;
+    if (!CHECKED_DOCUMENT_OPEN_ENABLED || checkedPageReplacementEnabled !== true || !documentOpenScope.actorUserId
+      || typeof documentReplacementTransport !== 'function') return undefined;
+    const scope = documentOpenScope, mount = documentOpenMountRef.current;
+    const client = createDocumentPageReplacementClient({
+      store: pageReplacementStoreRef.current.store,
+      transport: documentReplacementTransport,
+      getActorUserId: () => documentOpenScopeRef.current === scope ? scope.actorUserId : null,
+      isCurrent: ({ actorUserId }) => mount !== null && documentOpenMountRef.current === mount
+        && documentOpenScopeRef.current === scope && actorUserId === scope.actorUserId,
+      getAccessToken: async () => {
+        const response = await supabase.auth.getSession();
+        if (response?.error || response?.data?.session?.user?.id !== scope.actorUserId) return null;
+        return response.data.session.access_token;
+      },
+      reacquire: async ({ documentId, signal }) => {
+        const entry = checkedDocumentAcquisitionRef.current;
+        if (!entry || entry.scope !== scope) throw new Error('The checked document open is no longer current.');
+        return entry.acquisition.openCurrent({ documentId, signal });
+      },
+    });
+    const entry = { scope, mount, client };
+    pageReplacementClientRef.current = entry;
+    return () => { if (pageReplacementClientRef.current === entry) pageReplacementClientRef.current = null; };
+  }, [checkedPageReplacementEnabled, documentOpenScope, documentReplacementTransport]);
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
   // Template refetch for PDFViewer
@@ -885,6 +939,12 @@ export default function App({ devPreviewReturnTab = null }) {
       // Never pair a checked annotation baseline with caller-supplied bytes.
       const prepared = prepareCheckedDocumentOpen(checkedBundle, documentOpenScope.actorUserId);
       file = prepared.file;
+      file._checkedPageStructure = readLocalCheckedPageStructure({
+        storage: checkedPageStructureStorage || globalThis.localStorage,
+        actorUserId: documentOpenScope.actorUserId,
+        documentId: prepared.file.id,
+        generationId: prepared.pdfGenerationId,
+      });
       filePath = null;
     }
     if (!file) {
@@ -1367,6 +1427,82 @@ export default function App({ devPreviewReturnTab = null }) {
       if (pendingFileReplacementsRef.current.get(tabId) === lease) pendingFileReplacementsRef.current.delete(tabId);
     }
   }, [documentOpenScope, replaceDocument]);
+
+  const handleReplaceCheckedPages = useCallback(async (input, targetTabId, expectedSourceFile,
+    expectedCheckedBundle) => {
+    const scope = documentOpenScope, mount = documentOpenMountRef.current;
+    const entry = pageReplacementClientRef.current;
+    const requested = closeViewRef.current?.tabs?.find(tab => tab.id === targetTabId);
+    const documentId = expectedSourceFile?.id;
+    const current = () => mount !== null && documentOpenMountRef.current === mount
+      && documentOpenScopeRef.current === scope && entry?.scope === scope && entry.mount === mount
+      && closeViewRef.current?.tabs?.some(tab => tab.id === targetTabId && !tab.isHome
+        && tab.actorUserId === scope.actorUserId && tab.file?.id === documentId);
+    if (!entry || !scope.actorUserId || !requested || requested.file !== expectedSourceFile
+      || requested.checkedBundle !== expectedCheckedBundle || !documentId || !current()) {
+      throw new Error('Checked page changes are not available. Your page change was kept.');
+    }
+    const storage = checkedPageStructureStorage || globalThis.localStorage;
+    const replace = input.recoveryOnly ? entry.client.resume : entry.client.replace;
+    const replacement = await replace({
+      documentId,
+      operation: input.operation,
+      localPageState: input.localPageState,
+      captureAccepted: input.captureAccepted,
+      revalidateCapture: input.revalidateCapture,
+      retireGeneration: input.retireGeneration,
+      currentGenerationId: expectedCheckedBundle.pdfGenerationId,
+      signal: input.signal,
+      persistSourceLocalState: async ({ generationId, localPageState }) => {
+        if (!current()) throw new Error('The checked document changed.');
+        saveCheckedPageStructure({ storage, actorUserId: scope.actorUserId, documentId,
+          generationId, state: localPageState, ifAbsent: true });
+      },
+      install: async ({ checkedBundle, publication, localPageState, operation }) => {
+        if (!current()) return false;
+        const live = closeViewRef.current.tabs.find(tab => tab.id === targetTabId);
+        if (live.checkedBundle === checkedBundle && live.file?.pdfGenerationId === checkedBundle.pdfGenerationId) {
+          return true;
+        }
+        if (live.file !== expectedSourceFile || live.checkedBundle !== expectedCheckedBundle) return false;
+        const exactTarget = checkedBundle.pdfGenerationId === publication.generation_id;
+        let sourceLocalState = localPageState;
+        if (exactTarget) {
+          if (typeof input.captureLocalPageState === 'function') {
+            sourceLocalState = input.captureLocalPageState();
+          } else {
+            sourceLocalState = readLocalCheckedPageStructure({ storage,
+              actorUserId: scope.actorUserId, documentId,
+              generationId: expectedCheckedBundle.pdfGenerationId }, localPageState);
+          }
+          if (!current()) return false;
+          saveCheckedPageStructure({ storage, actorUserId: scope.actorUserId, documentId,
+            generationId: expectedCheckedBundle.pdfGenerationId, state: sourceLocalState });
+        }
+        const nextLocalState = exactTarget
+          ? transformCheckedPageStructure(sourceLocalState, operation)
+          : readLocalCheckedPageStructure({ storage, actorUserId: scope.actorUserId, documentId,
+              generationId: checkedBundle.pdfGenerationId });
+        if (exactTarget) saveCheckedPageStructure({ storage, actorUserId: scope.actorUserId,
+          documentId, generationId: checkedBundle.pdfGenerationId, state: nextLocalState });
+        const prepared = prepareCheckedDocumentOpen(checkedBundle, scope.actorUserId);
+        prepared.file._checkedPageStructure = nextLocalState;
+        flushSync(() => {
+          setTabs(previous => previous.map(tab => tab.id === targetTabId
+            && tab.file === expectedSourceFile && tab.checkedBundle === expectedCheckedBundle
+            ? { ...tab, file: prepared.file, filePath: null, checkedBundle } : tab));
+          setSelectedPDF(previous => closeViewRef.current.activeTabId === targetTabId
+            && previous === expectedSourceFile ? prepared.file : previous);
+        });
+        return current() && closeViewRef.current.tabs.some(tab => tab.id === targetTabId
+          && tab.file === prepared.file && tab.checkedBundle === checkedBundle);
+      },
+    });
+    if (!input.recoveryOnly && replacement.recoveredPrior) {
+      throw new Error('The previous page change was recovered. This click did not start a new change.');
+    }
+    return current();
+  }, [checkedPageStructureStorage, documentOpenScope]);
 
   const handleTabClose = async (tabId) => {
     // Prevent closing the home tab
@@ -3247,6 +3383,12 @@ export default function App({ devPreviewReturnTab = null }) {
                       onRightRailApiChange={setRightRailApi}
                       onPageDrop={handlePageDrop}
                       onUpdatePDFFile={(newFile) => handleUpdatePDFFile(newFile, tab.id, tab.file)}
+                      onReplaceCheckedPages={checkedPageReplacementEnabled === true
+                        && typeof documentReplacementTransport === 'function'
+                        ? (input) => handleReplaceCheckedPages(
+                            input, tab.id, tab.file, tab.checkedBundle,
+                          )
+                        : null}
                       onCloseAfterFailure={handleTabClose}
                       onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                       onAnnotationsExistChange={handleAnnotationsExistChange}
