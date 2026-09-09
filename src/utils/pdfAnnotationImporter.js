@@ -5053,7 +5053,26 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     && (appearance?.hasFill === true || appearance?.hasStroke === true)
     ? getAppearancePathBounds(annotation, viewport, scale)
     : null;
-  const viewportRect = appearanceBounds || rawViewportRect;
+  // UX 2026-09-09: a cloudy /Circle's /Rect is the scalloped appearance box;
+  // /RD [left, top, right, bottom] is the inset back to the base ellipse
+  // (PDF 32000 12.5.6.8) - our exporter writes it, Acrobat does too. Without
+  // it the base oval imports inflated by one scallop on every side. For a
+  // tilted cloud the inset is measured in the un-rotated /BBox frame (which is
+  // what our exporter writes; the page-space and box-space definitions agree
+  // whenever there is no tilt).
+  const cloudInsets = cloudEffect && Array.isArray(annotation.rectangleDifferences)
+    && annotation.rectangleDifferences.length === 4
+    ? annotation.rectangleDifferences.map((value) => Math.max(0, Number(value) || 0) * scale)
+    : [0, 0, 0, 0];
+  const insetRect = (rect) => (rect && cloudEffect
+    ? {
+        left: rect.left + cloudInsets[0],
+        top: rect.top + cloudInsets[1],
+        width: Math.max(0, rect.width - cloudInsets[0] - cloudInsets[2]),
+        height: Math.max(0, rect.height - cloudInsets[1] - cloudInsets[3]),
+      }
+    : rect);
+  const viewportRect = appearanceBounds || (rotationTransform ? rawViewportRect : insetRect(rawViewportRect));
   const hasAppearancePaint = Boolean(
     appearance && (appearance.hasFill === true || appearance.hasStroke === true)
   );
@@ -5091,11 +5110,22 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
   if (!hasVisibleStroke && !hasVisibleFill) return null;
 
   if (rotationTransform) {
-    const rx = rotationTransform.bboxWidth / 2;
-    const ry = rotationTransform.bboxHeight / 2;
+    // The /BBox is the (inflated) appearance box; /RD shrinks it back to the
+    // base ellipse, and the base centre sits off the box centre by the inset
+    // asymmetry - rotated with the shape, since the box centre is what /Rect
+    // (the rotated box's page bounds) is centred on.
+    const rx = (rotationTransform.bboxWidth - cloudInsets[0] - cloudInsets[2]) / 2;
+    const ry = (rotationTransform.bboxHeight - cloudInsets[1] - cloudInsets[3]) / 2;
     if (rx <= 0 || ry <= 0) return null;
-    const cx = viewportRect.left + viewportRect.width / 2;
-    const cy = viewportRect.top + viewportRect.height / 2;
+    const localOffset = {
+      x: cloudInsets[0] + rx - rotationTransform.bboxWidth / 2,
+      y: cloudInsets[1] + ry - rotationTransform.bboxHeight / 2,
+    };
+    const tilt = (rotationTransform.angleDeg * Math.PI) / 180;
+    const offsetX = localOffset.x * Math.cos(tilt) - localOffset.y * Math.sin(tilt);
+    const offsetY = localOffset.x * Math.sin(tilt) + localOffset.y * Math.cos(tilt);
+    const cx = viewportRect.left + viewportRect.width / 2 + offsetX;
+    const cy = viewportRect.top + viewportRect.height / 2 + offsetY;
     return {
       type: 'ellipse',
       left: cx - rx,

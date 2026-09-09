@@ -96,6 +96,7 @@ import {
 import { sanitizeUnappliedRedactionsForExport } from './pdfRedactionSafety.js';
 import {
   buildStickyNoteGlyphSpec,
+  getCloudPathBounds,
   isStickyNoteGlyphObject,
   resolveAnnotationCloudSpec,
   stickyNoteOutlineColor,
@@ -1814,6 +1815,198 @@ const applyCloudBorderEffectToDict = (pdfDoc, annotationDict, fabricObj) => {
   return true;
 };
 
+// UX 2026-09-09: a cloud has to look the same in Acrobat, Preview, Chrome and
+// poppler as it does on screen. Those viewers either ignore /BE or draw their
+// own (different) scallops for it, so every cloud shape - rect, ellipse/circle
+// (tilted or not), polygon, open polyline - ships an /AP /N form that paints
+// the engine's exact crowns: the scalloped fill region first (nonzero, its own
+// alpha), then the outline stroked with round caps and joins - the same two
+// paints, in the same order, as the screen's CloudOutline and the flattener.
+//
+// The form is built in the shape's local, un-rotated frame (the engine frame,
+// scale already baked in); /Matrix carries the tilt and /Rect is the page box
+// of the ROTATED appearance box, so the viewer's BBox->Rect fit (PDF 32000
+// 12.5.5) is a pure translation - never a hidden scale. Alpha is baked into
+// the stream's ExtGState because a viewer must ignore /CA once an appearance
+// stream exists (12.5.2); /CA is still written for viewers that regenerate.
+// /BE + /I stay on the dict so our importer (and Acrobat) know the shape is a
+// cloud and how big its bumps are, and /RD records the inset from the
+// appearance box to the base rectangle/ellipse in that same local frame -
+// which IS the spec's page-space definition whenever the shape is not tilted
+// - so a re-import without our metadata rebuilds the base shape, not the
+// inflated box.
+const CLOUD_APPEARANCE_PAD = 1;
+
+const cloudNumberText = (value) => pdfNumberText(Math.round(Number(value) * 1e4) / 1e4);
+
+// Engine commands (absolute M/L/C/Z) -> content-stream operators through a
+// point mapper (local frame -> form space).
+const cloudCommandsToOperators = (commands, mapPoint) => {
+  const lines = [];
+  for (const [verb, ...values] of commands || []) {
+    if (verb === 'Z') {
+      lines.push('h');
+      continue;
+    }
+    const operator = verb === 'M' ? 'm' : verb === 'L' ? 'l' : verb === 'C' ? 'c' : null;
+    if (!operator) continue;
+    const coords = [];
+    for (let index = 0; index + 1 < values.length; index += 2) {
+      const point = mapPoint(values[index], values[index + 1]);
+      coords.push(cloudNumberText(point.x), cloudNumberText(point.y));
+    }
+    lines.push(`${coords.join(' ')} ${operator}`);
+  }
+  return lines;
+};
+
+/**
+ * Build the /AP /N form for a cloud annotation. Returns null when the object
+ * is not a cloud (or paints nothing), so the caller keeps its plain path.
+ *
+ * @returns {{
+ *   ref: PDFRef, rect: number[], rd: number[]|null,
+ *   strokeAlpha: number, vertices: {x:number,y:number}[],
+ * }|null}
+ */
+const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight) => {
+  const geometry = resolveAnnotationCloudSpec(fabricObj) ? resolveCloudAnnotationGeometry(fabricObj) : null;
+  if (!geometry) return null;
+  const bounds = getCloudPathBounds(geometry.outline);
+  if (!bounds) return null;
+  const stroke = resolvedPdfPaint(fabricObj?.stroke, 'transparent');
+  const fill = geometry.fill ? resolvedPdfPaint(fabricObj?.fill, 'transparent') : null;
+  const strokeWidth = stroke ? Math.max(0, Number(geometry.strokeWidth) || 0) : 0;
+  const hasStroke = Boolean(stroke) && strokeWidth > 0;
+  if (!hasStroke && !fill) return null;
+  const objectOpacity = Number.isFinite(Number(fabricObj?.opacity))
+    ? Math.max(0, Math.min(1, Number(fabricObj.opacity)))
+    : 1;
+  const strokeAlpha = hasStroke ? (stroke.opacity ?? 1) * objectOpacity : 1;
+  const fillAlpha = fill ? (fill.opacity ?? 1) * objectOpacity : 1;
+  const multiply = fabricObj?.globalCompositeOperation === 'multiply';
+  const needsGraphicsState = strokeAlpha < 0.99999 || fillAlpha < 0.99999 || multiply;
+
+  // Appearance box in the local frame: the crowns plus the round caps' half
+  // stroke, plus a small anti-aliasing margin so no viewer clips the edge.
+  const pad = strokeWidth / 2 + CLOUD_APPEARANCE_PAD;
+  const box = {
+    minX: bounds.minX - pad,
+    minY: bounds.minY - pad,
+    maxX: bounds.maxX + pad,
+    maxY: bounds.maxY + pad,
+  };
+  const formWidth = box.maxX - box.minX;
+  const formHeight = box.maxY - box.minY;
+  if (!(formWidth > 0) || !(formHeight > 0)) return null;
+  // Local frame is y-down (app space); form space is y-up inside /BBox.
+  const toForm = (x, y) => ({ x: x - box.minX, y: box.maxY - y });
+
+  const n = pdfNumberText;
+  const content = ['q'];
+  if (needsGraphicsState) content.push('/GS0 gs');
+  content.push('1 J 1 j');
+  if (fill) {
+    content.push(`${n(fill.color.red)} ${n(fill.color.green)} ${n(fill.color.blue)} rg`);
+    content.push(...cloudCommandsToOperators(geometry.fill, toForm), 'f');
+  }
+  if (hasStroke) {
+    content.push(`${n(stroke.color.red)} ${n(stroke.color.green)} ${n(stroke.color.blue)} RG`);
+    content.push(`${n(strokeWidth)} w`);
+    content.push(...cloudCommandsToOperators(geometry.outline, toForm), 'S');
+  }
+  content.push('Q');
+
+  // fabric `angle` is screen-clockwise in y-down space; the same visual tilt
+  // is a CCW rotation by -angle in PDF's y-up space (see createEllipseAnnotation).
+  const angle = Number(geometry.angle) || 0;
+  const theta = (-angle * Math.PI) / 180;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const resources = {};
+  if (needsGraphicsState) {
+    resources.ExtGState = {
+      GS0: {
+        Type: 'ExtGState',
+        CA: strokeAlpha,
+        ca: fillAlpha,
+        ...(multiply ? { BM: 'Multiply' } : {}),
+      },
+    };
+  }
+  const form = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+    Type: 'XObject',
+    Subtype: 'Form',
+    FormType: 1,
+    BBox: [0, 0, formWidth, formHeight],
+    ...(angle ? { Matrix: [cos, sin, -sin, cos, 0, 0] } : {}),
+    Resources: resources,
+  });
+  const ref = pdfDoc.context.register(form);
+
+  // /Rect = page box of the appearance box rotated about the shape's pivot
+  // (the AABB size is rotation-pivot independent, so it matches the viewer's
+  // transformed /BBox exactly and the fit reduces to a translation).
+  const toWorld = (point) => {
+    const rotated = rotateAppPoint(point, geometry.pivot, angle);
+    return { x: rotated.x + geometry.origin.x, y: rotated.y + geometry.origin.y };
+  };
+  const corners = [
+    { x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY },
+    { x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY },
+  ].map(toWorld);
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  const rect = [
+    Math.min(...xs),
+    pageHeight - Math.max(...ys),
+    Math.max(...xs),
+    pageHeight - Math.min(...ys),
+  ];
+
+  // /RD: [left, top, right, bottom] inset from the appearance box to the base
+  // rectangle / ellipse box, in the local frame.
+  let rd = null;
+  if (geometry.kind === 'rectangle' || geometry.kind === 'ellipse') {
+    const baseXs = geometry.points.map((point) => point.x);
+    const baseYs = geometry.points.map((point) => point.y);
+    rd = [
+      Math.min(...baseXs) - box.minX,
+      Math.min(...baseYs) - box.minY,
+      box.maxX - Math.max(...baseXs),
+      box.maxY - Math.max(...baseYs),
+    ].map((value) => Math.max(0, value));
+  }
+
+  return {
+    ref,
+    rect,
+    rd,
+    strokeAlpha,
+    vertices: geometry.points.map(toWorld),
+  };
+};
+
+/**
+ * Stamp a cloud annotation dict with its /AP, the matching /Rect (+ /RD, /CA)
+ * and, for polygons/polylines, /Vertices from the same resolved geometry.
+ * Returns the appearance (or null when the object is not a paintable cloud).
+ */
+const applyCloudAppearanceToDict = (pdfDoc, annotationDict, fabricObj, pageHeight) => {
+  const appearance = buildCloudAppearance(pdfDoc, fabricObj, pageHeight);
+  if (!appearance) return null;
+  annotationDict.AP = pdfDoc.context.obj({ N: appearance.ref });
+  annotationDict.Rect = appearance.rect;
+  annotationDict.CA = appearance.strokeAlpha;
+  if (appearance.rd) annotationDict.RD = appearance.rd;
+  if (annotationDict.Vertices) {
+    annotationDict.Vertices = appearance.vertices
+      .flatMap((point) => [point.x, pageHeight - point.y])
+      .map((value) => PDFNumber.of(value));
+  }
+  return appearance;
+};
+
 /**
  * Create Square annotation (rectangle)
  */
@@ -1848,7 +2041,11 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
-    applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
+    if (applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
+      // A cloud rect paints its own scallops (see buildCloudAppearance); the
+      // /Rect grows to the appearance box and /RD keeps the base rectangle.
+      applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
+    }
 
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
@@ -1988,7 +2185,11 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
 
-    applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
+    if (applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
+      // Counters never resolve as clouds, so this only ever replaces the
+      // viewer-drawn oval of a plain /Circle with the engine's scallops.
+      applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
+    }
 
     return pdfDoc.context.register(pdfDoc.context.obj(annotationDict));
   } catch (e) {
@@ -2040,46 +2241,53 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     const strokeWidth = Number(fabricObj.strokeWidth) || 1;
     const alpha = paintAlpha(strokePaint, fabricObj.opacity);
 
-    // Un-rotated ellipse (center rx,ry radii rx,ry) as four cubic arcs in
-    // form space; the /Matrix applies the tilt.
-    const k = 0.551784;
-    const kx = k * rx;
-    const ky = k * ry;
-    const n = pdfNumberText;
-    const content = ['q'];
-    if (alpha < 0.99999) content.push('/GS0 gs');
-    content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
-    if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
-    content.push(`${n(strokeWidth)} w`);
-    content.push(
-      `${n(2 * rx)} ${n(ry)} m`,
-      `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
-      `${n(rx - kx)} ${n(2 * ry)} 0 ${n(ry + ky)} 0 ${n(ry)} c`,
-      `0 ${n(ry - ky)} ${n(rx - kx)} 0 ${n(rx)} 0 c`,
-      `${n(rx + kx)} 0 ${n(2 * rx)} ${n(ry - ky)} ${n(2 * rx)} ${n(ry)} c`,
-      'h',
-      fillColor ? 'B' : 'S',
-      'Q',
-    );
+    // UX 2026-09-09: a cloud ellipse's /AP paints the engine's scallops
+    // (buildCloudAppearance) instead of this plain oval - same /Matrix tilt
+    // convention, /Rect grown to the rotated appearance box.
+    const cloudAppearance = buildCloudAppearance(pdfDoc, fabricObj, pageHeight);
+    let appearanceRef = cloudAppearance?.ref || null;
+    if (!appearanceRef) {
+      // Un-rotated ellipse (center rx,ry radii rx,ry) as four cubic arcs in
+      // form space; the /Matrix applies the tilt.
+      const k = 0.551784;
+      const kx = k * rx;
+      const ky = k * ry;
+      const n = pdfNumberText;
+      const content = ['q'];
+      if (alpha < 0.99999) content.push('/GS0 gs');
+      content.push(`${n(color.red)} ${n(color.green)} ${n(color.blue)} RG`);
+      if (fillColor) content.push(`${n(fillColor.red)} ${n(fillColor.green)} ${n(fillColor.blue)} rg`);
+      content.push(`${n(strokeWidth)} w`);
+      content.push(
+        `${n(2 * rx)} ${n(ry)} m`,
+        `${n(2 * rx)} ${n(ry + ky)} ${n(rx + kx)} ${n(2 * ry)} ${n(rx)} ${n(2 * ry)} c`,
+        `${n(rx - kx)} ${n(2 * ry)} 0 ${n(ry + ky)} 0 ${n(ry)} c`,
+        `0 ${n(ry - ky)} ${n(rx - kx)} 0 ${n(rx)} 0 c`,
+        `${n(rx + kx)} 0 ${n(2 * rx)} ${n(ry - ky)} ${n(2 * rx)} ${n(ry)} c`,
+        'h',
+        fillColor ? 'B' : 'S',
+        'Q',
+      );
 
-    const resources = {};
-    if (alpha < 0.99999) {
-      resources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+      const resources = {};
+      if (alpha < 0.99999) {
+        resources.ExtGState = { GS0: { Type: 'ExtGState', ca: alpha, CA: alpha } };
+      }
+      const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
+        Type: 'XObject',
+        Subtype: 'Form',
+        FormType: 1,
+        BBox: [0, 0, 2 * rx, 2 * ry],
+        Matrix: [cos, sin, -sin, cos, 0, 0],
+        Resources: resources,
+      });
+      appearanceRef = pdfDoc.context.register(appearance);
     }
-    const appearance = pdfDoc.context.flateStream(`${content.join('\n')}\n`, {
-      Type: 'XObject',
-      Subtype: 'Form',
-      FormType: 1,
-      BBox: [0, 0, 2 * rx, 2 * ry],
-      Matrix: [cos, sin, -sin, cos, 0, 0],
-      Resources: resources,
-    });
-    const appearanceRef = pdfDoc.context.register(appearance);
 
     const annotationDict = {
       Type: 'Annot',
       Subtype: 'Circle',
-      Rect: [
+      Rect: cloudAppearance ? cloudAppearance.rect : [
         centerX - halfW,
         pdfCenterY - halfH,
         centerX + halfW,
@@ -2095,6 +2303,7 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     if (fillColor) {
       annotationDict.IC = [fillColor.red, fillColor.green, fillColor.blue];
     }
+    if (cloudAppearance?.rd) annotationDict.RD = cloudAppearance.rd;
     applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj);
     applyAppAnnotationMetadataToDict(annotationDict, options);
 
@@ -2370,6 +2579,9 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
     // Add cloud border effect if specified
     if (applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
       annotationDict.IT = PDFName.of('PolygonCloud');
+      // Scallops painted by the engine; /Vertices and /Rect come from the
+      // same resolved geometry (scale/offset/tilt folded in).
+      applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
     } else if (fabricObj.cloudBorder || fabricObj.borderEffect === 'cloudy') {
       annotationDict.BE = pdfDoc.context.obj({
         S: PDFName.of('C'), // Cloudy
@@ -2422,7 +2634,9 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
     };
     // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
     // tails rather than arrowheads, so it writes no /LE (matching the screen).
-    if (!applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
+    if (applyCloudBorderEffectToDict(pdfDoc, annotationDict, fabricObj)) {
+      applyCloudAppearanceToDict(pdfDoc, annotationDict, fabricObj, pageHeight);
+    } else {
       // Endings + interior colour round-trip for polylines too (imported
       // polylines with /LE used to re-export bare).
       applyLineEndingsToDict(annotationDict, fabricObj);

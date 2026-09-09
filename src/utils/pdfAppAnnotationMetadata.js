@@ -51,6 +51,14 @@ const DATA_ALLOWLIST = [
   'startArrowheadStyle',
   'lineEnding1',
   'lineEnding2',
+  // UX 2026-09-09: the Cloud border style and everything that shapes its
+  // crowns (bump size, unit scale, authored /RD insets, the studio's
+  // per-vertex drag memory) must survive export -> re-import exactly, not
+  // just the /BE flag a foreign viewer reads.
+  'pdfCloudIntensity',
+  'pdfCloudUnitScale',
+  'pdfCloudInsets',
+  'pdfCloudVertexState',
 ];
 
 const STYLE_KEYS = [
@@ -285,6 +293,15 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
     type: metadata.appType,
     appAnnotationMetadata: metadata,
   };
+  // UX 2026-09-09: an exported cloud's /Rect is the scalloped appearance box
+  // and /RD the inset back to the base shape; the importer turns /RD into
+  // pdfCloudInsets relative to that box. Our metadata geometry below restores
+  // the BASE width/height directly, so an inset the object never carried
+  // would shrink the cloud on every round trip - drop it unless the object
+  // itself had one (an edited Acrobat import keeps its authored insets).
+  if (geometry && (metadata.data == null || metadata.data.pdfCloudInsets === undefined)) {
+    delete data.pdfCloudInsets;
+  }
 
   const out = {
     ...fabricObj,
