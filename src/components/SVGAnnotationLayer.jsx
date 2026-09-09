@@ -38,7 +38,7 @@ import {
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
 import { CLOUD_HIT_STROKE_WIDTH, resolveAnnotationCloudSpec } from '../utils/pdfAnnotationAppearance.js';
-import { cloudCommandsToPathData, resolveCloudAnnotationGeometry } from '../utils/cloudAnnotationGeometry.js';
+import { cloudCommandsToPathData, cloudSelectionChrome, resolveCloudAnnotationGeometry } from '../utils/cloudAnnotationGeometry.js';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
 // below (visible chrome + interaction + live preview), independent of the
@@ -5858,6 +5858,9 @@ const SVGAnnotationLayer = memo(({
         const isLockedStampProxy = isPdfStampProxy(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
+        // UX 2026-09-09: the object the selection chrome (cloud cusps / hull)
+        // is resolved from - the live resize preview while a handle drags.
+        let selectionChromeObj = selectionObj;
         let bbox = getAnnotationBBox(
           isLockedStampProxy && selectionObj?.data?.pdfStampAppearanceRotationBaked === true
             ? { ...selectionObj, angle: 0 }
@@ -5991,6 +5994,7 @@ const SVGAnnotationLayer = memo(({
                 top: visualTransform.resize.top,
               };
               bbox = getAnnotationBBox(transformedObj);
+              selectionChromeObj = transformedObj;
             }
           } else if (visualTransform.rotate) {
             // During rotate: update angle on bbox
@@ -6289,11 +6293,23 @@ const SVGAnnotationLayer = memo(({
           }
         } catch (_) { /* swallow diag errors */ }
 
+        // UX 2026-09-09: a cloud's grabbers sit on the outer scallop cusps and
+        // its dashed frame is the outer hull of the humps - Drawboard PDF puts
+        // its handles on the peaks, never on the inner box the cloud was drawn
+        // from. Resolved from the live resize preview so the cusps track the
+        // crowns re-fitting during a drag. Non-cloud shapes pass null through.
+        const cloudChrome = !isLockedStampProxy && !counterInBboxMode
+          ? cloudSelectionChrome(selectionChromeObj)
+          : null;
+        if (cloudChrome) overlayRotationCenter = cloudChrome.rotationCenter;
+
         return (
           <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
             <SVGSelectionOverlay
               key={`selection-${selectedIndex}`}
               bbox={bbox}
+              handleAnchors={cloudChrome ? cloudChrome.anchors : null}
+              frameRect={cloudChrome ? cloudChrome.frame : null}
               inverseScale={inverseScale}
               onHandleDrag={isLockedStampProxy
                 ? undefined
@@ -6306,8 +6322,8 @@ const SVGAnnotationLayer = memo(({
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
               hideBoundingBox={textMarkupSelectionChrome.hideBoundingBox
                 || isLockedStampProxy
-                || isBorderFlush}
-              padding={isLockedStampProxy || isBorderFlush ? 0 : 2}
+                || (isBorderFlush && !cloudChrome)}
+              padding={isLockedStampProxy || isBorderFlush || cloudChrome ? 0 : 2}
               rotationCenter={overlayRotationCenter}
               // Legacy marks have no safe character-offset model for range
               // handles, so their standard box supplies visible selection feedback.

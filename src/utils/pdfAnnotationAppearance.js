@@ -507,8 +507,32 @@ export function buildCloudRenderPaths(
   return {
     outline: built.outline,
     fill: options?.fill === false ? null : buildCloudFillFromRuns(built),
+    // Crown apexes (the outer cusps of the scallops) straight from the
+    // engine's lobes - the studio locks polygon vertices to these, and the
+    // selection handles sit on them (cloudAnnotationGeometry.cloudSelectionChrome).
+    cusps: collectCloudCusps(built.runs),
   };
 }
+
+/**
+ * Every painted crown's apex, in engine order. `arc()` records the apex it
+ * bulged to; a trimmed cap keeps the same control layout, so controls[2] is
+ * the same point when a lobe has no apex field.
+ */
+const collectCloudCusps = (runs) => {
+  const cusps = [];
+  for (const run of runs || []) {
+    for (const lobe of run?.lobes || []) {
+      const apex = lobe?.apex
+        || (Array.isArray(lobe?.controls) && lobe.controls.length >= 3 ? lobe.controls[2] : null);
+      if (!apex || !Number.isFinite(apex.x) || !Number.isFinite(apex.y)) continue;
+      const last = cusps[cusps.length - 1];
+      if (last && Math.abs(last.x - apex.x) < 1e-6 && Math.abs(last.y - apex.y) < 1e-6) continue;
+      cusps.push({ x: apex.x, y: apex.y });
+    }
+  }
+  return cusps;
+};
 
 /**
  * Whether a Fabric fill paint would put ink on the page. Shared by every cloud

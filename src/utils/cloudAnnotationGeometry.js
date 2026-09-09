@@ -150,6 +150,7 @@ export function resolveCloudAnnotationGeometry(obj) {
     filled,
     outline: paths.outline,
     fill: filled ? paths.fill : null,
+    cusps: paths.cusps || [],
     transform,
   };
 }
@@ -162,6 +163,135 @@ const rotatePoint = (x, y, pivot, radians) => {
   const dy = y - pivot.y;
   return { x: pivot.x + dx * cos - dy * sin, y: pivot.y + dx * sin + dy * cos };
 };
+
+/**
+ * Flatten absolute M/L/C/Z commands into sampled subpaths (arrays of points in
+ * the commands' own frame). Shared by the outer-hull frame, the geometry hit
+ * test and the tests, so "where is the scalloped edge" has one answer.
+ */
+export function sampleCloudCommands(commands, steps = 8) {
+  const subpaths = [];
+  let current = null;
+  let cursor = { x: 0, y: 0 };
+  for (const command of commands || []) {
+    const verb = command[0];
+    if (verb === 'M') {
+      cursor = { x: command[1], y: command[2] };
+      current = [cursor];
+      current.closed = false;
+      subpaths.push(current);
+    } else if (verb === 'L') {
+      cursor = { x: command[1], y: command[2] };
+      if (!current) { current = [cursor]; current.closed = false; subpaths.push(current); } else current.push(cursor);
+    } else if (verb === 'C') {
+      if (!current) { current = [cursor]; current.closed = false; subpaths.push(current); }
+      const p0 = cursor;
+      const [x1, y1, x2, y2, x3, y3] = command.slice(1);
+      for (let step = 1; step <= steps; step += 1) {
+        const t = step / steps;
+        const mt = 1 - t;
+        const a = mt * mt * mt;
+        const b = 3 * mt * mt * t;
+        const c = 3 * mt * t * t;
+        const d = t * t * t;
+        current.push({ x: a * p0.x + b * x1 + c * x2 + d * x3, y: a * p0.y + b * y1 + c * y2 + d * y3 });
+      }
+      cursor = { x: x3, y: y3 };
+    } else if (verb === 'Z' && current) {
+      current.closed = true;
+    }
+  }
+  return subpaths;
+}
+
+/** Axis-aligned bounds of a point list, or null when empty. */
+const boundsOf = (points) => {
+  let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.y > maxY) maxY = point.y;
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+};
+
+/**
+ * The outer hull of the crowns in the local frame - the box Drawboard PDF
+ * draws its dashed selection frame on (humps included), never the inner box
+ * the cloud was built from.
+ */
+export function cloudOutlineBounds(geometry) {
+  if (!geometry?.outline) return null;
+  const points = [];
+  for (const subpath of sampleCloudCommands(geometry.outline, 6)) points.push(...subpath);
+  return boundsOf(points);
+}
+
+const HANDLE_IDS = ['tl', 'mt', 'tr', 'mr', 'br', 'mb', 'bl', 'ml'];
+
+/**
+ * UX 2026-09-09: selection chrome for a cloud, matching Drawboard PDF - the
+ * eight resize handles sit ON the outer scallop cusps nearest the eight box
+ * positions (corners + edge midpoints) instead of on the inner rectangle the
+ * cloud was built from, and the dashed frame is the outer hull of the humps.
+ * The handles are visual anchors only: the resize delta math still runs off
+ * the handle id, so dragging 'mr' from a cusp resizes exactly as before.
+ *
+ * Everything returned is in the UNROTATED page frame (local + origin); the
+ * overlay rotates the whole group about `rotationCenter`, which is the same
+ * pivot the cloud itself rotates around, so rotated clouds line up too.
+ *
+ * @returns {{ frame:{left,top,width,height}, anchors:Object<string,{x,y}>,
+ *   rotationCenter:{x,y}, angle:number, cusps:{x,y}[] }|null}
+ */
+export function cloudSelectionChrome(obj, geometry = null) {
+  const resolved = geometry || (resolveAnnotationCloudSpec(obj) ? resolveCloudAnnotationGeometry(obj) : null);
+  if (!resolved) return null;
+  const hull = cloudOutlineBounds(resolved);
+  if (!hull) return null;
+  const cusps = Array.isArray(resolved.cusps) && resolved.cusps.length > 0
+    ? resolved.cusps
+    : resolved.points;
+  const origin = resolved.origin;
+  // The eight box positions are taken on the hull so an anchor snaps to the
+  // cusp that visually "is" that corner / edge middle of the cloud.
+  const targets = {
+    tl: { x: hull.left, y: hull.top },
+    mt: { x: hull.left + hull.width / 2, y: hull.top },
+    tr: { x: hull.left + hull.width, y: hull.top },
+    mr: { x: hull.left + hull.width, y: hull.top + hull.height / 2 },
+    br: { x: hull.left + hull.width, y: hull.top + hull.height },
+    mb: { x: hull.left + hull.width / 2, y: hull.top + hull.height },
+    bl: { x: hull.left, y: hull.top + hull.height },
+    ml: { x: hull.left, y: hull.top + hull.height / 2 },
+  };
+  // Each handle claims its own cusp (nearest first, tightest fit wins) so an
+  // open polyline's hollow side cannot stack two grabbers on one peak.
+  const ranked = HANDLE_IDS.map((id) => {
+    const target = targets[id];
+    const order = cusps
+      .map((cusp, index) => ({ index, distance: Math.hypot(cusp.x - target.x, cusp.y - target.y) }))
+      .sort((a, b) => a.distance - b.distance);
+    return { id, order };
+  }).sort((a, b) => (a.order[0]?.distance ?? Infinity) - (b.order[0]?.distance ?? Infinity));
+  const claimed = new Set();
+  const anchors = {};
+  for (const { id, order } of ranked) {
+    const pick = order.find((entry) => !claimed.has(entry.index)) || order[0];
+    const best = pick ? cusps[pick.index] : targets[id];
+    if (pick) claimed.add(pick.index);
+    anchors[id] = { x: best.x + origin.x, y: best.y + origin.y };
+  }
+  return {
+    frame: { left: hull.left + origin.x, top: hull.top + origin.y, width: hull.width, height: hull.height },
+    anchors,
+    rotationCenter: { x: resolved.pivot.x + origin.x, y: resolved.pivot.y + origin.y },
+    angle: resolved.angle,
+    cusps: cusps.map((cusp) => ({ x: cusp.x + origin.x, y: cusp.y + origin.y })),
+  };
+}
 
 /**
  * Map local-frame commands to page coordinates: rotate every coordinate pair

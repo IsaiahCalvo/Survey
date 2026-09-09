@@ -15,6 +15,16 @@ import {
   styledStrokeCommandsToPolygonSet,
 } from './paperAnnotationGeometry.js';
 import { union } from 'martinez-polygon-clipping';
+// UX 2026-09-09: a revision cloud hit-tests on its scalloped crowns (and, when
+// filled, across the scalloped region), never on the inner box/ellipse/polygon
+// it was built from - the same resolver that paints the cloud supplies the
+// geometry so no hit path can disagree with the ink.
+import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
+import {
+  resolveCloudAnnotationGeometry,
+  sampleCloudCommands,
+  transformCloudCommandsToWorld,
+} from './cloudAnnotationGeometry.js';
 
 // Default tolerance for hit testing (in pixels)
 const DEFAULT_TOLERANCE = 3;
@@ -1396,8 +1406,81 @@ export const isPointOnImage = (point, imageObj, tolerance = DEFAULT_TOLERANCE) =
     && probe.y >= top - tolerance && probe.y <= top + effH + tolerance;
 };
 
+/**
+ * World-space sampled geometry of a cloud annotation, or null when `obj` is
+ * not a cloud: `outline` subpaths trace the crowns, `fill` subpaths (closed
+ * shapes with visible fill paint only) bound the scalloped interior.
+ */
+const getCloudHitGeometry = (obj) => {
+  if (!resolveAnnotationCloudSpec(obj)) return null;
+  const geometry = resolveCloudAnnotationGeometry(obj);
+  if (!geometry) return null;
+  return {
+    strokeWidth: Number(geometry.strokeWidth) || 0,
+    hasStroke: hasVisiblePaint(obj.stroke),
+    outline: sampleCloudCommands(transformCloudCommandsToWorld(geometry.outline, geometry), 6),
+    fill: geometry.fill && hasVisiblePaint(obj.fill)
+      ? sampleCloudCommands(transformCloudCommandsToWorld(geometry.fill, geometry), 4)
+      : null,
+  };
+};
+
+const isPointNearSampledSubpaths = (point, subpaths, halfWidth) => {
+  for (const subpath of subpaths) {
+    for (let i = 0; i + 1 < subpath.length; i += 1) {
+      if (distanceToLineSegment(point, subpath[i], subpath[i + 1]) <= halfWidth) return true;
+    }
+    if (subpath.closed && subpath.length > 2
+      && distanceToLineSegment(point, subpath[subpath.length - 1], subpath[0]) <= halfWidth) return true;
+  }
+  return false;
+};
+
+// The fill is a nonzero union of consistently wound pieces, so "inside any
+// piece" is the painted region.
+const isPointInSampledFill = (point, fillSubpaths) => (
+  Array.isArray(fillSubpaths) && fillSubpaths.some((piece) => piece.length >= 3 && isPointInPolygon(point, piece))
+);
+
+/**
+ * Cloud hit test: the crowns (stroke band + tolerance) always hit; a filled
+ * cloud also hits across its scalloped interior. A point inside the inner box
+ * but off the crowns does NOT hit an unfilled cloud.
+ */
+export const isPointOnCloud = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
+  const cloud = getCloudHitGeometry(obj);
+  if (!cloud) return false;
+  if (cloud.fill && isPointInSampledFill(point, cloud.fill)) return true;
+  const band = (cloud.hasStroke ? cloud.strokeWidth : 0) / 2 + tolerance;
+  return isPointNearSampledSubpaths(point, cloud.outline, band);
+};
+
+const doesRectIntersectCloud = (selRect, obj) => {
+  const cloud = getCloudHitGeometry(obj);
+  if (!cloud) return false;
+  const strokeWidth = cloud.hasStroke ? cloud.strokeWidth : 0;
+  for (const subpath of cloud.outline) {
+    for (let i = 0; i + 1 < subpath.length; i += 1) {
+      if (doesRectIntersectLineSegment(selRect, subpath[i], subpath[i + 1], strokeWidth)) return true;
+    }
+  }
+  if (cloud.fill) {
+    const corners = [
+      { x: selRect.left, y: selRect.top },
+      { x: selRect.right, y: selRect.top },
+      { x: selRect.right, y: selRect.bottom },
+      { x: selRect.left, y: selRect.bottom },
+    ];
+    if (corners.some((corner) => isPointInSampledFill(corner, cloud.fill))) return true;
+  }
+  return false;
+};
+
 export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
   if (!obj || !obj.type) return false;
+  if (resolveAnnotationCloudSpec(obj)) {
+    return isPointOnCloud(point, obj, tolerance);
+  }
   if (obj?.data?.type === 'text-markup') {
     return (obj.data.quads || []).some((quad) => {
       const xs = [quad.x1, quad.x2, quad.x3, quad.x4];
@@ -2547,6 +2630,9 @@ export const doesRectIntersectObject = (selRect, obj) => {
   if (!obj || !obj.type) return false;
   if (obj?.data?.type === 'counter') {
     return doesRectIntersectCounter(selRect, obj);
+  }
+  if (resolveAnnotationCloudSpec(obj)) {
+    return doesRectIntersectCloud(selRect, obj);
   }
 
 

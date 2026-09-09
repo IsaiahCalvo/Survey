@@ -53,6 +53,14 @@ const SVGSelectionOverlay = memo(({
   // rewrite only the first/last selected text quad instead of scaling it.
   horizontalResizeOnly = false,
   horizontalHandlePositions = null,
+  // UX 2026-09-09: revision clouds anchor their eight resize handles on the
+  // outer scallop cusps and draw the dashed frame on the outer hull of the
+  // humps (Drawboard PDF behaviour), not on the inner box the cloud was
+  // built from. Both are in the overlay's unrotated frame; the resize math
+  // is untouched - the handle id is what drives the drag, the anchor is
+  // only where the grabber is drawn.
+  handleAnchors = null,   // { tl, mt, tr, mr, br, mb, bl, ml } -> { x, y } | null
+  frameRect = null,       // { left, top, width, height } | null
 }) => {
   if (!bbox) return null;
 
@@ -74,7 +82,7 @@ const SVGSelectionOverlay = memo(({
     padding,
   });
   const visibleResizeHandles = new Set(handleSpec.resizeHandles);
-  const baseHandles = getHandlePositions(bbox, padding);
+  const baseHandles = { ...getHandlePositions(bbox, padding), ...(handleAnchors || {}) };
   const handles = {
     ...baseHandles,
     mtr: {
@@ -91,11 +99,13 @@ const SVGSelectionOverlay = memo(({
   const cx = rotationCenter?.x ?? (left + width / 2);
   const cy = rotationCenter?.y ?? (top + height / 2);
 
-  // Bounding box rect dimensions (with padding)
-  const boxX = left - padding;
-  const boxY = top - padding;
-  const boxW = width + padding * 2;
-  const boxH = height + padding * 2;
+  // Bounding box rect dimensions (with padding). A cloud's frame is the outer
+  // hull of its humps (frameRect), which the caller already sized.
+  const frame = frameRect || { left, top, width, height };
+  const boxX = frame.left - padding;
+  const boxY = frame.top - padding;
+  const boxW = frame.width + padding * 2;
+  const boxH = frame.height + padding * 2;
 
   // Shadow filter strings
   const cornerShadow = `drop-shadow(0 ${1 * is}px ${3 * is}px rgba(0,0,0,0.15))`;
