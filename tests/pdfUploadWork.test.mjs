@@ -110,6 +110,11 @@ function singleUploadHarness(options = {}) {
       return options.choice ? options.choice() : 'new-version';
     },
     handleDocumentClick: async row => calls.push(['open-existing', row]),
+    onOpenCloudDocument: async (...args) => {
+      calls.push(['cloud-open', ...args]);
+      if (options.retireDuringOpen) state.current = false;
+      if (options.openError) throw options.openError;
+    },
     onActivateOpenDocument: row => { calls.push(['activate', row]); return !!options.alreadyOpen; },
     onDocumentSelect: (...args) => calls.push(['viewer', ...args]),
     setDashboardError: message => calls.push(['error', message]),
@@ -145,7 +150,7 @@ for (const native of [false, true]) for (const reused of [false, true]) {
     const pending = h.run();
     await tick();
     assert.equal(h.calls.filter(([kind]) => kind === 'start').length, 1);
-    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'open-existing'), false);
+    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'cloud-open' || kind === 'open-existing'), false);
     const staged = h.calls.find(([kind]) => kind === 'start')[1];
     assert.equal(staged.file, staged.prepared.file);
     assert.notEqual(staged.file, h.original);
@@ -156,13 +161,10 @@ for (const native of [false, true]) for (const reused of [false, true]) {
     assert.deepEqual(h.calls.filter(([kind]) => kind === 'hash').map(call => call[1]), ['old physical bytes']);
     assert.deepEqual(h.calls.find(([kind]) => kind === 'lookup'), ['lookup', null, 'picked.pdf']);
     gate.resolve(h.result); await pending;
-    const opened = h.calls.find(([kind]) => kind === 'viewer');
-    assert.equal(await opened[1].text(), 'confirmed current bytes');
-    assert.equal(opened[1].name, 'published.pdf');
-    assert.equal(opened[1].id, 'resolved');
-    assert.equal(opened[1].user_id, 'actor-a');
-    assert.equal(opened[1].supabaseFilePath, 'actor-a/published.pdf');
-    assert.equal(opened[2], native && !reused ? '/picked/current.pdf' : undefined);
+    const opened = h.calls.find(([kind]) => kind === 'cloud-open');
+    assert.equal(opened[1], h.result.document);
+    assert.equal(await opened[2].legacyFile.text(), 'confirmed current bytes');
+    assert.equal(opened[2].nativePath, native && !reused ? '/picked/current.pdf' : undefined);
     assert.deepEqual(h.calls.at(-1), ['work', false]);
     if (!native) assert.equal(h.event.target.value, '');
   });
@@ -178,9 +180,24 @@ for (const phase of ['read', 'cloud', 'lookup', 'start']) {
     gate.resolve(phase === 'lookup' ? [] : phase === 'start' ? h.result : undefined);
     await pending;
     assert.deepEqual(h.calls.slice(count).filter(([kind]) => kind !== 'hash'), [], 'local hashing may settle, but no later dispatch, open, error or stale busy reset');
-    assert.equal(h.calls.some(([kind]) => kind === 'viewer'), false);
+    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'cloud-open'), false);
   });
 }
+
+test('a confirmed row stays saved when its open fails and reports only an open error', async () => {
+  const h = singleUploadHarness({ openError: new Error('private acquisition failure') });
+  await h.run();
+  assert.equal(h.calls.filter(([kind]) => kind === 'start').length, 1);
+  assert.equal(h.calls.filter(([kind]) => kind === 'cloud-open').length, 1);
+  assert.equal(h.calls.filter(([kind]) => kind === 'toast').length, 1);
+  assert.match(h.calls.find(([kind]) => kind === 'toast')[1], /upload finished.*could not be opened/i);
+  assert.equal(h.calls.some(([kind]) => kind === 'error'), false, 'open failure does not create upload recovery work');
+
+  const retired = singleUploadHarness({ openError: new Error('old actor'), retireDuringOpen: true });
+  await retired.run();
+  assert.equal(retired.calls.filter(([kind]) => kind === 'start').length, 1);
+  assert.equal(retired.calls.some(([kind]) => kind === 'toast' || kind === 'error'), false);
+});
 
 test('a retired browser picker selection cannot enter the new account flow', async () => {
   const h = singleUploadHarness();
@@ -207,7 +224,7 @@ for (const saved of [false, true]) {
   test(`durable ${saved ? 'saved-attempt' : 'pre-stage'} failure never opens and shows a safe retry message`, async () => {
     const h = singleUploadHarness({ start: async () => { throw Object.assign(new Error('RAW_SECRET_SERVICE_ERROR'), saved ? { attemptId: 'saved' } : {}); } });
     await h.run();
-    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'open-existing'), false);
+    assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'cloud-open' || kind === 'open-existing'), false);
     const error = h.calls.find(([kind]) => kind === 'error')[1];
     assert.match(error, saved ? /saved retry copy/ : /Keep the original/);
     assert.equal(error.includes('RAW_SECRET'), false);
@@ -223,7 +240,7 @@ test('allocated attempt ID with failed local staging tells the user to keep the 
   const error = h.calls.find(([kind]) => kind === 'error')[1];
   assert.match(error, /Keep the original/);
   assert.doesNotMatch(error, /saved retry copy|File upload recovery/);
-  assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'open-existing'), false);
+  assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'cloud-open' || kind === 'open-existing'), false);
   assert.deepEqual(h.calls.at(-1), ['work', false]);
 });
 
@@ -236,7 +253,7 @@ test('duplicate replacement carries the chosen full snapshot into durable start 
   const staged = h.calls.find(([kind]) => kind === 'start')[1];
   assert.deepEqual(staged.archiveDocument, selected);
   assert.equal(staged.projectId, 'project');
-  assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate'), false);
+  assert.equal(h.calls.some(([kind]) => kind === 'viewer' || kind === 'activate' || kind === 'cloud-open'), false);
 });
 
 test('duplicate lookup failure cancels safely; cancellation and stale modal cannot stage a retry', async () => {
@@ -264,12 +281,12 @@ test('shared entry lock rejects a second submit while the first upload is pendin
   gate.resolve(h.result); await pending;
 });
 
-test('already-open documents activate only after recovery confirms bytes; projects retain durable recovery', async () => {
+test('confirmed uploads reach the central opener only after recovery; projects retain durable recovery', async () => {
   const h = singleUploadHarness({ alreadyOpen: true });
   await h.run();
-  assert.equal(h.calls.filter(([kind]) => kind === 'activate').length, 1);
+  assert.equal(h.calls.filter(([kind]) => kind === 'cloud-open').length, 1);
   assert.equal(h.calls.some(([kind]) => kind === 'viewer'), false);
-  assert.ok(h.calls.findIndex(([kind]) => kind === 'start') < h.calls.findIndex(([kind]) => kind === 'activate'));
+  assert.ok(h.calls.findIndex(([kind]) => kind === 'start') < h.calls.findIndex(([kind]) => kind === 'cloud-open'));
   assert.match(dashboardSource, /return projectUploadRecovery\.start\(trimmedName, files\)/);
   assert.doesNotMatch(dashboardSource, /deleteSupabaseProject\(newProject\.id\)/);
 });

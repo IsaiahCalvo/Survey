@@ -34,6 +34,7 @@ import {
 } from './mobile/MobilePdfViewerChrome';
 import DocumentTabProvider from './components/collab/DocumentTabProvider.jsx';
 import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
+import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
@@ -58,9 +59,12 @@ import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 import { replaceLocalDocument } from './services/localDocumentStore.js';
 import { isManagedLocalDocument } from './services/localDocumentState.js';
+import { supabase } from './supabaseClient.js';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
+
+const CHECKED_DOCUMENT_OPEN_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_DOCUMENT_OPEN === 'mode-v1';
 
 function RailLiveZoomText({ fallback, viewerId }) {
   const [livePercentage, setLivePercentage] = useState(null);
@@ -102,7 +106,7 @@ if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STA
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
-  const { replaceDocument } = useStorage();
+  const { replaceDocument, downloadDocument: downloadFromStorage } = useStorage();
 
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -796,6 +800,38 @@ export default function App({ devPreviewReturnTab = null }) {
     documentOpenScopeRef.current = { actorUserId: user?.id || null };
   }
   const documentOpenScope = documentOpenScopeRef.current;
+  const documentOpenMountRef = useRef(null);
+  useLayoutEffect(() => {
+    const mount = {};
+    documentOpenMountRef.current = mount;
+    return () => {
+      if (documentOpenMountRef.current === mount) documentOpenMountRef.current = null;
+    };
+  }, []);
+  const checkedDocumentAcquisitionRef = useRef(null);
+  const pendingCloudDocumentOpensRef = useRef(new Map());
+  useEffect(() => {
+    const previous = checkedDocumentAcquisitionRef.current;
+    previous?.acquisition.dispose();
+    checkedDocumentAcquisitionRef.current = null;
+    if (!CHECKED_DOCUMENT_OPEN_ENABLED || !documentOpenScope.actorUserId) return undefined;
+    const mount = documentOpenMountRef.current;
+    const acquisition = createCheckedDocumentAcquisition({
+      client: supabase,
+      actorUserId: documentOpenScope.actorUserId,
+      isCurrent: () => mount !== null && documentOpenMountRef.current === mount
+        && documentOpenScopeRef.current === documentOpenScope,
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      publicKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      enabled: true,
+    });
+    const entry = { scope: documentOpenScope, acquisition };
+    checkedDocumentAcquisitionRef.current = entry;
+    return () => {
+      acquisition.dispose();
+      if (checkedDocumentAcquisitionRef.current === entry) checkedDocumentAcquisitionRef.current = null;
+    };
+  }, [documentOpenScope]);
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
   // Template refetch for PDFViewer
@@ -829,13 +865,13 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!doc?.id || !documentOpenScope.actorUserId
       || documentOpenScopeRef.current !== documentOpenScope) return false;
     if (!documents.some((entry) => String(entry?.id) === String(doc.id))) return false;
-    const existingTab = tabs.find((tab) => (
+    const existingTab = closeViewRef.current?.tabs?.find((tab) => (
       tab.actorUserId === documentOpenScope.actorUserId && (tab.checkedBundle
         ? String(tab.file?.id) === String(doc.id)
         : isSameDocumentTab(tab, doc))
     ));
-    if (!existingTab || (!existingTab.checkedBundle && (existingTab.file.__pdfLoadFailed === true
-      || existingTab.file.__rewrittenForParse === true))) return false;
+    if (!existingTab || existingTab.file.__pdfLoadFailed === true
+      || existingTab.file.__rewrittenForParse === true) return false;
     // This is the existing tab-click path, not a new access grant or download.
     setSelectedPDF(existingTab.file);
     setActiveTabId(existingTab.id);
@@ -866,11 +902,17 @@ export default function App({ devPreviewReturnTab = null }) {
     // Check if this file is already open in a tab (excluding home tab)
     // An unversioned list/deep-link reply may activate an already checked tab,
     // but must never replace it or start a second legacy writer for that file.
-    const checkedOpenTab = checkedBundle === null && file.id ? tabs.find(tab => (
+    const currentTabs = closeViewRef.current?.tabs || tabs;
+    const checkedOpenTab = checkedBundle === null && file.id ? currentTabs.find(tab => (
       tab.checkedBundle && tab.actorUserId === documentOpenScope.actorUserId
       && String(tab.file?.id) === String(file.id)
     )) : null;
-    const existingTab = checkedOpenTab || tabs.find(tab => (
+    const failedCheckedOpenTab = checkedBundle !== null && file.id ? currentTabs.find(tab => (
+      tab.checkedBundle && tab.actorUserId === documentOpenScope.actorUserId
+      && String(tab.file?.id) === String(file.id)
+      && (tab.file.__pdfLoadFailed === true || tab.file.__rewrittenForParse === true)
+    )) : null;
+    const existingTab = failedCheckedOpenTab || checkedOpenTab || currentTabs.find(tab => (
       (!file.id || tab.actorUserId === documentOpenScope.actorUserId)
       && isSameDocumentTab(tab, file, filePath, checkedBundle)
     ));
@@ -890,9 +932,10 @@ export default function App({ devPreviewReturnTab = null }) {
       const previousFile = existingTab.file;
       const previousLoadFailed = previousFile?.__rewrittenForParse === true
         || previousFile?.__pdfLoadFailed === true;
-      if (previousLoadFailed && !existingTab.checkedBundle) {
+      if (previousLoadFailed && (!existingTab.checkedBundle || checkedBundle !== null)) {
         setTabs(prev => prev.map(tab =>
-          tab.id === existingTab.id ? { ...tab, file: file, filePath: filePath ?? tab.filePath } : tab
+          tab.id === existingTab.id && tab.file === previousFile ? { ...tab, file,
+            filePath: checkedBundle ? null : filePath ?? tab.filePath, checkedBundle } : tab
         ));
         setSelectedPDF(file);
       } else if (selectedPDF !== previousFile) {
@@ -934,6 +977,125 @@ export default function App({ devPreviewReturnTab = null }) {
     return true;
   };
 
+  const handleOpenCloudDocument = async (document, { legacyFile, nativePath } = {}) => {
+    const scope = documentOpenScope;
+    const mount = documentOpenMountRef.current;
+    const actorUserId = scope.actorUserId;
+    const documentId = document?.id;
+    const fail = () => Object.assign(new Error(
+      'The complete document could not be opened. Your saved work was kept.'
+    ), { code: 'DOCUMENT_OPEN_INPUT' });
+    const isCurrent = () => mount !== null && documentOpenMountRef.current === mount
+      && documentOpenScopeRef.current === scope;
+    if (!actorUserId || !documentId || !isCurrent()) throw fail();
+
+    // A healthy same-actor tab needs no auth read, RPC, or file download.
+    if (handleActivateOpenDocument(document) === true) return true;
+
+    const legacyMetadata = CHECKED_DOCUMENT_OPEN_ENABLED ? null : Object.freeze({
+      id: documentId,
+      name: document.name,
+      user_id: document.user_id,
+      userId: document.userId,
+      project_id: document.project_id,
+      projectId: document.projectId,
+      file_path: document.file_path,
+      filePath: document.filePath,
+      dataUrl: document.dataUrl,
+    });
+    const capturedLegacyFile = CHECKED_DOCUMENT_OPEN_ENABLED ? null : legacyFile instanceof Blob
+      ? { blob: legacyFile, preserveFile: false }
+      : document.file instanceof Blob ? { blob: document.file, preserveFile: true } : null;
+    const capturedNativePath = CHECKED_DOCUMENT_OPEN_ENABLED ? null : nativePath || null;
+    const pendingKey = `${actorUserId}:${documentId}`;
+    const existing = pendingCloudDocumentOpensRef.current.get(pendingKey);
+    if (existing?.scope === scope && existing.mount === mount) return existing.promise;
+
+    const attachCloudMetadata = (blob, metadata, preserveFile = false) => {
+      if (!(blob instanceof Blob)) throw fail();
+      const path = metadata.file_path || metadata.filePath || null;
+      const projectId = metadata.project_id ?? metadata.projectId ?? null;
+      const ownerId = metadata.user_id || metadata.userId || null;
+      const identifiedFileMatches = preserveFile && blob instanceof File && blob.id
+        && String(blob.id) === String(metadata.id)
+        && [blob.user_id, blob.userId].every(value => value == null || ownerId == null || value === ownerId)
+        && [blob.filePath, blob.file_path, blob.supabaseFilePath]
+          .every(value => value == null || path == null || value === path);
+      if (identifiedFileMatches) return blob;
+      const file = preserveFile && blob instanceof File && !blob.id
+        ? blob
+        : new File([blob], metadata.name || blob.name || 'Document.pdf', {
+            type: blob.type || 'application/pdf',
+          });
+      Object.assign(file, {
+        id: metadata.id,
+        user_id: ownerId,
+        projectId,
+        project_id: projectId,
+        ...(path ? { filePath: path, file_path: path, supabaseFilePath: path } : {}),
+      });
+      return file;
+    };
+
+    const pending = Promise.resolve().then(async () => {
+      if (!isCurrent()) throw fail();
+      if (CHECKED_DOCUMENT_OPEN_ENABLED) {
+        const entry = checkedDocumentAcquisitionRef.current;
+        if (!entry || entry.scope !== scope) throw fail();
+        // Cloud IDs never trust a caller File while checked discovery is on.
+        const opened = await entry.acquisition.openCurrent({ documentId });
+        if (!isCurrent() || opened.actorUserId !== actorUserId || opened.documentId !== documentId) throw fail();
+        if (opened.mode === 'checked') {
+          if (handleDocumentSelect(null, null, opened.checkedBundle) !== true) throw fail();
+          return true;
+        }
+        if (opened.mode !== 'legacy') throw fail();
+        const file = attachCloudMetadata(opened.blob, opened.document);
+        if (!isCurrent() || handleDocumentSelect(file) !== true) throw fail();
+        return true;
+      }
+
+      // Default-off compatibility path. Keep the old File/dataUrl/storage
+      // behavior behind this one caller seam until checked discovery ships.
+      if (capturedLegacyFile) {
+        const file = attachCloudMetadata(
+          capturedLegacyFile.blob,
+          legacyMetadata,
+          capturedLegacyFile.preserveFile,
+        );
+        if (!isCurrent() || handleDocumentSelect(file, capturedNativePath) !== true) throw fail();
+        return true;
+      }
+      const filePath = legacyMetadata.filePath || legacyMetadata.file_path;
+      if (filePath) {
+        const blob = await downloadFromStorage(filePath);
+        if (!isCurrent()) throw fail();
+        const file = attachCloudMetadata(blob, legacyMetadata);
+        if (handleDocumentSelect(file) !== true) throw fail();
+        return true;
+      }
+      if (legacyMetadata.dataUrl) {
+        const response = await fetch(legacyMetadata.dataUrl);
+        if (!isCurrent()) throw fail();
+        const blob = await response.blob();
+        if (!isCurrent()) throw fail();
+        const file = attachCloudMetadata(blob, legacyMetadata);
+        if (handleDocumentSelect(file) !== true) throw fail();
+        return true;
+      }
+      throw fail();
+    });
+    const pendingEntry = { scope, mount, promise: pending };
+    pendingCloudDocumentOpensRef.current.set(pendingKey, pendingEntry);
+    try {
+      return await pending;
+    } finally {
+      if (pendingCloudDocumentOpensRef.current.get(pendingKey) === pendingEntry) {
+        pendingCloudDocumentOpensRef.current.delete(pendingKey);
+      }
+    }
+  };
+
   // DEV-ONLY: Auto-open test PDF when loaded via dev test route
   useEffect(() => {
     if (import.meta.env.DEV && window.__devTestPdf) {
@@ -954,29 +1116,39 @@ export default function App({ devPreviewReturnTab = null }) {
     );
     if (!documentToOpen) return;
 
-    const fileToOpen = (
+    const devFileToOpen = (
       import.meta.env.DEV
       && documentToOpen.__localFile instanceof File
     )
       ? documentToOpen.__localFile
-      : documentToOpen;
-    try {
-      if (handleDocumentSelect(
-        fileToOpen,
-        documentToOpen.filePath || documentToOpen.file_path || null,
-      ) !== true) return;
-    } catch {
-      // A rejected identity is not a consumed link. Preserve it for retry
-      // without leaking provider diagnostics or crashing the app's effect.
-      showToast('This document could not be opened. Its link and your saved work were kept. Retry after reconnecting.', 'error');
-      return;
-    }
+      : null;
+    let effectCurrent = true;
+    void (async () => {
+      try {
+        const accepted = devFileToOpen
+          ? handleDocumentSelect(
+              devFileToOpen,
+              documentToOpen.filePath || documentToOpen.file_path || null,
+            )
+          : await handleOpenCloudDocument(documentToOpen);
+        if (accepted !== true || !effectCurrent
+          || documentOpenScopeRef.current !== documentOpenScope) return;
+      } catch {
+        // A rejected identity is not a consumed link. Preserve it for retry
+        // without leaking provider diagnostics or crashing the app's effect.
+        if (effectCurrent && documentOpenScopeRef.current === documentOpenScope) {
+          showToast('This document could not be opened. Its link and your saved work were kept. Retry after reconnecting.', 'error');
+        }
+        return;
+      }
 
-    deepLinkDocumentIdRef.current = null;
-    const url = new URL(window.location.href);
-    url.searchParams.delete('docId');
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
-  }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
+      deepLinkDocumentIdRef.current = null;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('docId');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    })();
+    return () => { effectCurrent = false; };
+  }, [documents, documentOpenScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const returnToDevHubPreview = () => {
     if (!import.meta.env.DEV || !devPreviewReturnTab) return false;
@@ -3013,7 +3185,7 @@ export default function App({ devPreviewReturnTab = null }) {
               ref={dashboardRef}
               isActive={currentView === 'dashboard'}
               onDocumentSelect={handleDocumentSelect}
-              onActivateOpenDocument={handleActivateOpenDocument}
+              onOpenCloudDocument={handleOpenCloudDocument}
               onBack={handleBack}
               documents={documents}
               setDocuments={setDocuments}

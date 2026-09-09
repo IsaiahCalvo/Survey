@@ -29,8 +29,10 @@ function harness() {
   const scope = { actorUserId: 'actor-a' };
   const state = { tabs: [], selected: null, active: null, view: null, loading: false, toasts: [], history: [], timers: [] };
   const set = key => value => { state[key] = typeof value === 'function' ? value(state[key]) : value; };
+  const closeViewRef = { current: { tabs: state.tabs } };
   const ports = {
     documents: [row], tabs: state.tabs, selectedPDF: null,
+    closeViewRef,
     documentOpenScope: scope, documentOpenScopeRef: { current: scope },
     deepLinkDocumentIdRef: { current: row.id }, openingPdfsRef: { current: new Set() },
     getDocumentOpenKey, isSameDocumentTab, prepareCheckedDocumentOpen,
@@ -41,11 +43,20 @@ function harness() {
       history: { state: { navigationId: 'owned-state' }, replaceState: (...args) => state.history.push(args) } },
   };
   ports.handleDocumentSelect = compile(selection, ports);
-  return { row, state, ports, run: () => compile(effect, ports)() };
+  ports.handleOpenCloudDocument = async document => {
+    closeViewRef.current = { tabs: state.tabs };
+    if (ports.handleDocumentSelect(document, document.file_path) !== true) throw new Error('busy');
+    return true;
+  };
+  return { row, state, ports, run: async () => {
+    const cleanup = compile(effect, ports)();
+    await new Promise(setImmediate); await new Promise(setImmediate);
+    return cleanup;
+  } };
 }
 
-test('a deep link is consumed only after the actual selection accepts its tab', () => {
-  const h = harness(); h.run();
+test('a deep link is consumed only after the actual selection accepts its tab', async () => {
+  const h = harness(); await h.run();
   assert.equal(h.state.tabs.length, 1);
   assert.equal(h.state.tabs[0].file, h.row);
   assert.equal(h.state.tabs[0].filePath, h.row.file_path);
@@ -55,40 +66,40 @@ test('a deep link is consumed only after the actual selection accepts its tab', 
   assert.deepEqual(h.state.toasts, []);
 });
 
-test('a missing list row retains the pending link without opening anything', () => {
-  const h = harness(); h.ports.documents = []; h.run();
+test('a missing list row retains the pending link without opening anything', async () => {
+  const h = harness(); h.ports.documents = []; await h.run();
   assert.equal(h.ports.deepLinkDocumentIdRef.current, 'document-a');
   assert.deepEqual(h.state.tabs, []); assert.deepEqual(h.state.history, []);
 });
 
-test('a stale account scope cannot consume a link or publish its file', () => {
-  const h = harness(); h.ports.documentOpenScopeRef.current = { actorUserId: 'actor-b' }; h.run();
+test('a stale account scope cannot consume a link or publish its file', async () => {
+  const h = harness(); h.ports.documentOpenScopeRef.current = { actorUserId: 'actor-b' }; await h.run();
   assert.equal(h.ports.deepLinkDocumentIdRef.current, 'document-a');
   assert.deepEqual(h.state.tabs, []); assert.deepEqual(h.state.history, []);
   assert.deepEqual(h.state.toasts, []);
 });
 
-test('a busy open retains the link and a later accepted retry clears it', () => {
-  const h = harness(); h.ports.openingPdfsRef.current.add(getDocumentOpenKey(h.row)); h.run();
+test('a busy open retains the link and a later accepted retry clears it', async () => {
+  const h = harness(); h.ports.openingPdfsRef.current.add(getDocumentOpenKey(h.row)); await h.run();
   assert.equal(h.ports.deepLinkDocumentIdRef.current, 'document-a');
   assert.deepEqual(h.state.history, []);
-  h.ports.openingPdfsRef.current.clear(); h.run();
+  h.ports.openingPdfsRef.current.clear(); await h.run();
   assert.equal(h.state.tabs.length, 1); assert.equal(h.state.history.length, 1);
   assert.equal(h.ports.deepLinkDocumentIdRef.current, null);
 });
 
-test('a generation-marked row without issued proof fails closed and retains its link for retry', () => {
+test('a generation-marked row without issued proof fails closed and retains its link for retry', async () => {
   const h = harness(); h.row.pdfGenerationId = 'unverified-generation';
-  assert.doesNotThrow(h.run);
+  await h.run();
   assert.equal(h.ports.deepLinkDocumentIdRef.current, 'document-a');
   assert.deepEqual(h.state.tabs, []); assert.deepEqual(h.state.history, []);
   assert.equal(h.state.toasts.length, 1);
   assert.match(h.state.toasts[0][0], /link and your saved work were kept/);
 });
 
-test('an unexpected open rejection does not leak its diagnostics or crash the effect', () => {
+test('an unexpected open rejection does not leak its diagnostics or crash the effect', async () => {
   const h = harness(); h.ports.handleDocumentSelect = () => { throw new Error('SECRET provider diagnostic'); };
-  assert.doesNotThrow(h.run);
+  await h.run();
   assert.equal(h.ports.deepLinkDocumentIdRef.current, 'document-a');
   assert.deepEqual(h.state.history, []);
   assert.doesNotMatch(JSON.stringify(h.state.toasts), /SECRET|provider diagnostic/);
@@ -97,6 +108,7 @@ test('an unexpected open rejection does not leak its diagnostics or crash the ef
 test('selecting an existing tab reports acceptance without rebuilding its file', () => {
   const h = harness(); const file = new File(['existing'], 'Plan.pdf'); file.id = h.row.id;
   h.ports.tabs = [{ id: 'existing-tab', actorUserId: 'actor-a', file }];
+  h.ports.closeViewRef.current = { tabs: h.ports.tabs };
   const select = compile(selection, h.ports);
   assert.equal(select(h.row), true);
   assert.equal(h.state.selected, file); assert.equal(h.state.active, 'existing-tab');

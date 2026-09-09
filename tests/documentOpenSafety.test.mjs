@@ -51,13 +51,14 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
   const documentOpenScope = { actorUserId: 'actor-a' };
   let activeTab = null;
   const pending = { current: new Set() };
+  const closeViewRef = { current: { tabs } };
   let nextId = 0;
   const invoke = (incoming) => extractHandler(shellSource,
     'const handleDocumentSelect =', '  // DEV-ONLY: Auto-open test PDF', {
-      tabs, openingPdfsRef: pending, selectedPDF: tabs[0].file,
+      tabs, closeViewRef, openingPdfsRef: pending, selectedPDF: tabs[0].file,
       documentOpenScope, documentOpenScopeRef: { current: documentOpenScope },
       getDocumentOpenKey, isSameDocumentTab,
-      setTabs: update => { tabs = update(tabs); },
+      setTabs: update => { tabs = update(tabs); closeViewRef.current = { tabs }; },
       setActiveTabId: id => { activeTab = id; },
       setSelectedPDF() {}, setCurrentView() {}, setIsLoading() {},
       generateTabId: () => `new-${++nextId}`,
@@ -83,7 +84,7 @@ for (const error of [
     const handler = extractHandler(dashboardSource,
       'const handleDocumentClick =', '\n  useEffect(() => {', {
         documentOpenScope: null, documentOpenScopeRef: { current: null },
-        onActivateOpenDocument: undefined,
+        onOpenCloudDocument: async () => { throw error; },
         console: { log() {}, error() {} }, performance: { now: () => 0 },
         downloadFromStorage: async () => { throw error; },
         isStorageFileNotFoundError,
@@ -103,7 +104,7 @@ for (const error of [
   });
 }
 
-test('Dashboard reuses a healthy open cloud document before requesting its bytes', async () => {
+test('Dashboard delegates a healthy cloud document without requesting its bytes', async () => {
   let downloads = 0;
   let activations = 0;
   const scope = { actorUserId: 'actor-a' };
@@ -111,7 +112,7 @@ test('Dashboard reuses a healthy open cloud document before requesting its bytes
     'const handleDocumentClick =', '\n  useEffect(() => {', {
       documentOpenScope: scope, documentOpenScopeRef: { current: scope },
       console: { log() {}, error() {} }, performance: { now: () => 0 },
-      onActivateOpenDocument: () => { activations++; return true; },
+      onOpenCloudDocument: async () => { activations++; return true; },
       downloadFromStorage: async () => { downloads++; throw new Error('must not download'); },
       onDocumentSelect: () => assert.fail('must not replace the mounted file'),
       isStorageFileNotFoundError, showToast() {},
@@ -126,11 +127,11 @@ function activationHarness({ actor = 'actor-a', tabActor = actor, loadFlags = {}
   const documentOpenScope = { actorUserId: actor };
   const documentOpenScopeRef = { current: documentOpenScope };
   const state = { file: null, active: null, view: null };
+  const closeViewRef = { current: { tabs: [{ id: 'tab-a', file: existingFile, actorUserId: tabActor }] } };
   const activate = extractHandler(shellSource,
     'const handleActivateOpenDocument =', '\n  const handleDocumentSelect =', {
-      documentOpenScope, documentOpenScopeRef,
+      documentOpenScope, documentOpenScopeRef, closeViewRef,
       documents: listed ? [{ id: 'a' }] : [],
-      tabs: [{ id: 'tab-a', file: existingFile, actorUserId: tabActor }],
       isSameDocumentTab,
       setSelectedPDF: (value) => { state.file = value; },
       setActiveTabId: (value) => { state.active = value; },
@@ -180,13 +181,18 @@ for (const stage of ['storage', 'legacy-fetch', 'legacy-blob', 'error']) {
       'const handleDocumentClick =', '\n  useEffect(() => {', {
         documentOpenScope: scope, documentOpenScopeRef: scopeRef,
         console: { log() {}, error() {} }, performance: { now: () => 0 },
-        onActivateOpenDocument: () => false,
+        onOpenCloudDocument: async () => {
+          await pending;
+          if (scopeRef.current !== scope) throw Object.assign(new Error('retired'), { code: 'DOCUMENT_OPEN_ACTOR_CHANGED' });
+          if (stage === 'error') throw new Error('offline');
+          opens++;
+        },
         downloadFromStorage: async () => { await pending; if (stage === 'error') throw new Error('offline'); return new Blob(['pdf']); },
         fetch: async () => {
           if (stage === 'legacy-fetch') await pending;
           return { blob: async () => { blobReads++; if (stage === 'legacy-blob') await pending; return new Blob(['pdf']); } };
         },
-        onDocumentSelect: () => { opens++; },
+        onDocumentSelect: () => assert.fail('cloud ID bypassed central opener'),
         isStorageFileNotFoundError, showToast: () => { toasts++; },
         File,
       });
@@ -199,25 +205,24 @@ for (const stage of ['storage', 'legacy-fetch', 'legacy-blob', 'error']) {
     await opening;
     assert.equal(opens, 0);
     assert.equal(toasts, 0);
-    if (stage === 'legacy-fetch') assert.equal(blobReads, 0, 'stale fetch does not read the response body');
+    assert.equal(blobReads, 0, 'Dashboard does not read cloud response bodies');
   });
 }
 
-test('same-actor fresh download still opens a new file with cloud identity', async () => {
+test('same-actor cloud click reaches the central opener with its exact row', async () => {
   const scope = { actorUserId: 'actor-a' };
   let opened;
   const handler = extractHandler(dashboardSource,
     'const handleDocumentClick =', '\n  useEffect(() => {', {
       documentOpenScope: scope, documentOpenScopeRef: { current: scope },
       console: { log() {}, error() {} }, performance: { now: () => 0 },
-      onActivateOpenDocument: () => false,
+      onOpenCloudDocument: async value => { opened = value; return true; },
       downloadFromStorage: async () => new Blob(['pdf']),
-      onDocumentSelect: (value) => { opened = value; },
+      onDocumentSelect: () => assert.fail('cloud ID bypassed central opener'),
       isStorageFileNotFoundError, showToast: () => assert.fail('unexpected open failure'), File,
     });
   await handler({ id: 'a', name: 'plan.pdf', file_path: 'owner/hash.pdf', user_id: 'owner' });
   assert.equal(opened.id, 'a');
-  assert.equal(opened.supabaseFilePath, 'owner/hash.pdf');
+  assert.equal(opened.file_path, 'owner/hash.pdf');
   assert.equal(opened.user_id, 'owner');
-  assert.equal(await opened.text(), 'pdf');
 });

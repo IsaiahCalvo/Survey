@@ -1,5 +1,4 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const SHA = /^[0-9a-f]{64}$/;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const failure = (code = 'DOCUMENT_OPEN_PROTOCOL') => Object.assign(
   new Error('The complete PDF could not be loaded. Your saved work was kept.'), { code });
@@ -21,11 +20,13 @@ function encodedPath(path) {
   } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
 }
 
-/** Legacy bytes only: descriptor must come from the orchestrator's fresh
- * authorized metadata SELECT, never a catalog row. No shared cache, signed URL,
- * automatic retry or fallback. The caller must recheck mode/metadata/access
- * after this returns. A missing hash gives only path/length checks: this does
- * NOT prove an immutable object version or detect every same-path overwrite.
+/** Legacy mutable bytes only: path must come from the orchestrator's fresh
+ * authorized metadata SELECT, never a catalog row. documents.file_size and
+ * documents.content_sha256 describe old/import bytes and are intentionally not
+ * current-byte receipts. No shared cache, signed URL, automatic retry or
+ * fallback. The caller must recheck mode/metadata/access after this returns.
+ * Response length plus the streaming limit bound this read, but this does NOT
+ * prove an immutable object version or detect a same-path overwrite race.
  */
 export function createLegacyDocumentDownload(deps) {
   check(object(deps), 'DOCUMENT_OPEN_INPUT');
@@ -43,15 +44,11 @@ export function createLegacyDocumentDownload(deps) {
     && (base.protocol === 'https:' || (allowLoopback === true && base.protocol === 'http:'
       && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname))), 'DOCUMENT_OPEN_INPUT');
   return async (descriptor, scope) => {
-    check(object(descriptor) && object(scope) && typeof scope.actorUserId === 'string' && UUID.test(scope.actorUserId)
-      && typeof scope.documentId === 'string' && UUID.test(scope.documentId)
-      && Object.keys(descriptor).every(key => ['path', 'byte_length', 'content_sha256'].includes(key)), 'DOCUMENT_OPEN_INPUT');
-    const { path, byte_length: byteLength, content_sha256: expectedHash = null } = descriptor;
+    check(object(descriptor) && Object.keys(descriptor).length === 1 && Object.hasOwn(descriptor, 'path')
+      && object(scope) && typeof scope.actorUserId === 'string' && UUID.test(scope.actorUserId)
+      && typeof scope.documentId === 'string' && UUID.test(scope.documentId), 'DOCUMENT_OPEN_INPUT');
+    const { path } = descriptor;
     const encoded = encodedPath(path);
-    check(typeof byteLength === 'string' && /^[1-9][0-9]{0,18}$/.test(byteLength)
-      && BigInt(byteLength) <= 9223372036854775807n
-      && (expectedHash === null || (typeof expectedHash === 'string' && SHA.test(expectedHash))), 'DOCUMENT_OPEN_INPUT');
-    const expected = BigInt(byteLength); check(expected <= BigInt(maxBytes), 'DOCUMENT_OPEN_LIMIT');
     const { actorUserId, signal } = scope;
     check(signal == null || (typeof signal.aborted === 'boolean' && typeof signal.addEventListener === 'function'
       && typeof signal.removeEventListener === 'function'), 'DOCUMENT_OPEN_INPUT');
@@ -101,30 +98,33 @@ export function createLegacyDocumentDownload(deps) {
       // PDF parsing; accepting a Blob is not proof that its syntax is valid PDF.
       check(type === 'application/pdf' || type === 'application/octet-stream');
       const declared = response.headers.get('Content-Length');
-      if (declared !== null) check(/^[0-9]{1,19}$/.test(declared) && BigInt(declared) === expected, 'DOCUMENT_OPEN_BYTES');
+      let declaredBytes = null;
+      if (declared !== null) {
+        check(/^[1-9][0-9]{0,18}$/.test(declared), 'DOCUMENT_OPEN_BYTES');
+        declaredBytes = BigInt(declared);
+        check(declaredBytes <= 9223372036854775807n, 'DOCUMENT_OPEN_BYTES');
+        check(declaredBytes <= BigInt(maxBytes), 'DOCUMENT_OPEN_LIMIT');
+      }
       reader = response.body.getReader();
-      const chunks = [], block = new Uint8Array(Math.min(65536, Number(expected))); let filled = 0, count = 0n;
+      const chunks = [], block = new Uint8Array(65536); let filled = 0, count = 0n;
       for (;;) {
         const part = await call(() => reader.read()); if (part.done) break;
         check(part.value instanceof Uint8Array);
-        count += BigInt(part.value.byteLength); check(count <= expected, 'DOCUMENT_OPEN_BYTES');
+        count += BigInt(part.value.byteLength);
+        check(count <= BigInt(maxBytes), 'DOCUMENT_OPEN_LIMIT');
+        if (declaredBytes !== null) check(count <= declaredBytes, 'DOCUMENT_OPEN_BYTES');
         for (let offset = 0; offset < part.value.length;) {
           const length = Math.min(block.length - filled, part.value.length - offset);
           block.set(part.value.subarray(offset, offset + length), filled); filled += length; offset += length;
           if (filled === block.length) { chunks.push(new Blob([block])); filled = 0; alive(); }
         }
       }
-      check(count === expected, 'DOCUMENT_OPEN_BYTES'); alive();
+      check(count > 0n, 'DOCUMENT_OPEN_BYTES');
+      if (declaredBytes !== null) check(count === declaredBytes, 'DOCUMENT_OPEN_BYTES');
+      alive();
       if (filled) chunks.push(new Blob([block.subarray(0, filled)]));
       const blob = new Blob(chunks, { type: 'application/pdf' });
-      check(BigInt(blob.size) === expected, 'DOCUMENT_OPEN_BYTES'); alive();
-      if (expectedHash !== null) {
-        check(typeof globalThis.crypto?.subtle?.digest === 'function');
-        const bytes = await call(() => Blob.prototype.arrayBuffer.call(blob));
-        const digest = await call(() => globalThis.crypto.subtle.digest('SHA-256', bytes));
-        const actualHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-        check(actualHash === expectedHash, 'DOCUMENT_OPEN_BYTES');
-      }
+      check(BigInt(blob.size) === count, 'DOCUMENT_OPEN_BYTES'); alive();
       alive(); complete = true; return blob;
     } catch (error) {
       throw failure(allowed.has(error?.code) ? error.code : undefined);

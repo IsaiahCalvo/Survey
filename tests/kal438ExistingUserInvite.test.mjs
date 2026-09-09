@@ -473,6 +473,6 @@ test('KAL-438: AppShell consumes the server-built document deep link', () => {
   const appShell = read('src/AppShell.jsx');
   match(appShell, /new URLSearchParams\(window\.location\.search\)\.get\('docId'\)/);
   match(appShell, /documents\.find\(/);
-  match(appShell, /handleDocumentSelect\(\s*fileToOpen/);
+  match(appShell, /await handleOpenCloudDocument\(documentToOpen\)/);
   match(appShell, /url\.searchParams\.delete\('docId'\)/);
 });

@@ -17,6 +17,7 @@ const hex = v => `\\x${Buffer.from(v).toString('hex')}`;
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const pdfDocument = await PDFDocument.create(); pdfDocument.addPage([612, 792]);
 const pdf = await pdfDocument.save();
+const editedPdf = new Uint8Array([...pdf, 10, 20, 30]);
 const doc = new Y.Doc(); doc.getMap('annotations').set('base', { page: 1 });
 const baseline = Y.encodeStateAsUpdate(doc), vector = Y.encodeStateVector(doc);
 doc.getMap('annotations').set('tail', { page: 2 }); const tail = Y.encodeStateAsUpdate(doc, vector); doc.destroy();
@@ -310,12 +311,12 @@ test('installed Supabase SDK binds RPC JWT and aborts owned loopback HTTP', { ti
 
 test('current legacy open uses fresh metadata and one JWT, then rechecks metadata, mode and actor', async () => {
   const h = harness(); h.onRpc = () => modeResult();
-  h.onFetch = () => { h.token = 'refreshed'; h.emit('TOKEN_REFRESHED'); return new Response(pdf, { headers: { 'Content-Type': 'application/pdf' } }); };
+  h.onFetch = () => { h.token = 'refreshed'; h.emit('TOKEN_REFRESHED'); return new Response(editedPdf, { headers: { 'Content-Type': 'application/pdf' } }); };
   const opened = await h.openCurrent(); h.clean();
   assert.equal(opened.mode, 'legacy'); assert.equal(opened.checkedBundle, null);
   assert.ok(Object.isFrozen(opened) && Object.isFrozen(opened.document));
   assert.equal(opened.document.file_size, String(pdf.length));
-  assert.deepEqual(new Uint8Array(await opened.blob.arrayBuffer()), pdf);
+  assert.deepEqual(new Uint8Array(await opened.blob.arrayBuffer()), editedPdf);
   assert.equal(h.calls.length, 2); assert.equal(h.metadataCalls.length, 2); assert.equal(h.fetches.length, 1);
   assert.ok([...h.calls, ...h.metadataCalls].every(c => c.authorization === 'Bearer captured-token' && c.signal.aborted));
   assert.equal(h.fetches[0].options.headers.Authorization, 'Bearer captured-token');
@@ -387,10 +388,21 @@ test('legacy captures metadata before awaits; hashless reads are not checked bun
 
 test('current open has zero I/O when disabled; invalid metadata stops before Storage', async () => {
   await assert.rejects(createCheckedDocumentAcquisition().openCurrent({ documentId }), { code: 'DOCUMENT_OPEN_DISABLED' });
-  for (const patch of [{ file_size: Number.MAX_SAFE_INTEGER + 1 }, { file_size: null }, { archived: true },
-    { name: 'a'.repeat(65537) }, { file_size: '999999999' }, { content_sha256: 'bad' }, { file_path: '' }]) {
+  for (const patch of [{ file_size: Number.MAX_SAFE_INTEGER + 1 }, { file_size: 0 }, { archived: true },
+    { name: 'a'.repeat(65537) }, { file_size: '9223372036854775808' }, { content_sha256: 'bad' }, { file_path: '' }]) {
     const h = harness(); h.onRpc = () => modeResult(); h.onMetadata = () => ({ data: { ...legacyRow, ...patch } });
     await assert.rejects(h.openCurrent()); h.clean(); assert.equal(h.fetches.length, 0);
+  }
+});
+
+test('nullable or stale legacy row size is metadata only; actual response bytes own the limit', async () => {
+  for (const file_size of [null, '999999999']) {
+    const h = harness(); h.onRpc = () => modeResult();
+    h.onMetadata = () => ({ data: { ...legacyRow, file_size } });
+    h.onFetch = () => new Response(editedPdf, { headers: { 'Content-Type': 'application/pdf' } });
+    const opened = await h.openCurrent(); h.clean();
+    assert.equal(opened.document.file_size, file_size);
+    assert.deepEqual(new Uint8Array(await opened.blob.arrayBuffer()), editedPdf);
   }
 });
 

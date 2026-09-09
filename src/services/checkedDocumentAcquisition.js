@@ -16,7 +16,7 @@ const check = (value, code = 'DOCUMENT_OPEN_INPUT') => { if (!value) throw failu
 const metadataFields = 'id,user_id,project_id,name,file_path,file_size,content_sha256,updated_at,archived,user_archived_at';
 const exactKeys = (value, fields) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).sort().join(',') === fields.split(',').sort().join(',');
-function legacyMetadata(value, documentId, maxPdfBytes) {
+function legacyMetadata(value, documentId) {
   check(exactKeys(value, metadataFields), 'DOCUMENT_OPEN_PROTOCOL');
   // Capture primitives before the next await; the SDK response is not owned.
   const row = { ...value };
@@ -26,14 +26,16 @@ function legacyMetadata(value, documentId, maxPdfBytes) {
     && row.archived === false && row.user_archived_at === null
     && (row.updated_at === null || (typeof row.updated_at === 'string' && row.updated_at.length <= 64
       && Number.isFinite(Date.parse(row.updated_at))))
-    && (row.content_sha256 === null || (typeof row.content_sha256 === 'string' && /^[0-9a-f]{64}$/.test(row.content_sha256))),
+    && (row.content_sha256 === null || (typeof row.content_sha256 === 'string' && /^[0-9a-f]{64}$/.test(row.content_sha256)))
+    && (row.file_size === null || (Number.isSafeInteger(row.file_size) && row.file_size > 0)
+      || (typeof row.file_size === 'string' && /^[1-9][0-9]{0,18}$/.test(row.file_size)
+        && BigInt(row.file_size) <= 9223372036854775807n)),
   'DOCUMENT_OPEN_PROTOCOL');
   // This is an acceptance bound, not a limit on the SDK's JSON allocation.
   check(row.name.length <= 65536, 'DOCUMENT_OPEN_LIMIT');
-  check((Number.isSafeInteger(row.file_size) && row.file_size > 0)
-    || (typeof row.file_size === 'string' && /^[1-9][0-9]{0,18}$/.test(row.file_size)), 'DOCUMENT_OPEN_PROTOCOL');
-  row.file_size = String(row.file_size);
-  check(BigInt(row.file_size) <= BigInt(maxPdfBytes), 'DOCUMENT_OPEN_LIMIT');
+  // This is old/import metadata, not a current-byte receipt. Legacy mutable
+  // saves can change the Storage object without changing these two fields.
+  if (row.file_size !== null) row.file_size = String(row.file_size);
   return Object.freeze(row);
 }
 
@@ -143,7 +145,7 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
             .eq('archived', false).is('user_archived_at', null)
             .setHeader('Authorization', `Bearer ${accessToken}`).abortSignal(controller.signal).retry(false).maybeSingle());
           if (response?.error) throw response.error;
-          alive(); return legacyMetadata(response?.data, documentId, maxPdfBytes);
+          alive(); return legacyMetadata(response?.data, documentId);
         };
         const legacyDownload = discover ? createLegacyDocumentDownload({ supabaseUrl, publicKey, fetch: fetcher,
           allowLoopback, timeoutMs, maxBytes: maxPdfBytes,
@@ -167,8 +169,7 @@ export function createCheckedDocumentAcquisition({ client, actorUserId, isCurren
         const mode = discover ? await readMode() : null;
         if (mode?.mode === 'legacy') {
           const document = await readMetadata();
-          const blob = await wait(() => legacyDownload({ path: document.file_path,
-            byte_length: document.file_size, content_sha256: document.content_sha256 },
+          const blob = await wait(() => legacyDownload({ path: document.file_path },
           { actorUserId, documentId, signal: controller.signal }));
           const finalDocument = await readMetadata();
           check(metadataFields.split(',').every(key => document[key] === finalDocument[key]), 'DOCUMENT_OPEN_BYTES');

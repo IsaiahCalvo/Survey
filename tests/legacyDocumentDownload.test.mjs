@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { PDFDocument } from 'pdf-lib';
@@ -8,10 +7,10 @@ import { createLegacyDocumentDownload } from '../src/services/legacyDocumentDown
 
 const id = n => `aa000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = id(1), documentId = id(2), scope = { actorUserId: actor, documentId };
-const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const pdfDocument = await PDFDocument.create(); pdfDocument.addPage([612, 792]); const pdf = await pdfDocument.save();
-const descriptor = () => ({ path: `${id(99)}/old plan?#% 😀.pdf`, byte_length: String(pdf.length), content_sha256: sha(pdf) });
+const editedPdf = new Uint8Array([...pdf, 10, 20, 30]);
+const descriptor = () => ({ path: `${id(99)}/old plan?#% 😀.pdf` });
 const response = (bytes = pdf, headers = {}) => new Response(bytes, { headers: { 'Content-Type': 'application/pdf', ...headers } });
 const code = expected => error => error.code === expected && !/secret|private\.example/.test(error.message);
 function harness(config = {}) {
@@ -24,7 +23,7 @@ function harness(config = {}) {
   return h;
 }
 
-test('GET pins exact actor token and safely encodes raw object path; complete real PDF hash passes', async () => {
+test('GET pins exact actor token and safely encodes raw object path', async () => {
   const h = harness(), d = descriptor(), blob = await h.read(d);
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), pdf); assert.equal(blob.type, 'application/pdf');
   const { url, options } = h.calls[0], parsed = new URL(url);
@@ -38,12 +37,12 @@ test('GET pins exact actor token and safely encodes raw object path; complete re
   assert.equal(h.tokens[0].user, actor);
 });
 
-test('hashless legacy bytes are allowed and generic Storage MIME remains compatible', async () => {
-  const h = harness(); h.onFetch = () => response(pdf, { 'Content-Type': 'application/octet-stream' });
-  const d = descriptor(); delete d.content_sha256;
-  assert.equal((await h.read(d)).size, pdf.length);
+test('mutable edited legacy bytes need not match import metadata and generic Storage MIME remains compatible', async () => {
+  const h = harness(); h.onFetch = () => response(editedPdf, { 'Content-Type': 'application/octet-stream' });
+  const d = descriptor();
+  assert.deepEqual(new Uint8Array(await (await h.read(d)).arrayBuffer()), editedPdf);
   const firstNonce = new URL(h.calls[0].url).searchParams.get('cacheNonce');
-  await h.read({ ...d, content_sha256: null }); assert.equal(h.calls.length, 2);
+  await h.read(d); assert.equal(h.calls.length, 2);
   assert.notEqual(new URL(h.calls[1].url).searchParams.get('cacheNonce'), firstNonce);
 });
 
@@ -56,10 +55,10 @@ test('untrusted origins and malformed bounds reject at construction', () => {
     { publicKey: 'bad\nkey' }, { fetch: null }]) assert.throws(() => harness(config), code('DOCUMENT_OPEN_INPUT'));
 });
 
-test('path normalization, invalid sizes/hashes/scopes fail before auth or bytes', async () => {
+test('path normalization, stale receipt fields and invalid scopes fail before auth or bytes', async () => {
   const bad = [d => d.path = 'a/../b', d => d.path = 'a/./b', d => d.path = '\ud800', d => d.path = '',
-    d => d.path = 'x'.repeat(2049), d => d.path = 'a\0b', d => d.byte_length = '0', d => d.byte_length = 12,
-    d => d.byte_length = '01', d => d.byte_length = '9223372036854775808', d => d.content_sha256 = 'A'.repeat(64),
+    d => d.path = 'x'.repeat(2049), d => d.path = 'a\0b', d => d.byte_length = String(pdf.length),
+    d => d.content_sha256 = 'a'.repeat(64),
     d => d.extra = 'secret'];
   for (const change of bad) {
     const h = harness(), d = descriptor(); change(d);
@@ -68,7 +67,7 @@ test('path normalization, invalid sizes/hashes/scopes fail before auth or bytes'
   const h = harness(); await assert.rejects(h.read(descriptor(), { ...scope, actorUserId: 'bad' }), code('DOCUMENT_OPEN_INPUT'));
   await assert.rejects(h.read(descriptor(), { ...scope, signal: {} }), code('DOCUMENT_OPEN_INPUT'));
   const small = harness({ maxBytes: 1 }); await assert.rejects(small.read(), code('DOCUMENT_OPEN_LIMIT'));
-  assert.equal(small.tokens.length, 0);
+  assert.equal(small.calls.length, 1);
 });
 
 test('literal percent escapes and leading slashes retain exact raw-name identity', async () => {
@@ -79,9 +78,13 @@ test('literal percent escapes and leading slashes retain exact raw-name identity
   }
 });
 
-test('short, oversized, failed bodies and wrong hash never return a Blob', async () => {
-  for (const bytes of [pdf.slice(1), new Uint8Array(pdf.length + 1), new Uint8Array(pdf.length)]) {
-    const h = harness(); h.onFetch = () => response(bytes);
+test('empty, oversized, failed bodies and lying length never return a Blob', async () => {
+  const empty = harness(); empty.onFetch = () => response(new Uint8Array());
+  await assert.rejects(empty.read(), code('DOCUMENT_OPEN_BYTES'));
+  const oversized = harness({ maxBytes: pdf.length - 1 }); oversized.onFetch = () => response(pdf);
+  await assert.rejects(oversized.read(), code('DOCUMENT_OPEN_LIMIT'));
+  for (const declared of [String(pdf.length - 1), String(pdf.length + 1)]) {
+    const h = harness(); h.onFetch = () => response(pdf, { 'Content-Length': declared });
     await assert.rejects(h.read(), code('DOCUMENT_OPEN_BYTES'));
   }
   const h = harness(); h.onFetch = () => response(new ReadableStream({ start(controller) { controller.error(new Error('secret stream')); } }));
@@ -95,7 +98,7 @@ test('status, redirect, MIME and declared-length failures cancel without reading
       const stream = new ReadableStream({ pull() { pulls++; }, cancel() { canceled++; } }, { highWaterMark: 0 });
       const r = new Response(stream, { status: kind === 'status' ? 403 : 200,
         headers: { 'Content-Type': kind === 'mime' ? 'text/html' : 'application/pdf',
-          ...(kind === 'length' ? { 'Content-Length': String(pdf.length + 1) } : {}) } });
+          ...(kind === 'length' ? { 'Content-Length': '0' } : {}) } });
       if (kind === 'redirect') Object.defineProperty(r, 'redirected', { value: true });
       return r;
     };
@@ -155,36 +158,19 @@ test('tiny/empty chunks and reused transport views retain exact independent byte
     if (empty) { empty = false; controller.enqueue(new Uint8Array()); return; }
     backing[0] = bytes[offset++]; empty = true; controller.enqueue(backing);
   } }, { highWaterMark: 0 }));
-  const result = await h.read({ ...descriptor(), byte_length: String(bytes.length), content_sha256: sha(bytes) });
+  const result = await h.read(descriptor());
   assert.deepEqual(new Uint8Array(await result.arrayBuffer()), bytes);
 });
-
-test('hash await checks abort and actor again before return', async () => {
-  const subtle = globalThis.crypto.subtle, original = subtle.digest;
-  for (const actorChange of [false, true]) {
-    const h = harness(), controller = new AbortController();
-    subtle.digest = async (...args) => {
-      const result = await original.apply(subtle, args);
-      if (actorChange) h.actor = id(99); else queueMicrotask(() => controller.abort());
-      return result;
-    };
-    try { await assert.rejects(h.read(descriptor(), { ...scope, signal: controller.signal }),
-      code(actorChange ? 'DOCUMENT_OPEN_ACTOR_CHANGED' : 'DOCUMENT_OPEN_ABORTED')); }
-    finally { subtle.digest = original; }
-  }
-});
-
-test('hung hash obeys deadline; successful and timed-out reads detach the caller listener', async () => {
-  const subtle = globalThis.crypto.subtle, original = subtle.digest, controller = new AbortController();
+test('successful and timed-out reads detach the caller listener', async () => {
+  const controller = new AbortController();
   const signal = controller.signal; let listeners = 0;
   const add = signal.addEventListener.bind(signal), remove = signal.removeEventListener.bind(signal);
   signal.addEventListener = (...args) => { listeners++; return add(...args); };
   signal.removeEventListener = (...args) => { listeners--; return remove(...args); };
   const h = harness({ timeoutMs: 25 });
   await h.read(descriptor(), { ...scope, signal }); assert.equal(listeners, 0);
-  subtle.digest = () => new Promise(() => {});
-  try { await assert.rejects(h.read(descriptor(), { ...scope, signal }), code('DOCUMENT_OPEN_ABORTED')); }
-  finally { subtle.digest = original; }
+  h.onFetch = () => response(new ReadableStream({ pull() { return new Promise(() => {}); } }));
+  await assert.rejects(h.read(descriptor(), { ...scope, signal }), code('DOCUMENT_OPEN_ABORTED'));
   assert.equal(listeners, 0);
 });
 
@@ -194,9 +180,13 @@ test('owned loopback HTTP verifies exact Storage URL, JWT, redirect refusal and 
     if (req.url === '/redirect-target') { redirected++; res.end(pdf); return; }
     requests.push({ url: req.url, token: req.headers.authorization, key: req.headers.apikey });
     if (mode === 'redirect') { res.writeHead(302, { Location: '/redirect-target' }); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': 'application/pdf' });
+    const body = mode === 'edited' ? editedPdf : pdf;
+    res.writeHead(200, {
+      'Content-Type': mode === 'non-pdf' ? 'text/plain' : 'application/pdf',
+      'Content-Length': String(body.length),
+    });
     if (mode === 'hang') { res.write(pdf.slice(0, 16)); res.on('close', () => closed.resolve()); entered.resolve(); return; }
-    res.end(pdf);
+    res.end(body);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const h = harness({ supabaseUrl: `http://127.0.0.1:${server.address().port}`, allowLoopback: true, fetch: globalThis.fetch });
@@ -205,6 +195,11 @@ test('owned loopback HTTP verifies exact Storage URL, JWT, redirect refusal and 
     assert.equal(requests[0].token, 'Bearer bound-token'); assert.equal(requests[0].key, 'public-test-key');
     const url = new URL(requests[0].url, 'http://localhost');
     assert.equal(decodeURIComponent(url.pathname.slice('/storage/v1/object/authenticated/documents/'.length)), descriptor().path);
+    mode = 'edited'; assert.deepEqual(new Uint8Array(await (await h.read()).arrayBuffer()), editedPdf);
+    const bounded = harness({ supabaseUrl: `http://127.0.0.1:${server.address().port}`, allowLoopback: true,
+      fetch: globalThis.fetch, maxBytes: pdf.length });
+    await assert.rejects(bounded.read(), code('DOCUMENT_OPEN_LIMIT'));
+    mode = 'non-pdf'; await assert.rejects(h.read(), code('DOCUMENT_OPEN_PROTOCOL'));
     mode = 'redirect'; await assert.rejects(h.read(), code('DOCUMENT_OPEN_PROTOCOL')); assert.equal(redirected, 0);
     mode = 'hang'; const controller = new AbortController(), reading = h.read(descriptor(), { ...scope, signal: controller.signal });
     await entered.promise; controller.abort(); await assert.rejects(reading, code('DOCUMENT_OPEN_ABORTED')); await closed.promise;

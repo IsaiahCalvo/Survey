@@ -4806,6 +4806,77 @@ activation flag, authority grant, cloud service, Microsoft flow or credential
 path imports it. It produces a checked candidate and private plan; it does not
 stage, publish or prove durable state.
 
+## Central checked cloud-document open — September 9 follow-up
+
+`AppShell` now owns the one cloud-document open route used by Dashboard clicks,
+confirmed uploads and document links. A healthy tab for the same actor opens
+first without an auth call, RPC or download. Other duplicate opens share work
+only when the actor scope, mount and document ID all match. Actor change,
+unmount and React Strict Mode remounts retire the old acquisition and block a
+late reply from adding or replacing a tab. Local, managed-local, no-ID and dev
+fixture opens remain outside this route.
+
+The route stays off by default. Only the exact build value
+`VITE_SURVEY_CHECKED_DOCUMENT_OPEN=mode-v1` turns it on. With the flag off,
+AppShell keeps the old Storage/data-URL flow and can reuse the confirmed upload
+file hint to avoid a second download. It snapshots the row ID, owner, project,
+path and name before any wait and reuses an existing `File` only when those
+cloud fields match. With the flag on, it ignores all caller PDF hints for cloud
+IDs and asks the existing checked acquisition for current data. A checked result
+passes its exact bundle to the checked tab path. A legacy result opens the Blob
+returned by the bounded legacy reader and attaches the authorized row metadata.
+Discovery or download failure has no raw-byte fallback. A failed legacy tab may
+be replaced by new legacy data, while a failed checked tab can only be replaced
+by a valid checked bundle and cannot be downgraded to legacy bytes.
+
+Mutable legacy rows use the fresh authorized row for actor, document, path and
+mode checks. The reader bounds the actual response stream, checks PDF status and
+type, and checks the final count against a supplied response length. It does not
+treat `documents.file_size` or `documents.content_sha256` as a current-byte
+receipt: old saves can change the PDF at the same path, while that hash remains
+the original import and dedup identity. This proves a bounded current download,
+not an immutable object version. Checked generation mode still uses its exact
+generation receipt.
+
+Document links clear `docId` only after the central route accepts the open; a
+failed or stale open keeps the link for retry. A confirmed upload also stays a
+confirmed upload if only the later open fails. Dashboard reports that as an open
+error instead of a failed upload or recovery attempt.
+
+The final frozen-source focused route run passes 95/95 tests
+(`/tmp/checked-cloud-open-focused-final-20260909.log`). It includes 13 new
+mounted AppShell/Dashboard cases, 37 acquisition/legacy-reader cases and the
+updated prior route groups. It covers edited legacy PDFs with stale row
+size/hash, flag on/off paths, fast tab reuse, checked-tab no-downgrade, failed
+reload, row mutation, actor A-B-A, unmount, Strict Mode remount, document-link
+acceptance, new and reused upload hints, open-only upload errors, stale actor
+suppression, real pdf-lib checked data, Dashboard routing and local/dev bypass.
+The KAL438 group then passed 16/16 after a one-line source-regex update
+(`/tmp/checked-cloud-open-kal438-final-20260909.log`). The final `npm test` run
+ran 6,692 tests: 6,597 passed, 95 skipped and zero failed across 661 regular
+files plus four isolated timing suites
+(`/tmp/checked-cloud-open-full-npm-test-final2-20260909.log`). The final Vite
+build passed with 932 modules in 2.64 seconds and the existing large-chunk
+warning (`/tmp/checked-cloud-open-vite-build-final-20260909.log`). An earlier
+diagnostic full run stopped with one stale KAL438 source-regex failure after
+3,801 tests (3,731 passed and 69 skipped); its original log was kept and is not
+counted as pass proof.
+
+This is local source and test proof only. The flag remains off; no publication
+route, live cloud call, Microsoft 365 flow, credential use or deploy was enabled
+or tested in this slice. A final in-app no-auth fixture check loaded
+`?testPdf=clickable-link-test.pdf`, used Pages > Page 1 > Duplicate, showed two
+rendered thumbnails and logged no errors. The known 78% to 187% zoom jump still
+occurred and was not fixed or accepted as viewport proof. The fixture's
+`Syncing` label is not cloud-save proof. This check used no live auth and did not
+exercise cloud open or the flag-on path.
+
+The next gate must choose a Node host and grant only the narrow publication
+authority that host needs. Default flags and migrations stay unchanged until
+that choice and its tests pass. The local tested endpoint and injected test
+drivers remain separate from a hosted route; they are not hosted or provider
+proof.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)

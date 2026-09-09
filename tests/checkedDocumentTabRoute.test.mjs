@@ -45,13 +45,15 @@ function extract(source, name, end, ports) {
 function handlerHarness(initial = []) {
   const scope = { actorUserId: actor }, ref = { current: scope }, opening = { current: new Set() };
   const state = { tabs: initial, selected: null, active: null, view: null, loading: false };
+  const closeViewRef = { current: { tabs: state.tabs } };
   const changes = [], timers = [];
   let serial = 0;
   const set = name => value => { changes.push(name); state[name] = typeof value === 'function' ? value(state[name]) : value; };
-  const ports = () => ({ tabs: state.tabs, selectedPDF: state.selected, documentOpenScope: scope, documentOpenScopeRef: ref,
+  const ports = () => { closeViewRef.current = { tabs: state.tabs }; return ({ tabs: state.tabs, selectedPDF: state.selected, documentOpenScope: scope, documentOpenScopeRef: ref,
+    closeViewRef,
     openingPdfsRef: opening, prepareCheckedDocumentOpen, getDocumentOpenKey, isSameDocumentTab,
     setTabs: set('tabs'), setSelectedPDF: set('selected'), setActiveTabId: set('active'), setCurrentView: set('view'), setIsLoading: set('loading'),
-    generateTabId: () => `tab-${++serial}`, setTimeout: callback => { timers.push(callback); } });
+    generateTabId: () => `tab-${++serial}`, setTimeout: callback => { timers.push(callback); } }); };
   return { state, changes, ref, opening,
     select: (...args) => extract(shell, 'handleDocumentSelect', '  // DEV-ONLY: Auto-open test PDF', ports())(...args),
     staleSelect: () => extract(shell, 'handleDocumentSelect', '  // DEV-ONLY: Auto-open test PDF', ports()),
@@ -87,10 +89,17 @@ for (const flag of [null, '__pdfLoadFailed', '__rewrittenForParse']) {
     if (flag) original[flag] = true;
     h.select(new File(['new bytes'], 'new.pdf'), null, fresh);
     assert.equal(h.state.tabs.length, 1);
-    assert.equal(h.state.tabs[0], tab);
-    assert.equal(tab.file, original);
-    assert.equal(tab.checkedBundle, first);
-    assert.equal(h.state.selected, original);
+    if (flag) {
+      assert.notEqual(h.state.tabs[0], tab);
+      assert.notEqual(h.state.tabs[0].file, original);
+      assert.equal(h.state.tabs[0].checkedBundle, fresh);
+      assert.equal(h.state.selected, h.state.tabs[0].file);
+    } else {
+      assert.equal(h.state.tabs[0], tab);
+      assert.equal(tab.file, original);
+      assert.equal(tab.checkedBundle, first);
+      assert.equal(h.state.selected, original);
+    }
     assert.equal(original.unsavedAnnotationDraft.owned, true);
   });
 }
@@ -131,7 +140,7 @@ test('retired actor scope ignores even genuine checked opens before changing sta
 test('raw list and deep-link reopens activate the checked tab without downgrading it', async () => {
   const bundle = await issue(), h = handlerHarness();
   h.select(null, null, bundle); h.settle();
-  const tab = h.state.tabs[0]; tab.file.__pdfLoadFailed = true; tab.file.unsavedAnnotationDraft = 'keep';
+  const tab = h.state.tabs[0]; tab.file.unsavedAnnotationDraft = 'keep';
   const raw = { id: documentId, name: 'list name.pdf', file_path: 'wrong/legacy.pdf' };
   h.select(raw, raw.file_path);
   assert.equal(h.state.tabs.length, 1);
@@ -142,7 +151,10 @@ test('raw list and deep-link reopens activate the checked tab without downgradin
   const scope = { actorUserId: actor };
   const click = extract(dashboard, 'handleDocumentClick', '\n  useEffect(() => {', {
     documentOpenScope: scope, documentOpenScopeRef: { current: scope },
-    onActivateOpenDocument: doc => h.activate(doc),
+    onOpenCloudDocument: async doc => {
+      if (h.activate(doc) !== true) throw new Error('Activation rejected');
+      return true;
+    },
     downloadFromStorage: async () => { downloads++; throw new Error('Unexpected download'); },
     onDocumentSelect: () => { newOpens++; },
     console: { log() {}, error() {} }, performance: { now: () => 0 }, isStorageFileNotFoundError,

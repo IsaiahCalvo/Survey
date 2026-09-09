@@ -108,7 +108,7 @@ const hasNameConflict = (
 };
 
 
-const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSelect, onActivateOpenDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSelect, onOpenCloudDocument, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   const localFileInputRef = useRef(null);
@@ -875,19 +875,22 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
         projectId, archiveDocument: duplicateGate.archiveDocument || null });
       if (!current() || !openAfterUpload) return;
       const row = result.document;
-      if (!row?.id || !(result.file instanceof Blob)) {
-        if (row?.id) await handleDocumentClick(row);
-        return;
+      if (!row?.id) return;
+      // The confirmed runner's current PDF avoids a second legacy download
+      // while the default-off path is active. Checked discovery ignores it.
+      try {
+        await onOpenCloudDocument(row, {
+          ...(result.file instanceof Blob ? { legacyFile: result.file } : {}),
+          // A reused cloud PDF is not the picked native file anymore.
+          ...(result.reused ? {} : { nativePath: nativePath || undefined }),
+        });
+      } catch (openError) {
+        if (current()) {
+          console.error('The confirmed upload could not be opened:', openError);
+          showToast('The upload finished, but the document could not be opened. Try opening it again.', 'error');
+        }
       }
-      if (onActivateOpenDocument?.(row) === true) return;
-      // Existing imports use the current published PDF returned by the runner,
-      // never the selected original bytes that may predate shared edits.
-      const opened = new File([result.file], row.name, { type: 'application/pdf' });
-      opened.id = row.id; opened.user_id = row.user_id;
-      opened.projectId = row.project_id ?? null;
-      opened.supabaseFilePath = row.file_path;
-      // A reused cloud PDF is not necessarily the original disk file anymore.
-      onDocumentSelect(opened, result.reused ? undefined : nativePath || undefined);
+      return;
     } catch (error) {
       if (current()) {
         console.error('File upload did not finish:', error);
@@ -1269,7 +1272,10 @@ const Dashboard = forwardRef(function Dashboard({ isActive = true, onDocumentSel
     try {
       // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
       try { console.log('[OpenTiming] doc-click @ ' + Math.round(performance.now()) + 'ms', doc?.name || doc?.file?.name || doc?.id || ''); } catch (_e) { /* swallow */ }
-      if (doc?.id && onActivateOpenDocument?.(doc) === true) return;
+      if (doc?.id) {
+        await onOpenCloudDocument(doc);
+        return;
+      }
       // 1. Check if we have a local file object (e.g. from optimistic upload)
       if (doc.file) {
         // Attach Supabase metadata to the file for sync
