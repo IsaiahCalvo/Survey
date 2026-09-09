@@ -29,7 +29,8 @@ const cloudFile = () => Object.assign(new Blob(['original']), { id: 'document-a'
 const localId = 'local:8ad364a5-786f-470f-858d-253c52bff3bd';
 const managedFile = () => Object.assign(new Blob(['original']), { storageMode: 'local', localId,
   _surveyPdfId: localId, localRevision: 3, name: 'local.pdf' });
-function harness({ file = cloudFile(), actor = 'actor-a', tabActor = actor } = {}) {
+function harness({ file = cloudFile(), actor = 'actor-a', tabActor = actor,
+  localDocumentFileReplacer = null } = {}) {
   const next = Object.assign(new Blob(['replacement']), Object.fromEntries(Object.keys(file).map(key => [key, file[key]])));
   const state = { tabs: [{ id: 'tab-a', file, actorUserId: tabActor }], selected: file,
     documents: [{ id: file.id, size: file.size }], writes: [], toasts: [], prepare: 0, queued: [], beforeFlush: null };
@@ -41,6 +42,7 @@ function harness({ file = cloudFile(), actor = 'actor-a', tabActor = actor } = {
     pendingTabClosesRef: { current: new Set() }, isManagedLocalDocument,
     replaceDocument: async (...args) => { state.writes.push(['cloud', ...args]); if (state.pending) await state.pending.promise; },
     replaceLocalDocument: async (...args) => { state.writes.push(['local', ...args]); if (state.pending) await state.pending.promise; return { revision: 4 }; },
+    localDocumentFileReplacer,
     setTabs: update => state.queued.push(() => { state.tabs = update(state.tabs); deps.closeViewRef.current = { ...deps.closeViewRef.current, tabs: state.tabs }; }),
     setSelectedPDF: update => state.queued.push(() => { state.selected = typeof update === 'function' ? update(state.selected) : update; }),
     setDocuments: update => state.queued.push(() => { state.documents = update(state.documents); }),
@@ -67,6 +69,25 @@ test('managed local replacement preserves expected revision and canonical state,
   assert.deepEqual(h.state.writes[0].slice(0, 2), ['local', localId]);
   assert.deepEqual(h.state.writes[0][3], { expectedRevision: 3, state: h.next._localDocumentState });
   assert.equal(h.next.localRevision, 4); assert.equal(h.file.localRevision, 3);
+});
+
+test('managed local replacement uses the injected file replacer with full state and no cloud write', async () => {
+  const calls = [];
+  const state = { version: 1, pdfId: localId, entries: {
+    [`annotationsByPage_${localId}`]: '{"1":{"objects":[{"id":"kept"}]}}',
+    [`entityCatalog_${localId}`]: '{"status":"accepted"}',
+  } };
+  const injected = async (...args) => { calls.push(args); return { revision: 9 }; };
+  const h = harness({ file: managedFile(), tabActor: null, localDocumentFileReplacer: injected });
+  h.next._localDocumentState = state;
+  assert.equal(await h.update(h.next, 'tab-a', h.file), h.next);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], localId);
+  assert.equal(calls[0][1], h.next);
+  assert.deepEqual(calls[0][2], { expectedRevision: 3, state });
+  assert.equal(h.next.localRevision, 9);
+  assert.deepEqual(h.next._localDocumentState, state);
+  assert.deepEqual(h.state.writes, [], 'neither default local storage nor cloud storage is called');
 });
 
 test('unmanaged local replacement stays local and preserves its exact source identity', async () => {

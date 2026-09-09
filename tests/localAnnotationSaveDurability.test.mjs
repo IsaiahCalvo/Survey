@@ -195,10 +195,15 @@ function managedLocalHelpers(file, write) {
   const end = viewerSource.indexOf('  const handleSaveDocument = ', start);
   assert.ok(start > 0 && end > start, 'use the real full-state capture and persistence helpers');
   const scope = { managedLocalStateRef: stateRef, buildLocalDocumentState,
+    entityCatalog: { mode: 'legacy', busy: false, catalog: null },
+    pendingManagedEntityCatalog: null, pendingManagedEntityCatalogRef: { current: null },
+    managedEntityCatalogReadyRef: { current: { file, ready: true } },
     managedLocalWritesRef: { current: new WeakMap() },
     managedLocalPageMutationRef: { current: false },
     saveDocumentScopeRef: { current: { pdfFile: file, pdfId: file.localId, actorUserId: 'owner', managedLocalReady: true } },
-    surveyMarkersRef: { current: {} }, spacesRef: { current: [] }, saveLocalDocumentState: write };
+    surveyMarkersRef: { current: {} }, spacesRef: { current: [] },
+    annotationsByPageRef: { current: {} }, persistEntityCatalogRef: { current: null },
+    saveManagedLocalState: write };
   const helpers = new Function(...Object.keys(scope), `${viewerSource.slice(start, end)}
     return { captureManagedLocalSnapshot, persistManagedLocalSnapshot };`)(...Object.values(scope));
   return { ...helpers, stateRef, saveDocumentScopeRef: scope.saveDocumentScopeRef,

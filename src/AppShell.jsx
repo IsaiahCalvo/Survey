@@ -38,6 +38,7 @@ import { prepareCheckedDocumentOpen } from './services/checkedDocumentOpen.js';
 import { createCheckedDocumentAcquisition } from './services/checkedDocumentAcquisition.js';
 import { createDocumentPageReplacementClient } from './services/documentPageReplacementClient.js';
 import { createDocumentPageReplacementIntentStore } from './services/documentPageReplacementIntentStore.js';
+import { createDocumentEntityCatalogClient } from './services/documentEntityCatalog.js';
 import { checkedPageStructureKey, emptyCheckedPageStructure, readCheckedPageStructure, saveCheckedPageStructure,
   transformCheckedPageStructure } from './services/checkedPageStructure.js';
 import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
@@ -71,6 +72,7 @@ import { TooltipContext, makeTooltipBinding } from './components/Tooltip';
 
 const CHECKED_DOCUMENT_OPEN_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_DOCUMENT_OPEN === 'mode-v1';
 const CHECKED_PAGE_REPLACEMENT_ENABLED = import.meta.env.VITE_SURVEY_CHECKED_PAGE_REPLACEMENT === 'mode-v1';
+const DOCUMENT_ENTITY_CATALOG_ENABLED = import.meta.env.VITE_SURVEY_DOCUMENT_ENTITY_CATALOG === 'mode-v1';
 const readLocalCheckedPageStructure = (options, fallback = null) => {
   try {
     if (fallback && options.storage?.getItem?.(checkedPageStructureKey(
@@ -123,10 +125,20 @@ if (import.meta.env.DEV && typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STA
 
 export default function App({ devPreviewReturnTab = null, documentReplacementTransport = null,
   documentReplacementIntentStore = null, checkedPageStructureStorage = null,
-  checkedPageReplacementEnabled = CHECKED_PAGE_REPLACEMENT_ENABLED }) {
+  checkedPageReplacementEnabled = CHECKED_PAGE_REPLACEMENT_ENABLED,
+  documentEntityCatalogEnabled = DOCUMENT_ENTITY_CATALOG_ENABLED,
+  documentEntityCatalogClient = null, documentEntityAdoptionStore = null,
+  localDocumentStateWriter = null, localDocumentFileReplacer = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
   const { replaceDocument, downloadDocument: downloadFromStorage } = useStorage();
+  const resolvedDocumentEntityCatalogClient = useMemo(() => documentEntityCatalogClient
+    || (documentEntityCatalogEnabled ? createDocumentEntityCatalogClient({ enabled: true,
+      rpc: (name, args, { signal } = {}) => {
+        const request = supabase.rpc(name, args);
+        return signal && typeof request.abortSignal === 'function' ? request.abortSignal(signal) : request;
+      },
+    }) : null), [documentEntityCatalogClient, documentEntityCatalogEnabled]);
 
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -1402,7 +1414,8 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     try {
       if (!current()) throw fail();
       if (local) {
-        const stored = await replaceLocalDocument(newFile.localId, newFile, {
+        const replaceManagedLocal = localDocumentFileReplacer || replaceLocalDocument;
+        const stored = await replaceManagedLocal(newFile.localId, newFile, {
           expectedRevision: localRevision,
           ...(newFile._localDocumentState ? { state: newFile._localDocumentState } : {}),
         });
@@ -1429,7 +1442,7 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
     } finally {
       if (pendingFileReplacementsRef.current.get(tabId) === lease) pendingFileReplacementsRef.current.delete(tabId);
     }
-  }, [documentOpenScope, replaceDocument]);
+  }, [documentOpenScope, localDocumentFileReplacer, replaceDocument]);
 
   const handleReplaceCheckedPages = useCallback(async (input, targetTabId, expectedSourceFile,
     expectedCheckedBundle) => {
@@ -3474,6 +3487,10 @@ export default function App({ devPreviewReturnTab = null, documentReplacementTra
                       msGetAuthSignals={msGetAuthSignals}
                       entities={entities}
                       setEntities={setEntities}
+                      documentEntityCatalogEnabled={documentEntityCatalogEnabled}
+                      documentEntityCatalogClient={resolvedDocumentEntityCatalogClient}
+                      documentEntityAdoptionStore={documentEntityAdoptionStore}
+                      saveManagedLocalState={localDocumentStateWriter || undefined}
                     />
                     </Suspense>
                     </>}

@@ -17,6 +17,8 @@ import { createManagedLocalEditingContext } from './utils/managedLocalEditingCon
 import { buildLocalDocumentState, createLocalDocumentStateReader, isManagedLocalDocument } from './services/localDocumentState.js';
 import { useManagedLocalSaveTracking, useManagedLocalAutoSave } from './hooks/useManagedLocalSaveTracking.js';
 import { useManagedLocalDraftTracking } from './hooks/useManagedLocalDraftTracking.js';
+import { useDocumentEntityCatalog } from './hooks/useDocumentEntityCatalog.js';
+import DocumentEntityCatalogAdoptionNotice from './components/DocumentEntityCatalogAdoptionNotice.jsx';
 import { saveLocalDocumentState } from './services/localDocumentStore.js';
 import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
 import { loadPdfjs, getPdfjsDocumentOptions } from './utils/pdfWorkerConfig';
@@ -442,7 +444,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onReplaceCheckedPages = null, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, documentEntityCatalogEnabled = false, documentEntityCatalogClient = null, documentEntityAdoptionStore = null, saveManagedLocalState = saveLocalDocumentState, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -4638,6 +4640,49 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // Region annotation visibility state
   const [activeRegionId, setActiveRegionId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const persistEntityCatalogRef = useRef(null);
+  const pendingManagedEntityCatalogRef = useRef(null);
+  const managedEntityCatalogReadyRef = useRef(null);
+  const readManagedEntityCatalog = useCallback(file => {
+    if (!isManagedLocalDocument(file)) return null;
+    const raw = createLocalDocumentStateReader(file).getItem(`entityCatalog_${file.localId}`);
+    return raw ? JSON.parse(raw) : null;
+  }, []);
+  const persistManagedEntityCatalog = useCallback((file, catalog) => {
+    const persist = persistEntityCatalogRef.current;
+    if (typeof persist !== 'function') {
+      throw new Error('The local document is still loading. Retry after it opens.');
+    }
+    const pending = { file, localId: file.localId, catalog };
+    pendingManagedEntityCatalogRef.current = pending;
+    return Promise.resolve().then(() => persist(file, catalog)).catch(error => {
+      if (pendingManagedEntityCatalogRef.current === pending) pendingManagedEntityCatalogRef.current = null;
+      throw error;
+    });
+  }, []);
+  const entityCatalogScopeRef = useRef(null);
+  entityCatalogScopeRef.current = { active: isActive, actorUserId: user?.id || null,
+    documentId: pdfFile?.id || null, localId: pdfFile?.localId || null, file: pdfFile };
+  const isEntityCatalogScopeCurrent = useCallback((scope) => {
+    const live = entityCatalogScopeRef.current;
+    return live?.active === true && live.actorUserId === scope.actorUserId && live.documentId === scope.documentId
+      && live.localId === scope.localId;
+  }, []);
+  const entityCatalog = useDocumentEntityCatalog({ enabled: documentEntityCatalogEnabled,
+    file: pdfFile, actorUserId: user?.id || null, template: selectedTemplate,
+    cloudClient: documentEntityCatalogClient, adoptionStore: documentEntityAdoptionStore,
+    readManagedLocal: readManagedEntityCatalog, persistManagedLocal: persistManagedEntityCatalog,
+    isCurrent: isEntityCatalogScopeCurrent,
+  });
+  const documentEntityChoices = entityCatalog.entities;
+  const pendingManagedEntityCatalog = pendingManagedEntityCatalogRef.current?.file === pdfFile
+    && pendingManagedEntityCatalogRef.current?.localId === pdfFile?.localId
+    ? pendingManagedEntityCatalogRef.current : null;
+  if (pendingManagedEntityCatalog
+    && entityCatalog.catalog?.status === 'accepted'
+    && entityCatalog.catalog.documentId === pendingManagedEntityCatalog.catalog.documentId) {
+    pendingManagedEntityCatalogRef.current = null;
+  }
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   useEffect(() => {
     pdfjsSelectedModuleIdRef.current = selectedModuleId;
@@ -5461,7 +5506,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     setActiveCategoryDropdown('survey');
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
-  }, []);
+    const mayAdopt = documentEntityCatalogEnabled && (isManagedLocalDocument(pdfFile)
+      || (pdfFile?.id && pdfFile?.user_id === user?.id));
+    if (mayAdopt && entityCatalog.mode === 'legacy') {
+      void entityCatalog.requestAdoption(template).catch(error => {
+        showToast(error?.message || 'The entity list could not be reviewed.', 'error');
+      });
+    }
+  }, [documentEntityCatalogEnabled, entityCatalog, pdfFile, user?.id]);
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
@@ -12730,14 +12782,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   }, [pdfFile]);
   const persistPageMutationFile = useCallback((file, next) => {
     if (isManagedLocalDocument(file)) {
+      if (entityCatalog.mode === 'unknown' || entityCatalog.busy) throw new Error('The document entity list must finish before this PDF can be changed.');
       if (!next) throw new Error('Local page state is required before replacing PDF bytes');
       file._localDocumentState = buildLocalDocumentState({
         ...next, pdfId: file.localId,
         callouts: deriveCalloutsFromByPage(next.annotationsByPage),
+        entityCatalog: entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null,
       });
     }
     return onUpdatePDFFile?.(file, tabId);
-  }, [onUpdatePDFFile, tabId]);
+  }, [entityCatalog.busy, entityCatalog.catalog, entityCatalog.mode, onUpdatePDFFile, tabId]);
   const checkedReplacementSessionRef = useRef(null);
   const captureAcceptedState = useCallback(() => {
     const session = checkedReplacementSessionRef.current;
@@ -13990,8 +14044,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             });
 
             // Get entity entities from template
+            // New assignments use the accepted document list. Historical row
+            // color fallback below keeps the old template list so it cannot
+            // recolor a marker whose assignment predates adoption.
+            const assignmentEntities = documentEntityChoices;
             const entities = selectedTemplate?.entities || [];
-            const entityNames = entities.map(e => e.name).filter(Boolean);
+            const entityNames = assignmentEntities.map(e => e.name).filter(Boolean);
 
             // Build data rows
             const dataRows = [headerRow];
@@ -14034,17 +14092,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
               // Get entity color - try multiple sources (used by any cell styling below).
               const entityId = actualSurveyMarker?.entityId || moduleData.entityId;
               let entityColor = null;
-              if (actualSurveyMarker?.entityColor) {
-                entityColor = getHexFromColor(actualSurveyMarker.entityColor);
-              }
-              if (!entityColor && entityId) {
-                const entity = entities.find(e => e.id === entityId);
-                if (entity && entity.color) {
-                  entityColor = getHexFromColor(entity.color);
-                }
+              if (actualSurveyMarker?.entityColor || actualSurveyMarker?.color) {
+                entityColor = getHexFromColor(actualSurveyMarker.entityColor || actualSurveyMarker.color);
               }
               if (!entityColor && moduleData.entityColor) {
                 entityColor = getHexFromColor(moduleData.entityColor);
+              }
+              if (!entityColor && entityId) {
+                const entity = entities.find(e => e.id === entityId);
+                if (entity?.color) entityColor = getHexFromColor(entity.color);
               }
 
               row.push(values.notes);        // Notes
@@ -15316,7 +15372,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // via the useAnnotationDoc capture effect).
   const makeMaterializeAccessors = useCallback(() => {
     const working = { ...(surveyMarkersRef.current || {}) };
-    const entities = selectedTemplate?.entities || [];
+    const entities = documentEntityChoices;
     return {
       getMarkers: () => working,
       writeMarker: (markerId, nextMarker) => {
@@ -15409,7 +15465,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     if (!marker) return;
     const excelValues = entry.excelValues;
     const record = entry.identityRecord;
-    const entities = selectedTemplate?.entities || [];
+    const entities = documentEntityChoices;
 
     let nextMarker = { ...marker, excelSync: record };
     if (choice === 'excel') {
@@ -15933,7 +15989,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
             if (entityNameFromExcel && entityNameFromExcel !== ann.entityName && mayWriteField('entity')) {
-              const entities = templateToUse.entities || [];
+              const entities = documentEntityChoices;
               const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 ann.entityId = entity.id;
@@ -16000,7 +16056,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
             if (entityNameFromExcel) {
-              const entities = templateToUse.entities || [];
+              const entities = documentEntityChoices;
               const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 entityId = entity.id;
@@ -16574,7 +16630,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
             if (entityNameFromExcel && entityNameFromExcel !== ann.entityName && mayWriteField('entity')) {
-              const entities = templateToUse.entities || [];
+              const entities = documentEntityChoices;
               const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 ann.entityId = entity.id;
@@ -16661,7 +16717,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
           if (entityIndex !== -1) {
             const entityNameFromExcel = row[entityIndex];
             if (entityNameFromExcel) {
-              const entities = templateToUse.entities || [];
+              const entities = documentEntityChoices;
               const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 entityId = entity.id;
@@ -21390,12 +21446,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   // Track unsaved annotation changes
   const savedAnnotationsByPageRef = useRef({});
   const managedLocalSnapshot = useMemo(() => isManagedLocalDocument(pdfFile) && pdfId === pdfFile.localId
+    && entityCatalog.mode !== 'unknown' && !entityCatalog.busy
     ? buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations, surveyMarkers, callouts,
-      pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled })
+      pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled,
+      entityCatalog: pendingManagedEntityCatalog?.catalog
+        || (entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null) })
     : null, [pdfFile, pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations, surveyMarkers, callouts,
-    pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled]);
+    pageNames, bookmarks, spaces, activeSpaceId, pageTransformations, regionOverlayDisabled,
+    entityCatalog.busy, entityCatalog.catalog, entityCatalog.mode]);
   const managedLocalSaveTracking = useManagedLocalSaveTracking({ file: pdfFile, pdfId, snapshot: managedLocalSnapshot,
     hydrated: !!pdfDoc && !isLoadingPDF && !pdfLoadError });
+  if (!entityCatalog.busy) {
+    managedEntityCatalogReadyRef.current = { file: pdfFile,
+      ready: managedLocalSaveTracking.ready === true };
+  }
   const managedLocalDraftTracking = useManagedLocalDraftTracking({ file: pdfFile, snapshot: managedLocalSnapshot,
     ready: managedLocalSaveTracking.ready, dirty: managedLocalSaveTracking.dirty,
     onError: (error, file) => showToast(`Could not keep a recovery snapshot for ${file.name}. Use Save and keep the file open. ${error?.message || ''}`, 'error'),
@@ -21879,16 +21943,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
   const managedLocalStateRef = useRef(null);
   const managedLocalWritesRef = useRef(new WeakMap());
   managedLocalStateRef.current = { items, annotations, deletedPdfAnnotations, callouts, pageNames, bookmarks,
-    activeSpaceId, pageTransformations, regionOverlayDisabled };
-  const captureManagedLocalSnapshot = (file, snapshot) => buildLocalDocumentState({ ...managedLocalStateRef.current,
+    activeSpaceId, pageTransformations, regionOverlayDisabled,
+    entityCatalog: pendingManagedEntityCatalog?.catalog
+      || (entityCatalog.catalog?.status === 'accepted' ? entityCatalog.catalog : null) };
+  const captureManagedLocalSnapshot = (file, snapshot) => {
+    if (entityCatalog.mode === 'unknown' || entityCatalog.busy) {
+      throw new Error('The document entity list must finish before saving.');
+    }
+    return buildLocalDocumentState({ ...managedLocalStateRef.current,
       pdfId: file.localId, annotationsByPage: snapshot,
       surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current });
-  const persistManagedLocalSnapshot = (file, snapshot, state = captureManagedLocalSnapshot(file, snapshot)) => {
+  };
+  const persistManagedLocalSnapshot = (file, snapshot,
+    state = captureManagedLocalSnapshot(file, snapshot), allowEntityCatalogAdoption = false) => {
+    if (entityCatalog.mode === 'unknown' || (entityCatalog.busy && !allowEntityCatalogAdoption)) {
+      throw new Error('The document entity list must finish before saving.');
+    }
     const writes = managedLocalWritesRef.current;
     const previous = writes.get(file);
     const signature = JSON.stringify(state.entries);
     if (previous?.signature === signature) return previous.promise;
     const scope = saveDocumentScopeRef.current;
+    const adoptionReady = allowEntityCatalogAdoption
+      && managedEntityCatalogReadyRef.current?.file === file
+      && managedEntityCatalogReadyRef.current.ready === true;
     const write = async () => {
       const current = saveDocumentScopeRef.current;
       if (current?.pdfFile !== file || current.pdfId !== file.localId
@@ -21898,10 +21976,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
       if (managedLocalPageMutationRef.current) {
         throw new Error('A local page action is still saving. Retry Save after it finishes.');
       }
-      if (current.managedLocalReady !== true) {
+      if (current.managedLocalReady !== true && !adoptionReady) {
         throw new Error('The local document is still loading. Retry Save after it finishes.');
       }
-      const stored = await saveLocalDocumentState(file.localId, state, { expectedRevision: file.localRevision });
+      const stored = await saveManagedLocalState(file.localId, state, { expectedRevision: file.localRevision });
       file.localRevision = stored.revision;
       file._localDocumentState = state;
       return true;
@@ -21912,6 +21990,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     });
     writes.set(file, record);
     return record.promise;
+  };
+  persistEntityCatalogRef.current = (file, catalog) => {
+    const state = buildLocalDocumentState({ ...managedLocalStateRef.current,
+      pdfId: file.localId, annotationsByPage: annotationsByPageRef.current,
+      surveyMarkers: surveyMarkersRef.current, spaces: spacesRef.current,
+      entityCatalog: catalog });
+    return persistManagedLocalSnapshot(file, annotationsByPageRef.current, state, true).then(result => {
+      if (pendingManagedEntityCatalogRef.current?.file === file
+        && pendingManagedEntityCatalogRef.current.catalog === catalog) pendingManagedEntityCatalogRef.current = null;
+      return result;
+    });
   };
   const handleSaveDocument = useCallback(async (silent = false, onLocalBackupResult = null) => {
     // Feature Gate: Cloud Sync - still save locally regardless of plan
@@ -23971,8 +24060,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     [mobileSurveyModules, selectedModuleId]
   );
   const mobileSurveyEntities = useMemo(
-    () => selectedTemplate?.entities || [],
-    [selectedTemplate]
+    () => documentEntityChoices,
+    [documentEntityChoices]
   );
   const handleMobileSurveyModuleSelect = useCallback((moduleId) => {
     setSelectedModuleId(moduleId || null);
@@ -28662,7 +28751,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
         item.name === defaultName &&
         item.itemType === categoryName
       );
-      const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+      const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
       if (existingItem) {
         if (entity) {
           const moduleData = existingItem[dataKey] || {};
@@ -28808,7 +28897,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
 
       // Check if Entity needs to be assigned (only if not already set from Excel)
       const hasEntity = pendingLocationItem.entityId || pendingLocationItem.entityColor;
-      const entities = selectedTemplate?.entities || [];
+      const entities = documentEntityChoices;
 
       if (!hasEntity && entities.length > 0) {
         if (mobileMode) {
@@ -28843,7 +28932,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // Unique ID for this surveyMarker (generated up-front for the checkpoint stamp)
     const annotationId = newMarkerId;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
-    const mobileSelectedEntity = (selectedTemplate?.entities || []).find(
+    const mobileSelectedEntity = documentEntityChoices.find(
       (entity) => entity.id === mobileSurveyEntityId
     ) || null;
     const mobileSelectedEntityColor = mobileSelectedEntity
@@ -28892,7 +28981,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
     // If a category is already selected, show Entity dialog first
     if (selectedCategoryId) {
       // Check if template has Entities
-      const entities = selectedTemplate?.entities || [];
+      const entities = documentEntityChoices;
       if (mobileMode) {
         // UX (mobile demo parity): commit instantly with the default name and
         // open the marker detail sheet (demo App.tsx:1155) — the desktop
@@ -32022,6 +32111,10 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      <DocumentEntityCatalogAdoptionNotice review={entityCatalog.review}
+        busy={entityCatalog.busy} error={entityCatalog.error}
+        onConfirm={() => entityCatalog.confirmAdoption().catch(() => {})}
+        onCancel={entityCatalog.cancelAdoption} />
       {/* Hidden custom print panel implementation. */}
       <PrintPanel
         open={printPanelOpen}
@@ -35856,7 +35949,7 @@ ${pageBlocks}
                                 return;
                               }
                               // Check if template has Entities
-                              const entities = selectedTemplate?.entities || [];
+                              const entities = documentEntityChoices;
                               if (pendingSurveyMarker.entityId || pendingSurveyMarker.entityColor) {
                                 setPendingSurveyMarkerName({
                                   surveyMarker: pendingSurveyMarker,
@@ -35921,7 +36014,7 @@ ${pageBlocks}
         {/* Entity Selection Dialog */}
         {
           pendingEntitySelection && selectedTemplate && selectedModuleId && (() => {
-            const entities = selectedTemplate.entities || [];
+            const entities = documentEntityChoices;
 
             return (
               <>
@@ -36243,7 +36336,7 @@ ${pageBlocks}
                             if (existingItem) {
                               // Update existing item's module-specific data with entity
                               const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+                              const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
 
                               if (entity) {
                                 setItems(prev => ({
@@ -36269,7 +36362,7 @@ ${pageBlocks}
                                 1
                               );
 
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+                              const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
                               if (entity) {
                                 newItem[dataKey] = {
                                   entityId: entity.id,
@@ -36485,7 +36578,7 @@ ${pageBlocks}
                             if (existingItem) {
                               // Update existing item's module-specific data with entity
                               const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+                              const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
 
                               if (entity) {
                                 setItems(prev => ({
@@ -36511,7 +36604,7 @@ ${pageBlocks}
                                 1
                               );
 
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+                              const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
                               if (entity) {
                                 newItem[dataKey] = {
                                   entityId: entity.id,
@@ -36619,7 +36712,7 @@ ${pageBlocks}
                             if (existingItem) {
                               // Update existing item's module-specific data with entity
                               const moduleData = existingItem[dataKey] || {};
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+                              const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
 
                               if (entity) {
                                 setItems(prev => ({
@@ -36645,7 +36738,7 @@ ${pageBlocks}
                                 1
                               );
 
-                              const entity = selectedTemplate.entities?.find(e => e.id === surveyMarkerData.entityId);
+                              const entity = documentEntityChoices.find(e => e.id === surveyMarkerData.entityId);
                               if (entity) {
                                 newItem[dataKey] = {
                                   entityId: entity.id,

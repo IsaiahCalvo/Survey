@@ -1,7 +1,9 @@
 import { normalizeCalloutsForSync } from '../utils/calloutSyncPayload.js';
+import { validateManagedLocalEntityCatalog } from './documentEntityCatalog.js';
 
 const localIdPattern = /^local:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const prefixes = ['annotationsByPage_', 'pdfData_', 'surveyMarkers_', 'callouts_', 'pdfSidebar_', 'regionOverlayStates_'];
+const prefixes = ['annotationsByPage_', 'pdfData_', 'surveyMarkers_', 'callouts_', 'pdfSidebar_', 'regionOverlayStates_', 'entityCatalog_'];
+const legacyPrefixes = prefixes.slice(0, 6);
 
 function invalidNativeDeletion() {
   throw new Error('The saved local document state has invalid native deletion data. Its copy was kept.');
@@ -60,7 +62,7 @@ export function isManagedLocalDocument(file) {
 // data with unknown provenance, not a managed file's hydration transport.
 export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annotations, deletedPdfAnnotations,
   surveyMarkers, callouts, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations,
-  regionOverlayDisabled }) {
+  regionOverlayDisabled, entityCatalog = null }) {
   if (!localIdPattern.test(pdfId || '')) throw new Error('Invalid local document identity');
   const values = [annotationsByPage || {}, { items: items || {}, annotations: annotations || {},
     ...(deletedPdfAnnotations === undefined ? {} : { deletedPdfAnnotations: copyDeletedPdfAnnotations(deletedPdfAnnotations) }) },
@@ -68,7 +70,10 @@ export function buildLocalDocumentState({ pdfId, annotationsByPage, items, annot
     { pageNames: pageNames || {}, bookmarks: bookmarks || [], spaces: spaces || [],
       activeSpaceId: activeSpaceId ?? null, pageTransformations: pageTransformations || {} },
     regionOverlayDisabled instanceof Map ? Object.fromEntries(regionOverlayDisabled) : (regionOverlayDisabled || {})];
-  const entries = Object.fromEntries(prefixes.map((prefix, i) => [prefix + pdfId, JSON.stringify(values[i])]));
+  const entries = Object.fromEntries(legacyPrefixes.map((prefix, i) => [prefix + pdfId, JSON.stringify(values[i])]));
+  if (entityCatalog != null) {
+    entries[`entityCatalog_${pdfId}`] = JSON.stringify(validateManagedLocalEntityCatalog(entityCatalog, pdfId));
+  }
   return { version: 1, pdfId, entries };
 }
 
@@ -76,18 +81,23 @@ export function createLocalDocumentStateReader(file) {
   if (!isManagedLocalDocument(file)) throw new Error('Invalid managed local document');
   const state = file._localDocumentState;
   const keys = prefixes.map(prefix => prefix + file.localId);
+  const legacyKeys = legacyPrefixes.map(prefix => prefix + file.localId);
   const entries = Object.create(null);
   if (state != null) {
     if (state.version !== 1 || state.pdfId !== file.localId || !state.entries
-    || Object.keys(state.entries).length !== keys.length
-    || keys.some(key => typeof state.entries[key] !== 'string')) {
+    || ![legacyKeys.length, keys.length].includes(Object.keys(state.entries).length)
+    || legacyKeys.some(key => typeof state.entries[key] !== 'string')
+    || (Object.keys(state.entries).length === keys.length && typeof state.entries[keys.at(-1)] !== 'string')) {
       throw new Error('The saved local document state is invalid. Its copy was kept.');
     }
     for (const key of keys) {
+      if (!Object.hasOwn(state.entries, key)) continue;
       const raw = state.entries[key];
       const parsed = JSON.parse(raw);
       const isCallouts = key === `callouts_${file.localId}`;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) !== isCallouts) {
+      const isCatalog = key === `entityCatalog_${file.localId}`;
+      if ((!isCatalog && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) !== isCallouts))
+        || (isCatalog && !validateManagedLocalEntityCatalog(parsed, file.localId))) {
         throw new Error('The saved local document state has an invalid entry. Its copy was kept.');
       }
       if (key === `pdfData_${file.localId}` && Object.hasOwn(parsed, 'deletedPdfAnnotations')) {

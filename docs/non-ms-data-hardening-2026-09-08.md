@@ -5247,7 +5247,7 @@ Non-empty `documents.annotations` stays blocked because no current writer or
 reader defines a safe format. Legacy adoption, host choice and feature enablement
 remain separate gates.
 
-## Entity ownership decision — accepted, implementation pending
+## Entity ownership decision — accepted; first local implementation verified
 
 The user delegated the shared-versus-private choice on 2026-09-09. We chose a
 Template-seeded, document-owned shared entity list. Personal selection and view
@@ -5262,7 +5262,63 @@ the old list matches. Legacy adoption must preserve older/custom choices and raw
 sidecar data. The next connected implementation still needs a proven source,
 document-scoped consumers, local durability, access checks and regression tests.
 No runtime source, cloud data, feature flag or Microsoft service changed as part
-of this decision.
+of the decision-only commit `e9f71a2b`.
+
+The first connected implementation now adds an explicit review-and-copy action,
+not automatic adoption or an entity-list editor. The owner reviews the exact
+template list; cloud adoption checks its timestamp and digest in a locked
+transaction. Repeated requests use one durable operation identity. Private
+tables expose only owner adoption and member-read functions. One immutable list
+and its definitions belong to the document. No existing annotation rows are
+rewritten, and no live migration has been applied.
+
+Managed local files use their existing revision-checked IndexedDB save. Accepted
+lists add a seventh state entry; unadopted files keep the six-entry format. A
+corrupt entry blocks writes instead of being treated as an empty list. Ordinary
+saves cannot publish a proposed list while adoption is pending. Page replacement
+preserves the accepted list. Cloud adoption intent and accepted-cache records
+are scoped to the actor and document, with exact-operation completion checks.
+
+Viewer assignment choices and Excel choice consumers use the accepted list.
+Historical marker/module color snapshots win over any current lookup; where an
+old marker lacks a snapshot, its existing legacy-template fallback is retained.
+The default-off feature makes no new cloud calls and retains legacy choices.
+An enabled cloud document whose list cannot be resolved does not silently fall
+back to template choices. Local files make no catalog RPCs.
+
+Focused checks pass: 25 client/store/mounted tests, 71 combined local
+durability/tombstone/catalog tests, and a 2-test SQL wrapper containing 15 real
+disposable-Postgres cases. The SQL test passes actual server JSON through the
+client validator. The first full run exposed older source-extraction test
+fixtures missing the new save dependencies; those fixtures were updated without
+removing their assertions. The fresh complete run passes: 6,783 tests, 6,688
+passed, 95 skipped, zero failures or cancellations, across 672 files. The final
+test-store replacement adapter was checked separately afterward: 40/40 AppShell
+replacement tests pass, including its new exact-state/revision injection case.
+Vite build passes with the existing large-chunk warning. Logs:
+`/tmp/document-entity-catalog-full-final-tests-20260909.log`,
+`/tmp/document-entity-catalog-appshell-final-20260909.log`, and
+`/tmp/document-entity-catalog-final-build-20260909.log`.
+
+In-app browser QA uses an isolated native IndexedDB fixture through the real
+AppShell/PDFViewer, without auth or cloud services. Review/cancel/reopen,
+review/accept, and drag marker/choose entity/name/save/reopen pass. Rotating the
+actual PDF, reopening it, and starting another assignment preserves both the
+old marker and the accepted choices. The control-only fixture also verifies a
+forced local save failure keeps the old state and a visible error; retry then
+reopen succeeds. The review heading is fully visible after centering the dialog.
+Final loaded-scope console checks show only the expected offline-credentials
+warning; intermediate HMR errors during source edits are not counted as a clean
+run. The feature-off legacy route still reaches normal marker naming without a
+new adoption dialog. This is local viewer proof, not real two-user cloud proof
+or a Microsoft integration result.
+
+Remaining gates: legacy sidecar adoption, deployment and flag enablement,
+real two-user/revocation/restart checks, shared access to private template module
+and category data, and entity rename/retire/history/explicit upgrade operations.
+This slice does not validate arbitrary entity IDs inside opaque annotation/Yjs
+writes on the server. It does not replace the still-gated generation-sidecar
+transport or prove lower production egress. Microsoft 365 remains deferred.
 
 ## Sources
 
@@ -5326,3 +5382,9 @@ rollback. Turn off new captures but continue bounded expiry until pending bodies
 are released (the service-only expiry RPC can run while the HTTP flag is off).
 Never reuse an old source ID for different input. The source's SQL
 hash cannot replace physical file-byte verification or final publication checks.
+For document entity lists, disable new adoptions before rollback, but preserve
+accepted lists, definitions, seed receipts, pending intents and accepted caches.
+Do not open adopted local files with an older six-entry-only writer. Do not send
+an adopted cloud document back to legacy template-based assignment merely by
+turning its client flag off. Deployment needs a compatible reader/writer plan
+before any cloud list is adopted; the flag is still off in this checkpoint.

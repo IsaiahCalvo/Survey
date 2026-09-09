@@ -1,13 +1,16 @@
 // DevTestRoute.jsx -- Dev-only component that loads a test PDF without authentication.
 // Dynamically imported by main.jsx inside an `if (import.meta.env.DEV)` guard,
 // so this file is never included in production bundles.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthContext } from './contexts/AuthContext';
 import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 import App from './AppShell';
 import PageReplacementExpiredHarness from './dev/PageReplacementExpiredHarness.jsx';
+import DocumentEntityCatalogHarness from './dev/DocumentEntityCatalogHarness.jsx';
+import { createLocalDocumentStore } from './services/localDocumentStore.js';
+import { randomUUID } from './utils/randomUUIDPolyfill.js';
 
 const noop = () => {};
 const asyncNoop = async () => {};
@@ -85,6 +88,15 @@ const surveyTransitionE2ETemplates = [{
     }],
   }],
 }];
+const documentEntityCatalogE2ETemplates = [{
+  id: 'entity-catalog-template', name: 'Document Entity Fixture', updatedAt: '2026-09-09T12:00:00.000Z',
+  modules: [{ id: 'entity-module', name: 'Survey', categories: [{ id: 'entity-category',
+    name: 'Walls', color: '#d8a84e', checklist: [] }] }],
+  entities: [{ id: 'general-contractor', name: 'General Contractor', color: '#d8a84e', opacity: 0.7,
+    borderColor: '#8b6422', borderOpacity: 0.8, matchFill: false },
+  { id: 'subcontractor', name: 'Subcontractor', color: '#5ba1f0', opacity: 0.5,
+    borderColor: null, borderOpacity: null, matchFill: true }],
+}];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
 
@@ -97,9 +109,20 @@ const readSurveyTemplateWorkflowTemplates = () => {
   }
 };
 
+const deleteFixtureDatabase = dbName => new Promise((resolve, reject) => {
+  let request;
+  try { request = globalThis.indexedDB.deleteDatabase(dbName); }
+  catch (error) { reject(error); return; }
+  request.onsuccess = () => resolve();
+  request.onerror = () => reject(request.error || new Error('Fixture data could not be removed.'));
+  request.onblocked = () => reject(new Error('Fixture data is still open in another tab.'));
+});
+
 export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) {
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
+  const [catalogViewerMount, setCatalogViewerMount] = useState(0);
+  const [catalogViewerCleanup, setCatalogViewerCleanup] = useState(null);
   const surveyTransitionE2E = new URLSearchParams(window.location.search)
     .get('surveyTransitionE2E') === '1';
   const surveyTemplateWorkflowE2E = new URLSearchParams(window.location.search)
@@ -108,8 +131,40 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     .get('documentDeepLinkE2E') === '1';
   const pageReplacementExpiredE2E = new URLSearchParams(window.location.search)
     .get('pageReplacementExpiredE2E') === '1';
+  const documentEntityCatalogE2E = new URLSearchParams(window.location.search)
+    .get('documentEntityCatalogE2E') === '1';
+  const documentEntityCatalogViewerE2E = new URLSearchParams(window.location.search)
+    .get('documentEntityCatalogViewerE2E') === '1';
+  const catalogViewerDbNameRef = useRef(`survey-entity-catalog-viewer-${randomUUID()}`);
+  const catalogViewerStoreRef = useRef(null);
+  const catalogViewerLocalIdRef = useRef(null);
+  const saveCatalogViewerLocalState = useCallback((...args) => {
+    if (!catalogViewerStoreRef.current) throw new Error('The catalog viewer fixture is not ready.');
+    return catalogViewerStoreRef.current.saveLocalDocumentState(...args);
+  }, []);
+  const replaceCatalogViewerLocalFile = useCallback((...args) => {
+    if (!catalogViewerStoreRef.current) throw new Error('The catalog viewer fixture is not ready.');
+    return catalogViewerStoreRef.current.replaceLocalDocument(...args);
+  }, []);
+  const removeCatalogViewerFixture = useCallback(async () => {
+    const store = catalogViewerStoreRef.current;
+    catalogViewerStoreRef.current = null;
+    setCatalogViewerCleanup({ removed: null,
+      message: 'Removing this fixture data…' });
+    store?.close();
+    try {
+      await deleteFixtureDatabase(catalogViewerDbNameRef.current);
+      setCatalogViewerCleanup({ removed: true,
+        message: 'This fixture database was removed.' });
+    } catch {
+      setCatalogViewerCleanup({ removed: false,
+        message: 'This fixture stopped, but its database could not be removed. Close other fixture tabs and reload.' });
+    }
+  }, []);
 
-  if (surveyTransitionE2E) {
+  if (documentEntityCatalogViewerE2E) {
+    window.__surveyTransitionE2ETemplates = documentEntityCatalogE2ETemplates;
+  } else if (surveyTransitionE2E) {
     window.__surveyTransitionE2ETemplates = surveyTransitionE2ETemplates;
   } else if (surveyTemplateWorkflowE2E) {
     // The mobile workflow harness creates this tree through TemplatesEditor,
@@ -123,7 +178,7 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
     async function loadPdf() {
       try {
-        if (pageReplacementExpiredE2E) { setStatus('ready'); return; }
+        if (pageReplacementExpiredE2E || documentEntityCatalogE2E) { setStatus('ready'); return; }
         const url = `/debug-fixtures/${encodeURIComponent(pdfName)}`;
         const resp = await fetch(url);
         if (!resp.ok) {
@@ -142,6 +197,13 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
             filePath: '/debug/deep-link-test.pdf',
             __localFile: file,
           }];
+        } else if (documentEntityCatalogViewerE2E) {
+          const store = createLocalDocumentStore({ indexedDB: globalThis.indexedDB,
+            dbName: catalogViewerDbNameRef.current, timeoutMs: 2_000 });
+          catalogViewerStoreRef.current = store;
+          const manifest = await store.importLocalDocument(file);
+          catalogViewerLocalIdRef.current = manifest.localId;
+          window.__devTestPdf = await store.openLocalDocument(manifest.localId);
         } else {
           // Set the file on window so App's useEffect can auto-open it
           window.__devTestPdf = file;
@@ -156,8 +218,15 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
     }
 
     loadPdf();
-    return () => { cancelled = true; };
-  }, [pdfName, displayName, documentDeepLinkE2E, pageReplacementExpiredE2E]);
+    return () => {
+      cancelled = true;
+      if (documentEntityCatalogViewerE2E) {
+        catalogViewerStoreRef.current?.close();
+        try { globalThis.indexedDB.deleteDatabase(catalogViewerDbNameRef.current); } catch { /* exact fixture DB */ }
+      }
+    };
+  }, [pdfName, displayName, documentDeepLinkE2E, documentEntityCatalogE2E,
+    documentEntityCatalogViewerE2E, pageReplacementExpiredE2E]);
 
   if (status === 'loading') {
     return (
@@ -200,11 +269,38 @@ export function DevTestRoute({ pdfName, displayName = null, returnTab = null }) 
 
   // status === 'ready'
   if (pageReplacementExpiredE2E) return <PageReplacementExpiredHarness />;
+  if (documentEntityCatalogE2E) return <DocumentEntityCatalogHarness />;
+  if (documentEntityCatalogViewerE2E && catalogViewerCleanup) return <main style={{ minHeight: '100vh',
+    padding: '32px', color: '#20242b', background: '#f5f5f5',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+    <h1>Document entity list viewer fixture</h1>
+    <p data-document-entity-catalog-viewer-fixture-removed={catalogViewerCleanup.removed == null
+      ? 'pending' : String(catalogViewerCleanup.removed)}>{catalogViewerCleanup.message}</p>
+  </main>;
   return (
     <ErrorBoundary>
       <AuthContext.Provider value={mockAuthValue}>
         <MSGraphContext.Provider value={mockMSGraphValue}>
-          <App devPreviewReturnTab={returnTab} />
+          <App key={documentEntityCatalogViewerE2E ? `catalog-viewer-${catalogViewerMount}` : 'app'}
+            devPreviewReturnTab={returnTab}
+            documentEntityCatalogEnabled={documentEntityCatalogViewerE2E}
+            localDocumentStateWriter={documentEntityCatalogViewerE2E
+              ? saveCatalogViewerLocalState : null}
+            localDocumentFileReplacer={documentEntityCatalogViewerE2E
+              ? replaceCatalogViewerLocalFile : null} />
+          {documentEntityCatalogViewerE2E && <button type="button"
+            data-document-entity-catalog-reopen
+            style={{ position: 'fixed', right: 70, top: 12, zIndex: 9000 }}
+            onClick={() => { void (async () => {
+              window.__devTestPdf = await catalogViewerStoreRef.current.openLocalDocument(
+                catalogViewerLocalIdRef.current,
+              );
+              setCatalogViewerMount(value => value + 1);
+            })(); }}>Reopen stored fixture</button>}
+          {documentEntityCatalogViewerE2E && <button type="button"
+            data-document-entity-catalog-viewer-remove-fixture
+            style={{ position: 'fixed', right: 238, top: 12, zIndex: 9000 }}
+            onClick={() => { void removeCatalogViewerFixture(); }}>Remove fixture data</button>}
           <KeyboardShortcutsOverlay />
         </MSGraphContext.Provider>
       </AuthContext.Provider>
