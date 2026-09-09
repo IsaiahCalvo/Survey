@@ -5377,8 +5377,67 @@ a connected immutable upload/manifest/receipt/retention contract; do not drop
 legacy sidecar data or widen template access as a shortcut. Microsoft 365 testing
 and live rollout remain deferred.
 
+## Static Excel wide-checklist export and shared-definition contract (September 9)
+
+The static Excel export now builds its header order, column mapping and A1
+addresses through one helper. Columns after Z work for checklist dropdowns,
+conditional formatting and the trailing Entity and Notes fields. Empty
+checklists retain their prior layout, and archived checklist rows keep their
+order and IDs. This changes local workbook export, not Microsoft cloud sync.
+
+The root reran all 11 focused tests, including an ExcelJS write/read round trip.
+In the in-app browser, a managed-local PDF used the new dev-only 27-field
+template. A marker named `Wide export QA` was drawn, assigned to General
+Contractor, saved and exported with the real EXPORT button. The downloaded
+workbook had 33 columns: AA held checklist field 23, AE held field 27, AF held
+Entity and AG held Notes. AA and AE retained list validation and formatting;
+the saved marker name and entity appeared in D2 and AF2. The metadata sheet
+remained very hidden. The fixture database was removed through its own control,
+the tab was closed and the owned dev server stopped. No cloud account or
+Microsoft service was used. The browser reported only the expected missing
+credentials/offline warning.
+
+The production build passes (`/tmp/survey-definition-build-20260909.log`,
+1.94 seconds), with the existing large-chunk warning. The full offline suite
+passes across 672 files: 6,817 tests, 6,722 passed, 95 skipped, zero failures or
+cancellations (`/tmp/survey-definition-full-tests-20260909.log`). The prior
+checkpoint was 6,798 tests, 6,703 passed and the same 95 skipped. Both runs exited
+successfully; the new tests add 19 passing cases without new skips.
+
+ADR 0002 records the next shared-data boundary: explicit owner-reviewed,
+document-owned modules, categories and checklists, without private template or
+linked Excel settings. The client and migration are not connected to app
+runtime yet. The local state validator must accept independently optional
+entity-list and survey-definition records; all four viewer save paths must
+preserve both. Recovery copy needs explicit rebinding of embedded document IDs.
+Runtime reads must not wait for a collaborator to select the owner's private
+template. Keep the private template and effective document structure separate
+so shared rendering cannot enable template edits or linked Excel controls.
+
+The root's combined focused run passes 19/19, including ten disposable
+PostgreSQL scenarios and actual preview/adopt/read JSON passed through the JS
+client (`/tmp/survey-definition-focused-20260909.log`). The new migration keeps
+one immutable bounded row behind authenticated RPCs; direct app-role table
+access is revoked. It checks owner-reviewed timestamp and structure digest,
+serializes competing adoptions on the document row and retains an exact seed
+receipt for retries after source edits or deletion. It does not update the
+document's template ID or grant source-template access. The client is disabled
+by default, and no runtime caller, cloud migration or feature enablement is
+included here.
+
+The local database scenarios cover source privacy, direct/project membership,
+revocation, closing-owner denial, locked reads, archived-owner reads, stale
+digest checks with an unchanged timestamp and competing seed transactions.
+JS/SQL name checks cover all ECMAScript whitespace, ICU lowercase vectors,
+sheet-name cleanup and UTF-16 boundaries. Definitions reject a sheet name that
+would split a Unicode character at Excel's limit; other valid Unicode names
+remain supported. Early array/string limits prevent oversized source data from
+being fully copied before rejection. Timestamp checks reject invalid calendar
+dates and offsets. These are contract tests, not real two-user/device proof.
+
 ## Sources
 
+- [PostgreSQL string escape rules](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
 - [PostgreSQL transition-table trigger rules](https://www.postgresql.org/docs/current/sql-createtrigger.html)
 - [IndexedDB transactions and upgrades](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB)
@@ -5445,3 +5504,8 @@ Do not open adopted local files with an older six-entry-only writer. Do not send
 an adopted cloud document back to legacy template-based assignment merely by
 turning its client flag off. Deployment needs a compatible reader/writer plan
 before any cloud list is adopted; the flag is still off in this checkpoint.
+For document survey definitions, preserve accepted snapshots and seed receipts
+once any future caller is enabled. Do not substitute the source template's
+current contents on rollback. This checkpoint adds only the disabled contract;
+local state, compatible readers/writers and cloud deployment still need their
+own tested integration before adoption becomes available in the app.

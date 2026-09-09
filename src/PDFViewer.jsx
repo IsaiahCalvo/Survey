@@ -23,6 +23,7 @@ import { saveLocalDocumentState } from './services/localDocumentStore.js';
 import { guardLocalPageMutation } from './services/localPageMutationGuard.js';
 import { loadPdfjs, getPdfjsDocumentOptions } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
+import { buildSurveyWorksheetColumns, excelColumnLetter } from './utils/excelColumnAddress.js';
 import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
@@ -14011,30 +14012,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             // Sort by user order first, then Excel row order.
             categorySurveyMarkers.sort(compareSurveyMarkersForOrder);
 
-            // Build header row: Row ID, Changed By, Changed Date, Item, [checklist items], Entity, Notes
-            const headerRow = ['Row ID', 'Changed By', 'Changed Date', 'Item'];
-            checklistItems.forEach(checklistItem => {
-              headerRow.push(checklistItem.text || '');
-            });
-            headerRow.push('Entity');
-            headerRow.push('Notes');
-
-            // Build column mapping for Excel add-in sync
-            // Column mapping: A = row_id, B = changed_by, C = changed_date, D = name, E+ = checklist items, then entity, notes
-            const columnMapping = {
-              'A': 'row_id',
-              'B': 'changed_by',
-              'C': 'changed_date',
-              'D': 'name'
-            };
-            checklistItems.forEach((checklistItem, idx) => {
-              const colLetter = String.fromCharCode(69 + idx); // E, F, G, ...
-              columnMapping[colLetter] = `checklist_${checklistItem.id}`;
-            });
-            const entityColIdx = 4 + checklistItems.length;
-            const notesColIdx = entityColIdx + 1;
-            columnMapping[String.fromCharCode(65 + entityColIdx)] = 'entity_name';
-            columnMapping[String.fromCharCode(65 + notesColIdx)] = 'notes';
+            // Build the fixed export layout and its A1 mapping from one source so
+            // checklist, Entity, and Notes columns stay valid past column Z.
+            const {
+              headerRow,
+              columnMapping,
+              firstChecklistColumnIndex: firstChecklistCol,
+              lastChecklistColumnIndex: lastChecklistCol,
+              entityColumnIndex: entityColIndex,
+              entityColumnLetter,
+              itemColumnIndex: itemColIndex,
+              itemColumnLetter,
+              notesColumnIndex: notesColIndex,
+            } = buildSurveyWorksheetColumns(checklistItems);
 
             // Add to schema mappings
             schemaMappings.push({
@@ -14164,17 +14154,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
               }
             });
 
-            // Calculate column indices
-            // Header structure: Row ID (1), Changed By (2), Changed Date (3), Item (4), Checklist items (5...N), Entity (N+1), Notes (N+2)
-            const firstChecklistCol = 5; // Checklist items start at column 5 (after Row ID)
-            const lastChecklistCol = headerRow.length - 2; // -2 for Entity and Notes
-            const entityColIndex = headerRow.length - 1; // Second to last column
-            const itemColIndex = 4; // Item column (1-indexed in ExcelJS)
-
             // Add Data Validation for Checklist Items
-            if (lastChecklistCol >= firstChecklistCol) { // At least one checklist column exists
+            if (firstChecklistCol !== null) { // At least one checklist column exists
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-                const colLetter = String.fromCharCode(64 + col); // Convert to letter (A, B, C...)
+                const colLetter = excelColumnLetter(col);
                 worksheet.getColumn(col).eachCell((cell, rowNum) => {
                   if (rowNum > 1) { // Skip header
                     cell.dataValidation = {
@@ -14214,9 +14197,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             }
 
             // Add Conditional Formatting for Checklist Items (Y, N, N/A)
-            if (lastChecklistCol >= firstChecklistCol) {
+            if (firstChecklistCol !== null) {
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-                const colLetter = String.fromCharCode(64 + col);
+                const colLetter = excelColumnLetter(col);
                 const range = `${colLetter}2:${colLetter}1000`;
 
                 // Y = Green
@@ -14285,8 +14268,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             entities.forEach((entity, index) => {
               if (!entity.name || !entity.color) return;
 
-              const entityColLetter = String.fromCharCode(64 + entityColIndex);
-              const range = `${entityColLetter}2:${entityColLetter}1000`;
+              const range = `${entityColumnLetter}2:${entityColumnLetter}1000`;
 
               let hexColor = getHexFromColor(entity.color);
               if (hexColor && hexColor.startsWith('#')) {
@@ -14316,15 +14298,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             });
 
             // Add Conditional Formatting for Duplicate Names (Item column; D now that Row ID is A)
-            const itemColLetter = String.fromCharCode(64 + itemColIndex);
-            const duplicateRange = `${itemColLetter}2:${itemColLetter}1000`;
+            const duplicateRange = `${itemColumnLetter}2:${itemColumnLetter}1000`;
 
             worksheet.addConditionalFormatting({
               ref: duplicateRange,
               rules: [
                 {
                   type: 'expression',
-                  formulae: [`COUNTIF($${itemColLetter}:$${itemColLetter}, ${itemColLetter}2)>1`],
+                  formulae: [`COUNTIF($${itemColumnLetter}:$${itemColumnLetter}, ${itemColumnLetter}2)>1`],
                   style: {
                     fill: {
                       type: 'pattern',
@@ -14359,15 +14340,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenera
             worksheet.getColumn(4).width = 15;
 
             // Columns 5 to lastChecklistCol: Checklist items (width 15 each)
-            for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-              worksheet.getColumn(col).width = 15;
+            if (firstChecklistCol !== null) {
+              for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
+                worksheet.getColumn(col).width = 15;
+              }
             }
 
             // Entity column (width 15)
             worksheet.getColumn(entityColIndex).width = 15;
 
             // Notes column (width 50)
-            const notesColIndex = headerRow.length; // Last column
             worksheet.getColumn(notesColIndex).width = 50;
           });
         });

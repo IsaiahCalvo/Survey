@@ -105,6 +105,17 @@ const documentEntityCatalogE2ETemplates = [{
     borderColor: '#7b2020', borderOpacity: 0.9, matchFill: false },
   { id: 'template-only', name: 'Template-only choice', color: '#63c982', opacity: 0.6,
     borderColor: null, borderOpacity: null, matchFill: false }],
+}, {
+  id: 'wide-checklist-template', name: 'Wide checklist fixture', updatedAt: '2026-09-09T14:00:00.000Z',
+  modules: [{ id: 'wide-checklist-module', name: 'Wide Export', categories: [{ id: 'wide-checklist-category',
+    name: 'Wide Items', color: '#d8a84e', checklist: Array.from({ length: 27 }, (_, index) => ({
+      id: `wide-check-${String(index + 1).padStart(2, '0')}`,
+      text: `Wide check ${String(index + 1).padStart(2, '0')}`,
+    })) }] }],
+  entities: [{ id: 'general-contractor', name: 'General Contractor', color: '#d8a84e', opacity: 0.7,
+    borderColor: '#8b6422', borderOpacity: 0.8, matchFill: false },
+  { id: 'subcontractor', name: 'Subcontractor', color: '#5ba1f0', opacity: 0.5,
+    borderColor: null, borderOpacity: null, matchFill: true }],
 }];
 
 const SURVEY_TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
