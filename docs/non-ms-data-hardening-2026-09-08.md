@@ -3189,6 +3189,80 @@ saved data and delays initial page setup. Replacing it needs a checked, scoped
 settings receipt and legacy import plan; local-save acknowledgement must stay
 separate from cloud success. No sidecar change was made in this slice.
 
+## Generation-aware annotation transport and local recovery (local foundation)
+
+This slice adds a checked transport and opt-in sync engine, not an activation
+route. No live database migration, provider test, browser adoption or Microsoft
+test has run. The existing hook/viewer path still opens legacy/null generations.
+
+Migration `20260909090000` keeps generation baselines, heads, WAL and snapshots
+in private tables. Five v2 RPCs bind every read, write and receipt to a document
+and explicit generation. Decimal strings preserve PostgreSQL bigint values over
+JSON. Append receipts bind actor, writer, client sequence and SHA-256; an exact
+old receipt can remain recovery proof after replacement, never proof that the
+old generation is current. Snapshots use the full prior checkpoint identity for
+compare-and-set. Tail reads hold a fixed frontier, return complete rows, and use
+a soft 16 MiB page budget with one complete oversized row allowed. SQL builds
+one bounded aggregate rather than repeatedly copying a growing JSON array.
+
+Private changes emit only document/generation/frontier/wake/checkpoint-epoch metadata through
+`annotation_generation_signals`; no PDF path or annotation bytes go through
+that channel. Clients must fetch content through the checked RPCs. The generated
+client path scopes its registry, local persistence, durable journal, receipts and
+recovery to document/account/generation. It requires IndexedDB, keeps legacy
+keys unchanged, and seals a retired scope before more requests or effects can
+start. Unsent edits and late exact acceptance receipts remain in the old scope.
+Missing or unbound replacement details block sync without guessing a successor.
+Generated catch-up starts at the checked covered prefix, not the old snapshot
+baseline. Burst notices share one active read and retain a needed follow-up;
+snapshot refresh takes precedence. An own-append echo with an already checked
+head and checkpoint epoch needs no fetch. Snapshot-only changes and reconnects
+use checked snapshot-plus-tail reads, merged without dropping pending local
+edits. Failed reads show unhealthy sync; a late own receipt cannot clear a
+closed realtime connection. Legacy sequence replay remains unchanged.
+
+Migration `20260909091000` adds restrictive legacy read fences plus checks in
+content-returning definer functions. The zero-generation case uses one
+statement-level existence probe. Existing permissions remain in force: a
+stranger does not gain content or an adoption-status probe. Protected staged
+Storage paths cannot be read through old authenticated routes. This does not
+revoke previously issued signed links or protect a public bucket; deployment
+must still verify private Storage and use a checked download route.
+
+Still required before enabling this path: atomic verified PDF/state publication,
+frontend list/open/download and metadata-only lock/unlock adoption, generation-scoped broadcast and viewer
+caches, old-client upgrade handling, sidecar migration, and two-client offline
+browser tests. The current file-overwrite path has not been replaced by these
+foundations. Microsoft 365 testing stays deferred.
+
+The installed Supabase SDK is exercised through a fake HTTP endpoint with real
+Yjs and IndexedDB stores: scoped bodies and JWTs, exact counters, save/reopen,
+account-switch races, rejected generation writes, and two separate clients
+converging on both actors' edits without echoes. This is local module-to-SDK
+proof, not a real browser, Supabase Realtime server or provider test. The first
+full regression run caught an overbroad supplied-Y.Doc scope check in the
+existing erase recovery flow. The guard now applies when either scope is
+generated; legacy-to-legacy sharing stays unchanged. All 70 targeted tests,
+including the original failing test, then passed.
+
+Final verification: `npm test` exits 0 across 615 files and 5,972 tests:
+5,891 pass, 81 skip, zero failures/cancellations. The committed prior baseline
+was 609 files, 5,879 tests, 5,800 pass and 79 skip. Both new opt-in PostgreSQL
+wrappers pass in the separate 106/106 focused run with no skips; they execute
+19 generation-transport and 16 read-fence check groups in disposable local
+PostgreSQL. The broader sync/outbox/local-durability/erase set passes 339/339.
+The second full attempt found an old source pin for `Number(snapRow.at_seq)`;
+the pin now checks the exact sequence parser while retaining the decode-before-
+frontier rule. The final full rerun passes unchanged corrupt-byte runtime tests.
+Build, graph update and diff checks pass; the existing large-bundle warning
+remains. No frontend hook/provider/viewer file was changed, and no browser,
+hosted provider, production quota reduction or Microsoft result is claimed.
+Logs: `/tmp/survey-generation-transport-tests-final.log`,
+`/tmp/survey-generation-transport-focused-final.log`,
+`/tmp/survey-generation-transport-regression-fix.log`,
+`/tmp/survey-generation-transport-build-final.log`, and
+`/tmp/survey-generation-transport-graph-final.log`.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
@@ -3208,6 +3282,8 @@ separate from cloud success. No sidecar change was made in this slice.
 - [Pinned physical version keys](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/backend/s3/adapter.ts#L187-L248)
 - [Supabase function runtime limits](https://supabase.com/docs/guides/functions/limits)
 - [Per-function dependencies and Node support](https://supabase.com/docs/guides/functions/dependencies)
+- [PostgreSQL row-security policy rules](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [PostgreSQL custom error codes](https://www.postgresql.org/docs/current/plpgsql-errors-and-messages.html)
 
 ## Rollback
 
@@ -3235,3 +3311,7 @@ disable new reservations but preserve operation/claim identities, Storage guards
 retained references and expiry cleanup. Never reopen a canceled path or remove
 its byte guard to make a retry succeed. A verified staging receipt alone is not
 permission to publish, including during the two-hour expiry window.
+For generation transport, keep immutable baselines, WAL, receipts, retirement
+markers and read/write fences on rollback. Do not point a legacy client at an
+adopted PDF or merge a retired scope into its successor. Disabling new callers
+does not authorize deleting recovery evidence or reopening legacy writes.

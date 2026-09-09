@@ -27,7 +27,12 @@ import {
 } from '../lib/collab/ydocRegistry.js';
 import {
   createAnnotationOutbox,
+  annotationOutboxRecordKey,
 } from './annotationDocOutbox.js';
+import { bindAnnotationGenerationOutbox } from './annotationGenerationOutbox.js';
+import { createAnnotationGenerationTransport } from './annotationGenerationTransport.js';
+import { normalizeAnnotationSequence as sequence, compareAnnotationSequences as compareSequence,
+  nextAnnotationSequence, maxAnnotationSequence, annotationSequenceToSafeInteger } from './annotationSequence.js';
 import { materializeAnnotationGenerationState } from './annotationGenerationState.js';
 import { erasedPathSurvivorsShareGeometry } from '../utils/pageSpaceEraser.js';
 import {
@@ -69,6 +74,9 @@ import {
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
 // invariant requires all Y.Doc construction to live in the registry module.)
 const REGISTRY_PREFIX = 'annoflat:';
+// Keep the binding across module reloads. A generation-bound live Y.Doc must
+// never bridge actors or PDF generations. Legacy shared-doc behavior stays as is.
+const DOC_SCOPE_BINDINGS = globalThis.__annotationDocScopeBindings__ ??= new WeakMap();
 
 const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
 const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state checkpoint
@@ -116,6 +124,7 @@ function deletedDocumentError(documentId) {
 
 function assertStateWritable(state) {
   if (state.deleted) throw deletedDocumentError(state.documentId);
+  if (state.generationBlocked) throw state.generationError;
 }
 
 // Public callers must not mutate through a retired handle. Internal queued
@@ -127,6 +136,7 @@ function assertHandleWritable(state) {
     error.code = 'ANNOTATION_HANDLE_CLOSED';
     throw error;
   }
+  if (state.generationTransport) annotationSequenceToSafeInteger(nextAnnotationSequence(state.clientSeq));
 }
 
 function registerActiveState(state) {
@@ -211,42 +221,42 @@ function persistenceActorScope(actorUserId) {
   return encodeURIComponent(String(actorUserId));
 }
 
-function persistenceGenerationKey(documentId, actorUserId) {
-  return `annotationPersistenceGeneration:${documentId}:${persistenceActorScope(actorUserId)}`;
+function persistenceGenerationKey(documentId, actorUserId, pdfGenerationId = null) {
+  return `annotationPersistenceGeneration:${documentId}:${persistenceActorScope(actorUserId)}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}`}`;
 }
 
 function persistenceActorsKey(documentId) {
   return `annotationPersistenceActors:${documentId}`;
 }
 
-function registerPersistenceActor(documentId, actorUserId) {
+function registerPersistenceActor(documentId, actorUserId, pdfGenerationId = null) {
   try {
     const key = persistenceActorsKey(documentId);
     const actors = new Set(JSON.parse(localStorage.getItem(key) || '[]'));
-    actors.add(persistenceActorScope(actorUserId));
+    actors.add(persistenceActorScope(actorUserId) + (pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}`));
     localStorage.setItem(key, JSON.stringify([...actors]));
   } catch { /* local persistence unavailable */ }
 }
 
-function persistenceDatabaseName(documentId, actorUserId, generation) {
-  return `anno-${documentId}-actor-${persistenceActorScope(actorUserId)}-g${generation}`;
+function persistenceDatabaseName(documentId, actorUserId, generation, pdfGenerationId = null) {
+  return `anno-${documentId}-actor-${persistenceActorScope(actorUserId)}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}`}-g${generation}`;
 }
 
-function readPersistenceGeneration(documentId, actorUserId) {
+function readPersistenceGeneration(documentId, actorUserId, pdfGenerationId = null) {
   try {
     return Math.max(
       0,
-      Number(localStorage.getItem(persistenceGenerationKey(documentId, actorUserId))) || 0,
+      Number(localStorage.getItem(persistenceGenerationKey(documentId, actorUserId, pdfGenerationId))) || 0,
     );
   } catch {
     return 0;
   }
 }
 
-function writePersistenceGeneration(documentId, actorUserId, generation) {
+function writePersistenceGeneration(documentId, actorUserId, generation, pdfGenerationId = null) {
   try {
     localStorage.setItem(
-      persistenceGenerationKey(documentId, actorUserId),
+      persistenceGenerationKey(documentId, actorUserId, pdfGenerationId),
       String(generation),
     );
   } catch { /* local persistence unavailable */ }
@@ -271,6 +281,7 @@ export function getClientId() {
  */
 export async function openAnnotationDoc({
   documentId,
+  pdfGenerationId = null,
   supabase,
   clientId = getClientId(),
   writerId = null,
@@ -291,11 +302,29 @@ export async function openAnnotationDoc({
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
   if (!actorUserId) throw new Error('openAnnotationDoc: actorUserId required');
+  if (pdfGenerationId != null && (typeof pdfGenerationId !== 'string'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pdfGenerationId))) {
+    throw new Error('openAnnotationDoc: pdfGenerationId must be a canonical UUID or null');
+  }
+  if (pdfGenerationId != null && typeof supabase?.rpc !== 'function') {
+    throw new Error('openAnnotationDoc: PDF generations require the checked RPC transport');
+  }
 
   // Default: a dedicated registry-managed Y.Doc for this document's flat store.
-  const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}`;
+  const registryKey = `${REGISTRY_PREFIX}${documentId}:${actorUserId}${pdfGenerationId == null ? '' : `:pdf-generation:${pdfGenerationId}`}`;
   const ownsRegistryDoc = !doc;
   const activeDoc = doc || getOrCreateYDoc(registryKey);
+  const priorScope = DOC_SCOPE_BINDINGS.get(activeDoc);
+  const priorKey = typeof priorScope === 'string' ? priorScope : priorScope?.registryKey;
+  const wasGenerated = typeof priorScope === 'string'
+    ? priorScope.includes(':pdf-generation:') : priorScope?.pdfGenerationId != null;
+  if ((priorScope && priorKey !== registryKey && (pdfGenerationId != null || wasGenerated))
+    || (!priorScope && doc && pdfGenerationId != null
+      && (doc.store.clients.size !== 0 || doc.store.pendingStructs || doc.store.pendingDs))) {
+    throw Object.assign(new Error('The supplied annotation document does not belong to this PDF generation'),
+      { code: 'ANNOTATION_DOC_SCOPE_MISMATCH' });
+  }
+  DOC_SCOPE_BINDINGS.set(activeDoc, { registryKey, pdfGenerationId });
   const activeWriterId = writerId || `${clientId}:${randomClientId()}`;
   const useRealtime = Boolean(
     enableRealtime && supabase && typeof supabase.channel === 'function',
@@ -303,6 +332,16 @@ export async function openAnnotationDoc({
 
   const state = {
     documentId,
+    pdfGenerationId,
+    generationTransport: null,
+    generationBlocked: false,
+    generationError: null,
+    generationRetirement: null,
+    generationCatchup: null,
+    generationCatchupError: null,
+    generationCatchupRequested: false,
+    generationRefreshRequested: false,
+    generationLastSignal: null,
     registryKey,
     ownsRegistryDoc,
     supabase,
@@ -413,12 +452,16 @@ export async function openAnnotationDoc({
     ),
     eraseOutboxClosing: false,
     eraseOutboxOrigin: Object.freeze({ source: 'erase-outbox', writerId: activeWriterId }),
-    persistenceGeneration: readPersistenceGeneration(documentId, actorUserId),
+    persistenceGeneration: readPersistenceGeneration(documentId, actorUserId, pdfGenerationId),
     legacyPersistenceDoc: null,
     legacyClearDocument: null,
     legacyRecoveryPending: false,
     legacyUnresolvedEntries: 0,
   };
+  if (pdfGenerationId != null) state.generationTransport = createAnnotationGenerationTransport({
+    documentId, pdfGenerationId, actorUserId,
+    request: (name, params, label) => withActorRequest(state, () => state.supabase.rpc(name, params), label),
+  });
 
   // Everything below can fail (network, storage). A partially-opened state must
   // not outlive the failure: the update observer would keep appending ops from a
@@ -429,6 +472,12 @@ export async function openAnnotationDoc({
   try {
     if (supabase && !state.outbox) {
       state.outbox = await createAnnotationOutbox();
+    }
+    if (state.outbox) state.outbox = bindAnnotationGenerationOutbox(state.outbox, state);
+    if (pdfGenerationId != null && state.outbox?.storageKind !== 'indexeddb') {
+      throw Object.assign(new Error('PDF generation recovery requires durable annotation storage'), {
+        code: 'ANNOTATION_LOCAL_STORAGE_UNAVAILABLE',
+      });
     }
     if (state.outbox) {
       state.documentIncarnation = Number(
@@ -451,20 +500,20 @@ export async function openAnnotationDoc({
     // --- local instant durability (browser only) ---
     if (enableLocal && typeof indexedDB !== 'undefined') {
       try {
-        registerPersistenceActor(documentId, actorUserId);
+        registerPersistenceActor(documentId, actorUserId, pdfGenerationId);
         const persistenceDoc = createDetachedYDoc(
           `persistence:${documentId}:${activeWriterId}`,
         );
         state.localPersistenceDoc = persistenceDoc;
         if (localPersistenceFactory) {
           state.idbProvider = await localPersistenceFactory(
-            persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
+            persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration, pdfGenerationId),
             persistenceDoc,
           );
         } else {
           const { IndexeddbPersistence } = await import('y-indexeddb');
           state.idbProvider = new IndexeddbPersistence(
-            persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
+            persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration, pdfGenerationId),
             persistenceDoc,
           );
         }
@@ -506,7 +555,9 @@ export async function openAnnotationDoc({
     }
 
     // --- seed the per-(doc,client) op counter so client_seq stays unique ---
-    if (supabase) {
+    if (state.generationTransport) {
+      state.clientSeq = annotationSequenceToSafeInteger(await generationCall(state, 'writerSequence', state.writerId));
+    } else if (supabase) {
       const { data, error } = await withActorRequest(
         state,
         () => supabase
@@ -529,7 +580,7 @@ export async function openAnnotationDoc({
     // IndexedDB state that the backend has never authorized.
     Y.applyUpdate(state.stagedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
     if (supabase) {
-      await loadLegacyPersistenceCandidate(state);
+      if (pdfGenerationId == null) await loadLegacyPersistenceCandidate(state);
       // Reconcile the frozen pre-open local delta before exposing the handle.
       // New edits can therefore enqueue their exact observer bytes immediately
       // and can never overtake an older persisted predecessor while Realtime is
@@ -566,7 +617,7 @@ export async function openAnnotationDoc({
       } else {
         await reconcilePersistedLocalState(state);
       }
-      await reconcileLegacyLocalState(state);
+      if (pdfGenerationId == null) await reconcileLegacyLocalState(state);
     }
     // The provider is attached to a detached Y.Doc so pre-open bytes can be
     // authorized safely. Once reconciliation is complete, mirror subsequent
@@ -575,7 +626,7 @@ export async function openAnnotationDoc({
 
     // --- observe local mutations → append to the durable log ---
     state.onDocUpdate = (update, origin, _doc, transaction) => {
-      if (state.destroyed || state.deleted) return;
+      if (state.destroyed || state.deleted || state.generationBlocked) return;
       // Include remote updates and delete-only updates, not just local WAL
       // epochs. Any visible change invalidates a receipt already being read.
       state.localReceiptRevision += 1;
@@ -744,6 +795,7 @@ async function rotateCleanPersistence(state) {
     state.documentId,
     state.actorUserId,
     state.persistenceGeneration,
+    state.pdfGenerationId,
   );
   const persistenceDoc = createDetachedYDoc(
     `persistence:${state.documentId}:${state.writerId}:g${state.persistenceGeneration}`,
@@ -755,6 +807,7 @@ async function rotateCleanPersistence(state) {
       state.documentId,
       state.actorUserId,
       state.persistenceGeneration,
+      state.pdfGenerationId,
     );
     if (state.localPersistenceFactory) {
       state.idbProvider = await state.localPersistenceFactory(name, persistenceDoc);
@@ -1027,6 +1080,15 @@ function withCloudRequest(state, request, label) {
 }
 
 async function withActorRequest(state, createRequest, label) {
+  assertStateWritable(state);
+  if (state.generationTransport) {
+    try { await state.outbox.assertScopeCurrent(state.documentId, state.actorUserId, state.documentIncarnation); }
+    catch (error) {
+      if (isGenerationFailure(error)) await retireGenerationState(state, error.replacementGenerationId, error);
+      throw error;
+    }
+    assertStateWritable(state);
+  }
   // Older local test adapters have no auth transport. Production Supabase
   // clients must bind each request to the actor who owns this handle/outbox.
   if (typeof state.supabase.auth?.getSession !== 'function') {
@@ -1041,6 +1103,7 @@ async function withActorRequest(state, createRequest, label) {
     mismatch.code = 'ANNOTATION_ACTOR_MISMATCH';
     throw mismatch;
   }
+  assertStateWritable(state);
   const request = createRequest();
   if (typeof request?.setHeader !== 'function') {
     throw new Error('Authenticated annotation requests require request-local headers');
@@ -1050,6 +1113,92 @@ async function withActorRequest(state, createRequest, label) {
   return withCloudRequest(
     state, request.setHeader('Authorization', `Bearer ${session.access_token}`), label,
   );
+}
+
+function isGenerationFailure(error) {
+  return ['SG001', 'SG002', 'ANNOTATION_PDF_GENERATION_RETIRED'].includes(error?.code);
+}
+
+async function retireGenerationState(state, replacementGenerationId, error = null) {
+  // Seal synchronously. An already-dispatched request may still return an exact
+  // receipt, but no queued append, effect, snapshot or observer may start work.
+  state.generationBlocked = true;
+  state.generationError ||= error || Object.assign(new Error('The PDF generation changed; saved edits require recovery review'), {
+    code: 'ANNOTATION_PDF_GENERATION_RETIRED', replacementGenerationId,
+  });
+  state.localReceiptRevision += 1;
+  state.eraseOutboxClosing = true;
+  clearEraseOutboxRetry(state);
+  clearGapRepairTimer(state);
+  if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+  if (state.outboxReplayTimer) { clearTimeout(state.outboxReplayTimer); state.outboxReplayTimer = null; }
+  if (state.onDocUpdate) state.doc.off('update', state.onDocUpdate);
+  if (state.realtimeChannel) {
+    const channel = state.realtimeChannel; state.realtimeChannel = null;
+    try { void Promise.resolve(state.supabase.removeChannel(channel)).catch(() => {}); } catch { /* sealed locally */ }
+  }
+  markSyncHealth(state, false, state.generationError);
+  // SG002 may mean deletion, not a replacement. Never invent a generation or
+  // destroy evidence when the server did not provide an explicit successor.
+  if (replacementGenerationId == null) return null;
+  if (state.generationRetirement) return state.generationRetirement;
+  const pending = state.outbox.retireScope(state.documentId, state.actorUserId, state.documentIncarnation, {
+    pdfGenerationId: state.pdfGenerationId, replacementGenerationId, reason: 'cloud-generation-replaced',
+  });
+  state.generationRetirement = pending;
+  try { return await pending; }
+  catch (failure) { state.generationRetirement = null; throw failure; }
+}
+
+async function generationCall(state, method, args) {
+  try { return await state.generationTransport[method](args); }
+  catch (error) {
+    if (isGenerationFailure(error)) {
+      await retireGenerationState(state, error.currentGenerationId ?? error.replacementGenerationId, error);
+    }
+    throw error;
+  }
+}
+
+async function readGeneratedTail(state, afterSeq, throughSeq, apply) {
+  let cursor = afterSeq;
+  let frontier = throughSeq;
+  for (;;) {
+    const page = await generationCall(state, 'updates', { afterSeq: cursor, throughSeq: frontier, limit: 1000 });
+    assertStateWritable(state);
+    frontier = page.throughSeq;
+    for (const row of page.rows) {
+      assertStateWritable(state);
+      await apply(row);
+      cursor = sequence(row.seq);
+    }
+    if (!page.hasMore) return sequence(frontier);
+    if (!page.rows.length) throw new Error('Generation tail page did not advance');
+  }
+}
+
+async function readGeneratedCheckpoint(state) {
+  const candidate = createDetachedYDoc(`generation-read:${state.registryKey}:${randomClientId()}`);
+  try {
+    const baseline = await generationCall(state, 'snapshot');
+    assertStateWritable(state);
+    const snap = baseline.snapshot;
+    const baseAtSeq = snap ? sequence(snap.at_seq) : null;
+    if (snap?.snapshot) {
+      let bytes = pgHexToBytes(snap.snapshot);
+      if (snap.encoding_version === SNAPSHOT_ENC_GZIP) bytes = await gunzip(bytes);
+      assertStateWritable(state);
+      Y.applyUpdate(candidate, bytes, HYDRATE_ORIGIN);
+    }
+    const receipts = [];
+    const coveredSeq = await readGeneratedTail(state, baseAtSeq ?? 0, baseline.walHead, async row => {
+      const update = pgHexToBytes(row.data);
+      Y.applyUpdate(candidate, update, HYDRATE_ORIGIN);
+      if (appendRecordForCloudRow(state, row, update).record) receipts.push(row);
+    });
+    return { update: encodeSnapshot(candidate), coveredSeq, baseAtSeq,
+      baseWriterId: snap?.writer_id ?? null, baseWriterEpoch: sequence(snap?.writer_epoch ?? 0), receipts };
+  } finally { candidate.destroy(); }
 }
 
 function applyAuthoritativeCloudUpdate(state, update) {
@@ -1259,17 +1408,18 @@ async function quarantineRejectedRecords(
 function appendRecordForCloudRow(state, row, update) {
   const actorUserId = row?.actor_user_id == null ? null : String(row.actor_user_id);
   const writerId = row?.client_id == null ? null : String(row.client_id);
-  const clientSeq = Number(row?.client_seq);
+  const clientSeq = row?.client_seq == null ? null : String(row.client_seq);
   if (
     actorUserId !== String(state.actorUserId)
     || !writerId
-    || !Number.isFinite(clientSeq)
+    || !/^(0|[1-9][0-9]*)$/.test(clientSeq || '')
   ) return { record: null, collision: null };
   const record = [...state.appendRecords.values()].find((candidate) => (
     candidate.documentId === state.documentId
     && String(candidate.actorUserId) === actorUserId
     && candidate.writerId === writerId
-    && Number(candidate.clientSeq) === clientSeq
+    && String(candidate.clientSeq) === clientSeq
+    && (candidate.pdfGenerationId ?? null) === state.pdfGenerationId
   ));
   if (!record) return { record: null, collision: null };
   if (!bytesEqual(record.update, update)) {
@@ -1374,6 +1524,7 @@ async function settleSnapshotCoveredRecords(state, snapshotUpdate, epochAtStart)
 }
 
 async function applyAuthoritativeCloudRow(state, row) {
+  assertStateWritable(state);
   const update = pgHexToBytes(row.data);
   applyAuthoritativeCloudUpdate(state, update);
   const { record, collision } = appendRecordForCloudRow(state, row, update);
@@ -1388,6 +1539,7 @@ async function applyAuthoritativeCloudRow(state, row) {
     return update;
   }
   if (record) {
+    if (state.generationTransport) record.seq = sequence(row.seq);
     await settleAcceptedRecord(state, record, update, { alreadyApplied: true });
   }
   return update;
@@ -1465,6 +1617,21 @@ async function loadPendingOutboxRecords(state) {
 
 async function loadFromBackend(state) {
   const { supabase, documentId, doc } = state;
+  if (state.generationTransport) {
+    const checkpoint = await readGeneratedCheckpoint(state);
+    assertStateWritable(state);
+    applyAuthoritativeCloudUpdate(state, checkpoint.update);
+    state.lastSeq = maxAnnotationSequence(state.lastSeq, checkpoint.coveredSeq);
+    state.coveredSeq = maxAnnotationSequence(state.coveredSeq, checkpoint.coveredSeq);
+    state.replayFromSeq = checkpoint.baseAtSeq ?? 0;
+    state.snapshotBaseAtSeq = checkpoint.baseAtSeq;
+    state.snapshotBaseWriterId = checkpoint.baseWriterId;
+    state.snapshotBaseWriterEpoch = checkpoint.baseWriterEpoch;
+    state.snapshotGeneration = maxAnnotationSequence(state.snapshotGeneration, checkpoint.baseWriterEpoch);
+    for (const row of checkpoint.receipts) await applyAuthoritativeCloudRow(state, row);
+    await state.outbox.compactAccepted(documentId, state.actorUserId, encodeSnapshot(state.acceptedDoc), true, state.documentIncarnation);
+    return;
+  }
   // 1. snapshot baseline
   const { data: snapRow, error: snapshotError } = await withActorRequest(
     state,
@@ -1495,12 +1662,12 @@ async function loadFromBackend(state) {
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
       }
-      state.lastSeq = Number(snapRow.at_seq) || 0;
+      state.lastSeq = sequence(snapRow.at_seq ?? 0);
       state.replayFromSeq = state.lastSeq;
       state.snapshotBaseAtSeq = state.lastSeq;
       state.snapshotBaseWriterId = snapRow.writer_id ?? null;
-      state.snapshotBaseWriterEpoch = Number(snapRow.writer_epoch) || 0;
-      state.snapshotGeneration = Math.max(
+      state.snapshotBaseWriterEpoch = sequence(snapRow.writer_epoch ?? 0);
+      state.snapshotGeneration = maxAnnotationSequence(
         state.snapshotGeneration,
         state.snapshotBaseWriterEpoch,
       );
@@ -1524,7 +1691,7 @@ async function loadFromBackend(state) {
     const batch = rows || [];
     for (const row of batch) {
       await applyAuthoritativeCloudRow(state, row);
-      cursor = Number(row.seq);
+      cursor = sequence(row.seq);
     }
     state.lastSeq = cursor;
     if (batch.length < 1000) break;
@@ -1549,9 +1716,94 @@ async function loadFromBackend(state) {
 // re-read the log from the accepted snapshot baseline. Y.applyUpdate is
 // idempotent, so the intentional overlap with prior catch-up/realtime delivery
 // is harmless and a late lower sequence remains discoverable.
-function catchUpTail(state) {
+function catchUpGenerated(state, refresh = false) {
+  if (state.destroyed || state.generationBlocked) return Promise.resolve(false);
+  state.generationCatchupRequested = true;
+  state.generationRefreshRequested ||= refresh;
+  if (state.generationCatchup) return state.generationCatchup;
+  const task = state.catchupChain.then(async () => {
+    const realtimeGeneration = state.realtimeCatchupGeneration;
+    while (state.generationCatchupRequested) {
+      if (state.destroyed || state.generationBlocked) return false;
+      const needsRefresh = state.generationRefreshRequested;
+      state.generationCatchupRequested = false;
+      state.generationRefreshRequested = false;
+      if (needsRefresh) {
+        // Merge checked cloud state; never replace the optimistic document or
+        // discard pending local rows when a same-head snapshot changes.
+        await loadFromBackend(state);
+      } else {
+        // Unlike legacy identity sequences, private generation WAL allocation
+        // is serialized by the document lock: a covered prefix cannot gain a
+        // late lower row. Own appends only advance this prefix by one.
+        const frontier = await readGeneratedTail(state, state.coveredSeq, null,
+          row => applyAuthoritativeCloudRow(state, row));
+        assertStateWritable(state);
+        state.lastSeq = maxAnnotationSequence(state.lastSeq, frontier);
+        state.coveredSeq = maxAnnotationSequence(state.coveredSeq, frontier);
+      }
+      assertStateWritable(state);
+      notifyChange(state);
+      void queueEraseOutboxDrain(state);
+    }
+    state.generationCatchupError = null;
+    if (realtimeGeneration === state.realtimeCatchupGeneration
+      && state.realtimePhase === 'ready' && !state.durabilityGap
+      && !state.repairCheckpointUpdate && !state.quarantinedLocalHistory) {
+      markSyncHealth(state, true);
+    }
+    return true;
+  }).catch(error => {
+    state.generationCatchupError = error;
+    state.generationLastSignal = null; // a duplicate notice may retry a failed read
+    state.generationCatchupRequested = false;
+    state.generationRefreshRequested = false;
+    markSyncHealth(state, false, error);
+    console.warn('[annotationDocSync] generation catch-up failed', error?.message);
+    return false;
+  }).finally(() => {
+    state.generationCatchup = null;
+    // A hint can arrive after the loop resolves but before this promise's
+    // finally runs. Keep that last request rather than losing its wake-up.
+    if (state.generationCatchupRequested) void catchUpGenerated(state, state.generationRefreshRequested);
+  });
+  state.generationCatchup = task;
+  state.catchupChain = task;
+  return task;
+}
+
+function handleGenerationSignal(state, payload) {
+  if (state.destroyed || state.generationBlocked) return;
+  const row = payload?.new;
+  let hint;
+  try {
+    if (row?.document_id !== state.documentId || row?.generation_id !== state.pdfGenerationId) {
+      throw new Error('changed or missing generation');
+    }
+    hint = { head: sequence(row.last_seq), wake: sequence(row.wake_revision),
+      epoch: sequence(row.snapshot_writer_epoch) };
+  } catch {
+    // Hints select a read strategy only. Missing, unsafe JS integers, DELETE,
+    // or another generation always require a complete checked refresh.
+    void catchUpGenerated(state, true);
+    return;
+  }
+  const prior = state.generationLastSignal;
+  if (prior && compareSequence(prior.head, hint.head) === 0
+    && compareSequence(prior.wake, hint.wake) === 0
+    && compareSequence(prior.epoch, hint.epoch) === 0) return;
+  state.generationLastSignal = hint;
+  const refresh = compareSequence(hint.epoch, state.snapshotBaseWriterEpoch) !== 0;
+  // A checked prefix and snapshot already cover this hint. In particular, an
+  // echo of our own append needs neither another tail nor a full checkpoint.
+  if (!refresh && compareSequence(hint.head, state.coveredSeq) <= 0) return;
+  void catchUpGenerated(state, refresh);
+}
+
+function catchUpTail(state, { refresh = false } = {}) {
+  if (state.generationTransport) return catchUpGenerated(state, refresh);
   state.catchupChain = state.catchupChain.then(async () => {
-    if (state.destroyed || !state.supabase) return false;
+    if (state.destroyed || state.generationBlocked || !state.supabase) return false;
     // PostgreSQL identity values are allocated before commit. A transaction
     // with seq=N can legally become visible after seq=N+1. Replaying from the
     // last accepted snapshot (rather than the last observed row) makes the
@@ -1597,14 +1849,14 @@ function catchUpTail(state) {
           // SUBSCRIBED instead of being permanently marked covered (and a
           // snapshot's at_seq can never over-claim it).
           console.warn('[annotationDocSync] catch-up apply failed — will retry from seq', cursor, err?.message);
-          if (cursor > state.lastSeq) state.lastSeq = cursor;
+          if (compareSequence(cursor, state.lastSeq) > 0) state.lastSeq = cursor;
           state.coveredSeq = cursor;
           if (applied > 0) notifyChange(state);
           return false;
         }
-        cursor = Number(row.seq);
+        cursor = sequence(row.seq);
       }
-      if (cursor > state.lastSeq) state.lastSeq = cursor;
+      if (compareSequence(cursor, state.lastSeq) > 0) state.lastSeq = cursor;
       state.coveredSeq = cursor;
       if (batch.length < 1000) break;
     }
@@ -1743,10 +1995,7 @@ async function captureAcceptedAnnotationStateForActor(state, assertActorUnchange
     || state.lastSeq !== state.coveredSeq) {
     throw captureNotReady('the accepted head changed during capture');
   }
-  if (![state.coveredSeq, state.snapshotBaseAtSeq ?? 0, state.snapshotBaseWriterEpoch]
-    .every(value => Number.isSafeInteger(value) && value >= 0)) {
-    throw captureNotReady('head counters are not exact safe integers');
-  }
+  for (const value of [state.coveredSeq, state.snapshotBaseAtSeq ?? 0, state.snapshotBaseWriterEpoch]) sequence(value);
   const annotationState = materializeAnnotationGenerationState(state.acceptedDoc);
   const liveState = materializeAnnotationGenerationState(state.doc);
   if (acceptedCaptureJson(annotationState) !== acceptedCaptureJson(liveState)) {
@@ -1754,6 +2003,7 @@ async function captureAcceptedAnnotationStateForActor(state, assertActorUnchange
   }
   const capture = Object.freeze({
     version: 1,
+    ...(state.pdfGenerationId == null ? {} : { pdfGenerationId: state.pdfGenerationId }),
     documentId: state.documentId,
     actorUserId: state.actorUserId,
     writerId: state.writerId,
@@ -1851,6 +2101,17 @@ function subscribeHistoryQuarantine(state, cb) {
 // Notify sync-health listeners when the durable-append path flips between
 // healthy and failing, deduped so we only emit on an actual transition (BL-24).
 function markSyncHealth(state, healthy, error) {
+  if (state.generationBlocked) { healthy = false; error = state.generationError; }
+  if (healthy && state.generationCatchupError) {
+    healthy = false;
+    error = state.generationCatchupError;
+  }
+  if (healthy && state.generationTransport && state.realtimePhase !== 'ready') {
+    // A late own receipt proves persistence, not a live subscription. Only the
+    // checked SUBSCRIBED catch-up may restore the realtime lifecycle to ready.
+    healthy = false;
+    error = state.lastSyncError || new Error('realtime connection is not ready');
+  }
   if (healthy && state.appendRecords?.size > 0) healthy = false;
   const changed = state.syncHealthy !== healthy;
   state.syncHealthy = healthy;
@@ -1916,6 +2177,7 @@ function clearGapRepairTimer(state) {
 function scheduleGapRepair(state) {
   if (
     state.destroyed
+    || state.generationBlocked
     || !state.durabilityGap
     || !state.repairCheckpointUpdate
     || state.repairTimer
@@ -2101,6 +2363,7 @@ function reconcilePersistedLocalState(state) {
 }
 
 async function replayOutbox(state) {
+  if (state.generationBlocked) return;
   const records = await (
     state.outbox?.list(state.documentId, state.actorUserId) ?? []
   );
@@ -2161,6 +2424,10 @@ async function replayOutbox(state) {
     try {
       await appendOp(state, record);
     } catch (error) {
+      if (state.generationBlocked || isGenerationFailure(error)) {
+        await retireGenerationState(state, error.currentGenerationId ?? error.replacementGenerationId, error).catch(() => {});
+        return;
+      }
       if (String(error?.code || '') === '23505') {
         state.permissionRejectedCutoff = state.localMutationOrdinal;
         await quarantineRejectedRecords(
@@ -2201,7 +2468,7 @@ async function replayOutbox(state) {
 }
 
 function scheduleOutboxReplay(state, { delayed = false } = {}) {
-  if (state.destroyed || state.deleted) return;
+  if (state.destroyed || state.deleted || state.generationBlocked) return;
   if (delayed) {
     if (state.outboxReplayTimer) return;
     const baseDelay = Math.max(1, Number(state.repairRetryDelayMs) || GAP_REPAIR_RETRY_MS);
@@ -2435,12 +2702,9 @@ function enqueueAppend(
   const ordinal = ++state.localMutationOrdinal;
   const clientSeq = ++state.clientSeq;
   const record = {
-    key: [
-      state.documentId,
-      state.actorUserId,
-      state.writerId,
-      clientSeq,
-    ].join('\u0000'),
+    key: annotationOutboxRecordKey({ documentId: state.documentId, actorUserId: state.actorUserId,
+      writerId: state.writerId, clientSeq, pdfGenerationId: state.pdfGenerationId }),
+    ...(state.pdfGenerationId == null ? {} : { pdfGenerationId: state.pdfGenerationId }),
     documentId: state.documentId,
     actorUserId: state.actorUserId,
     incarnation: state.documentIncarnation,
@@ -2467,6 +2731,7 @@ function enqueueAppend(
   state.flushQueue = state.flushQueue.then(async () => {
     try {
       await persisted;
+      if (state.generationBlocked) return;
       if (ordinal <= state.permissionRejectedCutoff) {
         if (
           record.status === 'integrity-error'
@@ -2497,6 +2762,10 @@ function enqueueAppend(
       }
       await appendOp(state, record);
     } catch (err) {
+      if (state.generationBlocked || isGenerationFailure(err)) {
+        await retireGenerationState(state, err.currentGenerationId ?? err.replacementGenerationId, err).catch(() => {});
+        return;
+      }
       if (state.deleted || String(err?.code || '') === 'ANNOTATION_DOCUMENT_DELETED') {
         invalidateDeletedState(state, err);
         state.appendRecords.delete(record.key);
@@ -2597,11 +2866,12 @@ function isLocalReceiptCurrent(state, receipt) {
   // Reusing an inactive receipt first requires revalidateLocalReceipt, which
   // also catches storage changes made by another browser context.
   const issued = receipt && ISSUED_LOCAL_RECEIPTS.get(receipt);
-  if (!issued || issued.state !== state || state.deleted || state.quarantinedLocalHistory
+  if (!issued || issued.state !== state || state.deleted || state.generationBlocked || state.quarantinedLocalHistory
     || state.permissionRejectedCutoff > 0
     || state.localReceiptPurgeEpoch !== (LOCAL_RECEIPT_PURGE_EPOCHS.get(state.documentId) || 0)
     || receipt.revision !== state.localReceiptRevision
     || receipt.documentId !== state.documentId || receipt.actorUserId !== state.actorUserId
+    || (receipt.pdfGenerationId ?? null) !== state.pdfGenerationId
     || receipt.incarnation !== state.documentIncarnation || receipt.writerId !== state.writerId) return false;
   // The live observer counts every Yjs update, including remote changes and
   // delete-only transactions. Avoid serializing the full doc on active checks.
@@ -2687,6 +2957,7 @@ async function flushLocalDurability(state, {
   assertCurrent();
   const receipt = Object.freeze({
     locallyDurable: true, documentId: state.documentId, actorUserId: state.actorUserId,
+    ...(state.pdfGenerationId == null ? {} : { pdfGenerationId: state.pdfGenerationId }),
     incarnation: state.documentIncarnation, writerId: state.writerId, revision,
   });
   ISSUED_LOCAL_RECEIPTS.set(receipt, { state, update: capturedUpdate });
@@ -2719,7 +2990,7 @@ function sameReceiptKeys(left = [], right = []) {
 function sameRecoveryRows(left, right) {
   return left.length === right.length && left.every((row, index) => {
     const other = right[index];
-    return ['key', 'documentId', 'actorUserId', 'incarnation', 'status', 'publishAfterAcceptance']
+    return ['key', 'documentId', 'actorUserId', 'pdfGenerationId', 'incarnation', 'status', 'publishAfterAcceptance']
       .every((field) => row[field] === other[field])
       && sameReceiptKeys(row.dependsOn, other.dependsOn)
       && bytesEqual(row.update, other.update);
@@ -2728,6 +2999,7 @@ function sameRecoveryRows(left, right) {
 
 function sameRecoveryInputs(left, right) {
   return left.documentId === right.documentId && left.actorUserId === right.actorUserId
+    && (left.pdfGenerationId ?? null) === (right.pdfGenerationId ?? null)
     && left.incarnation === right.incarnation
     && bytesEqual(left.checkpointUpdate, right.checkpointUpdate)
     && sameReceiptKeys(left.acceptedKeys, right.acceptedKeys)
@@ -2736,6 +3008,9 @@ function sameRecoveryInputs(left, right) {
 }
 
 function verifyLocalRecovery(state, stored, capturedUpdate) {
+  if ((stored.pdfGenerationId ?? null) !== state.pdfGenerationId) {
+    throw localDurabilityError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'Stored annotations belong to another PDF generation.');
+  }
   if (!stored.checkpointUpdate?.length) {
     throw localDurabilityError('ANNOTATION_LOCAL_INCOMPLETE', 'The saved annotation checkpoint is missing.');
   }
@@ -2746,6 +3021,7 @@ function verifyLocalRecovery(state, stored, capturedUpdate) {
   }
   for (const row of [...stored.accepted, ...stored.pending]) {
     if (row.documentId !== state.documentId || row.actorUserId !== state.actorUserId
+      || (row.pdfGenerationId ?? null) !== state.pdfGenerationId
       || (Number(row.incarnation) || 0) !== state.documentIncarnation) {
       throw localDurabilityError('ANNOTATION_LOCAL_SCOPE_CHANGED', 'Stored annotation updates do not match this document and account.');
     }
@@ -2785,6 +3061,7 @@ function verifyLocalRecovery(state, stored, capturedUpdate) {
 
 async function appendOp(state, record) {
   if (state.destroyed || state.deleted) throw deletedDocumentError(state.documentId);
+  assertStateWritable(state);
   const {
     update,
     checkpointUpdate,
@@ -2798,7 +3075,20 @@ async function appendOp(state, record) {
   };
   let data;
   let error;
-  if (typeof state.supabase.rpc === 'function') {
+  if (state.generationTransport) {
+    const receipt = await generationCall(state, 'append', { writerId: record.writerId, clientSeq: record.clientSeq, data: row.data });
+    record.seq = receipt.seq;
+    if (!receipt.isCurrent || state.generationBlocked) {
+      // The append may have committed immediately before publication. Preserve
+      // that exact old-generation receipt, without exposing bytes or effects.
+      try { await state.outbox.settleAccepted({ ...record, status: 'accepted' }); }
+      catch (failure) { if (!failure.acceptedEvidenceSaved) throw failure; }
+      record.status = 'accepted';
+      await retireGenerationState(state, receipt.isCurrent ? null : receipt.currentGenerationId);
+      throw state.generationError;
+    }
+    data = { seq: receipt.seq };
+  } else if (typeof state.supabase.rpc === 'function') {
     ({ data, error } = await withActorRequest(
       state,
       () => state.supabase.rpc('append_annotation_update', {
@@ -2833,6 +3123,16 @@ async function appendOp(state, record) {
     writeError.code = error.code;
     throw writeError;
   }
+  if (state.generationBlocked) {
+    // First publication can retire the legacy/null scope while its original
+    // append RPC is already in flight. Its exact successful receipt is still
+    // recovery evidence, never permission to replay into the replacement.
+    const receipt = Array.isArray(data) ? data[0] : data;
+    record.seq = sequence(receipt?.seq ?? receipt);
+    try { await state.outbox.settleAccepted({ ...record, status: 'accepted' }); }
+    catch (failure) { if (!failure.acceptedEvidenceSaved) throw failure; }
+    throw state.generationError;
+  }
   assertStateWritable(state);
   await settleAcceptedRecord(state, record, update);
   // Irreversible History/trash/Excel effects may run only after this exact
@@ -2851,12 +3151,13 @@ async function appendOp(state, record) {
   // Advance our log position so snapshots record the correct at_seq and a reopen
   // doesn't needlessly replay ops already folded into the snapshot.
   const rpcRow = Array.isArray(data) ? data[0] : data;
-  const assignedSeq = Number(rpcRow?.seq ?? rpcRow);
-  if (Number.isFinite(assignedSeq)) {
-    if (assignedSeq > state.lastSeq) state.lastSeq = assignedSeq;
+  const assignedValue = rpcRow?.seq ?? rpcRow;
+  if (assignedValue != null && (state.generationTransport || Number.isFinite(Number(assignedValue)))) {
+    const assignedSeq = sequence(assignedValue);
+    if (compareSequence(assignedSeq, state.lastSeq) > 0) state.lastSeq = assignedSeq;
     // The server-assigned immediate successor proves there is no unseen row
     // between the last contiguous baseline and this already-applied local op.
-    if (assignedSeq === state.coveredSeq + 1) state.coveredSeq = assignedSeq;
+    if (compareSequence(assignedSeq, nextAnnotationSequence(state.coveredSeq)) === 0) state.coveredSeq = assignedSeq;
   }
   state.opsSinceSnapshot += 1;
   if (state.opsSinceSnapshot >= SNAPSHOT_AFTER_OPS) {
@@ -2887,7 +3188,7 @@ async function finalizeSnapshotResult(state, result) {
 
 // Debounce a full-state checkpoint after edits settle. Cheap to call on every op.
 function scheduleSnapshot(state) {
-  if (state.destroyed) return;
+  if (state.destroyed || state.generationBlocked) return;
   if (state.snapshotTimer) clearTimeout(state.snapshotTimer);
   state.snapshotTimer = setTimeout(() => {
     state.snapshotTimer = null;
@@ -2921,6 +3222,7 @@ function isSnapshotConflict(error) {
 }
 
 async function loadLatestCloudCheckpoint(state) {
+  if (state.generationTransport) return readGeneratedCheckpoint(state);
   const cloudDoc = createDetachedYDoc(
     `snapshot-refresh:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
@@ -2944,10 +3246,10 @@ async function loadLatestCloudCheckpoint(state) {
       let bytes = pgHexToBytes(snapRow.snapshot);
       if (snapRow.encoding_version === SNAPSHOT_ENC_GZIP) bytes = await gunzip(bytes);
       Y.applyUpdate(cloudDoc, bytes, HYDRATE_ORIGIN);
-      cursor = Number(snapRow.at_seq) || 0;
+      cursor = sequence(snapRow.at_seq ?? 0);
       baseAtSeq = cursor;
       baseWriterId = snapRow.writer_id ?? null;
-      baseWriterEpoch = Number(snapRow.writer_epoch) || 0;
+      baseWriterEpoch = sequence(snapRow.writer_epoch ?? 0);
     }
 
     for (;;) {
@@ -2968,7 +3270,7 @@ async function loadLatestCloudCheckpoint(state) {
         const update = pgHexToBytes(row.data);
         Y.applyUpdate(cloudDoc, update, HYDRATE_ORIGIN);
         await applyAuthoritativeCloudRow(state, row);
-        cursor = Number(row.seq);
+        cursor = sequence(row.seq);
       }
       if (batch.length < 1000) break;
     }
@@ -2987,6 +3289,7 @@ async function loadLatestCloudCheckpoint(state) {
 
 async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
   const latest = await loadLatestCloudCheckpoint(state);
+  assertStateWritable(state);
   const candidate = createDetachedYDoc(
     `snapshot-candidate:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
@@ -3002,7 +3305,7 @@ async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
     state.snapshotBaseAtSeq = latest.baseAtSeq;
     state.snapshotBaseWriterId = latest.baseWriterId;
     state.snapshotBaseWriterEpoch = latest.baseWriterEpoch;
-    state.snapshotGeneration = Math.max(
+    state.snapshotGeneration = maxAnnotationSequence(
       state.snapshotGeneration,
       latest.baseWriterEpoch,
     );
@@ -3028,12 +3331,12 @@ async function writeSnapshotNow(state, {
 } = {}) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
   const gapGenerationAtStart = gapGeneration ?? state.durabilityGapGeneration;
-  if (!state.supabase) {
+  if (!state.supabase || state.generationBlocked) {
     return {
       ok: false,
       permissionDenied: false,
       containsUnacceptedPrefix: repairsGapAtStart,
-      error: null,
+      error: state.generationError,
     };
   }
   // Capture at_seq AND the edit generation BEFORE encoding (same synchronous
@@ -3055,10 +3358,10 @@ async function writeSnapshotNow(state, {
   // writers (A1 → B1 → A1), which would make a stale base token valid again.
   // Every non-idempotent attempt therefore consumes a value above the latest
   // snapshot generation observed from the backend.
-  const snapshotGenerationAtStart = Math.max(
+  const snapshotGenerationAtStart = nextAnnotationSequence(maxAnnotationSequence(
     state.snapshotGeneration,
     state.snapshotBaseWriterEpoch,
-  ) + 1;
+  ));
   const updateAtStart = snapshotUpdate || (
     repairsGapAtStart ? encodeRepairCheckpoint(state) : encodeSnapshot(state.acceptedDoc)
   );
@@ -3086,7 +3389,14 @@ async function writeSnapshotNow(state, {
     try {
       let error;
       let accepted = true;
-      if (typeof state.supabase.rpc === 'function') {
+      if (state.generationTransport) {
+        accepted = await generationCall(state, 'storeSnapshot', {
+          atSeq, snapshot: hex, encodingVersion: SNAPSHOT_ENC_GZIP, writerId: state.writerId,
+          writerEpoch: snapshotGenerationAtStart, expectedAtSeq: state.snapshotBaseAtSeq,
+          expectedWriterId: state.snapshotBaseWriterId, expectedWriterEpoch: state.snapshotBaseWriterEpoch,
+        });
+        assertStateWritable(state);
+      } else if (typeof state.supabase.rpc === 'function') {
         let data;
         ({ data, error } = await withActorRequest(
           state,
@@ -3118,16 +3428,16 @@ async function writeSnapshotNow(state, {
             .maybeSingle(),
           'annotation snapshot CAS read',
         );
-        const currentSeq = Number(current?.at_seq);
-        const currentEpoch = Number(current?.writer_epoch) || 0;
+        const currentSeq = current?.at_seq == null ? null : sequence(current.at_seq);
+        const currentEpoch = sequence(current?.writer_epoch ?? 0);
         const matchesLoadedBase = (
-          (Number.isFinite(currentSeq) ? currentSeq : null) === state.snapshotBaseAtSeq
+          currentSeq === state.snapshotBaseAtSeq
           &&
           (current?.writer_id ?? null) === state.snapshotBaseWriterId
           && currentEpoch === state.snapshotBaseWriterEpoch
         );
         if (
-          Number.isFinite(currentSeq)
+          currentSeq != null
           && (
             currentSeq !== atSeq
             || !matchesLoadedBase
@@ -3160,11 +3470,11 @@ async function writeSnapshotNow(state, {
         // Only advance the captured generation — never regress it — so a stale
         // snapshot completing late can't clear a newer edit's dirty state.
         if (epochAtStart > state.snapshottedEpoch) state.snapshottedEpoch = epochAtStart;
-        if (atSeq > state.replayFromSeq) state.replayFromSeq = atSeq;
+        if (compareSequence(atSeq, state.replayFromSeq) > 0) state.replayFromSeq = atSeq;
         state.snapshotBaseAtSeq = atSeq;
         state.snapshotBaseWriterId = state.writerId;
         state.snapshotBaseWriterEpoch = snapshotGenerationAtStart;
-        state.snapshotGeneration = Math.max(
+        state.snapshotGeneration = maxAnnotationSequence(
           state.snapshotGeneration,
           snapshotGenerationAtStart,
         );
@@ -3251,6 +3561,10 @@ async function writeSnapshotNow(state, {
       }
       console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
     } catch (err) {
+      if (state.generationBlocked || isGenerationFailure(err)) {
+        await retireGenerationState(state, err.currentGenerationId ?? err.replacementGenerationId, err).catch(() => {});
+        return { ok: false, permissionDenied: false, containsUnacceptedPrefix: repairsGapAtStart, error: err };
+      }
       if (err?.code === 'ANNOTATION_ACTOR_MISMATCH') {
         return {
           ok: false,
@@ -3324,12 +3638,19 @@ function subscribeRealtime(state) {
   // channel the (non-replayed) supabase client still caches. postgres_changes
   // delivery is filter-driven, not topic-driven, so the suffix is transparent
   // server-side.
-  const ch = state.supabase.channel(`anno-${state.documentId}-${randomClientId()}`);
+  const topic = state.generationTransport
+    ? `anno-generation-${state.documentId}-${state.pdfGenerationId}-${randomClientId()}`
+    : `anno-${state.documentId}-${randomClientId()}`;
+  const ch = state.supabase.channel(topic);
   // Assign before wiring callbacks so a synchronous throw from .on()/.subscribe()
   // during a failed open is still cleanable by the teardown catch (removeChannel).
   state.realtimeChannel = ch;
-  ch
-    .on('postgres_changes', {
+  if (state.generationTransport) {
+    ch.on('postgres_changes', {
+      event: '*', schema: 'public', table: 'annotation_generation_signals',
+      filter: `document_id=eq.${state.documentId}`,
+    }, payload => handleGenerationSignal(state, payload));
+  } else ch.on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
       table: 'annotation_updates',
@@ -3343,23 +3664,23 @@ function subscribeRealtime(state) {
         // handle cannot miss another handle's delete and later checkpoint stale
         // geometry at that delete's seq. True self-echoes are Yjs no-ops.
         await applyAuthoritativeCloudRow(state, row);
-        if (Number(row.seq) > state.lastSeq) state.lastSeq = Number(row.seq);
+        if (compareSequence(row.seq, state.lastSeq) > 0) state.lastSeq = sequence(row.seq);
         notifyChange(state);
         void queueEraseOutboxDrain(state);
       }).catch((err) => {
         console.warn('[annotationDocSync] remote apply failed', err?.message);
         markSyncHealth(state, false, err);
       });
-    })
-    .subscribe((status) => {
+    });
+  ch.subscribe((status) => {
       // Fires on the initial join AND after every reconnect re-join. Each time,
       // sweep the log for ops that landed while we weren't listening.
       if (status === 'SUBSCRIBED') {
         const catchupGeneration = ++state.realtimeCatchupGeneration;
         state.realtimePhase = 'catching-up';
         notifySyncStatus(state);
-        return catchUpTail(state).then(async (caughtUp) => {
-          if (state.destroyed || catchupGeneration !== state.realtimeCatchupGeneration) return;
+        return catchUpTail(state, { refresh: true }).then(async (caughtUp) => {
+          if (state.destroyed || state.generationBlocked || catchupGeneration !== state.realtimeCatchupGeneration) return;
           if (!caughtUp) {
             state.realtimePhase = 'connecting';
             markSyncHealth(state, false, new Error('realtime catch-up failed'));
@@ -3373,7 +3694,7 @@ function subscribeRealtime(state) {
             const result = await writeSnapshot(state, captureSnapshotOptions(state));
             await finalizeSnapshotResult(state, result);
           }
-          if (state.destroyed || catchupGeneration !== state.realtimeCatchupGeneration) return;
+          if (state.destroyed || state.generationBlocked || catchupGeneration !== state.realtimeCatchupGeneration) return;
           state.realtimePhase = 'ready';
           // Gap finalization owns health: success repairs it; denial/failure
           // must stay red. A plain catch-up can safely recover transport health.
@@ -3454,6 +3775,7 @@ function queueEraseOutboxDrain(state, options = {}) {
       doc: state.doc,
       executeEffect: state.eraseEffectConsumer,
       validateEntry: ({ mutationId, entry }) => {
+        if (state.generationBlocked) return false;
         // No cloud means this actor-scoped document is itself authoritative.
         if (!state.supabase) return true;
         const acceptedEntry = state.acceptedDoc
@@ -3648,9 +3970,33 @@ async function drainStateQueues(state) {
   }
 }
 
+async function closeRetiredGeneration(state) {
+  unregisterActiveState(state);
+  await Promise.allSettled([...state.localWriteTasks, state.flushQueue, state.outboxReplayChain,
+    state.catchupChain, state.authoritativeChain, state.snapshotChain, state.eraseOutboxDrain,
+    state.generationRetirement]);
+  state.destroyed = true;
+  if (state.onDocUpdate) state.doc.off('update', state.onDocUpdate);
+  if (state.onPageHide && typeof window !== 'undefined') window.removeEventListener('pagehide', state.onPageHide);
+  destroyLocalPersistence(state);
+  await state.outbox?.close?.();
+  for (const doc of [state.acceptedDoc, state.stagedDoc, state.persistedDoc, state.legacyPersistenceDoc]) doc?.destroy();
+  if (state.ownsRegistryDoc) releaseYDoc(state.registryKey);
+  else state.doc.destroy();
+}
+
 function makeHandle(state) {
   return {
     documentId: state.documentId,
+    get pdfGenerationId() { return state.pdfGenerationId; },
+    getGenerationStatus: () => ({ pdfGenerationId: state.pdfGenerationId, blocked: state.generationBlocked,
+      error: state.generationError, retirement: state.generationRetirement }),
+    retireGeneration: ({ replacementGenerationId } = {}) => {
+      if (typeof replacementGenerationId !== 'string'
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(replacementGenerationId)
+        || replacementGenerationId === state.pdfGenerationId) throw new Error('An exact replacement PDF generation is required');
+      return retireGenerationState(state, replacementGenerationId);
+    },
     clientId: state.clientId,
     writerId: state.writerId,
     doc: state.doc,
@@ -4010,6 +4356,7 @@ function makeHandle(state) {
     destroy() {
       if (state.closePromise) return state.closePromise;
       state.closePromise = (async () => {
+      if (state.generationBlocked) return closeRetiredGeneration(state);
       // closePromise gates the observer before any awaited work completes.
       // Already-queued edits and this writer's pending effect receipts drain;
       // new edits belong only to the next viewer of the shared registry doc.
@@ -4046,6 +4393,7 @@ function makeHandle(state) {
       // its result before deciding: read-only visits and already-saved edits
       // must not upload another full snapshot just because the viewer closed.
       await state.snapshotChain.catch(() => {});
+      if (state.generationBlocked) return closeRetiredGeneration(state);
       if (state.supabase && (
         state.durabilityGap || state.acceptedEditEpoch > state.snapshottedEpoch
       )) {

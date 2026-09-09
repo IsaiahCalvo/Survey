@@ -264,7 +264,9 @@ test('useAnnotationDoc: onChange lands remote state while preserving a local era
 test('annotationDocSync: an undecodable snapshot aborts before trusting at_seq', () => {
   assert.match(SYNC_SOURCE, /throw new Error\(`snapshot decode failed:/);
   const decodeIndex = SYNC_SOURCE.indexOf('snapshot decode failed:');
-  const frontierIndex = SYNC_SOURCE.indexOf('state.lastSeq = Number(snapRow.at_seq)');
+  // Exact sequence parsing replaces Number(), but decoding must still finish
+  // before the accepted frontier can move.
+  const frontierIndex = SYNC_SOURCE.indexOf('state.lastSeq = sequence(snapRow.at_seq ?? 0)');
   assert.ok(decodeIndex >= 0 && frontierIndex > decodeIndex);
 });
 
