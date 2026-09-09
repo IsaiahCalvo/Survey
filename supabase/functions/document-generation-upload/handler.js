@@ -60,7 +60,8 @@ export async function hashGenerationUploadStream(stream, { byteLength, signal } 
 }
 
 function descriptor(value, actor, operationId) {
-  const bound = value?.version === 2;
+  const archive = value?.version === 3;
+  const bound = value?.version === 2 || archive;
   requireValue(value && (value.version === 1 || bound) && value.actor_user_id === actor
     && value.operation_id === operationId && uuid(operationId)
     && uuid(value.document_id) && uuid(value.generation_id) && uuid(value.owner_user_id)
@@ -71,7 +72,8 @@ function descriptor(value, actor, operationId) {
     && (value.verified_at === null || (typeof value.verified_at === 'string'
       && Number.isFinite(Date.parse(value.verified_at)))), 'invalid_receipt');
   if (bound) {
-    requireValue(uuid(value.source_id) && ['prior-pdf', 'candidate-pdf'].includes(value.purpose)
+    requireValue(uuid(value.source_id) && (archive ? value.purpose === 'source-object-archive'
+      : ['prior-pdf', 'candidate-pdf'].includes(value.purpose))
       && (value.expected_source_generation_id === null || uuid(value.expected_source_generation_id))
       && ['reserved', 'verified', 'rejected', 'canceled'].includes(value.upload_state)
       && (value.state === 'source-unavailable' || value.state === value.upload_state), 'invalid_receipt');
@@ -79,7 +81,19 @@ function descriptor(value, actor, operationId) {
       requireValue(value.object === null && value.verified_at === null && value.rejection === null, 'invalid_receipt');
     }
   }
-  requireValue(value.path === `${value.owner_user_id}/_generations/${value.document_id}/${value.generation_id}/${operationId}.pdf`, 'invalid_receipt');
+  if (archive) {
+    requireValue(uuid(value.archived_source_object_id), 'invalid_receipt');
+    if (['source-unavailable', 'canceled'].includes(value.state)) {
+      requireValue(value.source_object === null, 'invalid_receipt');
+    } else {
+      const source = value.source_object;
+      requireValue(source && ['pdf', 'sidecar'].includes(source.kind) && source.bucket_id === 'documents'
+        && typeof source.path === 'string' && source.path.length > 0 && source.id === value.archived_source_object_id
+        && uuid(source.version) && source.byte_length === value.byte_length
+        && source.content_sha256 === value.content_sha256, 'invalid_receipt');
+    }
+  }
+  requireValue(value.path === `${value.owner_user_id}/_generations/${value.document_id}/${value.generation_id}/${operationId}.${archive ? 'bin' : 'pdf'}`, 'invalid_receipt');
   if (value.object !== null) {
     requireValue(value.object && uuid(value.object.id)
       && (value.object.version === null || uuid(value.object.version))
@@ -109,14 +123,22 @@ function descriptor(value, actor, operationId) {
 const IMMUTABLE = ['operation_id', 'actor_user_id', 'document_id', 'generation_id', 'owner_user_id',
   'path', 'content_sha256', 'byte_length', 'source_sql_sha256', 'expires_at'];
 const SOURCE_BINDING = ['source_id', 'purpose', 'expected_source_generation_id'];
+const SOURCE_OBJECT = ['kind', 'bucket_id', 'path', 'id', 'version', 'byte_length', 'content_sha256'];
 function sameOperation(a, b) {
   requireValue(a.version === b.version && IMMUTABLE.every(key => a[key] === b[key])
-    && (a.version !== 2 || SOURCE_BINDING.every(key => a[key] === b[key])), 'invalid_receipt');
+    && (a.version === 1 || SOURCE_BINDING.every(key => a[key] === b[key])), 'invalid_receipt');
+  if (a.version === 3) {
+    requireValue(a.archived_source_object_id === b.archived_source_object_id
+      && (!a.source_object || !b.source_object || SOURCE_OBJECT.every(key => a.source_object[key] === b.source_object[key])), 'invalid_receipt');
+  }
 }
 function publicDescriptor(value) {
   // Do not return private verification leases or future private RPC fields.
   return { ...Object.fromEntries(['version', ...IMMUTABLE, 'state', 'verified_at'].map(key => [key, value[key]])),
-    ...(value.version === 2 ? Object.fromEntries([...SOURCE_BINDING, 'upload_state'].map(key => [key, value[key]])) : {}),
+    ...(value.version !== 1 ? Object.fromEntries([...SOURCE_BINDING, 'upload_state'].map(key => [key, value[key]])) : {}),
+    ...(value.version === 3 ? { archived_source_object_id: value.archived_source_object_id,
+      source_object: value.source_object === null ? null
+        : Object.fromEntries(SOURCE_OBJECT.map(key => [key, value.source_object[key]])) } : {}),
     object: value.object === null ? null : { id: value.object.id, version: value.object.version,
       byte_length: value.object.byte_length },
     rejection: value.rejection == null ? null : { reason: value.rejection.reason,
@@ -195,25 +217,30 @@ export async function handleDocumentGenerationUpload(request, deps) {
     catch { throw fail('invalid_request'); }
     requireValue(input && !Array.isArray(input) && typeof input === 'object');
     const { action, operation_id: operationId } = input;
-    requireValue(['begin', 'get', 'verify', 'cancel'].includes(action) && uuid(operationId));
+    requireValue(['begin', 'begin-archive', 'get', 'verify', 'cancel'].includes(action) && uuid(operationId));
+    const archive = action === 'begin-archive';
     const sourceBound = action === 'begin' && (Object.hasOwn(input, 'source_id') || Object.hasOwn(input, 'purpose'));
-    const keys = action === 'begin'
+    const keys = archive ? ['action', 'operation_id', 'source_id', 'source_object_id'] : action === 'begin'
       ? ['action', 'operation_id', ...(sourceBound ? ['source_id', 'purpose'] : ['document_id']),
         'content_sha256', 'byte_length'] : ['action', 'operation_id'];
     requireValue(Object.keys(input).every(key => keys.includes(key)));
-    if (action === 'begin') {
-      requireValue(sha(input.content_sha256) && size(input.byte_length));
-      if (sourceBound) {
+    if (action === 'begin' || archive) {
+      if (archive) {
+        requireValue(uuid(input.source_id) && uuid(input.source_object_id));
+        requireValue(deps.sourceBoundEnabled === true && deps.archiveEnabled === true, 'unavailable');
+      } else if (sourceBound) {
         requireValue(uuid(input.source_id) && ['prior-pdf', 'candidate-pdf'].includes(input.purpose));
         requireValue(deps.sourceBoundEnabled === true, 'unavailable');
       } else requireValue(uuid(input.document_id));
-      const prepared = descriptor(await call(() => sourceBound
+      if (!archive) requireValue(sha(input.content_sha256) && size(input.byte_length));
+      const prepared = descriptor(await call(() => archive ? deps.beginArchive(token, input, signal) : sourceBound
         ? deps.beginV2(token, input, signal) : deps.begin(token, input, signal), signal), actor, operationId);
-      requireValue(prepared.version === (sourceBound ? 2 : 1)
-        && (sourceBound ? prepared.source_id === input.source_id && prepared.purpose === input.purpose
+      requireValue(prepared.version === (archive ? 3 : sourceBound ? 2 : 1)
+        && (archive ? prepared.source_id === input.source_id && prepared.archived_source_object_id === input.source_object_id
+          : (sourceBound ? prepared.source_id === input.source_id && prepared.purpose === input.purpose
           : prepared.document_id === input.document_id) && prepared.content_sha256 === input.content_sha256
-        && prepared.byte_length === input.byte_length, 'invalid_receipt');
-      if (prepared.version === 2) recovery = { token, actor, operationId, prepared };
+        && prepared.byte_length === input.byte_length), 'invalid_receipt');
+      if (prepared.version !== 1) recovery = { token, actor, operationId, prepared };
       if (prepared.state === 'source-unavailable') return sourceUnavailableResponse(prepared);
       if (prepared.state === 'canceled') throw fail('canceled');
       let upload = null;
@@ -236,9 +263,10 @@ export async function handleDocumentGenerationUpload(request, deps) {
       return response(200, { operation: publicDescriptor(canceled) });
     }
     const prepared = descriptor(await call(() => deps.get(token, operationId, signal), signal), actor, operationId);
-    if (prepared.version === 2) recovery = { token, actor, operationId, prepared };
+    if (prepared.version !== 1) recovery = { token, actor, operationId, prepared };
     if (action === 'get') return response(200, { operation: publicDescriptor(prepared) });
-    if (prepared.version === 2) requireValue(deps.sourceBoundEnabled === true, 'unavailable');
+    if (prepared.version !== 1) requireValue(deps.sourceBoundEnabled === true, 'unavailable');
+    if (prepared.version === 3) requireValue(deps.archiveEnabled === true, 'unavailable');
     if (prepared.state === 'source-unavailable') return sourceUnavailableResponse(prepared);
     if (prepared.state === 'verified') return response(200, { operation: publicDescriptor(prepared) });
     if (prepared.state === 'rejected') return rejectedResponse(prepared);

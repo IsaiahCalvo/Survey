@@ -2,10 +2,13 @@
 // required before touching Storage. Never fall back to a reference SELECT or
 // direct removal on an old server. Retired paths are never reused.
 const MAX_BATCH = 100;
+class CleanupTimeoutError extends Error {
+  constructor() { super('Storage cleanup response timed out; queued paths were kept.'); }
+}
 async function waitForCleanup(work, timeoutMs) {
   let timer;
   try { return await Promise.race([Promise.resolve().then(work), new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('Storage cleanup response timed out; queued paths were kept.')), timeoutMs);
+    timer = setTimeout(() => reject(new CleanupTimeoutError()), timeoutMs);
   })]); } finally { clearTimeout(timer); }
 }
 const message = (error, fallback) => typeof error?.message === 'string' && error.message.trim()
@@ -44,15 +47,23 @@ export async function cleanupDocumentStorage(client, paths, { requestTimeoutMs =
   if (![requestTimeoutMs, maxDurationMs].every(value => Number.isSafeInteger(value) && value > 0 && value <= 45000)) {
     throw new TypeError('Storage cleanup time limits must be 1–45000 milliseconds.');
   }
-  const deadline = Date.now() + maxDurationMs;
+  const deadline = performance.now() + maxDurationMs;
+  let budgetExpired = false;
   let requests = 0;
   const bounded = async work => {
-    const remaining = Math.min(requestTimeoutMs, deadline - Date.now());
-    if (remaining <= 0 || requests >= 200) throw new Error('Storage cleanup budget ended; queued paths were kept.');
+    const totalRemaining = deadline - performance.now();
+    const remaining = Math.min(requestTimeoutMs, totalRemaining);
+    if (budgetExpired || remaining <= 0 || requests >= 200) throw new Error('Storage cleanup budget ended; queued paths were kept.');
     requests++;
     // Timing out does not cancel provider work already sent. It remains safe
     // because deletion was preceded by permanent, committed retirement.
-    return waitForCleanup(work, remaining);
+    try { return await waitForCleanup(work, remaining); }
+    catch (error) {
+      // Timers can wake before the measured deadline. Once the total-budget
+      // timer fires, never spend that rounding gap on another network batch.
+      if (error instanceof CleanupTimeoutError && totalRemaining <= requestTimeoutMs) budgetExpired = true;
+      throw error;
+    }
   };
   const report = { removedPaths: [], retainedPaths: [], pendingPaths: [], errors: [] };
   const removeRetired = async retired => {
@@ -61,7 +72,7 @@ export async function cleanupDocumentStorage(client, paths, { requestTimeoutMs =
       if (error) {
         // Isolate a failed key without turning every normal batch into 100
         // requests. All halves already have committed retirement receipts.
-        if (retired.length > 1 && Date.now() < deadline && requests < 200) {
+        if (retired.length > 1 && !budgetExpired && performance.now() < deadline && requests < 200) {
           const split = Math.ceil(retired.length / 2);
           await removeRetired(retired.slice(0, split));
           await removeRetired(retired.slice(split));
@@ -85,7 +96,7 @@ export async function cleanupDocumentStorage(client, paths, { requestTimeoutMs =
     }
   };
   for (let offset = 0; offset < exact.length; offset += MAX_BATCH) {
-    if (Date.now() >= deadline || requests >= 200) {
+    if (budgetExpired || performance.now() >= deadline || requests >= 200) {
       report.pendingPaths.push(...exact.slice(offset));
       report.errors.push('Storage cleanup time budget ended; remaining paths were not attempted.');
       break;

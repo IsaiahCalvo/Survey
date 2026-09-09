@@ -153,6 +153,35 @@ test('total duration cap keeps later batches pending without starting them', { t
   assert.equal(f.count('retire_document_storage_paths'), 1); assert.equal(f.count('remove'), 0);
 });
 
+for (const phase of ['retire', 'remove', 'ack']) {
+  test(`early total-budget timer in ${phase} cannot start another batch`, async t => {
+    const timers = new Map(); let nextTimer = 0;
+    t.mock.method(performance, 'now', () => 100);
+    t.mock.method(globalThis, 'setTimeout', callback => { const id = ++nextTimer; timers.set(id, callback); return id; });
+    t.mock.method(globalThis, 'clearTimeout', id => timers.delete(id));
+    const started = deferred(), late = deferred(), p = paths(201);
+    const f = fixture({ [phase]: () => { started.resolve(); return late.promise; } });
+    const run = cleanupDocumentStorage(f.client, p, { requestTimeoutMs: 50, maxDurationMs: 5 });
+    await started.promise;
+    // The total timer fires while the clock still reads before the deadline.
+    assert.equal(timers.size, 1); [...timers.values()][0]();
+    const report = await run; pending(report, p);
+    assert.equal(f.count('retire_document_storage_paths'), 1);
+    assert.equal(f.count('remove'), phase === 'retire' ? 0 : 1);
+    assert.equal(f.count('ack_document_storage_cleanup'), phase === 'ack' ? 1 : 0);
+    const calls = f.calls.length;
+    late.resolve((phase === 'retire' ? goodRetire : phase === 'remove' ? goodRemove : goodAck)(p.slice(0, 100)));
+    await Promise.resolve(); assert.equal(f.calls.length, calls);
+  });
+}
+
+test('wall-clock jumps cannot end a live monotonic cleanup budget', async t => {
+  t.mock.method(Date, 'now', (() => { let time = 0; return () => (time += 1000000); })());
+  const p = paths(201), f = fixture();
+  assert.deepEqual((await cleanupDocumentStorage(f.client, p)).removedPaths, p);
+  assert.equal(f.count('retire_document_storage_paths'), 3);
+});
+
 test('200-request cap bounds repeated Storage errors and preserves every unattempted key', async () => {
   const p = paths(301), f = fixture({ remove: () => ({ error: { message: 'all unavailable' } }) });
   const report = await cleanupDocumentStorage(f.client, p);

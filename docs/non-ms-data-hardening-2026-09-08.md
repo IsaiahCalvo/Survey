@@ -3380,6 +3380,103 @@ in this slice. No production quota reduction is claimed. Microsoft testing stays
 deferred. Do not enable these paths until the remaining publication, retention,
 provider and end-to-end checks pass.
 
+## Source-object archives and private page-state plans (095–096)
+
+The first full test run caught a separate existing cleanup deadline defect: a
+timer could wake just before a wall-clock deadline and start another batch.
+Cleanup now uses a monotonic clock and treats expiry of the total-budget timer
+as final, even if that timer wakes early. Deterministic tests cover all three
+request phases and wall-clock jumps. Retired paths, pending jobs and late-reply
+rules stay unchanged; a timeout does not claim provider work was canceled.
+
+Migration 095 stages an exact member of a verified source manifest, including
+JSON sidecars. The caller supplies only source, operation and source-object IDs;
+SQL derives the digest, length and immutable `.bin` destination. Version 3
+receipts retain the selected object ID even after source loss, but remove the
+old source proof. Version 1/2 upload behavior stays separate. A ready archive
+read performs one full source check, then projects its member under the same
+held locks. It does not repeat that whole check just to format the response.
+
+The HTTP `begin-archive` action and version 3 verification require
+`SURVEY_GENERATION_SOURCE_ARCHIVES=v1-complete-source` in addition to the existing
+source-capture and storage-contract flags. Inspection and cancellation remain
+available with the archive flag off. Archive staging still expires; it is not
+permanent history, an active file binding, or a completed publication.
+
+The private transform module accepts the full captured payload, not the public
+projection that omits other users' surveys. Its output must never be sent to a
+browser: it includes foreign/private survey records and connector history. The
+caller remains responsible for source digest, exact PDF dimensions and sidecar
+byte proof. The module prepares a fresh annotation baseline and remapped source
+projections while retaining an owned, unchanged copy of the input history. It
+does not write to Storage or SQL. The shared page-copy helper now exposes the
+old ID to copy-ID factories so all representations can use the same new ID.
+
+Migration 096 exposes that full input only through a service-role SQL function.
+It reuses the verified source check, holds the source and body locks, and checks
+the frozen payload and semantic hashes, byte count, document, generation and WAL
+head. It grants no private-table access and does not recapture newer state.
+The full result must remain inside a trusted worker; there is no public HTTP
+route for it. The transform has Node test evidence, not a deployed worker.
+
+Known unsupported input fails without a candidate: nonempty legacy
+`documents.annotations`, unknown page-bound fields, and prototype-named visible
+annotation IDs. The real empty document default is supported. The module also
+rejects conflicting copies, missing WAL dependencies and future checkpoints.
+An accepted empty checkpoint cannot resurrect stale SQL marks. Private survey
+IDs stay strings; copied records lose old Excel row receipts, while moved rows
+keep theirs. These guards do not establish compatibility for every historical
+file or prove live multi-user publication.
+
+The private transform builds one annotation-ID index and assembles fallback
+page buckets once. The test first reproduced quadratic work: 100/500 SQL rows
+visited 11,500/257,500 bucket objects with an accepted checkpoint and
+6,250/131,250 during fallback. The same test now observes 1,500/7,500 and
+1,300/6,500 respectively. This measures traversal count, not a production
+latency or egress claim. Raw and callout fallback rows also preserve their SQL
+author when no embedded author exists; an embedded author takes precedence.
+
+Verification for this local batch:
+
+- Full `npm test`: 630 files, 6,110 tests, 6,020 passed, 90 gated skips, no
+  failures or cancellations. The initial run failed the cleanup deadline test;
+  the final complete run passed after the fix and four deterministic regressions.
+- Actual disposable PostgreSQL: 15 archive groups, 18 SQL-to-transform cases
+  across six operations/three checkpoint forms, and 10 private service-read
+  access, corruption, expiry and lock groups. Clusters were removed afterward.
+- Actual cached Deno/Supabase SDK against localhost: 110 archive HTTP checks.
+  The transform plus existing page/form/state tests passed 90/90.
+- Vite build passed with the existing large-chunk warning. Upload, scheduled
+  cleanup and account-deletion Deno entry-point checks passed. Required graph
+  refresh completed; generated graph files remain outside the code commit.
+- In-app browser, no-auth fixture: four pages became five on Duplicate and six
+  on Copy/Paste; the pasted page opened and rendered. The test tab and local
+  server were closed. This is not real-auth cloud save/reopen evidence.
+
+Do not activate publication by adding a head row alone. Before activation:
+
+- Retain each exact prior source object and the candidate under a permanent
+  publication binding; require one archive for each captured PDF/sidecar member.
+- Copy the full source payload and proof before source expiry releases them.
+  Exclude adopted assets from staging caps, cancel and expiry, while preserving
+  cleanup when the owning document is truly deleted.
+- Replace transient `verified` upload lookups in source capture and byte checks
+  with the durable active-asset binding. Prior-actor revocation or closure must
+  not destroy another owner's surviving shared file.
+- Compare current full semantic state with the captured source under the document
+  lock, then publish the new PDF, annotation baseline and all page-bound state
+  together. A changed source must retain the candidate for explicit recovery.
+- Mount a checked generation bundle in the viewer and isolate its providers,
+  caches and pending edits. Verify two-user offline changes and reopen behavior.
+
+Server-side Storage copy could avoid a browser download/re-upload for archives,
+but it needs its own durable copy admission and unknown-outcome checks. The
+pinned provider performs one insert/upsert after copying to a fresh physical
+version; it does not justify weakening the immutable-object update guard.
+Its S3 backend uses a single-object copy, so large-object fallback and the actual
+hosted provider version still need proof. Never substitute direct Storage-table
+mutation for a provider copy or upload.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
@@ -3401,6 +3498,8 @@ provider and end-to-end checks pass.
 - [Per-function dependencies and Node support](https://supabase.com/docs/guides/functions/dependencies)
 - [PostgreSQL row-security policy rules](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [PostgreSQL custom error codes](https://www.postgresql.org/docs/current/plpgsql-errors-and-messages.html)
+- [Supabase standard uploads, content types and new paths](https://supabase.com/docs/guides/storage/uploads/standard-uploads)
+- [Pinned provider object-copy path](https://github.com/supabase/storage/blob/b41d14fa15547284b351ea024f8c83a201cdc83a/src/storage/object.ts#L289-L433)
 
 ## Rollback
 

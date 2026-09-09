@@ -296,7 +296,7 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
   for (const space of source.spaces || []) {
     const entry = (space?.assignedPages || []).find((candidate) => asPage(candidate?.pageId ?? candidate?.pageNumber) === sourcePage);
     for (const region of entry?.regions || []) {
-      if (region?.regionId) regionIds.set(region.regionId, createId());
+      if (region?.regionId) regionIds.set(region.regionId, createId({ kind: 'region', sourceId: region.regionId }));
     }
   }
 
@@ -310,7 +310,8 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
       if (isForm && !form) {
         throw new Error('A saved form value could not be matched to the copied PDF. Your document was kept.');
       }
-      const newId = form ? `form-field:${targetPage}:${form.targetFieldId}` : createId();
+      const newId = form ? `form-field:${targetPage}:${form.targetFieldId}`
+        : createId({ kind: 'annotation', sourceId: oldId });
       if (oldId) annotationIds.set(oldId, newId);
       let copied = mintPastedCloneIdentity(object, newId);
       copied = remapPageFields(copied, () => targetPage);
@@ -336,7 +337,8 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
 
   for (const [id, marker] of Object.entries(source.surveyMarkers || {})) {
     if (asPage(marker?.pageNumber) !== sourcePage) continue;
-    const newId = annotationIds.get(id) || annotationIds.get(marker?.annotationId) || createId();
+    const newId = annotationIds.get(id) || annotationIds.get(marker?.annotationId)
+      || createId({ kind: 'annotation', sourceId: id });
     annotationIds.set(id, newId);
     next.surveyMarkers[newId] = clearCopiedExcelReceipts(replaceRegionId({
       ...clone(marker),
@@ -348,7 +350,8 @@ function addPageClone(next, source, sourcePage, targetPage, createId, copiedWidg
 
   for (const [id, annotation] of Object.entries(source.annotations || {})) {
     if (asPage(annotation?.pageNumber ?? annotation?.pageId ?? annotation?.page) !== sourcePage) continue;
-    const newId = annotationIds.get(id) || annotationIds.get(annotation?.annotationId) || createId();
+    const newId = annotationIds.get(id) || annotationIds.get(annotation?.annotationId)
+      || createId({ kind: 'annotation', sourceId: id });
     annotationIds.set(id, newId);
     next.annotations[newId] = clearCopiedExcelReceipts(replaceRegionId({
       ...clone(annotation),
