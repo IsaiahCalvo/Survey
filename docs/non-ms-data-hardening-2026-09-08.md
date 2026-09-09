@@ -3477,6 +3477,85 @@ Its S3 backend uses a single-object copy, so large-object fallback and the actua
 hosted provider version still need proof. Never substitute direct Storage-table
 mutation for a provider copy or upload.
 
+## Durable source and asset retention (097; private, not publication)
+
+Migration 097 adds a document-owned retained bundle and exact asset bindings.
+The private helper accepts an actor/source, verified candidate operation and
+the complete set of verified source-object archive operations. It rechecks
+current access, account state, object versions, byte proofs and the full current
+SQL semantic digest before retaining anything. It checks expiry again after
+the final inserts. No browser or service role receives execute permission.
+This helper must run inside the future publication transaction, not as a
+standalone pre-publication action that leaves failed candidates permanent.
+
+The bundle pins the existing content-addressed source body; it does not copy
+another full payload. It preserves the complete byte manifest after transient
+source expiry. Exact retries use that durable identity and current access,
+not the old source TTL. One staged archive operation belongs to one bundle;
+unknown publication outcomes must retry the same candidate operation. Failed
+publication must roll back the whole transaction.
+
+Retained uploads, body content and file references are immutable while their
+document exists. Closing the original editor's account does not end another
+owner's asset lifetime. Actual document deletion still removes bundle/assets,
+releases the last source-body pin, cancels staging ledger rows and queues exact
+Storage paths for cleanup. No physical provider deletion is claimed by these
+local SQL tests.
+
+An exact, guarded `retained_at` marker excludes retained history from pending
+actor/document/expiry indexes and admission counts. It is set only to the
+matching bundle timestamp with all other upload fields unchanged. The separate
+document/state index still finds retained uploads during real document deletion.
+This avoids an anti-join through ever-growing retained history on each sweep.
+The small-fixture EXPLAIN test forces index eligibility; it is not a claim about
+production planner costs or production latency.
+
+Active source capture and source-byte verification now use the durable candidate
+binding. They do not depend on an old editor's account, source TTL or transient
+upload status. Capture reuses the checked asset descriptor under held locks
+instead of looking it up twice. Migration preflight rejects an existing head
+without a durable binding and rolls back; it never quietly accepts an expiring
+stage as a permanent active file. Reapplying with a retained head is tested.
+
+New publication gates found during this pass:
+
+- The generation guard blocks all writes to legacy annotation/survey tables
+  after adoption. A second publication needs an exact private transaction-bound
+  write permit or complete generation-scoped replacements, not a GUC bypass or
+  removal/reinsertion of the head.
+- SQL writes generate annotation/item timestamps. Marker comparison must define
+  a narrow policy for `lastSyncedAt` and the copied `id` alias (only when it equals
+  `annotationId`), while keeping row ID, version, author, geometry and business
+  fields exact. Prove actual SQL write → capture → second transform before using
+  a pre-write baseline as the published baseline.
+- The current `20260908161000` Storage quota guard already sums committed
+  object metadata under each owner's UUID path, including generation staging
+  and retained archives, for service-role writes too. `097` grants no byte
+  exemption. Older `documents.file_size` metrics are not that authority. The
+  tracked guard does not prove every provider-billed byte, abandoned backend
+  version or uncommitted upload is covered. History retention and provider-byte
+  reconciliation still need explicit policy/proof before activation.
+- Pinned history contains private survey/connector records. The closed-editor
+  test proves the account write fence and surviving document's file access, not
+  full account erasure through every historical copy. Define and test historical
+  private-data deletion/restore rules before exposing retention or restoration.
+- Sidecar publication needs an immutable generation-specific location or checked
+  SQL manifest. Existing legacy Yjs output also needs the exact nested-state
+  serializer and covered legacy sequence. Do not restore old connector history
+  over live writeback/audit state.
+
+No live migration, cloud publication, Microsoft test, provider copy or quota
+reduction occurred in this batch. Full publication and the two-user/offline
+viewer checks remain incomplete.
+
+Verification: the full Node suite passed 6,020 tests across 631 files, with 91
+gated skips and no failures/cancellations. The separate disposable PostgreSQL
+run passed 16 groups, including the actual aggregate quota trigger after
+retention, partial-index plans, closed-editor active capture, rollback and
+expiry during the final insert. Its exact temporary cluster was removed. Vite
+build passed with the existing large-chunk warning. The required AST graph
+refresh completed; graph/cache files are not part of the code checkpoint.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
