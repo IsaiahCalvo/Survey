@@ -18,7 +18,6 @@ import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
 import textGroupIconUrl from './assets/icons/case-sensitive.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
-import drawGroupIconUrl from './assets/icons/draw-group-option-5.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
 
 const renderMaskIcon = (url, size, color, style, className, width = size) => (
@@ -220,12 +219,21 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // UX 2026-09-07: no optical nudge. The draw-group asset's painted ink is
-    // centred in its own viewBox (measured centre offset 0.2% x / 0.4% y), so a
-    // translateY only pushed the pen off the top-toolbar baseline — it rode 2px
-    // high next to Pan / Select / Shapes. Reference behaviour: every top-toolbar
-    // glyph is centred on its ink bounding box, no per-icon nudges.
-    drawGroup: (size, color, style, className) => renderMaskIcon(drawGroupIconUrl, size, color, style, className),
+    // UX 2026-09-08: the Draw GROUP button (desktop top toolbar + phone tool bar)
+    // shows Lucide's "square-pen" (lucide-static v1.43.0, ISC) — a pen writing on
+    // a page, which reads as "markup tools" rather than as any one sub-tool. Its
+    // sub-tools (Pen / Highlighter / Eraser) keep their own glyphs.
+    // Stroke width 2 is Lucide's own weight, kept deliberately: the rest of the
+    // top-toolbar row (Pan / Select / Shapes / Text) is solid filled artwork, and
+    // the file's usual 1.5 read visibly lighter than those neighbours at 18px.
+    // UX 2026-09-07 rule still holds: no translateY nudge — this glyph is centred
+    // on its own ink, like every other top-toolbar icon.
+    drawGroup: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
 
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
