@@ -13,7 +13,7 @@ import textSquiggleUrl from './assets/icons/text-squiggle.svg';
 import textHyperlinkUrl from './assets/icons/text-hyperlink.svg';
 import textRedactUrl from './assets/icons/text-redact.svg';
 import panHandUrl from './assets/icons/pan-hand-closed.svg';
-import counterIconUrl from './assets/icons/counter-outline.svg';
+import counterIconUrl from './assets/icons/counter.svg';
 import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
