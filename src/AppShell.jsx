@@ -1705,13 +1705,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   const isActive = bottomToolbarApi.activeCategoryDropdown === 'shape';
                   bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'shape');
                   if (!isActive) {
-                    if (!['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
+                    if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
                       bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool);
                     }
                   }
                 }}
                 {...chromeTip('Shapes', 'below')}
-                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
                 data-tool-group="true"
                 aria-label="Shapes"
@@ -2060,7 +2060,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     the diameter input below remains visible for that tool. */}
                 {bottomToolbarApi.activeTool !== 'eraser' && (
                   <>
-                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'text-markup' || bottomToolbarApi.contextTool === 'text-select') ? (
+                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text-markup' || bottomToolbarApi.contextTool === 'text-select') ? (
                   /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
                      line). Checker pattern shows through low-opacity strokes
                      and a faint hairline ring lifts pure black off the dark
@@ -2138,7 +2138,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       pointerEvents: 'none'
                     }}>1</span>
                   </button>
-                ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
+                ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
                   /* 2026-05-25: Fill + border swatch. Checker shows through
                      low-opacity fills, faint hairline lifts black borders. */
                   <button
@@ -2383,7 +2383,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   })()}
 
                 {bottomToolbarApi.showAnnotationColorPicker && (() => {
-                  const isShape = (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || bottomToolbarApi.contextTool === 'counter')
+                  const isShape = (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || bottomToolbarApi.contextTool === 'counter')
                     && bottomToolbarApi.handleFillColorChange;
                   const isCounter = bottomToolbarApi.contextTool === 'counter';
                   const secondTabLabel = isCounter ? 'Number' : 'Border';
@@ -2395,8 +2395,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   // while the other side is already at 0, the other side gets
                   // bumped to fully opaque so the shape stays visible. Text
                   // and Callout opt out (their borders + fills are optional).
+                  // UX: a polygon is a closed, fillable shape like the
+                  // other two, so it opts INTO the same rule — you can make
+                  // its fill or its border invisible, never both at once.
                   const shapeOneVisibleRule = bottomToolbarApi.contextTool === 'rect'
-                    || bottomToolbarApi.contextTool === 'ellipse';
+                    || bottomToolbarApi.contextTool === 'ellipse'
+                    || bottomToolbarApi.contextTool === 'polygon';
                   const currentColor = onFillTab ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor;
                   const currentOpacity = onFillTab ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : (bottomToolbarApi.strokeOpacity / 100);
                   const isTextMarkupPalette = ['text-markup', 'text-select'].includes(bottomToolbarApi.contextTool);
@@ -2542,6 +2546,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   || bottomToolbarApi.contextTool === 'line'
                   || bottomToolbarApi.contextTool === 'rect'
                   || bottomToolbarApi.contextTool === 'ellipse'
+                  // UX: Polygon / Polyline take the same Width control as
+                  // every other stroked shape — a many-sided rectangle and a
+                  // many-segment line have no reason to behave differently.
+                  || bottomToolbarApi.contextTool === 'polygon'
+                  || bottomToolbarApi.contextTool === 'polyline'
                   || bottomToolbarApi.contextTool === 'text'
                   || bottomToolbarApi.contextTool === 'callout'
                   || bottomToolbarApi.contextTool === 'counter'
@@ -2652,7 +2661,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     A stale 'cloud' carried over from a shape tool reads as
                     Solid on a tool that cannot cloud (arrow/line/text/callout);
                     creation already treats it as solid, so the label matches
-                    what will be drawn. */}
+                    what will be drawn. Polygon and polyline read the same
+                    picker because they are stroked shapes like line and rect. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'polygon' || bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
                   <AnnotationDropdown
                     open={showStyleMenu}

@@ -4805,7 +4805,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       try {
         localStorage.setItem('lastDrawTool', activeTool);
       } catch (e) { }
-    } else if (['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(activeTool)) {
+    } else if (['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(activeTool)) {
       setLastShapeTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'shape' ? prev : 'shape'));
       try {
@@ -23892,7 +23892,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (
         document.body.getAttribute('data-readonly') === 'true' &&
         !isFormField && !e.metaKey && !e.ctrlKey && !e.altKey &&
-        ['p', 'h', 'e', 't', 'q', 'l', 'a', 'c'].includes(e.key.toLowerCase())
+        ['p', 'h', 'e', 't', 'q', 'l', 'a', 'c', 'g', 'k'].includes(e.key.toLowerCase())
       ) {
         return;
       }
@@ -24023,6 +24023,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Prevent default behavior and switch to line tool
         e.preventDefault();
         setActiveTool('line');
+        return;
+      }
+
+      // 'G' key to switch to the Polygon Tool (only when no modifiers).
+      // UX: 'P' would be the obvious letter but the Pen owns it, so the
+      // polyGon takes the next-best mnemonic letter from its own name.
+      if ((e.key === 'g' || e.key === 'G') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('polygon');
+        return;
+      }
+
+      // 'K' key to switch to the Polyline Tool (only when no modifiers).
+      // UX: 'L' is the Line tool. Polyline is the many-segment Line, so it
+      // takes the free key immediately left of L — the two line-family tools
+      // stay neighbours under the same finger.
+      if ((e.key === 'k' || e.key === 'K') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isFormField) {
+          return; // Don't trigger tool switch if focused on input
+        }
+        e.preventDefault();
+        setActiveTool('polyline');
         return;
       }
 
@@ -33662,6 +33687,12 @@ ${pageBlocks}
                 {[
                   { id: 'rect', label: 'Rectangle', iconName: 'rect' },
                   { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
+                  // UX: Polygon / Polyline sit between the closed shapes and
+                  // the open ones because that is what they bridge — a
+                  // polygon is a many-sided Rectangle, a polyline is a
+                  // many-segment Line. Both are click-to-place, not drag-out.
+                  { id: 'polygon', label: 'Polygon', iconName: 'polygon' },
+                  { id: 'polyline', label: 'Polyline', iconName: 'polyline' },
                   { id: 'line', label: 'Line', iconName: 'line' },
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
                   { id: 'counter', label: 'Counter', iconName: 'counter' }

@@ -25,6 +25,7 @@ import { deepClone } from '../utils/deepClone.js';
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
+import { movePolyVertexPoints } from '../utils/polyDraft.js';
 // UX: 2026-04-20 — Group / Ungroup. Auto-expand-on-click reads each clicked
 // annotation's / callout's groupId and, if present, expands selection to
 // every member of that group on the page. Same helper module powers App's
@@ -2058,8 +2059,10 @@ export function useSVGInteraction({
       const localX = w3x + pathOffsetX;
       const localY = w3y + pathOffsetY;
 
-      const newPoints = ds.originalPoints.map((p) => ({ x: p.x, y: p.y }));
-      newPoints[ds.vertexIndex] = { x: localX, y: localY };
+      // One definition of "move a single vertex", shared with the polygon /
+      // polyline draft module: the dragged point is replaced, every other
+      // point is copied through byte-for-byte so no neighbour drifts.
+      const newPoints = movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
 
       // UX 2026-04-20: keep the world rotation pivot anchored when a vertex
       // moves on a ROTATED polygon. The renderer re-derives rotCenter from
