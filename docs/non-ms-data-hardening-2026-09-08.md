@@ -4357,6 +4357,74 @@ or live-auth claim is made for the inactive database APIs. The Postgres skill
 guided the keyset, least-privilege and lock-order review; query-plan evidence,
 not the skill's generic performance estimates, drove the final SQL changes.
 
+## Client catalog and bounded legacy reads — September 9 follow-up
+
+The existing, live `libraryPagination` helper now limits a read to 60 seconds,
+1,000 requests, 200,000 retained rows and 64 MiB of serialized UTF-8 page data by
+default. The ID-chunk helper shares one budget across all its chunks instead of
+resetting it per chunk. It still reads beyond the 1,000-row provider cap, removes
+duplicate requested IDs, uses immutable keysets, and returns either a complete
+result or an error with no partial rows. A full page still needs a later empty
+page to prove completion. Oversized page responses and off-chunk rows fail.
+Existing hooks retain their previous complete rows when a refresh fails.
+
+An optional caller signal reaches the installed SDK's `abortSignal`. A separate
+deadline settles even an uncooperative promise and detaches listeners; late pages
+cannot become a result. The final outer return rechecks cancellation, fixing a
+reproduced three-microtask handoff race. The UTF-8 check rejects a serialized
+string already over budget before allocating another oversized encoding buffer.
+This bounds retained serialized data, not JavaScript heap or the SDK's earlier
+HTTP parse allocation. Existing hook callers still do not pass their scope's
+abort signal: stale reads are rejected by their current state guards but may
+continue until this deadline. Owned, membership and shared helper invocations
+have separate budgets; this is not one 64 MiB cap on an entire composed hook.
+Very large libraries now fail visibly at a limit rather than running indefinitely;
+the paged catalog integration remains needed to support them without a whole-list
+load. No incomplete result may be reported as a complete search result.
+
+Seventeen pagination tests cover the limits, exact UTF-8 boundaries, global chunk
+budget, uncooperative hangs, late cancellation, cleanup and installed SDK request
+signals. The related mounted-hook suite also checks project/document/template
+paging beyond 1,000 rows, failed refresh retention, coalescing, mutation-only
+consumers and account changes. A local 10,000-row metadata microbenchmark measured
+median 0.204 ms before versus 1.126 ms with these checks (five measured runs after
+warmup); this is modest extra CPU for bounded work, not a speedup or hosted result.
+The in-app browser's mock dashboard showed all six documents and filtered to the
+MEP document with no error logs. Its project navigation button did not change the
+mock route, so no project-navigation pass is claimed. That smoke test does not
+exercise live cloud paging; the mounted and SDK checks provide that local evidence.
+The no-auth PDF fixture also opened and duplicated from one page to two with no
+browser error logs. This is local page-operation smoke coverage, not cloud-sync,
+live-collaboration, native save, or viewport-geometry certification.
+
+The new default-off `documentCatalogReader` returns frozen exact metadata only
+after every page and a final storage-backed actor check. It captures one JWT per
+read, checks the opaque caller scope, retires on account changes, and owns a
+deadline/subscription per read. Concurrent reads cancel independently; disposal
+retires all pending reads. Strict envelope, row, project, cursor, timestamp,
+Unicode and decimal-size validation rejects malformed data, extra content fields,
+stuck cursors and out-of-budget pages. Accepted rows are copied before later
+network waits so a transport cannot change the returned result. Auth failures
+and malformed provider details produce safe errors, never a raw-table fallback.
+Twenty tests include the installed Supabase SDK with an owned HTTP server,
+captured Authorization headers, socket abort, and a real shared-storage account
+switch without an auth event. Completing the paging protocol is not one database
+snapshot or continuing access authority; opening must recheck current access.
+
+The new reader is not imported by any UI caller and does not replace exact
+names/alias search, thumbnails, copying or cloud-open routing. Those activation
+gates remain, alongside generation publication/provider proof and Microsoft
+testing. The codebase-design skill kept paging and read lifecycle rules behind
+small module interfaces tested with the real SDK and owned transport adapters.
+
+Final verification: the full offline suite completed with 6,512 tests, 6,417
+passed, 95 skipped, zero failures and zero cancellations. All 99 focused tests
+passed. The Vite build passed with the existing large-chunk warning; graph update
+and `git diff --check` passed. No SQL, hosted services, real accounts, cloud
+documents or Microsoft flows changed. The existing live-helper changes and the
+default-off catalog reader are distinct outcomes; passing these checks does not
+activate or deploy the catalog path.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
