@@ -4290,6 +4290,73 @@ the actual SDK HTTP/abort checks, reader/download checks and existing invite/ope
 contracts. The Vite build passed with the known large-chunk warning. Browser
 checks above used the actual running AppShell, not just extracted handlers.
 
+## Bounded catalog and explicit open mode — September 9 follow-up
+
+Implemented `read_document_open_mode` as a separate authenticated-only RPC.
+It returns exactly version, actor ID, document ID, mode and generation ID. It
+uses the existing shared document lock, exact membership checks and sorted
+account guards. A head always means checked, even without a valid publication
+receipt; that missing receipt must fail the checked reader, never select legacy.
+Repeated healthy reads do not rewrite document or guard tuples. Existing content
+fences and role precedence remain unchanged. The mode result is not a lease
+across later network work. Fourteen disposable-PostgreSQL groups cover real
+permission checks, replay, missing/closing accounts, adoption/replacement,
+membership changes in both lock orders, and rejection of stale legacy reads and
+writes. Fixture adoption seeds private heads, not live provider publication.
+
+Implemented `list_document_catalog` as a distinct metadata-only RPC, not a
+replacement for current full-row readers. It collects all four existing access
+paths: permanent document owner, direct member, project member and project owner.
+The current `useDocuments` query only collects the first two. The catalog applies
+the real viewer permission helper before page limits, omits archived/closing-owner
+documents, rejects closing callers, and deduplicates overlapping grants. It reads
+from a statement snapshot without creating account rows or holding membership
+write locks; opening must recheck access. The restrictive generation SELECT fence
+still rejects raw content reads, while a mixed legacy/checked list succeeds.
+
+The catalog accepts an immutable UUID cursor and 1–200 rows, returning an explicit
+next cursor only when another authorized row exists. Each access branch is bounded
+before the union; candidate materialization contains IDs, not unrestricted names.
+Final metadata uses primary-key lookups. Owner/project partial indexes cover the
+active-library cursor. Project membership seeks within each allowed project.
+The name is a display excerpt of at most 1,024 characters with `name_truncated`;
+the flag also checks a bounded prefix. This is explicit API behavior, not a full
+name suitable for rename/copy. File sizes stay decimal strings. No storage paths,
+content hashes, generation receipts, annotation state or PDF bytes are returned.
+
+Ten disposable-PostgreSQL groups passed, including mixed modes, all access paths,
+direct-role precedence, overlapping grants, archive rules, exact page boundaries,
+a one-million-emoji stored title, no guard writes, revocation on the next statement,
+and repeat migration. The larger fixture contains 6,000 additional documents,
+including 600 documents with overlapping access paths and 5,400 unrelated rows.
+EXPLAIN of the exact inner query exposed an initial project scan that discarded
+5,400 unrelated rows. The revised project seek discarded none and used 201 final
+primary-key metadata lookups for a 200-row page plus continuation check. One local
+run measured 5.19 ms versus 27.415 ms before that seek change; these are fixture
+observations, not a hosted latency or scale guarantee.
+
+Both RPCs remain disconnected from UI callers and unapplied to hosted databases.
+Activation still needs bounded client paging/deadlines, a trusted legacy metadata
+and download path with post-download mode recheck, checked acquisition routing,
+deep-link and upload routing, thumbnail identity without raw paths, and copy/rename
+handling. Alias search is deliberately not claimed: the catalog excludes the
+unbounded `name_aliases` array; complete search needs a bounded server search or
+separate exact metadata path. Do not silently replace whole-library results with
+partial pages or treat an excerpt as an exact name. Publication, provider bytes,
+two-user hosted proof, and Microsoft tests remain separate gates. Production index
+rollout must account for write locking; these transactional indexes were tested
+only on an owned disposable database.
+
+Final verification: `npm test` completed with 6,481 tests, 6,386 passed, 95 skipped,
+zero failures and zero cancellations. The two new PostgreSQL wrappers are opt-in
+in that offline suite; both passed when run separately with
+`SURVEY_POSTGRES_INTEGRATION=1`, executing all 24 database groups. The Vite build
+passed with the existing large-chunk warning. The final graph update and
+`git diff --check` passed. No UI code changed in this follow-up, and no new browser
+or live-auth claim is made for the inactive database APIs. The Postgres skill
+guided the keyset, least-privilege and lock-order review; query-plan evidence,
+not the skill's generic performance estimates, drove the final SQL changes.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
