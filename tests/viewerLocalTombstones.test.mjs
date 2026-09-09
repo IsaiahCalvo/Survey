@@ -97,7 +97,7 @@ test('actual saved-managed import branch selects diagnostics only; fresh local f
   ]) assert.equal(evaluate(branch.test, { pdfFile, isManagedLocalDocument }), expected);
   const importCalls = [];
   const policies = [];
-  const scope = { pdf: {}, arrayBuffer: new ArrayBuffer(0), isCancelled: false,
+  const scope = { pdf: {}, arrayBuffer: new ArrayBuffer(0), isCurrentLoad: () => true,
     importAnnotationsFromPdf: async (...args) => { importCalls.push(args); return { nativeLayerPolicyByPage: { 1: { hideNativeLayer: true } } }; },
     setPdfNativeAnnotationLayerPolicyByPage: value => policies.push(value),
   };

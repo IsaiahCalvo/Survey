@@ -240,6 +240,7 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
+import { createDocumentPdfSource } from './services/documentPdfSource.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -434,7 +435,7 @@ function readWorkbookRegistration(workbook) {
   }
 }
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
+export function PDFViewer({ pdfFile, pdfFilePath, checkedBundle = null, onGenerationSession = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRegisterQuitSave }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -1102,16 +1103,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pdf-lib rewrite/retry path or Pdfjs render path can't recover.
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [loadRetryToken, setLoadRetryToken] = useState(0);
+  // Local-only files keep their open across sign-in/out. Only cloud content
+  // binds its source and load timeout to an account.
+  const pdfLoadActorUserId = checkedBundle !== null || pdfFile?.id ? user?.id || null : null;
+  // Parse repairs belong to this open, never to the persisted file. Retire
+  // them during render so an old async load cannot publish into a new scope.
+  const pdfLoadScopeRef = useRef(null);
+  if (!pdfLoadScopeRef.current || pdfLoadScopeRef.current.file !== pdfFile
+    || pdfLoadScopeRef.current.bundle !== checkedBundle
+    || pdfLoadScopeRef.current.actor !== pdfLoadActorUserId) {
+    pdfLoadScopeRef.current = { file: pdfFile, bundle: checkedBundle,
+      actor: pdfLoadActorUserId, renderBlob: null, watchdogRetries: 0 };
+  }
+  const pdfLoadScope = pdfLoadScopeRef.current;
   const firstPagePaintAnalyticsRef = useRef({
     startedAt: 0,
     byteSizeBucket: 'unknown',
     reported: true,
   });
-  // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
-  // auto-retry a hung download (dead socket after display sleep/wake) before it
-  // gives up and surfaces the retryable error screen. Reset whenever a fresh
-  // pdfFile arrives so each document gets its own budget.
-  const loadWatchdogRetryCountRef = useRef(0);
   const pdfjsPageContainersStateRef = useRef({});
   const pdfjsCommittedPageScalesRef = useRef({});
   const pdfjsInteractionActiveRef = useRef(false);
@@ -19506,6 +19515,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
+    checkedBundle,
+    onGenerationSession,
     enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
@@ -21028,8 +21039,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // [OpenTiming] BUG#2 — PDF identity resolved; viewer is mounting for this doc.
     // Re-arm the one-shot first-paint marker so it logs once for THIS open.
     try { window.__openTimingFirstPaintLogged = false; } catch (_e) { /* swallow */ }
-    // Fresh document → fresh load-watchdog auto-retry budget (KAL-46 / sleep-wake).
-    loadWatchdogRetryCountRef.current = 0;
     try { console.log('[OpenTiming] pdfid-resolve @ ' + Math.round(performance.now()) + 'ms', String(id || '')); } catch (_e) { /* swallow */ }
     activePdfIdentityRef.current = nextPdfIdentity;
     activeCloudDocumentIdRef.current = pdfFile?.id || null;
@@ -22218,6 +22227,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     let isCancelled = false;
+    const isCurrentLoad = () => !isCancelled && pdfLoadScopeRef.current === pdfLoadScope;
+    const loadingTasks = new Set();
+    const stoppedTasks = new WeakMap();
+    const stopTask = task => {
+      if (!stoppedTasks.has(task)) {
+        let stopped;
+        try { stopped = Promise.resolve(task.destroy()).catch(() => {}); }
+        catch { stopped = Promise.resolve(); }
+        stoppedTasks.set(task, stopped);
+      }
+      return stoppedTasks.get(task);
+    };
+    const staleLoad = () => Object.assign(new Error('The PDF open is no longer current.'), { code: 'PDF_SOURCE_STALE' });
+    const parsePdf = async (options) => {
+      if (!isCurrentLoad()) throw staleLoad();
+      const task = pdfjsLib.getDocument(options);
+      loadingTasks.add(task);
+      try {
+        const pdf = await task.promise;
+        if (!isCurrentLoad()) throw staleLoad();
+        return pdf;
+      } catch (error) {
+        // A failed worker must not hold its replacement behind an unresolved
+        // destroy promise. Stop it once and let the scoped retry proceed.
+        void stopTask(task);
+        throw error;
+      } finally { loadingTasks.delete(task); }
+    };
 
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
@@ -22235,6 +22272,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // bytes we've already fetched instead of re-downloading.
       let arrayBuffer;
       let managedOutlineLoad = null;
+      let source;
+      const readRenderBytes = async () => {
+        if (!isCurrentLoad()) throw staleLoad();
+        const bytes = pdfLoadScope.renderBlob
+          ? await pdfLoadScope.renderBlob.arrayBuffer()
+          : await source.readBytes();
+        if (!isCurrentLoad()) throw staleLoad();
+        return bytes;
+      };
       try {
         // Note: verbosity cannot be set directly on imports in ES modules
         // PDF.js will use default verbosity level
@@ -22247,21 +22293,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setUnsupportedAnnotationCounts(null);
         setShowUnsupportedNotice(false);
 
-        if (typeof pdfFile.arrayBuffer === 'function') {
-          // Local file
-          arrayBuffer = await pdfFile.arrayBuffer();
-          perfLoad.mark(docName, 'Local file to ArrayBuffer');
-        } else if (pdfFile.filePath) {
-          // Supabase file - download it
-          perfLoad.mark(docName, 'Starting Supabase download');
-          const blob = await downloadFromStorage(pdfFile.filePath);
-          if (!blob) throw new Error('Failed to download PDF');
-          perfLoad.mark(docName, 'Supabase download complete');
-          arrayBuffer = await blob.arrayBuffer();
-          perfLoad.mark(docName, 'Blob to ArrayBuffer');
-        } else {
-          throw new Error('Invalid file object: missing arrayBuffer and filePath');
-        }
+        source = createDocumentPdfSource({ file: pdfFile, checkedBundle,
+          actorUserId: user?.id || null, download: downloadFromStorage, isCurrent: isCurrentLoad });
+        arrayBuffer = await readRenderBytes();
+        perfLoad.mark(docName, 'Source Blob to ArrayBuffer');
 
         const loadedByteLength = arrayBuffer.byteLength;
         const byteSizeBucket = loadedByteLength < 1024 * 1024
@@ -22303,11 +22338,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const transferCloudBytes = Boolean(pdfFile?.id);
           const primaryPdfData = transferCloudBytes ? arrayBuffer : arrayBuffer.slice(0);
           if (transferCloudBytes) arrayBuffer = null;
-          const loadingTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
+          pdf = await parsePdf({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
             data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
-          pdf = await loadingTask.promise;
           perfLoad.mark(docName, 'PDF.js document parsed');
           trackSurveyAnalyticsEvent('survey_pdf_parse_completed', {
             byteSizeBucket,
@@ -22318,20 +22352,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
           // Second attempt: recovery mode with lenient options
           try {
-            if (!arrayBuffer && pdfFile.filePath) {
-              const retryBlob = await downloadFromStorage(pdfFile.filePath);
-              if (!retryBlob) throw new Error('Failed to re-download PDF for recovery');
-              arrayBuffer = await retryBlob.arrayBuffer();
-            }
+            if (!arrayBuffer) arrayBuffer = await readRenderBytes();
             // Use fresh buffer clone for recovery attempt
-            const recoveryTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
+            pdf = await parsePdf({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
               data: arrayBuffer.slice(0),
               verbosity: pdfjsLib.VerbosityLevel.ERRORS,
               stopAtErrors: false,
               disableAutoFetch: true,
               disableStream: true
             });
-            pdf = await recoveryTask.promise;
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
           } catch (recoveryError) {
             // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed
@@ -22339,8 +22368,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Re-save via pdf-lib with useObjectStreams: false to
             // rewrite the file in a plain xref layout, then retry.
             try {
+              if (!isCurrentLoad()) throw staleLoad();
               console.warn('Recovery mode failed, rewriting PDF via pdf-lib and retrying:', recoveryError?.message);
               const pdfLib = await import('pdf-lib');
+              if (!isCurrentLoad()) throw staleLoad();
               // PERF/HANG (2026-07-17): ParseSpeeds.Fastest — pdf-lib's default
               // parse yields via nested setTimeout(0) ticks, which browser timer
               // throttling can stretch into a never-resolving load on many-object
@@ -22351,13 +22382,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 ignoreEncryption: true,
                 parseSpeed: pdfLib.ParseSpeeds.Fastest,
               });
+              if (!isCurrentLoad()) throw staleLoad();
               const rewritten = await rewriteDoc.save({ useObjectStreams: false });
-              const rewriteTask = pdfjsLib.getDocument({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
+              pdf = await parsePdf({ ...getPdfjsDocumentOptions(), isEvalSupported: false,
                 data: rewritten.buffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,
               });
-              pdf = await rewriteTask.promise;
               // Update the buffer downstream consumers see so the annotation
               // importer also reads the rewritten bytes.
               arrayBuffer = rewritten.buffer;
@@ -22368,7 +22399,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }
           }
         }
-        if (isCancelled) {
+        if (!isCurrentLoad()) {
           try { await pdf.destroy(); } catch { /* noop */ }
           return;
         }
@@ -22383,9 +22414,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         // Load project data from Supabase if available
         if (pdfFile.projectId) {
-          await loadSurveyDataFromSupabase(pdfFile, () => isCancelled);
+          await loadSurveyDataFromSupabase(pdfFile, () => !isCurrentLoad());
         }
-        if (isCancelled) return;
+        if (!isCurrentLoad()) return;
 
         // Calculate page sizes progressively so the first page can render immediately.
         perfLoad.mark(docName, 'Calculating page sizes');
@@ -22394,7 +22425,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setPageObjects({});
 
         const firstPage = await pdf.getPage(1);
-        if (isCancelled) return;
+        if (!isCurrentLoad()) return;
         const firstViewport = firstPage.getViewport({ scale: 1.0 });
         trackSurveyAnalyticsEvent('survey_pdf_first_page_ready', {
           byteSizeBucket,
@@ -22439,7 +22470,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               viewport
             };
           }));
-          if (isCancelled) return;
+          if (!isCurrentLoad()) return;
 
           const batchHeights = {};
           const batchSizes = {};
@@ -22489,7 +22520,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // no pdf-lib raw-bytes parse, no conversion) and it is fire-and-
             // forget so it never delays first paint.
             countUnsupportedAnnotations(pdf).then((counts) => {
-              if (isCancelled) return;
+              if (!isCurrentLoad()) return;
               if (counts && Object.keys(counts).length > 0) {
                 setUnsupportedAnnotationCounts(counts);
                 setShowUnsupportedNotice(true);
@@ -22503,7 +22534,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               rawPdfBytes: arrayBuffer,
               diagnosticsOnly: true
             });
-            if (isCancelled) return;
+            if (!isCurrentLoad()) return;
             appDebug('[PDFImport] native layer policy ' + JSON.stringify({
               documentId: pdfFile.id,
               cloudAuthoritative: true,
@@ -22517,6 +22548,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             }));
             setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
           } catch (diagError) {
+            if (!isCurrentLoad()) return;
             console.warn('[PDFImport] embedded PDF annotation diagnostics failed:', diagError);
             setPdfNativeAnnotationLayerPolicyByPage({});
           }
@@ -22529,7 +22561,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             rawPdfBytes: arrayBuffer,
             diagnosticsOnly: true,
           });
-          if (isCancelled) return;
+          if (!isCurrentLoad()) return;
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
           if (unsupportedCounts && Object.keys(unsupportedCounts).length > 0) {
             setUnsupportedAnnotationCounts(unsupportedCounts);
@@ -22546,7 +22578,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           } = await importAnnotationsFromPdf(pdf, {
             rawPdfBytes: arrayBuffer
           });
-          if (isCancelled) return;
+          if (!isCurrentLoad()) return;
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
           appDebug('[PDFImport] native layer policy ' + JSON.stringify({
             documentId: pdfFile?.id || null,
@@ -22736,7 +22768,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // The first clean baseline includes source bookmarks. Do not rebase
         // after the renderer's later callback: it may race real user edits.
         const managedOutline = await managedOutlineLoad;
-        if (isCancelled) return;
+        if (!isCurrentLoad()) return;
         if (managedOutline) {
           setPdfBookmarks(managedOutline);
           setBookmarks(prepareManagedLocalBookmarks(managedOutline));
@@ -22744,7 +22776,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         perfLoad.mark(docName, 'PDF ready for rendering');
         perfLoad.end(docName);
-        if (isCancelled) return;
+        if (!isCurrentLoad()) return;
         loadTrace('✅ LOAD COMPLETE — lifting the Loading curtain');
         setIsLoadingPDF(false);
 
@@ -22759,7 +22791,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (error) {
         perfLoad.end(docName);
         loadTrace('❌ LOAD ERROR', String(error?.message || error));
-        if (isCancelled) return;
+        if (!isCurrentLoad()) return;
         // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed object
         // streams that pdf.js trips on at parse or page-load time ("bad
         // ObjStm stream"). Re-save via pdf-lib with plain xref and retry
@@ -22770,22 +22802,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // parse or page-load time ("bad ObjStm stream", xref errors,
         // "Invalid stream/object"). Re-save once via pdf-lib with a
         // plain xref and retry the whole load. Guarded by a flag on the
-        // input file itself so the retry can't loop infinitely if the
-        // rewrite output is also broken. Reuses arrayBuffer captured
-        // earlier in this effect invocation so we don't re-download on
-        // the Supabase path.
+        // open itself so the retry can't loop if the rewrite is also broken.
+        // Derived render bytes must never overwrite the original local/cloud
+        // file just because a parser could not read it.
         const msg = String(error?.message || '');
         const details = String(error?.details || '');
         const rewritable = /ObjStm|xref|Invalid stream|Invalid object/i.test(msg + ' ' + details);
-        const alreadyRewritten = pdfFile?.__rewrittenForParse === true;
-        if (rewritable && !alreadyRewritten && typeof onUpdatePDFFile === 'function') {
+        const alreadyRewritten = !!pdfLoadScope.renderBlob || pdfFile?.__rewrittenForParse === true;
+        if (rewritable && !alreadyRewritten) {
           try {
             console.warn('PDF load failed with rewritable error, rewriting via pdf-lib:', msg || details);
             const pdfLib = await import('pdf-lib');
-            const srcBytes = arrayBuffer
-              || (await (pdfFile.arrayBuffer
-                ? pdfFile.arrayBuffer()
-                : downloadFromStorage(pdfFile.filePath).then((b) => b.arrayBuffer())));
+            if (!isCurrentLoad()) throw staleLoad();
+            const srcBytes = arrayBuffer || await readRenderBytes();
             // PERF/HANG (2026-07-17): ParseSpeeds.Fastest — no throttleable
             // setTimeout ticks on the load path (see pdfAnnotationImporter.js).
             const rewriteDoc = await pdfLib.PDFDocument.load(srcBytes, {
@@ -22793,27 +22822,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               ignoreEncryption: true,
               parseSpeed: pdfLib.ParseSpeeds.Fastest,
             });
+            if (!isCurrentLoad()) throw staleLoad();
             const rewritten = await rewriteDoc.save({ useObjectStreams: false });
-            const rewrittenBlob = new Blob([rewritten], { type: 'application/pdf' });
-            const rewrittenFile = Object.assign(rewrittenBlob, {
-              name: pdfFile.name,
-              projectId: pdfFile.projectId,
-              filePath: pdfFile.filePath,
-              supabaseFilePath: pdfFile.supabaseFilePath,
-              user_id: pdfFile.user_id || null,
-              id: pdfFile.id,
-              localId: pdfFile.localId,
-              storageMode: pdfFile.storageMode,
-              localRevision: pdfFile.localRevision,
-              _surveyPdfId: pdfFile._surveyPdfId,
-              __rewrittenForParse: true,
-            });
-            await onUpdatePDFFile(rewrittenFile, tabId);
+            if (!isCurrentLoad()) throw staleLoad();
+            pdfLoadScope.renderBlob = new Blob([rewritten], { type: 'application/pdf' });
+            setLoadRetryToken(value => value + 1);
             return;
           } catch (rewriteError) {
             console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
           }
         }
+        if (!isCurrentLoad()) return;
         console.error('Error loading PDF:', error);
         console.error('Error stack:', error.stack);
         setIsLoadingPDF(false);
@@ -22828,8 +22847,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     loadPDF();
     return () => {
       isCancelled = true;
+      for (const task of loadingTasks) {
+        void stopTask(task);
+      }
     };
-  }, [pdfFile, loadRetryToken]);
+  }, [pdfFile, checkedBundle, pdfLoadActorUserId, loadRetryToken]);
 
   // PDFViewer owns the single pdf.js document proxy. The mobile renderer reuses
   // it instead of parsing and retaining a second copy of the same PDF.
@@ -22865,13 +22887,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const MAX_AUTO_RETRIES = 2;
     loadTrace('watchdog armed — will check in 20s');
     const timer = setTimeout(() => {
-      if (loadWatchdogRetryCountRef.current < MAX_AUTO_RETRIES) {
-        loadWatchdogRetryCountRef.current += 1;
-        loadTrace('⏰ watchdog FIRED — load still stuck after 20s; auto-retrying', { attempt: loadWatchdogRetryCountRef.current });
+      if (pdfLoadScopeRef.current !== pdfLoadScope) return;
+      if (pdfLoadScope.watchdogRetries < MAX_AUTO_RETRIES) {
+        pdfLoadScope.watchdogRetries += 1;
+        loadTrace('⏰ watchdog FIRED — load still stuck after 20s; auto-retrying', { attempt: pdfLoadScope.watchdogRetries });
         try {
           console.warn('[PDFViewer] load watchdog — load still pending after ' +
             HANG_TIMEOUT_MS + 'ms; auto-retrying (' +
-            loadWatchdogRetryCountRef.current + '/' + MAX_AUTO_RETRIES + ') ' +
+            pdfLoadScope.watchdogRetries + '/' + MAX_AUTO_RETRIES + ') ' +
             '[wake-recover]');
         } catch (_e) { /* swallow */ }
         // Re-run the loadPDF effect with a fresh download/parse.
@@ -22892,7 +22915,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }, HANG_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [isLoadingPDF, pdfFile, loadRetryToken]);
+  }, [isLoadingPDF, pdfFile, checkedBundle, pdfLoadActorUserId, loadRetryToken]);
 
   // KAL-token-refresh — the former focus/online/visibilitychange "wake-kick"
   // that bumped loadRetryToken to re-run loadPDF on wake was REMOVED here.

@@ -36,6 +36,7 @@ const initialFinish = source.slice(source.indexOf('const managedOutline = await 
 function initialLoad(file, extract, publish) {
   return new Function('pdfFile', 'extractPdfOutlineBookmarks', 'isManagedLocalDocument', 'prepareManagedLocalBookmarks', 'publish', `
     const pdf = {}; let managedOutlineLoad = null; let isCancelled = false;
+    const isCurrentLoad = () => !isCancelled;
     const setPdfBookmarks = value => publish('available', value);
     const setBookmarks = value => publish('bookmarks', value);
     const setHasImportedPdfBookmarks = value => publish('imported', value);

@@ -114,5 +114,5 @@ test('missing and malformed sidecars preserve existing state without failing the
 });
 
 test('first-page path still awaits initial restoration and passes its cancellation guard', () => {
-  assert.match(source, /await loadSurveyDataFromSupabase\(pdfFile, \(\) => isCancelled\)/);
+  assert.match(source, /await loadSurveyDataFromSupabase\(pdfFile, \(\) => !isCurrentLoad\(\)\)/);
 });

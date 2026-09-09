@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import * as Y from 'yjs';
 import { PDFDocument } from 'pdf-lib';
 import { createDetachedYDoc } from '../src/lib/collab/ydocRegistry.js';
-import { createDocumentGenerationReader, readCheckedGenerationBootstrap } from '../src/services/documentGenerationReader.js';
+import { createDocumentGenerationReader, readCheckedGenerationBootstrap, readCheckedGenerationPdf } from '../src/services/documentGenerationReader.js';
 
 const id = n => `99000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = id(1), document = id(2), generation = id(3), owner = id(4);
@@ -303,4 +303,50 @@ test('checkpoint-at-frontier bootstrap preserves zero/null snapshot writer metad
   assert.equal(bootstrap.coveredSeq, '0'); assert.equal(bootstrap.baseAtSeq, '0');
   assert.equal(bootstrap.baseWriterId, null); assert.equal(bootstrap.baseWriterEpoch, '0');
   assert.deepEqual(decode(bootstrap.update), decode(h.baseline));
+});
+
+test('PDF-only accessor checks issued identity and returns independent immutable Blob views', async () => {
+  const h = harness(), result = await h.open();
+  result.pdfBlob.arrayBuffer = async () => new Uint8Array([255]).buffer;
+  const first = readCheckedGenerationPdf(result, bootstrapScope);
+  const second = readCheckedGenerationPdf(result, bootstrapScope);
+  assert.notEqual(first, second); assert.notEqual(first, result.pdfBlob);
+  assert.deepEqual(new Uint8Array(await first.arrayBuffer()), pdf);
+  first.arrayBuffer = async () => new Uint8Array([255]).buffer;
+  assert.deepEqual(new Uint8Array(await second.arrayBuffer()), pdf);
+  for (const value of [null, {}, { ...result }, new Proxy(result, {})]) {
+    assert.throws(() => readCheckedGenerationPdf(value, bootstrapScope), { code: 'DOCUMENT_OPEN_INPUT' });
+  }
+  for (const key of Object.keys(bootstrapScope)) {
+    assert.throws(() => readCheckedGenerationPdf(result, { ...bootstrapScope, [key]: id(91) }), { code: 'DOCUMENT_OPEN_INPUT' });
+  }
+});
+
+test('reader checks native Blob bytes rather than a forged instance arrayBuffer method', async () => {
+  const h = harness();
+  h.onDownload = () => {
+    const wrong = new Blob([new Uint8Array(pdf.length)]);
+    wrong.arrayBuffer = async () => pdf.slice().buffer;
+    return wrong;
+  };
+  await assert.rejects(h.open(), { code: 'DOCUMENT_OPEN_BYTES' });
+});
+
+test('shadowed Blob size cannot hide oversized native bytes before arrayBuffer allocation', async t => {
+  const h = harness();
+  let byteReads = 0;
+  const arrayBuffer = Blob.prototype.arrayBuffer;
+  t.mock.method(Blob.prototype, 'arrayBuffer', function () {
+    byteReads++;
+    return arrayBuffer.call(this);
+  });
+  h.onDownload = () => {
+    const oversized = new Blob([pdf, pdf]);
+    Object.defineProperty(oversized, 'size', { value: pdf.length });
+    oversized.arrayBuffer = async () => { throw new Error('Shadowed method must not run'); };
+    return oversized;
+  };
+  await assert.rejects(h.open(), { code: 'DOCUMENT_OPEN_BYTES' });
+  assert.equal(byteReads, 0, 'native length mismatch rejects before reading or hashing PDF bytes');
+  assert.equal(h.calls.filter(call => call.name === 'read_document_generation_open').length, 1);
 });

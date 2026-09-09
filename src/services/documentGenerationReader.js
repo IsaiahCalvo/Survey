@@ -18,21 +18,34 @@ const check = (v, code) => { if (!v) throw failure(code); };
 // Identity, not a caller-visible marker, proves that this module completed the
 // checked read. Neither copied fields nor changed public bytes can mint proof.
 const checkedBundles = new WeakMap();
+function checkedCapture(issuedBundle, scope) {
+  const captured = checkedBundles.get(issuedBundle);
+  check(captured && keys(scope, ['documentId', 'actorUserId', 'pdfGenerationId'])
+    && scope.documentId === captured.documentId && scope.actorUserId === captured.actorUserId
+    && scope.pdfGenerationId === captured.pdfGenerationId, 'DOCUMENT_OPEN_INPUT');
+  return captured;
+}
 
 /** Synchronous bootstrap seam: validate the issued bundle and exact scope
  * before the caller creates registry entries or reads/writes local stores.
  * Every call owns fresh bytes; the accepted state never leaves this module. */
 export function readCheckedGenerationBootstrap(issuedBundle, scope) {
   try {
-    const captured = checkedBundles.get(issuedBundle);
-    check(captured && keys(scope, ['documentId', 'actorUserId', 'pdfGenerationId'])
-      && scope.documentId === captured.documentId && scope.actorUserId === captured.actorUserId
-      && scope.pdfGenerationId === captured.pdfGenerationId, 'DOCUMENT_OPEN_INPUT');
+    const captured = checkedCapture(issuedBundle, scope);
     return Object.freeze({
       update: new Uint8Array(captured.update), coveredSeq: captured.throughSeq,
       baseAtSeq: captured.snapshotBase.atSeq, baseWriterId: captured.snapshotBase.writerId,
       baseWriterEpoch: captured.snapshotBase.writerEpoch,
     });
+  } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
+}
+
+/** PDF-only checked seam. Blob slicing owns a new immutable view without
+ * copying the annotation update or trusting caller-replaced Blob methods. */
+export function readCheckedGenerationPdf(issuedBundle, scope) {
+  try {
+    const captured = checkedCapture(issuedBundle, scope);
+    return Blob.prototype.slice.call(captured.pdfBlob, 0, undefined, 'application/pdf');
   } catch { throw failure('DOCUMENT_OPEN_INPUT'); }
 }
 
@@ -175,9 +188,15 @@ export function createDocumentGenerationReader(deps) {
         return update;
       };
       const readPdf = async () => {
-        const blob = await call(() => download(first.pdf, { actorUserId, documentId, pdfGenerationId: generationId, signal: controller.signal }));
-        check(blob instanceof Blob && BigInt(blob.size) === BigInt(first.pdf.byte_length), 'DOCUMENT_OPEN_BYTES');
-        const bytes = new Uint8Array(await call(() => blob.arrayBuffer()));
+        const received = await call(() => download(first.pdf, { actorUserId, documentId, pdfGenerationId: generationId, signal: controller.signal }));
+        check(received instanceof Blob, 'DOCUMENT_OPEN_BYTES');
+        // A native view discards shadowed size/method properties without
+        // materializing bytes. Reject the actual length before allocation.
+        const blob = Blob.prototype.slice.call(received, 0, undefined, 'application/pdf');
+        check(BigInt(blob.size) === BigInt(first.pdf.byte_length), 'DOCUMENT_OPEN_BYTES');
+        // Verify the Blob's actual immutable bytes, not an instance override
+        // which could return different data from a later native Blob view.
+        const bytes = new Uint8Array(await call(() => Blob.prototype.arrayBuffer.call(blob)));
         check(await call(() => computeContentSha256(bytes)) === first.pdf.content_sha256, 'DOCUMENT_OPEN_BYTES');
         return blob;
       };
@@ -204,7 +223,7 @@ export function createDocumentGenerationReader(deps) {
           first.pdf.id, first.pdf.version, first.pdf.content_sha256, first.pdf.byte_length]) });
       alive();
       checkedBundles.set(result, Object.freeze({ actorUserId, documentId, pdfGenerationId: generationId,
-        update: ownedUpdate, snapshotBase, throughSeq: annotations.wal_head }));
+        update: ownedUpdate, snapshotBase, throughSeq: annotations.wal_head, pdfBlob }));
       return result;
     } catch (caught) {
       if (caught?.code === 'ANNOTATION_GENERATION_STATE') throw failure('DOCUMENT_OPEN_STATE');

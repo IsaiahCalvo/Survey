@@ -4126,6 +4126,46 @@ reuse. The existing raw PDF overwrite path must remain unavailable to adopted
 generations until generation-aware publication is connected. No migration,
 deployment, live data write, Microsoft test or account change was made here.
 
+### Stable PDF source and render-only recovery (2026-09-09)
+
+The actual PDFViewer loader now reads through one source module per load attempt.
+It retains the input Blob and gives each parser a fresh ArrayBuffer. After PDF.js
+transfers a buffer to its worker, a lenient retry reads the same Blob instead of
+downloading the path again. ID-bearing Blobs without a Storage path also recover.
+Tests prove one download across the primary/recovery attempts, with real buffer
+detachment and identical bytes at each parser call.
+
+Automatic PDF repair no longer calls `onUpdatePDFFile`. That call reached
+AppShell's normal replacement/save path and could overwrite shared source bytes
+merely while opening a malformed PDF. Repaired bytes now stay in a render-only
+Blob scoped to the file, checked bundle, and cloud actor. Original metadata,
+including managed-local state and revision, stays intact. Outer repair retries
+once in memory; a failed repair does not trigger an unbounded rewrite loop.
+
+Checked PDF reads use a private reader-issued Blob view without copying the
+annotation checkpoint. The reader canonicalizes incoming Blobs before checking
+native length or allocating bytes, so overridden `size`/`arrayBuffer` properties
+cannot substitute data or bypass the byte bound. Checked parses never fall back
+to the file object's methods or an unversioned Storage path.
+
+Failed/pending worker tasks receive one cleanup call, without waiting forever on
+a failed worker's destroy promise. Old file/bundle/actor replies and watchdog
+timers cannot update a new open. Each cloud scope has its own bounded watchdog
+budget. Local-only files stay open across sign-in/out; those changes must not
+reload or reimport local annotations.
+
+Verification: final `npm test` exited 0 across 647 files: 6,391 tests, 6,298
+passed, 93 skipped, zero failures/cancellations. Focused runs passed 137 loader,
+reader, source, open-safety and sidecar checks plus 14 local bookmark/tombstone
+checks. Three old partial-source harnesses were updated for the stronger load
+cancellation callback; their save/cold-open assertions remain intact. Build and
+code-index update passed. The in-app browser loaded the existing PDF route,
+drew/undid/redid a rectangle, and removed it; error logs were empty. Forced
+recovery cases use the actual load effect with local PDF.js/pdf-lib ports, not a
+hosted malformed-file test. No cloud writes, deployment or Microsoft testing
+were performed. AppShell's checked-open route selection and its remaining
+generation-aware save/reuse guards are still pending.
+
 ## Sources
 
 - [IndexedDB upgrade and transaction rules](https://www.w3.org/TR/IndexedDB/#upgrade-transaction)
